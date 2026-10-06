@@ -62,8 +62,10 @@ class Supplier extends CommonDBTM
 
     public function getDropdownNameFields(bool $tooltip = true): array
     {
-        return array_merge(parent::getDropdownNameFields($tooltip),
-            $tooltip ? ['phonenumber', 'fax', 'email'] : []);
+        return array_merge(
+            parent::getDropdownNameFields($tooltip),
+            $tooltip ? ['phonenumber', 'fax', 'email'] : []
+        );
     }
 
 

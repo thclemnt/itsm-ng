@@ -81,9 +81,12 @@ class NotificationTarget extends DbTestCase
                 'begin_date' => $_SESSION['glpi_currenttime'], 'end_date' => $_SESSION['glpi_currenttime'],
             ]), ['id' => $id]))->isTrue();
             $em = \itsmng\Database\Orm::create($DB);
-            $loads = new class {
+            $loads = new class () {
                 public int $count = 0;
-                public function postLoad(): void { ++$this->count; }
+                public function postLoad(): void
+                {
+                    ++$this->count;
+                }
             };
             $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
             $repository = new \itsmng\Database\Repository\NotificationRecipientRepository($em);
@@ -210,9 +213,12 @@ class NotificationTarget extends DbTestCase
             $em->remove($users[2]);
             $em->flush();
             $em->clear();
-            $loads = new class {
+            $loads = new class () {
                 public int $count = 0;
-                public function postLoad(): void { ++$this->count; }
+                public function postLoad(): void
+                {
+                    ++$this->count;
+                }
             };
             $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
             $repository = new \itsmng\Database\Repository\NotificationRecipientRepository($em);
@@ -224,18 +230,20 @@ class NotificationTarget extends DbTestCase
 
             // An extended event can provide duplicates and a currently missing
             // identity. Its recipient callback must run before the next read.
-            $item = new class extends \PlanningExternalEvent {
+            $item = new class () extends \PlanningExternalEvent {
                 public static array $guests = [];
-                public function getFromDB($id) {
+                public function getFromDB($id)
+                {
                     $this->fields = ['id' => $id, 'users_id_guests' => self::$guests];
                     return true;
                 }
             };
             $item::$guests = [$first, $missing, $second, $first, PHP_INT_MAX, null, ''];
-            $target = new class extends \NotificationTargetPlanningRecall {
+            $target = new class () extends \NotificationTargetPlanningRecall {
                 public array $seen = [];
                 public $onRecipient;
-                public function addToRecipientsList(array $data) {
+                public function addToRecipientsList(array $data)
+                {
                     $this->seen[] = $data;
                     ($this->onRecipient)(count($this->seen));
                 }

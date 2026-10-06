@@ -82,7 +82,7 @@ class NotificationTargetTicket extends DbTestCase
             }
             $manager->flush();
             $manager->clear();
-            $loads = new class {
+            $loads = new class () {
                 public int $count = 0;
                 public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
                 {
@@ -148,9 +148,12 @@ class NotificationTargetTicket extends DbTestCase
         $connection = $DB->getDoctrineConnection();
         $level = $connection->getTransactionNestingLevel();
         $em = Orm::create($DB);
-        $loads = new class {
+        $loads = new class () {
             public int $count = 0;
-            public function postLoad(): void { ++$this->count; }
+            public function postLoad(): void
+            {
+                ++$this->count;
+            }
         };
         $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
         try {
@@ -207,13 +210,22 @@ class NotificationTargetTicket extends DbTestCase
             }
             // A custom selected-actor callback remains a freshness barrier. It can
             // supply duplicates or a disappeared identity without changing row order.
-            $selected = new class extends \Ticket {
+            $selected = new class () extends \Ticket {
                 public array $selected = [];
                 public $beforeSelection;
-                public static function getType() { return 'Ticket'; }
-                public function countUsers($type = 0) { return $type === \CommonITILActor::ASSIGN ? count($this->selected) : 0; }
-                public function getUsers($type) {
-                    if ($type !== \CommonITILActor::ASSIGN) { return []; }
+                public static function getType()
+                {
+                    return 'Ticket';
+                }
+                public function countUsers($type = 0)
+                {
+                    return $type === \CommonITILActor::ASSIGN ? count($this->selected) : 0;
+                }
+                public function getUsers($type)
+                {
+                    if ($type !== \CommonITILActor::ASSIGN) {
+                        return [];
+                    }
                     ($this->beforeSelection)();
                     return $this->selected;
                 }

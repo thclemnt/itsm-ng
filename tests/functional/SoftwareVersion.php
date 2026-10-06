@@ -77,7 +77,7 @@ class SoftwareVersion extends DbTestCase
             }
             $manager->flush();
             $manager->clear();
-            $loads = new class {
+            $loads = new class () {
                 public int $count = 0;
                 public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
                 {
@@ -116,8 +116,11 @@ class SoftwareVersion extends DbTestCase
             $writer->find(Entity\SoftwareVersion::class, $versions[0]->id)->name = 'Fresh release';
             $writer->flush();
             $writer->clear();
-            $this->boolean(in_array(['id' => $versions[0]->id, 'name' => 'Fresh release', 'status_name' => null],
-                $repository->versionChoices($software->id), true))->isTrue();
+            $this->boolean(in_array(
+                ['id' => $versions[0]->id, 'name' => 'Fresh release', 'status_name' => null],
+                $repository->versionChoices($software->id),
+                true
+            ))->isTrue();
             $this->integer($manager->getUnitOfWork()->size())->isEqualTo(0);
             $this->integer($loads->count)->isEqualTo(0);
             $this->array($repository->versions($software->id)[0])->hasKeys(['entities_id', 'softwares_id', 'comment', 'states_id']);

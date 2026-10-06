@@ -55,7 +55,7 @@ class Impact extends \DbTestCase
         $level = $connection->getTransactionNestingLevel();
         $savedConfig = $CFG_GLPI;
         $user = (int)\Session::getLoginUserID();
-        $observer = new class {
+        $observer = new class () {
             public int $loads = 0;
             public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
             {

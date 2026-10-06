@@ -63,7 +63,9 @@ class EntityRegistryCache extends \atoum\atoum\test
     {
         $cache = new Psr16Cache(new ArrayAdapter());
         $builds = 0;
-        $build = static function () use (&$builds): array { return ['generation' => ++$builds]; };
+        $build = static function () use (&$builds): array {
+            return ['generation' => ++$builds];
+        };
         (new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build);
         foreach ([
             'src/Database/Entity/Record.php' => '<?php /* field length 200 */',
@@ -88,7 +90,9 @@ class EntityRegistryCache extends \atoum\atoum\test
         $pool = new ArrayAdapter(storeSerialized: false);
         $cache = new Psr16Cache($pool);
         $builds = 0;
-        $build = static function () use (&$builds): array { return ['generation' => ++$builds]; };
+        $build = static function () use (&$builds): array {
+            return ['generation' => ++$builds];
+        };
         $registry = new RegistryCache($cache, MappingFingerprint::forSource($this->root));
         $registry->load($build);
         $key = array_key_first($pool->getValues());
@@ -112,11 +116,18 @@ class EntityRegistryCache extends \atoum\atoum\test
         $pool = new ArrayAdapter(storeSerialized: false);
         $cache = new Psr16Cache($pool);
         $registry = new RegistryCache($cache, MappingFingerprint::forSource($this->root));
-        $shared = ['reference' => new MappedReference('entity', 'entities_id', 'glpi_entities',
-            new ReferencePolicy(ReferenceKind::RootEntity)), 'flag' => true, 'empty' => null];
+        $shared = ['reference' => new MappedReference(
+            'entity',
+            'entities_id',
+            'glpi_entities',
+            new ReferencePolicy(ReferenceKind::RootEntity)
+        ), 'flag' => true, 'empty' => null];
         $model = ['left' => &$shared, 'right' => &$shared, 'nested' => [[], ['zero' => 0, 'name' => '0']]];
         $builds = 0;
-        $build = static function () use (&$builds, $model): array { ++$builds; return $model; };
+        $build = static function () use (&$builds, $model): array {
+            ++$builds;
+            return $model;
+        };
         $registry->load($build);
         $key = array_key_first($pool->getValues());
         $warm = $registry->load($build);
@@ -147,7 +158,9 @@ class EntityRegistryCache extends \atoum\atoum\test
         unlink($this->root . '/composer.lock');
         $cache = new Psr16Cache(new ArrayAdapter());
         $builds = 0;
-        $build = static function () use (&$builds): array { return ['generation' => ++$builds]; };
+        $build = static function () use (&$builds): array {
+            return ['generation' => ++$builds];
+        };
         (new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build);
         (new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build);
         $this->integer($builds)->isIdenticalTo(1);
@@ -167,7 +180,9 @@ class EntityRegistryCache extends \atoum\atoum\test
             }
         };
         $builds = 0;
-        $build = static function () use (&$builds): array { return ['generation' => ++$builds]; };
+        $build = static function () use (&$builds): array {
+            return ['generation' => ++$builds];
+        };
         $this->array((new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build))->isIdenticalTo(['generation' => 1]);
         rename($this->root . '/src/Database', $this->root . '/src/UnavailableDatabase');
         $this->array((new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build))->isIdenticalTo(['generation' => 2]);
@@ -227,7 +242,7 @@ class EntityRegistryCache extends \atoum\atoum\test
             }
         };
         $unavailable = new \itsmng\Database\SerializedMetadataCache($throwing, 'metadata');
-        $logger = new class extends \Psr\Log\AbstractLogger {
+        $logger = new class () extends \Psr\Log\AbstractLogger {
             public array $levels = [];
             public function log($level, $message, array $context = []): void
             {

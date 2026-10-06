@@ -1797,7 +1797,8 @@ abstract class APIBaseClass extends atoum
                         }
                     }
                     $this->integer(count(array_diff_key(
-                        $queue->find($queue_filter), array_flip($queue_before)
+                        $queue->find($queue_filter),
+                        array_flip($queue_before)
                     )))->isIdenticalTo(0);
                 } catch (\Throwable $error) {
                     $record_cleanup($error);

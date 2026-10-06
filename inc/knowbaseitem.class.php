@@ -1354,8 +1354,11 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
             KnowbaseItemTranslation::isKbTranslationActive()
             && (countElementsInTable('glpi_knowbaseitemtranslations') > 0)
         ) {
-            $translationJoin = static function (?callable $eligible = null, ?string $articleMatch = null,
-                ?callable $translatedMatch = null) use ($DB): array {
+            $translationJoin = static function (
+                ?callable $eligible = null,
+                ?string $articleMatch = null,
+                ?callable $translatedMatch = null
+            ) use ($DB): array {
                 $earlier = $DB->quoteName('earlier_translation');
                 $prior = 'SELECT 1 FROM ' . $DB->quoteName('glpi_knowbaseitemtranslations')
                     . ' ' . $earlier . ' WHERE ' . $earlier . '.' . $DB->quoteName('knowbaseitems_id')
@@ -1437,7 +1440,11 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                         $translationScores = [];
                         foreach (['name', 'answer'] as $field) {
                             $translationScores[] = 'COALESCE(' . \itsmng\Database\Query\KnowledgeBaseFullText::sql(
-                                $platform, [$DB->quoteName('matching_translation.' . $field)], $term, true) . ', 0)';
+                                $platform,
+                                [$DB->quoteName('matching_translation.' . $field)],
+                                $term,
+                                true
+                            ) . ', 0)';
                         }
                         $score .= ' + COALESCE((SELECT MAX(' . implode(' + ', $translationScores) . ') FROM '
                             . $translationFrom . ' WHERE ' . $translationScope . '), 0)';
@@ -1510,7 +1517,9 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                     }
                     if ($translated) {
                         $criteria['LEFT JOIN']['glpi_knowbaseitemtranslations'] = $translationJoin(
-                            $eligibleTranslation, $fullTextArticleMatch, $fullTextTranslationMatch
+                            $eligibleTranslation,
+                            $fullTextArticleMatch,
+                            $fullTextTranslationMatch
                         );
                     }
                 }

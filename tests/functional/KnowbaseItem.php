@@ -187,7 +187,7 @@ class KnowbaseItem extends DbTestCase
             $this->boolean($access->administrator)->isFalse();
             $manager = \itsmng\Database\Orm::create($DB);
             $repository = new \itsmng\Database\Repository\KnowledgeBaseRepository($manager);
-            $loads = new class {
+            $loads = new class () {
                 public int $articles = 0;
                 public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
                 {
@@ -207,8 +207,10 @@ class KnowbaseItem extends DbTestCase
             $basePage = $repository->listPage($access, array_replace($options, ['contains' => 'zxbasehit']));
             $this->integer($basePage['total'])->isIdenticalTo(1);
             $this->array(array_column($basePage['rows'], 'id'))->isIdenticalTo([(int)$articles[0]->getID()]);
-            $this->string($basePage['rows'][0]['transname'])->isIdenticalTo('Base article earlier translation',
-                'An article hit keeps its first translation even when a later translation also matches');
+            $this->string($basePage['rows'][0]['transname'])->isIdenticalTo(
+                'Base article earlier translation',
+                'An article hit keeps its first translation even when a later translation also matches'
+            );
             $criteria = \KnowbaseItem::getListRequest(['contains' => 'zxbasehit', 'faq' => false,
                 'knowbaseitemcategories_id' => 0], 'search');
             $legacyBase = array_values(iterator_to_array($DB->request($criteria)));
@@ -230,11 +232,16 @@ class KnowbaseItem extends DbTestCase
             foreach (['glpi_knowbaseitems' => ['quasa', $expectedIds],
                 'glpi_knowbaseitemtranslations' => ['uplicat', null]] as $table => [$word, $owned]) {
                 $native = \itsmng\Database\Query\KnowledgeBaseFullText::sql(
-                    $connection->getDatabasePlatform(), [$DB->quoteName('name'), $DB->quoteName('answer')], '?');
+                    $connection->getDatabasePlatform(),
+                    [$DB->quoteName('name'), $DB->quoteName('answer')],
+                    '?'
+                );
                 $restriction = $owned === null ? 'knowbaseitems_id = ?' : 'id IN (?, ?)';
                 $parameters = $owned ?? [(int)$articles[5]->getID()];
                 $parameters[] = \itsmng\Database\Repository\KnowledgeBaseRepository::fullTextQuery(
-                    $word, $connection->getDatabasePlatform());
+                    $word,
+                    $connection->getDatabasePlatform()
+                );
                 $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $DB->quoteName($table)
                     . ' WHERE ' . $restriction . ' AND ' . $native, $parameters))->isIdenticalTo(0);
             }
@@ -293,21 +300,45 @@ class KnowbaseItem extends DbTestCase
             $this->string($html)->contains('Zxnebula étoile traduite')->contains('Native search category')
                 ->notContains('Original translation title')->notContains('Wronglanguage unique result');
             // FAQ-only and anonymous views retain the existing audience policy.
-            $this->boolean($DB->update('glpi_knowbaseitems', ['is_faq' => 1],
-                ['id' => $articles[1]->getID()]))->isTrue();
-            $faqViewer = new \itsmng\Database\KnowledgeBaseAccess($access->user, false, false,
-                true, $access->multiEntity, $access->groups, $access->profile, $access->entities, $access->ancestors);
+            $this->boolean($DB->update(
+                'glpi_knowbaseitems',
+                ['is_faq' => 1],
+                ['id' => $articles[1]->getID()]
+            ))->isTrue();
+            $faqViewer = new \itsmng\Database\KnowledgeBaseAccess(
+                $access->user,
+                false,
+                false,
+                true,
+                $access->multiEntity,
+                $access->groups,
+                $access->profile,
+                $access->entities,
+                $access->ancestors
+            );
             $this->array(array_column($repository->listPage($faqViewer, $options)['rows'], 'id'))
                 ->isIdenticalTo([(int)$articles[1]->getID()]);
             foreach ([[true, false, 1], [true, true, 0], [false, false, 0]] as [$publicFaq, $multiEntity, $expected]) {
-                $anonymous = new \itsmng\Database\KnowledgeBaseAccess(0, false, false,
-                    $publicFaq, $multiEntity, [], 0, [], []);
+                $anonymous = new \itsmng\Database\KnowledgeBaseAccess(
+                    0,
+                    false,
+                    false,
+                    $publicFaq,
+                    $multiEntity,
+                    [],
+                    0,
+                    [],
+                    []
+                );
                 $this->integer($repository->listPage($anonymous, $options)['total'])->isIdenticalTo($expected);
             }
             $this->integer($loads->articles)->isIdenticalTo(0);
             $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
-            $this->boolean($DB->update('glpi_knowbaseitems', ['name' => 'Updated unrelated title'],
-                ['id' => $articles[0]->getID()]))->isTrue();
+            $this->boolean($DB->update(
+                'glpi_knowbaseitems',
+                ['name' => 'Updated unrelated title'],
+                ['id' => $articles[0]->getID()]
+            ))->isTrue();
             $this->array(array_column($repository->listPage($access, $options)['rows'], 'id'))
                 ->isIdenticalTo([(int)$articles[1]->getID()]);
             $manager->find(\itsmng\Database\Entity\KnowbaseItem::class, (int)$articles[1]->getID());

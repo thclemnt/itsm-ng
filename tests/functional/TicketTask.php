@@ -94,7 +94,7 @@ class TicketTask extends DbTestCase
             $_SESSION['glpipriority_3'] = '#123456';
             $scope = getEntitiesRestrictCriteria($parentType::getTable());
             $statuses = $parentType::getNotSolvedStatusArray();
-            $reader = new class($DB->getDoctrineConnection(), \itsmng\Database\Orm::configuration($DB->getDoctrineConnection()->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+            $reader = new class ($DB->getDoctrineConnection(), \itsmng\Database\Orm::configuration($DB->getDoctrineConnection()->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
                 public int $queries = 0;
                 public function createQuery(string $dql = ''): \Doctrine\ORM\Query
                 {
@@ -157,10 +157,16 @@ class TicketTask extends DbTestCase
             $this->string($emptyHtml)->isEmpty();
             $this->array($emptyRows)->isEmpty();
             if ($type === 'TicketTask') {
-                $custom = new class extends \TicketTask {
+                $custom = new class () extends \TicketTask {
                     public static int $loads = 0;
-                    public static function getType() { return 'TicketTask'; }
-                    public static function getTable($classname = null) { return \TicketTask::getTable(); }
+                    public static function getType()
+                    {
+                        return 'TicketTask';
+                    }
+                    public static function getTable($classname = null)
+                    {
+                        return \TicketTask::getTable();
+                    }
                     public function getFromDB($id)
                     {
                         ++self::$loads;

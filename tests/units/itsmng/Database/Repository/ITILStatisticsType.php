@@ -59,7 +59,7 @@ class ITILStatisticsType extends \atoum\atoum\test
     public function testCanonicalMetadataListenersRetainFullDiscovery(): void
     {
         $events = new EventManager();
-        $events->addEventListener(Events::loadClassMetadata, new class {
+        $events->addEventListener(Events::loadClassMetadata, new class () {
             public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
             {
                 $metadata = $event->getClassMetadata();
@@ -78,7 +78,7 @@ class ITILStatisticsType extends \atoum\atoum\test
     public function testCanonicalMetadataNotFoundListenersRetainFullDiscovery(): void
     {
         $events = new EventManager();
-        $events->addEventListener(Events::onClassMetadataNotFound, new class {
+        $events->addEventListener(Events::onClassMetadataNotFound, new class () {
             public function onClassMetadataNotFound(): void
             {
             }
@@ -185,7 +185,7 @@ class ITILStatisticsType extends \atoum\atoum\test
         $canonical = $this->manager();
         StatisticsType::definition($canonical, 'Ticket');
         $events = new EventManager();
-        $events->addEventListener(Events::loadClassMetadata, new class {
+        $events->addEventListener(Events::loadClassMetadata, new class () {
             public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
             {
                 $metadata = $event->getClassMetadata();

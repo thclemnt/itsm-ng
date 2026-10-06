@@ -57,7 +57,8 @@ class NativeTimestampSchema extends \atoum\atoum\test
                         if ($class === ObjectLock::class) {
                             $this->boolean(
                                 $field->generated === ClassMetadata::GENERATED_ALWAYS && !$field->notInsertable && !$field->notUpdatable
-                                && !in_array('date_mod', EntityRegistry::readOnlyColumns($metadata->getTableName()), true))->isTrue('The automatic clock refreshes its managed outcome while keeping explicit writes enabled');
+                                && !in_array('date_mod', EntityRegistry::readOnlyColumns($metadata->getTableName()), true)
+                            )->isTrue('The automatic clock refreshes its managed outcome while keeping explicit writes enabled');
                         }
                         $this->boolean($platform instanceof AbstractMySQLPlatform ? str_starts_with($column->getColumnDefinition(), 'TIMESTAMP ') : $column->getColumnDefinition() === null)->isTrue('SchemaTool obtains native storage from the property without historical input');
                         foreach ([$current->getTable($metadata->getTableName())->getColumn($field->columnName), $historical->getTable($metadata->getTableName())->getColumn($field->columnName)] as $expected) {
@@ -67,7 +68,8 @@ class NativeTimestampSchema extends \atoum\atoum\test
                             $this->boolean(
                                 $expected->getNotnull() === $column->getNotnull()
                                 && $platform->getDefaultValueDeclarationSQL($expected->toArray(true)) === $platform->getDefaultValueDeclarationSQL($column->toArray(true))
-                                && $expected->getComment() === $column->getComment() && $physical($expected->getColumnDefinition()) === $physical($column->getColumnDefinition()))->isTrue('Current property projection converges on the retained historical column semantics');
+                                && $expected->getComment() === $column->getComment() && $physical($expected->getColumnDefinition()) === $physical($column->getColumnDefinition())
+                            )->isTrue('Current property projection converges on the retained historical column semantics');
                         }
                     }
                 }
@@ -86,7 +88,8 @@ class NativeTimestampSchema extends \atoum\atoum\test
                     $stale->getColumn('nullable_instant')->getTypeName() === Types::DATETIMETZ_MUTABLE
                     && !$stale->getColumn('nullable_instant')->getNotnull() && $stale->getColumn('nullable_instant')->getDefault() === null
                     && $stale->getColumn('nullable_instant')->getComment() === "Property's instant"
-                    && $stale->getColumn('nullable_instant')->getColumnDefinition() === $probe->getColumn('nullable_instant')->getColumnDefinition())->isTrue('Property metadata replaces a stale existing temporal definition, including default/null/comment');
+                    && $stale->getColumn('nullable_instant')->getColumnDefinition() === $probe->getColumn('nullable_instant')->getColumnDefinition()
+                )->isTrue('Property metadata replaces a stale existing temporal definition, including default/null/comment');
                 $this->boolean($stale->hasIndex('retained_temporal_index') && $stale->getColumn('unmarked_wall_time')->getComment() === 'Unmarked historical detail')->isTrue('Owned temporal replacement preserves supporting indexes and unmarked historical fields');
                 $this->boolean($probe->getColumn('unmarked_wall_time')->getColumnDefinition() === null)->isTrue('Unmarked datetimetz is not globally rewritten');
                 $field = clone $probeMetadata->getFieldMapping('nullable_instant');

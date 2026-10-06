@@ -64,8 +64,10 @@ class Link extends DbTestCase
             $links[] = (int)$link->getID();
         }
 
-        $rows = array_values(array_filter(\Link::getLinksDataForItem($computer),
-            static fn (array $row): bool => in_array($row['id'], $links, true)));
+        $rows = array_values(array_filter(
+            \Link::getLinksDataForItem($computer),
+            static fn (array $row): bool => in_array($row['id'], $links, true)
+        ));
         $this->array(array_column($rows, 'id'))->isIdenticalTo([$links[0], $links[2], $links[1]]);
         foreach ($rows as $row) {
             $this->array(array_keys($row))->isIdenticalTo(['id', 'name', 'link', 'data', 'open_window']);
@@ -90,7 +92,7 @@ class Link extends DbTestCase
         $repository = new \itsmng\Database\Repository\LinkRepository($em);
         $connection = $em->getConnection();
         $this->object($connection)->isIdenticalTo($DB->getDoctrineConnection());
-        $listener = new class {
+        $listener = new class () {
             public int $loaded = 0;
 
             public function postLoad(): void
@@ -107,8 +109,12 @@ class Link extends DbTestCase
             // Positive control, then keep this caller-owned object managed and unchanged.
             $managed = $em->find(\itsmng\Database\Entity\Link::class, $id);
             $this->integer($listener->loaded)->isIdenticalTo(1);
-            $connection->update('glpi_links', ['name' => "O'Reilly\\link", 'data' => null, 'open_window' => true],
-                ['id' => $id], ['open_window' => \Doctrine\DBAL\Types\Types::BOOLEAN]);
+            $connection->update(
+                'glpi_links',
+                ['name' => "O'Reilly\\link", 'data' => null, 'open_window' => true],
+                ['id' => $id],
+                ['open_window' => \Doctrine\DBAL\Types\Types::BOOLEAN]
+            );
             $expected['name'] = "O'Reilly\\link";
             $expected['data'] = null;
             $expected['open_window'] = 1;

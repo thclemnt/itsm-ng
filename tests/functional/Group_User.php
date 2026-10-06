@@ -65,7 +65,7 @@ class Group_User extends \DbTestCase
             }
             $connection = $DB->getDoctrineConnection();
             $level = $connection->getTransactionNestingLevel();
-            $em = new class($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+            $em = new class ($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
                 public int $queries = 0;
                 public function createQuery(string $dql = ''): \Doctrine\ORM\Query
                 {
@@ -73,9 +73,12 @@ class Group_User extends \DbTestCase
                     return parent::createQuery($dql);
                 }
             };
-            $loads = new class {
+            $loads = new class () {
                 public int $count = 0;
-                public function postLoad(): void { ++$this->count; }
+                public function postLoad(): void
+                {
+                    ++$this->count;
+                }
             };
             $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
             try {

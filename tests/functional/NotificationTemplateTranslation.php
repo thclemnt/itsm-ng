@@ -45,7 +45,7 @@ class NotificationTemplateTranslation extends DbTestCase
 
         $connection = $DB->getDoctrineConnection();
         $level = $connection->getTransactionNestingLevel();
-        $em = new class($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+        $em = new class ($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
             public array $queries = [];
 
             public function createQuery(string $dql = ''): \Doctrine\ORM\Query
@@ -53,7 +53,7 @@ class NotificationTemplateTranslation extends DbTestCase
                 return $this->queries[] = parent::createQuery($dql);
             }
         };
-        $listener = new class {
+        $listener = new class () {
             public int $loaded = 0;
 
             public function postLoad(): void

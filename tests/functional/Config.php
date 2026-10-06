@@ -61,7 +61,8 @@ class Config extends DbTestCase
             $metadata->fieldMappings['context']->length = 173;
             $expected = (new \itsmng\Database\BaselineSchema($manager))->build($platform)->getTable('glpi_configs');
             $this->array((new \itsmng\Database\SchemaCheck())->differences(
-                $connection, new \Doctrine\DBAL\Schema\Schema([clone $expected])
+                $connection,
+                new \Doctrine\DBAL\Schema\Schema([clone $expected])
             ))->isIdenticalTo(['Changed column: glpi_configs.context']);
             $after = $schemaManager->introspectTable('glpi_configs');
             $this->boolean($schemaManager->createComparator()->compareTables($before, $after)->isEmpty())->isTrue();
@@ -513,7 +514,7 @@ class Config extends DbTestCase
         $previous = $GLOBALS['GLPI_CACHE'] ?? null;
         $memory = new \Symfony\Component\Cache\Adapter\ArrayAdapter(storeSerialized: false);
         $pool = new \Symfony\Component\Cache\Psr16Cache($memory);
-        $listener = new class {
+        $listener = new class () {
             public int $loads = 0;
             public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
             {

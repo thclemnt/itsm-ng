@@ -57,9 +57,12 @@ class Ticket extends DbTestCase
             $supplier = $this->createItem(\Supplier::class, ['name' => 'Actor supplier ' . $this->getUniqueString(),
                 'entities_id' => 0, 'email' => 'supplier@example.com']);
             $repository = new \itsmng\Database\Repository\ITILActorRepository($manager);
-            $loads = new class {
+            $loads = new class () {
                 public int $count = 0;
-                public function postLoad(): void { ++$this->count; }
+                public function postLoad(): void
+                {
+                    ++$this->count;
+                }
             };
             $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
             $connection = $DB->getDoctrineConnection();
@@ -140,14 +143,19 @@ class Ticket extends DbTestCase
                 'type' => \CommonITILActor::ASSIGN]);
             $this->createItem(\Supplier_Ticket::class, ['tickets_id' => $ticket->getID(), 'suppliers_id' => $supplier->getID(),
                 'type' => \CommonITILActor::ASSIGN, 'use_notification' => 1, 'alternative_email' => '']);
-            $panel = new class extends \Ticket {
+            $panel = new class () extends \Ticket {
                 public $afterActor;
-                public function panel(): array { return $this->getActorsForAction(\CommonITILActor::ASSIGN); }
-                public function getSuppliers($type) {
+                public function panel(): array
+                {
+                    return $this->getActorsForAction(\CommonITILActor::ASSIGN);
+                }
+                public function getSuppliers($type)
+                {
                     $rows = parent::getSuppliers($type);
                     return array_merge($rows, $rows);
                 }
-                protected function getITILActorPanelEntryExtras(array $actor, string $actorType): array {
+                protected function getITILActorPanelEntryExtras(array $actor, string $actorType): array
+                {
                     $extra = parent::getITILActorPanelEntryExtras($actor, $actorType);
                     ($this->afterActor)($actorType);
                     return $extra;
@@ -185,7 +193,8 @@ class Ticket extends DbTestCase
             $this->string($rows[2]['followupTitle'])->contains('after-user@example.com');
             $this->string($rows[3]['followupTitle'])->contains('after-supplier@example.com');
             $this->array($calls)->isIdenticalTo([\User::class, \Supplier::class, \Supplier::class]);
-            $panel->afterActor = static function (): void {};
+            $panel->afterActor = static function (): void {
+            };
             foreach (['', null, '0'] as $name) {
                 $this->boolean($DB->update('glpi_groups', ['name' => $name], ['id' => $group->getID()]))->isTrue();
                 $this->boolean($DB->update('glpi_suppliers', ['name' => $name], ['id' => $supplier->getID()]))->isTrue();
@@ -282,9 +291,12 @@ class Ticket extends DbTestCase
         $id = (int)$user->getID();
         $manager = \itsmng\Database\Orm::create($DB);
         $repository = new \itsmng\Database\Repository\UserRepository($manager);
-        $loads = new class {
+        $loads = new class () {
             public int $count = 0;
-            public function postLoad(): void { ++$this->count; }
+            public function postLoad(): void
+            {
+                ++$this->count;
+            }
         };
         $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
         $defaultFont = '"Bitstream Vera Sans", arial, Tahoma, "Sans serif"';
@@ -321,15 +333,26 @@ class Ticket extends DbTestCase
             // changes the current account preference before rendering the filter.
             $custom = new class ($id) extends \Ticket {
                 public int $filterCalls = 0;
-                public function __construct(private int $preferenceUser) { parent::__construct(); }
-                public static function getType() { return 'Ticket'; }
-                public static function getTable($classname = null) { return \Ticket::getTable(); }
-                public function showTimelineHeader() {
+                public function __construct(private int $preferenceUser)
+                {
+                    parent::__construct();
+                }
+                public static function getType()
+                {
+                    return 'Ticket';
+                }
+                public static function getTable($classname = null)
+                {
+                    return \Ticket::getTable();
+                }
+                public function showTimelineHeader()
+                {
                     global $DB;
                     parent::showTimelineHeader();
                     $DB->update('glpi_users', ['access_font' => 'After header callback'], ['id' => $this->preferenceUser]);
                 }
-                public function filterTimeline() {
+                public function filterTimeline()
+                {
                     global $DB;
                     ++$this->filterCalls;
                     $DB->update('glpi_users', ['access_font' => 'After callback'], ['id' => $this->preferenceUser]);
@@ -440,9 +463,12 @@ class Ticket extends DbTestCase
             $this->output(fn () => \Ticket::showFormHelpdeskObserver(array_replace($options, ['entities_id' => $sibling])))
                 ->notContains("value='" . $ids['sibling'] . "'")
                 ->notContains("value='" . $ids['local'] . "'");
-            $loads = new class {
+            $loads = new class () {
                 public int $count = 0;
-                public function postLoad(): void { ++$this->count; }
+                public function postLoad(): void
+                {
+                    ++$this->count;
+                }
             };
             $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
             $repository = new \itsmng\Database\Repository\UserSelectionRepository($em);
@@ -527,7 +553,9 @@ class Ticket extends DbTestCase
         $before = $managers->getValue();
         $parentModel->loadActors();
         $this->integer($managers->getValue() - $before)->isIdenticalTo(1);
-        $getter = match ($actorName) { 'Group' => 'getGroups', 'User' => 'getUsers', 'Supplier' => 'getSuppliers' };
+        $getter = match ($actorName) {
+            'Group' => 'getGroups', 'User' => 'getUsers', 'Supplier' => 'getSuppliers'
+        };
         foreach ([\CommonITILActor::ASSIGN, \CommonITILActor::OBSERVER, \CommonITILActor::REQUESTER] as $type) {
             $this->array($parentModel->$getter($type))->isIdenticalTo($grouped[$type] ?? []);
             foreach (array_diff(['getGroups', 'getUsers', 'getSuppliers'], [$getter]) as $emptyGetter) {
@@ -556,7 +584,7 @@ class Ticket extends DbTestCase
 
     public function testCustomActorFinderKeepsDispatch(): void
     {
-        $relation = new class extends \Ticket_User {
+        $relation = new class () extends \Ticket_User {
             public function find($condition = [], $order = [], $limit = null)
             {
                 return [['id' => 17, 'type' => \CommonITILActor::OBSERVER, 'custom' => $condition['tickets_id']]];
@@ -589,7 +617,7 @@ class Ticket extends DbTestCase
 
         $ticket = new \Ticket();
         $ticket->fields['id'] = $first->id;
-        $custom = new class extends \Ticket_User {
+        $custom = new class () extends \Ticket_User {
             public static $read;
             public function getActors($items_id)
             {
@@ -2450,7 +2478,9 @@ class Ticket extends DbTestCase
         try {
             // Exercise the DQL directly: the model's compatibility fallback cannot mask failure.
             $count = (new \itsmng\Database\Repository\DocumentRepository($manager))->countTimelineDocuments(
-                $item->getType(), (int)$item->getID(), $item::getAssociatedDocumentAccess($bypassRights)
+                $item->getType(),
+                (int)$item->getID(),
+                $item::getAssociatedDocumentAccess($bypassRights)
             );
             $this->integer($count)->isEqualTo($expected);
         } finally {
@@ -2635,7 +2665,7 @@ class Ticket extends DbTestCase
             ]))->isGreaterThan(0);
             $this->checkTimelineDocumentCount($ticket, 3);
             $this->integer($ticket->getTimelineItemCount())->isEqualTo(5)->isEqualTo(count($ticket->getTimelineItems()));
-            $custom = new class extends \Ticket {
+            $custom = new class () extends \Ticket {
                 public static function getType()
                 {
                     return 'Ticket';
@@ -2718,7 +2748,7 @@ class Ticket extends DbTestCase
 
     public function testTimelineCountKeepsCustomTimeline()
     {
-        $ticket = new class extends \Ticket {
+        $ticket = new class () extends \Ticket {
             public function getTimelineItems()
             {
                 return ['plugin-event' => ['type' => 'custom']];

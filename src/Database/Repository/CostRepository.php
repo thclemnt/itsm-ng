@@ -102,8 +102,12 @@ final class CostRepository
             ->from($quote->getTableName($link, $platform), $platform->quoteIdentifier('cost_link'))
             ->where($joinColumn($link, $linkParent, 'cost_link') . ' = ' . $parentId)
             ->andWhere($joinColumn($link, $assetProperty, 'cost_link') . ' = ' . $outer);
-        $query->innerJoin($platform->quoteIdentifier('cost_duration'), $quote->getTableName($parent, $platform),
-            $platform->quoteIdentifier('cost_parent'), $joinColumn($cost, $parentProperty, 'cost_duration') . ' = ' . $parentId)
+        $query->innerJoin(
+            $platform->quoteIdentifier('cost_duration'),
+            $quote->getTableName($parent, $platform),
+            $platform->quoteIdentifier('cost_parent'),
+            $joinColumn($cost, $parentProperty, 'cost_duration') . ' = ' . $parentId
+        )
             ->where('EXISTS (' . $exists->getSQL() . ')');
         $scope = $parentScope('cost_parent');
         if (trim($scope) !== '') {

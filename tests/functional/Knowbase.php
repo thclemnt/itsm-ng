@@ -85,8 +85,10 @@ class Knowbase extends DbTestCase
             $CFG_GLPI['translate_dropdowns'] = 1;
             $owned = array_map(static fn ($item): string => (string)$item->getID(), [$parent, ...$children]);
             $nodes = static function () use ($owned): array {
-                return array_values(array_filter(\Knowbase::getJstreeCategoryList(),
-                    static fn (array $node): bool => in_array($node['id'], $owned, true)));
+                return array_values(array_filter(
+                    \Knowbase::getJstreeCategoryList(),
+                    static fn (array $node): bool => in_array($node['id'], $owned, true)
+                ));
             };
             $tree = $nodes();
             $this->array(array_column($tree, 'id'))->isIdenticalTo([
@@ -97,8 +99,10 @@ class Knowbase extends DbTestCase
             $this->string($tree[2]['text'])->isIdenticalTo('Translated parent');
             $this->string($tree[0]['parent'])->isIdenticalTo((string)$parent->getID());
             $this->string($tree[2]['parent'])->isIdenticalTo('0');
-            $root = array_values(array_filter(\Knowbase::getJstreeCategoryList(),
-                static fn (array $node): bool => $node['id'] === '0'));
+            $root = array_values(array_filter(
+                \Knowbase::getJstreeCategoryList(),
+                static fn (array $node): bool => $node['id'] === '0'
+            ));
             $this->array($root)->hasSize(1);
             $this->string($root[0]['parent'])->isIdenticalTo('#');
 
@@ -113,7 +117,7 @@ class Knowbase extends DbTestCase
 
             $manager = \itsmng\Database\Orm::create($DB);
             $repository = new \itsmng\Database\Repository\KnowledgeBaseRepository($manager);
-            $loads = new class {
+            $loads = new class () {
                 public int $count = 0;
                 public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
                 {
@@ -134,8 +138,11 @@ class Knowbase extends DbTestCase
             $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
             $managed = $manager->find(\itsmng\Database\Entity\KnowbaseItemCategory::class, (int)$children[0]->getID());
             $this->integer($loads->count)->isIdenticalTo(1, 'The observer detects a real category load');
-            $this->boolean($DB->update('glpi_knowbaseitemcategories', ['name' => 'Current alpha'],
-                ['id' => $children[0]->getID()]))->isTrue();
+            $this->boolean($DB->update(
+                'glpi_knowbaseitemcategories',
+                ['name' => 'Current alpha'],
+                ['id' => $children[0]->getID()]
+            ))->isTrue();
             foreach ([null, '', '0'] as $emptyTranslation) {
                 $connection->update('glpi_dropdowntranslations', ['value' => $emptyTranslation], [
                     'items_id' => $children[0]->getID(), 'itemtype' => 'KnowbaseItemCategory',

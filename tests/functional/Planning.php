@@ -65,9 +65,12 @@ class Planning extends \DbTestCase
             ];
             $manager = \itsmng\Database\Orm::create($DB);
             $repository = new \itsmng\Database\Repository\PlanningRepository($manager);
-            $loads = new class {
+            $loads = new class () {
                 public int $count = 0;
-                public function postLoad(): void { ++$this->count; }
+                public function postLoad(): void
+                {
+                    ++$this->count;
+                }
             };
             $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
             $this->array($repository->groupChoices((int)$scope->getID()))->isIdenticalTo($expected);
@@ -194,7 +197,7 @@ class Planning extends \DbTestCase
         $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
         $connection = $DB->getDoctrineConnection();
         $level = $connection->getTransactionNestingLevel();
-        $em = new class($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+        $em = new class ($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
             public int $queries = 0;
             public function createQuery(string $dql = ''): \Doctrine\ORM\Query
             {
@@ -202,7 +205,7 @@ class Planning extends \DbTestCase
                 return parent::createQuery($dql);
             }
         };
-        $listener = new class {
+        $listener = new class () {
             public int $loaded = 0;
             public function postLoad(): void
             {

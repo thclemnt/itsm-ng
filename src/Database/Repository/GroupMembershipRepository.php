@@ -77,9 +77,14 @@ final class GroupMembershipRepository
         );
         if ($withLinkFields) {
             $query->addSelect(
-                'u.name AS user_name', 'u.realname AS user_realname', 'u.firstname AS user_firstname',
-                'g.name AS group_name', 'g.completename AS group_completename', 'g.comment AS group_comment',
-                'IDENTITY(g.entities) AS group_entities_id', 'g.is_recursive AS group_is_recursive'
+                'u.name AS user_name',
+                'u.realname AS user_realname',
+                'u.firstname AS user_firstname',
+                'g.name AS group_name',
+                'g.completename AS group_completename',
+                'g.comment AS group_comment',
+                'IDENTITY(g.entities) AS group_entities_id',
+                'g.is_recursive AS group_is_recursive'
             );
         }
         $direction = strtoupper($direction) === 'DESC' ? 'DESC' : 'ASC';

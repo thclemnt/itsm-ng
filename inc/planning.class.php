@@ -713,7 +713,7 @@ class Planning extends CommonGLPI
                 // Read after this group's formatter and before its concrete User loop.
                 // Dynamic resources elsewhere in the pass may perform current writes.
                 $userIds = array_map(
-                    static fn($key) => (int)explode('_', (string)$key)[1],
+                    static fn ($key) => (int)explode('_', (string)$key)[1],
                     array_keys($planning['users'])
                 );
                 $names = $userIds ? (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))

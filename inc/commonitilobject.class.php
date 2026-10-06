@@ -7866,7 +7866,9 @@ abstract class CommonITILObject extends CommonDBTM
             }
             if ($selection['documents'] !== null) {
                 $count += (new \itsmng\Database\Repository\DocumentRepository($manager))->countTimelineDocuments(
-                    static::getType(), (int)$this->getID(), static::getAssociatedDocumentAccess()
+                    static::getType(),
+                    (int)$this->getID(),
+                    static::getAssociatedDocumentAccess()
                 );
             }
             if ($selection['validations'] !== null) {

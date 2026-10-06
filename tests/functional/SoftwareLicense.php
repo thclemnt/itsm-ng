@@ -62,7 +62,7 @@ class SoftwareLicense extends DbTestCase
         $config = $CFG_GLPI;
         $connection = $DB->getDoctrineConnection();
         $level = $connection->getTransactionNestingLevel();
-        $em = new class($connection, Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+        $em = new class ($connection, Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
             public int $queries = 0;
             public function createQuery(string $dql = ''): \Doctrine\ORM\Query
             {
@@ -70,7 +70,7 @@ class SoftwareLicense extends DbTestCase
                 return parent::createQuery($dql);
             }
         };
-        $loads = new class {
+        $loads = new class () {
             public int $licenses = 0;
             public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
             {
@@ -114,7 +114,8 @@ class SoftwareLicense extends DbTestCase
             $rows = $repository->rows('SoftwareLicense', '2090-01-01', '2090-01-31', $scope, false);
             $this->integer($em->queries)->isIdenticalTo(1);
             $this->array(array_column($rows, 'id'))->isIdenticalTo(array_map(
-                static fn (\Infocom $item): int => (int)$item->getID(), array_slice($financial, 0, 4)
+                static fn (\Infocom $item): int => (int)$item->getID(),
+                array_slice($financial, 0, 4)
             ));
             $this->array(array_column($rows, 'value'))->isIdenticalTo(['12.5000', '7.2500', '4.1250', '2.5000']);
             $this->array(array_column($rows, 'license_serial'))->isIdenticalTo(['global', 'individual', 'global', 'global']);

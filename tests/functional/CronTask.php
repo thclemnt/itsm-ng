@@ -58,7 +58,8 @@ class CronTask extends DbTestCase
             $metadata->fieldMappings['content']->length = 173;
             $expected = (new \itsmng\Database\BaselineSchema($manager))->build($platform)->getTable('glpi_crontasklogs');
             $this->array((new \itsmng\Database\SchemaCheck())->differences(
-                $connection, new \Doctrine\DBAL\Schema\Schema([clone $expected])
+                $connection,
+                new \Doctrine\DBAL\Schema\Schema([clone $expected])
             ))->isIdenticalTo(['Changed column: glpi_crontasklogs.content']);
             $after = $schemaManager->introspectTable('glpi_crontasklogs');
             $this->boolean($schemaManager->createComparator()->compareTables($before, $after)->isEmpty())->isTrue();

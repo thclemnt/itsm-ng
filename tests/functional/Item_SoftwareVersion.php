@@ -400,7 +400,7 @@ class Item_SoftwareVersion extends DbTestCase
     {
         global $DB;
         $originalLevel = $DB->getDoctrineConnection()->getTransactionNestingLevel();
-        $logger = new class extends \Psr\Log\AbstractLogger {
+        $logger = new class () extends \Psr\Log\AbstractLogger {
             public array $queries = [];
 
             public function log($level, $message, array $context = []): void

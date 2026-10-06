@@ -479,7 +479,7 @@ class Entity extends DbTestCase
         $connection = $em->getConnection();
         $this->object($connection)->isIdenticalTo($DB->getDoctrineConnection());
         $connection->update('glpi_entities', ['tag' => '_identifier_before'], ['id' => $child]);
-        $listener = new class {
+        $listener = new class () {
             public int $loaded = 0;
 
             public function postLoad(): void

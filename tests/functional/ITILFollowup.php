@@ -77,8 +77,14 @@ class ITILFollowup extends DbTestCase
             $links = [];
             $table = CoreITILFollowup::getTable();
             $join = \itsmng\Search\Provider\JoinBuilder::addLeftJoin(
-                Ticket::class, Ticket::getTable(), $links, $table,
-                getForeignKeyFieldForTable($table), 0, 0, $params
+                Ticket::class,
+                Ticket::getTable(),
+                $links,
+                $table,
+                getForeignKeyFieldForTable($table),
+                0,
+                0,
+                $params
             );
             $alias = $DB->quoteName($links[0]);
             $result = $DB->query('SELECT ' . $alias . '.`id` AS followup FROM `glpi_tickets` '

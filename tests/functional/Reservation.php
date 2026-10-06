@@ -162,7 +162,7 @@ class Reservation extends \DbTestCase
         $rootId = (int)getItemByTypeName('Entity', '_test_root_entity', true);
         $childId = (int)getItemByTypeName('Entity', '_test_child_1', true);
         $this->boolean((bool)\Session::haveRight('reservation', READ))->isTrue();
-        $logger = new class extends \Psr\Log\AbstractLogger {
+        $logger = new class () extends \Psr\Log\AbstractLogger {
             public array $reads = [];
             public function log($level, $message, array $context = []): void
             {
@@ -324,7 +324,7 @@ class Reservation extends \DbTestCase
         $connection = $DB->getDoctrineConnection();
         $level = $connection->getTransactionNestingLevel();
         $em = Orm::create($DB);
-        $listener = new class {
+        $listener = new class () {
             public int $loaded = 0;
             public function postLoad(): void
             {
@@ -355,7 +355,7 @@ class Reservation extends \DbTestCase
             }
             $scope = ['AND' => [
                 getEntitiesRestrictCriteria(\Peripheral::getTable(), '', [$entity], false),
-                ['id' => array_map(static fn($asset) => (int)$asset->getID(), $assets)],
+                ['id' => array_map(static fn ($asset) => (int)$asset->getID(), $assets)],
             ]];
             $repository = new \itsmng\Database\Repository\ReservationItemRepository($em);
             $rows = array_column($repository->available('Peripheral', 'name', $scope, null, null), null, 'items_id');

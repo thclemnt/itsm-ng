@@ -558,7 +558,7 @@ class TicketRecurrent extends DbTestCase
 
     private function clockedRecurrence(?int $now): \TicketRecurrent
     {
-        $ticketRecurrent = new class extends \TicketRecurrent {
+        $ticketRecurrent = new class () extends \TicketRecurrent {
             public ?int $testTimestamp = null;
             public ?\Doctrine\ORM\EntityManager $calendarEntityManager = null;
 
@@ -578,7 +578,7 @@ class TicketRecurrent extends DbTestCase
             global $DB;
             $connection = $DB->getDoctrineConnection();
             $configuration = \itsmng\Database\Orm::configuration($connection->getDatabasePlatform());
-            $ticketRecurrent->calendarEntityManager = new class($connection, $configuration) extends \Doctrine\ORM\EntityManager {
+            $ticketRecurrent->calendarEntityManager = new class ($connection, $configuration) extends \Doctrine\ORM\EntityManager {
                 public int $queryCount = 0;
 
                 public function createQuery(string $dql = ''): \Doctrine\ORM\Query
@@ -603,7 +603,11 @@ class TicketRecurrent extends DbTestCase
         $this->integer($segmentId)->isGreaterThan(0);
         $recurrent = $this->clockedRecurrence(strtotime('2026-10-05 22:30:00'));
         $calculate = static fn () => $recurrent->computeNextCreationDate(
-            '2025-10-01 00:00:00', '2026-10-31 23:59:59', DAY_TIMESTAMP, 2 * HOUR_TIMESTAMP, $calendarId
+            '2025-10-01 00:00:00',
+            '2026-10-31 23:59:59',
+            DAY_TIMESTAMP,
+            2 * HOUR_TIMESTAMP,
+            $calendarId
         );
         $this->string($calculate())->isIdenticalTo('2026-10-06 07:00:00');
         $this->integer($recurrent->calendarEntityManager->queryCount)->isIdenticalTo(2);

@@ -492,7 +492,7 @@ class Transfer extends DbTestCase
         $original = $DB;
         $session = $_SESSION;
         $originalLevel = $original->getDoctrineConnection()->getTransactionNestingLevel();
-        $logger = new class extends \Psr\Log\AbstractLogger {
+        $logger = new class () extends \Psr\Log\AbstractLogger {
             public array $queries = [];
             public ?\Closure $beforeCurrentInstallations = null;
 
@@ -714,7 +714,7 @@ class Transfer extends DbTestCase
             $manager->persist($link);
             $manager->persist($history);
             $manager->flush();
-            $transfer = new class extends \Transfer {
+            $transfer = new class () extends \Transfer {
                 public ?\Closure $afterHistory = null;
                 public int $ticketCalls = 0;
 

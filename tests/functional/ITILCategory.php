@@ -47,9 +47,12 @@ class ITILCategory extends DbTestCase
         $entity = (int)\Session::getActiveEntity();
         $connection = $DB->getDoctrineConnection();
         $em = \itsmng\Database\Orm::create($DB);
-        $listener = new class {
+        $listener = new class () {
             public int $loaded = 0;
-            public function postLoad(): void { ++$this->loaded; }
+            public function postLoad(): void
+            {
+                ++$this->loaded;
+            }
         };
         $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $listener);
         try {

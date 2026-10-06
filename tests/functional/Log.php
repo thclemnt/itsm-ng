@@ -61,7 +61,8 @@ class Log extends DbTestCase
             $root = new \Entity();
             $this->boolean($root->getFromDB(0))->isTrue();
             $count = (int)$DB->getDoctrineConnection()->fetchOne(
-                'SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ?', ['Entity', 0]
+                'SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ?',
+                ['Entity', 0]
             );
             $this->createLogEntry($root, []);
             $this->string($history->getTabNameForItem($root))

@@ -4233,7 +4233,18 @@ class Ticket extends CommonITILObject
         $entity = filter_var($params['entities_id'], FILTER_VALIDATE_INT);
         if ($entity !== false && Session::haveAccessToEntity($entity)) {
             $rows = User::getSqlSearchResult(
-                false, $params['_right'], $entity, 0, [], '', 0, 100, 0, 0, [], true
+                false,
+                $params['_right'],
+                $entity,
+                0,
+                [],
+                '',
+                0,
+                100,
+                0,
+                0,
+                [],
+                true
             );
             foreach ($rows as $row) {
                 $display_name = trim($row['realname'] . ' ' . $row['firstname']);

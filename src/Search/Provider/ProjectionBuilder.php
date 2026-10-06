@@ -225,7 +225,9 @@ final class ProjectionBuilder
                 $em = \itsmng\Database\Orm::create($DB);
                 try {
                     $total = (new \itsmng\Database\Repository\CostRepository($em))->searchActionTime(
-                        $costType, $subject, JoinBuilder::getOrigTableName($subject),
+                        $costType,
+                        $subject,
+                        JoinBuilder::getOrigTableName($subject),
                         static fn (string $parentAlias) => \getEntitiesRestrictRequest('', $parentAlias)
                     );
                 } finally {

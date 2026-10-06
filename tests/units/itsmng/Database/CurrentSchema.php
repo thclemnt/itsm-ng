@@ -104,9 +104,13 @@ class CurrentSchema extends \atoum\atoum\test
                 $historical->getColumn($column)->setNotnull(false)->setDefault(null);
             }
             foreach ($references as $column => $target) {
-                $historical->addForeignKeyConstraint($target, [$column], ['id'],
+                $historical->addForeignKeyConstraint(
+                    $target,
+                    [$column],
+                    ['id'],
                     ['onDelete' => 'RESTRICT', 'onUpdate' => 'RESTRICT'],
-                    \itsmng\Database\ForeignKeys::name($table, $column));
+                    \itsmng\Database\ForeignKeys::name($table, $column)
+                );
             }
             $current = (new BaselineSchema($manager))->build($platform)->getTable($table);
             $comparator = new \Doctrine\DBAL\Schema\Comparator($platform);
@@ -317,15 +321,18 @@ class CurrentSchema extends \atoum\atoum\test
         $compare = \itsmng\Database\SubjectPolicyExpression::equivalent(...);
         $this->boolean($compare(
             "CASE WHEN itemtype IN ('Computer') THEN computers_id ELSE NULL END",
-            "CASE itemtype WHEN 'Computer'::text THEN computers_id ELSE NULL::bigint END", true
+            "CASE itemtype WHEN 'Computer'::text THEN computers_id ELSE NULL::bigint END",
+            true
         ))->isTrue();
         $this->boolean($compare(
             "CAST(`itemtype` AS BINARY) IN ('Computer') AND `computers_id` >= 1",
-            "((cast(`itemtype` as char charset binary) = _utf8mb4'Computer') and (`computers_id` >= 1))", false
+            "((cast(`itemtype` as char charset binary) = _utf8mb4'Computer') and (`computers_id` >= 1))",
+            false
         ))->isTrue();
         $this->boolean($compare(
             "itemtype IS NULL OR (itemtype IS NOT NULL AND itemtype = 'Computer' AND computers_id >= 1) OR (itemtype IS NOT NULL AND itemtype = 'Peripheral' AND peripherals_id >= 1)",
-            "(itemtype IS NULL AND (itemtype IS NULL OR itemtype = '')) OR (itemtype IS NOT NULL AND ((itemtype = 'Computer' AND computers_id >= 1) OR (itemtype = 'Peripheral' AND peripherals_id >= 1)))", true
+            "(itemtype IS NULL AND (itemtype IS NULL OR itemtype = '')) OR (itemtype IS NOT NULL AND ((itemtype = 'Computer' AND computers_id >= 1) OR (itemtype = 'Peripheral' AND peripherals_id >= 1)))",
+            true
         ))->isTrue();
         $expected = "itemtype IS NOT NULL AND itemtype = 'Computer' AND computers_id IS NOT NULL AND computers_id >= 1";
         foreach ([

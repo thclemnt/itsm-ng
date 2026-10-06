@@ -108,9 +108,15 @@ class Search extends DbTestCase
         $translated = \Ticket::getStatusPresentationFromCatalogue($customStatus, $catalogue);
         $this->string($translated['label'])->isIdenticalTo('Translated catalogue label');
         $this->string($translated['icon'])->contains("title='Translated catalogue label'");
-        $subclass = new class extends \Ticket {
-            public static function getStatus($status) { return 'Subclass label'; }
-            public static function getStatusIcon($status) { return '<i>Subclass icon</i>'; }
+        $subclass = new class () extends \Ticket {
+            public static function getStatus($status)
+            {
+                return 'Subclass label';
+            }
+            public static function getStatusIcon($status)
+            {
+                return '<i>Subclass icon</i>';
+            }
         };
         $this->array($subclass::getStatusPresentationFromCatalogue($customStatus, $catalogue))
             ->isIdenticalTo(['label' => 'Subclass label', 'icon' => '<i>Subclass icon</i>']);
@@ -287,7 +293,7 @@ class Search extends DbTestCase
                     ],
                 ]);
                 $this->integer($data['data']['count'])->isIdenticalTo(count($labels));
-                $expected = array_map(static fn(string $label): int => $ids[$type][$label], $labels);
+                $expected = array_map(static fn (string $label): int => $ids[$type][$label], $labels);
                 $actual = array_map('intval', array_keys($data['data']['items']));
                 sort($expected);
                 sort($actual);
@@ -312,7 +318,11 @@ class Search extends DbTestCase
         $unowned = (new \itsmng\Search\Provider\SelectList())->add('SUM(1)', 'value', true)->withoutFieldJoin();
         $this->variable($unowned->rootScalar('value'))->isNull();
         $this->variable(\itsmng\Search\Provider\CriteriaBuilder::rootScalarHaving(
-            'PluginCostprobeItem', 49, 'contains', '0', '0'
+            'PluginCostprobeItem',
+            49,
+            'contains',
+            '0',
+            '0'
         ))->isNull();
     }
 
@@ -320,7 +330,7 @@ class Search extends DbTestCase
     public function testUnionReusesUnrelatedHooksByCriterionOccurrence(): void
     {
         $this->login();
-        $probe = new class extends \Computer {
+        $probe = new class () extends \Computer {
             public static int $calls = 0;
             public static function getTable($classname = null)
             {
@@ -344,14 +354,24 @@ class Search extends DbTestCase
         $predicates = [];
         try {
             $original = \itsmng\Search\Provider\CriteriaBuilder::constructCriteriaSQL(
-                $criteria, $data, $options, false, null, $predicates
+                $criteria,
+                $data,
+                $options,
+                false,
+                null,
+                $predicates
             );
             $this->integer($probe::$calls)->isIdenticalTo(2);
             $this->string($original)->contains('(1 = 1)')->contains('(2 = 2)');
             foreach ([new \Computer(), new \Software()] as $asset) {
                 $member = new \itsmng\Search\Provider\UnionMember('reservation_types', $asset);
                 $sql = \itsmng\Search\Provider\CriteriaBuilder::constructCriteriaSQL(
-                    $criteria, $data, $options, false, $member, $predicates
+                    $criteria,
+                    $data,
+                    $options,
+                    false,
+                    $member,
+                    $predicates
                 );
                 $this->integer($probe::$calls)->isIdenticalTo(2);
                 // Identical leaves retain their distinct original hook results.

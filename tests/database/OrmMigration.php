@@ -88,9 +88,13 @@ class OrmMigration extends \GLPITestCase
         $this->string($connection->fetchOne('SELECT value FROM glpi_configs WHERE context = ? AND name = ?', ['core', 'itsmdbversion']))->isIdenticalTo(ITSM_SCHEMA_VERSION);
         // Readiness must bootstrap its own adapter in a fresh process, without
         // relying on this test runner's already-loaded database functions.
-        $process = proc_open([PHP_BINARY, GLPI_ROOT . '/tests/e2e/check_installed_history.php',
+        $process = proc_open(
+            [PHP_BINARY, GLPI_ROOT . '/tests/e2e/check_installed_history.php',
             GLPI_CONFIG_DIR, '--without-application-fixtures'],
-            [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['redirect', 1]], $pipes, GLPI_ROOT);
+            [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['redirect', 1]],
+            $pipes,
+            GLPI_ROOT
+        );
         $this->boolean(is_resource($process))->isTrue();
         fclose($pipes[0]);
         try {
@@ -311,7 +315,9 @@ class OrmMigration extends \GLPITestCase
             $this->array($inspect())->isIdenticalTo([$diagnostic]);
             $published = false;
             $this->exception(static function () use ($connection, &$published): void {
-                (new History())->upgrade($connection, onComplete: static function () use (&$published): void { $published = true; });
+                (new History())->upgrade($connection, onComplete: static function () use (&$published): void {
+                    $published = true;
+                });
             })->isInstanceOf(\RuntimeException::class)->hasMessage("Migration history did not converge:\n" . $diagnostic);
             $this->boolean($published)->isFalse();
             $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
@@ -359,7 +365,9 @@ class OrmMigration extends \GLPITestCase
         $drop = 'ALTER TABLE ' . $table . ' DROP '
             . ($platform instanceof \Doctrine\DBAL\Platforms\MySQLPlatform ? 'CHECK ' : 'CONSTRAINT ') . $constraint;
         $policy = static fn () => \itsmng\Database\Migration\V220\ExactDiscriminators::nativePolicy(
-            $connection, $table, ['column' => 'items_id', 'constraint' => $constraint]
+            $connection,
+            $table,
+            ['column' => 'items_id', 'constraint' => $constraint]
         );
         foreach ([['complete' => true], ['complete' => false, 'applied' => true]] as $state) {
             Ledger::save($connection, $version, $state);
@@ -407,11 +415,25 @@ class OrmMigration extends \GLPITestCase
     {
         $calls = new \ArrayObject();
         $release = static fn (string $name) => new class ($name, $calls) implements \itsmng\Database\Migration\ReleaseMigration {
-            public function __construct(private string $name, private \ArrayObject $calls) {}
-            public function version(): string { return $this->name; }
-            public function plan(Connection $connection): array { throw new \LogicException('Replay cannot preview a release'); }
-            public function apply(Connection $connection, ?callable $progress = null): void { $this->calls[] = $this->name . '.apply'; }
-            public function verify(Connection $connection): void { $this->calls[] = $this->name . '.verify'; }
+            public function __construct(private string $name, private \ArrayObject $calls)
+            {
+            }
+            public function version(): string
+            {
+                return $this->name;
+            }
+            public function plan(Connection $connection): array
+            {
+                throw new \LogicException('Replay cannot preview a release');
+            }
+            public function apply(Connection $connection, ?callable $progress = null): void
+            {
+                $this->calls[] = $this->name . '.apply';
+            }
+            public function verify(Connection $connection): void
+            {
+                $this->calls[] = $this->name . '.verify';
+            }
         };
         $history = new History([$release('fixture-predecessor'), $release('fixture-terminal')]);
         foreach ([null, ['complete' => false, 'applied' => true], ['complete' => true]] as $state) {
@@ -420,7 +442,9 @@ class OrmMigration extends \GLPITestCase
                 Ledger::save($connection, 'fixture-terminal', $state);
             }
             $calls->exchangeArray([]);
-            $history->upgrade($connection, onComplete: static function () use ($calls): void { $calls[] = 'publish'; });
+            $history->upgrade($connection, onComplete: static function () use ($calls): void {
+                $calls[] = 'publish';
+            });
             $this->array($calls->getArrayCopy())->isIdenticalTo($state === null
                 ? ['fixture-terminal.apply', 'fixture-terminal.verify', 'publish']
                 : ['fixture-terminal.verify', 'publish']);
@@ -429,7 +453,9 @@ class OrmMigration extends \GLPITestCase
         $connection->delete(Ledger::TABLE, ['version' => 'fixture-terminal']);
         $before = Ledger::states($connection);
         $calls->exchangeArray([]);
-        (new History([]))->upgrade($connection, onComplete: static function () use ($calls): void { $calls[] = 'publish'; });
+        (new History([]))->upgrade($connection, onComplete: static function () use ($calls): void {
+            $calls[] = 'publish';
+        });
         $this->array($calls->getArrayCopy())->isIdenticalTo(['publish']);
         $this->array(Ledger::states($connection))->isIdenticalTo($before);
     }
@@ -447,8 +473,12 @@ class OrmMigration extends \GLPITestCase
 
     private function console(string $directory, array $arguments): array
     {
-        $process = proc_open([PHP_BINARY, GLPI_ROOT . '/bin/console', '--config-dir=' . $directory, '--no-interaction', ...$arguments],
-            [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['redirect', 1]], $pipes, GLPI_ROOT);
+        $process = proc_open(
+            [PHP_BINARY, GLPI_ROOT . '/bin/console', '--config-dir=' . $directory, '--no-interaction', ...$arguments],
+            [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['redirect', 1]],
+            $pipes,
+            GLPI_ROOT
+        );
         $this->boolean(is_resource($process))->isTrue();
         fclose($pipes[0]);
         try {

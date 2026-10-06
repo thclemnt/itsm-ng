@@ -28,8 +28,14 @@ final class NetworkNameRepository
             return [];
         }
         $rows = $this->em->createQueryBuilder()
-            ->select('n.id', 'n.items_id AS port_id', 'n.name', 'fqdnRecord.id AS fqdns_id',
-                'fqdnRecord.name AS fqdn_name', 'fqdnRecord.fqdn AS fqdn')
+            ->select(
+                'n.id',
+                'n.items_id AS port_id',
+                'n.name',
+                'fqdnRecord.id AS fqdns_id',
+                'fqdnRecord.name AS fqdn_name',
+                'fqdnRecord.fqdn AS fqdn'
+            )
             ->from(Entity\NetworkName::class, 'n')->leftJoin('n.fqdns_id', 'fqdnRecord')
             ->where('n.itemtype = :type AND n.items_id IN (:ports)')
             ->setParameter('type', 'NetworkPort', Types::STRING)
@@ -64,9 +70,17 @@ final class NetworkNameRepository
         $networks = [];
         if ($addresses !== []) {
             $memberships = $this->em->createQueryBuilder()
-                ->select('addressRecord.id AS address_id', 'network.id', 'network.completename',
-                    'network.name', 'network.address', 'network.netmask', 'network.gateway',
-                    'parentNetwork.id AS ipnetworks_id', 'network.comment')
+                ->select(
+                    'addressRecord.id AS address_id',
+                    'network.id',
+                    'network.completename',
+                    'network.name',
+                    'network.address',
+                    'network.netmask',
+                    'network.gateway',
+                    'parentNetwork.id AS ipnetworks_id',
+                    'network.comment'
+                )
                 ->from(Entity\IPAddressIPNetwork::class, 'link')->innerJoin('link.ipnetworks', 'network')
                 ->innerJoin('link.ipaddresses', 'addressRecord')->leftJoin('network.parent', 'parentNetwork')
                 ->where('addressRecord.id IN (:addresses)')

@@ -102,12 +102,20 @@ class User extends \DbTestCase
             $mutate = static fn () => $connection->update('glpi_profiles_users', ['entities_id' => $denied], ['users_id' => $first->getID()]);
             $this->string($model->getLink())->notContains('<a ');
             $this->array(array_map('intval', $scopes->invoke($model)))->isIdenticalTo([$denied]);
-            $connection->update('glpi_profiles_users', ['entities_id' => $parent, 'is_recursive' => true], ['users_id' => $first->getID()],
-                ['is_recursive' => \Doctrine\DBAL\Types\Types::BOOLEAN]);
+            $connection->update(
+                'glpi_profiles_users',
+                ['entities_id' => $parent, 'is_recursive' => true],
+                ['users_id' => $first->getID()],
+                ['is_recursive' => \Doctrine\DBAL\Types\Types::BOOLEAN]
+            );
             $this->boolean(in_array($allowed, $scopes->invoke($model)))->isTrue();
             $this->string($model->getLink())->contains('<a ');
-            $connection->update('glpi_profiles_users', ['is_recursive' => false], ['users_id' => $first->getID()],
-                ['is_recursive' => \Doctrine\DBAL\Types\Types::BOOLEAN]);
+            $connection->update(
+                'glpi_profiles_users',
+                ['is_recursive' => false],
+                ['users_id' => $first->getID()],
+                ['is_recursive' => \Doctrine\DBAL\Types\Types::BOOLEAN]
+            );
             $this->array(array_map('intval', $scopes->invoke($model)))->isIdenticalTo([$parent]);
             $this->string($model->getLink())->notContains('<a ');
 
@@ -147,9 +155,12 @@ class User extends \DbTestCase
         // Inspect our private operation owner, without exposing it in the API.
         $owned = new \ReflectionProperty($reader, 'manager');
         $manager = $owned->getValue($reader);
-        $loads = new class {
+        $loads = new class () {
             public int $count = 0;
-            public function postLoad(): void { ++$this->count; }
+            public function postLoad(): void
+            {
+                ++$this->count;
+            }
         };
         $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
         $previousCache = $GLOBALS['GLPI_CACHE'] ?? null;
@@ -167,7 +178,9 @@ class User extends \DbTestCase
             $this->mockGenerator->orphanize('__construct');
             $routed = new \mock\DBmysql();
             $currentConnection = $connection;
-            $this->calling($routed)->getDoctrineConnection = static function () use (&$currentConnection) { return $currentConnection; };
+            $this->calling($routed)->getDoctrineConnection = static function () use (&$currentConnection) {
+                return $currentConnection;
+            };
             $this->boolean($reader->load($model, $id, $routed))->isTrue();
             $adapterManager = $owned->getValue($reader);
             $this->object($adapterManager)->isNotIdenticalTo($manager);
@@ -213,9 +226,12 @@ class User extends \DbTestCase
         $id = (int)$user->getID();
         $manager = \itsmng\Database\Orm::create($DB);
         $repository = new \itsmng\Database\Repository\UserRepository($manager);
-        $loads = new class {
+        $loads = new class () {
             public int $count = 0;
-            public function postLoad(): void { ++$this->count; }
+            public function postLoad(): void
+            {
+                ++$this->count;
+            }
         };
         $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
         try {
@@ -239,9 +255,13 @@ class User extends \DbTestCase
                 $this->array($model->fields)->isIdenticalTo($before);
             }
             $this->variable($repository->timelineAuthor(PHP_INT_MAX))->isNull();
-            $custom = new class extends \User {
+            $custom = new class () extends \User {
                 public int $calls = 0;
-                public function getFromDB($id) { ++$this->calls; return false; }
+                public function getFromDB($id)
+                {
+                    ++$this->calls;
+                    return false;
+                }
             };
             $this->boolean($custom->getTimelineAuthorFromDB($id))->isFalse();
             $this->integer($custom->calls)->isIdenticalTo(1);
@@ -270,7 +290,7 @@ class User extends \DbTestCase
         $session = $_SESSION;
         $user = $this->createItem(\User::class, ['name' => 'display-roundtrip-' . $this->getUniqueString()]);
         $id = (int)$user->getID();
-        $display = new class extends \CommonGLPI {
+        $display = new class () extends \CommonGLPI {
             public static function getAvailableDisplayOptions()
             {
                 return ['test' => ['show_default' => ['default' => true]]];
@@ -304,7 +324,7 @@ class User extends \DbTestCase
         $database = $DB;
         $user = $this->createItem(\User::class, ['name' => 'display-options-' . $this->getUniqueString()]);
         $id = (int)$user->getID();
-        $display = new class extends \CommonGLPI {
+        $display = new class () extends \CommonGLPI {
             public static function getAvailableDisplayOptions()
             {
                 return ['test' => ['show_default' => ['default' => true]]];
@@ -315,9 +335,12 @@ class User extends \DbTestCase
         $repository = new \itsmng\Database\Repository\UserRepository($manager);
         $writeManager = \itsmng\Database\Orm::create($database);
         $writer = new \itsmng\Database\Repository\RecordWriter($writeManager);
-        $loads = new class {
+        $loads = new class () {
             public int $count = 0;
-            public function postLoad(): void { ++$this->count; }
+            public function postLoad(): void
+            {
+                ++$this->count;
+            }
         };
         $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
         $this->mockGenerator->orphanize('__construct');
@@ -386,9 +409,12 @@ class User extends \DbTestCase
         ]);
         $id = (int)$user->getID();
         $manager = \itsmng\Database\Orm::create($DB);
-        $loads = new class {
+        $loads = new class () {
             public int $count = 0;
-            public function postLoad(): void { ++$this->count; }
+            public function postLoad(): void
+            {
+                ++$this->count;
+            }
         };
         $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
         $repository = new \itsmng\Database\Repository\UserRepository($manager);
@@ -433,7 +459,7 @@ class User extends \DbTestCase
         $session = $_SESSION;
         $configurationBefore = $CFG_GLPI;
         $originalLevel = $original->getDoctrineConnection()->getTransactionNestingLevel();
-        $logger = new class extends \Psr\Log\AbstractLogger {
+        $logger = new class () extends \Psr\Log\AbstractLogger {
             public array $userReads = [];
 
             public function log($level, $message, array $context = []): void

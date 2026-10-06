@@ -72,8 +72,15 @@ final class VlanMembershipService
                 foreach ([\Log::getTable(), \QueuedNotification::getTable()] as $table) {
                     OwnershipUpdateUnit::assertTransactionalStorage($this->database, $table);
                 }
-                $command = new VlanMembershipCommand($this->database, $connection, $this->database->captureManagedTransactionScope(), $model,
-                    new NetworkPortVlanRepository($manager), $manager->getClassMetadata(NetworkPortVlan::class), $removing);
+                $command = new VlanMembershipCommand(
+                    $this->database,
+                    $connection,
+                    $this->database->captureManagedTransactionScope(),
+                    $model,
+                    new NetworkPortVlanRepository($manager),
+                    $manager->getClassMetadata(NetworkPortVlan::class),
+                    $removing
+                );
                 $result = $operation($command);
                 return $command->finish($result);
             } catch (\Throwable $error) {

@@ -73,7 +73,8 @@ final class RecordRepository
             if ($reference) {
                 // IDENTITY is an untyped DQL function; use the referenced ID's type.
                 $value = \Doctrine\DBAL\Types\Type::getType($type)->convertToPHPValue(
-                    $value, $this->em->getConnection()->getDatabasePlatform()
+                    $value,
+                    $this->em->getConnection()->getDatabasePlatform()
                 );
             }
             $row[$column] = self::legacyScalarValue($value, $type);

@@ -48,7 +48,7 @@ class ProjectTask extends DbTestCase
         $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
         $connection = $DB->getDoctrineConnection();
         $em = \itsmng\Database\Orm::create($DB);
-        $listener = new class {
+        $listener = new class () {
             public int $loaded = 0;
             public function postLoad(): void
             {
@@ -92,7 +92,7 @@ class ProjectTask extends DbTestCase
             ]))->isGreaterThan(0);
             $this->boolean($projectless->getFromDB($projectless->getID()))->isTrue();
             $this->variable($projectless->fields['projects_id'])->isNull();
-            $legacyRoots = static fn(int $id): array => array_map('intval', array_column(
+            $legacyRoots = static fn (int $id): array => array_map('intval', array_column(
                 (new \ProjectTask())->find(['projects_id' => $id, 'projecttasks_id' => 0], ['plan_start_date', 'real_start_date']),
                 'id'
             ));
@@ -320,7 +320,7 @@ class ProjectTaskGanttOverride extends \ProjectTask
 
     public function find($condition = [], $order = [], $limit = null)
     {
-        return array_map(static fn(int $id): array => ['id' => $id], self::$roots);
+        return array_map(static fn (int $id): array => ['id' => $id], self::$roots);
     }
 
     public static function getDataToDisplayOnGantt($ID)

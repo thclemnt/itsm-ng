@@ -48,7 +48,7 @@ class Project extends DbTestCase
         $session = $_SESSION;
         $entity = (int)\Session::getActiveEntity();
         $em = \itsmng\Database\Orm::create($DB);
-        $listener = new class {
+        $listener = new class () {
             public int $loaded = 0;
             public function postLoad(): void
             {
@@ -130,7 +130,7 @@ class Project extends DbTestCase
             $this->boolean(strpos($html, '<span class=\'b\'>' . $prefix . ' ' . ($ids[0] === (int)$children['team']->getID() ? 'team' : 'denied'))
                 < strpos($html, '<span class=\'b\'>' . $prefix . ' ' . ($ids[1] === (int)$children['team']->getID() ? 'team' : 'denied')))->isTrue();
 
-            $custom = new class extends \Project {
+            $custom = new class () extends \Project {
                 public array $selection = [];
                 public array $calls = [];
                 public static function getTable($classname = null)

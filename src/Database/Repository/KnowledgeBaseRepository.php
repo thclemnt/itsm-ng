@@ -57,8 +57,10 @@ final class KnowledgeBaseRepository
     /** Literal substring alternatives for native search words; used with SQL ESCAPE '!'. */
     public static function fallbackPatterns(string $text): array
     {
-        return array_map(static fn (string $word): string => '%' . str_replace('_', '!_', $word) . '%',
-            self::searchWords($text));
+        return array_map(
+            static fn (string $word): string => '%' . str_replace('_', '!_', $word) . '%',
+            self::searchWords($text)
+        );
     }
 
     /** @return list<string> */
@@ -122,8 +124,10 @@ final class KnowledgeBaseRepository
         $translationFullTextMatch = null;
         $total = null;
         if ($search) {
-            $terms = self::fullTextQuery(\Toolbox::unclean_cross_side_scripting_deep($options['contains']),
-                $this->em->getConnection()->getDatabasePlatform());
+            $terms = self::fullTextQuery(
+                \Toolbox::unclean_cross_side_scripting_deep($options['contains']),
+                $this->em->getConnection()->getDatabasePlatform()
+            );
             if ($terms !== '') {
                 $fullText = clone $query;
                 $matches = ['KB_MATCH(k.name, k.answer, :terms) = true'];
@@ -203,15 +207,26 @@ final class KnowledgeBaseRepository
                     . ' OR NOT EXISTS (' . $anyEarlier . '))'
                     . ' AND NOT EXISTS (' . $earlier . ' AND (' . $translationFullTextMatch('earlierTranslation') . '))';
             }
-            $query->leftJoin(KnowbaseItemTranslation::class, 'translation', 'WITH',
+            $query->leftJoin(
+                KnowbaseItemTranslation::class,
+                'translation',
+                'WITH',
                 'IDENTITY(translation.knowbaseitems) = k.id AND translation.language = :language' . $eligible
-                . $firstEligible)
+                . $firstEligible
+            )
                 ->setParameter('language', $options['language'], Types::STRING);
         }
         $published = str_replace('published', 'visibility', implode(' OR ', $audiences));
-        $query->select('k.id', 'k.name', 'k.answer', 'k.is_faq', 'IDENTITY(k.users) AS users_id',
-            'IDENTITY(k.knowbaseitemcategories) AS knowbaseitemcategories_id', 'kbCategory.completename AS category',
-            'CASE WHEN (' . $published . ') THEN 1 ELSE 0 END AS visibility_count');
+        $query->select(
+            'k.id',
+            'k.name',
+            'k.answer',
+            'k.is_faq',
+            'IDENTITY(k.users) AS users_id',
+            'IDENTITY(k.knowbaseitemcategories) AS knowbaseitemcategories_id',
+            'kbCategory.completename AS category',
+            'CASE WHEN (' . $published . ') THEN 1 ELSE 0 END AS visibility_count'
+        );
         if ($translated) {
             $query->addSelect('translation.name AS transname', 'translation.answer AS transanswer');
         }
@@ -355,12 +370,16 @@ final class KnowledgeBaseRepository
             ->orderBy('c.level', 'DESC')->addOrderBy('c.name')->addOrderBy('c.id');
         if ($language !== null) {
             // Match getTranslatedValue's first-row choice, including historical duplicates.
-            $query->leftJoin(DropdownTranslation::class, 'translation', 'WITH',
+            $query->leftJoin(
+                DropdownTranslation::class,
+                'translation',
+                'WITH',
                 'translation.items_id = c.id AND translation.itemtype = :type '
                 . 'AND translation.field = :field AND translation.language = :language '
                 . 'AND NOT EXISTS (SELECT earlier.id FROM ' . DropdownTranslation::class . ' earlier '
                 . 'WHERE earlier.items_id = c.id AND earlier.itemtype = :type '
-                . 'AND earlier.field = :field AND earlier.language = :language AND earlier.id < translation.id)')
+                . 'AND earlier.field = :field AND earlier.language = :language AND earlier.id < translation.id)'
+            )
                 ->addSelect('translation.value AS translated_name')
                 ->setParameter('type', 'KnowbaseItemCategory', Types::STRING)
                 ->setParameter('field', 'name', Types::STRING)
@@ -371,7 +390,8 @@ final class KnowledgeBaseRepository
         $parentMetadata = $this->em->getClassMetadata($metadata->getAssociationTargetClass('knowbaseitemcategories'));
         foreach ($categories as &$category) {
             $category['id'] = RecordRepository::legacyScalarValue(
-                $category['id'], $metadata->getTypeOfField($metadata->getSingleIdentifierFieldName())
+                $category['id'],
+                $metadata->getTypeOfField($metadata->getSingleIdentifierFieldName())
             );
             $category['knowbaseitemcategories_id'] = RecordRepository::legacyScalarValue(
                 $category['knowbaseitemcategories_id'],

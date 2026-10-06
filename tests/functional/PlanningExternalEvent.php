@@ -64,10 +64,11 @@ class PlanningExternalEvent extends \AbstractPlanningEvent
             $this->boolean($event->getFromDB($eventId))->isTrue();
             $this->array($event->fields['users_id_guests'])->isIdenticalTo([$first, $second]);
 
-            $loads = new class {
+            $loads = new class () {
                 public int $users = 0;
                 public int $events = 0;
-                public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void {
+                public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
+                {
                     $this->users += (int)($event->getObject() instanceof \itsmng\Database\Entity\User);
                     $this->events += (int)($event->getObject() instanceof \itsmng\Database\Entity\PlanningExternalEvent);
                 }

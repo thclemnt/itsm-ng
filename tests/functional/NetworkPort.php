@@ -433,10 +433,11 @@ class NetworkPort extends DbTestCase
         $this->array(importArrayFromDB($aggregate->fields['networkports_id_list']))->isIdenticalTo([$first, $second]);
         $em = \itsmng\Database\Orm::create($DB);
         try {
-            $loads = new class {
+            $loads = new class () {
                 public int $ports = 0;
                 public int $aggregates = 0;
-                public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void {
+                public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
+                {
                     $this->ports += (int)($event->getObject() instanceof \itsmng\Database\Entity\NetworkPort);
                     $this->aggregates += (int)($event->getObject() instanceof \itsmng\Database\Entity\NetworkPortAggregate);
                 }

@@ -38,7 +38,8 @@ final class AttributeDriver extends \Doctrine\ORM\Mapping\Driver\AttributeDriver
                         || count($association->joinColumns) !== 1) {
                         throw new \LogicException(sprintf(
                             'Provider column options require a scalar field or a single-column owning to-one association: %s::$%s.',
-                            $className, $property->name,
+                            $className,
+                            $property->name,
                         ));
                     }
                     $column = $association->joinColumns[0];

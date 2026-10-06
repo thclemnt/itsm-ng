@@ -70,9 +70,12 @@ class KnowledgeBaseFullText extends \atoum\atoum\test
                         return $this->getDatabasePlatform()->quoteStringLiteral($value);
                     }
 
-                    public function executeQuery(string $sql, array $params = [], array $types = [],
-                        ?\Doctrine\DBAL\Cache\QueryCacheProfile $qcp = null): \Doctrine\DBAL\Result
-                    {
+                    public function executeQuery(
+                        string $sql,
+                        array $params = [],
+                        array $types = [],
+                        ?\Doctrine\DBAL\Cache\QueryCacheProfile $qcp = null
+                    ): \Doctrine\DBAL\Result {
                         $this->statements[] = [$sql, $params];
                         $rows = [];
                         if (preg_match('/^SELECT COUNT\(/i', $sql)) {
@@ -134,8 +137,10 @@ class KnowledgeBaseFullText extends \atoum\atoum\test
                     $this->string($pageSql)->contains(' + (SELECT COALESCE(MAX(');
                     $this->integer(preg_match('/END\s*=\s*0\s+OR\s+NOT EXISTS/', $pageSql))->isIdenticalTo(1);
                     if (!$platform instanceof PostgreSQLPlatform) {
-                        $this->integer(preg_match('/MATCH\((\w+)\.`name`, \1\.`answer`\) AGAINST\(\? IN BOOLEAN MODE\) \+ \(SELECT/',
-                            $pageSql))->isIdenticalTo(1);
+                        $this->integer(preg_match(
+                            '/MATCH\((\w+)\.`name`, \1\.`answer`\) AGAINST\(\? IN BOOLEAN MODE\) \+ \(SELECT/',
+                            $pageSql
+                        ))->isIdenticalTo(1);
                     }
                 }
                 $this->boolean($strict->isConnected())->isFalse();

@@ -278,7 +278,9 @@ class APIRest extends APIBaseClass
                 return $totals[0];
             };
             $totalPrefix = static fn (float $value): string => explode('%2$s', str_replace(
-                '%1$s', \Html::formatNumber($value), __('Total: Value=%1$s - Account net value=%2$s')
+                '%1$s',
+                \Html::formatNumber($value),
+                __('Total: Value=%1$s - Account net value=%2$s')
             ))[0];
             // Admit the existing entity/date window before adding any committed fixtures.
             $this->string($report())->startWith($totalPrefix(0));
@@ -320,14 +322,23 @@ class APIRest extends APIBaseClass
                 foreach ((new \Software())->find(['name' => $marker]) as $software) {
                     foreach ((new \SoftwareLicense())->find(['softwares_id' => $software['id']]) as $license) {
                         foreach ((new \Infocom())->find(['itemtype' => 'SoftwareLicense', 'items_id' => $license['id']]) as $financial) {
-                            try { $this->reservationHttpDelete('Infocom', (int)$financial['id']); }
-                            catch (\Throwable $error) { $cleanup[] = $error; }
+                            try {
+                                $this->reservationHttpDelete('Infocom', (int)$financial['id']);
+                            } catch (\Throwable $error) {
+                                $cleanup[] = $error;
+                            }
                         }
-                        try { $this->reservationHttpDelete('SoftwareLicense', (int)$license['id']); }
-                        catch (\Throwable $error) { $cleanup[] = $error; }
+                        try {
+                            $this->reservationHttpDelete('SoftwareLicense', (int)$license['id']);
+                        } catch (\Throwable $error) {
+                            $cleanup[] = $error;
+                        }
                     }
-                    try { $this->reservationHttpDelete('Software', (int)$software['id']); }
-                    catch (\Throwable $error) { $cleanup[] = $error; }
+                    try {
+                        $this->reservationHttpDelete('Software', (int)$software['id']);
+                    } catch (\Throwable $error) {
+                        $cleanup[] = $error;
+                    }
                 }
             } catch (\Throwable $error) {
                 $cleanup[] = $error;
@@ -336,7 +347,9 @@ class APIRest extends APIBaseClass
         foreach ($cleanup as $error) {
             $primary = $primary === null ? $error : new \itsmng\Database\MutationCleanupFailure($primary, $error);
         }
-        if ($primary !== null) { throw $primary; }
+        if ($primary !== null) {
+            throw $primary;
+        }
     }
 
     /** @tags api */
@@ -434,8 +447,14 @@ class APIRest extends APIBaseClass
             $rows = $this->reservationHttpRows($items);
             $this->array($rows)->hasSize(1);
             $this->string($rows[0]['comment'])->isIdenticalTo('single');
-            $periodic = $this->reservationHttpSubmit($browser, $items, $user, '2031-05-10', 'periodic',
-                ['type' => 'day', 'end' => '2031-05-12']);
+            $periodic = $this->reservationHttpSubmit(
+                $browser,
+                $items,
+                $user,
+                '2031-05-10',
+                'periodic',
+                ['type' => 'day', 'end' => '2031-05-12']
+            );
             $target = $this->reservationHttpRedirect($periodic);
             $this->string(parse_url($target, PHP_URL_PATH))->endWith('/front/reservation.php');
             parse_str((string)parse_url($target, PHP_URL_QUERY), $query);
@@ -457,7 +476,8 @@ class APIRest extends APIBaseClass
                     $expected[] = [$id, '2031-05-' . $day . ' 09:00:00', '2031-05-' . $day . ' 10:00:00', 'periodic'];
                 }
             }
-            sort($actual); sort($expected);
+            sort($actual);
+            sort($expected);
             $this->array($actual)->isIdenticalTo($expected);
             $before = $rows;
             try {
@@ -643,7 +663,9 @@ class APIRest extends APIBaseClass
             foreach ($cleanup as $error) {
                 $primary = $primary === null ? $error : new \itsmng\Database\MutationCleanupFailure($primary, $error);
             }
-            if ($primary !== null) { throw $primary; }
+            if ($primary !== null) {
+                throw $primary;
+            }
         });
     }
 
@@ -697,7 +719,9 @@ class APIRest extends APIBaseClass
             }
         }
         // A cleanup error stays visible instead of replacing or swallowing the original failure.
-        if ($primary !== $failure && $primary !== null) { throw $primary; }
+        if ($primary !== $failure && $primary !== null) {
+            throw $primary;
+        }
         $this->object($primary)->isIdenticalTo($failure);
         $this->array($this->reservationHttpFixtureIdentitySets())->isIdenticalTo($baseline);
     }
@@ -728,39 +752,65 @@ class APIRest extends APIBaseClass
                     'entities_id' => (int)getItemByTypeName('Entity', '_test_root_entity', true),
                     'is_recursive' => true,
                 ]]);
-        } catch (\Throwable $error) { $cleanup[] = $error; }
-        try { $this->string(file_get_contents($this->getLogFilePath()))->isEmpty(); }
-        catch (\Throwable $error) { $cleanup[] = $error; }
+        } catch (\Throwable $error) {
+            $cleanup[] = $error;
+        }
+        try {
+            $this->string(file_get_contents($this->getLogFilePath()))->isEmpty();
+        } catch (\Throwable $error) {
+            $cleanup[] = $error;
+        }
         // Bookings must be removed before the owned user; scope uses only the owned endpoints.
         $ownedBookings = [];
-        try { $ownedBookings = $this->reservationHttpRows($items); }
-        catch (\Throwable $error) { $cleanup[] = $error; }
+        try {
+            $ownedBookings = $this->reservationHttpRows($items);
+        } catch (\Throwable $error) {
+            $cleanup[] = $error;
+        }
         foreach ($ownedBookings as $row) {
             try {
                 $this->reservationHttpDelete('Reservation', (int)$row['id']);
-            } catch (\Throwable $error) { $cleanup[] = $error; }
+            } catch (\Throwable $error) {
+                $cleanup[] = $error;
+            }
         }
         try {
             $this->boolean($DB->delete('glpi_events', ['type' => 'system', 'service' => 'login',
                 'message' => ['LIKE', '%' . $marker . '%']]))->isTrue();
-        } catch (\Throwable $error) { $cleanup[] = $error; }
+        } catch (\Throwable $error) {
+            $cleanup[] = $error;
+        }
         if ($outsideComputer !== null) {
             try {
                 foreach ($DB->request(['FROM' => 'glpi_reservationitems',
                     'WHERE' => ['itemtype' => 'Computer', 'items_id' => $outsideComputer]]) as $row) {
                     $ownedBookings = [];
-                    try { $ownedBookings = $this->reservationHttpRows([(int)$row['id']]); }
-                    catch (\Throwable $error) { $cleanup[] = $error; }
-                    foreach ($ownedBookings as $booking) {
-                        try { $this->reservationHttpDelete('Reservation', (int)$booking['id']); }
-                        catch (\Throwable $error) { $cleanup[] = $error; }
+                    try {
+                        $ownedBookings = $this->reservationHttpRows([(int)$row['id']]);
+                    } catch (\Throwable $error) {
+                        $cleanup[] = $error;
                     }
-                    try { $this->reservationHttpDelete('ReservationItem', (int)$row['id']); }
-                    catch (\Throwable $error) { $cleanup[] = $error; }
+                    foreach ($ownedBookings as $booking) {
+                        try {
+                            $this->reservationHttpDelete('Reservation', (int)$booking['id']);
+                        } catch (\Throwable $error) {
+                            $cleanup[] = $error;
+                        }
+                    }
+                    try {
+                        $this->reservationHttpDelete('ReservationItem', (int)$row['id']);
+                    } catch (\Throwable $error) {
+                        $cleanup[] = $error;
+                    }
                 }
-            } catch (\Throwable $error) { $cleanup[] = $error; }
-            try { $this->reservationHttpDelete('Computer', $outsideComputer); }
-            catch (\Throwable $error) { $cleanup[] = $error; }
+            } catch (\Throwable $error) {
+                $cleanup[] = $error;
+            }
+            try {
+                $this->reservationHttpDelete('Computer', $outsideComputer);
+            } catch (\Throwable $error) {
+                $cleanup[] = $error;
+            }
         }
         // Unique marker also recovers IDs if an HTTP assertion failed before assignment.
         foreach (['User', 'Profile', 'Entity'] as $type) {
@@ -769,7 +819,9 @@ class APIRest extends APIBaseClass
                 foreach ($model->find(['name' => $marker]) as $row) {
                     $this->reservationHttpDelete($type, (int)$row['id']);
                 }
-            } catch (\Throwable $error) { $cleanup[] = $error; }
+            } catch (\Throwable $error) {
+                $cleanup[] = $error;
+            }
         }
         return $cleanup;
     }
@@ -804,19 +856,28 @@ class APIRest extends APIBaseClass
         } catch (\Throwable $error) {
             $primary = $error;
         } finally {
-            try { $this->string(file_get_contents($this->getLogFilePath()))->isEmpty(); }
-            catch (\Throwable $error) { $cleanup[] = $error; }
+            try {
+                $this->string(file_get_contents($this->getLogFilePath()))->isEmpty();
+            } catch (\Throwable $error) {
+                $cleanup[] = $error;
+            }
             // Endpoint ownership also recovers rows whose failed HTTP response hid their ID.
             foreach ($computers as $id) {
                 try {
                     foreach ($DB->request(['FROM' => 'glpi_reservationitems',
                         'WHERE' => ['itemtype' => 'Computer', 'items_id' => $id]]) as $row) {
                         $ownedBookings = [];
-                        try { $ownedBookings = $this->reservationHttpRows([(int)$row['id']]); }
-                        catch (\Throwable $error) { $cleanup[] = $error; }
+                        try {
+                            $ownedBookings = $this->reservationHttpRows([(int)$row['id']]);
+                        } catch (\Throwable $error) {
+                            $cleanup[] = $error;
+                        }
                         foreach ($ownedBookings as $booking) {
-                            try { $this->reservationHttpDelete('Reservation', (int)$booking['id']); }
-                            catch (\Throwable $error) { $cleanup[] = $error; }
+                            try {
+                                $this->reservationHttpDelete('Reservation', (int)$booking['id']);
+                            } catch (\Throwable $error) {
+                                $cleanup[] = $error;
+                            }
                         }
                         $this->reservationHttpDelete('ReservationItem', (int)$row['id']);
                     }
@@ -876,9 +937,15 @@ class APIRest extends APIBaseClass
         return $browser;
     }
 
-    private function reservationHttpSubmit(GuzzleHttp\Client $browser, array $items, int $user, string $day,
-        string $comment, array $periodicity = [], bool $invalidCsrf = false): \Psr\Http\Message\ResponseInterface
-    {
+    private function reservationHttpSubmit(
+        GuzzleHttp\Client $browser,
+        array $items,
+        int $user,
+        string $day,
+        string $comment,
+        array $periodicity = [],
+        bool $invalidCsrf = false
+    ): \Psr\Http\Message\ResponseInterface {
         $query = ['id' => '', 'item' => array_combine($items, $items), 'begin' => $day . ' 09:00:00'];
         $path = 'front/reservation.form.php?' . http_build_query($query);
         $response = $browser->get($path);
@@ -893,7 +960,9 @@ class APIRest extends APIBaseClass
             $data[$input->getAttribute('name')] = $input->getAttribute('value');
         }
         $this->string($data['_glpi_csrf_token'])->isNotEmpty();
-        if ($invalidCsrf) { $data['_glpi_csrf_token'] = 'invalid-' . $data['_glpi_csrf_token']; }
+        if ($invalidCsrf) {
+            $data['_glpi_csrf_token'] = 'invalid-' . $data['_glpi_csrf_token'];
+        }
         $data += ['add' => '1', 'users_id' => $user, 'comment' => $comment,
             'resa[begin]' => $day . ' 09:00:00', 'resa[end]' => $day . ' 10:00:00'];
         foreach ($periodicity as $key => $value) {

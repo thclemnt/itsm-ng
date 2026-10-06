@@ -74,9 +74,10 @@ class Document_Item extends DbTestCase
             $this->setEntity($root, false);
             $selected = iterator_to_array(\Document_Item::getTypeItems($document->getID(), 'SoftwareLicense'), false);
             $this->array(array_map('intval', array_column($selected, 'id')))->isIdenticalTo(array_map(
-                static fn (\SoftwareLicense $license): int => (int)$license->getID(), [$licenses[0], $licenses[0], $licenses[1], $licenses[2]]
+                static fn (\SoftwareLicense $license): int => (int)$license->getID(),
+                [$licenses[0], $licenses[0], $licenses[1], $licenses[2]]
             ));
-            $reader = new class($DB->getDoctrineConnection(), \itsmng\Database\Orm::configuration($DB->getDoctrineConnection()->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+            $reader = new class ($DB->getDoctrineConnection(), \itsmng\Database\Orm::configuration($DB->getDoctrineConnection()->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
                 public int $queries = 0;
                 public function createQuery(string $dql = ''): \Doctrine\ORM\Query
                 {
@@ -113,7 +114,9 @@ class Document_Item extends DbTestCase
                 } finally {
                     ob_end_clean();
                 }
-                if ($html === '') { return []; }
+                if ($html === '') {
+                    return [];
+                }
                 $this->integer(preg_match('/<script type="application\/json"[^>]*>(.*?)<\/script>/s', $html, $match))->isIdenticalTo(1);
                 return json_decode($match[1], true, 512, JSON_THROW_ON_ERROR)['dataSource']['rows'];
             };

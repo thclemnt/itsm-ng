@@ -73,8 +73,14 @@ class Notification_NotificationTemplate extends DbTestCase
             $relation = new \Entity_RSSFeed();
             $relation->fields['entities_id'] = 0;
             $root = null;
-            $this->boolean($relation->canConnexityItem('canUpdateItem', 'canUpdate',
-                \CommonDBConnexity::DONT_CHECK_ITEM_RIGHTS, 'Entity', 'entities_id', $root))->isTrue();
+            $this->boolean($relation->canConnexityItem(
+                'canUpdateItem',
+                'canUpdate',
+                \CommonDBConnexity::DONT_CHECK_ITEM_RIGHTS,
+                'Entity',
+                'entities_id',
+                $root
+            ))->isTrue();
             $this->object($root)->isInstanceOf(\Entity::class);
             $this->integer((int)$root->getID())->isEqualTo(0);
             $this->integer($manager->getConnection()->getTransactionNestingLevel())->isEqualTo($depth);

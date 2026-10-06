@@ -69,7 +69,7 @@ class Dropdown extends DbTestCase
         global $DB;
         $em = \itsmng\Database\Orm::create($DB);
         $repository = new \itsmng\Database\Repository\DropdownTranslationRepository($em);
-        $listener = new class {
+        $listener = new class () {
             public int $loaded = 0;
 
             public function postLoad(): void
@@ -129,15 +129,19 @@ class Dropdown extends DbTestCase
         ];
         $this->array($repository->dropdownRow('glpi_budgets', $budget, 'Budget', 'en_GB', [], $columns))
             ->isIdenticalTo($expected);
-        $connection->update('glpi_budgets', ['is_deleted' => true, 'locations_id' => null], ['id' => $budget],
-            ['is_deleted' => \Doctrine\DBAL\Types\Types::BOOLEAN]);
+        $connection->update(
+            'glpi_budgets',
+            ['is_deleted' => true, 'locations_id' => null],
+            ['id' => $budget],
+            ['is_deleted' => \Doctrine\DBAL\Types\Types::BOOLEAN]
+        );
         $expected['is_deleted'] = 1;
         $expected['locations_id'] = null;
         $this->array($repository->dropdownRow('glpi_budgets', $budget, 'Budget', 'en_GB', [], $columns))
             ->isIdenticalTo($expected);
         $this->variable($repository->dropdownRow('glpi_budgets', -1, 'Budget', 'en_GB', [], $columns))->isNull();
 
-        $customName = new class extends \Computer {
+        $customName = new class () extends \Computer {
             public static function getNameField()
             {
                 return 'serial';
