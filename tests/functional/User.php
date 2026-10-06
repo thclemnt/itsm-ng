@@ -272,6 +272,11 @@ class User extends \DbTestCase
         $user = $this->createItem(\User::class, ['name' => 'display-options-' . $this->getUniqueString()]);
         $id = (int)$user->getID();
         $display = new class extends \CommonGLPI {
+            public static function getType()
+            {
+                return 'DisplayOptionsFixture';
+            }
+
             public static function getAvailableDisplayOptions()
             {
                 return ['test' => ['show_default' => ['default' => true]]];
@@ -297,12 +302,12 @@ class User extends \DbTestCase
             $_SESSION['glpiID'] = $id;
             $DB = $routed;
             foreach ([
-                [json_encode([$type => ['show_default' => false, 'extra' => 'current']]), ['show_default' => false, 'extra' => 'current']],
+                [json_encode([$type => ['show_default' => false, 'extra' => 'current "quoted" \\path /']]), ['show_default' => false, 'extra' => 'current "quoted" \\path /']],
                 ['outside=>legacy', ['show_default' => true]],
                 [null, ['show_default' => true]],
                 ['', ['show_default' => true]],
             ] as [$raw, $expected]) {
-                $this->boolean($database->update('glpi_users', ['display_options' => $raw], ['id' => $id]))->isTrue();
+                $this->boolean($database->update('glpi_users', \Toolbox::addslashes_deep(['display_options' => $raw]), ['id' => $id]))->isTrue();
                 $this->variable($repository->displayOptions($id))->isIdenticalTo($raw);
                 unset($_SESSION['glpi_display_options']);
                 $this->array($display::getDisplayOptions())->isIdenticalTo($expected);
@@ -312,7 +317,7 @@ class User extends \DbTestCase
             }
             $this->integer($reads)->isGreaterThan(0);
             $raw = json_encode([$type => ['Child' => ['show_default' => false, 'extra' => 'nested']]]);
-            $this->boolean($database->update('glpi_users', ['display_options' => $raw], ['id' => $id]))->isTrue();
+            $this->boolean($database->update('glpi_users', \Toolbox::addslashes_deep(['display_options' => $raw]), ['id' => $id]))->isTrue();
             unset($_SESSION['glpi_display_options']);
             $this->array($display::getDisplayOptions('Child'))->isIdenticalTo(['show_default' => false, 'extra' => 'nested']);
             $before = $reads;
