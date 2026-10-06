@@ -54,7 +54,8 @@ class History extends \atoum\atoum\test
             $table->addColumn('itemtype', 'string');
             $table->addColumn('items_id', 'bigint');
             $definition::configureTable($table, $platform);
-            $this->array(array_keys($table->getColumns()))->isIdenticalTo(['itemtype', 'items_id', 'computers_id', 'peripherals_id']);
+            $this->array(array_map(static fn (\Doctrine\DBAL\Schema\Column $column): string => $column->getName(), $table->getColumns()))
+                ->isIdenticalTo(['itemtype', 'items_id', 'computers_id', 'peripherals_id']);
             $this->boolean($table->getColumn('items_id')->getNotnull())->isFalse();
             $sql = $definition::checkSql($table->getName(), $platform);
             $this->string($sql)->contains('computers_id >= 1')->contains('peripherals_id >= 1')

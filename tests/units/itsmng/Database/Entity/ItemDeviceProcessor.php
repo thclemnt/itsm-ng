@@ -16,10 +16,12 @@ use itsmng\Database\Entity\ItemDeviceMemory;
 use itsmng\Database\Entity\ItemDeviceMotherboard;
 use itsmng\Database\Entity\ItemDevicePowerSupply;
 use itsmng\Database\Entity\ItemDeviceProcessor as Processor;
+use itsmng\Database\Entity\ItemDeviceSensor;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Mapping\DiscriminatedBy;
 use itsmng\Database\Mapping\DiscriminatorKey;
 use itsmng\Database\Mapping\EntityScopeOwner;
+use itsmng\Database\Migration\SensorSubjects\Definition as SensorSubjects;
 use itsmng\Database\Migration\V220\Baseline;
 use itsmng\Database\Migration\V220\BatterySubjects;
 use itsmng\Database\Migration\V220\HardDriveSubjects;
@@ -43,6 +45,7 @@ class ItemDeviceProcessor extends \atoum\atoum\test
             [ItemDeviceHardDrive::class, HardDriveSubjects::class, ['Computer', 'Peripheral', 'NetworkEquipment', 'Printer', 'Phone']],
             [ItemDeviceBattery::class, BatterySubjects::class, ['Computer', 'Peripheral', 'Phone', 'Printer']],
             [ItemDevicePowerSupply::class, PowerSupplySubjects::class, ['Computer', 'NetworkEquipment', 'Enclosure']],
+            [ItemDeviceSensor::class, SensorSubjects::class, ['Computer', 'Peripheral']],
         ];
         foreach ([new MySQLPlatform(), new PostgreSQLPlatform()] as $platform) {
             $connection = new DisconnectedSchemaConnection($platform);
@@ -94,12 +97,12 @@ class ItemDeviceProcessor extends \atoum\atoum\test
             }
         }
         $this->integer(count(EntityRegistry::tables()))->isIdenticalTo(357);
-        $this->integer(array_sum(array_map(count(...), ForeignKeys::relations())))->isIdenticalTo(1087);
+        $this->integer(array_sum(array_map(count(...), ForeignKeys::relations())))->isIdenticalTo(1089);
     }
 
     public function componentTypes(): array
     {
-        return array_map(static fn ($class): array => [$class], [Processor::class, ItemDeviceMotherboard::class, ItemDeviceMemory::class, ItemDeviceHardDrive::class, ItemDeviceBattery::class, ItemDevicePowerSupply::class]);
+        return array_map(static fn ($class): array => [$class], [Processor::class, ItemDeviceMotherboard::class, ItemDeviceMemory::class, ItemDeviceHardDrive::class, ItemDeviceBattery::class, ItemDevicePowerSupply::class, ItemDeviceSensor::class]);
     }
 
     private function selections(string $class): array

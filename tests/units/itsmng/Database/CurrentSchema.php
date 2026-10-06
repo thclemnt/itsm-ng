@@ -47,7 +47,8 @@ class CurrentSchema extends \atoum\atoum\test
         return [
             ['glpi_crontasks', 16, 5, [], []],
             ['glpi_configs', 4, 2, [], []],
-            ['glpi_crontasklogs', 8, 4, ['crontasklogs_id'], [
+            // DBAL also retains the implicit parent-reference index when composing FKs.
+            ['glpi_crontasklogs', 8, 5, ['crontasklogs_id'], [
                 'crontasks_id' => 'glpi_crontasks', 'crontasklogs_id' => 'glpi_crontasklogs',
             ]],
         ];
