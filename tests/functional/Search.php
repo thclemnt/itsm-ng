@@ -219,6 +219,96 @@ class Search extends DbTestCase
     }
 
 
+    public function testRootCostPredicatesPreserveNullNegationScopesAndPaging(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)\Session::getActiveEntity();
+        $prefix = 'Root cost predicate ' . $this->getUniqueString();
+        $ids = ['Change' => [], 'Appliance' => []];
+        foreach (['missing' => null, 'zero' => 0, 'positive' => 20, 'outside' => 900] as $label => $seconds) {
+            $change = new \Change();
+            $id = (int)$change->add([
+                'name' => $prefix . ' ' . $label, 'content' => $prefix,
+                'entities_id' => $label === 'outside' ? 0 : $entity,
+            ]);
+            $this->integer($id)->isGreaterThan(0);
+            $ids['Change'][$label] = $id;
+            if ($seconds !== null) {
+                $cost = new \ChangeCost();
+                $this->integer((int)$cost->add([
+                    'changes_id' => $id, 'name' => $prefix . ' ' . $label,
+                    'actiontime' => $seconds, 'cost_time' => 0, 'cost_fixed' => 0, 'cost_material' => 0,
+                ]))->isGreaterThan(0);
+            }
+            if ($label === 'outside') {
+                // The visible asset also has a cost owner outside the active scope.
+                $assetId = $ids['Appliance']['positive'];
+            } else {
+                $this->boolean($change->can($id, READ))->isTrue();
+                $asset = new \Appliance();
+                $assetId = (int)$asset->add(['name' => $prefix . ' ' . $label, 'entities_id' => $entity]);
+                $this->integer($assetId)->isGreaterThan(0);
+                $ids['Appliance'][$label] = $assetId;
+            }
+            $relation = new \Change_Item();
+            $this->integer((int)$relation->add([
+                'changes_id' => $id, 'itemtype' => 'Appliance', 'items_id' => $assetId,
+            ]))->isGreaterThan(0);
+        }
+        foreach (['Change', 'Appliance'] as $type) {
+            $leaf = static function (string $value, string $search = 'contains', string $link = 'AND') use ($type): array {
+                $criterion = ['field' => 49, 'searchtype' => $search, 'value' => $value, 'link' => $link];
+                return $type === 'Appliance' ? $criterion + ['meta' => true, 'itemtype' => 'Change'] : $criterion;
+            };
+            foreach ([
+                [[$leaf('0')], ['zero']],
+                [[$leaf('NULL')], ['missing']],
+                [[$leaf('0', 'notcontains')], ['missing', 'positive']],
+                [[$leaf('NULL', 'notcontains')], ['zero', 'positive']],
+                [[$leaf('>0', 'contains', 'AND NOT')], ['missing', 'zero']],
+                [[$leaf('0'), $leaf('NULL', 'contains', 'OR')], ['missing', 'zero']],
+                [[$leaf('>0')], ['positive']],
+                [[$leaf('>500')], []],
+            ] as [$criteria, $labels]) {
+                $data = $this->doSearch($type, [
+                    'is_deleted' => 0, 'start' => 0, 'criteria' => [
+                        ['field' => 1, 'searchtype' => 'contains', 'value' => $prefix],
+                        ['link' => 'AND', 'criteria' => $criteria],
+                    ],
+                ]);
+                $this->integer($data['data']['count'])->isIdenticalTo(count($labels));
+                $expected = array_map(static fn(string $label): int => $ids[$type][$label], $labels);
+                $actual = array_map('intval', array_keys($data['data']['items']));
+                sort($expected);
+                sort($actual);
+                $this->array($actual)->isIdenticalTo($expected);
+                // This is the optimized predicate, not passing through the old
+                // all-root HAVING set while merely matching the same results.
+                $this->string($data['sql']['search'])->contains('cost_duration')->notContains('criterion_values');
+            }
+        }
+        foreach (['ASC' => ['missing', 'zero', 'positive'], 'DESC' => ['positive', 'zero', 'missing']] as $order => $labels) {
+            foreach ($labels as $start => $label) {
+                $page = $this->doSearch('Change', [
+                    'is_deleted' => 0, 'start' => $start, 'list_limit' => 1, 'sort' => 49, 'order' => $order,
+                    'criteria' => [['field' => 1, 'searchtype' => 'contains', 'value' => $prefix]],
+                ], [49]);
+                $this->integer($page['data']['totalcount'])->isIdenticalTo(3);
+                $this->array(array_keys($page['data']['items']))->isIdenticalTo([$ids['Change'][$label]]);
+            }
+        }
+
+        // A join-free custom aggregate is not automatically a root predicate.
+        $unowned = (new \itsmng\Search\Provider\SelectList())->add('SUM(1)', 'value', true)->withoutFieldJoin();
+        $this->variable($unowned->rootScalar('value'))->isNull();
+        $this->variable(\itsmng\Search\Provider\CriteriaBuilder::rootScalarHaving(
+            'PluginCostprobeItem', 49, 'contains', '0', '0'
+        ))->isNull();
+    }
+
+
     public function testUnionReusesUnrelatedHooksByCriterionOccurrence(): void
     {
         $this->login();
@@ -537,6 +627,7 @@ class Search extends DbTestCase
                 '(2 * SUM(' . $DB->quoteName($reference->alias . '.actiontime') . '))'
             );
             $this->boolean($projection->requiresFieldJoin())->isTrue();
+            $this->variable($projection->rootScalar('ITEM_Change_49'))->isNull();
         } finally {
             $options[49]['computation'] = $canonical;
         }

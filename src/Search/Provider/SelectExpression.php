@@ -11,6 +11,7 @@ final class SelectExpression
         public readonly string $alias,
         public readonly bool $aggregate = false,
         public readonly bool $boolean = false,
+        public readonly ?string $rootScalar = null,
     ) {
     }
 

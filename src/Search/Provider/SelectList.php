@@ -42,6 +42,18 @@ final class SelectList
         $this->fields[$alias] = new SelectExpression($sql, $alias, $aggregate, $boolean);
         return $this;
     }
+    /** One value per root; MAX only adapts it to grouped display/sort queries. */
+    public function addRootScalar(string $sql, string $alias): self
+    {
+        $this->fields[$alias] = new SelectExpression('MAX(' . $sql . ')', $alias, true, false, $sql);
+        return $this;
+    }
+
+    public function rootScalar(string $alias): ?string
+    {
+        return $this->fields[$alias]->rootScalar ?? null;
+    }
+
     public function merge(self $other): self
     {
         $this->fields = array_replace($this->fields, $other->fields);

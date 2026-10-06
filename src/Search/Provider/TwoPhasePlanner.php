@@ -172,6 +172,15 @@ final class TwoPhasePlanner
         }
         $projection = isset($o['usehaving'])
             ? ProjectionBuilder::fields($type, $id, $meta, $meta ? $type : 0, null, $data['itemtype']) : null;
+        $rootScalar = $projection?->rootScalar('ITEM_' . $type . '_' . $id);
+        if ($rootScalar !== null) {
+            $filter = CriteriaBuilder::rootScalarHaving($type, $id, $criterion['searchtype'], $criterion['value'], $rootScalar);
+            if ($filter !== null) {
+                // Match the old positive ID set before the criteria tree applies
+                // NOT/OR: an unknown comparison is not membership, not SUM zero.
+                return 'COALESCE((' . $filter . '), FALSE)';
+            }
+        }
         $linked = [$root];
         $from = ' FROM ' . $d->quote($root) . JoinBuilder::addDefaultJoin($data['itemtype'], $root, $linked);
         // Correlated aggregates own their cost/link relations internally.

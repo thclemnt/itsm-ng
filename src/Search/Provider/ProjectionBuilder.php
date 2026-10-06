@@ -234,7 +234,7 @@ final class ProjectionBuilder
                 if ($total !== null) {
                     // Each group represents one root identity; MAX only makes
                     // the correlated scalar legal in grouped SELECT/HAVING.
-                    $add('MAX((' . $total . '))', '', true);
+                    $fields->addRootScalar('(' . $total . ')', $NAME);
                     return $fields->withoutFieldJoin();
                 }
             }

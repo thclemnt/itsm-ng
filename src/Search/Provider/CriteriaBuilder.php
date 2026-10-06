@@ -298,20 +298,41 @@ final class CriteriaBuilder
                 }
             }
         }
+        return self::havingComparison($DB->quoteName($NAME), $searchopt[$ID], $LINK, $NOT, $searchtype, $val);
+    }
+
+    /** Only core comparisons may consume the projection's explicit root value. */
+    public static function rootScalarHaving(string $itemtype, int $ID, $searchtype, $val, string $operand): ?string
+    {
+        // The normal HAVING path must invoke plugin hooks with their aliases.
+        if (\isPluginItemType($itemtype)) {
+            return null;
+        }
+        $options = SearchOption::getOptions($itemtype);
+        if (preg_match('/^glpi_plugin_([a-z0-9]+)/', (string)($options[$ID]['table'] ?? ''))) {
+            return null;
+        }
+        return self::havingComparison($operand, $options[$ID], '', false, $searchtype, $val);
+    }
+
+    private static function havingComparison(string $operand, array $option, $LINK, $NOT, $searchtype, $val): string
+    {
+        global $DB;
+
         if (in_array($searchtype, ["notequals", "notcontains"])) {
             $NOT = !$NOT;
         }
         // Preformat items
-        if (isset($searchopt[$ID]["datatype"])) {
-            switch ($searchopt[$ID]["datatype"]) {
+        if (isset($option["datatype"])) {
+            switch ($option["datatype"]) {
                 case "date":
                 case "datetime":
                 case "date_delay":
                     if (in_array($searchtype, ['contains', 'notcontains'])) {
                         break;
                     }
-                    $force_day = $searchopt[$ID]["datatype"] !== 'datetime';
-                    if ($searchopt[$ID]["datatype"] === 'datetime' && (strstr($val, 'BEGIN') || strstr($val, 'LAST') || strstr($val, 'DAY'))) {
+                    $force_day = $option["datatype"] !== 'datetime';
+                    if ($option["datatype"] === 'datetime' && (strstr($val, 'BEGIN') || strstr($val, 'LAST') || strstr($val, 'DAY'))) {
                         $force_day = true;
                     }
                     $val = \Html::computeGenericDateTimeSearch($val, $force_day);
@@ -329,7 +350,7 @@ final class CriteriaBuilder
                             break;
                     }
                     if ($operator !== '') {
-                        return " {$LINK} ({$DB->quoteName($NAME)} {$operator} {$DB->quoteValue($val)}) ";
+                        return " {$LINK} ({$operand} {$operator} {$DB->quoteValue($val)}) ";
                     }
                     break;
                 case "count":
@@ -340,7 +361,7 @@ final class CriteriaBuilder
                     // MySQL compares numeric columns with '' as zero.
                     if ($val === 'NULL' || $val === 'null') {
                         $operator = $NOT ? 'IS NOT NULL' : 'IS NULL';
-                        return " {$LINK} ({$DB->quoteName($NAME)} {$operator}) ";
+                        return " {$LINK} ({$operand} {$operator}) ";
                     }
                     $search = ["/\\&lt;/", "/\\&gt;/"];
                     $replace = ["<", ">"];
@@ -354,27 +375,27 @@ final class CriteriaBuilder
                             }
                         }
                         $regs[1] .= $regs[2];
-                        return " {$LINK} (`{$NAME}` " . $regs[1] . " " . $regs[3] . " ) ";
+                        return " {$LINK} ({$operand} " . $regs[1] . " " . $regs[3] . " ) ";
                     }
                     if (is_numeric($val)) {
-                        if (isset($searchopt[$ID]["width"])) {
+                        if (isset($option["width"])) {
                             if (!$NOT) {
-                                return " {$LINK} (`{$NAME}` < " . (intval($val) + $searchopt[$ID]["width"]) . "
-                                        AND `{$NAME}` > " . (intval($val) - $searchopt[$ID]["width"]) . ") ";
+                                return " {$LINK} ({$operand} < " . (intval($val) + $option["width"]) . "
+                                        AND {$operand} > " . (intval($val) - $option["width"]) . ") ";
                             }
-                            return " {$LINK} (`{$NAME}` > " . (intval($val) + $searchopt[$ID]["width"]) . "
-                                     OR `{$NAME}` < " . (intval($val) - $searchopt[$ID]["width"]) . " ) ";
+                            return " {$LINK} ({$operand} > " . (intval($val) + $option["width"]) . "
+                                     OR {$operand} < " . (intval($val) - $option["width"]) . " ) ";
                         }
                         // Exact search
                         if (!$NOT) {
-                            return " {$LINK} (`{$NAME}` = " . intval($val) . ") ";
+                            return " {$LINK} ({$operand} = " . intval($val) . ") ";
                         }
-                        return " {$LINK} (`{$NAME}` <> " . intval($val) . ") ";
+                        return " {$LINK} ({$operand} <> " . intval($val) . ") ";
                     }
                     break;
             }
         }
-        return CriteriaBuilder::makeTextCriteria("`{$NAME}`", $val, $NOT, $LINK);
+        return CriteriaBuilder::makeTextCriteria($operand, $val, $NOT, $LINK);
     }
     /**
      * Generic Function to add ORDER BY to a request
