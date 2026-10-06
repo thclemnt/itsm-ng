@@ -819,17 +819,19 @@ function update084to085()
         ProfileRight::updateProfileRightAsOtherRight(
             'change',
             Change::READMY,
-            ['name' => 'ticket', 'rights' => ['&', Ticket::OWN]]
+            "`name` = 'ticket'
+                                                     AND `rights` & ". Ticket::OWN
         );
         ProfileRight::updateProfileRightAsOtherRight(
             'change',
             Change::READALL,
-            ['name' => 'ticket', 'rights' => ['&', Ticket::READALL]]
+            "`name` = 'ticket'
+                                                     AND `rights` & ".Ticket::READALL
         );
         ProfileRight::updateProfileRightAsOtherRight(
             'change',
-            CREATE | UPDATE | DELETE | PURGE,
-            ['name' => 'ticket', 'rights' => ['&', UPDATE]]
+            CREATE ." | ". UPDATE ." | ". DELETE ." | ". PURGE,
+            "`name` = 'ticket' AND `rights` & ".UPDATE
         );
     }
 
@@ -839,19 +841,22 @@ function update084to085()
         ProfileRight::updateProfileRightAsOtherRight(
             'changevalidation',
             CREATE,
-            ['name' => 'ticketvalidation', ['rights' => ['&', TicketValidation::CREATEINCIDENT]],
-                ['rights' => ['&', TicketValidation::CREATEREQUEST]]]
+            "`name` = 'ticketvalidation'
+                                                     AND `rights` & ". TicketValidation::CREATEINCIDENT."
+                                                     AND `rights` & ". TicketValidation::CREATEREQUEST
         );
         ProfileRight::updateProfileRightAsOtherRight(
             'changevalidation',
             ChangeValidation::VALIDATE,
-            ['name' => 'ticketvalidation', ['rights' => ['&', TicketValidation::VALIDATEINCIDENT]],
-                ['rights' => ['&', TicketValidation::VALIDATEREQUEST]]]
+            "`name` = 'ticketvalidation'
+                                                     AND `rights` & ". TicketValidation::VALIDATEINCIDENT."
+                                                     AND `rights` & ". TicketValidation::VALIDATEREQUEST
         );
         ProfileRight::updateProfileRightAsOtherRight(
             'changevalidation',
             PURGE,
-            ['name' => 'ticketvalidation', 'rights' => ['&', PURGE]]
+            "`name` = 'ticketvalidation'
+                                                     AND `rights` & ". PURGE
         );
     }
 
@@ -2090,17 +2095,20 @@ function update084to085()
         ProfileRight::updateProfileRightAsOtherRight(
             'project',
             Project::READMY,
-            ['name' => 'change', 'rights' => ['&', Change::READMY]]
+            "`name` = 'change'
+                                                     AND `rights` & ". Change::READMY
         );
         ProfileRight::updateProfileRightAsOtherRight(
             'project',
             Project::READALL,
-            ['name' => 'change', 'rights' => ['&', Change::READALL]]
+            "`name` = 'change'
+                                                     AND `rights` & ".Change::READALL
         );
         ProfileRight::updateProfileRightAsOtherRight(
             'project',
-            CREATE | UPDATE | DELETE | PURGE | READNOTE | UPDATENOTE,
-            ['name' => 'change', 'rights' => ['&', CREATE | UPDATE | DELETE | PURGE]]
+            CREATE ." | ". UPDATE ." | ". DELETE ." | ". PURGE ." | ".READNOTE ." | ".UPDATENOTE,
+            "`name` = 'change'
+                                                      AND `rights` & (".CREATE ." | ". UPDATE ." | ". DELETE ." | ". PURGE.')'
         );
     }
     if (countElementsInTable("glpi_profilerights", ['name' => 'projecttask']) == 0) {
@@ -2109,12 +2117,14 @@ function update084to085()
         ProfileRight::updateProfileRightAsOtherRight(
             'projecttask',
             ProjectTask::READMY,
-            ['name' => 'change', 'rights' => ['&', Change::READMY]]
+            "`name` = 'change'
+                                                     AND `rights` & ". Change::READMY
         );
         ProfileRight::updateProfileRightAsOtherRight(
             'projecttask',
             ProjectTask::UPDATEMY,
-            ['name' => 'change', 'rights' => ['&', Change::READMY]]
+            "`name` = 'change'
+                                                     AND `rights` & ".Change::READMY
         );
     }
 
