@@ -42,6 +42,38 @@ use Session;
 
 class Config extends DbTestCase
 {
+    public function testSchemaInspectionDetectsCurrentConfigEditsWithoutChangingStorage(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $platform = $connection->getDatabasePlatform();
+        $schemaManager = $connection->createSchemaManager();
+        $before = $schemaManager->introspectTable('glpi_configs');
+        $rowsHash = static fn (): string => hash('sha256', serialize($connection->fetchAllAssociative(
+            'SELECT id, context, name, value FROM glpi_configs ORDER BY id'
+        )));
+        // Compare digests so a failed read-only check cannot print configuration secrets.
+        $beforeRows = $rowsHash();
+        $level = $connection->getTransactionNestingLevel();
+        $manager = \itsmng\Database\Orm::create($DB);
+        try {
+            $metadata = $manager->getClassMetadata(\itsmng\Database\Entity\Config::class);
+            $metadata->fieldMappings['context']->length = 173;
+            $expected = (new \itsmng\Database\BaselineSchema($manager))->build($platform)->getTable('glpi_configs');
+            $this->array((new \itsmng\Database\SchemaCheck())->differences(
+                $connection, new \Doctrine\DBAL\Schema\Schema([clone $expected])
+            ))->isIdenticalTo(['Changed column: glpi_configs.context']);
+            $after = $schemaManager->introspectTable('glpi_configs');
+            $this->boolean($schemaManager->createComparator()->compareTables($before, $after)->isEmpty())->isTrue();
+            $this->array($after->getOptions())->isIdenticalTo($before->getOptions());
+            $this->string($rowsHash())->isIdenticalTo($beforeRows);
+            $this->object($DB->getDoctrineConnection())->isIdenticalTo($connection);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $manager->clear();
+        }
+    }
+
     public function testGetTypeName()
     {
         $this->string(\Config::getTypeName())->isIdenticalTo('Setup');

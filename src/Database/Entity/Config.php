@@ -8,7 +8,9 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_configs')]
-#[ORM\UniqueConstraint(name: 'configs_unicity', columns: ['context', 'name'])]
+#[\itsmng\Database\Mapping\PlatformOptions(\Doctrine\DBAL\Platforms\AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
+#[\itsmng\Database\Mapping\SchemaOwner]
+#[\itsmng\Database\Mapping\SchemaIndex('unicity', ['context', 'name'], unique: true, postgresqlName: 'glpi_configs_unicity')]
 class Config
 {
     #[ORM\Id]

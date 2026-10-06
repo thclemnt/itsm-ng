@@ -20,6 +20,7 @@ use Doctrine\Persistence\Mapping\Driver\MappingDriver;
 use itsmng\Database\BaselineSchema;
 use itsmng\Database\CurrentSchema as Projection;
 use itsmng\Database\Entity\CronTask;
+use itsmng\Database\Entity\Config;
 use itsmng\Database\Mapping\SchemaOwner;
 use itsmng\Database\Migration\V220\Baseline;
 use itsmng\Database\Migration\V220\IdentifierColumns;
@@ -39,7 +40,13 @@ class CurrentSchema extends \atoum\atoum\test
         return new EntityManager(new DisconnectedSchemaConnection($platform), $configuration);
     }
 
-    public function testCronTaskPreservesEveryCurrentColumnAndIndexAcrossProviders(): void
+    public function ownedTableProvider(): array
+    {
+        return [['glpi_crontasks', 16, 5], ['glpi_configs', 4, 2]];
+    }
+
+    /** @dataProvider ownedTableProvider */
+    public function testOwnedTablesPreserveEveryCurrentColumnAndIndexAcrossProviders(string $table, int $columnCount, int $indexCount): void
     {
         foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
             $manager = $this->manager($platform);
@@ -47,12 +54,12 @@ class CurrentSchema extends \atoum\atoum\test
             $frozenSql = $frozen->toSql($platform);
             // The existing current identity policy widens frozen IDs before inspection.
             IdentifierColumns::configureSchema($frozen);
-            $historical = $frozen->getTable('glpi_crontasks');
-            $current = (new BaselineSchema($manager))->build($platform)->getTable('glpi_crontasks');
+            $historical = $frozen->getTable($table);
+            $current = (new BaselineSchema($manager))->build($platform)->getTable($table);
             $comparator = new \Doctrine\DBAL\Schema\Comparator($platform);
             $this->boolean($comparator->compareTables($historical, $current)->isEmpty())->isTrue();
-            $this->integer(count($current->getColumns()))->isIdenticalTo(16);
-            $this->integer(count($current->getIndexes()))->isIdenticalTo(5);
+            $this->integer(count($current->getColumns()))->isIdenticalTo($columnCount);
+            $this->integer(count($current->getIndexes()))->isIdenticalTo($indexCount);
             foreach ($historical->getColumns() as $column) {
                 $actual = $current->getColumn($column->getName());
                 $this->string(Type::lookupName($actual->getType()))->isIdenticalTo(Type::lookupName($column->getType()));
@@ -112,6 +119,37 @@ class CurrentSchema extends \atoum\atoum\test
             $fresh = (new BaselineSchema())->build($platform)->getTable('glpi_crontasks');
             $this->integer($fresh->getColumn('name')->getLength())->isIdenticalTo(150);
             $this->boolean($fresh->hasColumn('comment'))->isTrue();
+            $this->boolean($manager->getConnection()->isConnected())->isFalse();
+        }
+    }
+
+    public function testConfigPropertyAndIndexEditsRemainIndependentOfFrozenHistory(): void
+    {
+        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+            $manager = $this->manager($platform);
+            $metadata = $manager->getClassMetadata(Config::class);
+            $frozen = (new Baseline())->build($platform)->toSql($platform);
+            $metadata->fieldMappings['context']->length = 173;
+            $metadata->fieldMappings['context']->nullable = false;
+            $metadata->fieldMappings['context']->options['default'] = 'current';
+            $metadata->fieldMappings['value']->type = Types::STRING;
+            $metadata->fieldMappings['value']->length = 311;
+            $unique = $platform instanceof PostgreSQLPlatform ? 'glpi_configs_unicity' : 'unicity';
+            $metadata->table['uniqueConstraints'][$unique]['columns'] = ['name', 'context'];
+            $metadata->table['indexes']['current_config_name'] = ['columns' => ['name']];
+            $current = (new BaselineSchema($manager))->build($platform)->getTable('glpi_configs');
+            $this->integer($current->getColumn('context')->getLength())->isIdenticalTo(173);
+            $this->boolean($current->getColumn('context')->getNotnull())->isTrue();
+            $this->string($current->getColumn('context')->getDefault())->isIdenticalTo('current');
+            $this->string(Type::lookupName($current->getColumn('value')->getType()))->isIdenticalTo(Types::STRING);
+            $this->integer($current->getColumn('value')->getLength())->isIdenticalTo(311);
+            $this->array($current->getIndex($unique)->getColumns())->isIdenticalTo(['name', 'context']);
+            $this->array($current->getIndex('current_config_name')->getColumns())->isIdenticalTo(['name']);
+            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
+            $fresh = (new BaselineSchema($this->manager($platform)))->build($platform)->getTable('glpi_configs');
+            $this->integer($fresh->getColumn('context')->getLength())->isIdenticalTo(150);
+            $this->boolean($fresh->getColumn('context')->getNotnull())->isFalse();
+            $this->boolean($fresh->hasIndex('current_config_name'))->isFalse();
             $this->boolean($manager->getConnection()->isConnected())->isFalse();
         }
     }
