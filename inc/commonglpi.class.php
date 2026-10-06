@@ -1393,15 +1393,15 @@ class CommonGLPI
     **/
     public static function getDisplayOptions($sub_itemtype = '')
     {
+        global $DB;
 
         if (!isset($_SESSION['glpi_display_options'])) {
             // Load display_options from user table
             $_SESSION['glpi_display_options'] = [];
             if ($uid = Session::getLoginUserID()) {
-                $user = new User();
-                if ($user->getFromDB($uid)) {
-                    $_SESSION['glpi_display_options'] = importArrayFromDB($user->fields['display_options']);
-                }
+                $options = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+                    ->displayOptions((int)Toolbox::cleanInteger($uid));
+                $_SESSION['glpi_display_options'] = importArrayFromDB($options);
             }
         }
         if (!isset($_SESSION['glpi_display_options'][self::getType()])) {

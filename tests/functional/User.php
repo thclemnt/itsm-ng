@@ -263,6 +263,82 @@ class User extends \DbTestCase
         }
     }
 
+    public function testDisplayOptionsReadCurrentScalarAtSessionBoundary(): void
+    {
+        global $DB;
+        $this->login();
+        $session = $_SESSION;
+        $database = $DB;
+        $user = $this->createItem(\User::class, ['name' => 'display-options-' . $this->getUniqueString()]);
+        $id = (int)$user->getID();
+        $display = new class extends \CommonGLPI {
+            public static function getAvailableDisplayOptions()
+            {
+                return ['test' => ['show_default' => ['default' => true]]];
+            }
+        };
+        $type = $display::getType();
+        $manager = \itsmng\Database\Orm::create($database);
+        $repository = new \itsmng\Database\Repository\UserRepository($manager);
+        $loads = new class {
+            public int $count = 0;
+            public function postLoad(): void { ++$this->count; }
+        };
+        $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+        $this->mockGenerator->orphanize('__construct');
+        $routed = new \mock\DBmysql();
+        $connection = $database->getDoctrineConnection();
+        $reads = 0;
+        $this->calling($routed)->getDoctrineConnection = static function () use ($connection, &$reads) {
+            ++$reads;
+            return $connection;
+        };
+        try {
+            $_SESSION['glpiID'] = $id;
+            $DB = $routed;
+            foreach ([
+                [json_encode([$type => ['show_default' => false, 'extra' => 'current']]), ['show_default' => false, 'extra' => 'current']],
+                ['outside=>legacy', ['show_default' => true]],
+                [null, ['show_default' => true]],
+                ['', ['show_default' => true]],
+            ] as [$raw, $expected]) {
+                $this->boolean($database->update('glpi_users', ['display_options' => $raw], ['id' => $id]))->isTrue();
+                $this->variable($repository->displayOptions($id))->isIdenticalTo($raw);
+                unset($_SESSION['glpi_display_options']);
+                $this->array($display::getDisplayOptions())->isIdenticalTo($expected);
+                if ($raw === 'outside=>legacy') {
+                    $this->string($_SESSION['glpi_display_options']['outside'])->isIdenticalTo('legacy');
+                }
+            }
+            $this->integer($reads)->isGreaterThan(0);
+            $raw = json_encode([$type => ['Child' => ['show_default' => false, 'extra' => 'nested']]]);
+            $this->boolean($database->update('glpi_users', ['display_options' => $raw], ['id' => $id]))->isTrue();
+            unset($_SESSION['glpi_display_options']);
+            $this->array($display::getDisplayOptions('Child'))->isIdenticalTo(['show_default' => false, 'extra' => 'nested']);
+            $before = $reads;
+            $this->boolean($database->update('glpi_users', ['display_options' => null], ['id' => $id]))->isTrue();
+            $this->array($display::getDisplayOptions('Child'))->isIdenticalTo(['show_default' => false, 'extra' => 'nested']);
+            $this->integer($reads)->isIdenticalTo($before);
+            unset($_SESSION['glpi_display_options']);
+            $this->array($display::getDisplayOptions('Child'))->isIdenticalTo(['show_default' => true]);
+            $this->variable($repository->displayOptions(PHP_INT_MAX))->isNull();
+            $_SESSION['glpiID'] = PHP_INT_MAX;
+            unset($_SESSION['glpi_display_options']);
+            $this->array($display::getDisplayOptions())->isIdenticalTo(['show_default' => true]);
+            $_SESSION['glpiID'] = 0;
+            unset($_SESSION['glpi_display_options']);
+            $before = $reads;
+            $this->array($display::getDisplayOptions())->isIdenticalTo(['show_default' => true]);
+            $this->integer($reads)->isIdenticalTo($before);
+            $this->integer($loads->count)->isIdenticalTo(0);
+            $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+        } finally {
+            $DB = $database;
+            $_SESSION = $session;
+            $manager->clear();
+        }
+    }
+
     public function testAccessibilityHeaderReadsCurrentFontWithoutUserHydration(): void
     {
         global $DB;

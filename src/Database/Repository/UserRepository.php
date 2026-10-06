@@ -35,6 +35,16 @@ final class UserRepository
         return $row['access_font'] ?? null;
     }
 
+    /** Serialized session display preferences, without loading the account graph. */
+    public function displayOptions(int $user): ?string
+    {
+        $row = $this->em->createQueryBuilder()->select('u.display_options')
+            ->from(User::class, 'u')->where('u.id = :user')
+            ->setParameter('user', $user, Types::BIGINT)
+            ->getQuery()->getOneOrNullResult();
+        return $row['display_options'] ?? null;
+    }
+
     /** Shortcuts remain independent of the permission to use a custom font. */
     public function timelinePreferences(int $user): array
     {
