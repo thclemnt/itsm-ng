@@ -73,15 +73,46 @@ jobs:
           provider: ${{ matrix.database.provider }}
           port: ${{ matrix.database.port }}
 
+      - name: Prepare PHP crash diagnostics
+        run: |
+          if ! command -v gdb >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends gdb
+          fi
+          sudo sysctl -w "kernel.core_pattern=$RUNNER_TEMP/web-api-core.%p"
+          php <<'PHP' > "$RUNNER_TEMP/web-api-runtime.json"
+          <?php
+          $settings = [];
+          foreach (['memory_limit', 'opcache.enable', 'opcache.enable_cli', 'opcache.jit',
+              'opcache.jit_buffer_size', 'zend.max_allowed_stack_size', 'zend.reserved_stack_size'] as $name) {
+              $settings[$name] = ini_get($name);
+          }
+          $extensions = [];
+          foreach (get_loaded_extensions() as $name) {
+              $extensions[$name] = phpversion($name);
+          }
+          echo json_encode(['php' => PHP_VERSION, 'binary' => PHP_BINARY, 'thread_safe' => PHP_ZTS,
+              'debug' => PHP_DEBUG, 'ini' => $settings, 'extensions' => $extensions,
+              'libpq' => function_exists('pg_version') ? pg_version()['client'] : null], JSON_PRETTY_PRINT);
+          PHP
+
       - name: Run web API tests
         run: |
           python3 - <<'PYTHON'
-          import os, pathlib, re, signal, subprocess, sys
+          import os, pathlib, re, resource, shutil, signal, subprocess, sys
           log = pathlib.Path(os.environ['RUNNER_TEMP']) / 'web-api-server.log'
           result = 1
           cleanup_errors = []
+          def enable_core_dump():
+              _, hard_limit = resource.getrlimit(resource.RLIMIT_CORE)
+              limit = 512 * 1024 * 1024
+              if hard_limit != resource.RLIM_INFINITY:
+                  limit = min(limit, hard_limit)
+              resource.setrlimit(resource.RLIMIT_CORE, (limit, hard_limit))
           with log.open('w') as output:
-              server = subprocess.Popen(['php', '-S', 'localhost:8088', 'tests/router.php'], stdout=output, stderr=subprocess.STDOUT)
+              server = subprocess.Popen(['php', '-S', 'localhost:8088', 'tests/router.php'],
+                  stdout=output, stderr=subprocess.STDOUT,
+                  preexec_fn=enable_core_dump)
               try:
                   result = subprocess.run([
                       'vendor/bin/atoum', '-p', 'php -d memory_limit=512M', '--debug',
@@ -95,6 +126,30 @@ jobs:
                   server_status = server.wait()
                   if not running or server_status != -signal.SIGTERM:
                       cleanup_errors.append(f'Owned server exited {server_status}')
+                  core = log.with_name(f'web-api-core.{server.pid}')
+                  if server_status in (-signal.SIGSEGV, -signal.SIGABRT):
+                      try:
+                          with log.with_name('web-api-backtrace.log').open('w') as trace:
+                              if core.is_file():
+                                  subprocess.run(['gdb', '-nx', '-nh', '--batch',
+                                      '-iex', 'set auto-load off', '-iex', 'set debuginfod enabled off',
+                                      '-iex', 'set print frame-arguments none',
+                                      '-ex', 'info sharedlibrary', '-ex', 'thread apply all bt 80',
+                                      str(pathlib.Path(shutil.which('php')).resolve()), str(core)],
+                                      stdout=trace, stderr=subprocess.STDOUT, timeout=30, check=True)
+                              else:
+                                  trace.write(f'Owned server exited {server_status}; no core dump was produced.\n')
+                      except (OSError, subprocess.SubprocessError) as error:
+                          cleanup_errors.append(f'Backtrace collection failed: {error}')
+                      finally:
+                          try:
+                              trace_path = log.with_name('web-api-backtrace.log')
+                              if trace_path.is_file() and trace_path.stat().st_size > 131072:
+                                  with trace_path.open('r+b') as bounded:
+                                      bounded.truncate(131072)
+                              core.unlink(missing_ok=True)
+                          except OSError as error:
+                              cleanup_errors.append(f'Crash diagnostic cleanup failed: {error}')
                   output.flush()
                   diagnostics = re.sub(r'((?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) )\S+', r'\1[request URI omitted]', log.read_text(errors='replace'))
                   log.with_name('web-api-server-diagnostics.log').write_text(diagnostics)
@@ -107,5 +162,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: web-api-server-diagnostics-${{ matrix.database.id }}
-          path: ${{ runner.temp }}/web-api-server-diagnostics.log
+          path: |
+            ${{ runner.temp }}/web-api-server-diagnostics.log
+            ${{ runner.temp }}/web-api-runtime.json
+            ${{ runner.temp }}/web-api-backtrace.log
           if-no-files-found: warn
