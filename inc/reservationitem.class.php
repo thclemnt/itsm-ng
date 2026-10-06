@@ -86,6 +86,19 @@ class ReservationItem extends CommonDBChild
     }
 
 
+    /** Booking admission follows the reservable inventory, not asset administration rights. */
+    public function canReserve(): bool
+    {
+        if (!Session::haveRight(self::$rightname, self::RESERVEANITEM)
+            || empty($_SESSION['glpiactiveentities'])
+            || $this->isNewItem() || !$this->fields['is_active'] || $this->isDeleted()) {
+            return false;
+        }
+        $asset = $this->getItem();
+        return $asset !== false && !$asset->isNewItem() && !$asset->isDeleted()
+            && $asset->checkEntity(true);
+    }
+
     public static function getTypeName($nb = 0)
     {
         return _n('Reservable item', 'Reservable items', $nb);

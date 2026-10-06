@@ -333,6 +333,12 @@ class Reservation extends CommonDBChild
     }
 
 
+    public function canCreateItem()
+    {
+        $item = $this->getItem();
+        return $item instanceof ReservationItem && $item->canReserve();
+    }
+
     /**
      * @since 0.84
     **/

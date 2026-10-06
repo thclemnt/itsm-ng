@@ -124,6 +124,7 @@ if (isset($_POST["update"])) {
                     || (Session::getLoginUserID() === $input["users_id"])
                 ) {
                     unset($rr->fields["id"]);
+                    $rr->check(-1, CREATE, $input);
                     if ($newID = $rr->add($input)) {
                         Event::log(
                             $newID,
@@ -161,7 +162,23 @@ if (isset($_POST["update"])) {
         Html::redirect($CFG_GLPI['root_doc'] . $calendar . $toadd);
     }
 } elseif (isset($_GET["id"])) {
-    $rr->check($_GET['id'], READ);
+    if (Reservation::isNewID($_GET['id'])) {
+        if (!isset($_GET['item']) || !is_array($_GET['item']) || $_GET['item'] === []) {
+            Html::back();
+        }
+        foreach ($_GET['item'] as $selected) {
+            $selected = filter_var($selected, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+            if ($selected === false) {
+                Html::displayRightError();
+            }
+            // Admit the actual endpoint before constructing a new child. Do not
+            // set users_id here: its owner shortcut must not bypass item scope.
+            $input = ['reservationitems_id' => $selected];
+            $rr->check(-1, CREATE, $input);
+        }
+    } else {
+        $rr->check($_GET['id'], READ);
+    }
     if (!isset($_GET['begin'])) {
         $_GET['begin'] = date('Y-m-d H:00:00');
     }
