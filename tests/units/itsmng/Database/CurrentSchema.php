@@ -63,9 +63,17 @@ class CurrentSchema extends \atoum\atoum\test
                 $this->boolean($actual->getAutoincrement())->isIdenticalTo($column->getAutoincrement());
                 $this->variable($actual->getColumnDefinition())->isIdenticalTo($column->getColumnDefinition());
             }
+            // These physical names are lowercase on both providers; compare
+            // identifiers and prefix lengths, not DBAL's original quote markers.
+            $columns = static fn (\Doctrine\DBAL\Schema\Index $index): array => array_map(
+                static fn (\Doctrine\DBAL\Schema\Index\IndexedColumn $column): array => [
+                    $column->getColumnName()->getIdentifier()->getValue(), $column->getLength(),
+                ],
+                $index->getIndexedColumns(),
+            );
             foreach ($historical->getIndexes() as $index) {
                 $this->boolean($current->hasIndex($index->getName()))->isTrue();
-                $this->array($current->getIndex($index->getName())->getColumns())->isIdenticalTo($index->getColumns());
+                $this->array($columns($current->getIndex($index->getName())))->isIdenticalTo($columns($index));
             }
             $this->array($current->getOptions())->isEqualTo($historical->getOptions());
             $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozenSql);
