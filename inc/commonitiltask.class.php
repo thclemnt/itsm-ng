@@ -1816,15 +1816,30 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
     {
         global $CFG_GLPI, $DB;
 
-        $iterator = self::getTaskList($status, $showgrouptickets);
+        $itemtype = get_called_class();
+        $projected = in_array($itemtype, [TicketTask::class, ProblemTask::class], true);
+        if ($projected) {
+            $parenttype = (new static())->getItilObjectItemType();
+            $page = (new ITILTaskRepository(Orm::create($DB)))->centralList(
+                $itemtype,
+                $parenttype::getNotSolvedStatusArray(),
+                $status === 'todo',
+                (int)Session::getLoginUserID(),
+                $showgrouptickets ? ($_SESSION['glpigroups'] ?? []) : null,
+                getEntitiesRestrictCriteria($parenttype::getTable()),
+                (int)$_SESSION['glpidisplay_count_on_home'],
+            );
+            $iterator = $page['rows'];
+        } else {
+            $iterator = self::getTaskList($status, $showgrouptickets);
+        }
 
-        $total_row_count = count($iterator);
+        $total_row_count = $projected ? $page['total'] : count($iterator);
         $displayed_row_count = (int)$_SESSION['glpidisplay_count_on_home'] > 0
            ? min((int)$_SESSION['glpidisplay_count_on_home'], $total_row_count)
            : $total_row_count;
 
         if ($displayed_row_count > 0) {
-            $itemtype = get_called_class();
             switch ($status) {
                 case "todo":
                     $options  = [
@@ -1885,9 +1900,20 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
             ];
             $values = [];
             foreach (array_slice($iterator, 0, $displayed_row_count) as $data) {
-                $job  = new $itemtype();
                 $newValue = [];
-                if ($job->getFromDB($data['id'])) {
+                if ($projected) {
+                    $item_link = new $parenttype();
+                    $tab_name = $itemtype === TicketTask::class ? 'Ticket' : 'ProblemTask';
+                    $taskId = $data['id'];
+                    $taskContent = $data['content'];
+                    $parentId = $data['parent_id'];
+                    $parentName = $data['parent_name'];
+                    $priority = $data['parent_priority'];
+                } else {
+                    $job = new $itemtype();
+                    if (!$job->getFromDB($data['id'])) {
+                        continue;
+                    }
                     if ($DB->fieldExists($job->getTable(), 'tickets_id')) {
                         $item_link = new Ticket();
                         $item_link->getFromDB($job->fields['tickets_id']);
@@ -1897,25 +1923,30 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
                         $item_link->getFromDB($job->fields['problems_id']);
                         $tab_name = "ProblemTask";
                     }
-
-                    $bgcolor = $_SESSION["glpipriority_" . $item_link->fields["priority"]];
-                    $name    = sprintf(__('%1$s: %2$s'), __('ID'), $job->fields["id"]);
-                    $newValue[] = "<div class='priority_block' style='border-color: $bgcolor'>
-                  <span style='background: $bgcolor'></span>&nbsp;$name</div>";
-                    $newValue[] = $item_link->fields['name'];
-
-                    $link = "<a href='" . $item_link->getFormURLWithID($item_link->fields["id"]);
-                    $link .= "&amp;forcetab=" . $tab_name . "$1";
-                    $link   .= "'>";
-                    $link    = sprintf(__('%1$s'), $link);
-                    $content = Toolbox::unclean_cross_side_scripting_deep(html_entity_decode(
-                        (string) $job->fields['content'],
-                        ENT_QUOTES,
-                        "UTF-8"
-                    ));
-                    $newValue[] = sprintf(__('%1$s %2$s'), $link, Html::resume_text(Html::Clean($content), 50));
-                    $values[] = $newValue;
+                    $taskId = $job->fields['id'];
+                    $taskContent = $job->fields['content'];
+                    $parentId = $item_link->fields['id'];
+                    $parentName = $item_link->fields['name'];
+                    $priority = $item_link->fields['priority'];
                 }
+
+                $bgcolor = $_SESSION["glpipriority_" . $priority];
+                $name    = sprintf(__('%1$s: %2$s'), __('ID'), $taskId);
+                $newValue[] = "<div class='priority_block' style='border-color: $bgcolor'>
+                  <span style='background: $bgcolor'></span>&nbsp;$name</div>";
+                $newValue[] = $parentName;
+
+                $link = "<a href='" . $item_link->getFormURLWithID($parentId);
+                $link .= "&amp;forcetab=" . $tab_name . "$1";
+                $link   .= "'>";
+                $link    = sprintf(__('%1$s'), $link);
+                $content = Toolbox::unclean_cross_side_scripting_deep(html_entity_decode(
+                    (string) $taskContent,
+                    ENT_QUOTES,
+                    "UTF-8"
+                ));
+                $newValue[] = sprintf(__('%1$s %2$s'), $link, Html::resume_text(Html::Clean($content), 50));
+                $values[] = $newValue;
             }
             renderTwigTemplate('table.twig', [
                'fields' => $fields,

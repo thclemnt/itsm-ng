@@ -43,9 +43,27 @@ final class ITILTaskRepository
 
     public function taskList(string $type, array $statuses, bool $todo, int $user, ?array $groups, array $scope, ?int $start, ?int $limit): array
     {
+        return $this->taskListQuery($type, $statuses, $todo, $user, $groups, $scope, $start, $limit)
+            ?->getQuery()->getScalarResult() ?? [];
+    }
+
+    /** Count all eligible tasks, but read text only for the displayed homepage rows. */
+    public function centralList(string $type, array $statuses, bool $todo, int $user, ?array $groups, array $scope, int $limit): array
+    {
+        $query = $this->taskListQuery($type, $statuses, $todo, $user, $groups, $scope, null, null);
+        $total = $query === null ? 0 : (int)(clone $query)->select('COUNT(t.id)')->resetDQLPart('orderBy')
+            ->getQuery()->getSingleScalarResult();
+        $rows = $total === 0 ? [] : $query
+            ->addSelect('t.content, r.id AS parent_id, r.name AS parent_name, r.priority AS parent_priority')
+            ->setMaxResults($limit > 0 ? $limit : null)->getQuery()->getScalarResult();
+        return ['total' => $total, 'rows' => $rows];
+    }
+
+    private function taskListQuery(string $type, array $statuses, bool $todo, int $user, ?array $groups, array $scope, ?int $start, ?int $limit): ?QueryBuilder
+    {
         [$task, $parent, $relation] = $this->definition($type);
         if ($groups === [] || ($groups === null && $user <= 0)) {
-            return [];
+            return null;
         }
         $query = $this->em->createQueryBuilder()->select('t.id')->from($parent, 'r')
             ->join($task, 't', 'WITH', 'IDENTITY(t.' . $relation . ') = r.id');
@@ -61,8 +79,7 @@ final class ITILTaskRepository
         }
         return $query->addSelect('CASE WHEN t.date_mod IS NULL THEN 0 ELSE 1 END AS HIDDEN dated')
             ->orderBy('dated', 'DESC')->addOrderBy('t.date_mod', 'DESC')->addOrderBy('t.id', 'DESC')
-            ->setFirstResult(max(0, $start ?? 0))->setMaxResults($limit === null ? null : max(0, $limit))
-            ->getQuery()->getScalarResult();
+            ->setFirstResult(max(0, $start ?? 0))->setMaxResults($limit === null ? null : max(0, $limit));
     }
 
     public function calendarTasks(string $type, array $criteria): array
