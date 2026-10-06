@@ -30,7 +30,7 @@ class History extends \atoum\atoum\test
                 $this->integer(count($connection->statements))->isIdenticalTo(3);
                 $this->string($connection->statements[0])->isIdenticalTo('SET FOREIGN_KEY_CHECKS = 0');
                 $this->string($connection->statements[2])->isIdenticalTo('SET FOREIGN_KEY_CHECKS = ' . $checks);
-                $this->string($connection->statements[1])->startsWith('DROP TABLE `itsmng_migrations`, ');
+                $this->string($connection->statements[1])->startWith('DROP TABLE `itsmng_migrations`, ');
                 $targets = explode(', ', substr($connection->statements[1], strlen('DROP TABLE ')));
                 sort($targets);
                 $this->array($targets)->isIdenticalTo(['`glpi_computers`', '`glpi_networkportaggregateorigins`',
