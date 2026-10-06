@@ -168,6 +168,12 @@ class KnowbaseItem extends DbTestCase
                     'name' => $name, 'answer' => null,
                 ]);
             }
+            foreach (['Base article earlier translation', 'Zxquasar later translation'] as $name) {
+                $this->createItem(\KnowbaseItemTranslation::class, [
+                    'knowbaseitems_id' => $articles[0]->getID(), 'language' => 'fr_FR',
+                    'name' => $name, 'answer' => null,
+                ]);
+            }
             // InnoDB FULLTEXT indexes committed rows, unlike ordinary transactional reads.
             // Publish only this connection's graph, never the caller's outer test frame.
             $connection->commit();
@@ -198,6 +204,17 @@ class KnowbaseItem extends DbTestCase
             $expectedIds = [(int)$articles[0]->getID(), (int)$articles[1]->getID()];
             $ids = array_column($page['rows'], 'id');
             $this->array($ids)->hasSize(2)->containsValues($expectedIds);
+            $baseHit = array_values(array_filter($page['rows'],
+                static fn (array $row): bool => $row['id'] === (int)$articles[0]->getID()));
+            $this->string($baseHit[0]['transname'])->isIdenticalTo('Base article earlier translation',
+                'An article hit keeps its first translation even when a later translation also matches');
+            $criteria = \KnowbaseItem::getListRequest(['contains' => 'zxquas', 'faq' => false,
+                'knowbaseitemcategories_id' => 0], 'search');
+            $legacyBase = array_values(iterator_to_array($DB->request($criteria)));
+            $this->array(array_column($legacyBase, 'id'))->hasSize(2)->containsValues($expectedIds);
+            $legacyBaseHit = array_values(array_filter($legacyBase,
+                static fn (array $row): bool => $row['id'] === (int)$articles[0]->getID()));
+            $this->string($legacyBaseHit[0]['transname'])->isIdenticalTo('Base article earlier translation');
             $this->integer($page['rows'][0]['is_faq'])->isIdenticalTo(0);
             foreach ([0, 1] as $offset) {
                 $part = $repository->listPage($access, array_replace($options, ['limit' => 1, 'offset' => $offset]));

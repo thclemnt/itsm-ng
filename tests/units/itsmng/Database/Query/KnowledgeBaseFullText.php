@@ -129,6 +129,14 @@ class KnowledgeBaseFullText extends \atoum\atoum\test
                 }
                 if ($type === 'search' && $language !== null && count($counts) === 1) {
                     $this->string($pageSql)->contains('MAX(')->contains('COALESCE(')->contains('ORDER BY');
+                    // Article relevance belongs outside the correlated translation
+                    // aggregate; MySQL refuses MATCH over an outer table there.
+                    $this->string($pageSql)->contains(' + (SELECT COALESCE(MAX(');
+                    $this->integer(preg_match('/END\s*=\s*0\s+OR\s+NOT EXISTS/', $pageSql))->isIdenticalTo(1);
+                    if (!$platform instanceof PostgreSQLPlatform) {
+                        $this->integer(preg_match('/MATCH\((\w+)\.`name`, \1\.`answer`\) AGAINST\(\? IN BOOLEAN MODE\) \+ \(SELECT/',
+                            $pageSql))->isIdenticalTo(1);
+                    }
                 }
                 $this->boolean($strict->isConnected())->isFalse();
                 $this->boolean($connection->isConnected())->isFalse();
@@ -163,6 +171,8 @@ class KnowledgeBaseFullText extends \atoum\atoum\test
             "KB_MATCH(k.name, 'literal')",
             'KB_MATCH(k.name, k.answer, k.comment, :terms)',
             'KB_MATCH(k.unknown_field, :terms)',
+            'KB_SCORE(k.name, :terms, 1)',
+            'KB_MATCH(k.name, :terms, (SELECT t.id FROM ' . \itsmng\Database\Entity\KnowbaseItemTranslation::class . ' t))',
         ] as $expression) {
             $this->exception(static fn () => $manager->createQuery('SELECT k.id FROM ' . KnowbaseItem::class
                 . ' k WHERE ' . $expression . ' = true')->getSQL())->isInstanceOf(QueryException::class);

@@ -1354,14 +1354,21 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
             KnowbaseItemTranslation::isKbTranslationActive()
             && (countElementsInTable('glpi_knowbaseitemtranslations') > 0)
         ) {
-            $translationJoin = static function (?callable $eligible = null) use ($DB): array {
+            $translationJoin = static function (?callable $eligible = null, ?string $articleMatch = null,
+                ?callable $translatedMatch = null) use ($DB): array {
                 $earlier = $DB->quoteName('earlier_translation');
-                $condition = 'NOT EXISTS (SELECT 1 FROM ' . $DB->quoteName('glpi_knowbaseitemtranslations')
+                $prior = 'SELECT 1 FROM ' . $DB->quoteName('glpi_knowbaseitemtranslations')
                     . ' ' . $earlier . ' WHERE ' . $earlier . '.' . $DB->quoteName('knowbaseitems_id')
                     . ' = ' . $DB->quoteName('glpi_knowbaseitems.id') . ' AND '
                     . $earlier . '.' . $DB->quoteName('language') . ' = ' . $DB->quote($_SESSION['glpilanguage'])
-                    . ' AND ' . $earlier . '.' . $DB->quoteName('id') . ' < ' . $DB->quoteName('glpi_knowbaseitemtranslations.id')
+                    . ' AND ' . $earlier . '.' . $DB->quoteName('id') . ' < ' . $DB->quoteName('glpi_knowbaseitemtranslations.id');
+                $condition = 'NOT EXISTS (' . $prior
                     . ($eligible === null ? '' : ' AND (' . $eligible('earlier_translation') . ')') . ')';
+                if ($articleMatch !== null) {
+                    // Native MATCH belongs in the query block owning its table.
+                    $condition = '(CASE WHEN (' . $articleMatch . ') THEN 1 ELSE 0 END = 0 OR NOT EXISTS (' . $prior . '))'
+                        . ' AND NOT EXISTS (' . $prior . ' AND (' . $translatedMatch('earlier_translation') . '))';
+                }
                 $conditions = ['glpi_knowbaseitemtranslations.language' => $_SESSION['glpilanguage'],
                     new QueryExpression($condition)];
                 if ($eligible !== null) {
@@ -1415,6 +1422,8 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                         : \itsmng\Database\Query\KnowledgeBaseFullText::sql($platform, $columns, $term, true);
                     $ors = [new QueryExpression($coreMatch)];
                     $eligibleTranslation = null;
+                    $fullTextArticleMatch = null;
+                    $fullTextTranslationMatch = null;
                     if ($translated && $search_wilcard !== '') {
                         $translationMatch = static fn (string $alias): string =>
                             \itsmng\Database\Query\KnowledgeBaseFullText::sql($platform, [$DB->quoteName($alias . '.name')], $term)
@@ -1433,6 +1442,8 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                         $score .= ' + COALESCE((SELECT MAX(' . implode(' + ', $translationScores) . ') FROM '
                             . $translationFrom . ' WHERE ' . $translationScope . '), 0)';
                         $eligibleTranslation = static fn (string $alias): string => $coreMatch . ' OR ' . $translationMatch($alias);
+                        $fullTextArticleMatch = $coreMatch;
+                        $fullTextTranslationMatch = $translationMatch;
                     }
                     $criteria['SELECT'][] = new QueryExpression('(' . $score . ') AS ' . $DB->quoteName('SCORE'));
 
@@ -1469,6 +1480,8 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                     $numrows_search = $search_iterator->next()['cpt'];
 
                     if ($numrows_search <= 0) {// not result this fulltext try with alternate search
+                        $fullTextArticleMatch = null;
+                        $fullTextTranslationMatch = null;
                         $patterns = \itsmng\Database\Repository\KnowledgeBaseRepository::fallbackPatterns($search);
                         $operator = $platform instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform ? ' ILIKE ' : ' LIKE ';
                         $textMatch = static function (string $alias) use ($DB, $patterns, $operator): string {
@@ -1496,7 +1509,9 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                         $criteria['WHERE'] = $search_where;
                     }
                     if ($translated) {
-                        $criteria['LEFT JOIN']['glpi_knowbaseitemtranslations'] = $translationJoin($eligibleTranslation);
+                        $criteria['LEFT JOIN']['glpi_knowbaseitemtranslations'] = $translationJoin(
+                            $eligibleTranslation, $fullTextArticleMatch, $fullTextTranslationMatch
+                        );
                     }
                 }
                 break;

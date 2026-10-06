@@ -118,6 +118,8 @@ final class KnowledgeBaseRepository
         }
         $eligibleTranslation = null;
         $score = '0';
+        $articleFullTextMatch = null;
+        $translationFullTextMatch = null;
         $total = null;
         if ($search) {
             $terms = self::fullTextQuery(\Toolbox::unclean_cross_side_scripting_deep($options['contains']),
@@ -131,21 +133,23 @@ final class KnowledgeBaseRepository
                         . ' matchingTranslation WHERE IDENTITY(matchingTranslation.knowbaseitems) = k.id '
                         . 'AND matchingTranslation.language = :language AND ('
                         . 'KB_MATCH(matchingTranslation.name, :terms) = true OR KB_MATCH(matchingTranslation.answer, :terms) = true))';
-                    // DQL accepts a whole scalar subselect, not a subselect inside
-                    // COALESCE/arithmetic. Parenthesize its full arithmetic expression so the
-                    // subselect parser does not stop after the leading custom function.
+                    // The typed score operand retains DQL's scalar subselect while
+                    // keeping each native MATCH in the query block owning its table.
                     // The aggregate returns one row even without translations.
-                    $fullTextScore = 'SELECT (KB_SCORE(k.name, k.answer, :terms) '
-                        . '+ COALESCE(MAX(COALESCE(KB_SCORE(rankedTranslation.name, :terms), 0) '
-                        . '+ COALESCE(KB_SCORE(rankedTranslation.answer, :terms), 0)), 0)) FROM ' . KnowbaseItemTranslation::class
+                    $fullTextScore = 'KB_SCORE(k.name, k.answer, :terms, (SELECT COALESCE(MAX('
+                        . 'COALESCE(KB_SCORE(rankedTranslation.name, :terms), 0) '
+                        . '+ COALESCE(KB_SCORE(rankedTranslation.answer, :terms), 0)), 0) FROM ' . KnowbaseItemTranslation::class
                         . ' rankedTranslation WHERE IDENTITY(rankedTranslation.knowbaseitems) = k.id '
-                        . 'AND rankedTranslation.language = :language';
+                        . 'AND rankedTranslation.language = :language))';
                 }
                 $fullText->andWhere('(' . implode(' OR ', $matches) . ')')->setParameter('terms', $terms, Types::STRING);
                 $total = (int)(clone $fullText)->select('COUNT(k.id)')->getQuery()->getSingleScalarResult();
                 if ($total > 0) {
                     $query = $fullText;
                     $score = $fullTextScore;
+                    $articleFullTextMatch = 'KB_MATCH(k.name, k.answer, :terms) = true';
+                    $translationFullTextMatch = static fn (string $alias): string =>
+                        'KB_MATCH(' . $alias . '.name, :terms) = true OR KB_MATCH(' . $alias . '.answer, :terms) = true';
                     $eligibleTranslation = static fn (string $alias): string =>
                         'KB_MATCH(k.name, k.answer, :terms) = true OR KB_MATCH(' . $alias . '.name, :terms) = true '
                         . 'OR KB_MATCH(' . $alias . '.answer, :terms) = true';
@@ -187,11 +191,21 @@ final class KnowledgeBaseRepository
             // after article-level search/count, so a later matching translation survives.
             $eligible = $eligibleTranslation === null ? '' : ' AND (' . $eligibleTranslation('translation') . ')';
             $earlierEligible = $eligibleTranslation === null ? '' : ' AND (' . $eligibleTranslation('earlierTranslation') . ')';
+            $earlier = 'SELECT earlierTranslation.id FROM ' . KnowbaseItemTranslation::class . ' earlierTranslation '
+                . 'WHERE IDENTITY(earlierTranslation.knowbaseitems) = k.id AND earlierTranslation.language = :language '
+                . 'AND earlierTranslation.id < translation.id';
+            $firstEligible = ' AND NOT EXISTS (' . $earlier . $earlierEligible . ')';
+            if ($articleFullTextMatch !== null) {
+                // A base hit admits every translation; otherwise only translated hits
+                // are eligible. Keep the base MATCH outside either translation subquery.
+                $anyEarlier = str_replace('earlierTranslation', 'anyEarlierTranslation', $earlier);
+                $firstEligible = ' AND (CASE WHEN (' . $articleFullTextMatch . ') THEN 1 ELSE 0 END = 0'
+                    . ' OR NOT EXISTS (' . $anyEarlier . '))'
+                    . ' AND NOT EXISTS (' . $earlier . ' AND (' . $translationFullTextMatch('earlierTranslation') . '))';
+            }
             $query->leftJoin(KnowbaseItemTranslation::class, 'translation', 'WITH',
                 'IDENTITY(translation.knowbaseitems) = k.id AND translation.language = :language' . $eligible
-                . ' AND NOT EXISTS (SELECT earlierTranslation.id FROM ' . KnowbaseItemTranslation::class . ' earlierTranslation '
-                . 'WHERE IDENTITY(earlierTranslation.knowbaseitems) = k.id AND earlierTranslation.language = :language '
-                . 'AND earlierTranslation.id < translation.id' . $earlierEligible . ')')
+                . $firstEligible)
                 ->setParameter('language', $options['language'], Types::STRING);
         }
         $published = str_replace('published', 'visibility', implode(' OR ', $audiences));

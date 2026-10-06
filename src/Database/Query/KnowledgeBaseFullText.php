@@ -10,6 +10,7 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\ORM\Query\AST\Functions\FunctionNode;
 use Doctrine\ORM\Query\AST\InputParameter;
 use Doctrine\ORM\Query\AST\PathExpression;
+use Doctrine\ORM\Query\AST\Subselect;
 use Doctrine\ORM\Query\Parser;
 use Doctrine\ORM\Query\SqlWalker;
 use Doctrine\ORM\Query\TokenType;
@@ -20,6 +21,7 @@ final class KnowledgeBaseFullText extends FunctionNode
     /** @var list<PathExpression> */
     private array $fields = [];
     private InputParameter $query;
+    private ?Subselect $additionalScore = null;
 
     public function parse(Parser $parser): void
     {
@@ -32,6 +34,12 @@ final class KnowledgeBaseFullText extends FunctionNode
             $parser->match(TokenType::T_COMMA);
         }
         $this->query = $parser->InputParameter();
+        if ($this->isScore() && $parser->getLexer()->isNextToken(TokenType::T_COMMA)) {
+            $parser->match(TokenType::T_COMMA);
+            $parser->match(TokenType::T_OPEN_PARENTHESIS);
+            $this->additionalScore = $parser->Subselect();
+            $parser->match(TokenType::T_CLOSE_PARENTHESIS);
+        }
         $parser->match(TokenType::T_CLOSE_PARENTHESIS);
     }
 
@@ -40,7 +48,11 @@ final class KnowledgeBaseFullText extends FunctionNode
         // Dispatch each placeholder exactly where it occurs in the emitted SQL.
         $columns = array_map(static fn (PathExpression $field): string => $field->dispatch($walker), $this->fields);
         $query = $this->query->dispatch($walker);
-        return self::sql($walker->getConnection()->getDatabasePlatform(), $columns, $query, $this->isScore());
+        $score = self::sql($walker->getConnection()->getDatabasePlatform(), $columns, $query, $this->isScore());
+        // Keep the article MATCH in its own query block. MySQL rejects an outer
+        // table's MATCH inside the correlated translation aggregate subselect.
+        return $this->additionalScore === null ? $score
+            : '(' . $score . ' + (' . $this->additionalScore->dispatch($walker) . '))';
     }
 
     private function isScore(): bool
