@@ -37,6 +37,171 @@ namespace tests\units;
 
 class User extends \DbTestCase
 {
+    public function testDefaultAddressSelectionUsesCurrentSurvivorsInCallerTransaction(): void
+    {
+        global $DB;
+        $original = $DB;
+        $originalConnection = $original->getDoctrineConnection();
+        $originalScope = $originalConnection->captureManagedTransactionScope();
+        $originalLevel = $originalConnection->getTransactionNestingLevel();
+        $mysql = $original->getProvider() !== 'pgsql';
+        $logger = new class () extends \Psr\Log\AbstractLogger {
+            public array $selections = [];
+            public function log($level, $message, array $context = []): void
+            {
+                $sql = str_replace(['`', '"'], '', $context['sql'] ?? '');
+                if (preg_match('/^SELECT\b.*\bFROM\s+glpi_useremails\b.*\bFOR UPDATE\b/is', $sql)) {
+                    $this->selections[] = ['sql' => $sql, 'params' => array_values($context['params'] ?? [])];
+                }
+            }
+        };
+        $configuration = new \Doctrine\DBAL\Configuration();
+        $configuration->setMiddlewares([new \Doctrine\DBAL\Logging\Middleware($logger)]);
+        $reader = $writer = $frame = null;
+        $fixtures = [];
+        $failure = null;
+        $cleanup = static function (callable $operation) use (&$failure): void {
+            try {
+                $operation();
+            } catch (\Throwable $error) {
+                $failure = $failure === null ? $error : new \itsmng\Database\MutationCleanupFailure($failure, $error);
+            }
+        };
+        try {
+            $parameters = $originalConnection->getParams();
+            $reader = $mysql ? \itsmng\Database\MySQLConnection::create($parameters, $configuration)
+                : \itsmng\Database\PostgresConnection::create($parameters, $configuration);
+            $writer = $mysql ? \itsmng\Database\MySQLConnection::create($parameters)
+                : \itsmng\Database\PostgresConnection::create($parameters);
+            foreach ([$reader, $writer] as $connection) {
+                if ($mysql) {
+                    $connection->executeStatement('SET SESSION innodb_lock_wait_timeout = 5');
+                } else {
+                    $connection->executeStatement("SET SESSION lock_timeout = '5s'");
+                    $connection->executeStatement("SET SESSION statement_timeout = '20s'");
+                }
+            }
+            // PostgreSQL's RR rejects some changed locked rows with a legitimate
+            // serialization failure. Only MySQL uses RR for this snapshot proof.
+            $reader->setTransactionIsolation($mysql ? \Doctrine\DBAL\TransactionIsolationLevel::REPEATABLE_READ
+                : \Doctrine\DBAL\TransactionIsolationLevel::READ_COMMITTED);
+            foreach ([false, true] as $fallback) {
+                $token = 'default-current-' . $this->getUniqueString();
+                $fixture = \itsmng\Database\OwnedMutationFrame::run($writer, static function () use ($writer, $token): array {
+                    $manager = new \Doctrine\ORM\EntityManager($writer, \itsmng\Database\Orm::configuration($writer->getDatabasePlatform()));
+                    try {
+                        $account = new \itsmng\Database\Entity\User();
+                        $account->name = $token;
+                        $account->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, 0);
+                        $manager->persist($account);
+                        $first = new \itsmng\Database\Entity\UserEmail();
+                        $first->users = $account;
+                        $first->email = $token . '-a@example.org';
+                        $first->is_default = true;
+                        $second = new \itsmng\Database\Entity\UserEmail();
+                        $second->users = $account;
+                        $second->email = $token . '-b@example.org';
+                        $manager->persist($first);
+                        $manager->persist($second);
+                        $manager->flush();
+                        return ['user' => $account->id, 'name' => $token, 'first' => $first->id, 'second' => $second->id];
+                    } finally {
+                        $manager->clear();
+                    }
+                });
+                $fixtures[] = $fixture;
+                $frame = \itsmng\Database\OwnedMutationFrame::begin($reader);
+                $manager = new \Doctrine\ORM\EntityManager($reader, \itsmng\Database\Orm::configuration($reader->getDatabasePlatform()));
+                $repository = new \itsmng\Database\Repository\UserEmailRepository($manager);
+                $this->integer((int)$repository->preferred($fixture['user'])['id'])->isIdenticalTo($fixture['first']);
+                \itsmng\Database\OwnedMutationFrame::run($writer, static function () use ($writer, $fixture): void {
+                    $writer->delete('glpi_useremails', ['id' => $fixture['first'], 'users_id' => $fixture['user']]);
+                    $writer->update(
+                        'glpi_useremails',
+                        ['is_default' => true],
+                        ['id' => $fixture['second'], 'users_id' => $fixture['user']],
+                        ['is_default' => \Doctrine\DBAL\Types\Types::BOOLEAN]
+                    );
+                });
+                $context = $fallback ? 'Preferred survivor after concurrent deletion' : 'Explicit concurrently deleted address';
+                $logger->selections = [];
+                $this->boolean($repository->selectDefault($fixture['user'], $fallback ? null : $fixture['first']))
+                    ->isIdenticalTo($fallback, $context);
+                $frame->assertActive();
+                $this->integer($reader->getTransactionNestingLevel())->isIdenticalTo(1, $context . ': caller frame retained');
+                $this->array($logger->selections)->hasSize(1, $context . ': selected address uses one current locking read');
+                $this->array($logger->selections[0]['params'])->isIdenticalTo($fallback
+                    ? [$fixture['user']] : [$fixture['user'], $fixture['first']], $context . ': ownership and address are bound');
+                $this->integer((int)$reader->fetchOne(
+                    'SELECT is_default FROM glpi_useremails WHERE id = ? AND users_id = ? FOR UPDATE',
+                    [$fixture['second'], $fixture['user']]
+                ))
+                    ->isIdenticalTo(1, $context . ': surviving default is never cleared for a missing address');
+                if ($mysql) {
+                    $this->integer((int)$repository->preferred($fixture['user'])['id'])
+                        ->isIdenticalTo($fixture['first'], $context . ': the ordinary lookup still has the old caller snapshot');
+                }
+                $this->boolean($repository->selectDefault($fixture['user'], $fixture['second']))
+                    ->isTrue($context . ': an already-default current row is valid even if UPDATE changes no bytes');
+                $frame->assertActive();
+                $frame->rollBack();
+                $frame = null;
+                $manager->clear();
+                $this->array(array_map('intval', $writer->fetchAssociative(
+                    'SELECT id, is_default FROM glpi_useremails WHERE users_id = ?',
+                    [$fixture['user']]
+                )))
+                    ->isIdenticalTo(['id' => $fixture['second'], 'is_default' => 1], $context . ': writer commit survives caller rollback');
+                $this->object($DB)->isIdenticalTo($original);
+                $originalScope->assertActive();
+                $this->integer($originalConnection->getTransactionNestingLevel())->isIdenticalTo($originalLevel);
+            }
+        } catch (\Throwable $error) {
+            $failure = $error;
+        } finally {
+            if ($frame !== null) {
+                $cleanup(static fn () => $frame->rollBack());
+            }
+            // These are independent test connections, never DbTestCase's owner.
+            // Closing our reader releases only its own resources before cleanup.
+            if ($reader !== null) {
+                $cleanup(static fn () => $reader->close());
+            }
+            if ($writer !== null) {
+                foreach ($fixtures as $fixture) {
+                    $cleanup(static fn () => \itsmng\Database\OwnedMutationFrame::run($writer, static function () use ($writer, $fixture): void {
+                        if ($writer->fetchOne('SELECT name FROM glpi_users WHERE id = ?', [$fixture['user']]) !== $fixture['name']) {
+                            throw new \LogicException('Refusing cleanup of an unowned user fixture');
+                        }
+                        $rows = $writer->fetchAllAssociative('SELECT id, email FROM glpi_useremails WHERE users_id = ?', [$fixture['user']]);
+                        foreach ($rows as $row) {
+                            $suffix = match ((int)$row['id']) {
+                                $fixture['first'] => '-a@example.org', $fixture['second'] => '-b@example.org',
+                                default => throw new \LogicException('Refusing cleanup of an unexpected user address'),
+                            };
+                            if ($row['email'] !== $fixture['name'] . $suffix) {
+                                throw new \LogicException('Refusing cleanup of a changed address identity');
+                            }
+                        }
+                        foreach ($rows as $row) {
+                            $writer->delete('glpi_useremails', ['id' => $row['id'], 'users_id' => $fixture['user'], 'email' => $row['email']]);
+                        }
+                        if ($writer->delete('glpi_users', ['id' => $fixture['user'], 'name' => $fixture['name']]) !== 1) {
+                            throw new \LogicException('Owned user fixture cleanup failed');
+                        }
+                    }));
+                }
+                $cleanup(static fn () => $writer->close());
+            }
+        }
+        if ($failure !== null) {
+            throw $failure;
+        }
+        $this->object($DB)->isIdenticalTo($original);
+        $originalScope->assertActive();
+        $this->integer($originalConnection->getTransactionNestingLevel())->isIdenticalTo($originalLevel);
+    }
+
     public function testReusedUserPermissionScopesFollowCurrentIdentityAndGrants(): void
     {
         global $DB, $PLUGIN_HOOKS;

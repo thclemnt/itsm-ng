@@ -47,18 +47,21 @@ final class UserEmailRepository
             if ($user <= 0 || $this->em->find(User::class, $user, LockMode::PESSIMISTIC_WRITE) === null) {
                 return false;
             }
+            $selection = $this->em->createQueryBuilder()->select('e.id')->from(UserEmail::class, 'e')
+                ->where('IDENTITY(e.users) = :user')->setParameter('user', $user, Types::INTEGER);
             if ($address === null) {
-                $address = $this->preferred($user)['id'] ?? null;
+                $selection->orderBy('e.is_default', 'DESC')->addOrderBy('e.id')->setMaxResults(1);
+            } else {
+                $selection->andWhere('e.id = :id')->setParameter('id', $address, Types::INTEGER);
             }
-            if ($address === null) {
-                return false;
-            }
-            $selected = $this->em->createQueryBuilder()->select('e.id')->from(UserEmail::class, 'e')
-                ->where('e.id = :id AND IDENTITY(e.users) = :user')->setParameter('id', $address, Types::INTEGER)
-                ->setParameter('user', $user, Types::INTEGER)->getQuery()->getOneOrNullResult();
+            // Mutations need the current row, even when the caller already owns
+            // an older repeatable-read snapshot. Keep this address locked until
+            // both default updates finish so a concurrent deletion cannot remove it.
+            $selected = $selection->getQuery()->setLockMode(LockMode::PESSIMISTIC_WRITE)->getOneOrNullResult();
             if ($selected === null) {
                 return false;
             }
+            $address = (int)$selected['id'];
             // Set both sides explicitly: a previous concurrent selection may have
             // cleared the selected address after its model was initially loaded.
             $query = $this->em->createQueryBuilder()->update(UserEmail::class, 'e')->set('e.is_default', ':default')
