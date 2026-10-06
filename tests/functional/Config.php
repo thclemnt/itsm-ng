@@ -396,6 +396,61 @@ class Config extends DbTestCase
         $this->array($report)->isIdenticalTo($expected);
     }
 
+    public function testCacheBackendBootstrapReadsFreshRawConfiguration(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $context = "cache-bootstrap-'" . bin2hex(random_bytes(6));
+        $otherContext = $context . '-other';
+        $name = 'cache_db';
+        $table = $connection->quoteIdentifier(\Config::getTable());
+        $hadCache = array_key_exists('GLPI_CACHE', $GLOBALS);
+        $previous = $GLOBALS['GLPI_CACHE'] ?? null;
+        $settings = static fn (string $namespace, int $ttl): string => json_encode([
+            'adapter' => 'memory',
+            'options' => ['namespace' => $namespace, 'ttl' => $ttl],
+        ], JSON_THROW_ON_ERROR);
+        $encrypted = \Toolbox::sodiumEncrypt($settings('must-not-decrypt', 99));
+        $memory = new \Symfony\Component\Cache\Adapter\ArrayAdapter(storeSerialized: false);
+        try {
+            $connection->insert($table, ['context' => $context, 'name' => $name, 'value' => $settings('first', 17)]);
+            $connection->insert($table, ['context' => $otherContext, 'name' => $name, 'value' => $settings('wrong-context', 31)]);
+            $connection->insert($table, ['context' => $context, 'name' => 'other-cache', 'value' => $settings('wrong-name', 43)]);
+            unset($GLOBALS['GLPI_CACHE']);
+            $first = \Config::getCache($name, $context, false);
+            $this->object($first)->isInstanceOf(\Laminas\Cache\Storage\Adapter\Memory::class);
+            $this->string($first->getOptions()->getNamespace())->isIdenticalTo('first');
+            $this->integer($first->getOptions()->getTtl())->isIdenticalTo(17);
+
+            $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache($memory);
+            $connection->update($table, ['value' => $settings('second', 29)], ['context' => $context, 'name' => $name]);
+            $second = \Config::getCache($name, $context, false);
+            $this->object($second)->isNotIdenticalTo($first);
+            $this->string($second->getOptions()->getNamespace())->isIdenticalTo('second');
+            $this->integer($second->getOptions()->getTtl())->isIdenticalTo(29);
+            $this->string($first->getOptions()->getNamespace())->isIdenticalTo('first');
+
+            // Neither SQL NULL, JSON null nor ciphertext is an adapter declaration.
+            foreach ([null, 'null', $encrypted] as $value) {
+                $connection->update($table, ['value' => $value], ['context' => $context, 'name' => $name]);
+                $fallback = \Config::getCache($name, $context, false);
+                $this->object($fallback)->isInstanceOf(\Laminas\Cache\Storage\Adapter\Filesystem::class);
+                $this->integer($fallback->getOptions()->getTtl())->isIdenticalTo(600);
+            }
+            $connection->delete($table, ['context' => $context, 'name' => $name]);
+            $this->object(\Config::getCache($name, $context, false))->isInstanceOf(\Laminas\Cache\Storage\Adapter\Filesystem::class);
+            $this->array($memory->getValues())->isEmpty('Cache backend construction does not populate the ORM metadata cache');
+        } finally {
+            $connection->delete($table, ['context' => $context]);
+            $connection->delete($table, ['context' => $otherContext]);
+            if ($hadCache) {
+                $GLOBALS['GLPI_CACHE'] = $previous;
+            } else {
+                unset($GLOBALS['GLPI_CACHE']);
+            }
+        }
+    }
+
     public function testOwnedMetadataCacheStartsAfterBootstrapAndKeepsManagersIsolated(): void
     {
         global $DB;

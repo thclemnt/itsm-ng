@@ -3343,7 +3343,7 @@ class Config extends CommonDBTM
             && $DB->tableExists(self::getTable())
             && $DB->fieldExists(self::getTable(), 'context')
         ) {
-            $conf = self::getConfigurationValues($context, [$optname]);
+            $conf = self::getCacheConfiguration($DB->getDoctrineConnection(), (string) $context, (string) $optname);
         }
 
         // Adapter default options
@@ -3494,6 +3494,28 @@ class Config extends CommonDBTM
         } else {
             return $storage;
         }
+    }
+
+    /**
+     * Read the cache backend settings before ORM metadata caching is available.
+     * Keep this bootstrap read on the supplied current connection and uncached:
+     * backend settings may change between adapter constructions in one request.
+     */
+    private static function getCacheConfiguration(\Doctrine\DBAL\Connection $connection, string $context, string $name): array
+    {
+        $query = $connection->createQueryBuilder()
+            ->select($connection->quoteIdentifier('name'), $connection->quoteIdentifier('value'))
+            ->from($connection->quoteIdentifier(self::getTable()))
+            ->where($connection->quoteIdentifier('context') . ' = :context')
+            ->andWhere($connection->quoteIdentifier('name') . ' = :name')
+            ->orderBy($connection->quoteIdentifier('id'))
+            ->setParameter('context', $context, \Doctrine\DBAL\Types\Types::STRING)
+            ->setParameter('name', $name, \Doctrine\DBAL\Types\Types::STRING);
+        $values = [];
+        foreach ($query->executeQuery()->iterateAssociative() as $row) {
+            $values[$row['name']] = $row['value'];
+        }
+        return $values;
     }
 
     /**
