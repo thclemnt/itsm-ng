@@ -30,7 +30,7 @@ final class NativeSubjectSchema
             $checks = $catalog['checks'];
             $ansiQuotes = $catalog['ansi_quotes'];
             $rows = $connection->fetchAllAssociative('SELECT TABLE_NAME AS table_name, COLUMN_NAME AS column_name, '
-                . 'EXTRA AS generated, GENERATION_EXPRESSION AS expression FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (?)', $parameters, $types);
+                . 'EXTRA AS `generated`, GENERATION_EXPRESSION AS `expression` FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (?)', $parameters, $types);
         } else {
             $ansiQuotes = false;
             $rows = $connection->fetchAllAssociative('SELECT t.relname AS table_name, a.attname AS column_name, '
