@@ -17,6 +17,7 @@ class PDU
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?PDUType $pdutypes = null;
 
+    #[\itsmng\Database\Mapping\RackModel]
     #[ORM\ManyToOne(targetEntity: PDUModel::class)]
     #[ORM\JoinColumn(name: 'pdumodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]

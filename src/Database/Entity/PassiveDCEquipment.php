@@ -12,6 +12,7 @@ use itsmng\Database\Mapping\ReferencePolicy;
 #[ORM\Table(name: 'glpi_passivedcequipments')]
 class PassiveDCEquipment
 {
+    #[\itsmng\Database\Mapping\RackModel]
     #[ORM\ManyToOne(targetEntity: PassiveDCEquipmentModel::class)]
     #[ORM\JoinColumn(name: 'passivedcequipmentmodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]

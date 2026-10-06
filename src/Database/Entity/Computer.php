@@ -71,6 +71,7 @@ class Computer implements \itsmng\Domain\AllocationSubject
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Network $networks = null;
 
+    #[\itsmng\Database\Mapping\RackModel]
     #[ORM\ManyToOne(targetEntity: ComputerModel::class)]
     #[ORM\JoinColumn(name: 'computermodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]

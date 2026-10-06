@@ -12,6 +12,7 @@ use itsmng\Database\Mapping\ReferencePolicy;
 #[ORM\Table(name: 'glpi_enclosures')]
 class Enclosure
 {
+    #[\itsmng\Database\Mapping\RackModel]
     #[ORM\ManyToOne(targetEntity: EnclosureModel::class)]
     #[ORM\JoinColumn(name: 'enclosuremodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]

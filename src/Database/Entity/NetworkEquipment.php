@@ -78,6 +78,7 @@ class NetworkEquipment implements \itsmng\Domain\AllocationSubject
     #[\itsmng\Database\Mapping\AssetClassification]
     public ?NetworkEquipmentType $networkequipmenttypes = null;
 
+    #[\itsmng\Database\Mapping\RackModel]
     #[ORM\ManyToOne(targetEntity: NetworkEquipmentModel::class)]
     #[ORM\JoinColumn(name: 'networkequipmentmodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]

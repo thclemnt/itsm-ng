@@ -34,14 +34,29 @@ final class PlacementRepository
         $selections = EntityRegistry::discriminatedReferences('glpi_items_racks')['items_id']['selections'];
         foreach ($groups as $kind => $identifiers) {
             $target = $selections[$kind]['target'] ?? null;
-            $model = $target === null ? null : (EntityRegistry::references($target)[strtolower($kind) . 'models_id'] ?? null);
-            if ($model === null) {
+            if ($target === null) {
                 continue;
+            }
+            $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$target]);
+            $models = [];
+            foreach ($metadata->associationMappings as $property => $association) {
+                if ((new \ReflectionProperty($metadata->name, $property))->getAttributes(\itsmng\Database\Mapping\RackModel::class)) {
+                    if (!$association->isToOneOwningSide()) {
+                        throw new \LogicException('Rack dimensions require an owning model association: ' . $metadata->name);
+                    }
+                    $models[] = $property;
+                }
+            }
+            if (!$models) {
+                continue;
+            }
+            if (count($models) !== 1) {
+                throw new \LogicException('Ambiguous rack model association: ' . $metadata->name);
             }
             $dimensions = $this->em->createQueryBuilder()
                 ->select('a.id AS asset_id', 'm.id AS model_id', 'm.required_units', 'm.depth')
-                ->from(EntityRegistry::tables()[$target], 'a')
-                ->leftJoin('a.' . $model->association, 'm')
+                ->from($metadata->name, 'a')
+                ->leftJoin('a.' . $models[0], 'm')
                 ->where('a.id IN (:assets)')
                 ->setParameter('assets', array_values(array_unique($identifiers)), \Doctrine\DBAL\ArrayParameterType::INTEGER)
                 ->getQuery()->getArrayResult();

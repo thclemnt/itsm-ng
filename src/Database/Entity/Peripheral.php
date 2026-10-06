@@ -67,6 +67,7 @@ class Peripheral implements \itsmng\Domain\AllocationSubject
     #[\itsmng\Database\Mapping\AssetClassification]
     public ?PeripheralType $peripheraltypes = null;
 
+    #[\itsmng\Database\Mapping\RackModel]
     #[ORM\ManyToOne(targetEntity: PeripheralModel::class)]
     #[ORM\JoinColumn(name: 'peripheralmodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]

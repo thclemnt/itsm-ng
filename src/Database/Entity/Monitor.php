@@ -94,6 +94,7 @@ class Monitor implements \itsmng\Domain\AllocationSubject
     #[\itsmng\Database\Mapping\AssetClassification]
     public ?MonitorType $monitortypes = null;
 
+    #[\itsmng\Database\Mapping\RackModel]
     #[ORM\ManyToOne(targetEntity: MonitorModel::class)]
     #[ORM\JoinColumn(name: 'monitormodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
