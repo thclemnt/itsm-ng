@@ -148,6 +148,8 @@ class Domain extends DbTestCase
         }
         $session = $_SESSION;
         $hooks = $PLUGIN_HOOKS;
+        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $savedPlugins = $plugins->getValue();
         $config = $CFG_GLPI;
         $profileId = (int)$connection->fetchOne('SELECT MIN(id) FROM glpi_profiles');
         $this->integer($profileId)->isGreaterThan(0);
@@ -174,10 +176,13 @@ class Domain extends DbTestCase
                 $replacement = null;
                 $primary = new \RuntimeException('Import callback primary failure');
                 $observed = null;
+                $calls = 0;
+                $context = $importClass . ' / ' . $seam;
                 $PLUGIN_HOOKS['item_add']['importobserver'][$modelClass] = static function ($model) use (&$observed): void {
                     $observed = $model;
                 };
-                $callback = function () use ($database, $connection, $seam, $primary, &$replacement): void {
+                $callback = function () use ($database, $connection, $seam, $primary, &$replacement, &$calls): void {
+                    ++$calls;
                     $_SESSION['plugin_import_frame_marker'] = $seam;
                     if ($seam === 'owned-failure') {
                         throw $primary;
@@ -209,6 +214,8 @@ class Domain extends DbTestCase
                 }
                 $failure = null;
                 try {
+                    // Plugin::doHook skips fixture handlers unless their plugin keys are active.
+                    $plugins->setValue(null, [...$savedPlugins, 'importframe', 'importobserver', 'importprofile']);
                     try {
                         (new $importClass($DB))->import(static function (string $phase) use ($seam, $callback): void {
                             if ($phase === $seam || (in_array($seam, ['owned-failure', 'writer-swap'], true) && $phase === 'created')) {
@@ -219,16 +226,18 @@ class Domain extends DbTestCase
                         $failure = $error;
                     }
                     $DB = $database;
+                    $this->integer($calls)->isIdenticalTo(1, $context . ': the selected callback must execute exactly once');
                     if (in_array($seam, ['owned-failure', 'writer-swap'], true)) {
                         if ($seam === 'owned-failure') {
                             $this->object($failure)->isIdenticalTo($primary);
                         } else {
                             $this->object($failure)->isInstanceOf(\itsmng\Database\TransactionOwnershipMismatch::class);
                         }
-                        $this->array($observed->fields)->isEmpty('An owned rollback restores the participating model');
+                        $this->object($observed)->isInstanceOf($modelClass, $context . ': item_add must expose the participating model');
+                        $this->array($observed->fields)->isEmpty($context . ': an owned rollback restores the participating model');
                         $this->array($_SESSION)->isIdenticalTo($session);
                     } else {
-                        $this->object($failure)->isInstanceOf(\itsmng\Database\MutationRollbackFailure::class);
+                        $this->object($failure)->isInstanceOf(\itsmng\Database\MutationRollbackFailure::class, $context . ': replacing the callback frame must refuse owned rollback');
                         if ($seam === 'throwing-add-hook') {
                             $this->object($failure->primary)->isIdenticalTo($primary);
                         } else {
@@ -251,6 +260,7 @@ class Domain extends DbTestCase
                 } finally {
                     $DB = $database;
                     $PLUGIN_HOOKS = $hooks;
+                    $plugins->setValue(null, $savedPlugins);
                     $_SESSION = $session;
                     $replacement?->rollBack();
                     $trial->rollBack();
