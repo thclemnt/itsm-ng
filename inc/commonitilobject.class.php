@@ -99,20 +99,23 @@ abstract class CommonITILObject extends CommonDBTM
     **/
     public function loadActors()
     {
-
-        if (!empty($this->grouplinkclass)) {
-            $class        = new $this->grouplinkclass();
-            $this->groups = $class->getActors($this->fields['id']);
-        }
-
-        if (!empty($this->userlinkclass)) {
-            $class        = new $this->userlinkclass();
-            $this->users  = $class->getActors($this->fields['id']);
-        }
-
-        if (!empty($this->supplierlinkclass)) {
-            $class            = new $this->supplierlinkclass();
-            $this->suppliers  = $class->getActors($this->fields['id']);
+        global $DB;
+        $repository = null;
+        foreach (['grouplinkclass' => 'groups', 'userlinkclass' => 'users', 'supplierlinkclass' => 'suppliers'] as $link => $field) {
+            if (empty($this->$link)) {
+                continue;
+            }
+            $actorClass = $this->$link;
+            $class = new $actorClass();
+            if (\itsmng\Database\Repository\ITILActorRepository::supports($class::class)) {
+                // One read operation owns metadata for all built-in actor families.
+                $repository ??= new \itsmng\Database\Repository\ITILActorRepository(\itsmng\Database\Orm::create($DB));
+                $this->$field = $repository->actors($class::class, (int)$this->fields['id']);
+            } else {
+                // Custom dispatch may write later actors or change the supplied connection.
+                $repository = null;
+                $this->$field = $class->getActors($this->fields['id']);
+            }
         }
     }
 

@@ -100,11 +100,12 @@ abstract class CommonITILActor extends CommonDBRelation
     public function getActors($items_id)
     {
         global $DB;
+        if (\itsmng\Database\Repository\ITILActorRepository::supports(static::class)) {
+            return (new \itsmng\Database\Repository\ITILActorRepository(\itsmng\Database\Orm::create($DB)))
+                ->actors(static::class, (int)$items_id);
+        }
         $users = [];
-        $rows = \itsmng\Database\Repository\ITILActorRepository::supports(static::class)
-            ? (new \itsmng\Database\Repository\ITILActorRepository(\itsmng\Database\Orm::create($DB)))
-                ->rows(static::class, (int)$items_id)
-            : $this->find([static::getItilObjectForeignKey() => (int)$items_id], 'id');
+        $rows = $this->find([static::getItilObjectForeignKey() => (int)$items_id], 'id');
         foreach ($rows as $data) {
             $users[$data['type']][] = $data;
         }

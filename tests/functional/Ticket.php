@@ -103,7 +103,21 @@ class Ticket extends DbTestCase
         foreach ($expected as $row) {
             $grouped[$row['type']][] = $row;
         }
+        $this->array($repository->actors($legacy, $parent->id))->isIdenticalTo($grouped);
         $this->array($model->getActors($parent->id))->isIdenticalTo($grouped);
+        $parentModel = new $parentName();
+        $parentModel->fields['id'] = $parent->id;
+        $managers = new \ReflectionProperty(\itsmng\Database\Orm::class, 'unitsOfWork');
+        $before = $managers->getValue();
+        $parentModel->loadActors();
+        $this->integer($managers->getValue() - $before)->isIdenticalTo(1);
+        $getter = match ($actorName) { 'Group' => 'getGroups', 'User' => 'getUsers', 'Supplier' => 'getSuppliers' };
+        foreach ([\CommonITILActor::ASSIGN, \CommonITILActor::OBSERVER, \CommonITILActor::REQUESTER] as $type) {
+            $this->array($parentModel->$getter($type))->isIdenticalTo($grouped[$type] ?? []);
+            foreach (array_diff(['getGroups', 'getUsers', 'getSuppliers'], [$getter]) as $emptyGetter) {
+                $this->array($parentModel->$emptyGetter($type))->isEmpty();
+            }
+        }
         $this->integer($rows[0]['id'])->isIdenticalTo($assign->id);
         $this->integer($rows[1]['id'])->isIdenticalTo($observer->id);
         if ($actorName !== 'Group') {
@@ -115,9 +129,13 @@ class Ticket extends DbTestCase
         $observer->type = \CommonITILActor::REQUESTER;
         $em->flush();
         $this->array($model->getActors($parent->id))->hasKey(\CommonITILActor::REQUESTER);
+        $parentModel->loadActors();
+        $this->array($parentModel->$getter(\CommonITILActor::REQUESTER))->hasSize(1);
         $em->remove($observer);
         $em->flush();
         $this->array($model->getActors($parent->id))->notHasKey(\CommonITILActor::REQUESTER);
+        $parentModel->loadActors();
+        $this->array($parentModel->$getter(\CommonITILActor::REQUESTER))->isEmpty();
     }
 
     public function testCustomActorFinderKeepsDispatch(): void
@@ -131,6 +149,66 @@ class Ticket extends DbTestCase
         $this->array($relation->getActors(42))->isIdenticalTo([
             \CommonITILActor::OBSERVER => [['id' => 17, 'type' => \CommonITILActor::OBSERVER, 'custom' => 42]],
         ]);
+    }
+
+    public function testActorAggregateKeepsCustomOrderAndLaterWrites(): void
+    {
+        global $DB;
+        $this->login();
+        $em = \itsmng\Database\Orm::create($DB);
+        $first = new \itsmng\Database\Entity\Ticket();
+        $first->name = $this->getUniqueString();
+        $first->entities = $em->getReference(\itsmng\Database\Entity\Entity::class, 0);
+        $second = new \itsmng\Database\Entity\Ticket();
+        $second->name = $this->getUniqueString();
+        $second->entities = $first->entities;
+        $supplier = new \itsmng\Database\Entity\SupplierTicket();
+        $supplier->tickets = $second;
+        $supplier->alternative_email = 'operation@example.invalid';
+        $supplier->type = \CommonITILActor::OBSERVER;
+        foreach ([$first, $second, $supplier] as $record) {
+            $em->persist($record);
+        }
+        $em->flush();
+
+        $ticket = new \Ticket();
+        $ticket->fields['id'] = $first->id;
+        $custom = new class extends \Ticket_User {
+            public static $read;
+            public function getActors($items_id)
+            {
+                return (self::$read)($items_id);
+            }
+        };
+        $ticket->userlinkclass = $custom::class;
+        $managers = new \ReflectionProperty(\itsmng\Database\Orm::class, 'unitsOfWork');
+        $before = $managers->getValue();
+        $calls = [];
+        $custom::$read = function ($id) use ($DB, $ticket, $first, $second, $supplier, $managers, $before, &$calls): array {
+            $calls[] = $id;
+            $this->integer((int)$id)->isIdenticalTo($first->id);
+            $this->integer($managers->getValue() - $before)->isIdenticalTo(1);
+            $this->array($ticket->getGroups(\CommonITILActor::REQUESTER))->isEmpty();
+            $this->boolean($DB->update('glpi_suppliers_tickets', ['type' => \CommonITILActor::ASSIGN], ['id' => $supplier->id]))->isTrue();
+            $ticket->fields['id'] = $second->id;
+            return [\CommonITILActor::REQUESTER => [['custom' => $id]]];
+        };
+        try {
+            $ticket->loadActors();
+            $this->integer($managers->getValue() - $before)->isIdenticalTo(2);
+            $this->array($calls)->isIdenticalTo([$first->id]);
+            $this->array($ticket->getUsers(\CommonITILActor::REQUESTER))->isIdenticalTo([['custom' => $first->id]]);
+            $rows = $ticket->getSuppliers(\CommonITILActor::ASSIGN);
+            $this->array($rows)->hasSize(1);
+            $this->integer($rows[0]['id'])->isIdenticalTo($supplier->id);
+            $this->array($ticket->getSuppliers(\CommonITILActor::OBSERVER))->isEmpty();
+            // The aggregate's local reader must not clear a caller's live manager.
+            $this->boolean($em->contains($supplier))->isTrue();
+            $this->integer($supplier->type)->isIdenticalTo(\CommonITILActor::OBSERVER);
+        } finally {
+            $custom::$read = null;
+            $em->clear();
+        }
     }
 
     public function anonymousActorProvider(): array

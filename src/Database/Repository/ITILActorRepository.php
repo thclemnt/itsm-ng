@@ -28,6 +28,15 @@ final class ITILActorRepository
         return in_array($actorClass, self::ACTOR_CLASSES, true);
     }
 
+    public function actors(string $actorClass, int $item): array
+    {
+        $actors = [];
+        foreach ($this->rows($actorClass, $item) as $row) {
+            $actors[$row['type']][] = $row;
+        }
+        return $actors;
+    }
+
     public function rows(string $actorClass, int $item): array
     {
         if (!self::supports($actorClass)) {
