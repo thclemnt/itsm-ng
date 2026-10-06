@@ -4,7 +4,6 @@
 
 namespace itsmng\Database;
 
-use Composer\InstalledVersions;
 use Psr\SimpleCache\CacheInterface;
 
 /** Persist only the derived, connection-independent mapping projection. */
@@ -12,48 +11,9 @@ final class EntityRegistryCache
 {
     private readonly ?string $key;
 
-    public function __construct(private readonly CacheInterface $cache, string $sourceRoot)
+    public function __construct(private readonly CacheInterface $cache, ?string $fingerprint)
     {
-        $this->key = $this->sourceKey($sourceRoot);
-    }
-
-    private function sourceKey(string $sourceRoot): ?string
-    {
-        // Like PHP's loaded classes, the cache assumes a coherent deployment
-        // and opcode-cache reload. Content catches same-mtime source changes.
-        set_error_handler(static function (int $severity, string $message): never {
-            throw new \RuntimeException($message);
-        });
-        try {
-            // Release archives may omit Composer manifests; InstalledVersions
-            // below still identifies the dependencies actually shipped.
-            $files = is_file($sourceRoot . '/composer.lock') ? [$sourceRoot . '/composer.lock'] : [];
-            $sources = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(
-                $sourceRoot . '/src/Database',
-                \FilesystemIterator::SKIP_DOTS,
-            ));
-            foreach ($sources as $file) {
-                if ($file->isFile() && $file->getExtension() === 'php') {
-                    $files[] = $file->getPathname();
-                }
-            }
-            sort($files, SORT_STRING);
-            $hash = hash_init('sha256');
-            hash_update($hash, $sourceRoot . "\0" . PHP_VERSION_ID . "\0" . serialize(InstalledVersions::getAllRawData()));
-            foreach ($files as $file) {
-                $digest = hash_file('sha256', $file, true);
-                if ($digest === false) {
-                    return null;
-                }
-                hash_update($hash, $file . "\0" . $digest);
-            }
-            return 'orm_registry_' . hash_final($hash);
-        } catch (\Throwable) {
-            // A partial/unreadable deployment must never select a stale key.
-            return null;
-        } finally {
-            restore_error_handler();
-        }
+        $this->key = $fingerprint === null ? null : 'orm_registry_' . $fingerprint;
     }
 
     public function load(callable $build): array

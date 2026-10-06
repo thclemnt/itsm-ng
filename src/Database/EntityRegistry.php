@@ -114,7 +114,7 @@ final class EntityRegistry
         }
         $cache = $GLOBALS['GLPI_CACHE'] ?? null;
         if ($cache instanceof \Psr\SimpleCache\CacheInterface) {
-            return self::$model = (new EntityRegistryCache($cache, dirname(__DIR__, 2)))->load(self::buildModel(...));
+            return self::$model = (new EntityRegistryCache($cache, MappingFingerprint::current()))->load(self::buildModel(...));
         }
         return self::$model = self::buildModel();
     }

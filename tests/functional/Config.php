@@ -396,6 +396,89 @@ class Config extends DbTestCase
         $this->array($report)->isIdenticalTo($expected);
     }
 
+    public function testOwnedMetadataCacheStartsAfterBootstrapAndKeepsManagersIsolated(): void
+    {
+        global $DB;
+        $previous = $GLOBALS['GLPI_CACHE'] ?? null;
+        $memory = new \Symfony\Component\Cache\Adapter\ArrayAdapter(storeSerialized: false);
+        $pool = new \Symfony\Component\Cache\Psr16Cache($memory);
+        $listener = new class {
+            public int $loads = 0;
+            public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+            {
+                if ($event->getClassMetadata()->name === \itsmng\Database\Entity\Config::class) {
+                    ++$this->loads;
+                }
+            }
+        };
+        $owned = static function () use ($DB, $listener): \Doctrine\ORM\EntityManager {
+            $manager = \itsmng\Database\Orm::create($DB);
+            $manager->getEventManager()->addEventListener(\Doctrine\ORM\Events::loadClassMetadata, $listener);
+            return $manager;
+        };
+        try {
+            unset($GLOBALS['GLPI_CACHE']);
+            $bootstrap = \itsmng\Database\Orm::create($DB);
+            $this->object($bootstrap->getConfiguration()->getMetadataCache())->isInstanceOf(\Symfony\Component\Cache\Adapter\ArrayAdapter::class);
+            $bootstrap->getClassMetadata(\itsmng\Database\Entity\Config::class);
+            $GLOBALS['GLPI_CACHE'] = $pool;
+            $first = $owned();
+            $original = $first->getClassMetadata(\itsmng\Database\Entity\Config::class)->generatorType;
+            $this->integer($listener->loads)->isIdenticalTo(1);
+            $first->getClassMetadata(\itsmng\Database\Entity\Config::class)->setIdGeneratorType(\Doctrine\ORM\Mapping\ClassMetadata::GENERATOR_TYPE_NONE);
+            $second = $owned();
+            $this->object($second)->isNotIdenticalTo($first);
+            $this->object($second->getConnection())->isIdenticalTo($DB->getDoctrineConnection());
+            $this->integer($second->getClassMetadata(\itsmng\Database\Entity\Config::class)->generatorType)->isIdenticalTo($original);
+            $this->integer($listener->loads)->isIdenticalTo(1, 'A fresh manager uses the persisted mapping without attribute discovery');
+            $this->array($memory->getValues())->isNotEmpty();
+            foreach ($memory->getValues() as $value) {
+                $this->string($value, 'Even an object-retaining backend receives only serialized bytes');
+            }
+            $public = \itsmng\Database\Orm::configuration($DB->getDoctrineConnection()->getDatabasePlatform());
+            $this->object($public->getMetadataCache())->isInstanceOf(\Symfony\Component\Cache\Adapter\ArrayAdapter::class);
+            $this->variable($public->getQueryCache())->isNull();
+            $pool->clear(); // The ordinary application cache-clear boundary.
+            $owned()->getClassMetadata(\itsmng\Database\Entity\Config::class);
+            $this->integer($listener->loads)->isIdenticalTo(2);
+            $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache(new \Symfony\Component\Cache\Adapter\ArrayAdapter(storeSerialized: false));
+            $owned()->getClassMetadata(\itsmng\Database\Entity\Config::class);
+            $this->integer($listener->loads)->isIdenticalTo(3, 'Replacing the configured pool cannot reuse the previous pool');
+        } finally {
+            $GLOBALS['GLPI_CACHE'] = $previous;
+        }
+    }
+
+    public function testOwnedMetadataCacheKeepsProviderDeclarationsSeparate(): void
+    {
+        $previous = $GLOBALS['GLPI_CACHE'] ?? null;
+        $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache(new \Symfony\Component\Cache\Adapter\ArrayAdapter(storeSerialized: false));
+        try {
+            foreach ([['pdo_mysql', '8.0.0'], ['pdo_pgsql', '15.0'], ['pdo_mysql', '8.0.0']] as [$driver, $version]) {
+                $connection = \Doctrine\DBAL\DriverManager::getConnection(['driver' => $driver, 'serverVersion' => $version]);
+                $this->mockGenerator->orphanize('__construct');
+                $adapter = new \mock\DBmysql();
+                $this->calling($adapter)->getDoctrineConnection = $connection;
+                try {
+                    $manager = \itsmng\Database\Orm::create($adapter);
+                    $metadata = $manager->getClassMetadata(\itsmng\Database\Entity\Computer::class);
+                    $declaration = $metadata->fieldMappings['date_creation']->columnDefinition;
+                    if ($driver === 'pdo_mysql') {
+                        $this->string($declaration)->contains('TIMESTAMP');
+                    } else {
+                        $this->variable($declaration)->isNull();
+                    }
+                    $this->object($manager->getConnection())->isIdenticalTo($connection);
+                    $this->boolean($connection->isConnected())->isFalse();
+                } finally {
+                    $connection->close();
+                }
+            }
+        } finally {
+            $GLOBALS['GLPI_CACHE'] = $previous;
+        }
+    }
+
     public function testOwnedQueryCacheRetainsFreshManagersAndLiveValues(): void
     {
         global $DB;

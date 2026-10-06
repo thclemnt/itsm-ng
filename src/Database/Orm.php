@@ -36,6 +36,15 @@ final class Orm
         // drivers/listeners and must not inherit a different mapping's SQL.
         self::$queryCaches ??= new \WeakMap();
         $driver = $configuration->getMetadataDriverImpl();
+        // Bootstrap configuration reads precede GLPI_CACHE. Resolve this on every
+        // owned operation so the first uncached manager cannot disable later hits.
+        // Public configuration() and custom mapping/listener callers stay isolated.
+        $pool = $GLOBALS['GLPI_CACHE'] ?? null;
+        if ($pool instanceof \Psr\SimpleCache\CacheInterface && ($fingerprint = MappingFingerprint::current()) !== null) {
+            $context = hash('sha256', $fingerprint . "\0" . $db->getDoctrineConnection()->getDatabasePlatform()::class
+                . "\0" . $driver::class . "\0" . $configuration->getProxyDir());
+            $configuration->setMetadataCache(new SerializedMetadataCache($pool, 'orm_metadata_' . $context));
+        }
         $configuration->setQueryCache(self::$queryCaches[$driver] ??= new ArrayAdapter(storeSerialized: true));
         return new EntityManager($db->getDoctrineConnection(), $configuration);
     }
