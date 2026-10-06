@@ -52,12 +52,12 @@ class Group_User extends \DbTestCase
             $child = $this->createItem(\Group::class, [
                 'name' => $prefix . ' child', 'entities_id' => $entity, 'groups_id' => $group->getID(), 'comment' => 'Child tooltip',
             ]);
-            $users = $memberships = [];
+            $users = [];
             foreach ([$group, $child] as $index => $owner) {
                 $users[$index] = $this->createItem(\User::class, [
                     'name' => $prefix . ' user ' . $index, 'entities_id' => $entity, 'authtype' => \Auth::DB_GLPI,
                 ]);
-                $memberships[$index] = $this->createItem(\Group_User::class, [
+                $this->createItem(\Group_User::class, [
                     'groups_id' => $owner->getID(), 'users_id' => $users[$index]->getID(), 'is_manager' => $index,
                 ]);
             }
