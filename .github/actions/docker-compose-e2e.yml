@@ -7,7 +7,7 @@ services:
     container_name: "app-web"
     image: "${PHP_IMAGE:-itsm-tests-app:local}"
     working_dir: "/var/itsm"
-    command: ["php", "-S", "0.0.0.0:8088", "tests/router.php"]
+    command: ["php", "-S", "127.0.0.1:8088", "tests/router.php"]
     environment:
       GLPI_VAR_DIR: "${PLAYWRIGHT_VAR_DIR}"
       CODE_COVERAGE: "${CODE_COVERAGE:-false}"
