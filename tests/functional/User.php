@@ -285,6 +285,8 @@ class User extends \DbTestCase
         $type = $display::getType();
         $manager = \itsmng\Database\Orm::create($database);
         $repository = new \itsmng\Database\Repository\UserRepository($manager);
+        $writeManager = \itsmng\Database\Orm::create($database);
+        $writer = new \itsmng\Database\Repository\RecordWriter($writeManager);
         $loads = new class {
             public int $count = 0;
             public function postLoad(): void { ++$this->count; }
@@ -307,7 +309,7 @@ class User extends \DbTestCase
                 [null, ['show_default' => true]],
                 ['', ['show_default' => true]],
             ] as [$raw, $expected]) {
-                $this->boolean($database->update('glpi_users', \Toolbox::addslashes_deep(['display_options' => $raw]), ['id' => $id]))->isTrue();
+                $this->array($writer->update('glpi_users', $id, ['display_options' => $raw]))->isIdenticalTo(['display_options']);
                 $this->variable($repository->displayOptions($id))->isIdenticalTo($raw);
                 unset($_SESSION['glpi_display_options']);
                 $this->array($display::getDisplayOptions())->isIdenticalTo($expected);
@@ -317,11 +319,11 @@ class User extends \DbTestCase
             }
             $this->integer($reads)->isGreaterThan(0);
             $raw = json_encode([$type => ['Child' => ['show_default' => false, 'extra' => 'nested']]]);
-            $this->boolean($database->update('glpi_users', \Toolbox::addslashes_deep(['display_options' => $raw]), ['id' => $id]))->isTrue();
+            $this->array($writer->update('glpi_users', $id, ['display_options' => $raw]))->isIdenticalTo(['display_options']);
             unset($_SESSION['glpi_display_options']);
             $this->array($display::getDisplayOptions('Child'))->isIdenticalTo(['show_default' => false, 'extra' => 'nested']);
             $before = $reads;
-            $this->boolean($database->update('glpi_users', ['display_options' => null], ['id' => $id]))->isTrue();
+            $this->array($writer->update('glpi_users', $id, ['display_options' => null]))->isIdenticalTo(['display_options']);
             $this->array($display::getDisplayOptions('Child'))->isIdenticalTo(['show_default' => false, 'extra' => 'nested']);
             $this->integer($reads)->isIdenticalTo($before);
             unset($_SESSION['glpi_display_options']);
@@ -341,6 +343,7 @@ class User extends \DbTestCase
             $DB = $database;
             $_SESSION = $session;
             $manager->clear();
+            $writeManager->clear();
         }
     }
 
