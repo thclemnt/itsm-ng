@@ -208,11 +208,20 @@ class Item_Rack extends DbTestCase
             }
         };
         $html = $renderItems();
+        // The list transports its rich links as JSON for the table renderer;
+        // the rack graph independently owns the itemrack_name anchor markup.
+        $this->integer(preg_match('/<script type="application\/json" id="massItem_Rack[0-9]+_config">(.*?)<\/script>/s', $html, $tableConfig))->isIdenticalTo(1);
+        $table = json_decode($tableConfig[1], true, 512, JSON_THROW_ON_ERROR);
+        $this->string($table['dataSource']['type'])->isIdenticalTo('local');
+        $this->array($table['dataSource']['rows'])->hasSize(3);
         foreach ($placements as $index => $placement) {
             $asset = new \Computer();
             $this->boolean($asset->getFromDB($computers[$index]))->isTrue();
             $this->boolean($asset->can($computers[$index], READ))->isTrue();
-            $this->string($html)->contains($placement->getLinkURL())->contains($asset->getLink());
+            $this->array(array_column($table['dataSource']['rows'], 'item'))->contains($asset->getLink());
+            $this->string($html)->contains("<a href='" . $placement->getLinkURL() . "'>")
+                ->contains("<a href='" . $asset->getLinkURL() . "' class='itemrack_name'")
+                ->contains("'>" . $asset->getName() . '</a>');
         }
         $session = $_SESSION;
         try {

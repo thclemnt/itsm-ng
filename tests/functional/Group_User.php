@@ -61,13 +61,19 @@ class Group_User extends \DbTestCase
                     'groups_id' => $owner->getID(), 'users_id' => $users[$index]->getID(), 'is_manager' => $index,
                 ]);
             }
-            $outside = $this->createItem(\User::class, [
+            // _entities_id is a public add instruction, not a persisted field for
+            // DbTestCase::checkInput to compare through getField().
+            $outside = new \User();
+            $this->integer((int)$outside->add([
                 'name' => $prefix . ' outside', 'entities_id' => 0, '_entities_id' => 0, 'authtype' => \Auth::DB_GLPI,
-            ]);
+            ]))->isGreaterThan(0);
+            $this->boolean($outside->getFromDB($outside->getID()))->isTrue();
+            $this->variable($outside->getField('entities_id'))->isEqualTo(0);
             $this->createItem(\Profile_User::class, [
                 'users_id' => $outside->getID(), 'profiles_id' => $_SESSION['glpiactiveprofile']['id'],
                 'entities_id' => 0, 'is_recursive' => 0,
             ]);
+            $this->array(array_values(array_map('intval', \Profile_User::getUserEntities($outside->getID()))))->isIdenticalTo([0]);
             $this->createItem(\Group_User::class, ['groups_id' => $group->getID(), 'users_id' => $outside->getID()]);
             $this->boolean($group->can((int)$group->getID(), READ))->isTrue();
             $this->boolean($users[0]->can((int)$users[0]->getID(), READ))->isTrue();
