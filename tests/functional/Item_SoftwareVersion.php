@@ -269,6 +269,99 @@ class Item_SoftwareVersion extends DbTestCase
         )->isIdenticalTo(1);
     }
 
+    public function testInstalledLicenseIdsKeepVersionPriorityAndHookWrites(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $session = $_SESSION;
+        $request = $_REQUEST;
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $connection = $DB->getDoctrineConnection();
+        $level = $connection->getTransactionNestingLevel();
+        try {
+            [$software, $versions, $computers] = $this->installationFixtures();
+            $computer = $computers[0];
+            $entity = (int)$software->fields['entities_id'];
+            $installations = [];
+            $licenses = [];
+            foreach ($versions as $index => $version) {
+                $installations[] = $this->createItem(\Item_SoftwareVersion::class, [
+                    'itemtype' => 'Computer', 'items_id' => $computer->getID(),
+                    'softwareversions_id' => $version->getID(),
+                ]);
+                $licenses[] = $this->createItem(\SoftwareLicense::class, [
+                    'name' => $this->getUniqueString(), 'softwares_id' => $software->getID(),
+                    'entities_id' => $entity, 'number' => -1,
+                    'softwareversions_id_buy' => $versions[0]->getID(),
+                    // Public zero input becomes an empty owning reference, retaining buy fallback.
+                    'softwareversions_id_use' => $index === 0 ? 0 : $version->getID(),
+                ]);
+                $this->createItem(\Item_SoftwareLicense::class, [
+                    'itemtype' => 'Computer', 'items_id' => $computer->getID(),
+                    'softwarelicenses_id' => $licenses[$index]->getID(),
+                ]);
+            }
+            $this->boolean($licenses[0]->getFromDB($licenses[0]->getID()))->isTrue();
+            $this->variable($licenses[0]->fields['softwareversions_id_use'])->isNull();
+            $_SESSION['glpiactiveprofile']['software'] = READ;
+            $_REQUEST['criterion'] = -1;
+            $PLUGIN_HOOKS['item_can'] = [];
+            $render = function () use ($computer): array {
+                ob_start();
+                try {
+                    \Item_SoftwareVersion::showForItem($computer);
+                    $html = ob_get_contents();
+                } finally {
+                    ob_end_clean();
+                }
+                $this->integer(preg_match('/<script type="application\/json"[^>]*>(.*?)<\/script>/s', $html, $match))->isIdenticalTo(1);
+                return json_decode($match[1], true, 512, JSON_THROW_ON_ERROR);
+            };
+            $table = $render();
+            $rows = $table['dataSource']['rows'];
+            $this->array($rows)->hasSize(2);
+            $this->array(array_column($rows, 3))->isIdenticalTo([
+                (string)$licenses[0]->getID(), (string)$licenses[1]->getID(),
+            ]);
+            $this->array($table['selection']['values'])->isIdenticalTo(array_map(
+                static fn ($installation): string => 'item[Item_SoftwareVersion][' . $installation->getID() . ']',
+                $installations
+            ));
+            foreach ($versions as $index => $version) {
+                $this->string($rows[$index][0])->isIdenticalTo($software->getLink());
+                $this->string($rows[$index][2])->isIdenticalTo($version->getLink());
+            }
+
+            $calls = 0;
+            $plugins->setValue(null, [...$active, 'effective_license_fixture']);
+            $PLUGIN_HOOKS['item_can'] = ['effective_license_fixture' => [\Software::class =>
+                static function (\Software $item) use (&$calls, $connection, $licenses, $versions): void {
+                    if (++$calls === 1) {
+                        // The next installed row must observe this write rather than an earlier batch.
+                        $connection->update('glpi_softwarelicenses', [
+                            'softwareversions_id_use' => $versions[0]->getID(),
+                        ], ['id' => $licenses[1]->getID()]);
+                        $item->right = false;
+                    }
+                }]];
+            $hooked = $render();
+            $this->integer($calls)->isIdenticalTo(2);
+            $this->array(array_column($hooked['dataSource']['rows'], 3))->isIdenticalTo([
+                (string)$licenses[0]->getID(), '',
+            ]);
+            $this->string($hooked['dataSource']['rows'][0][0])->notContains('<a ');
+            $this->string($hooked['dataSource']['rows'][1][0])->contains('<a ');
+            $this->array($hooked['selection']['values'])->isIdenticalTo($table['selection']['values']);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $_SESSION = $session;
+            $_REQUEST = $request;
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+        }
+    }
+
     public function testInstallationLicenseProjectionIsScopedAndBounded(): void
     {
         global $DB;
@@ -442,6 +535,43 @@ class Item_SoftwareVersion extends DbTestCase
             $rows = $repository->licensesForInstallations([$keys[0]]);
             $this->string($rows['Computer'][$owner][$versions[0]->id][$licenses[0]->id]['name'])->isIdenticalTo('Changed on supplied writer');
             $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+
+            // This table uses the effective version, unlike the buy-or-use view above.
+            $logger->queries = [];
+            $this->array($repository->effectiveLicenseIdsForVersions('Computer', $owner, []))->isEmpty();
+            $this->array($logger->queries)->isEmpty();
+            // This view historically includes locked/deleted allocations; filtering them changes its IDs.
+            $connection->update('glpi_items_softwarelicenses', ['is_deleted' => true], ['softwarelicenses_id' => $licenses[0]->id]);
+            foreach ([1, 25] as $size) {
+                $logger->queries = [];
+                $effective = $repository->effectiveLicenseIdsForVersions('Computer', $owner, array_column(array_slice($keys, 0, $size), 'softwareversions_id'));
+                $this->array($logger->queries)->hasSize(1);
+                $this->array($effective)->hasSize($size);
+                // Preserve both allocations, but do not include the other license's purchase version.
+                $this->array($effective[$versions[0]->id])->isIdenticalTo([$licenses[0]->id, $licenses[0]->id]);
+                if ($size === 25) {
+                    $this->array($effective[$versions[1]->id])->isIdenticalTo([$licenses[1]->id, $other->id]);
+                }
+                $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+            }
+            // Same numeric owner on another item type; an unset use version falls back to purchase.
+            $this->array($repository->effectiveLicenseIdsForVersions('Monitor', $owner, [$versions[0]->id]))
+                ->isIdenticalTo([$versions[0]->id => [$monitorLicense->id]]);
+            $this->array($repository->effectiveLicenseIdsForVersions('Computer', PHP_INT_MAX, [$versions[0]->id]))->isEmpty();
+            $boundaryVersions = [$versions[0]->id, ...range($absentVersion, $absentVersion + 248), $versions[25]->id, $versions[0]->id];
+            $logger->queries = [];
+            $this->array($repository->effectiveLicenseIdsForVersions('Computer', $owner, $boundaryVersions))->isIdenticalTo([
+                $versions[0]->id => [$licenses[0]->id, $licenses[0]->id],
+                $versions[25]->id => [$licenses[25]->id],
+            ]);
+            $this->array($logger->queries)->hasSize(2);
+            $connection->update('glpi_softwarelicenses', ['softwareversions_id_use' => $versions[0]->id], ['id' => $other->id]);
+            $this->array($repository->effectiveLicenseIdsForVersions('Computer', $owner, [$versions[0]->id, $versions[1]->id]))->isIdenticalTo([
+                $versions[0]->id => [$licenses[0]->id, $licenses[0]->id, $other->id],
+                $versions[1]->id => [$licenses[1]->id],
+            ]);
+            $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+            $this->object($manager->getConnection())->isIdenticalTo($connection);
         } finally {
             try {
                 $frame->rollBack();

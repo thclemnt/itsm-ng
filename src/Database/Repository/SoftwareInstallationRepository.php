@@ -225,6 +225,30 @@ final class SoftwareInstallationRepository
         return $rows;
     }
 
+    /**
+     * Assigned license IDs for the selected owner's installed versions, in allocation order.
+     * A use version overrides the purchase version; duplicate allocations remain visible.
+     *
+     * @return array<int, list<int>>
+     */
+    public function effectiveLicenseIdsForVersions(string $kind, int $owner, array $versions): array
+    {
+        $rows = [];
+        foreach (array_chunk(array_values(array_unique(array_map('intval', $versions))), 250) as $batch) {
+            $query = $this->em->createQueryBuilder()
+                ->select('l.id AS id, IDENTITY(l.useVersion) AS use_version, IDENTITY(l.buyVersion) AS buy_version')
+                ->from(Entity\ItemSoftwareLicense::class, 'i')->innerJoin('i.softwarelicenses', 'l')
+                ->where('IDENTITY(i.' . Entity\ItemSoftwareLicense::referenceAssociation($kind) . ') = :owner')
+                ->andWhere('IDENTITY(l.useVersion) IN (:versions) OR (l.useVersion IS NULL AND IDENTITY(l.buyVersion) IN (:versions))')
+                ->setParameter('owner', $owner, Types::BIGINT)->setParameter('versions', $batch)
+                ->orderBy('i.id');
+            foreach ($query->getQuery()->getScalarResult() as $row) {
+                $rows[(int)($row['use_version'] ?? $row['buy_version'])][] = (int)$row['id'];
+            }
+        }
+        return $rows;
+    }
+
     /** Presentation deduplicates licence IDs while persisted assignments retain multiplicity. */
     public function licensesForInstallation(string $kind, int $id, int $version): array
     {

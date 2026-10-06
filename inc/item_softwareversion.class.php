@@ -1225,8 +1225,14 @@ class Item_SoftwareVersion extends CommonDBRelation
         $values = [];
         $massive_action = [];
         $datas = $iterator;
+        // Link permission callbacks may update the next row's assignments.
+        // Keep those reads at their original per-row boundary whenever hooks are registered.
+        $licenseIds = empty($GLOBALS['PLUGIN_HOOKS']['item_can'])
+            ? (new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB)))
+                ->effectiveLicenseIdsForVersions($itemtype, (int)$items_id, array_column($datas, 'verid'))
+            : null;
         foreach ($datas as $data) {
-            $licids = self::softwareByCategory(
+            $licids = $licenseIds !== null ? ($licenseIds[$data['verid']] ?? []) : self::softwareByCategory(
                 $data,
                 $itemtype,
                 $items_id,
