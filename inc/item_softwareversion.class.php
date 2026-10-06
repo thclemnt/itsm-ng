@@ -1543,7 +1543,7 @@ class Item_SoftwareVersion extends CommonDBRelation
               'OR'                                            => [
                  'glpi_softwarelicenses.softwareversions_id_use' => $verid,
                  [
-                    'glpi_softwarelicenses.softwareversions_id_use' => 0,
+                    'glpi_softwarelicenses.softwareversions_id_use' => null,
                     'glpi_softwarelicenses.softwareversions_id_buy' => $verid
                  ]
               ]
