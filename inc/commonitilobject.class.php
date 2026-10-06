@@ -7273,12 +7273,12 @@ abstract class CommonITILObject extends CommonDBTM
      */
     public function filterTimeline()
     {
-        $user = new User();
-        $user->getFromDB(Session::getLoginUserID());
+        global $DB;
 
         $font = "\"Bitstream Vera Sans\", arial, Tahoma, \"Sans serif\"";
         if (Session::haveRight("accessibility", READ)) {
-            $font = $user->fields["access_font"];
+            $font = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+                ->accessibilityFont((int)Session::getLoginUserID());
         }
 
         echo "<div class='filter_timeline'>";
@@ -7317,11 +7317,11 @@ abstract class CommonITILObject extends CommonDBTM
      */
     public function showTimelineHeader()
     {
-        $user = new User();
-        $user->getFromDB(Session::getLoginUserID());
+        global $DB;
         $font = "\"Bitstream Vera Sans\", arial, Tahoma, \"Sans serif\"";
         if (Session::haveRight("accessibility", READ)) {
-            $font = $user->fields["access_font"];
+            $font = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+                ->accessibilityFont((int)Session::getLoginUserID());
         }
         echo "<h2 style='font-family: $font;'>" . __("Actions historical") . " : </h2>";
         $this->filterTimeline();
@@ -7466,13 +7466,12 @@ abstract class CommonITILObject extends CommonDBTM
         echo "<div class='timeline_form' data-testid='timeline-form'>";
         echo "<ul class='timeline_choices'>";
 
-        $user = new User();
-        $user->getFromDB(Session::getLoginUserID());
-
-        $canuse_shortcuts = $user->fields['access_shortcuts'];
+        $preferences = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+            ->timelinePreferences((int)Session::getLoginUserID());
+        $canuse_shortcuts = $preferences['access_shortcuts'] ?? null;
         $font = "\"Bitstream Vera Sans\", arial, Tahoma, \"Sans serif\"";
         if (Session::haveRight("accessibility", READ)) {
-            $font = $user->fields["access_font"];
+            $font = $preferences['access_font'] ?? null;
         }
 
         if ($canadd_fup || $canadd_task || $canadd_document || $canadd_solution) {

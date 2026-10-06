@@ -42,6 +42,87 @@ use User;
 
 class Ticket extends DbTestCase
 {
+    public function timelineAccessibilityProvider(): array
+    {
+        return [[\Ticket::class], [\Change::class], [\Problem::class]];
+    }
+
+    /** @dataProvider timelineAccessibilityProvider */
+    public function testTimelineAccessibilityUsesFreshScalarPreferences(string $type): void
+    {
+        global $DB;
+        $this->login();
+        $session = $_SESSION;
+        $item = $this->createItem($type, ['name' => 'Timeline preferences ' . $this->getUniqueString(),
+            'content' => 'Preference projection', 'entities_id' => $_SESSION['glpiactive_entity']]);
+        $user = $this->createItem(\User::class, ['name' => 'timeline-font-' . $this->getUniqueString()]);
+        $id = (int)$user->getID();
+        $manager = \itsmng\Database\Orm::create($DB);
+        $repository = new \itsmng\Database\Repository\UserRepository($manager);
+        $loads = new class {
+            public int $count = 0;
+            public function postLoad(): void { ++$this->count; }
+        };
+        $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+        $defaultFont = '"Bitstream Vera Sans", arial, Tahoma, "Sans serif"';
+        try {
+            $_SESSION['glpiID'] = $id;
+            foreach ([['OpenDyslexic', true], ['Custom font', false], ['', true], [null, null]] as [$font, $shortcuts]) {
+                $this->boolean($DB->update('glpi_users', ['access_font' => $font, 'access_shortcuts' => $shortcuts], ['id' => $id]))->isTrue();
+                $this->array($repository->timelinePreferences($id))
+                    ->isIdenticalTo(['access_font' => $font, 'access_shortcuts' => $shortcuts]);
+                foreach ([0, READ] as $right) {
+                    $_SESSION['glpiactiveprofile']['accessibility'] = $right;
+                    $expectedFont = $right ? (string)$font : $defaultFont;
+                    $this->output(fn () => $item->showTimelineHeader())
+                        ->contains("<h2 style='font-family: $expectedFont;'>")
+                        ->contains("<h3 style='font-family: $expectedFont;'>");
+                    ob_start();
+                    try {
+                        $item->showTimelineForm(741);
+                        $html = ob_get_contents();
+                    } finally {
+                        ob_end_clean();
+                    }
+                    $this->boolean(str_contains($html, "class='shortcutpop'"))->isIdenticalTo((bool)$shortcuts);
+                    if ($shortcuts) {
+                        $this->string($html)->contains("class='shortcutpop' style='font-family: $expectedFont;'");
+                    }
+                }
+            }
+            $this->integer($loads->count)->isIdenticalTo(0);
+            $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+            // The virtual callback remains a fresh-read boundary, even when it
+            // changes the current account preference before rendering the filter.
+            $custom = new class ($id) extends \Ticket {
+                public int $filterCalls = 0;
+                public function __construct(private int $preferenceUser) { parent::__construct(); }
+                public function filterTimeline() {
+                    global $DB;
+                    ++$this->filterCalls;
+                    $DB->update('glpi_users', ['access_font' => 'After callback'], ['id' => $this->preferenceUser]);
+                    parent::filterTimeline();
+                }
+            };
+            $this->boolean($DB->update('glpi_users', ['access_font' => 'Before callback'], ['id' => $id]))->isTrue();
+            $_SESSION['glpiactiveprofile']['accessibility'] = READ;
+            $this->output(fn () => $custom->showTimelineHeader())
+                ->contains("<h2 style='font-family: Before callback;'>")
+                ->contains("<h3 style='font-family: After callback;'>");
+            $this->integer($custom->filterCalls)->isIdenticalTo(1);
+            $_SESSION = $session;
+            $this->boolean($user->delete(['id' => $id], true))->isTrue();
+            $this->array($repository->timelinePreferences($id))->isEmpty();
+            $_SESSION['glpiID'] = $id;
+            $_SESSION['glpiactiveprofile']['accessibility'] = READ;
+            $this->output(fn () => $item->showTimelineHeader())->contains("<h2 style='font-family: ;'>")
+                ->contains("<h3 style='font-family: ;'>");
+        } finally {
+            $_SESSION = $session;
+            $manager->clear();
+        }
+    }
+
     public function testHelpdeskObserverChoicesRespectUserSelectorScope(): void
     {
         global $DB;

@@ -29,6 +29,15 @@ final class UserRepository
         return $row['access_font'] ?? null;
     }
 
+    /** Shortcuts remain independent of the permission to use a custom font. */
+    public function timelinePreferences(int $user): array
+    {
+        return $this->em->createQueryBuilder()->select('u.access_font', 'u.access_shortcuts')
+            ->from(User::class, 'u')->where('u.id = :user')
+            ->setParameter('user', $user, Types::BIGINT)
+            ->getQuery()->getOneOrNullResult() ?? [];
+    }
+
     /** Nullable account overrides; the caller supplies the current configuration defaults. */
     public function priorityColors(int $user): array
     {
