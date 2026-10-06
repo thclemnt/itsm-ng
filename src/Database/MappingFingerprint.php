@@ -60,5 +60,4 @@ final class MappingFingerprint
             restore_error_handler();
         }
     }
-
 }

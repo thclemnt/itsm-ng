@@ -192,8 +192,17 @@ class EntityRegistryCache extends \atoum\atoum\test
             }
         };
         $unavailable = new \itsmng\Database\SerializedMetadataCache($throwing, 'metadata');
+        $logger = new class extends \Psr\Log\AbstractLogger {
+            public array $levels = [];
+            public function log($level, $message, array $context = []): void
+            {
+                $this->levels[] = $level;
+            }
+        };
+        $unavailable->setLogger($logger);
         $this->boolean($unavailable->getItem('record')->isHit())->isFalse();
         $this->boolean($unavailable->save($unavailable->getItem('record')->set(new \stdClass())))->isFalse();
+        $this->array($logger->levels)->isIdenticalTo(['warning', 'warning', 'warning']);
     }
 
     public function testRealRegistryColdAndWarmProjectionsAreIdentical(): void
