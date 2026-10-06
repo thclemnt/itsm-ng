@@ -283,7 +283,9 @@ class APIRest extends APIBaseClass
             $response = $this->doHttpRequest('POST', 'Reservation/', [
                 'json' => ['input' => $bulk], 'allow_redirects' => false, 'http_errors' => false,
             ]);
-            $this->integer($response->getStatusCode())->isIdenticalTo(401);
+            $this->integer($response->getStatusCode())->isIdenticalTo(400);
+            $failure = json_decode((string)$response->getBody(), true, 512, JSON_THROW_ON_ERROR);
+            $this->string($failure[0])->isIdenticalTo('ERROR_SESSION_TOKEN_MISSING');
             $this->array($this->reservationHttpRows($items))->isIdenticalTo($before);
         });
     }
@@ -314,7 +316,7 @@ class APIRest extends APIBaseClass
                 'begin' => '2031-05-01 12:00:00']);
             $single = $this->reservationHttpSubmit($browser, [$items[0]], $user, '2031-05-01', 'single');
             $target = $this->reservationHttpRedirect($single);
-            $this->string(parse_url($target, PHP_URL_PATH))->endsWith('/front/reservation.php');
+            $this->string(parse_url($target, PHP_URL_PATH))->endWith('/front/reservation.php');
             parse_str((string)parse_url($target, PHP_URL_QUERY), $query);
             $this->array($query)->isIdenticalTo(['reservationitems_id' => (string)$items[0],
                 'mois_courant' => '5', 'annee_courante' => '2031', 'reservation_added' => '1']);
@@ -324,7 +326,7 @@ class APIRest extends APIBaseClass
             $periodic = $this->reservationHttpSubmit($browser, $items, $user, '2031-05-10', 'periodic',
                 ['type' => 'day', 'end' => '2031-05-12']);
             $target = $this->reservationHttpRedirect($periodic);
-            $this->string(parse_url($target, PHP_URL_PATH))->endsWith('/front/reservation.php');
+            $this->string(parse_url($target, PHP_URL_PATH))->endWith('/front/reservation.php');
             parse_str((string)parse_url($target, PHP_URL_QUERY), $query);
             $this->array($query)->isIdenticalTo(['reservation_added' => '1']);
             $rows = $this->reservationHttpRows($items);
@@ -444,7 +446,7 @@ class APIRest extends APIBaseClass
                 $this->array($this->reservationHttpRows([$outsideItem]))->isEmpty();
                 $response = $this->reservationHttpSubmit($browser, [$items[0]], $user, '2031-06-01', 'helpdesk');
                 $target = $this->reservationHttpRedirect($response);
-                $this->string(parse_url($target, PHP_URL_PATH))->endsWith('/plugins/formcreator/front/reservation.php');
+                $this->string(parse_url($target, PHP_URL_PATH))->endWith('/plugins/formcreator/front/reservation.php');
                 parse_str((string)parse_url($target, PHP_URL_QUERY), $query);
                 $this->array($query)->isIdenticalTo(['reservationitems_id' => (string)$items[0],
                     'mois_courant' => '6', 'annee_courante' => '2031', 'reservation_added' => '1']);
