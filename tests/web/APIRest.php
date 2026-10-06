@@ -228,6 +228,458 @@ class APIRest extends APIBaseClass
         return $data;
     }
 
+    /** @tags api */
+    public function testReservationCreateItemsReturnsCompletedBookings(): void
+    {
+        $this->withReservationHttpItems(function (array $items): void {
+            $user = (int)getItemByTypeName('User', TU_USER, true);
+            $input = ['reservationitems_id' => $items[0], 'users_id' => $user,
+                'begin' => '2031-04-01 09:00:00', 'end' => '2031-04-01 10:00:00', 'comment' => 'REST completed booking'];
+            $post = function (array $value) {
+                return $this->doHttpRequest('POST', 'Reservation/', [
+                    'headers' => ['Session-Token' => $this->session_token],
+                    'json' => ['input' => $value], 'allow_redirects' => false, 'http_errors' => false,
+                ]);
+            };
+            $response = $post($input);
+            $this->integer($response->getStatusCode())->isIdenticalTo(201);
+            $this->string($response->getHeaderLine('Location'))->notContains('reservation.php');
+            $created = json_decode((string)$response->getBody(), true, 512, JSON_THROW_ON_ERROR);
+            $this->array($created)->hasKeys(['id', 'message']);
+            $this->integer($created['id'])->isGreaterThan(0);
+            $read = new \Reservation();
+            $this->boolean($read->getFromDB($created['id']))->isTrue();
+            foreach ($input as $field => $value) {
+                $this->variable($read->fields[$field])->isIdenticalTo($value);
+            }
+            $bulk = [];
+            foreach ($items as $id) {
+                $bulk[] = array_replace($input, ['reservationitems_id' => $id,
+                    'begin' => '2031-04-02 09:00:00', 'end' => '2031-04-02 10:00:00']);
+            }
+            $response = $post($bulk);
+            $this->integer($response->getStatusCode())->isIdenticalTo(201);
+            $created = json_decode((string)$response->getBody(), true, 512, JSON_THROW_ON_ERROR);
+            $this->array($created)->hasSize(2);
+            foreach ($created as $index => $row) {
+                $this->integer($row['id'])->isGreaterThan(0);
+                $this->boolean($read->getFromDB($row['id']))->isTrue();
+                $this->integer($read->fields['reservationitems_id'])->isIdenticalTo($items[$index]);
+                $this->string($read->fields['begin'])->isIdenticalTo($bulk[$index]['begin']);
+            }
+            $before = $this->reservationHttpRows($items);
+            $response = $post($input); // Existing booking conflicts; no navigation or extra row.
+            $this->integer($response->getStatusCode())->isIdenticalTo(400);
+            $this->array($this->reservationHttpRows($items))->isIdenticalTo($before);
+            $response = $this->doHttpRequest('POST', 'Reservation/', [
+                'json' => ['input' => $bulk], 'allow_redirects' => false, 'http_errors' => false,
+            ]);
+            $this->integer($response->getStatusCode())->isIdenticalTo(401);
+            $this->array($this->reservationHttpRows($items))->isIdenticalTo($before);
+        });
+    }
+
+    /** @tags api */
+    public function testReservationCoreFormCompletesSingleAndPeriodicItems(): void
+    {
+        global $DB;
+        $this->withReservationHttpItems(function (array $items) use ($DB): void {
+            $browser = $this->reservationHttpLogin(TU_USER, TU_PASS);
+            $user = (int)getItemByTypeName('User', TU_USER, true);
+            $calendar = $browser->get('front/reservation.php?' . http_build_query([
+                'reservationitems_id' => $items[0], 'mois_courant' => 5, 'annee_courante' => 2031,
+            ]));
+            $document = new \DOMDocument();
+            @$document->loadHTML((string)$calendar->getBody());
+            $newForm = null;
+            foreach ($document->getElementsByTagName('a') as $anchor) {
+                $href = $anchor->getAttribute('href');
+                parse_str((string)parse_url($href, PHP_URL_QUERY), $parameters);
+                if (str_ends_with((string)parse_url($href, PHP_URL_PATH), '/front/reservation.form.php')
+                    && ($parameters['begin'] ?? '') === '2031-5-01 12:00:00') {
+                    $newForm = $parameters;
+                    break;
+                }
+            }
+            $this->array($newForm)->isIdenticalTo(['id' => '', 'item' => [(string)$items[0] => (string)$items[0]],
+                'begin' => '2031-5-01 12:00:00']);
+            $single = $this->reservationHttpSubmit($browser, [$items[0]], $user, '2031-05-01', 'single');
+            $target = $this->reservationHttpRedirect($single);
+            $this->string(parse_url($target, PHP_URL_PATH))->endsWith('/front/reservation.php');
+            parse_str((string)parse_url($target, PHP_URL_QUERY), $query);
+            $this->array($query)->isIdenticalTo(['reservationitems_id' => (string)$items[0],
+                'mois_courant' => '5', 'annee_courante' => '2031', 'reservation_added' => '1']);
+            $rows = $this->reservationHttpRows($items);
+            $this->array($rows)->hasSize(1);
+            $this->string($rows[0]['comment'])->isIdenticalTo('single');
+            $periodic = $this->reservationHttpSubmit($browser, $items, $user, '2031-05-10', 'periodic',
+                ['type' => 'day', 'end' => '2031-05-12']);
+            $target = $this->reservationHttpRedirect($periodic);
+            $this->string(parse_url($target, PHP_URL_PATH))->endsWith('/front/reservation.php');
+            parse_str((string)parse_url($target, PHP_URL_QUERY), $query);
+            $this->array($query)->isIdenticalTo(['reservation_added' => '1']);
+            $rows = $this->reservationHttpRows($items);
+            $this->array($rows)->hasSize(7);
+            $actual = [];
+            foreach ($rows as $row) {
+                $actual[] = [(int)$row['reservationitems_id'], $row['begin'], $row['end'], $row['comment']];
+                // The controller logs only after add() returns. All seven must complete.
+                $events = iterator_to_array($DB->request(['FROM' => 'glpi_events', 'WHERE' => [
+                    'items_id' => $row['id'], 'type' => 'reservation', 'service' => 'inventory', 'level' => 4,
+                ]]));
+                $this->array($events)->hasSize(1);
+            }
+            $expected = [[$items[0], '2031-05-01 09:00:00', '2031-05-01 10:00:00', 'single']];
+            foreach ($items as $id) {
+                foreach (['10', '11', '12'] as $day) {
+                    $expected[] = [$id, '2031-05-' . $day . ' 09:00:00', '2031-05-' . $day . ' 10:00:00', 'periodic'];
+                }
+            }
+            sort($actual); sort($expected);
+            $this->array($actual)->isIdenticalTo($expected);
+            $before = $rows;
+            try {
+                $response = $this->doHttpRequest('PUT', 'ReservationItem/' . $items[1], [
+                    'headers' => ['Session-Token' => $this->session_token],
+                    'json' => ['input' => ['id' => $items[1], 'is_active' => false]], 'http_errors' => false,
+                ]);
+                $this->integer($response->getStatusCode())->isIdenticalTo(200);
+                $response = $browser->get('front/reservation.form.php?' . http_build_query([
+                    'id' => '', 'item' => array_combine($items, $items), 'begin' => '2031-05-20 09:00:00',
+                ]));
+                $this->string(html_entity_decode((string)$response->getBody(), ENT_QUOTES | ENT_HTML5))
+                    ->contains("You don't have permission to perform this action.")->notContains('name="resa[begin]"');
+                $response = $this->doHttpRequest('POST', 'Reservation/', [
+                    'headers' => ['Session-Token' => $this->session_token], 'http_errors' => false,
+                    'allow_redirects' => false, 'json' => ['input' => ['reservationitems_id' => $items[1],
+                        'users_id' => $user, 'begin' => '2031-05-20 09:00:00', 'end' => '2031-05-20 10:00:00']],
+                ]);
+                $this->integer($response->getStatusCode())->isIdenticalTo(400);
+                $this->array($this->reservationHttpRows($items))->isIdenticalTo($before);
+            } finally {
+                $response = $this->doHttpRequest('PUT', 'ReservationItem/' . $items[1], [
+                    'headers' => ['Session-Token' => $this->session_token],
+                    'json' => ['input' => ['id' => $items[1], 'is_active' => true]], 'http_errors' => false,
+                ]);
+                $this->integer($response->getStatusCode())->isIdenticalTo(200);
+            }
+            $missing = (int)$DB->getDoctrineConnection()->fetchOne('SELECT MAX(id) FROM glpi_reservationitems') + 1;
+            $response = $browser->get('front/reservation.form.php?' . http_build_query([
+                'id' => '', 'item' => [$items[0] => $items[0], $missing => $missing], 'begin' => '2031-05-20 09:00:00',
+            ]));
+            $this->string(html_entity_decode((string)$response->getBody(), ENT_QUOTES | ENT_HTML5))
+                ->contains("You don't have permission to perform this action.")->notContains('name="resa[begin]"');
+            $this->array($this->reservationHttpRows($items))->isIdenticalTo($before);
+            $refused = $this->reservationHttpSubmit($browser, [$items[0]], $user, '2031-05-20', 'invalid csrf', [], true);
+            $this->string((string)$refused->getBody())->notContains('reservation_added=1');
+            $this->array($this->reservationHttpRows($items))->isIdenticalTo($before);
+            $response = $this->reservationHttpSubmit($browser, [$items[0]], $user, '2031-05-01', 'conflict');
+            $this->integer($response->getStatusCode())->isIdenticalTo(200);
+            $this->string((string)$response->getBody())->contains('already reserved')->notContains('reservation_added=1');
+            $this->array($this->reservationHttpRows($items))->isIdenticalTo($before);
+        });
+    }
+
+    /** @tags api */
+    public function testReservationHelpdeskRedirectAndMissingCreateRight(): void
+    {
+        global $DB;
+        $this->withReservationHttpItems(function (array $items) use ($DB): void {
+            $marker = 'reservation-http-' . bin2hex(random_bytes(12));
+            $profile = $user = $outsideEntity = $outsideComputer = null;
+            $primary = null;
+            $cleanup = [];
+            try {
+                $profile = $this->query('createItems', ['verb' => 'POST', 'itemtype' => 'Profile',
+                    'headers' => ['Session-Token' => $this->session_token],
+                    'json' => ['input' => ['name' => $marker, 'interface' => 'helpdesk']]], 201)['id'];
+                $this->integer($profile)->isGreaterThan(0);
+                \ProfileRight::updateProfileRights($profile, ['reservation' => \ReservationItem::RESERVEANITEM]);
+                $item = new \ReservationItem();
+                $this->boolean($item->getFromDB($items[0]))->isTrue();
+                $password = 'Reservation-' . bin2hex(random_bytes(12)) . '-9aA!';
+                $user = $this->query('createItems', ['verb' => 'POST', 'itemtype' => 'User',
+                    'headers' => ['Session-Token' => $this->session_token], 'json' => ['input' => [
+                        'name' => $marker, 'password' => $password, 'password2' => $password,
+                        '_profiles_id' => $profile, '_entities_id' => $item->getEntityID(),
+                        'entities_id' => $item->getEntityID(), 'authtype' => \Auth::DB_GLPI,
+                    ]]], 201)['id'];
+                $this->integer($user)->isGreaterThan(0);
+                $browser = $this->reservationHttpLogin($marker, $password);
+                $outsideEntity = $this->query('createItems', ['verb' => 'POST', 'itemtype' => 'Entity',
+                    'headers' => ['Session-Token' => $this->session_token], 'json' => ['input' => [
+                        'name' => $marker, 'entities_id' => $item->getEntityID(),
+                    ]]], 201)['id'];
+                $this->integer($outsideEntity)->isGreaterThan(0);
+                $outsideComputer = (int)$this->createComputer()->getID();
+                $this->query('updateItems', ['verb' => 'PUT', 'itemtype' => 'Computer', 'id' => $outsideComputer,
+                    'headers' => ['Session-Token' => $this->session_token],
+                    'json' => ['input' => ['id' => $outsideComputer, 'entities_id' => $outsideEntity]]]);
+                $outsideItem = $this->query('createItems', ['verb' => 'POST', 'itemtype' => 'ReservationItem',
+                    'headers' => ['Session-Token' => $this->session_token], 'json' => ['input' => [
+                        'itemtype' => 'Computer', 'items_id' => $outsideComputer, 'entities_id' => $outsideEntity, 'is_active' => true,
+                    ]]], 201)['id'];
+                $this->integer($outsideItem)->isGreaterThan(0);
+                $response = $browser->get('front/reservation.form.php?' . http_build_query([
+                    'id' => '', 'item' => [$items[0] => $items[0], $outsideItem => $outsideItem], 'begin' => '2031-06-01 09:00:00',
+                ]));
+                $this->string(html_entity_decode((string)$response->getBody(), ENT_QUOTES | ENT_HTML5))
+                    ->contains("You don't have permission to perform this action.")->notContains('name="resa[begin]"');
+                $this->array($this->reservationHttpRows([$outsideItem]))->isEmpty();
+                $response = $this->reservationHttpSubmit($browser, [$items[0]], $user, '2031-06-01', 'helpdesk');
+                $target = $this->reservationHttpRedirect($response);
+                $this->string(parse_url($target, PHP_URL_PATH))->endsWith('/plugins/formcreator/front/reservation.php');
+                parse_str((string)parse_url($target, PHP_URL_QUERY), $query);
+                $this->array($query)->isIdenticalTo(['reservationitems_id' => (string)$items[0],
+                    'mois_courant' => '6', 'annee_courante' => '2031', 'reservation_added' => '1']);
+                // Assert the preserved destination only: the external Formcreator controller is not installed here.
+                $before = $this->reservationHttpRows($items);
+                $this->array($before)->hasSize(1);
+                $this->integer((int)$before[0]['users_id'])->isIdenticalTo($user);
+                $session = $this->doHttpRequest('GET', 'initSession/', ['auth' => [$marker, $password],
+                    'query' => ['get_full_session' => true]]);
+                $this->integer($session->getStatusCode())->isIdenticalTo(200);
+                $sessionData = json_decode((string)$session->getBody(), true, 512, JSON_THROW_ON_ERROR);
+                $this->string($sessionData['session']['glpiactiveprofile']['interface'])->isIdenticalTo('helpdesk');
+                $this->array($sessionData['session']['glpiactiveprofile'])->notHasKey('computer');
+                $this->integer((int)$sessionData['session']['glpiactiveprofile']['reservation'])->isIdenticalTo(\ReservationItem::RESERVEANITEM);
+                $token = $sessionData['session_token'];
+                try {
+                    foreach ([$items[0] => 201, $outsideItem => 400] as $endpoint => $status) {
+                        $response = $this->doHttpRequest('POST', 'Reservation/', ['http_errors' => false,
+                            'allow_redirects' => false, 'headers' => ['Session-Token' => $token], 'json' => ['input' => [
+                                'reservationitems_id' => $endpoint, 'users_id' => $user,
+                                'begin' => '2031-06-03 09:00:00', 'end' => '2031-06-03 10:00:00',
+                            ]]]);
+                        $this->integer($response->getStatusCode())->isIdenticalTo($status);
+                        if ($status === 201) {
+                            $created = json_decode((string)$response->getBody(), true, 512, JSON_THROW_ON_ERROR);
+                            $this->integer($created['id'])->isGreaterThan(0);
+                        }
+                    }
+                    $this->array($this->reservationHttpRows([$outsideItem]))->isEmpty();
+                    $before = $this->reservationHttpRows($items);
+                    $this->array($before)->hasSize(2);
+                } finally {
+                    $this->doHttpRequest('GET', 'killSession/', ['headers' => ['Session-Token' => $token]]);
+                }
+                \ProfileRight::updateProfileRights($profile, ['reservation' => 0]);
+                $browser = $this->reservationHttpLogin($marker, $password); // Fresh actual session reads the revoked right.
+                $response = $browser->get('front/reservation.form.php?' . http_build_query([
+                    'id' => '', 'item' => [$items[0] => $items[0]], 'begin' => '2031-06-02 09:00:00',
+                ]));
+                $this->string(html_entity_decode((string)$response->getBody(), ENT_QUOTES | ENT_HTML5))->contains("You don't have permission to perform this action.");
+                $this->array($this->reservationHttpRows($items))->isIdenticalTo($before);
+                $session = $this->doHttpRequest('GET', 'initSession/', ['auth' => [$marker, $password]]);
+                $this->integer($session->getStatusCode())->isIdenticalTo(200);
+                $token = json_decode((string)$session->getBody(), true, 512, JSON_THROW_ON_ERROR)['session_token'];
+                try {
+                    $response = $this->doHttpRequest('POST', 'Reservation/', ['http_errors' => false,
+                        'allow_redirects' => false, 'headers' => ['Session-Token' => $token], 'json' => ['input' => [
+                            'reservationitems_id' => $items[0], 'users_id' => $user,
+                            'begin' => '2031-06-02 09:00:00', 'end' => '2031-06-02 10:00:00',
+                        ]]]);
+                    $this->integer($response->getStatusCode())->isIdenticalTo(400);
+                    $this->array($this->reservationHttpRows($items))->isIdenticalTo($before);
+                } finally {
+                    $this->doHttpRequest('GET', 'killSession/', ['headers' => ['Session-Token' => $token]]);
+                }
+            } catch (\Throwable $error) {
+                $primary = $error;
+            } finally {
+                try { $this->string(file_get_contents($this->getLogFilePath()))->isEmpty(); }
+                catch (\Throwable $error) { $cleanup[] = $error; }
+                // Bookings must be removed before the owned user; scope uses only the two owned endpoints.
+                $ownedBookings = [];
+                try { $ownedBookings = $this->reservationHttpRows($items); }
+                catch (\Throwable $error) { $cleanup[] = $error; }
+                foreach ($ownedBookings as $row) {
+                    try {
+                        $this->reservationHttpDelete('Reservation', (int)$row['id']);
+                    } catch (\Throwable $error) { $cleanup[] = $error; }
+                }
+                try {
+                    $this->boolean($DB->delete('glpi_events', ['type' => 'system', 'service' => 'login',
+                        'message' => ['LIKE', '%' . $marker . '%']]))->isTrue();
+                } catch (\Throwable $error) { $cleanup[] = $error; }
+                if ($outsideComputer !== null) {
+                    try {
+                        foreach ($DB->request(['FROM' => 'glpi_reservationitems',
+                            'WHERE' => ['itemtype' => 'Computer', 'items_id' => $outsideComputer]]) as $row) {
+                            $ownedBookings = [];
+                            try { $ownedBookings = $this->reservationHttpRows([(int)$row['id']]); }
+                            catch (\Throwable $error) { $cleanup[] = $error; }
+                            foreach ($ownedBookings as $booking) {
+                                try { $this->reservationHttpDelete('Reservation', (int)$booking['id']); }
+                                catch (\Throwable $error) { $cleanup[] = $error; }
+                            }
+                            try { $this->reservationHttpDelete('ReservationItem', (int)$row['id']); }
+                            catch (\Throwable $error) { $cleanup[] = $error; }
+                        }
+                    } catch (\Throwable $error) { $cleanup[] = $error; }
+                    try { $this->reservationHttpDelete('Computer', $outsideComputer); }
+                    catch (\Throwable $error) { $cleanup[] = $error; }
+                }
+                // Unique marker also recovers IDs if an HTTP assertion failed before assignment.
+                foreach (['User', 'Profile', 'Entity'] as $type) {
+                    try {
+                        $model = new $type();
+                        foreach ($model->find(['name' => $marker]) as $row) {
+                            $this->reservationHttpDelete($type, (int)$row['id']);
+                        }
+                    } catch (\Throwable $error) { $cleanup[] = $error; }
+                }
+            }
+            foreach ($cleanup as $error) {
+                $primary = $primary === null ? $error : new \itsmng\Database\MutationCleanupFailure($primary, $error);
+            }
+            if ($primary !== null) { throw $primary; }
+        });
+    }
+
+    private function reservationHttpRows(array $items): array
+    {
+        global $DB;
+        return array_values(iterator_to_array($DB->request(['FROM' => 'glpi_reservations',
+            'WHERE' => ['reservationitems_id' => $items], 'ORDER' => 'id ASC'])));
+    }
+
+    private function withReservationHttpItems(callable $operation): void
+    {
+        global $DB;
+        $computers = [];
+        $primary = null;
+        $cleanup = [];
+        try {
+            $items = [];
+            for ($i = 0; $i < 2; ++$i) {
+                $computer = $this->createComputer(); // Base owner tracks the exact unique Computer even on failure.
+                $computers[] = (int)$computer->getID();
+                $data = $this->query('createItems', ['verb' => 'POST', 'itemtype' => 'ReservationItem',
+                    'headers' => ['Session-Token' => $this->session_token], 'json' => ['input' => [
+                        'itemtype' => 'Computer', 'items_id' => $computer->getID(),
+                        'entities_id' => $computer->fields['entities_id'], 'is_active' => true,
+                    ]]], 201);
+                $this->integer($data['id'])->isGreaterThan(0);
+                $items[] = $data['id'];
+            }
+            $operation($items);
+        } catch (\Throwable $error) {
+            $primary = $error;
+        } finally {
+            try { $this->string(file_get_contents($this->getLogFilePath()))->isEmpty(); }
+            catch (\Throwable $error) { $cleanup[] = $error; }
+            // Endpoint ownership also recovers rows whose failed HTTP response hid their ID.
+            foreach ($computers as $id) {
+                try {
+                    foreach ($DB->request(['FROM' => 'glpi_reservationitems',
+                        'WHERE' => ['itemtype' => 'Computer', 'items_id' => $id]]) as $row) {
+                        $ownedBookings = [];
+                        try { $ownedBookings = $this->reservationHttpRows([(int)$row['id']]); }
+                        catch (\Throwable $error) { $cleanup[] = $error; }
+                        foreach ($ownedBookings as $booking) {
+                            try { $this->reservationHttpDelete('Reservation', (int)$booking['id']); }
+                            catch (\Throwable $error) { $cleanup[] = $error; }
+                        }
+                        $this->reservationHttpDelete('ReservationItem', (int)$row['id']);
+                    }
+                } catch (\Throwable $error) {
+                    $cleanup[] = $error;
+                }
+            }
+        }
+        foreach ($cleanup as $error) {
+            $primary = $primary === null ? $error : new \itsmng\Database\MutationCleanupFailure($primary, $error);
+        }
+        if ($primary !== null) {
+            throw $primary;
+        }
+    }
+
+    private function reservationHttpDelete(string $type, int $id): void
+    {
+        global $DB;
+        $response = $this->doHttpRequest('DELETE', $type . '/' . $id, [
+            'headers' => ['Session-Token' => $this->session_token], 'query' => ['force_purge' => true],
+            'http_errors' => false, 'allow_redirects' => false,
+        ]);
+        $this->integer($response->getStatusCode())->isIdenticalTo(200);
+        $this->boolean((new $type())->getFromDB($id))->isFalse();
+        if ($type === 'Reservation') {
+            // Event rows describe only this owned booking, including its public purge event.
+            $this->boolean($DB->delete('glpi_events', ['type' => 'reservation', 'items_id' => $id]))->isTrue();
+        }
+    }
+
+    private function reservationHttpLogin(string $name, string $password): GuzzleHttp\Client
+    {
+        $root = preg_replace('~/apirest\.php/?$~', '/', $this->base_uri);
+        $browser = new GuzzleHttp\Client(['base_uri' => $root, 'cookies' => new GuzzleHttp\Cookie\CookieJar(),
+            'allow_redirects' => false, 'http_errors' => false]);
+        $response = $browser->get('index.php');
+        $this->integer($response->getStatusCode())->isIdenticalTo(200);
+        $document = new \DOMDocument();
+        @$document->loadHTML((string)$response->getBody());
+        $data = [];
+        foreach ($document->getElementsByTagName('input') as $input) {
+            if ($input->getAttribute('type') === 'hidden') {
+                $data[$input->getAttribute('name')] = $input->getAttribute('value');
+            }
+            if ($input->getAttribute('id') === 'login_name') {
+                $data[$input->getAttribute('name')] = $name;
+            }
+            if ($input->getAttribute('type') === 'password') {
+                $data[$input->getAttribute('name')] = $password;
+            }
+        }
+        $this->string($data['_glpi_csrf_token'])->isNotEmpty();
+        $response = $browser->post('front/login.php', ['form_params' => $data, 'headers' => ['Referer' => $root . 'index.php']]);
+        $this->array([302, 303])->contains($response->getStatusCode());
+        $this->string($response->getHeaderLine('Location'))->contains('front/');
+        return $browser;
+    }
+
+    private function reservationHttpSubmit(GuzzleHttp\Client $browser, array $items, int $user, string $day,
+        string $comment, array $periodicity = [], bool $invalidCsrf = false): \Psr\Http\Message\ResponseInterface
+    {
+        $query = ['id' => '', 'item' => array_combine($items, $items), 'begin' => $day . ' 09:00:00'];
+        $path = 'front/reservation.form.php?' . http_build_query($query);
+        $response = $browser->get($path);
+        $this->integer($response->getStatusCode())->isIdenticalTo(200);
+        $document = new \DOMDocument();
+        @$document->loadHTML((string)$response->getBody());
+        $xpath = new \DOMXPath($document);
+        $forms = $xpath->query('//form[.//input[@name="items[' . $items[0] . ']"]]');
+        $this->integer($forms->length)->isIdenticalTo(1);
+        $data = [];
+        foreach ($xpath->query('.//input[@type="hidden"]', $forms->item(0)) as $input) {
+            $data[$input->getAttribute('name')] = $input->getAttribute('value');
+        }
+        $this->string($data['_glpi_csrf_token'])->isNotEmpty();
+        if ($invalidCsrf) { $data['_glpi_csrf_token'] = 'invalid-' . $data['_glpi_csrf_token']; }
+        $data += ['add' => '1', 'users_id' => $user, 'comment' => $comment,
+            'resa[begin]' => $day . ' 09:00:00', 'resa[end]' => $day . ' 10:00:00'];
+        foreach ($periodicity as $key => $value) {
+            $data['periodicity[' . $key . ']'] = $value;
+        }
+        return $browser->post('front/reservation.form.php', ['form_params' => $data,
+            'headers' => ['Referer' => (string)$browser->getConfig('base_uri') . $path]]);
+    }
+
+    private function reservationHttpRedirect(\Psr\Http\Message\ResponseInterface $response): string
+    {
+        $this->array([200, 302, 303])->contains($response->getStatusCode());
+        $target = $response->getHeaderLine('Location');
+        if ($target === '') {
+            // Html::header may already have emitted the page: normal Html::redirect uses JS then exits.
+            preg_match_all("~window\\.location='([^']+)';~", (string)$response->getBody(), $matches);
+            // Html::redirect emits a Konqueror-only cache token first, then its ordinary target.
+            $target = $matches[1] === [] ? '' : end($matches[1]);
+        }
+        $this->string($target)->contains('reservation_added=1');
+        return html_entity_decode($target, ENT_QUOTES | ENT_HTML5);
+    }
+
     /**
      * @tags api
      * @covers API::getItems
