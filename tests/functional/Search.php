@@ -205,7 +205,7 @@ class Search extends DbTestCase
                     }
                     $data = $this->doSearch($type, [
                         'is_deleted' => 0, 'start' => 0, 'criteria' => [
-                            ['field' => 1, 'searchtype' => 'equals', 'value' => $prefix], $criterion,
+                            ['field' => 1, 'searchtype' => 'contains', 'value' => $prefix], $criterion,
                         ],
                     ], $type === 'Change' ? [49] : []);
                     $this->integer($data['data']['count'])->isIdenticalTo($expected);
@@ -1887,7 +1887,7 @@ class Search extends DbTestCase
                ->contains($this->providerQuotedSQL("`$type`.`entities_id` IN ('1', '2', '3')"))
                ->contains($this->providerQuotedSQL("OR (`$type`.`is_recursive`='1'".
                            " AND `$type`.`entities_id` IN (0))"))
-               ->matches("/" . $this->textSearchPattern("`$type`.`name`", '%test%') . "/");
+               ->matches("/" . $this->textSearchPattern($DB->quoteName($type . '.name'), '%test%') . "/");
         }
     }
 
