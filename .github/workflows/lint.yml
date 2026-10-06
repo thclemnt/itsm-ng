@@ -1,9 +1,13 @@
 name: Lint test
 
 on:
+  pull_request:
   push:
     branches-ignore:
       - main
+
+permissions:
+  contents: read
 
 jobs:
   lint:

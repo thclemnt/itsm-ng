@@ -105,7 +105,7 @@ jobs:
       - name: Prepare MySQL timezone data and separate migration target
         if: matrix.database.provider == 'mysql'
         run: |
-          docker exec "${{ job.services.database.id }}" sh -c '${{ matrix.database.tzinfo }} /usr/share/zoneinfo | ${{ matrix.database.client }} -uroot -ptest mysql'
+          docker exec "${{ job.services.database.id }}" "${{ matrix.database.tzinfo }}" /usr/share/zoneinfo | docker exec -i "${{ job.services.database.id }}" "${{ matrix.database.client }}" -uroot -ptest mysql
           docker exec "${{ job.services.database.id }}" ${{ matrix.database.client }} -uroot -ptest -e "GRANT SELECT ON mysql.time_zone_name TO 'test'@'%'; CREATE DATABASE $ITSM_TEST_MIGRATION_DB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON $ITSM_TEST_MIGRATION_DB.* TO 'test'@'%';"
       - name: Prepare PostgreSQL migration lock budget and separate target
         if: matrix.database.provider == 'pgsql'

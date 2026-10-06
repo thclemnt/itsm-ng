@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   tests:
     name: Run tests
@@ -127,9 +131,6 @@ jobs:
 
       - name: Run IMAP tests
         run: vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap.php --fail-if-skipped-methods --no-code-coverage --max-children-number 1 -d tests/imap
-
-      - name: Start PHP development server
-        run: php -S localhost:8088 tests/router.php &>/dev/null &
 
       - name: Setup migration environment
         run: |

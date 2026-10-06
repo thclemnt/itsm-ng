@@ -30,6 +30,9 @@
 #  * ---------------------------------------------------------------------
 # */
 
+# Propagate checkout, build and packaging failures to the release job.
+set -eo pipefail
+
 # Extract options and args (see https://stackoverflow.com/a/14203146)
 ASSUME_YES=0;
 POSITIONAL_ARGS=()
@@ -60,18 +63,18 @@ then
     echo ""
     echo "Options:"
     echo "y     Automatic yes to prompts; assume "yes" as answer to all prompts and run non-interactively."
-    exit
+    exit 2
 fi
 
-SOURCE_DIR=$(readlink -f $1)
+SOURCE_DIR=$(readlink -f "$1")
 RELEASE=$2
 WORKING_DIR=/tmp/itsm-ng-$RELEASE
 TARBALL_PATH=/tmp/itsm-ng-$RELEASE.tgz
 
-if [ ! -e $SOURCE_DIR ] || [ ! -e $SOURCE_DIR/.git ]
+if [ ! -e "$SOURCE_DIR" ] || [ ! -e "$SOURCE_DIR/.git" ]
 then
     echo "$SOURCE_DIR is not a valid Git repository"
-    exit
+    exit 1
 fi
 
 if [[ ! $ASSUME_YES = 1 ]]
@@ -85,15 +88,15 @@ then
 fi
 
 echo "Copying to $WORKING_DIR directory"
-if [ -e $WORKING_DIR ]
+if [ -e "$WORKING_DIR" ]
 then
-    rm -rf $WORKING_DIR
+    rm -rf "$WORKING_DIR"
 fi
 git --git-dir="$SOURCE_DIR/.git" checkout-index --all --force --prefix="$WORKING_DIR/itsm-ng/"
 
 if [[ ! $ASSUME_YES = 1 ]]
 then
-    FOUND_VERSION=$(grep -Eo "define\('ITSM_VERSION', '[^']+'\);" $WORKING_DIR/itsm-ng/inc/define.php | sed "s/define('ITSM_VERSION', '\([^)]*\)');/\1/")
+    FOUND_VERSION=$(grep -Eo "define\('ITSM_VERSION', '[^']+'\);" "$WORKING_DIR/itsm-ng/inc/define.php" | sed "s/define('ITSM_VERSION', '\([^)]*\)');/\1/")
     if [[ ! "$RELEASE" = "$FOUND_VERSION" ]]
     then
         read -p "$RELEASE does not match version $FOUND_VERSION declared in inc/define.php. Do you want to continue? [Y/n] " -n 1 -r
@@ -106,12 +109,12 @@ then
 fi
 
 echo "Building application"
-$WORKING_DIR/itsm-ng/tools/build_itsm.sh
+"$WORKING_DIR/itsm-ng/tools/build_itsm.sh"
 
 echo "Creating tarball";
-tar -c -z -f $TARBALL_PATH -C $WORKING_DIR itsm-ng
+tar -c -z -f "$TARBALL_PATH" -C "$WORKING_DIR" itsm-ng
 
 echo "Deleting temp directory"
-rm -rf $WORKING_DIR
+rm -rf "$WORKING_DIR"
 
 echo "The Tarball path is $TARBALL_PATH"
