@@ -41,6 +41,55 @@ use TicketTask;
 
 class CommonDBTM extends DbTestCase
 {
+    public function testConnexityPermissionRetainsItsSingleLoadedOwner(): void
+    {
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $ticket = $this->createItem(\Ticket::class, ['name' => 'Connexity owner ' . $this->getUniqueString(),
+                'content' => 'Complete parent fields', 'entities_id' => $_SESSION['glpiactive_entity']]);
+            $child = new class extends \ITILFollowup {
+                public int $loads = 0;
+                public mixed $loaded = null;
+                public function getConnexityItem($itemtype, $items_id, $getFromDB = true, $getEmpty = true, $getFromDBOrEmpty = false) {
+                    ++$this->loads;
+                    $this->loaded = parent::getConnexityItem($itemtype, $items_id, $getFromDB, $getEmpty, $getFromDBOrEmpty);
+                    return $this->loaded;
+                }
+            };
+            $child->fields = ['itemtype' => 'Ticket', 'items_id' => $ticket->getID()];
+            $owner = null;
+            $this->boolean($child->canConnexityItem('canViewItem', 'canView', \CommonDBConnexity::HAVE_VIEW_RIGHT_ON_ITEM,
+                'itemtype', 'items_id', $owner))->isTrue();
+            $this->integer($child->loads)->isIdenticalTo(1);
+            $this->object($owner)->isIdenticalTo($child->loaded);
+            $this->array($owner->fields)->isIdenticalTo($ticket->fields);
+            // Supplied owners preserve identity and any caller-side field changes.
+            $owner->fields['content'] = 'Supplied owner content';
+            $this->boolean($child->canConnexityItem('canViewItem', 'canView', \CommonDBConnexity::HAVE_VIEW_RIGHT_ON_ITEM,
+                'itemtype', 'items_id', $owner))->isTrue();
+            $this->integer($child->loads)->isIdenticalTo(1);
+            $this->string($owner->fields['content'])->isIdenticalTo('Supplied owner content');
+            $_SESSION['glpiactiveprofile']['ticket'] = 0;
+            $_SESSION['glpiactiveprofile']['ticketvalidation'] = 0;
+            $this->boolean(\Ticket::canView())->isFalse();
+            $this->boolean($child->canConnexityItem('canViewItem', 'canView', \CommonDBConnexity::HAVE_VIEW_RIGHT_ON_ITEM,
+                'itemtype', 'items_id', $owner))->isFalse();
+            $this->integer($child->loads)->isIdenticalTo(1);
+            $owner = null;
+            $child->fields['items_id'] = PHP_INT_MAX;
+            $this->boolean($child->canConnexityItem('canViewItem', 'canView', \CommonDBConnexity::DONT_CHECK_ITEM_RIGHTS,
+                'itemtype', 'items_id', $owner))->isFalse();
+            $this->variable($owner)->isNull();
+            $this->integer($child->loads)->isIdenticalTo(2);
+            $child->fields['items_id'] = 0;
+            $this->exception(fn () => $child->canConnexityItem('canViewItem', 'canView', \CommonDBConnexity::DONT_CHECK_ITEM_RIGHTS,
+                'itemtype', 'items_id'))->isInstanceOf(\CommonDBConnexityItemNotFound::class);
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
     public function testNewItemPermissionHooksRetainNormalizedInputsAndCannotGrantRights(): void
     {
         global $DB, $PLUGIN_HOOKS;

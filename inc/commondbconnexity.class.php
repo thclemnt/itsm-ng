@@ -529,7 +529,7 @@ abstract class CommonDBConnexity extends CommonDBTM
 
             // Set value in $item to reuse it on future calls
             if ($connexityItem instanceof CommonDBTM) {
-                $item = $this->getConnexityItem($itemtype, $items_id);
+                $item = $connexityItem;
             }
         }
         if ($connexityItem === false) {
