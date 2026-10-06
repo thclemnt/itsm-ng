@@ -62,11 +62,31 @@ final class EntityRegistryCache
             if (!is_array($model)) {
                 return null;
             }
-            array_walk_recursive($model, static function (mixed $value): void {
-                if ($value instanceof \__PHP_Incomplete_Class) {
-                    throw new \UnexpectedValueException('Unrecognized cached mapping value');
+            // Traverse arrays without dispatching a callback for every scalar
+            // leaf. Track references on each path: shared arrays are valid,
+            // recursive arrays remain a corrupt-cache miss.
+            $pending = [[$model, []]];
+            while ($pending !== []) {
+                [$values, $ancestors] = array_pop($pending);
+                foreach ($values as $key => $value) {
+                    if ($value instanceof \__PHP_Incomplete_Class) {
+                        return null;
+                    }
+                    if (!is_array($value)) {
+                        continue;
+                    }
+                    $path = $ancestors;
+                    $reference = \ReflectionReference::fromArrayElement($values, $key);
+                    if ($reference !== null) {
+                        $id = $reference->getId();
+                        if (isset($path[$id])) {
+                            return null;
+                        }
+                        $path[$id] = true;
+                    }
+                    $pending[] = [$value, $path];
                 }
-            });
+            }
             return $model;
         } catch (\Throwable) {
             return null;

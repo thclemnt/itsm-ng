@@ -107,6 +107,41 @@ class EntityRegistryCache extends \atoum\atoum\test
             ->isInstanceOf(\LogicException::class)->hasMessage('Invalid authoritative mapping');
     }
 
+    public function testValidationPreservesSharedArraysAndRejectsRecursiveOrUnknownValues(): void
+    {
+        $pool = new ArrayAdapter(storeSerialized: false);
+        $cache = new Psr16Cache($pool);
+        $registry = new RegistryCache($cache, MappingFingerprint::forSource($this->root));
+        $shared = ['reference' => new MappedReference('entity', 'entities_id', 'glpi_entities',
+            new ReferencePolicy(ReferenceKind::RootEntity)), 'flag' => true, 'empty' => null];
+        $model = ['left' => &$shared, 'right' => &$shared, 'nested' => [[], ['zero' => 0, 'name' => '0']]];
+        $builds = 0;
+        $build = static function () use (&$builds, $model): array { ++$builds; return $model; };
+        $registry->load($build);
+        $key = array_key_first($pool->getValues());
+        $warm = $registry->load($build);
+        $this->integer($builds)->isIdenticalTo(1);
+        $this->string(serialize($warm))->isIdenticalTo(serialize($model));
+        $warm['left']['flag'] = false;
+        $this->boolean($warm['right']['flag'])->isFalse();
+        $this->boolean($registry->load($build)['left']['flag'])->isTrue();
+        $this->integer($builds)->isIdenticalTo(1);
+
+        $cycle = [];
+        $cycle['self'] = &$cycle;
+        $first = [];
+        $second = ['back' => &$first];
+        $first['next'] = &$second;
+        foreach ([$cycle, $first, ['nested' => [['unknown' => new RegistryCacheWakeupProbe()]]]] as $invalid) {
+            $bytes = serialize($invalid);
+            $cache->set($key, '1:' . hash('sha256', $bytes) . ':' . $bytes);
+            $before = $builds;
+            $this->string(serialize($registry->load($build)))->isIdenticalTo(serialize($model));
+            $this->integer($builds)->isIdenticalTo($before + 1);
+            $this->integer(RegistryCacheWakeupProbe::$wakeups)->isIdenticalTo(0);
+        }
+    }
+
     public function testPackagedReleaseWithoutComposerManifestStillCaches(): void
     {
         unlink($this->root . '/composer.lock');
