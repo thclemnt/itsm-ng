@@ -421,11 +421,13 @@ class MailCollector extends DbTestCase
         $this->boolean($collector->getFromDB($collectorId))->isTrue();
 
         $open = new \Ticket();
-        $openId = (int)$open->add(['name' => 'Open subject reference', 'entities_id' => 0]);
+        $openId = (int)$open->add([
+            'name' => 'Open subject reference', 'content' => 'Open reference body', 'entities_id' => 0,
+        ]);
         $this->integer($openId)->isGreaterThan(0);
         $closed = new \Ticket();
         $closedId = (int)$closed->add([
-            'name' => 'Closed subject reference', 'entities_id' => 0,
+            'name' => 'Closed subject reference', 'content' => 'Closed reference body', 'entities_id' => 0,
             'status' => \CommonITILObject::CLOSED,
         ]);
         $this->integer($closedId)->isGreaterThan(0);
@@ -434,7 +436,9 @@ class MailCollector extends DbTestCase
 
         // A real purged ticket supplies a stale reference; no guessed target.
         $removed = new \Ticket();
-        $removedId = (int)$removed->add(['name' => 'Purged subject reference', 'entities_id' => 0]);
+        $removedId = (int)$removed->add([
+            'name' => 'Purged subject reference', 'content' => 'Purged reference body', 'entities_id' => 0,
+        ]);
         $this->integer($removedId)->isGreaterThan(0);
         $this->boolean($removed->delete(['id' => $removedId], true))->isTrue();
         $this->boolean((new \Ticket())->getFromDB($removedId))->isFalse();
