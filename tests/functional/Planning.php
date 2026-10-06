@@ -59,7 +59,7 @@ class Planning extends \DbTestCase
             $_SESSION['glpiID'] = $id;
             // Issuing one's own personal token does not require user-management rights.
             $_SESSION['glpiactiveprofile']['user'] = 0;
-            $this->boolean(\Session::haveRight('user', UPDATE))->isFalse();
+            $this->boolean((bool)\Session::haveRight('user', UPDATE))->isFalse();
             $repository = new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB));
             $actorToken = str_repeat('a', 40);
             $connection->update('glpi_users', ['personal_token' => $actorToken], ['id' => $actor->getID()]);
