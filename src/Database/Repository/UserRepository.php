@@ -175,8 +175,8 @@ final class UserRepository
         return $rows[0] ?? null;
     }
 
-    /** Current names for an already selected planning audience, keyed by identity. */
-    public function planningNames(array $users): array
+    /** Current name fields for an already selected audience, keyed by identity. */
+    public function friendlyNameData(array $users): array
     {
         if (!$users) {
             return [];

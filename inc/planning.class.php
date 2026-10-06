@@ -717,7 +717,7 @@ class Planning extends CommonGLPI
                     array_keys($planning['users'])
                 );
                 $names = $userIds ? (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
-                    ->planningNames($userIds) : [];
+                    ->friendlyNameData($userIds) : [];
                 foreach (array_keys($planning['users']) as $planning_id_user) {
                     $child_exploded = explode('_', (string) $planning_id_user);
                     $user = new User();
@@ -739,7 +739,7 @@ class Planning extends CommonGLPI
                 $users_id = (int) $exploded[1];
                 if ($itemtype === 'User') {
                     $names = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
-                        ->planningNames([$users_id]);
+                        ->friendlyNameData([$users_id]);
                     $object->fields = $names[$users_id] ?? [];
                 } else {
                     $object->getFromDB($users_id);

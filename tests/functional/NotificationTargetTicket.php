@@ -137,6 +137,119 @@ class NotificationTargetTicket extends DbTestCase
         }
     }
 
+    public function testTemplateFriendlyNamesKeepActorOrderAndCurrentReads(): void
+    {
+        global $DB, $CFG_GLPI;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $session = $_SESSION;
+        $idsVisible = $CFG_GLPI['is_ids_visible'];
+        $entity = (int)$_SESSION['glpiactive_entity'];
+        $connection = $DB->getDoctrineConnection();
+        $level = $connection->getTransactionNestingLevel();
+        $em = Orm::create($DB);
+        $loads = new class {
+            public int $count = 0;
+            public function postLoad(): void { ++$this->count; }
+        };
+        $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+        try {
+            $prefix = 'Notification names ' . $this->getUniqueString();
+            $first = $this->createItem(\User::class, ['name' => $prefix . ' first',
+                'firstname' => 'Ada', 'realname' => 'Reader', 'entities_id' => $entity, 'authtype' => \Auth::DB_GLPI]);
+            $second = $this->createItem(\User::class, ['name' => $prefix . ' second',
+                'firstname' => '', 'realname' => '', 'entities_id' => $entity, 'authtype' => \Auth::DB_GLPI]);
+            $a = (int)$first->getID();
+            $b = (int)$second->getID();
+            $ticket = new \Ticket();
+            $id = $ticket->add(['name' => $prefix, 'content' => 'Template name projection',
+                'entities_id' => $entity, 'users_id_recipient' => $a]);
+            $this->integer($id)->isGreaterThan(0);
+            foreach ([$b, $a] as $actor) {
+                $link = new \Ticket_User();
+                $this->integer($link->add(['tickets_id' => $id, 'users_id' => $actor,
+                    'type' => \CommonITILActor::ASSIGN, 'use_notification' => 0]))->isGreaterThan(0);
+            }
+            $this->boolean($ticket->getFromDB($id))->isTrue();
+            $target = new \NotificationTargetTicket($entity, 'new', $ticket);
+            $options = ['additionnaloption' => ['usertype' => '']];
+            $repository = new \itsmng\Database\Repository\UserRepository($em);
+            $rows = $repository->friendlyNameData([$a, $b, $a, PHP_INT_MAX]);
+            $this->array($rows)->hasSize(2);
+            $this->integer($loads->count)->isIdenticalTo(0);
+            $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+            $managed = $em->find(Entity\User::class, $a);
+            $this->integer($loads->count)->isIdenticalTo(1);
+            $this->boolean($DB->update('glpi_users', ['firstname' => 'Grace'], ['id' => $a]))->isTrue();
+            $this->string($repository->friendlyNameData([$a])[$a]['firstname'])->isIdenticalTo('Grace');
+            $this->string($managed->firstname)->isIdenticalTo('Ada');
+            $this->integer($loads->count)->isIdenticalTo(1);
+            $this->boolean($em->contains($managed))->isTrue();
+            foreach ([\User::FIRSTNAME_BEFORE, \User::REALNAME_BEFORE] as $format) {
+                $_SESSION['glpinames_format'] = $format;
+                $_SESSION['glpiis_ids_visible'] = $CFG_GLPI['is_ids_visible'] = 1;
+                $expected = [];
+                foreach ($ticket->getUsers(\CommonITILActor::ASSIGN) as $actor) {
+                    $user = new \User();
+                    $this->boolean($user->getFromDB($actor['users_id']))->isTrue();
+                    $expected[$actor['users_id']] = $user->getName();
+                }
+                $data = $target->getDataForObject($ticket, $options, true);
+                $this->string($data['##ticket.assigntousers##'])->isIdenticalTo(implode(', ', $expected));
+                foreach (['users_id_recipient' => 'openbyuser', 'users_id_lastupdater' => 'lastupdater'] as $field => $tag) {
+                    $user = new \User();
+                    $user->getFromDB($ticket->getField($field));
+                    $this->string($data['##ticket.' . $tag . '##'])
+                        ->isIdenticalTo($ticket->getField($field) ? $user->getName() : '');
+                }
+                $this->integer($_SESSION['glpiis_ids_visible'])->isIdenticalTo(1);
+                $this->integer($CFG_GLPI['is_ids_visible'])->isIdenticalTo(1);
+            }
+            // A custom selected-actor callback remains a freshness barrier. It can
+            // supply duplicates or a disappeared identity without changing row order.
+            $selected = new class extends \Ticket {
+                public array $selected = [];
+                public $beforeSelection;
+                public static function getType() { return 'Ticket'; }
+                public function countUsers($type = 0) { return $type === \CommonITILActor::ASSIGN ? count($this->selected) : 0; }
+                public function getUsers($type) {
+                    if ($type !== \CommonITILActor::ASSIGN) { return []; }
+                    ($this->beforeSelection)();
+                    return $this->selected;
+                }
+            };
+            $selected->fields = $ticket->fields;
+            $selected->fields['users_id_recipient'] = $a;
+            $selected->fields['users_id_lastupdater'] = PHP_INT_MAX;
+            $selected->selected = [['users_id' => $b], ['users_id' => PHP_INT_MAX], ['users_id' => $a], ['users_id' => $b]];
+            $selected->beforeSelection = static function () use ($connection, $a): void {
+                $connection->update('glpi_users', ['firstname' => 'Katherine'], ['id' => $a]);
+            };
+            $before = new \User();
+            $this->boolean($before->getFromDB($a))->isTrue();
+            $data = $target->getDataForObject($selected, $options, true);
+            $this->string($data['##ticket.openbyuser##'])->isIdenticalTo($before->getName());
+            $this->string($data['##ticket.lastupdater##'])->isIdenticalTo(NOT_AVAILABLE);
+            $this->boolean($first->getFromDB($a))->isTrue();
+            $this->boolean($second->getFromDB($b))->isTrue();
+            $this->string($data['##ticket.assigntousers##'])->isIdenticalTo($second->getName() . ', ' . $first->getName());
+            $selected->fields['users_id_recipient'] = null;
+            $selected->fields['users_id_lastupdater'] = null;
+            $selected->selected = [];
+            $data = $target->getDataForObject($selected, $options, true);
+            foreach (['openbyuser', 'lastupdater', 'assigntousers'] as $tag) {
+                $this->string($data['##ticket.' . $tag . '##'])->isIdenticalTo('');
+            }
+            $this->object($em->getConnection())->isIdenticalTo($connection);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+            $em->clear();
+            $_SESSION = $session;
+            $CFG_GLPI['is_ids_visible'] = $idsVisible;
+        }
+    }
+
     public function testgetDataForObject()
     {
         global $CFG_GLPI;

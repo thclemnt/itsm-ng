@@ -74,9 +74,9 @@ class Planning extends \DbTestCase
             $id = (int)$user->getID();
             $missing = PHP_INT_MAX;
             $repository = new \itsmng\Database\Repository\UserRepository($em);
-            $this->array($repository->planningNames([]))->isEmpty();
+            $this->array($repository->friendlyNameData([]))->isEmpty();
             $this->integer($em->queries)->isIdenticalTo(0);
-            $names = $repository->planningNames([$id, $id, $missing]);
+            $names = $repository->friendlyNameData([$id, $id, $missing]);
             $this->array($names)->hasSize(1);
             $this->array(array_keys($names[$id]))->isIdenticalTo(['id', 'name', 'realname', 'firstname']);
             $this->integer($em->queries)->isIdenticalTo(1);
@@ -85,7 +85,7 @@ class Planning extends \DbTestCase
             $managed = $em->find(\itsmng\Database\Entity\User::class, $id);
             $this->integer($listener->loaded)->isIdenticalTo(1);
             $connection->update('glpi_users', ['firstname' => 'Grace'], ['id' => $id]);
-            $this->string($repository->planningNames([$id])[$id]['firstname'])->isIdenticalTo('Grace');
+            $this->string($repository->friendlyNameData([$id])[$id]['firstname'])->isIdenticalTo('Grace');
             $this->string($managed->firstname)->isIdenticalTo('Ada');
             $this->boolean($em->contains($managed))->isTrue();
             $this->integer($listener->loaded)->isIdenticalTo(1);
