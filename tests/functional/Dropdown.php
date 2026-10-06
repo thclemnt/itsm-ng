@@ -1437,7 +1437,25 @@ class Dropdown extends DbTestCase
      */
     public function testGetDropdownUsers($params, $expected)
     {
+        global $DB;
         $this->login();
+
+        // These fixtures have no display names, so the configured database
+        // collation orders their logins. In particular, en_US.utf8 PostgreSQL
+        // sorts _test_user after tech, unlike MySQL and PostgreSQL's C locale.
+        // Keep exact rows and ordering assertions without imposing one locale.
+        $emptyChoice = array_shift($expected['results']);
+        $choices = array_column($expected['results'], null, 'id');
+        $orderedIds = $DB->getDoctrineConnection()->fetchFirstColumn(
+            'SELECT id FROM glpi_users WHERE id IN (?) ORDER BY name, id',
+            [array_keys($choices)],
+            [\Doctrine\DBAL\ArrayParameterType::INTEGER]
+        );
+        $this->integer(count($orderedIds))->isIdenticalTo(count($choices));
+        $expected['results'] = [$emptyChoice];
+        foreach ($orderedIds as $id) {
+            $expected['results'][] = $choices[$id];
+        }
 
         $params['_idor_token'] = \Session::getNewIDORToken('User');
         $result = \Dropdown::getDropdownUsers($params, false);
