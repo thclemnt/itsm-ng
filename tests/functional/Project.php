@@ -40,6 +40,128 @@ use ProjectTeam;
 /* Test for inc/project.class.php */
 class Project extends DbTestCase
 {
+    public function testChildIdentifiersPreserveRichRenderingAndCustomSelection(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $session = $_SESSION;
+        $entity = (int)\Session::getActiveEntity();
+        $em = \itsmng\Database\Orm::create($DB);
+        $listener = new class {
+            public int $loaded = 0;
+            public function postLoad(): void
+            {
+                ++$this->loaded;
+            }
+        };
+        $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+        try {
+            $prefix = 'Project children ' . $this->getUniqueString();
+            $owner = $this->createItem(\User::class, [
+                'name' => $prefix . ' owner', 'entities_id' => $entity, 'authtype' => \Auth::DB_GLPI,
+            ]);
+            $this->integer((int)$owner->getID())->isNotIdenticalTo((int)\Session::getLoginUserID());
+            $parent = $this->createItem(\Project::class, [
+                'name' => $prefix . ' parent', 'entities_id' => $entity, 'users_id' => \Session::getLoginUserID(),
+            ]);
+            $other = $this->createItem(\Project::class, ['name' => $prefix . ' other', 'entities_id' => $entity]);
+            $state = $this->createItem(\ProjectState::class, ['name' => $prefix . ' state', 'color' => '#123456']);
+            $children = [];
+            foreach (['team', 'denied', 'deleted', 'other'] as $kind) {
+                $children[$kind] = $this->createItem(\Project::class, [
+                    'name' => $prefix . ' ' . $kind, 'content' => $prefix . ' detail ' . $kind,
+                    'projects_id' => $kind === 'other' ? $other->getID() : $parent->getID(),
+                    'entities_id' => $entity, 'users_id' => $owner->getID(), 'projectstates_id' => $state->getID(),
+                ]);
+            }
+            $this->createItem(\ProjectTeam::class, [
+                'projects_id' => $children['team']->getID(), 'itemtype' => 'User', 'items_id' => \Session::getLoginUserID(),
+            ]);
+            $this->boolean($children['deleted']->delete(['id' => $children['deleted']->getID()]))->isTrue();
+            $repository = new \itsmng\Database\Repository\ProjectRepository($em);
+            $expected = [(int)$children['team']->getID(), (int)$children['denied']->getID()];
+            $ids = $repository->childIds((int)$parent->getID());
+            $actual = $ids;
+            sort($expected);
+            sort($actual);
+            $this->array($actual)->isIdenticalTo($expected);
+            // No ORDER BY existed on the original find; compare membership,
+            // then verify the renderer consumes the selector's returned order.
+            $old = array_map('intval', array_column($parent->find(['projects_id' => $parent->getID(), 'is_deleted' => 0]), 'id'));
+            sort($old);
+            $this->array($actual)->isIdenticalTo($old);
+            $this->array($repository->childIds(0))->contains((int)$parent->getID());
+            $this->array($repository->childIds(PHP_INT_MAX))->isEmpty();
+            $this->integer($listener->loaded)->isIdenticalTo(0);
+            $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+
+            $managed = $em->find(\itsmng\Database\Entity\Project::class, (int)$children['team']->getID());
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+            $this->boolean($children['team']->update([
+                'id' => $children['team']->getID(), 'projects_id' => $other->getID(),
+            ]))->isTrue();
+            $this->array($repository->childIds((int)$parent->getID()))->isIdenticalTo([(int)$children['denied']->getID()]);
+            $this->integer((int)$em->getClassMetadata(\itsmng\Database\Entity\Project::class)
+                ->getIdentifierValues($managed->projects)['id'])->isIdenticalTo((int)$parent->getID());
+            $this->boolean($em->contains($managed))->isTrue();
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+            $this->boolean($children['team']->update([
+                'id' => $children['team']->getID(), 'projects_id' => $parent->getID(),
+            ]))->isTrue();
+
+            $_SESSION['glpiactiveprofile']['project'] = \Project::READMY;
+            $this->boolean($parent->can($parent->getID(), READ))->isTrue();
+            $this->boolean($children['team']->getFromDB($children['team']->getID()))->isTrue();
+            $this->boolean($children['team']->canViewItem())->isTrue();
+            $this->boolean($children['denied']->canViewItem())->isFalse();
+            $ids = $repository->childIds((int)$parent->getID());
+            ob_start();
+            try {
+                $parent->showChildren();
+                $html = ob_get_contents();
+            } finally {
+                ob_end_clean();
+            }
+            $this->string($html)->contains($children['team']->getLinkURL() . '&amp;forcetab=Project$')
+                ->contains($prefix . ' detail team')->contains($prefix . ' state')->contains("bgcolor='#123456'")
+                ->contains($prefix . ' denied')->notContains($children['denied']->getLinkURL())
+                ->notContains($prefix . ' deleted')->notContains($prefix . ' other');
+            $this->boolean(strpos($html, '<span class=\'b\'>' . $prefix . ' ' . ($ids[0] === (int)$children['team']->getID() ? 'team' : 'denied'))
+                < strpos($html, '<span class=\'b\'>' . $prefix . ' ' . ($ids[1] === (int)$children['team']->getID() ? 'team' : 'denied')))->isTrue();
+
+            $custom = new class extends \Project {
+                public array $selection = [];
+                public array $calls = [];
+                public static function getTable($classname = null)
+                {
+                    return \Project::getTable();
+                }
+                public function find($condition = [], $order = [], $limit = null)
+                {
+                    $this->calls[] = [$condition, $order, $limit];
+                    return $this->selection;
+                }
+            };
+            $custom->fields = $parent->fields;
+            $custom->selection = [['id' => $children['other']->getID()], ['id' => $children['denied']->getID()]];
+            ob_start();
+            try {
+                $custom->showChildren();
+                $customHtml = ob_get_contents();
+            } finally {
+                ob_end_clean();
+            }
+            $this->array($custom->calls)->isIdenticalTo([[['projects_id' => $parent->getID(), 'is_deleted' => 0], [], null]]);
+            $this->string($customHtml)->contains($prefix . ' other')->contains($prefix . ' denied')->notContains($prefix . ' team');
+            $this->boolean(strpos($customHtml, $prefix . ' other') < strpos($customHtml, $prefix . ' denied'))->isTrue();
+        } finally {
+            $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+            $em->clear();
+            $_SESSION = $session;
+        }
+    }
+
     public function testAutocalculatePercentDone()
     {
 

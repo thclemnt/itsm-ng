@@ -22,6 +22,20 @@ final class ProjectRepository
     {
     }
 
+    /** Discovery only; showShort still loads each project's team and checks its rich link. */
+    public function childIds(int $parent): array
+    {
+        $query = $this->em->createQueryBuilder()->select('child.id')->from(Project::class, 'child')
+            ->where('child.is_deleted = :deleted')->setParameter('deleted', false, Types::BOOLEAN);
+        if ($parent === 0) {
+            $query->andWhere('child.projects IS NULL');
+        } else {
+            $query->andWhere('IDENTITY(child.projects) = :parent')->setParameter('parent', $parent, Types::BIGINT);
+        }
+        // The original find() call has no ordering; do not introduce a new sort.
+        return array_map('intval', $query->getQuery()->getSingleColumnResult());
+    }
+
     /** Visibility is an EXISTS predicate so several team memberships never duplicate a project. */
     public function visibleProjects(array $criteria, bool $readAll, int $user, array $groups, bool $active): array
     {

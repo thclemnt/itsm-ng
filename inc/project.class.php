@@ -1452,13 +1452,24 @@ class Project extends CommonDBTM implements ExtraVisibilityCriteria
      **/
     public function showChildren()
     {
+        global $DB;
 
         $ID   = $this->getID();
         $this->check($ID, READ);
         $rand = mt_rand();
 
-        $iterator = $this->find([$this->getForeignKeyField() => $ID, 'is_deleted' => 0]);
-        $numrows = count($iterator);
+        if (get_class($this) === self::class) {
+            $em = \itsmng\Database\Orm::create($DB);
+            try {
+                $children = (new \itsmng\Database\Repository\ProjectRepository($em))->childIds((int)$ID);
+            } finally {
+                $em->clear();
+            }
+        } else {
+            // Extensions retain their selector and its returned order.
+            $children = array_column($this->find([$this->getForeignKeyField() => $ID, 'is_deleted' => 0]), 'id');
+        }
+        $numrows = count($children);
 
         if ($this->can($ID, UPDATE)) {
             echo "<div class='firstbloc'>";
@@ -1489,9 +1500,9 @@ class Project extends CommonDBTM implements ExtraVisibilityCriteria
             );
 
             $i = 0;
-            foreach ($iterator as $data) {
-                Session::addToNavigateListItems('Project', $data["id"]);
-                Project::showShort($data['id'], ['row_num' => $i]);
+            foreach ($children as $id) {
+                Session::addToNavigateListItems('Project', $id);
+                Project::showShort($id, ['row_num' => $i]);
                 $i++;
             }
             Project::commonListHeader();
