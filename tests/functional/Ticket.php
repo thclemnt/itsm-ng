@@ -124,7 +124,9 @@ class Ticket extends DbTestCase
         global $DB, $CFG_GLPI;
         $this->login();
         $mailing = $CFG_GLPI['notifications_mailing'];
+        $session = $_SESSION;
         try {
+            $_SESSION['glpiset_default_tech'] = false;
             $user = $this->createItem(\User::class, ['name' => 'Panel user ' . $this->getUniqueString()]);
             $this->createItem(\UserEmail::class, ['users_id' => $user->getID(), 'email' => 'panel@example.com']);
             $group = $this->createItem(\Group::class, ['name' => 'Panel group ' . $this->getUniqueString(), 'entities_id' => 0]);
@@ -202,6 +204,7 @@ class Ticket extends DbTestCase
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
         } finally {
             $CFG_GLPI['notifications_mailing'] = $mailing;
+            $_SESSION = $session;
         }
     }
 
@@ -234,7 +237,7 @@ class Ticket extends DbTestCase
                 static function (\User $model) use ($user, &$calls): void {
                     if ($model->getID() == $user->getID()) {
                         $calls[] = $model->fields;
-                        $model->fields['firstname'] = 'Plugin author label';
+                        $model->fields['name'] = 'Plugin author label';
                         $model->right = false;
                     }
                 }]];
