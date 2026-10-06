@@ -680,6 +680,8 @@ class Planning extends CommonGLPI
 
     public static function getTimelineResources()
     {
+        global $DB;
+
         $resources = [];
         foreach ($_SESSION['glpi_plannings']['plannings'] as $planning_id => $planning) {
             if ($planning['type'] == 'external') {
@@ -708,11 +710,19 @@ class Planning extends CommonGLPI
                    'itemtype'   => 'Group_User',
                    'items_id'   => $group_id
                 ];
+                // Read after this group's formatter and before its concrete User loop.
+                // Dynamic resources elsewhere in the pass may perform current writes.
+                $userIds = array_map(
+                    static fn($key) => (int)explode('_', (string)$key)[1],
+                    array_keys($planning['users'])
+                );
+                $names = $userIds ? (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+                    ->planningNames($userIds) : [];
                 foreach (array_keys($planning['users']) as $planning_id_user) {
                     $child_exploded = explode('_', (string) $planning_id_user);
                     $user = new User();
                     $users_id = (int) $child_exploded[1];
-                    $user->getFromDB($users_id);
+                    $user->fields = $names[$users_id] ?? [];
                     $planning_id_user = "gu_" . $planning_id_user;
                     $resources[] = [
                        'id'         => $planning_id_user,
@@ -727,7 +737,13 @@ class Planning extends CommonGLPI
                 $itemtype   = $exploded[0];
                 $object = new $itemtype();
                 $users_id = (int) $exploded[1];
-                $object->getFromDB($users_id);
+                if ($itemtype === 'User') {
+                    $names = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+                        ->planningNames([$users_id]);
+                    $object->fields = $names[$users_id] ?? [];
+                } else {
+                    $object->getFromDB($users_id);
+                }
 
                 $resources[] = [
                    'id'         => $planning_id,

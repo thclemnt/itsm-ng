@@ -175,6 +175,19 @@ final class UserRepository
         return $rows[0] ?? null;
     }
 
+    /** Current names for an already selected planning audience, keyed by identity. */
+    public function planningNames(array $users): array
+    {
+        if (!$users) {
+            return [];
+        }
+        $rows = $this->em->createQueryBuilder()->select('u.id, u.name, u.realname, u.firstname')
+            ->from(User::class, 'u')->where('u.id IN (:users)')
+            ->setParameter('users', array_values(array_unique(array_map('intval', $users))))
+            ->getQuery()->getArrayResult();
+        return array_column($rows, null, 'id');
+    }
+
     public function profiles(int $user): array
     {
         $rows = $this->em->createQueryBuilder()->select('DISTINCT p.id, p.name')->from(ProfileUser::class, 'a')

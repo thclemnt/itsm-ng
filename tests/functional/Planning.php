@@ -37,6 +37,108 @@ namespace tests\units;
 
 class Planning extends \DbTestCase
 {
+    public function testTimelineNamesKeepResourceOrderAndDynamicWriteBoundaries(): void
+    {
+        global $DB, $CFG_GLPI;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $session = $_SESSION;
+        $idsVisible = $CFG_GLPI['is_ids_visible'];
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $connection = $DB->getDoctrineConnection();
+        $level = $connection->getTransactionNestingLevel();
+        $em = new class($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+            public int $queries = 0;
+            public function createQuery(string $dql = ''): \Doctrine\ORM\Query
+            {
+                ++$this->queries;
+                return parent::createQuery($dql);
+            }
+        };
+        $listener = new class {
+            public int $loaded = 0;
+            public function postLoad(): void
+            {
+                ++$this->loaded;
+            }
+        };
+        $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+        try {
+            $prefix = 'Planning names ' . bin2hex(random_bytes(6));
+            $user = $this->createItem(\User::class, [
+                'name' => $prefix, 'firstname' => 'Ada', 'realname' => 'Reader',
+                'entities_id' => $entity, 'authtype' => \Auth::DB_GLPI,
+            ]);
+            $first = $this->createItem(\Group::class, ['name' => $prefix . ' first', 'entities_id' => $entity]);
+            $second = $this->createItem(\Group::class, ['name' => $prefix . ' second', 'entities_id' => $entity]);
+            $id = (int)$user->getID();
+            $missing = PHP_INT_MAX;
+            $repository = new \itsmng\Database\Repository\UserRepository($em);
+            $this->array($repository->planningNames([]))->isEmpty();
+            $this->integer($em->queries)->isIdenticalTo(0);
+            $names = $repository->planningNames([$id, $id, $missing]);
+            $this->array($names)->hasSize(1);
+            $this->array(array_keys($names[$id]))->isIdenticalTo(['id', 'name', 'realname', 'firstname']);
+            $this->integer($em->queries)->isIdenticalTo(1);
+            $this->integer($listener->loaded)->isIdenticalTo(0);
+            $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+            $managed = $em->find(\itsmng\Database\Entity\User::class, $id);
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+            $connection->update('glpi_users', ['firstname' => 'Grace'], ['id' => $id]);
+            $this->string($repository->planningNames([$id])[$id]['firstname'])->isIdenticalTo('Grace');
+            $this->string($managed->firstname)->isIdenticalTo('Ada');
+            $this->boolean($em->contains($managed))->isTrue();
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+
+            $firstKey = 'Group_' . $first->getID();
+            $secondKey = 'Group_' . $second->getID();
+            $userKey = 'User_' . $id;
+            $missingKey = 'User_' . $missing;
+            $writerKey = PlanningTimelineWriter::class . '_1';
+            $_SESSION['glpi_plannings']['plannings'] = [
+                'external_1' => ['type' => 'external', 'name' => 'External title', 'display' => false],
+                $firstKey => ['type' => 'group_users', 'display' => true, 'users' => [$userKey => [], $missingKey => []]],
+                $writerKey => ['type' => 'custom', 'display' => true],
+                $secondKey => ['type' => 'group_users', 'display' => false, 'users' => [$userKey => []]],
+                $userKey => ['type' => 'user', 'display' => true],
+            ];
+            PlanningTimelineWriter::$write = static function () use ($connection, $id): void {
+                $connection->update('glpi_users', ['firstname' => 'Grace'], ['id' => $id]);
+            };
+            foreach ([\User::FIRSTNAME_BEFORE, \User::REALNAME_BEFORE] as $format) {
+                $_SESSION['glpinames_format'] = $format;
+                $_SESSION['glpiis_ids_visible'] = $CFG_GLPI['is_ids_visible'] = 1;
+                $connection->update('glpi_users', ['firstname' => 'Ada'], ['id' => $id]);
+                $this->boolean($user->getFromDB($id))->isTrue();
+                $before = $user->getName();
+                $resources = \Planning::getTimelineResources();
+                $this->boolean($user->getFromDB($id))->isTrue();
+                $after = $user->getName();
+                $this->string($before)->isNotIdenticalTo($after);
+                $this->array(array_column($resources, 'id'))->isIdenticalTo([
+                    'external_1', $firstKey, 'gu_' . $userKey, 'gu_' . $missingKey,
+                    $writerKey, $secondKey, 'gu_' . $userKey, $userKey,
+                ]);
+                $this->array(array_column($resources, 'title'))->isIdenticalTo([
+                    'External title', $first->getName(), $before, NOT_AVAILABLE,
+                    'Dynamic writer', $second->getName(), $after, $after,
+                ]);
+                $this->array(array_column($resources, 'is_visible'))->isIdenticalTo([false, true, true, true, true, false, false, true]);
+                $this->string($resources[2]['parentId'])->isIdenticalTo($firstKey);
+                $this->string($resources[6]['parentId'])->isIdenticalTo($secondKey);
+                $this->integer($_SESSION['glpiis_ids_visible'])->isIdenticalTo(1);
+                $this->integer($CFG_GLPI['is_ids_visible'])->isIdenticalTo(1);
+            }
+        } finally {
+            PlanningTimelineWriter::$write = null;
+            $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+            $em->clear();
+            $_SESSION = $session;
+            $CFG_GLPI['is_ids_visible'] = $idsVisible;
+        }
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+    }
+
     public function testCloneEvent()
     {
         $this->login();
@@ -182,5 +284,23 @@ class Planning extends \DbTestCase
                 }
             }
         }
+    }
+}
+
+
+/** A dynamic planning resource: its read is an observable write boundary. */
+class PlanningTimelineWriter extends \CommonDBTM
+{
+    public static ?\Closure $write = null;
+
+    public function getFromDB($ID)
+    {
+        (self::$write)();
+        return true;
+    }
+
+    public function getName($options = [])
+    {
+        return 'Dynamic writer';
     }
 }
