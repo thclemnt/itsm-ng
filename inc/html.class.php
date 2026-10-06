@@ -920,10 +920,10 @@ class Html
     public static function displayDebugInfos($with_session = true, $ajax = false)
     {
         global $CFG_GLPI, $DEBUG_SQL, $SQL_TOTAL_REQUEST, $DEBUG_AUTOLOAD;
-        $GLPI_CACHE = Config::getCache('cache_db');
 
         // Only for debug mode so not need to be translated
         if ($_SESSION['glpi_use_mode'] == Session::DEBUG_MODE) { // mode debug
+            $GLPI_CACHE = Config::getCache('cache_db');
             $rand = mt_rand();
             echo "<div class='debug " . ($ajax ? "debug_ajax" : "") . "' bg-primary>";
             if (!$ajax) {
