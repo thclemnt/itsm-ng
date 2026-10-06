@@ -39,6 +39,38 @@ use DbTestCase;
 
 class CronTask extends DbTestCase
 {
+    public function testSchemaInspectionDetectsCurrentCronLogEditsWithoutChangingStorage(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $platform = $connection->getDatabasePlatform();
+        $schemaManager = $connection->createSchemaManager();
+        $before = $schemaManager->introspectTable('glpi_crontasklogs');
+        $rowsHash = static fn (): string => hash('sha256', serialize($connection->fetchAllAssociative(
+            'SELECT id, crontasks_id, crontasklogs_id, date, state, elapsed, volume, content FROM glpi_crontasklogs ORDER BY id'
+        )));
+        // Compare digests so a failed read-only check cannot print log contents.
+        $beforeRows = $rowsHash();
+        $level = $connection->getTransactionNestingLevel();
+        $manager = \itsmng\Database\Orm::create($DB);
+        try {
+            $metadata = $manager->getClassMetadata(\itsmng\Database\Entity\CronTaskLog::class);
+            $metadata->fieldMappings['content']->length = 173;
+            $expected = (new \itsmng\Database\BaselineSchema($manager))->build($platform)->getTable('glpi_crontasklogs');
+            $this->array((new \itsmng\Database\SchemaCheck())->differences(
+                $connection, new \Doctrine\DBAL\Schema\Schema([clone $expected])
+            ))->isIdenticalTo(['Changed column: glpi_crontasklogs.content']);
+            $after = $schemaManager->introspectTable('glpi_crontasklogs');
+            $this->boolean($schemaManager->createComparator()->compareTables($before, $after)->isEmpty())->isTrue();
+            $this->array($after->getOptions())->isIdenticalTo($before->getOptions());
+            $this->string($rowsHash())->isIdenticalTo($beforeRows);
+            $this->object($DB->getDoctrineConnection())->isIdenticalTo($connection);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $manager->clear();
+        }
+    }
+
     protected function registerProvider()
     {
         return [
