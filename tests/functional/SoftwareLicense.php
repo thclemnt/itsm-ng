@@ -100,6 +100,7 @@ class SoftwareLicense extends DbTestCase
             $entity = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => $parent]);
             $entityId = (int)$entity->getID();
             $CFG_GLPI['auto_create_infocoms'] = 0;
+            $CFG_GLPI['date_tax'] = '2090-12-31';
             $software = $this->createItem(\Software::class, ['name' => $this->getUniqueString(), 'entities_id' => $entityId]);
             $outsideSoftware = $this->createItem(\Software::class, ['name' => $this->getUniqueString(), 'entities_id' => $parent]);
             $licenses = [];
@@ -118,7 +119,7 @@ class SoftwareLicense extends DbTestCase
                 $licenses[] = $license;
                 $financial[] = $this->createItem(\Infocom::class, ['itemtype' => 'SoftwareLicense',
                     'items_id' => $license->getID(), 'value' => $value, 'buy_date' => $buy, 'use_date' => $use,
-                    'sink_type' => 1, 'sink_time' => 3, 'sink_coeff' => 1.0]);
+                    'sink_type' => 1, 'sink_time' => 3, 'sink_coeff' => 2.0]);
             }
             $this->setEntity($entityId, false);
             $scope = \itsmng\Reporting\Criteria::entities();

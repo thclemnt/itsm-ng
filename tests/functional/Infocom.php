@@ -37,6 +37,39 @@ namespace tests\units;
 
 class Infocom extends \GLPITestCase
 {
+    public function testUnusableDegressiveInputsReturnNoScheduleBeforeDateParsing(): void
+    {
+        foreach ([
+            [1, 1000, 5, 2, null],
+            [1, 1000, 5, 2, ''],
+            [1, 1000, 5, 2, '0'],
+            [1, 0, 5, 2, '2000-01-01'],
+            [1, -1, 5, 2, '2000-01-01'],
+            [1, 1000, 0, 2, '2000-01-01'],
+            [1, 1000, -1, 2, '2000-01-01'],
+            [1, 1000, 5, 1, '2000-01-01'],
+            [1, 1000, 5, null, '2000-01-01'],
+            [0, 1000, 5, 2, null],
+            [3, 1000, 5, 2, null],
+        ] as [$type, $value, $duration, $coefficient, $purchase]) {
+            foreach (['n', 'all'] as $view) {
+                $this->string(\Infocom::Amort($type, $value, $duration, $coefficient, $purchase, null, null, $view))
+                    ->isIdenticalTo('-');
+            }
+        }
+    }
+
+    public function testValidDegressiveScheduleIsUnchanged(): void
+    {
+        $schedule = \Infocom::Amort(1, 1000.0, 5, 2, '2000-01-01', null, '2000-12-31', 'all');
+        $this->array($schedule)->isIdenticalTo([
+            'annee' => [1 => 2000, 2 => 2001, 3 => 2002, 4 => 2003, 5 => 2004],
+            'vcnetdeb' => [1 => 1000.0, 2 => 600.0, 3 => 360.0, 4 => 216.0, 5 => 108.0],
+            'annuite' => [1 => 400.0, 2 => 240.0, 3 => 144.0, 4 => 108.0, 5 => 108.0],
+            'vcnetfin' => [1 => 600.0, 2 => 360.0, 3 => 216.0, 4 => 108.0, 5 => 0.0],
+        ]);
+    }
+
     public function dataLinearAmortise()
     {
         return [
@@ -195,6 +228,8 @@ class Infocom extends \GLPITestCase
             $buydate,
             $usedate
         );
+        $this->array(\Infocom::Amort(2, $value, $duration, null, $buydate, $usedate, $fiscaldate, 'all'))
+            ->isIdenticalTo(\Infocom::mapOldAmortiseFormat($amortise, false));
         foreach ($expected as $year => $values) {
             $this->array($amortise[$year])->isIdenticalTo($values);
         }

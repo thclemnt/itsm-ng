@@ -1003,6 +1003,12 @@ JS;
             return self::mapOldAmortiseFormat($values, $view != 'all');
         }
 
+        // Missing acquisition dates and unusable degressive inputs have no
+        // schedule. Reject them before parsing nullable financial dates.
+        if ($type_amort != "1" || !($va > 0 && $duree > 0 && $coef > 1 && !empty($date_achat))) {
+            return '-';
+        }
+
         $prorata             = 0;
         $ecartfinmoiscourant = 0;
         $ecartmoisexercice   = 0;
