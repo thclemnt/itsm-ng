@@ -4810,6 +4810,13 @@ abstract class CommonITILObject extends CommonDBTM
         return sprintf('%s:%s', $type, $id);
     }
 
+    /** Resolve again at each display boundary: virtual callbacks can write or change routing. */
+    protected function actorDisplayRepository(): \itsmng\Database\Repository\ITILActorRepository
+    {
+        global $DB;
+        return new \itsmng\Database\Repository\ITILActorRepository(\itsmng\Database\Orm::create($DB));
+    }
+
     protected function getITILActorDefaultEmail(string $itemtype, int $id): string
     {
         if ($id <= 0) {
@@ -4818,12 +4825,10 @@ abstract class CommonITILObject extends CommonDBTM
 
         switch ($itemtype) {
             case User::class:
-                $user = new User();
-                return $user->getFromDB($id) ? (string)$user->getDefaultEmail() : '';
+                return (string)$this->actorDisplayRepository()->userDefaultEmail($id);
 
             case Supplier::class:
-                $supplier = new Supplier();
-                return $supplier->getFromDB($id) ? (string)$supplier->fields['email'] : '';
+                return (string)($this->actorDisplayRepository()->supplierDisplayData($id)['email'] ?? '');
         }
 
         return '';
@@ -4874,10 +4879,11 @@ abstract class CommonITILObject extends CommonDBTM
 
         $groupActors = $this->getGroups($action);
         foreach ($groupActors as $groupActor) {
-            $group = new Group();
-            $group->getFromDB($groupActor['groups_id']);
+            $id = $groupActor['groups_id'];
+            $name = $id === null || strlen($id) === 0
+                ? '' : (string)$this->actorDisplayRepository()->groupName((int)Toolbox::cleanInteger($id));
             $actors[] = [
-                'name'             => $group->getName(),
+                'name'             => strlen($name) !== 0 ? $name : NOT_AVAILABLE,
                 'id'               => $groupActor['groups_id'],
                 'type'             => 'group',
                 'icon'             => Group::getIcon(),
@@ -4900,10 +4906,11 @@ abstract class CommonITILObject extends CommonDBTM
                 )) {
                     $subtitle[] = $supplierActor['alternative_email'];
                 }
-                $supplier = new Supplier();
-                $supplier->getFromDB($supplierActor['suppliers_id']);
+                $id = $supplierActor['suppliers_id'];
+                $name = $id === null || strlen($id) === 0
+                    ? '' : (string)($this->actorDisplayRepository()->supplierDisplayData((int)Toolbox::cleanInteger($id))['name'] ?? '');
                 $newSupplierActor = [
-                    'name'             => $supplier->getName(),
+                    'name'             => strlen($name) !== 0 ? $name : NOT_AVAILABLE,
                     'id'               => $supplierActor['suppliers_id'],
                     'type'             => 'supplier',
                     'icon'             => Supplier::getIcon(),

@@ -4447,9 +4447,25 @@ class Ticket extends CommonITILObject
 
             if ($actor['use_notification']) {
                 $email = $actor['alternative_email'];
-                $actorObj = new $actorType();
-                if (empty($email) && $actorObj->getFromDB($actor[$actorType == User::class ? 'users_id' : 'suppliers_id'])) {
-                    $email = $actorType == User::class ? $actorObj->getDefaultEmail() : $actorObj->fields['email'];
+                if (in_array($actorType, [User::class, Supplier::class], true)) {
+                    $id = $actor[$actorType === User::class ? 'users_id' : 'suppliers_id'];
+                    if (empty($email) && $id !== null && strlen($id) !== 0) {
+                        $repository = $this->actorDisplayRepository();
+                        $id = (int)Toolbox::cleanInteger($id);
+                        if ($actorType === User::class) {
+                            $email = $repository->userDefaultEmail($id) ?? $email;
+                        } else {
+                            $current = $repository->supplierDisplayData($id);
+                            if ($current !== null) {
+                                $email = $current['email'];
+                            }
+                        }
+                    }
+                } else {
+                    $actorObj = new $actorType();
+                    if (empty($email) && $actorObj->getFromDB($actor['suppliers_id'])) {
+                        $email = $actorObj->fields['email'];
+                    }
                 }
                 $text .= sprintf(__('%1$s: %2$s'), _n('Email', 'Emails', 1), $email);
                 if (!NotificationMailing::isUserAddressValid($email)) {

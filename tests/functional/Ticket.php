@@ -42,6 +42,169 @@ use User;
 
 class Ticket extends DbTestCase
 {
+    public function testActorDisplayReadsKeepPreferredEmailAndMissingUserBoundary(): void
+    {
+        global $DB, $CFG_GLPI;
+        $this->login();
+        $mailing = $CFG_GLPI['notifications_mailing'];
+        $manager = \itsmng\Database\Orm::create($DB);
+        try {
+            $user = $this->createItem(\User::class, ['name' => 'Actor address ' . $this->getUniqueString()]);
+            $id = (int)$user->getID();
+            $first = $this->createItem(\UserEmail::class, ['users_id' => $id, 'email' => 'first@example.com']);
+            $second = $this->createItem(\UserEmail::class, ['users_id' => $id, 'email' => 'second@example.com']);
+            $group = $this->createItem(\Group::class, ['name' => 'Actor group ' . $this->getUniqueString(), 'entities_id' => 0]);
+            $supplier = $this->createItem(\Supplier::class, ['name' => 'Actor supplier ' . $this->getUniqueString(),
+                'entities_id' => 0, 'email' => 'supplier@example.com']);
+            $repository = new \itsmng\Database\Repository\ITILActorRepository($manager);
+            $loads = new class {
+                public int $count = 0;
+                public function postLoad(): void { ++$this->count; }
+            };
+            $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+            $connection = $DB->getDoctrineConnection();
+            $level = $connection->getTransactionNestingLevel();
+            $this->string($repository->groupName((int)$group->getID()))->isIdenticalTo($group->getName());
+            $this->array($repository->supplierDisplayData((int)$supplier->getID()))
+                ->isIdenticalTo(['name' => $supplier->getName(), 'email' => 'supplier@example.com']);
+            $this->variable($repository->groupName(PHP_INT_MAX))->isNull();
+            $this->variable($repository->supplierDisplayData(PHP_INT_MAX))->isNull();
+            foreach ([[false, false, 'first@example.com'], [false, true, 'second@example.com'],
+                [true, true, 'first@example.com']] as [$firstDefault, $secondDefault, $expected]) {
+                $this->boolean($DB->update('glpi_useremails', ['is_default' => $firstDefault], ['id' => $first->getID()]))->isTrue();
+                $this->boolean($DB->update('glpi_useremails', ['is_default' => $secondDefault], ['id' => $second->getID()]))->isTrue();
+                $this->string($repository->userDefaultEmail($id))->isIdenticalTo($expected);
+                $this->string($repository->userDefaultEmail($id))->isIdenticalTo($user->getDefaultEmail());
+            }
+            $this->boolean($DB->update('glpi_useremails', ['email' => null], ['id' => $first->getID()]))->isTrue();
+            $this->string($repository->userDefaultEmail($id))->isIdenticalTo('');
+            $this->string($user->getDefaultEmail())->isIdenticalTo('');
+            $this->variable($repository->userDefaultEmail(PHP_INT_MAX))->isNull();
+            $withoutEmail = $this->createItem(\User::class, ['name' => 'No address ' . $this->getUniqueString()]);
+            $this->string($repository->userDefaultEmail((int)$withoutEmail->getID()))->isIdenticalTo('');
+            $this->integer($loads->count)->isIdenticalTo(0);
+            $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+            $this->object($manager->find(\itsmng\Database\Entity\User::class, $id))->isInstanceOf(\itsmng\Database\Entity\User::class);
+            $this->integer($loads->count)->isGreaterThan(0);
+            $manager->clear();
+
+            $CFG_GLPI['notifications_mailing'] = true;
+            $ticket = new \Ticket();
+            foreach ([PHP_INT_MAX, null, '', 0] as $missing) {
+                ob_start();
+                try {
+                    $link = $ticket->generateFollowupLink(['id' => 1, 'users_id' => $missing,
+                        'use_notification' => 1, 'alternative_email' => ''], \User::class);
+                } finally {
+                    ob_end_clean();
+                }
+                $this->string($link['followupTitle'])->contains(__('Invalid email address'));
+            }
+            ob_start();
+            try {
+                $missingLink = $ticket->generateFollowupLink(['id' => 1, 'users_id' => PHP_INT_MAX,
+                    'use_notification' => 1, 'alternative_email' => '0'], \User::class);
+                $emptyLink = $ticket->generateFollowupLink(['id' => 1, 'users_id' => $withoutEmail->getID(),
+                    'use_notification' => 1, 'alternative_email' => '0'], \User::class);
+            } finally {
+                ob_end_clean();
+            }
+            $this->string($missingLink['followupTitle'])->contains(sprintf(__('%1$s: %2$s'), _n('Email', 'Emails', 1), '0'));
+            $this->string($emptyLink['followupTitle'])->notContains(sprintf(__('%1$s: %2$s'), _n('Email', 'Emails', 1), '0'));
+            $this->object($DB->getDoctrineConnection())->isIdenticalTo($connection);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $CFG_GLPI['notifications_mailing'] = $mailing;
+            $manager->clear();
+        }
+    }
+
+    public function testActorPanelKeepsLabelsAndReadsAfterVirtualCallbacks(): void
+    {
+        global $DB, $CFG_GLPI;
+        $this->login();
+        $mailing = $CFG_GLPI['notifications_mailing'];
+        try {
+            $user = $this->createItem(\User::class, ['name' => 'Panel user ' . $this->getUniqueString()]);
+            $this->createItem(\UserEmail::class, ['users_id' => $user->getID(), 'email' => 'panel@example.com']);
+            $group = $this->createItem(\Group::class, ['name' => 'Panel group ' . $this->getUniqueString(), 'entities_id' => 0]);
+            $supplier = $this->createItem(\Supplier::class, ['name' => 'Panel supplier ' . $this->getUniqueString(),
+                'entities_id' => 0, 'email' => 'before@example.com']);
+            $ticket = $this->createItem(\Ticket::class, ['name' => 'Panel ticket ' . $this->getUniqueString(),
+                'content' => 'Actor callback fixture', 'entities_id' => 0]);
+            $this->createItem(\Ticket_User::class, ['tickets_id' => $ticket->getID(), 'users_id' => $user->getID(),
+                'type' => \CommonITILActor::ASSIGN, 'use_notification' => 1, 'alternative_email' => 'PANEL@example.com']);
+            $this->createItem(\Group_Ticket::class, ['tickets_id' => $ticket->getID(), 'groups_id' => $group->getID(),
+                'type' => \CommonITILActor::ASSIGN]);
+            $this->createItem(\Supplier_Ticket::class, ['tickets_id' => $ticket->getID(), 'suppliers_id' => $supplier->getID(),
+                'type' => \CommonITILActor::ASSIGN, 'use_notification' => 1, 'alternative_email' => '']);
+            $panel = new class extends \Ticket {
+                public $afterActor;
+                public function panel(): array { return $this->getActorsForAction(\CommonITILActor::ASSIGN); }
+                public function getSuppliers($type) {
+                    $rows = parent::getSuppliers($type);
+                    return array_merge($rows, $rows);
+                }
+                protected function getITILActorPanelEntryExtras(array $actor, string $actorType): array {
+                    $extra = parent::getITILActorPanelEntryExtras($actor, $actorType);
+                    ($this->afterActor)($actorType);
+                    return $extra;
+                }
+            };
+            $panel->fields = $ticket->fields;
+            $panel->userlinkclass = \Ticket_User::class;
+            $panel->grouplinkclass = \Group_Ticket::class;
+            $panel->supplierlinkclass = \Supplier_Ticket::class;
+            $panel->loadActors();
+            $CFG_GLPI['notifications_mailing'] = true;
+            $calls = [];
+            $panel->afterActor = function (string $type) use (&$calls, $DB, $group, $supplier): void {
+                $calls[] = $type;
+                if ($type === \User::class) {
+                    $this->boolean($DB->update('glpi_groups', ['name' => 'After user'], ['id' => $group->getID()]))->isTrue();
+                    $this->boolean($DB->update('glpi_suppliers', ['name' => 'After user', 'email' => 'after-user@example.com'], ['id' => $supplier->getID()]))->isTrue();
+                } elseif (count($calls) === 2) {
+                    $this->boolean($DB->update('glpi_suppliers', ['name' => 'After supplier', 'email' => 'after-supplier@example.com'], ['id' => $supplier->getID()]))->isTrue();
+                }
+            };
+            $connection = $DB->getDoctrineConnection();
+            $level = $connection->getTransactionNestingLevel();
+            ob_start();
+            try {
+                $rows = $panel->panel();
+            } finally {
+                ob_end_clean();
+            }
+            $this->array(array_column($rows, 'type'))->isIdenticalTo(['user', 'group', 'supplier', 'supplier']);
+            $this->array(array_column($rows, 'id'))->isEqualTo([$user->getID(), $group->getID(), $supplier->getID(), $supplier->getID()]);
+            $this->array(array_column($rows, 'name'))->isIdenticalTo([getUserName($user->getID()), 'After user', 'After user', 'After supplier']);
+            $this->string($rows[0]['subtitle'])->isIdenticalTo(__('Email followup') . ': ' . \Dropdown::getYesNo(1));
+            $this->string($rows[0]['followupTitle'])->contains('PANEL@example.com');
+            $this->string($rows[2]['followupTitle'])->contains('after-user@example.com');
+            $this->string($rows[3]['followupTitle'])->contains('after-supplier@example.com');
+            $this->array($calls)->isIdenticalTo([\User::class, \Supplier::class, \Supplier::class]);
+            $panel->afterActor = static function (): void {};
+            foreach (['', null, '0'] as $name) {
+                $this->boolean($DB->update('glpi_groups', ['name' => $name], ['id' => $group->getID()]))->isTrue();
+                $this->boolean($DB->update('glpi_suppliers', ['name' => $name], ['id' => $supplier->getID()]))->isTrue();
+                $this->boolean($group->getFromDB($group->getID()))->isTrue();
+                $this->boolean($supplier->getFromDB($supplier->getID()))->isTrue();
+                ob_start();
+                try {
+                    $current = $panel->panel();
+                } finally {
+                    ob_end_clean();
+                }
+                $this->string($current[1]['name'])->isIdenticalTo($group->getName());
+                $this->string($current[2]['name'])->isIdenticalTo($supplier->getName());
+            }
+            $this->object($DB->getDoctrineConnection())->isIdenticalTo($connection);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $CFG_GLPI['notifications_mailing'] = $mailing;
+        }
+    }
+
     public function timelineAccessibilityProvider(): array
     {
         return [[\Ticket::class], [\Change::class], [\Problem::class]];

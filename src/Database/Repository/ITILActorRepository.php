@@ -6,6 +6,7 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\ReferenceValues;
 
@@ -20,6 +21,31 @@ final class ITILActorRepository
 
     public function __construct(private EntityManager $em)
     {
+    }
+
+    public function groupName(int $id): ?string
+    {
+        $row = $this->em->createQueryBuilder()->select('g.name')->from(Entity\Group::class, 'g')
+            ->where('g.id = :id')->setParameter('id', $id, Types::BIGINT)
+            ->getQuery()->getOneOrNullResult();
+        return $row['name'] ?? null;
+    }
+
+    public function supplierDisplayData(int $id): ?array
+    {
+        return $this->em->createQueryBuilder()->select('s.name, s.email')->from(Entity\Supplier::class, 's')
+            ->where('s.id = :id')->setParameter('id', $id, Types::BIGINT)
+            ->getQuery()->getOneOrNullResult();
+    }
+
+    /** Preserve the user existence gate before selecting their preferred address. */
+    public function userDefaultEmail(int $id): ?string
+    {
+        $row = $this->em->createQueryBuilder()->select('u.id AS user_id, e.email AS email')->from(Entity\User::class, 'u')
+            ->leftJoin(Entity\UserEmail::class, 'e', 'WITH', 'IDENTITY(e.users) = u.id')->where('u.id = :id')->setParameter('id', $id, Types::BIGINT)
+            ->orderBy('e.is_default', 'DESC')->addOrderBy('e.id')->setMaxResults(1)
+            ->getQuery()->getOneOrNullResult();
+        return $row === null ? null : (string)($row['email'] ?? '');
     }
 
     public static function supports(string $actorClass): bool
