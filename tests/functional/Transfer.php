@@ -685,9 +685,11 @@ class Transfer extends DbTestCase
 
     public function testOverriddenHistoryCannotContinueIntoTicketMutations(): void
     {
-        $this->login();
-        $this->setEntity('_test_root_entity', true);
         $this->withSoftwareOwnerQueryProbe(function ($database, $connection, $logger): void {
+            // Login updates the actor referenced by the ticket's last updater;
+            // keep that write on the same connection as the transfer fixture.
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
             $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
             $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
             $manager = \itsmng\Database\Orm::create($database);
