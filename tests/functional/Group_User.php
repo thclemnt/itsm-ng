@@ -39,10 +39,12 @@ class Group_User extends \DbTestCase
 {
     public function testPaginatedMemberLinksKeepTreeScopeAndCurrentLabels(): void
     {
-        global $DB;
+        global $DB, $PLUGIN_HOOKS;
         $this->login();
         $this->setEntity('_test_root_entity', true);
         $session = $_SESSION;
+        $hooks = $PLUGIN_HOOKS;
+        $PLUGIN_HOOKS['item_can'] = [];
         $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
         $prefix = 'Member presentation ' . bin2hex(random_bytes(6));
         try {
@@ -60,6 +62,50 @@ class Group_User extends \DbTestCase
                 $this->createItem(\Group_User::class, [
                     'groups_id' => $owner->getID(), 'users_id' => $users[$index]->getID(), 'is_manager' => $index,
                 ]);
+            }
+            $connection = $DB->getDoctrineConnection();
+            $level = $connection->getTransactionNestingLevel();
+            $em = new class($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+                public int $queries = 0;
+                public function createQuery(string $dql = ''): \Doctrine\ORM\Query
+                {
+                    ++$this->queries;
+                    return parent::createQuery($dql);
+                }
+            };
+            $loads = new class {
+                public int $count = 0;
+                public function postLoad(): void { ++$this->count; }
+            };
+            $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+            try {
+                $repository = new \itsmng\Database\Repository\GroupMembershipRepository($em);
+                $ids = [(int)$group->getID(), (int)$child->getID()];
+                $legacy = $repository->members($ids, []);
+                $this->array(array_keys($legacy['rows'][0]))->isIdenticalTo([
+                    'id', 'linkid', 'groups_id', 'is_dynamic', 'is_manager', 'is_userdelegate',
+                ]);
+                $em->queries = 0;
+                $page = $repository->members($ids, [], withLinkFields: true);
+                $this->integer($em->queries)->isIdenticalTo(2);
+                $this->integer($page['total'])->isIdenticalTo(2);
+                $this->array($page['rows'])->hasSize(2);
+                $this->integer($loads->count)->isIdenticalTo(0);
+                $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+                $managed = $em->find(\itsmng\Database\Entity\User::class, (int)$users[0]->getID());
+                $oldFirstname = $managed->firstname;
+                $this->boolean($DB->update('glpi_users', ['firstname' => 'Grace'], ['id' => $users[0]->getID()]))->isTrue();
+                $fresh = $repository->members([(int)$group->getID()], [], withLinkFields: true);
+                $this->string($fresh['rows'][0]['user_firstname'])->isIdenticalTo('Grace');
+                $this->variable($managed->firstname)->isIdenticalTo($oldFirstname);
+                $this->integer($loads->count)->isIdenticalTo(1);
+                $this->boolean($em->contains($managed))->isTrue();
+                $this->object($em->getConnection())->isIdenticalTo($connection);
+                $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+                $this->boolean($users[0]->getFromDB($users[0]->getID()))->isTrue();
+            } finally {
+                $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+                $em->clear();
             }
             // _entities_id is a public add instruction, not a persisted field for
             // DbTestCase::checkInput to compare through getField().
@@ -115,6 +161,68 @@ class Group_User extends \DbTestCase
             $assertGroupLink($denied['rows'][0]['group'], $child, false);
         } finally {
             $_SESSION = $session;
+            $PLUGIN_HOOKS = $hooks;
+        }
+    }
+
+    public function testMemberPermissionHooksKeepCompleteFieldsAndLaterReads(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $session = $_SESSION;
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $entity = (int)$_SESSION['glpiactive_entity'];
+            $group = $this->createItem(\Group::class, ['name' => $this->getUniqueString(),
+                'entities_id' => $entity, 'comment' => 'Before callback', 'ldap_value' => 'Complete group fields']);
+            $users = [];
+            foreach (['Alpha', 'Zulu'] as $name) {
+                $user = $this->createItem(\User::class, ['name' => $this->getUniqueString(), 'realname' => $name,
+                    'entities_id' => $entity, 'authtype' => \Auth::DB_GLPI, 'comment' => 'Complete user fields']);
+                $users[] = $user;
+                $this->createItem(\Group_User::class, ['groups_id' => $group->getID(), 'users_id' => $user->getID()]);
+            }
+            $first = (int)$users[0]->getID();
+            $second = (int)$users[1]->getID();
+            $connection = $DB->getDoctrineConnection();
+            $level = $connection->getTransactionNestingLevel();
+            $calls = [];
+            $callback = static function (\CommonDBTM $model) use (&$calls, $connection, $first, $second, $group): void {
+                $calls[] = ['type' => $model->getType(), 'fields' => $model->fields, 'right' => $model->right];
+                if ($model instanceof \User && (int)$model->getID() === $first) {
+                    $connection->update('glpi_users', ['firstname' => 'After callback'], ['id' => $second]);
+                    $connection->update('glpi_groups', ['comment' => 'After callback'], ['id' => $group->getID()]);
+                    $model->right = false;
+                }
+            };
+            $plugins->setValue(null, [...$active, 'member_link_fixture']);
+            $PLUGIN_HOOKS['item_can'] = ['member_link_fixture' => [\User::class => $callback, \Group::class => $callback]];
+            $page = \Group_User::getPaginatedMembersForGroup($group);
+            $this->integer($page['total'])->isIdenticalTo(2);
+            $this->array($page['rows'])->hasSize(2);
+            $this->array(array_column($calls, 'type'))->isIdenticalTo(['User', 'Group', 'User', 'Group']);
+            $this->array(array_column($calls, 'right'))->isIdenticalTo([READ, READ, READ, READ]);
+            foreach ([0, 2] as $index) {
+                $this->string($calls[$index]['fields']['comment'])->isIdenticalTo('Complete user fields');
+            }
+            foreach ([1, 3] as $index) {
+                $this->string($calls[$index]['fields']['ldap_value'])->isIdenticalTo('Complete group fields');
+            }
+            $this->string($calls[1]['fields']['comment'])->isIdenticalTo('Before callback');
+            $this->string($calls[3]['fields']['comment'])->isIdenticalTo('After callback');
+            $this->string($calls[2]['fields']['firstname'])->isIdenticalTo('After callback');
+            $this->string($page['rows'][0]['group'])->notContains('<a ')->contains('Alpha');
+            $this->string($page['rows'][1]['group'])->contains('<a ')->contains('After callback');
+            $this->string($page['rows'][0]['parent'])->contains('Before callback');
+            $this->string($page['rows'][1]['parent'])->contains('After callback');
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $_SESSION = $session;
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
         }
     }
 

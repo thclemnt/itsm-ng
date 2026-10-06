@@ -59,8 +59,8 @@ final class GroupMembershipRepository
         return $this->relatedRows($query, false);
     }
 
-    /** Zero limit retains the legacy unbounded API; positive limits are applied in SQL. */
-    public function members(array $groups, array $scope, string $criterion = '', int $offset = 0, int $limit = 0, string $sort = 'group', string $direction = 'ASC', bool $tree = false): array
+    /** Zero limit is unbounded; link fields serve only the hook-free member renderer. */
+    public function members(array $groups, array $scope, string $criterion = '', int $offset = 0, int $limit = 0, string $sort = 'group', string $direction = 'ASC', bool $tree = false, bool $withLinkFields = false): array
     {
         $query = $this->visibleMembers($groups, $scope);
         if (in_array($criterion, ['is_manager', 'is_userdelegate'], true)) {
@@ -75,6 +75,13 @@ final class GroupMembershipRepository
             'm.is_manager AS is_manager',
             'm.is_userdelegate AS is_userdelegate'
         );
+        if ($withLinkFields) {
+            $query->addSelect(
+                'u.name AS user_name', 'u.realname AS user_realname', 'u.firstname AS user_firstname',
+                'g.name AS group_name', 'g.completename AS group_completename', 'g.comment AS group_comment',
+                'IDENTITY(g.entities) AS group_entities_id', 'g.is_recursive AS group_is_recursive'
+            );
+        }
         $direction = strtoupper($direction) === 'DESC' ? 'DESC' : 'ASC';
         $field = match ($sort) {
             'parent' => 'g.completename', 'dynamic' => 'm.is_dynamic', 'manager' => 'm.is_manager', 'delegatee' => 'm.is_userdelegate',

@@ -406,10 +406,13 @@ class Group_User extends CommonDBRelation
         $sort = 'group',
         $order = 'ASC'
     ) {
-        global $CFG_GLPI;
+        global $CFG_GLPI, $PLUGIN_HOOKS;
 
         $entityrestrict = self::getEntityRestrictForGroup($group);
         $restrict       = $tree ? getSonsOf('glpi_groups', $group->getID()) : $group->getID();
+        // Hooks receive complete models and can change later rows. Keep their
+        // ordinary per-row reads, including hooks loaded lazily by includeHook.
+        $withLinkFields = empty($PLUGIN_HOOKS['item_can']);
         $page = self::repository()->members(
             (array)$restrict,
             getEntitiesRestrictCriteria(Profile_User::getTable(), '', $entityrestrict, true),
@@ -418,20 +421,39 @@ class Group_User extends CommonDBRelation
             (int)$limit,
             $sort,
             $order,
-            (bool)$tree
+            (bool)$tree,
+            $withLinkFields
         );
         $iterator = new \itsmng\Database\RowIterator($page['rows']);
         $rows     = [];
-        $user     = new User();
-        $parent   = new Group();
 
         while ($data = $iterator->next()) {
             Session::addToNavigateListItems('User', $data["id"]);
-            $hasGroup = $parent->getFromDB($data['groups_id']);
+            $parent = new Group();
+            // These fields are consumed only by the existing link/ACL/tooltip
+            // renderer; no partial model leaves this loop or reaches a writer.
+            if ($withLinkFields) {
+                $parent->fields = [
+                    'id' => $data['groups_id'], 'name' => $data['group_name'],
+                    'completename' => $data['group_completename'], 'comment' => $data['group_comment'],
+                    'entities_id' => $data['group_entities_id'], 'is_recursive' => $data['group_is_recursive'],
+                ];
+                $hasGroup = true;
+            } else {
+                $hasGroup = $parent->getFromDB($data['groups_id']);
+            }
             if ($tree && $hasGroup) {
                 $memberLink = $parent->getLink(['comments' => true]);
             } else {
-                $user->getFromDB($data['id']);
+                // User caches visibility entities on the instance, so every
+                // selected account must own a fresh model, also with hooks.
+                $user = new User();
+                if ($withLinkFields) {
+                    $user->fields = ['id' => $data['id'], 'name' => $data['user_name'],
+                        'realname' => $data['user_realname'], 'firstname' => $data['user_firstname']];
+                } else {
+                    $user->getFromDB($data['id']);
+                }
                 $memberLink = $user->getLink();
             }
 
