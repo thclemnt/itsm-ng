@@ -923,7 +923,7 @@ class Planning extends CommonGLPI
      */
     public static function showSingleLinePlanningFilter($filter_key, $filter_data, $options = [])
     {
-        global $CFG_GLPI;
+        global $CFG_GLPI, $DB;
 
         // Invalid data, skip
         if (!isset($filter_data['type'])) {
@@ -1015,13 +1015,23 @@ class Planning extends CommonGLPI
                     $port = 443;
                 }
 
-                $loginUser = new User();
-                $loginUser->getFromDB(Session::getLoginUserID(true));
+                // Re-read the credential for each rendered filter: an intervening
+                // callback may rotate it. Existing tokens need no full User record.
+                $loginId = Session::getLoginUserID(true);
+                $token = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+                    ->tokenValue((int)$loginId, 'personal_token');
+                if (empty($token)) {
+                    // Keep issuance, public update hooks and persisted-token checks
+                    // in the existing User lifecycle, including a missing account.
+                    $loginUser = new User();
+                    $loginUser->getFromDB($loginId);
+                    $token = $loginUser->getAuthToken();
+                }
                 $cal_url = "/front/planning.php?genical=1&uID=" . $uID . "&gID=" . $gID .
                            //"&limititemtype=$limititemtype".
                            "&entities_id=" . $_SESSION["glpiactive_entity"] .
                            "&is_recursive=" . $_SESSION["glpiactive_entity_recursive"] .
-                           "&token=" . $loginUser->getAuthToken();
+                           "&token=" . $token;
 
                 echo "<li><a target='_blank' href='" . $CFG_GLPI["root_doc"] . "$cal_url'>" .
                      _sx("button", "Export") . " - " . __("Ical") . "</a></li>";

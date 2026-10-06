@@ -37,6 +37,74 @@ namespace tests\units;
 
 class Planning extends \DbTestCase
 {
+    public function testFilterExportsUseFreshSessionUserTokensAndLegacyIssuance(): void
+    {
+        global $DB, $CFG_GLPI;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $session = $_SESSION;
+        $connection = $DB->getDoctrineConnection();
+        $level = $connection->getTransactionNestingLevel();
+        $bufferLevel = ob_get_level();
+        try {
+            $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $prefix = 'Planning token ' . bin2hex(random_bytes(6));
+            $actor = $this->createItem(\User::class, [
+                'name' => $prefix . ' actor', 'entities_id' => $entity, 'authtype' => \Auth::DB_GLPI,
+            ]);
+            $owner = $this->createItem(\User::class, [
+                'name' => $prefix . ' owner', 'entities_id' => $entity, 'authtype' => \Auth::DB_GLPI,
+            ]);
+            $id = (int)$owner->getID();
+            $_SESSION['glpiID'] = $id;
+            // Issuing one's own personal token does not require user-management rights.
+            $_SESSION['glpiactiveprofile']['user'] = 0;
+            $this->boolean(\Session::haveRight('user', UPDATE))->isFalse();
+            $repository = new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB));
+            $actorToken = str_repeat('a', 40);
+            $connection->update('glpi_users', ['personal_token' => $actorToken], ['id' => $actor->getID()]);
+            $render = static function () use ($actor): string {
+                ob_start();
+                \Planning::showSingleLinePlanningFilter('User_' . $actor->getID(), ['type' => 'user', 'display' => true]);
+                return ob_get_clean();
+            };
+            $tokens = static function (string $html): array {
+                preg_match_all('/[&]token=([^\x27]*)\x27/', $html, $matches);
+                return $matches[1];
+            };
+            foreach ([str_repeat('b', 40), str_repeat('c', 40)] as $token) {
+                $connection->update('glpi_users', ['personal_token' => $token], ['id' => $id]);
+                $html = $render();
+                $this->array($tokens($html))->isIdenticalTo([$token, $token]);
+                $this->string($html)->contains('&uID=' . $actor->getID() . '&gID=0');
+                $this->string($html)->contains($CFG_GLPI['url_base'] . '/caldav.php/'
+                    . \Glpi\CalDAV\Backend\Calendar::PREFIX_USERS . '/' . $actor->fields['name'] . '/'
+                    . \Glpi\CalDAV\Backend\Calendar::BASE_CALENDAR_URI);
+                $this->string($repository->tokenValue($id, 'personal_token'))->isIdenticalTo($token);
+            }
+            foreach ([null, '', '0'] as $emptyToken) {
+                $connection->update('glpi_users', ['personal_token' => $emptyToken, 'personal_token_date' => null], ['id' => $id]);
+                $html = $render();
+                $stored = $repository->tokenValue($id, 'personal_token');
+                $this->string($stored)->hasLength(40);
+                $this->array($tokens($html))->isIdenticalTo([$stored, $stored]);
+                $this->boolean($owner->getFromDB($id))->isTrue();
+                $this->string($owner->fields['personal_token_date'])->isIdenticalTo($_SESSION['glpi_currenttime']);
+                $this->array($tokens($render()))->isIdenticalTo([$stored, $stored]);
+            }
+            $_SESSION['glpiID'] = PHP_INT_MAX;
+            $this->array($tokens($render()))->isIdenticalTo(['', '']);
+            $this->variable($repository->tokenValue(PHP_INT_MAX, 'personal_token'))->isNull();
+            $this->string($repository->tokenValue((int)$actor->getID(), 'personal_token'))->isIdenticalTo($actorToken);
+        } finally {
+            while (ob_get_level() > $bufferLevel) {
+                ob_end_clean();
+            }
+            $_SESSION = $session;
+        }
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+    }
+
     public function testTimelineNamesKeepResourceOrderAndDynamicWriteBoundaries(): void
     {
         global $DB, $CFG_GLPI;
