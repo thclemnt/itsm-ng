@@ -110,7 +110,6 @@ class NotificationTargetPlanningRecall extends NotificationTarget
     {
         $item = new $this->obj->fields['itemtype']();
         if ($item->getFromDB($this->obj->fields['items_id'])) {
-            $user = new User();
             $field = '';
             if ($item->isField('users_id_tech')) {
                 $field = 'users_id_tech';
@@ -121,11 +120,11 @@ class NotificationTargetPlanningRecall extends NotificationTarget
                 $field = 'users_id';
             }
 
-            if ($field != "" && $user->getFromDB($item->fields[$field])) {
-                $this->addToRecipientsList([
-                   'language' => $user->fields['language'],
-                   'users_id' => $user->fields['id']
-                ]);
+            if ($field !== '' && $item->fields[$field] !== null && strlen($item->fields[$field]) > 0) {
+                $user = $this->recipientRepository()->guestLanguage((int)Toolbox::cleanInteger($item->fields[$field]));
+                if ($user !== null) {
+                    $this->addToRecipientsList($user);
+                }
             }
         }
     }

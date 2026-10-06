@@ -19,7 +19,26 @@ final class NotificationRecipientRepository
     {
     }
 
-    /** Guest locale only; delivery eligibility is checked by the notification target. */
+    /** Current delivery eligibility and display values, read immediately before admission. */
+    public function admissionData(int $id): ?array
+    {
+        $fields = ['id', 'is_deleted', 'is_active', 'begin_date', 'end_date',
+            'name', 'realname', 'firstname', 'authtype', 'timezone'];
+        $row = $this->em->createQueryBuilder()
+            ->select(array_map(static fn (string $field): string => 'r.' . $field . ' AS ' . $field, $fields))
+            ->from(Entity\User::class, 'r')->where('r.id = :recipient')
+            ->setParameter('recipient', $id, Types::BIGINT)->getQuery()->getOneOrNullResult();
+        if ($row === null) {
+            return null;
+        }
+        $metadata = $this->em->getClassMetadata(Entity\User::class);
+        foreach ($fields as $field) {
+            $row[$field] = RecordRepository::legacyScalarValue($row[$field], $metadata->getTypeOfField($field));
+        }
+        return $row;
+    }
+
+    /** Recipient locale only; delivery eligibility is checked by the notification target. */
     public function guestLanguage(int $id): ?array
     {
         $rows = $this->em->createQueryBuilder()->select('r.id AS users_id', 'r.language AS language')

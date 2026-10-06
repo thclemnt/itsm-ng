@@ -39,6 +39,155 @@ use DbTestCase;
 
 class NotificationTarget extends DbTestCase
 {
+    public function testRecipientAdmissionKeepsEligibilityAndCallbackWrites(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $session = $_SESSION;
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $em = null;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', false);
+            $_SESSION['glpi_currenttime'] = '2030-06-15 12:00:00';
+            $entity = (int)$_SESSION['glpiactive_entity'];
+            $user = $this->createItem(\User::class, ['name' => 'Admission ' . $this->getUniqueString(),
+                'entities_id' => $entity, 'authtype' => \Auth::DB_GLPI, 'is_active' => 1,
+                'firstname' => 'Before', 'realname' => 'Recipient', 'timezone' => 'Europe/Paris']);
+            $id = (int)$user->getID();
+            $connection = $DB->getDoctrineConnection();
+            $level = $connection->getTransactionNestingLevel();
+            $target = new \NotificationTarget($entity);
+            $target->setEvent(\NotificationEventAjax::class);
+            $this->boolean($target->addToRecipientsList(['users_id' => PHP_INT_MAX]))->isFalse();
+            // A valid user alone does not grant access to this entity.
+            $this->boolean($DB->delete('glpi_profiles_users', ['users_id' => $id]))->isTrue();
+            $this->boolean($target->addToRecipientsList(['users_id' => $id]))->isFalse();
+            $grant = $this->createItem(\Profile_User::class, ['users_id' => $id,
+                'profiles_id' => $_SESSION['glpiactiveprofile']['id'], 'entities_id' => 0, 'is_recursive' => 0]);
+            $this->boolean($target->addToRecipientsList(['users_id' => $id]))->isFalse();
+            $this->boolean($DB->update('glpi_profiles_users', ['entities_id' => $entity], ['id' => $grant->getID()]))->isTrue();
+
+            $valid = ['is_active' => 1, 'is_deleted' => 0, 'begin_date' => null, 'end_date' => null];
+            foreach ([['is_active' => 0], ['is_deleted' => 1], ['begin_date' => '2030-06-15 12:00:01'],
+                ['end_date' => '2030-06-15 11:59:59']] as $invalid) {
+                $this->boolean($DB->update('glpi_users', array_replace($valid, $invalid), ['id' => $id]))->isTrue();
+                $this->boolean($target->addToRecipientsList(['users_id' => $id]))->isFalse();
+                $this->array($target->target)->isEmpty();
+            }
+            // Both endpoints are inclusive, with the same legacy datetime representation.
+            $this->boolean($DB->update('glpi_users', array_replace($valid, [
+                'begin_date' => $_SESSION['glpi_currenttime'], 'end_date' => $_SESSION['glpi_currenttime'],
+            ]), ['id' => $id]))->isTrue();
+            $em = \itsmng\Database\Orm::create($DB);
+            $loads = new class {
+                public int $count = 0;
+                public function postLoad(): void { ++$this->count; }
+            };
+            $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+            $repository = new \itsmng\Database\Repository\NotificationRecipientRepository($em);
+            $this->boolean($user->getFromDB($id))->isTrue();
+            $row = $repository->admissionData($id);
+            foreach ($row as $field => $value) {
+                $this->variable($value)->isIdenticalTo($user->fields[$field]);
+            }
+            $this->array($row)->hasSize(10);
+            $this->variable($repository->admissionData(PHP_INT_MAX))->isNull();
+            $this->integer($loads->count)->isIdenticalTo(0);
+            $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+            $this->object($em->find(\itsmng\Database\Entity\User::class, $id))->isInstanceOf(\itsmng\Database\Entity\User::class);
+            $this->integer($loads->count)->isGreaterThan(0);
+            $em->clear();
+
+            $seen = [];
+            $plugins->setValue(null, [...$active, 'recipient_admission_fixture']);
+            $PLUGIN_HOOKS['add_recipient_to_target'] = ['recipient_admission_fixture' => [
+                \NotificationTarget::class => function (\NotificationTarget $delivery) use (&$seen, $DB, $id): void {
+                    $seen[] = $delivery->target[$id];
+                    $this->array($delivery->recipient_data)->isIdenticalTo(['itemtype' => \User::class, 'items_id' => $id]);
+                    if (count($seen) === 1) {
+                        $this->boolean($DB->update('glpi_users', ['firstname' => 'After', 'timezone' => 'null',
+                            'authtype' => \Auth::CAS], ['id' => $id]))->isTrue();
+                    } elseif (count($seen) === 2) {
+                        $this->boolean($DB->update('glpi_users', ['is_active' => 0], ['id' => $id]))->isTrue();
+                    }
+                },
+            ]];
+            $target->addToRecipientsList(['users_id' => $id, 'language' => 'fr_FR']);
+            $target->addToRecipientsList(['users_id' => $id, 'language' => 'de_DE']);
+            $this->boolean($target->addToRecipientsList(['users_id' => $id]))->isFalse();
+            $this->array($seen)->hasSize(2);
+            $this->string($seen[0]['username'])->isIdenticalTo(formatUserName(0, $user->fields['name'], 'Recipient', 'Before', 0, 0, true));
+            $this->string($seen[1]['username'])->isIdenticalTo(formatUserName(0, $user->fields['name'], 'Recipient', 'After', 0, 0, true));
+            $this->array($seen[0]['additionnaloption'])->isIdenticalTo(['usertype' => \NotificationTarget::GLPI_USER, 'timezone' => 'Europe/Paris']);
+            $this->array($seen[1]['additionnaloption'])->isIdenticalTo(['usertype' => \NotificationTarget::EXTERNAL_USER]);
+            $this->array(array_column($seen, 'language'))->isIdenticalTo(['fr_FR', 'de_DE']);
+            $this->boolean(isset($target->recipient_data))->isFalse();
+            $this->boolean($DB->update('glpi_users', ['is_active' => 1], ['id' => $id]))->isTrue();
+            $target->addToRecipientsList(['users_id' => $id, 'name' => 'Explicit recipient', 'usertype' => \NotificationTarget::ANONYMOUS_USER]);
+            $this->string($target->target[$id]['username'])->isIdenticalTo('Explicit recipient');
+            $this->integer($target->target[$id]['additionnaloption']['usertype'])->isIdenticalTo(\NotificationTarget::ANONYMOUS_USER);
+            $this->object($DB->getDoctrineConnection())->isIdenticalTo($connection);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $em?->clear();
+            $_SESSION = $session;
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+        }
+    }
+
+    public function testAuthorAndTaskRecipientLocalesStayCurrent(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $session = $_SESSION;
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', false);
+            $entity = (int)$_SESSION['glpiactive_entity'];
+            $user = $this->createItem(\User::class, ['name' => 'Author locale ' . $this->getUniqueString(),
+                'entities_id' => $entity, 'authtype' => \Auth::DB_GLPI, 'is_active' => 1, 'language' => 'en_GB']);
+            $id = (int)$user->getID();
+            $this->createItem(\Profile_User::class, ['users_id' => $id,
+                'profiles_id' => $_SESSION['glpiactiveprofile']['id'], 'entities_id' => $entity, 'is_recursive' => 0]);
+            $reminder = $this->createItem(\Reminder::class, ['name' => 'Locale reminder ' . $this->getUniqueString(),
+                'users_id' => $id, 'text' => 'Recipient locale fixture']);
+            $target = new \NotificationTargetPlanningRecall($entity);
+            $target->setEvent(\NotificationEventAjax::class);
+            $seen = [];
+            $plugins->setValue(null, [...$active, 'recipient_locale_fixture']);
+            $PLUGIN_HOOKS['add_recipient_to_target'] = ['recipient_locale_fixture' => [
+                \NotificationTargetPlanningRecall::class => function (\NotificationTarget $delivery) use (&$seen, $DB, $id): void {
+                    $seen[] = $delivery->target[$id]['language'];
+                    $this->boolean($DB->update('glpi_users', ['language' => count($seen) === 1 ? 'fr_FR' : 'de_DE'], ['id' => $id]))->isTrue();
+                },
+            ]];
+            $target->obj = $reminder;
+            $target->addItemAuthor();
+            $target->obj = (object)['fields' => ['itemtype' => \Reminder::class, 'items_id' => $reminder->getID()]];
+            $target->addTaskAssignUser();
+            $target->obj = $reminder;
+            $target->addItemAuthor();
+            $this->array($seen)->isIdenticalTo(['en_GB', 'fr_FR', 'de_DE']);
+            $this->boolean($DB->update('glpi_users', ['is_active' => 0], ['id' => $id]))->isTrue();
+            $target->addItemAuthor();
+            $this->array($seen)->hasSize(3);
+            foreach ([null, '', PHP_INT_MAX] as $missing) {
+                $reminder->fields['users_id'] = $missing;
+                $target->addItemAuthor();
+            }
+            $this->array($seen)->hasSize(3);
+        } finally {
+            $_SESSION = $session;
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+        }
+    }
+
     public function testPlanningGuestLanguageKeepsRecipientCallbackFreshness(): void
     {
         global $DB;

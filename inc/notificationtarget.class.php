@@ -535,15 +535,15 @@ class NotificationTarget extends CommonDBChild
             $username = $data['name'];
         }
         if (isset($data['users_id']) && ($data['users_id'] > 0)) {
-            $user = new User();
+            $user = $this->recipientRepository()->admissionData((int)Toolbox::cleanInteger($data['users_id']));
             if (
-                !$user->getFromDB($data['users_id'])
-                || ($user->getField('is_deleted') == 1)
-                || ($user->getField('is_active') == 0)
-                || (!is_null($user->getField('begin_date'))
-                     && ($user->getField('begin_date') > $_SESSION["glpi_currenttime"]))
-                || (!is_null($user->getField('end_date'))
-                     && ($user->getField('end_date') < $_SESSION["glpi_currenttime"]))
+                $user === null
+                || ($user['is_deleted'] == 1)
+                || ($user['is_active'] == 0)
+                || (!is_null($user['begin_date'])
+                     && ($user['begin_date'] > $_SESSION["glpi_currenttime"]))
+                || (!is_null($user['end_date'])
+                     && ($user['end_date'] < $_SESSION["glpi_currenttime"]))
             ) {
                 // unknown, deleted or disabled user
                 return false;
@@ -562,9 +562,9 @@ class NotificationTarget extends CommonDBChild
             if (empty($username)) {
                 $username = formatUserName(
                     0,
-                    $user->getField('name'),
-                    $user->getField('realname'),
-                    $user->getField('firstname'),
+                    $user['name'],
+                    $user['realname'],
+                    $user['firstname'],
                     0,
                     0,
                     true
@@ -573,17 +573,17 @@ class NotificationTarget extends CommonDBChild
             // It is a GLPI user :
             $notificationoption['usertype'] = self::GLPI_USER;
             if (
-                $user->fields['authtype'] == Auth::LDAP
-                || Auth::isAlternateAuth($user->fields['authtype'])
-                || (($user->fields['authtype'] == Auth::NOT_YET_AUTHENTIFIED)
+                $user['authtype'] == Auth::LDAP
+                || Auth::isAlternateAuth($user['authtype'])
+                || (($user['authtype'] == Auth::NOT_YET_AUTHENTIFIED)
                     && Auth::isAlternateAuth(Auth::checkAlternateAuthSystems()))
             ) {
                 $notificationoption['usertype'] = self::EXTERNAL_USER;
             }
 
             // retrieve timezone of the user if exists
-            if (!empty($user->fields['timezone']) && 'null' !== strtolower((string) $user->fields['timezone'])) {
-                $notificationoption['timezone'] = $user->fields['timezone'];
+            if (!empty($user['timezone']) && 'null' !== strtolower((string) $user['timezone'])) {
+                $notificationoption['timezone'] = $user['timezone'];
             }
         }
 
@@ -689,15 +689,16 @@ class NotificationTarget extends CommonDBChild
      */
     public function addItemAuthor()
     {
-        $user = new User();
-        if (
-            $this->obj->isField('users_id')
-            && $user->getFromDB($this->obj->getField('users_id'))
-        ) {
-            $this->addToRecipientsList([
-               'language' => $user->getField('language'),
-               'users_id' => $user->getField('id')
-            ]);
+        if (!$this->obj->isField('users_id')) {
+            return;
+        }
+        $id = $this->obj->getField('users_id');
+        if ($id === null || strlen($id) === 0) {
+            return;
+        }
+        $user = $this->recipientRepository()->guestLanguage((int)Toolbox::cleanInteger($id));
+        if ($user !== null) {
+            $this->addToRecipientsList($user);
         }
     }
 
