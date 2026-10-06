@@ -136,6 +136,16 @@ class Domain extends DbTestCase
         $database = $DB;
         $connection = $database->getDoctrineConnection();
         $caller = $connection->captureManagedTransactionScope();
+        // Class/table mappings populate lazy application caches.
+        // Warm the supported aggregate and lifecycle participants before taking the full snapshot.
+        foreach ([\DomainType::class, \Domain::class, \Domain_Item::class,
+            \ApplianceType::class, \ApplianceEnvironment::class, \Appliance::class,
+            \Appliance_Item::class, \Appliance_Item_Relation::class,
+            \Profile::class, \ProfileRight::class, \Infocom::class, \Log::class, \Entity::class] as $model) {
+            $table = \getTableForItemType($model);
+            $this->string($model::getTable())->isIdenticalTo($table);
+            $this->string(\getItemTypeForTable($table))->isIdenticalTo($model);
+        }
         $session = $_SESSION;
         $hooks = $PLUGIN_HOOKS;
         $config = $CFG_GLPI;
