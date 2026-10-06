@@ -557,6 +557,127 @@ class Transfer extends DbTestCase
         $this->integer($original->getDoctrineConnection()->getTransactionNestingLevel())->isIdenticalTo($originalLevel);
     }
 
+    public function testTransferStopsAfterCallbackReplacesFrameOrWriter(): void
+    {
+        global $PLUGIN_HOOKS;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $savedHooks = $PLUGIN_HOOKS;
+        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $savedPlugins = $plugins->getValue();
+        try {
+            $plugins->setValue(null, [...$savedPlugins, 'transfer_frame_fixture']);
+            $this->withSoftwareOwnerQueryProbe(function ($database, $connection, $logger) use ($savedHooks): void {
+                global $DB, $PLUGIN_HOOKS;
+                $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+                $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
+                $manager = \itsmng\Database\Orm::create($database);
+                $contacts = [];
+                foreach (['First callback owner', 'Later transfer owner'] as $name) {
+                    $contact = new \itsmng\Database\Entity\Contact();
+                    $contact->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, $source);
+                    $contact->name = $name;
+                    $manager->persist($contact);
+                    $contacts[] = $contact;
+                }
+                $manager->flush();
+                $ids = array_map(static fn ($contact): int => $contact->id, $contacts);
+                $level = $connection->getTransactionNestingLevel();
+                foreach (['item_update', 'item_transfer', 'refused_update', 'writer_swap', 'owned_failure'] as $mode) {
+                    $PLUGIN_HOOKS = $savedHooks;
+                    $replacement = null;
+                    $retained = null;
+                    $fired = false;
+                    $session = $_SESSION;
+                    $change = function () use ($connection, $database, $logger, $ids, $mode, &$replacement, &$fired): void {
+                        $fired = true;
+                        if ($mode === 'writer_swap') {
+                            // Adapter identity matters even with the same physical owner.
+                            $GLOBALS['DB'] = clone $database;
+                        } elseif ($mode !== 'owned_failure') {
+                            $connection->rollBack();
+                            $replacement = \itsmng\Database\OwnedMutationFrame::begin($connection);
+                            $connection->update('glpi_contacts', ['comment' => 'Replacement witness'], ['id' => $ids[0]]);
+                        }
+                        $_SESSION['transfer_frame_fixture'] = $mode;
+                        $logger->queries = [];
+                        if ($mode === 'owned_failure') {
+                            throw new \RuntimeException('Refused owned transfer callback');
+                        }
+                    };
+                    $PLUGIN_HOOKS['item_update']['transfer_frame_fixture'][\Contact::class] = static function (\Contact $item) use ($ids, $mode, $change, &$retained): void {
+                        if ((int)$item->getID() === $ids[0]) {
+                            $retained = $item;
+                            if (in_array($mode, ['item_update', 'writer_swap', 'owned_failure'], true)) {
+                                $change();
+                            }
+                        }
+                    };
+                    $PLUGIN_HOOKS['pre_item_update']['transfer_frame_fixture'][\Contact::class] = static function (\Contact $item) use ($ids, $mode, $change, &$retained): void {
+                        if ($mode === 'refused_update' && (int)$item->getID() === $ids[0]) {
+                            $retained = $item;
+                            $item->input = [];
+                            $change();
+                        }
+                    };
+                    $PLUGIN_HOOKS['item_transfer']['transfer_frame_fixture'] = static function (array $item) use ($ids, $mode, $change): void {
+                        if ($mode === 'item_transfer' && $item['type'] === 'Contact' && (int)$item['id'] === $ids[0]) {
+                            $change();
+                        }
+                    };
+                    $failure = null;
+                    $result = null;
+                    try {
+                        try {
+                            $result = (new \Transfer())->moveItems(['Contact' => $ids], $target, []);
+                        } catch (\Throwable $error) {
+                            $failure = $error;
+                        } finally {
+                            $DB = $database;
+                        }
+                        $this->boolean($fired)->isTrue();
+                        // No later model, binding, audit or queue write may follow
+                        // the callback that invalidated the active operation.
+                        $writes = array_values(array_filter($logger->queries, static fn (string $sql): bool =>
+                            preg_match('/^\s*(?:INSERT|UPDATE|DELETE)\b/i', $sql) === 1));
+                        $this->array($writes)->isEmpty();
+                        if ($replacement !== null) {
+                            $this->object($failure)->isInstanceOf(\itsmng\Database\MutationRollbackFailure::class);
+                            $this->object($failure->primary)->isInstanceOf(\itsmng\Database\TransactionOwnershipMismatch::class);
+                            $replacement->assertActive();
+                            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level + 1);
+                            $this->string($_SESSION['transfer_frame_fixture'])->isIdenticalTo($mode);
+                            $this->integer((int)$retained->fields['entities_id'])->isIdenticalTo($mode === 'refused_update' ? $source : $target);
+                            $this->string($connection->fetchOne('SELECT comment FROM glpi_contacts WHERE id=?', [$ids[0]]))->isIdenticalTo('Replacement witness');
+                        } else {
+                            $this->variable($failure)->isNull();
+                            $this->boolean($result)->isFalse();
+                            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+                            $this->boolean(isset($_SESSION['transfer_frame_fixture']))->isFalse();
+                            $this->integer((int)$retained->fields['entities_id'])->isIdenticalTo($source);
+                        }
+                        $owners = array_map('intval', $connection->fetchFirstColumn('SELECT entities_id FROM glpi_contacts WHERE id IN (?, ?) ORDER BY id', $ids));
+                        $this->array($owners)->isIdenticalTo([$source, $source]);
+                    } finally {
+                        $DB = $database;
+                        $PLUGIN_HOOKS = $savedHooks;
+                        if ($replacement !== null) {
+                            $replacement->rollBack();
+                        }
+                        $_SESSION = $session;
+                    }
+                }
+                // A normal retry still joins and preserves the caller's frame.
+                $this->boolean((new \Transfer())->moveItems(['Contact' => $ids], $target, []))->isTrue();
+                $this->array(array_map('intval', $connection->fetchFirstColumn('SELECT entities_id FROM glpi_contacts WHERE id IN (?, ?) ORDER BY id', $ids)))->isIdenticalTo([$target, $target]);
+                $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+            });
+        } finally {
+            $PLUGIN_HOOKS = $savedHooks;
+            $plugins->setValue(null, $savedPlugins);
+        }
+    }
+
     public function testManyInstalledVersionsUseBoundedOwnerReads(): void
     {
         $this->login();

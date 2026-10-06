@@ -9,6 +9,7 @@ final class TransferCoordinator
 {
     /** @var array<string, true> Tables inspected during this operation only. */
     private array $transactionalTables = [];
+    private ?\Closure $guard = null;
 
     public function __construct(private \DBAdapter $database)
     {
@@ -22,7 +23,36 @@ final class TransferCoordinator
         }
         $this->database->assertManagedTransaction();
         $connection = $this->database->getDoctrineConnection();
-        return \itsmng\Database\OwnedMutationFrame::run($connection, $operation);
+        return \itsmng\Database\OwnedMutationFrame::run($connection, function () use ($connection, $operation): mixed {
+            $scope = $connection->captureManagedTransactionScope();
+            $level = $connection->getTransactionNestingLevel();
+            $this->guard = function () use ($connection, $scope, $level): void {
+                if (($GLOBALS['DB'] ?? null) !== $this->database || $this->database->isSlave()
+                    || $this->database->getDoctrineConnection() !== $connection) {
+                    throw new \itsmng\Database\TransactionOwnershipMismatch('A transfer callback replaced its active writer.');
+                }
+                $scope->assertActive();
+                if ($connection->getTransactionNestingLevel() !== $level) {
+                    throw new \itsmng\Database\TransactionOwnershipMismatch('A transfer callback changed its owned frame depth.');
+                }
+            };
+            try {
+                $result = $operation();
+                $this->assertActive();
+                return $result;
+            } finally {
+                $this->guard = null;
+            }
+        });
+    }
+
+    /** Check immediately after each public callback, before another mutation. */
+    public function assertActive(): void
+    {
+        if ($this->guard === null) {
+            throw new \LogicException('Transfer has no active owned frame.');
+        }
+        ($this->guard)();
     }
 
     /** A selected MyISAM parent cannot participate in this rollback contract. */
