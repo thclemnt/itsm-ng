@@ -126,7 +126,9 @@ jobs:
           --db-host=127.0.0.1 --db-port=${{ matrix.database.port }}
           --db-name=itsm_test_application --db-user=test --db-password=test --no-interaction
       - name: Test native installation and populated migration boundaries
-        run: timeout --signal=TERM --kill-after=10s 300s composer test:migration 2>&1 | tee "$RUNNER_TEMP/migration.log"
+        env:
+          ITSM_MIGRATION_XUNIT: ${{ runner.temp }}/migration.xml
+        run: timeout --signal=TERM --kill-after=10s 300s composer test:migration -- --use-tap-report -c tests/configurations/migration.php 2>&1 | tee "$RUNNER_TEMP/migration.log"
       - name: Test ordinary units
         run: composer test:units -- --fail-if-skipped-methods 2>&1 | tee "$RUNNER_TEMP/units.log"
       - name: Test application behavior
@@ -138,6 +140,7 @@ jobs:
           name: application-php-${{ matrix.php }}-${{ matrix.database.id }}
           path: |
             ${{ runner.temp }}/migration.log
+            ${{ runner.temp }}/migration.xml
             ${{ runner.temp }}/units.log
             ${{ runner.temp }}/functional.log
             tests/files/_log/
