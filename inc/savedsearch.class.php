@@ -664,14 +664,34 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
     **/
     public function getParameters($ID)
     {
-
         if ($this->getFromDB($ID)) {
-            $query_tab = [];
-            parse_str((string) $this->fields["query"], $query_tab);
-            $query_tab['savedsearches_id'] = $ID;
-            if (class_exists($this->fields['itemtype']) || $this->fields['itemtype'] == 'AllAssets') {
-                return $this->prepareQueryToUse($this->fields["type"], $query_tab);
-            }
+            return $this->parametersFromFields($ID);
+        }
+        return false;
+    }
+
+    /** Read defaults without hydrating records; public getParameters() retains its model lifecycle. */
+    public static function getDefaultParameters(int $users_id, string $itemtype)
+    {
+        if ($users_id <= 0) {
+            return false;
+        }
+        $row = self::repository()->defaultParameters($users_id, $itemtype);
+        if ($row === null) {
+            return false;
+        }
+        $bookmark = new self();
+        $bookmark->fields = $row;
+        return $bookmark->parametersFromFields($row['id']);
+    }
+
+    private function parametersFromFields($ID)
+    {
+        $query_tab = [];
+        parse_str((string) $this->fields['query'], $query_tab);
+        $query_tab['savedsearches_id'] = $ID;
+        if (class_exists($this->fields['itemtype']) || $this->fields['itemtype'] == 'AllAssets') {
+            return $this->prepareQueryToUse($this->fields['type'], $query_tab);
         }
         return false;
     }

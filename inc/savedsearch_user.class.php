@@ -103,13 +103,6 @@ class SavedSearch_User extends CommonDBRelation
         if ((int)$users_id <= 0) {
             return false;
         }
-        $rows = (new self())->find(['users_id' => $users_id, 'itemtype' => $itemtype], [], 1);
-        if ($row = reset($rows)) {
-            // Load default bookmark for this $itemtype
-            $bookmark = new SavedSearch();
-            // Only get data for bookmarks
-            return $bookmark->getParameters($row['savedsearches_id']);
-        }
-        return false;
+        return SavedSearch::getDefaultParameters((int)$users_id, (string)$itemtype);
     }
 }

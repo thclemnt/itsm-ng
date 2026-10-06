@@ -18,6 +18,24 @@ final class SavedSearchRepository
     {
     }
 
+    /** The owner's selected defaults need only the parameters, not managed bookmark/user objects. */
+    public function defaultParameters(int $viewer, string $itemtype): ?array
+    {
+        if ($viewer <= 0) {
+            return null;
+        }
+        $row = $this->em->createQueryBuilder()->select('s.id, s.query, s.type, s.itemtype')
+            ->from(SavedSearchUser::class, 'd')->join('d.savedsearches', 's')
+            ->where('IDENTITY(d.users) = :viewer AND d.itemtype = :itemtype')
+            ->setParameter('viewer', $viewer, Types::INTEGER)->setParameter('itemtype', $itemtype)
+            ->setMaxResults(1)->getQuery()->getOneOrNullResult(\Doctrine\ORM\Query::HYDRATE_SCALAR);
+        if ($row !== null) {
+            $row['id'] = (int)$row['id'];
+            $row['type'] = (int)$row['type'];
+        }
+        return $row;
+    }
+
     /** Entity scope comes from the same recursive visibility rules as the search UI. */
     public function visible(int $viewer, bool $public, array $entityScope): array
     {
