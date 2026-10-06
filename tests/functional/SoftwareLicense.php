@@ -55,6 +55,147 @@ use itsmng\Database\Entity\ItemSoftwareVersion as InstallationRecord;
  */
 class SoftwareLicense extends DbTestCase
 {
+    public function testFinancialReportUsesCurrentLicenseQuantitiesWithoutHydration(): void
+    {
+        global $DB, $CFG_GLPI;
+        $session = $_SESSION;
+        $config = $CFG_GLPI;
+        $post = $_POST;
+        $get = $_GET;
+        $request = $_REQUEST;
+        $server = $_SERVER;
+        $cwd = getcwd();
+        $reportGlobals = ['stat', 'chart_opts', 'valeurtot', 'valeurnettetot', 'valeurnettegraphtot',
+            'valeurgraphtot', 'PLUGINS_INCLUDED', 'HEADER_LOADED', 'FOOTER_LOADED', 'TIMER_DEBUG',
+            '_UPOST', '_UGET', '_UREQUEST', '_UFILES'];
+        $savedGlobals = [];
+        foreach ($reportGlobals as $key) {
+            if (array_key_exists($key, $GLOBALS)) {
+                $savedGlobals[$key] = $GLOBALS[$key];
+            }
+        }
+        $connection = $DB->getDoctrineConnection();
+        $em = new class($connection, Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+            public int $queries = 0;
+            public function createQuery(string $dql = ''): \Doctrine\ORM\Query
+            {
+                ++$this->queries;
+                return parent::createQuery($dql);
+            }
+        };
+        $loads = new class {
+            public int $licenses = 0;
+            public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
+            {
+                if ($event->getObject() instanceof SoftwareLicenseRecord) {
+                    ++$this->licenses;
+                }
+            }
+        };
+        $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $parent = (int)$_SESSION['glpiactive_entity'];
+            $entity = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => $parent]);
+            $entityId = (int)$entity->getID();
+            $CFG_GLPI['auto_create_infocoms'] = 0;
+            $software = $this->createItem(\Software::class, ['name' => $this->getUniqueString(), 'entities_id' => $entityId]);
+            $outsideSoftware = $this->createItem(\Software::class, ['name' => $this->getUniqueString(), 'entities_id' => $parent]);
+            $licenses = [];
+            $financial = [];
+            foreach ([
+                ['global', 2, '12.5000', '2090-01-01', null, $software],
+                ['individual', 5, '7.2500', '2090-01-02', null, $software],
+                ['global', -1, '4.1250', null, '2090-01-03', $software],
+                ['global', 0, '2.5000', '2090-01-04', null, $software],
+                ['global', 10, '99.0000', '2089-12-31', '2090-02-01', $software],
+                ['global', 10, '99.0000', '2090-01-01', null, $outsideSoftware],
+            ] as [$serial, $number, $value, $buy, $use, $owner]) {
+                $license = $this->createItem(\SoftwareLicense::class, ['name' => $this->getUniqueString(),
+                    'softwares_id' => $owner->getID(), 'entities_id' => $owner->fields['entities_id'],
+                    'serial' => $serial, 'number' => $number]);
+                $licenses[] = $license;
+                $financial[] = $this->createItem(\Infocom::class, ['itemtype' => 'SoftwareLicense',
+                    'items_id' => $license->getID(), 'value' => $value, 'buy_date' => $buy, 'use_date' => $use,
+                    'sink_type' => 1, 'sink_time' => 3, 'sink_coeff' => 1.0]);
+            }
+            $this->setEntity($entityId, false);
+            $scope = \itsmng\Reporting\Criteria::entities();
+            $this->array($scope)->isIdenticalTo([$entityId]);
+            $repository = new \itsmng\Database\Repository\FinancialRepository($em);
+            $rows = $repository->rows('SoftwareLicense', '2090-01-01', '2090-01-31', $scope, false);
+            $this->integer($em->queries)->isIdenticalTo(1);
+            $this->array(array_column($rows, 'id'))->isIdenticalTo(array_map(
+                static fn (\Infocom $item): int => (int)$item->getID(), array_slice($financial, 0, 4)
+            ));
+            $this->array(array_column($rows, 'value'))->isIdenticalTo(['12.5000', '7.2500', '4.1250', '2.5000']);
+            $this->array(array_column($rows, 'license_serial'))->isIdenticalTo(['global', 'individual', 'global', 'global']);
+            $this->array(array_column($rows, 'license_number'))->isIdenticalTo([2, 5, -1, 0]);
+            $this->array(array_column($rows, 'buy_date'))->isIdenticalTo(['2090-01-01', '2090-01-02', null, '2090-01-04']);
+            $this->string($rows[2]['use_date'])->isIdenticalTo('2090-01-03');
+            $this->integer($loads->licenses)->isIdenticalTo(0);
+            $this->array($repository->rows('SoftwareLicense', '2090-01-01', '2090-01-31', [], false))->isEmpty();
+            $managed = $em->find(SoftwareLicenseRecord::class, (int)$licenses[0]->getID());
+            $this->boolean($DB->update('glpi_softwarelicenses', ['number' => 3], ['id' => $licenses[0]->getID()]))->isTrue();
+            $fresh = $repository->rows('SoftwareLicense', '2090-01-01', '2090-01-31', $scope, false);
+            $this->integer($fresh[0]['license_number'])->isIdenticalTo(3);
+            $this->integer($managed->number)->isIdenticalTo(2);
+            $this->boolean($em->contains($managed))->isTrue();
+            $this->integer($loads->licenses)->isIdenticalTo(1);
+            $this->object($em->getConnection())->isIdenticalTo($connection);
+            $level = $connection->getTransactionNestingLevel();
+
+            // Exercise the real report controller once in this isolated test,
+            // including its existing multiplication, amortization and formatting.
+            $CFG_GLPI['infocom_types'] = ['SoftwareLicense'];
+            $_SESSION['glpiactiveprofile']['reports'] = READ;
+            $_SESSION['glpi_use_mode'] = \Session::NORMAL_MODE;
+            $_POST = ['date1' => '2090-01-01', 'date2' => '2090-01-31',
+                '_glpi_csrf_token' => \itsmng\Csrf::generate()];
+            $_GET = [];
+            $_REQUEST = $_POST;
+            $_SERVER['PHP_SELF'] = '/front/report.infocom.conso.php';
+            $_SERVER['REQUEST_URI'] = $_SERVER['PHP_SELF'];
+            chdir(GLPI_ROOT . '/front');
+            ob_start();
+            try {
+                (static function (): void {
+                    global $DB, $CFG_GLPI, $PLUGINS_INCLUDED, $HEADER_LOADED, $FOOTER_LOADED, $TIMER_DEBUG;
+                    global $stat, $chart_opts, $valeurtot, $valeurnettetot, $valeurnettegraphtot, $valeurgraphtot;
+                    include GLPI_ROOT . '/front/report.infocom.conso.php';
+                })();
+                $html = ob_get_contents();
+            } finally {
+                ob_end_clean();
+            }
+            // 12.5 * 3 + 7.25 + 4.125 + 2.5; negative/zero quantities do not multiply.
+            $this->float((float)$GLOBALS['valeurtot'])->isIdenticalTo(51.375);
+            $this->string($html)->contains(sprintf(
+                __('Total: Value=%1$s - Account net value=%2$s'),
+                \Html::formatNumber(51.375), \Html::formatNumber($GLOBALS['valeurnettetot'])
+            ));
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+            $em->clear();
+            chdir($cwd);
+            $_SESSION = $session;
+            $CFG_GLPI = $config;
+            $_POST = $post;
+            $_GET = $get;
+            $_REQUEST = $request;
+            $_SERVER = $server;
+            foreach ($reportGlobals as $key) {
+                if (array_key_exists($key, $savedGlobals)) {
+                    $GLOBALS[$key] = $savedGlobals[$key];
+                } else {
+                    unset($GLOBALS[$key]);
+                }
+            }
+        }
+    }
+
     public function softwareAdmissionProvider(): array
     {
         return [['Software'], ['SoftwareLicense'], ['Item_SoftwareLicense'], ['Item_SoftwareVersion']];

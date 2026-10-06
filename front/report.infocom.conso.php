@@ -113,7 +113,8 @@ function display_infocoms_report($itemtype, $begin, $end)
         return false;
     }
 
-    if (\itsmng\Database\Repository\FinancialRepository::supports($itemtype)) {
+    $mapped = \itsmng\Database\Repository\FinancialRepository::supports($itemtype);
+    if ($mapped) {
         $em = \itsmng\Database\Orm::create($DB);
         try {
             $iterator = (new \itsmng\Database\Repository\FinancialRepository($em))->rows(
@@ -190,12 +191,16 @@ function display_infocoms_report($itemtype, $begin, $end)
 
         foreach ($iterator as $line) {
             if ($itemtype == 'SoftwareLicense') {
-                $item->getFromDB($line["items_id"]);
-
-                if ($item->fields["serial"] == "global") {
-                    if ($item->fields["number"] > 0) {
-                        $line["value"] *= $item->fields["number"];
-                    }
+                if ($mapped) {
+                    $serial = $line['license_serial'];
+                    $number = $line['license_number'];
+                } else {
+                    $item->getFromDB($line["items_id"]);
+                    $serial = $item->fields['serial'];
+                    $number = $item->fields['number'];
+                }
+                if ($serial == "global" && $number > 0) {
+                    $line["value"] *= $number;
                 }
             }
             if ($line["value"] > 0) {
