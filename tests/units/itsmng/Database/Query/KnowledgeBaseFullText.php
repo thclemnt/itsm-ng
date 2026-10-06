@@ -64,6 +64,12 @@ class KnowledgeBaseFullText extends \atoum\atoum\test
                     public array $counts = [];
                     public array $statements = [];
 
+                    public function quote(string $value): string
+                    {
+                        // SQL walker literals belong to this disconnected driver boundary.
+                        return $this->getDatabasePlatform()->quoteStringLiteral($value);
+                    }
+
                     public function executeQuery(string $sql, array $params = [], array $types = [],
                         ?\Doctrine\DBAL\Cache\QueryCacheProfile $qcp = null): \Doctrine\DBAL\Result
                     {
@@ -96,6 +102,7 @@ class KnowledgeBaseFullText extends \atoum\atoum\test
                         };
                     }
                 };
+                $this->string($connection->quote("quoted'fixture"))->isIdenticalTo("'quoted''fixture'");
                 $connection->counts = $counts;
                 $manager = new EntityManager($connection, Orm::configuration($platform));
                 $access = new \itsmng\Database\KnowledgeBaseAccess(3, false, true, true, true, [4], 2, [1], [0]);
@@ -114,6 +121,9 @@ class KnowledgeBaseFullText extends \atoum\atoum\test
                 }
                 $pageSql = $connection->statements[array_key_last($connection->statements)][0];
                 $this->string($pageSql)->contains('LIMIT 2')->contains('OFFSET 1');
+                if (count($counts) > 1) {
+                    $this->string($pageSql)->contains(" ESCAPE '!'");
+                }
                 if ($language !== null) {
                     $this->string($pageSql)->contains('NOT EXISTS')->contains('glpi_knowbaseitemtranslations');
                 }
