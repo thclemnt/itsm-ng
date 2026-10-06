@@ -253,7 +253,7 @@ abstract class DBAdapter
      * @param string $query   Query to execute
      * @param string $message Explanation of query (default '')
      *
-     * @return mysqli_result Query result handler
+     * @return \itsmng\Database\LegacyResult|bool Query result handler
      */
     public function queryOrDie($query, $message = '')
     {
@@ -279,7 +279,7 @@ abstract class DBAdapter
     /**
      * Give result from a sql result
      *
-     * @param mysqli_result $result MySQL result handler
+     * @param \itsmng\Database\LegacyResult $result Buffered query result
      * @param int           $i      Row offset to give
      * @param string        $field  Field to give
      *
@@ -301,7 +301,7 @@ abstract class DBAdapter
      * Fetch array of the next row of a Mysql query
      * Please prefer fetchRow or fetchAssoc
      *
-     * @param mysqli_result $result MySQL result handler
+     * @param \itsmng\Database\LegacyResult $result Buffered query result
      *
      * @return string[]|null array results
      *
@@ -316,7 +316,7 @@ abstract class DBAdapter
     /**
      * Fetch row of the next row of a Mysql query
      *
-     * @param mysqli_result $result MySQL result handler
+     * @param \itsmng\Database\LegacyResult $result Buffered query result
      *
      * @return mixed|null result row
      *
@@ -331,7 +331,7 @@ abstract class DBAdapter
     /**
      * Fetch assoc of the next row of a Mysql query
      *
-     * @param mysqli_result $result MySQL result handler
+     * @param \itsmng\Database\LegacyResult $result Buffered query result
      *
      * @return string[]|null result associative array
      *
@@ -346,7 +346,7 @@ abstract class DBAdapter
     /**
      * Fetch object of the next row of an SQL query
      *
-     * @param mysqli_result $result MySQL result handler
+     * @param \itsmng\Database\LegacyResult $result Buffered query result
      *
      * @return object|null
      */
@@ -361,7 +361,7 @@ abstract class DBAdapter
      *
      * @deprecated 9.5.0
      *
-     * @param mysqli_result $result MySQL result handler
+     * @param \itsmng\Database\LegacyResult $result Buffered query result
      * @param integer       $num    Row to move current pointer
      *
      * @return boolean
@@ -390,7 +390,7 @@ abstract class DBAdapter
      *
      * @deprecated 9.5.0
      *
-     * @param mysqli_result $result MySQL result handler
+     * @param \itsmng\Database\LegacyResult $result Buffered query result
      *
      * @return int number of fields
      */
@@ -403,7 +403,7 @@ abstract class DBAdapter
     /**
      * Give name of a field of a Mysql result
      *
-     * @param mysqli_result $result MySQL result handler
+     * @param \itsmng\Database\LegacyResult $result Buffered query result
      * @param integer       $nb     ID of the field
      *
      * @return string name of the field
@@ -464,7 +464,7 @@ abstract class DBAdapter
     /**
      * Free result memory
      *
-     * @param mysqli_result $result MySQL result handler
+     * @param \itsmng\Database\LegacyResult $result Buffered query result
      *
      * @return boolean
      *
@@ -743,7 +743,7 @@ abstract class DBAdapter
      * @param string $table  Table name
      * @param array  $params Query parameters ([field name => field value)
      *
-     * @return mysqli_result|boolean Query result handler
+     * @return \itsmng\Database\LegacyResult|bool Query result handler
      */
     public function insert($table, $params)
     {
@@ -763,7 +763,7 @@ abstract class DBAdapter
      * @param array  $params  Query parameters ([field name => field value)
      * @param string $message Explanation of query (default '')
      *
-     * @return mysqli_result|boolean Query result handler
+     * @return \itsmng\Database\LegacyResult|bool Query result handler
      */
     public function insertOrDie($table, $params, $message = '')
     {
@@ -862,7 +862,7 @@ abstract class DBAdapter
      * @param array  $joins  JOINS criteria array
      *
      * @since 9.4.0 $joins parameter added
-     * @return mysqli_result|boolean Query result handler
+     * @return \itsmng\Database\LegacyResult|bool Query result handler
      */
     public function update($table, $params, $where, array $joins = [])
     {
@@ -884,7 +884,7 @@ abstract class DBAdapter
      * @param array  $joins   JOINS criteria array
      *
      * @since 9.4.0 $joins parameter added
-     * @return mysqli_result|boolean Query result handler
+     * @return \itsmng\Database\LegacyResult|bool Query result handler
      */
     public function updateOrDie($table, $params, $where, $message = '', array $joins = [])
     {
@@ -918,7 +918,7 @@ abstract class DBAdapter
      * @param array   $where   WHERE clause
      * @param boolean $onlyone Do the update only one one element, defaults to true
      *
-     * @return mysqli_result|boolean Query result handler
+     * @return \itsmng\Database\LegacyResult|bool Query result handler
      */
     public function updateOrInsert($table, $params, $where, $onlyone = true)
     {
@@ -944,7 +944,7 @@ abstract class DBAdapter
      * @param array  $joins  JOINS criteria array
      *
      * @since 9.4.0 $joins parameter added
-     * @return mysqli_result|boolean Query result handler
+     * @return \itsmng\Database\LegacyResult|bool Query result handler
      */
     public function delete($table, $where, array $joins = [])
     {
@@ -965,7 +965,7 @@ abstract class DBAdapter
      * @param array  $joins   JOINS criteria array
      *
      * @since 9.4.0 $joins parameter added
-     * @return mysqli_result|boolean Query result handler
+     * @return \itsmng\Database\LegacyResult|bool Query result handler
      */
     public function deleteOrDie($table, $where, $message = '', array $joins = [])
     {
