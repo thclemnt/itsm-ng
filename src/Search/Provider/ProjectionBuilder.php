@@ -217,7 +217,10 @@ final class ProjectionBuilder
         if ($field === 'actiontime' && isset($option['computation']) && $member === null
             && empty($option['additionalfields']) && ($option['joinparams'] ?? []) === ['jointype' => 'child']) {
             $costType = \getItemTypeForTable($table);
-            if (\itsmng\Database\Repository\CostRepository::supports($costType) && (!$meta || $subjectType !== null)) {
+            if (\itsmng\Database\Repository\CostRepository::supports($costType)
+                && is_subclass_of($costType, \CommonITILCost::class)
+                && $option['computation'] === $costType::durationSearchComputation($DB)
+                && (!$meta || $subjectType !== null)) {
                 $subject = $subjectType ?? $itemtype;
                 $em = \itsmng\Database\Orm::create($DB);
                 try {

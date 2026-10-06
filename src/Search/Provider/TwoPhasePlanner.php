@@ -86,7 +86,7 @@ final class TwoPhasePlanner
             }
         }
         $data['meta_toview'] = [];
-        CriteriaBuilder::constructAdditionalSqlForMetacriteria($data['search']['criteria'], $display, $displayJoins, $displayLinked, $data);
+        CriteriaBuilder::constructAdditionalSqlForMetacriteria($data['search']['criteria'], $display, $displayJoins, $displayLinked, $data, true);
         $hydrateOrder = $this->order($hydrateKeys, $d->quote($table . '.id'), $direction);
         return new SearchPlan($count, 'SELECT ' . $page->sql($d, true), $from . $sortJoins, $where, $group, $pageOrder, 'SELECT ' . $display->sql($d, true), $quoted, $displayJoins, $hydrateOrder);
     }

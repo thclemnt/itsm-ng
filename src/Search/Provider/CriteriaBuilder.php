@@ -222,15 +222,17 @@ final class CriteriaBuilder
      * @param  array  &$already_link_tables TODO: should be a class property (output parameter)
      * @param  array  &$data                TODO: should be a class property (output parameter)
      *
+     * @param bool $independentCriteria Planner matches each criterion against its own ID set
+     *
      * @return void
      */
-    public static function constructAdditionalSqlForMetacriteria($criteria = [], &$SELECT = "", &$FROM = "", &$already_link_tables = [], &$data = [])
+    public static function constructAdditionalSqlForMetacriteria($criteria = [], &$SELECT = "", &$FROM = "", &$already_link_tables = [], &$data = [], bool $independentCriteria = false)
     {
         $data['meta_toview'] ??= [];
         foreach ($criteria as $criterion) {
             // manage sub criteria
             if (isset($criterion['criteria'])) {
-                CriteriaBuilder::constructAdditionalSqlForMetacriteria($criterion['criteria'], $SELECT, $FROM, $already_link_tables, $data);
+                CriteriaBuilder::constructAdditionalSqlForMetacriteria($criterion['criteria'], $SELECT, $FROM, $already_link_tables, $data, $independentCriteria);
                 continue;
             }
             // parse only criterion with meta flag
@@ -243,7 +245,7 @@ final class CriteriaBuilder
             //add toview for meta criterion
             $data['meta_toview'][$m_itemtype][] = $criterion['field'];
             if ($SELECT instanceof SelectList) {
-                $projection = ProjectionBuilder::fields($m_itemtype, (int)$criterion['field'], true, $m_itemtype, null, $data['itemtype']);
+                $projection = ProjectionBuilder::fields($m_itemtype, (int)$criterion['field'], true, $m_itemtype, null, $independentCriteria ? $data['itemtype'] : null);
                 $SELECT->merge($projection);
                 if (!$projection->requiresFieldJoin()) {
                     continue;

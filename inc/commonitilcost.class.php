@@ -202,6 +202,15 @@ abstract class CommonITILCost extends CommonDBChild
     }
 
 
+    /** Canonical duration expression retained by legacy joined search paths. */
+    final public static function durationSearchComputation(DBAdapter $db): string
+    {
+        return '(1.0 * SUM(' . $db->quoteName('TABLE.actiontime') . ') * COUNT(DISTINCT ' .
+            $db->quoteName('TABLE.id') . ')) / NULLIF(COUNT(' .
+            $db->quoteName('TABLE.id') . '), 0)';
+    }
+
+
     public static function rawSearchOptionsToAdd()
     {
         global $DB;
@@ -267,10 +276,7 @@ abstract class CommonITILCost extends CommonDBChild
            'joinparams'         => [
               'jointype'           => 'child'
            ],
-           'computation'        =>
-              '(1.0 * SUM(' . $DB->quoteName('TABLE.actiontime') . ') * COUNT(DISTINCT ' .
-              $DB->quoteName('TABLE.id') . ')) / NULLIF(COUNT(' .
-              $DB->quoteName('TABLE.id') . '), 0)'
+           'computation'        => static::durationSearchComputation($DB)
         ];
 
         $tab[] = [

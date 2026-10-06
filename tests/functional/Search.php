@@ -451,6 +451,8 @@ class Search extends DbTestCase
 
     public function testMetaCostDurationKeepsEachCostIdentityAcrossActorFanout(): void
     {
+        global $DB;
+
         $this->login();
         $this->setEntity('_test_root_entity', true);
         $entity = (int)\Session::getActiveEntity();
@@ -503,6 +505,41 @@ class Search extends DbTestCase
         $this->integer($data['data']['count'])->isIdenticalTo(1);
         $this->array(array_keys($data['data']['items']))->isIdenticalTo([$applianceId]);
         $this->float((float)$data['data']['rows'][0]['Change_49'][0]['name'])->isIdenticalTo(110.0);
+
+        // The retained legacy path evaluates a conjunction against joined
+        // parents. It must keep that meaning, unlike independent ID criteria.
+        $fallback = $params;
+        $fallback['criteria'][1]['value'] = '100';
+        $fallback['criteria'][2]['value'] = (string)$users[1];
+        $this->integer($this->doSearch('Appliance', $fallback)['data']['count'])->isIdenticalTo(0);
+        $fallback['disable_two_phase_search'] = true;
+        $joined = \Search::prepareDatasForSearch('Appliance', $fallback);
+        \Search::constructSQL($joined);
+        $this->string($joined['sql']['search'])->notContains('cost_duration');
+        if ($DB->getProvider() !== 'pgsql') {
+            // The retained MySQL joined path owns its HAVING aliases; it is
+            // not the PostgreSQL-independent criteria planner being repaired.
+            $joined = $this->doSearch('Appliance', $fallback);
+            $this->integer($joined['data']['count'])->isIdenticalTo(1);
+            $this->array(array_keys($joined['data']['items']))->isIdenticalTo([$applianceId]);
+            $this->float((float)$joined['data']['rows'][0]['Change_49'][0]['name'])->isIdenticalTo(100.0);
+        }
+
+        // Plugins can customize a computation without replacing the owning
+        // relation. Only the canonical duration expression may be optimized.
+        $options = & \itsmng\Search\SearchOption::getOptions('Change');
+        $canonical = $options[49]['computation'];
+        try {
+            $options[49]['computation'] = '(2 * SUM(' . $DB->quoteName('TABLE.actiontime') . '))';
+            $projection = \itsmng\Search\Provider\ProjectionBuilder::fields('Change', 49);
+            $reference = new \itsmng\Search\Provider\FieldReference('Change', $options[49]);
+            $this->string($projection->get('ITEM_Change_49')->sql)->isIdenticalTo(
+                '(2 * SUM(' . $DB->quoteName($reference->alias . '.actiontime') . '))'
+            );
+            $this->boolean($projection->requiresFieldJoin())->isTrue();
+        } finally {
+            $options[49]['computation'] = $canonical;
+        }
 
         // An old fanout result must not become an eligible total either.
         $params['criteria'][1]['value'] = '140';
