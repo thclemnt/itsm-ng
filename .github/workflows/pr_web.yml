@@ -93,7 +93,7 @@ jobs:
           }
           echo json_encode(['php' => PHP_VERSION, 'binary' => PHP_BINARY, 'thread_safe' => PHP_ZTS,
               'debug' => PHP_DEBUG, 'ini' => $settings, 'extensions' => $extensions,
-              'libpq' => function_exists('pg_version') ? pg_version()['client'] : null], JSON_PRETTY_PRINT);
+              'libpq_compiled' => defined('PGSQL_LIBPQ_VERSION') ? constant('PGSQL_LIBPQ_VERSION') : null], JSON_PRETTY_PRINT);
           PHP
 
       - name: Run web API tests
