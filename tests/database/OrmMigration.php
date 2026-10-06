@@ -86,6 +86,20 @@ class OrmMigration extends \GLPITestCase
         $this->boolean(Ledger::state($connection, Baseline::PHASE)['installation_complete'])->isTrue();
         $this->array(History::versions())->isIdenticalTo(['2.2.0', \itsmng\Database\Migration\SensorSubjects::VERSION]);
         $this->string($connection->fetchOne('SELECT value FROM glpi_configs WHERE context = ? AND name = ?', ['core', 'itsmdbversion']))->isIdenticalTo(ITSM_SCHEMA_VERSION);
+        // Readiness must bootstrap its own adapter in a fresh process, without
+        // relying on this test runner's already-loaded database functions.
+        $process = proc_open([PHP_BINARY, GLPI_ROOT . '/tests/e2e/check_installed_history.php',
+            GLPI_CONFIG_DIR, '--without-application-fixtures'],
+            [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['redirect', 1]], $pipes, GLPI_ROOT);
+        $this->boolean(is_resource($process))->isTrue();
+        fclose($pipes[0]);
+        try {
+            $output = stream_get_contents($pipes[1]);
+        } finally {
+            fclose($pipes[1]);
+        }
+        $this->integer(proc_close($process))->isIdenticalTo(0, $output);
+        $this->string($output)->contains('Installed canonical history, core schema and release publication verified.');
     }
 
     public function testInterruptedBaselineAndSeedsCanResume(): void

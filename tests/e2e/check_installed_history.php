@@ -20,6 +20,7 @@ define('GLPI_VAR_DIR', getenv('GLPI_VAR_DIR') ?: GLPI_ROOT . '/tests/files');
 // Bootstrap only configuration/autoload and the explicit configured writer.
 // Ordinary application startup can exit before these readiness assertions.
 require GLPI_ROOT . '/inc/based_config.php';
+require GLPI_ROOT . '/inc/db.function.php';
 require GLPI_CONFIG_DIR . '/config_db.php';
 $database = new DB();
 if (!$database->connected || $database->isSlave()) {
