@@ -39,6 +39,60 @@ use org\bovigo\vfs\vfsStream;
 
 class SimpleCache extends \GLPITestCase
 {
+    public function testRepeatedFootprintReadsObserveExternalChanges(): void
+    {
+        vfsStream::setup('glpi', null, ['cache' => []]);
+        $namespace = 'fresh-footprint-' . uniqid();
+        $directory = vfsStream::url('glpi/cache');
+        $file = $directory . '/' . $namespace . '.json';
+        $storage = new \Laminas\Cache\Storage\Adapter\Memory(['namespace' => $namespace]);
+        $cache = new \Glpi\Cache\SimpleCache($storage, $directory);
+        $other = new \Glpi\Cache\SimpleCache($storage, $directory);
+        $cache->set('one', 'first');
+        $this->string($cache->get('one'))->isIdenticalTo('first');
+        $this->string($cache->get('one'))->isIdenticalTo('first');
+        $original = file_get_contents($file);
+        $modified = json_decode($original, true);
+        $modified['one'] = sha1(serialize('other'));
+        $changed = json_encode($modified, JSON_PRETTY_PRINT);
+        $this->integer(strlen($changed))->isIdenticalTo(strlen($original));
+        $mtime = filemtime($file);
+        file_put_contents($file, $changed);
+        touch($file, $mtime);
+        $this->integer(filemtime($file))->isIdenticalTo($mtime);
+        $this->variable($cache->get('one'))->isNull();
+        $this->boolean($cache->has('one'))->isFalse();
+        file_put_contents($file, $original);
+        $this->string($cache->get('one'))->isIdenticalTo('first');
+
+        // A setter changes a returned footprint array; it must not mutate the remembered decoding.
+        $cache->set('two', 'second');
+        file_put_contents($file, $original);
+        $this->array($cache->getAllKnownCacheKeys())->isIdenticalTo(['one']);
+        $this->variable($cache->get('two'))->isNull();
+
+        // Another wrapper and a direct backend write remain visible to an already warmed reader.
+        $other->clear();
+        $this->variable($cache->get('one'))->isNull();
+        $other->set('one', ['nested' => ['value' => 'new']]);
+        $returned = $cache->get('one');
+        $returned['nested']['value'] = 'local mutation';
+        $this->array($cache->get('one'))->isIdenticalTo(['nested' => ['value' => 'new']]);
+        $storage->setItem(sha1('one'), 'changed without matching footprint');
+        $this->variable($cache->get('one'))->isNull();
+        $other->set('one', 'restored');
+        $this->string($cache->get('one'))->isIdenticalTo('restored');
+
+        $this->when(function () use ($cache, $file): void {
+            file_put_contents($file, 'invalid json');
+            $this->variable($cache->get('one'))->isNull();
+        })->error()->withType(E_USER_WARNING)
+            ->withMessage('Cache footprint file "' . $file . '" contents was invalid, it has been cleaned.')->exists();
+        $this->string(file_get_contents($file))->isIdenticalTo('[]');
+        $other->set('one', 'after corruption');
+        $this->string($cache->get('one'))->isIdenticalTo('after corruption');
+    }
+
     /**
      * Test case: cache dir is empty and writable, footprint file should be created and used.
      */

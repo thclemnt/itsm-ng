@@ -64,6 +64,10 @@ class SimpleCache extends SimpleCacheDecorator implements CacheInterface
      */
     private $footprint_fallback_storage = [];
 
+    /** Decoding only: every lookup still reads and locks the current footprint file. */
+    private ?string $decodedFootprintContents = null;
+    private array $decodedFootprints = [];
+
     public function __construct(StorageInterface $storage, $cache_dir, $check_footprints = true)
     {
         parent::__construct($storage);
@@ -370,6 +374,12 @@ class SimpleCache extends SimpleCacheDecorator implements CacheInterface
         if (null !== $this->footprint_file) {
             $file_contents = $this->getFootprintFileContents();
 
+            if ($this->decodedFootprintContents !== null && $file_contents === $this->decodedFootprintContents) {
+                return $this->decodedFootprints;
+            }
+            $this->decodedFootprintContents = null;
+            $this->decodedFootprints = [];
+
             $footprints = !empty($file_contents) ? json_decode($file_contents, true) : null;
 
             if (json_last_error() !== JSON_ERROR_NONE || !is_array($footprints)) {
@@ -377,6 +387,12 @@ class SimpleCache extends SimpleCacheDecorator implements CacheInterface
                 // launch integrity tests again to trigger warnings and fix file contents.
                 $this->checkFootprintFileIntegrity();
                 return [];
+            }
+
+            // Bound retained decoding state; larger files keep the ordinary read/decode path.
+            if (strlen($file_contents) <= 1048576) {
+                $this->decodedFootprintContents = $file_contents;
+                $this->decodedFootprints = $footprints;
             }
 
             return $footprints;
