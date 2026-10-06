@@ -336,7 +336,21 @@ class Reservation extends CommonDBChild
     public function canCreateItem()
     {
         $item = $this->getItem();
-        return $item instanceof ReservationItem && $item->canReserve();
+        if (!$item instanceof ReservationItem || !$item->canReserve()) {
+            return false;
+        }
+        $owner = $this->fields['users_id'] ?? null;
+        // Empty selection is also used while opening a new form. A selected
+        // borrower follows the same self-or-administrator policy as its POST.
+        if ($owner !== null && !\itsmng\Database\ReferenceValues::isEmptySelection($owner)) {
+            $ownerId = (is_int($owner) || is_string($owner))
+                ? filter_var($owner, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) : false;
+            if ($ownerId === false || ($ownerId !== Session::getLoginUserID()
+                && !Session::haveRight('reservation', UPDATE))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

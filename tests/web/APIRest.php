@@ -445,6 +445,14 @@ class APIRest extends APIBaseClass
                 $this->integer((int)$sessionData['session']['glpiactiveprofile']['reservation'])->isIdenticalTo(\ReservationItem::RESERVEANITEM);
                 $token = $sessionData['session_token'];
                 try {
+                    $foreign = ['reservationitems_id' => $items[0],
+                        'users_id' => (int)getItemByTypeName('User', TU_USER, true),
+                        'begin' => '2031-06-04 09:00:00', 'end' => '2031-06-04 10:00:00'];
+                    $response = $this->doHttpRequest('POST', 'Reservation/', ['http_errors' => false,
+                        'allow_redirects' => false, 'headers' => ['Session-Token' => $token],
+                        'json' => ['input' => $foreign]]);
+                    $this->integer($response->getStatusCode())->isIdenticalTo(400);
+                    $this->array($this->reservationHttpRows($items))->isIdenticalTo($before);
                     foreach ([$items[0] => 201, $outsideItem => 400] as $endpoint => $status) {
                         $response = $this->doHttpRequest('POST', 'Reservation/', ['http_errors' => false,
                             'allow_redirects' => false, 'headers' => ['Session-Token' => $token], 'json' => ['input' => [
@@ -463,6 +471,19 @@ class APIRest extends APIBaseClass
                 } finally {
                     $this->doHttpRequest('GET', 'killSession/', ['headers' => ['Session-Token' => $token]]);
                 }
+                // An administrator can choose the helpdesk borrower for the
+                // same free interval that the borrower's foreign-owner request denied.
+                $response = $this->doHttpRequest('POST', 'Reservation/', ['http_errors' => false,
+                    'allow_redirects' => false, 'headers' => ['Session-Token' => $this->session_token],
+                    'json' => ['input' => array_replace($foreign, ['users_id' => $user])]]);
+                $this->integer($response->getStatusCode())->isIdenticalTo(201);
+                $created = json_decode((string)$response->getBody(), true, 512, JSON_THROW_ON_ERROR);
+                $this->integer($created['id'])->isGreaterThan(0);
+                $booking = new \Reservation();
+                $this->boolean($booking->getFromDB($created['id']))->isTrue();
+                $this->integer($booking->fields['users_id'])->isIdenticalTo($user);
+                $before = $this->reservationHttpRows($items);
+                $this->array($before)->hasSize(3);
                 \ProfileRight::updateProfileRights($profile, ['reservation' => 0]);
                 $browser = $this->reservationHttpLogin($marker, $password); // Fresh actual session reads the revoked right.
                 $response = $browser->get('front/reservation.form.php?' . http_build_query([

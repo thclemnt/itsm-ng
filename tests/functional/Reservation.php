@@ -117,6 +117,24 @@ class Reservation extends \DbTestCase
                 $this->string($output)->contains($error);
                 $this->array($events)->isIdenticalTo($expectedEvents);
             }
+            $foreign = (int)getItemByTypeName('User', 'itsm', true);
+            $this->integer($foreign)->isGreaterThan(0)->isNotIdenticalTo((int)\Session::getLoginUserID());
+            $_SESSION['glpiactiveprofile']['reservation'] = \ReservationItem::RESERVEANITEM;
+            $creation = ['reservationitems_id' => $item->getID()];
+            // The opening form and legacy empty borrower selection remain valid.
+            $this->boolean((new \Reservation())->can(-1, CREATE, $creation))->isTrue();
+            foreach ([null, '', 0, '0', false, (int)\Session::getLoginUserID(), (string)\Session::getLoginUserID()] as $borrower) {
+                $selection = $creation + ['users_id' => $borrower];
+                $this->boolean((new \Reservation())->can(-1, CREATE, $selection))->isTrue();
+            }
+            $selection = $creation + ['users_id' => $foreign];
+            $this->boolean((new \Reservation())->can(-1, CREATE, $selection))->isFalse();
+            $_SESSION['glpiactiveprofile']['reservation'] |= UPDATE;
+            $this->boolean((new \Reservation())->can(-1, CREATE, $selection))->isTrue();
+            foreach ([$foreign . 'junk', -1, true, 1.5, []] as $borrower) {
+                $selection = $creation + ['users_id' => $borrower];
+                $this->boolean((new \Reservation())->can(-1, CREATE, $selection))->isFalse();
+            }
             $_SESSION['glpiactiveprofile']['reservation'] = 0;
             $this->boolean((new \Reservation())->can(-1, CREATE, $input))->isFalse();
             $this->integer(countElementsInTable(\Reservation::getTable(), ['reservationitems_id' => $item->getID()]))->isIdenticalTo(4);
