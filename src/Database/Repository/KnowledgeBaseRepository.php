@@ -21,7 +21,6 @@ use itsmng\Database\Entity\KnowbaseItemRevision;
 use itsmng\Database\Entity\KnowbaseItemTranslation;
 use itsmng\Database\Entity\KnowbaseItemUser;
 use itsmng\Database\KnowledgeBaseAccess;
-use itsmng\Database\LegacyValues;
 
 /** Mapped article persistence and visibility; model callers retain lifecycle hooks. */
 final class KnowledgeBaseRepository
@@ -46,8 +45,8 @@ final class KnowledgeBaseRepository
     /** Prefix terms retain the legacy OR search, without accepting query operators. */
     public static function fullTextQuery(string $text, AbstractPlatform $platform): string
     {
-        $words = preg_split('/[^\p{L}\p{N}_]+/u', $text, -1, PREG_SPLIT_NO_EMPTY);
-        if ($words === false || $words === []) {
+        $words = self::searchWords($text);
+        if ($words === []) {
             return '';
         }
         return $platform instanceof PostgreSQLPlatform
@@ -55,10 +54,17 @@ final class KnowledgeBaseRepository
             : implode(' ', array_map(static fn (string $word): string => $word . '*', $words));
     }
 
-    /** The existing fallback removes these search operators before substring matching. */
-    public static function fallbackText(string $text): string
+    /** Literal substring alternatives for native search words; used with SQL ESCAPE '!'. */
+    public static function fallbackPatterns(string $text): array
     {
-        return str_replace(['\\"', '+', '*', '~', '<', '>', '(', ')', '-'], '', $text);
+        return array_map(static fn (string $word): string => '%' . str_replace('_', '!_', $word) . '%',
+            self::searchWords($text));
+    }
+
+    /** @return list<string> */
+    private static function searchWords(string $text): array
+    {
+        return preg_split('/[^\p{L}\p{N}_]+/u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [];
     }
 
     /**
@@ -146,28 +152,31 @@ final class KnowledgeBaseRepository
                 }
             }
             if (!$total) {
-                $pattern = LegacyValues::decode(\Search::makeTextSearchValue(self::fallbackText($options['contains'])));
-                $fields = ['k.name', 'k.answer'];
+                $patterns = self::fallbackPatterns(\Toolbox::unclean_cross_side_scripting_deep($options['contains']));
                 $postgres = $this->em->getConnection()->getDatabasePlatform() instanceof PostgreSQLPlatform;
-                $likes = array_map(static fn (string $field): string => $postgres
-                    ? 'LOWER(' . $field . ') LIKE LOWER(:fallback)'
-                    : $field . ' LIKE :fallback', $fields);
-                $baseLikes = implode(' OR ', $likes);
-                $eligibleTranslation = static function (string $alias) use ($postgres, $baseLikes): string {
-                    $translatedLikes = array_map(static fn (string $field): string => $postgres
-                        ? 'LOWER(' . $alias . '.' . $field . ') LIKE LOWER(:fallback)'
-                        : $alias . '.' . $field . ' LIKE :fallback', ['name', 'answer']);
-                    return $baseLikes . ' OR ' . implode(' OR ', $translatedLikes);
+                $textMatch = static function (string $alias) use ($postgres, $patterns): string {
+                    $likes = [];
+                    foreach ($patterns as $index => $_pattern) {
+                        foreach (['name', 'answer'] as $field) {
+                            $column = $alias . '.' . $field;
+                            $likes[] = ($postgres ? 'LOWER(' . $column . ') LIKE LOWER(:fallback' . $index . ')'
+                                : $column . ' LIKE :fallback' . $index) . " ESCAPE '!'";
+                        }
+                    }
+                    return $likes === [] ? '1 = 0' : implode(' OR ', $likes);
                 };
+                $baseLikes = $textMatch('k');
+                $likes = [$baseLikes];
+                $eligibleTranslation = static fn (string $alias): string => $baseLikes . ' OR ' . $textMatch($alias);
                 if ($translated) {
-                    $translationLikes = array_map(static fn (string $field): string => $postgres
-                        ? 'LOWER(fallbackTranslation.' . $field . ') LIKE LOWER(:fallback)'
-                        : 'fallbackTranslation.' . $field . ' LIKE :fallback', ['name', 'answer']);
                     $likes[] = 'EXISTS (SELECT fallbackTranslation.id FROM ' . KnowbaseItemTranslation::class
                         . ' fallbackTranslation WHERE IDENTITY(fallbackTranslation.knowbaseitems) = k.id '
-                        . 'AND fallbackTranslation.language = :language AND (' . implode(' OR ', $translationLikes) . '))';
+                        . 'AND fallbackTranslation.language = :language AND (' . $textMatch('fallbackTranslation') . '))';
                 }
-                $query->andWhere('(' . implode(' OR ', $likes) . ')')->setParameter('fallback', $pattern, Types::STRING);
+                $query->andWhere('(' . implode(' OR ', $likes) . ')');
+                foreach ($patterns as $index => $pattern) {
+                    $query->setParameter('fallback' . $index, $pattern, Types::STRING);
+                }
                 $total = null;
             }
         }

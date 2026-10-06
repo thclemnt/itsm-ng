@@ -1469,16 +1469,19 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                     $numrows_search = $search_iterator->next()['cpt'];
 
                     if ($numrows_search <= 0) {// not result this fulltext try with alternate search
-                        $contains = \itsmng\Database\Repository\KnowledgeBaseRepository::fallbackText((string)$params['contains']);
-                        $ors = [
-                           ["glpi_knowbaseitems.name"     => ['LIKE', Search::makeTextSearchValue($contains)]],
-                           ["glpi_knowbaseitems.answer"   => ['LIKE', Search::makeTextSearchValue($contains)]]
-                        ];
+                        $patterns = \itsmng\Database\Repository\KnowledgeBaseRepository::fallbackPatterns($search);
+                        $operator = $platform instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform ? ' ILIKE ' : ' LIKE ';
+                        $textMatch = static function (string $alias) use ($DB, $patterns, $operator): string {
+                            $likes = [];
+                            foreach ($patterns as $pattern) {
+                                foreach (['name', 'answer'] as $field) {
+                                    $likes[] = $DB->quoteName($alias . '.' . $field) . $operator . $DB->quote($pattern) . " ESCAPE '!'";
+                                }
+                            }
+                            return $likes === [] ? '1 = 0' : implode(' OR ', $likes);
+                        };
+                        $ors = [new QueryExpression($textMatch('glpi_knowbaseitems'))];
                         if ($translated) {
-                            $pattern = $DB->quote(\itsmng\Database\LegacyValues::decode(Search::makeTextSearchValue($contains)));
-                            $operator = $platform instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform ? ' ILIKE ' : ' LIKE ';
-                            $textMatch = static fn (string $alias): string => $DB->quoteName($alias . '.name') . $operator . $pattern
-                                . ' OR ' . $DB->quoteName($alias . '.answer') . $operator . $pattern;
                             $ors[] = new QueryExpression('EXISTS (SELECT 1 FROM ' . $DB->quoteName('glpi_knowbaseitemtranslations')
                                 . ' ' . $DB->quoteName('fallback_translation') . ' WHERE '
                                 . $DB->quoteName('fallback_translation.knowbaseitems_id') . ' = ' . $DB->quoteName('glpi_knowbaseitems.id')

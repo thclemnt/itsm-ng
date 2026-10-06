@@ -139,8 +139,8 @@ class KnowbaseItem extends DbTestCase
             $this->boolean($author !== (int)\Session::getLoginUserID())->isTrue();
             $category = $this->createItem(\KnowbaseItemCategory::class, ['name' => 'Native search category']);
             foreach ([
-                ['Zxquasar alpha', 'First searchable content', $entity, null, null],
-                ['Second visible article', 'Zxquasar second content', $entity, null, null],
+                ['Zxquasar alpha', 'First searchable content ZxunderXscoremark', $entity, null, null],
+                ['Second visible article', 'Zxquasar second content Zxunder_scoremark Zxnullmark', $entity, null, null],
                 ['Zxquasar hidden audience', 'Hidden content', 0, null, null],
                 ['Zxquasar future article', 'Future content', $entity, '2037-01-01 00:00:00', null],
                 ['Zxquasar expired article', 'Expired content', $entity, null, '2000-01-01 00:00:00'],
@@ -204,20 +204,36 @@ class KnowbaseItem extends DbTestCase
                 $this->integer($part['total'])->isIdenticalTo(2);
                 $this->array(array_column($part['rows'], 'id'))->isIdenticalTo([$ids[$offset]]);
             }
-            foreach (['quasa', "'zxquas'", 'zxquas / nonexistentword'] as $text) {
+            foreach (['quasa', "'zxquas'", 'zxquas / nonexistentword', "'quasa'", 'quasa / nonexistentword'] as $text) {
                 $result = $repository->listPage($access, array_replace($options, ['contains' => $text]));
-                $this->integer($result['total'])->isIdenticalTo(2);
+                $this->integer($result['total'])->isIdenticalTo(2, 'Search: ' . $text);
                 $this->array(array_column($result['rows'], 'id'))->hasSize(2)->containsValues($expectedIds);
             }
+            // Interior words have no native prefix hit: punctuation must still select
+            // the same OR alternatives in the fallback, independently of index timing.
+            foreach (['glpi_knowbaseitems' => ['quasa', $expectedIds],
+                'glpi_knowbaseitemtranslations' => ['uplicat', null]] as $table => [$word, $owned]) {
+                $native = \itsmng\Database\Query\KnowledgeBaseFullText::sql(
+                    $connection->getDatabasePlatform(), [$DB->quoteName('name'), $DB->quoteName('answer')], '?');
+                $restriction = $owned === null ? 'knowbaseitems_id = ?' : 'id IN (?, ?)';
+                $parameters = $owned ?? [(int)$articles[5]->getID()];
+                $parameters[] = \itsmng\Database\Repository\KnowledgeBaseRepository::fullTextQuery(
+                    $word, $connection->getDatabasePlatform());
+                $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $DB->quoteName($table)
+                    . ' WHERE ' . $restriction . ' AND ' . $native, $parameters))->isIdenticalTo(0);
+            }
+            $this->array(\itsmng\Database\Repository\KnowledgeBaseRepository::fallbackPatterns("^NULL$ / under_score"))
+                ->isIdenticalTo(['%NULL%', '%under!_score%']);
+            $this->array(\itsmng\Database\Repository\KnowledgeBaseRepository::fallbackPatterns('()<>+*'))->isEmpty();
             foreach (['()<>+*', 'wronglanguage'] as $text) {
                 $this->integer($repository->listPage($access, array_replace($options, ['contains' => $text]))['total'])->isIdenticalTo(0);
             }
-            foreach (['zxnebu', 'étoile', 'zxduplicate', 'uplicat'] as $text) {
+            foreach (['zxnebu', 'étoile', 'zxduplicate', 'uplicat', "'uplicat'", 'uplicat / nonexistentword'] as $text) {
                 $translated = $repository->listPage($access, array_replace($options, ['contains' => $text]));
                 $this->integer($translated['total'])->isIdenticalTo(1);
                 $this->array(array_column($translated['rows'], 'id'))->isIdenticalTo([(int)$articles[5]->getID()]);
                 $this->string($translated['rows'][0]['transname'])->isIdenticalTo(
-                    in_array($text, ['zxduplicate', 'uplicat'], true) ? 'Duplicate Zxduplicate Zxnebula translation' : 'Zxnebula étoile traduite'
+                    in_array($text, ['zxduplicate', 'uplicat', "'uplicat'", 'uplicat / nonexistentword'], true) ? 'Duplicate Zxduplicate Zxnebula translation' : 'Zxnebula étoile traduite'
                 );
                 $this->variable($translated['rows'][0]['transanswer'])->isNull();
                 $after = $repository->listPage($access, array_replace($options, ['contains' => $text, 'limit' => 1, 'offset' => 1]));
@@ -225,12 +241,31 @@ class KnowbaseItem extends DbTestCase
                 $this->array($after['rows'])->isEmpty();
             }
             // The retained public criteria API preserves later-only full-text and fallback matches.
-            foreach (['zxduplicate', 'uplicat'] as $text) {
+            foreach (['zxduplicate', 'uplicat', "'uplicat'", 'uplicat / nonexistentword'] as $text) {
                 $criteria = \KnowbaseItem::getListRequest(['contains' => $text, 'faq' => false,
                     'knowbaseitemcategories_id' => 0], 'search');
                 $legacy = array_values(iterator_to_array($DB->request($criteria)));
                 $this->array(array_column($legacy, 'id'))->isIdenticalTo([(int)$articles[5]->getID()]);
                 $this->string($legacy[0]['transname'])->isIdenticalTo('Duplicate Zxduplicate Zxnebula translation');
+            }
+            foreach (['nullmark', '^nullmark$', 'under_score'] as $text) {
+                $literal = $repository->listPage($access, array_replace($options, ['contains' => $text]));
+                $this->integer($literal['total'])->isIdenticalTo(1, 'Literal search: ' . $text);
+                $this->array(array_column($literal['rows'], 'id'))->isIdenticalTo([(int)$articles[1]->getID()]);
+                $criteria = \KnowbaseItem::getListRequest(['contains' => $text, 'faq' => false,
+                    'knowbaseitemcategories_id' => 0], 'search');
+                $legacy = array_values(iterator_to_array($DB->request($criteria)));
+                $this->array(array_column($legacy, 'id'))->isIdenticalTo([(int)$articles[1]->getID()]);
+            }
+            foreach (["'quasa'", 'quasa / nonexistentword', '()<>+*'] as $text) {
+                $criteria = \KnowbaseItem::getListRequest(['contains' => $text, 'faq' => false,
+                    'knowbaseitemcategories_id' => 0], 'search');
+                $legacy = array_values(iterator_to_array($DB->request($criteria)));
+                if ($text === '()<>+*') {
+                    $this->array($legacy)->isEmpty();
+                } else {
+                    $this->array(array_column($legacy, 'id'))->hasSize(2)->containsValues($expectedIds);
+                }
             }
             ob_start();
             try {
