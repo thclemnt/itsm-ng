@@ -781,7 +781,7 @@ abstract class CommonDropdown extends CommonDBTM
     **/
     public function getLinks($withname = false)
     {
-        global $CFG_GLPI;
+        global $DB, $CFG_GLPI;
 
         $ret = '';
 
@@ -802,12 +802,16 @@ abstract class CommonDropdown extends CommonDBTM
 
             $rand = mt_rand();
             $kbitem = new KnowbaseItem();
-            $found_kbitem = $kbitem->find([
-               KnowbaseItem::getTable() . '.id'  => KnowbaseItem::getForCategory($this->fields['knowbaseitemcategories_id'])
-            ]);
+            $visibleIds = KnowbaseItem::getForCategory($this->fields['knowbaseitemcategories_id']);
+            $em = \itsmng\Database\Orm::create($DB);
+            try {
+                $found_ids = (new \itsmng\Database\Repository\KnowledgeBaseRepository($em))->existingLinkIds($visibleIds);
+            } finally {
+                $em->clear();
+            }
 
-            if (count($found_kbitem)) {
-                $kbitem->getFromDB(reset($found_kbitem)['id']);
+            if (count($found_ids)) {
+                $kbitem->getFromDB(reset($found_ids));
                 $ret .= "<div class='faqadd_block'>";
                 $ret .= "<label for='display_faq_chkbox$rand'>";
                 $ret .= "<img src='" . $CFG_GLPI["root_doc"] . "/pics/faqadd.png' class='middle pointer'
@@ -815,7 +819,7 @@ abstract class CommonDropdown extends CommonDBTM
                 $ret .= "</label>";
                 $ret .= "<input type='checkbox'  class='display_faq_chkbox' id='display_faq_chkbox$rand'>";
                 $ret .= "<div class='faqadd_entries'>";
-                if (count($found_kbitem) == 1) {
+                if (count($found_ids) == 1) {
                     $ret .= "<div class='faqadd_block_content' id='faqadd_block_content$rand'>";
                     $ret .= $kbitem->showFull(['display' => false]);
                     $ret .= "</div>"; // .faqadd_block_content
@@ -834,7 +838,7 @@ abstract class CommonDropdown extends CommonDBTM
                     $ret .= "<label for='dropdown_knowbaseitems_id$rand'>" .
                            KnowbaseItem::getTypeName() . "</label>&nbsp;";
                     $ret .= KnowbaseItem::dropdown([
-                       'value'     => reset($found_kbitem)['id'],
+                       'value'     => reset($found_ids),
                        'display'   => false,
                        'rand'      => $rand,
                        'condition' => [

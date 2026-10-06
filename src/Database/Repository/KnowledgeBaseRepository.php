@@ -30,6 +30,19 @@ final class KnowledgeBaseRepository
     {
     }
 
+    /** Recheck admitted dropdown candidates without loading their article bodies. */
+    public function existingLinkIds(array $visibleIds): array
+    {
+        if ($visibleIds === []) {
+            return [];
+        }
+        // Admission remains the caller's canViewItem pass. Like its previous
+        // find(), this selection adds no visibility rule or implicit ordering.
+        return array_map('intval', $this->em->createQueryBuilder()->select('article.id')
+            ->from(KnowbaseItem::class, 'article')->where('article.id IN (:ids)')
+            ->setParameter('ids', array_values($visibleIds))->getQuery()->getSingleColumnResult());
+    }
+
     /** Prefix terms retain the legacy OR search, without accepting query operators. */
     public static function fullTextQuery(string $text, AbstractPlatform $platform): string
     {
