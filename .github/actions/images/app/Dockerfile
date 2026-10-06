@@ -45,6 +45,8 @@ RUN apt-get update \
  && docker-php-ext-enable apcu redis \
  && rm -rf /var/lib/apt/lists/*
 
+RUN git config --system --add safe.directory /var/itsm
+
 COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
 
 RUN useradd --create-home --home-dir /home/itsm --uid 1000 --shell /bin/bash itsm

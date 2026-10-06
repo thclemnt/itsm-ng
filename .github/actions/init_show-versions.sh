@@ -13,6 +13,15 @@ if [[ -n $("$COMPOSE_CMD" ps --all --services | grep '^db$') ]]; then
   if [[ "${TEST_DB_TYPE:-mysql}" == pgsql ]]; then
     "$COMPOSE_CMD" exec -T db psql --version
   else
-    "$COMPOSE_CMD" exec -T db mysql --version
+    "$COMPOSE_CMD" exec -T db sh -c '
+      if command -v mariadb >/dev/null 2>&1; then
+        exec mariadb --version
+      elif command -v mysql >/dev/null 2>&1; then
+        exec mysql --version
+      else
+        echo "No MariaDB or MySQL client available in the database container" >&2
+        exit 127
+      fi
+    '
   fi
 fi
