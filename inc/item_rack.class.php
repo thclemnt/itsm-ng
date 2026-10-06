@@ -442,7 +442,16 @@ JAVASCRIPT;
     {
         global $DB;
 
-        $items = \itsmng\Database\MappedReads::matching($DB, self::getTable(), ['racks_id' => $rack->getID()]);
+        if (static::class === self::class) {
+            $manager = \itsmng\Database\Orm::create($DB);
+            try {
+                $items = (new \itsmng\Database\Repository\PlacementRepository($manager))->rackStatistics((int)$rack->getID());
+            } finally {
+                $manager->clear();
+            }
+        } else {
+            $items = \itsmng\Database\MappedReads::matching($DB, self::getTable(), ['racks_id' => $rack->getID()]);
+        }
 
         $weight = 0;
         $power  = 0;
@@ -452,29 +461,32 @@ JAVASCRIPT;
         ];
 
         foreach ($items as $row) {
-            $item = new $row['itemtype']();
-            $item->getFromDB($row['items_id']);
+            if (array_key_exists('dimensions', $row)) {
+                $modelFields = $row['dimensions'];
+            } else {
+                // Unmapped extensions retain their own legacy model-loading behavior.
+                $item = new $row['itemtype']();
+                $item->getFromDB($row['items_id']);
+                $model_class = $item->getType() . 'Model';
+                $modelsfield = strtolower($item->getType()) . 'models_id';
+                $model = new $model_class();
+                $modelFields = $model->getFromDB($item->fields[$modelsfield]) ? $model->fields : null;
+            }
 
-            $model_class = $item->getType() . 'Model';
-            $modelsfield = strtolower($item->getType()) . 'models_id';
-            $model = new $model_class();
-
-            if ($model->getFromDB($item->fields[$modelsfield])) {
-                $required_units = $model->fields['required_units'];
-
-                for ($i = 0; $i < $model->fields['required_units']; $i++) {
+            if ($modelFields !== null) {
+                for ($i = 0; $i < $modelFields['required_units']; $i++) {
                     $units[$row['orientation']][$row['position'] + $i] = 1;
-                    if ($model->fields['depth'] == 1) {
+                    if ($modelFields['depth'] == 1) {
                         $other_side = (int) !(bool) $row['orientation'];
                         $units[$other_side][$row['position'] + $i] = 1;
                     }
                 }
 
-                if (array_key_exists('power_consumption', $model->fields)) { // PDU does not consume energy
-                    $power += $model->fields['power_consumption'];
+                if (array_key_exists('power_consumption', $modelFields)) { // PDU does not consume energy
+                    $power += $modelFields['power_consumption'];
                 }
 
-                $weight += $model->fields['weight'];
+                $weight += $modelFields['weight'];
             } else {
                 $units[Rack::FRONT][$row['position']] = 1;
                 $units[Rack::REAR][$row['position']]  = 1;

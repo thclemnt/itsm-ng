@@ -23,6 +23,17 @@ final class PlacementRepository
      */
     public function rackOccupancy(int $rack): array
     {
+        return $this->rackDimensions($rack, false);
+    }
+
+    /** Weight/power totals use the same physical placements and model ownership. */
+    public function rackStatistics(int $rack): array
+    {
+        return $this->rackDimensions($rack, true);
+    }
+
+    private function rackDimensions(int $rack, bool $statistics): array
+    {
         $rows = $this->em->createQueryBuilder()
             ->select('i.itemtype', 'i.items_id', 'i.position', 'i.orientation', 'i.hpos')
             ->from(Entity\ItemRack::class, 'i')->where('i.racks = :rack')
@@ -53,21 +64,35 @@ final class PlacementRepository
             if (count($models) !== 1) {
                 throw new \LogicException('Ambiguous rack model association: ' . $metadata->name);
             }
-            $dimensions = $this->em->createQueryBuilder()
+            $query = $this->em->createQueryBuilder()
                 ->select('a.id AS asset_id', 'm.id AS model_id', 'm.required_units', 'm.depth')
                 ->from($metadata->name, 'a')
                 ->leftJoin('a.' . $models[0], 'm')
                 ->where('a.id IN (:assets)')
-                ->setParameter('assets', array_values(array_unique($identifiers)), \Doctrine\DBAL\ArrayParameterType::INTEGER)
-                ->getQuery()->getArrayResult();
-            $byAsset = array_column($dimensions, null, 'asset_id');
+                ->setParameter('assets', array_values(array_unique($identifiers)), \Doctrine\DBAL\ArrayParameterType::INTEGER);
+            if ($statistics) {
+                $query->addSelect('m.weight');
+                $modelMetadata = $this->em->getClassMetadata($metadata->getAssociationTargetClass($models[0]));
+                // Some physical models supply power rather than consuming it.
+                if ($modelMetadata->hasField('power_consumption')) {
+                    $query->addSelect('m.power_consumption');
+                }
+            }
+            $byAsset = array_column($query->getQuery()->getArrayResult(), null, 'asset_id');
             foreach ($identifiers as $index => $id) {
                 $dimension = $byAsset[$id] ?? null;
-                // Missing assets are skipped; a missing model occupies one full unit.
-                $rows[$index]['dimensions'] = $dimension === null ? null : [
+                // Occupancy defaults a missing model to one full unit; statistics
+                // retains its absent-model branch, independent of orientation.
+                $rows[$index]['dimensions'] = $dimension === null || ($statistics && $dimension['model_id'] === null) ? null : [
                     'required_units' => $dimension['model_id'] === null ? 1 : $dimension['required_units'],
                     'depth' => $dimension['model_id'] === null ? 1 : $dimension['depth'],
                 ];
+                if ($statistics && $rows[$index]['dimensions'] !== null) {
+                    $rows[$index]['dimensions'] += [
+                        'weight' => $dimension['weight'],
+                        'power_consumption' => $dimension['power_consumption'] ?? 0,
+                    ];
+                }
             }
         }
         return $rows;

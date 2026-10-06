@@ -47,6 +47,7 @@ class Item_Rack extends DbTestCase
         $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
         $rack = $this->createItem(\Rack::class, [
             'name' => '_projected_occupancy', 'entities_id' => $entity, 'number_units' => 30,
+            'max_weight' => 100, 'max_power' => 1000,
         ]);
         $connection = $DB->getDoctrineConnection();
         $level = $connection->getTransactionNestingLevel();
@@ -77,7 +78,8 @@ class Item_Rack extends DbTestCase
             foreach (['Computer', 'Monitor', 'NetworkEquipment', 'Peripheral', 'Enclosure', 'PDU', 'PassiveDCEquipment', 'Computer'] as $index => $kind) {
                 $models[$kind] ??= $this->createItem($kind . 'Model', [
                     'name' => '_projected_occupancy_' . $kind, 'required_units' => 2, 'depth' => 0.5,
-                ]);
+                    'weight' => 10,
+                ] + ($kind === 'PDU' ? ['max_power' => 10000] : ['power_consumption' => 100]));
                 $asset = $this->createItem($kind, [
                     'name' => '_projected_occupancy_' . $index, 'entities_id' => $entity,
                     strtolower($kind) . 'models_id' => $models[$kind]->getID(),
@@ -98,13 +100,37 @@ class Item_Rack extends DbTestCase
             foreach ($rows as $row) {
                 $this->array($row['dimensions'])->isIdenticalTo(['required_units' => 2, 'depth' => 0.5]);
             }
+            $em->queries = [];
+            $statistics = $repository->rackStatistics((int)$rack->getID());
+            $this->array($statistics)->hasSize(8);
+            $this->array($em->queries)->hasSize(8);
+            foreach ($statistics as $row) {
+                $this->array($row['dimensions'])->isIdenticalTo([
+                    'required_units' => 2, 'depth' => 0.5, 'weight' => 10,
+                    'power_consumption' => $row['itemtype'] === 'PDU' ? 0 : 100,
+                ]);
+            }
             $this->integer($listener->loaded)->isIdenticalTo(0);
             $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
             $this->array($rack->getFilled())->isEqualTo($expected);
+            $render = static function () use ($rack): string {
+                ob_start();
+                try {
+                    \Item_Rack::showStats($rack);
+                    return ob_get_contents();
+                } finally {
+                    ob_end_clean();
+                }
+            };
+            // PDU rated supply power must not become rack power consumption.
+            $this->string($render())->contains('.text("53%")')
+                ->contains('.text("80 / 100")')->contains('.text("700 / 1000")');
 
             $managed = $em->find(\itsmng\Database\Entity\ComputerModel::class, (int)$models['Computer']->getID());
             $this->integer($listener->loaded)->isIdenticalTo(1);
-            $connection->update('glpi_computermodels', ['required_units' => 1, 'depth' => 0.25], ['id' => $managed->id]);
+            $connection->update('glpi_computermodels', [
+                'required_units' => 1, 'depth' => 0.25, 'weight' => 30, 'power_consumption' => 200,
+            ], ['id' => $managed->id]);
             $em->queries = [];
             $rows = $repository->rackOccupancy((int)$rack->getID());
             foreach ($rows as $row) {
@@ -113,14 +139,25 @@ class Item_Rack extends DbTestCase
                     : ['required_units' => 2, 'depth' => 0.5]);
             }
             $this->array($em->queries)->hasSize(8);
+            $em->queries = [];
+            foreach ($repository->rackStatistics((int)$rack->getID()) as $row) {
+                $this->integer($row['dimensions']['weight'])->isIdenticalTo($row['itemtype'] === 'Computer' ? 30 : 10);
+                $this->integer($row['dimensions']['power_consumption'])->isIdenticalTo(match ($row['itemtype']) {
+                    'Computer' => 200, 'PDU' => 0, default => 100,
+                });
+            }
+            $this->array($em->queries)->hasSize(8);
             $this->integer($managed->required_units)->isIdenticalTo(2);
             $this->float($managed->depth)->isIdenticalTo(0.5);
+            $this->integer($managed->weight)->isIdenticalTo(10);
             $this->boolean($em->contains($managed))->isTrue();
             $this->integer($listener->loaded)->isIdenticalTo(1);
             $quarter = [\Rack::POS_LEFT => [1, 0, 0, 0], \Rack::POS_RIGHT => [1, 0, 0, 0]];
             $expected[1] = $expected[22] = $quarter;
             unset($expected[2], $expected[23]);
             $this->array($rack->getFilled())->isEqualTo($expected);
+            $this->string($render())->contains('.text("47%")')
+                ->contains('.text("120 / 100")')->contains('.text("900 / 1000")');
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
         } finally {
             $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $listener);
@@ -164,6 +201,17 @@ class Item_Rack extends DbTestCase
         $full = [\Rack::POS_LEFT => [1, 1, 1, 1], \Rack::POS_RIGHT => [1, 1, 1, 1]];
         $this->array($rack->getFilled())->isEqualTo([1 => $frontLeft, 2 => $frontLeft, 4 => $rearRight, 5 => $rearRight, 7 => $full]);
         $this->array($rack->getFilled('Computer', $computers[0]))->isEqualTo([4 => $rearRight, 5 => $rearRight, 7 => $full]);
+        $manager = \itsmng\Database\Orm::create($DB);
+        try {
+            $rows = (new \itsmng\Database\Repository\PlacementRepository($manager))->rackStatistics((int)$rack->getID());
+            $byAsset = array_column($rows, 'dimensions', 'items_id');
+            $this->variable($byAsset[$computers[2]])->isNull();
+            $this->array($byAsset[$computers[0]])->isIdenticalTo([
+                'required_units' => 2, 'depth' => 0.5, 'weight' => 20, 'power_consumption' => 100,
+            ]);
+        } finally {
+            $manager->clear();
+        }
         $render = static function () use ($rack): string {
             ob_start();
             try {
