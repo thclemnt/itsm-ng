@@ -138,6 +138,12 @@ case "$TEST_DB_TYPE" in
 esac
 [[ ! -z "$PHP_IMAGE" ]] || PHP_IMAGE=itsm-tests-app:local
 COMPOSE_CMD="$APPLICATION_ROOT/.github/actions/docker-compose.sh"
+if [[ " ${TESTS_TO_RUN[*]} " == *" e2e "* ]]; then
+  TEST_DB_NAME="${TEST_DB_NAME:-itsm_port_e2e}"
+  PLAYWRIGHT_VAR_DIR=/home/itsm/e2e-var
+  mkdir -p "$APP_CONTAINER_HOME/e2e-var"/{_cache/cache_db,_cache/cache_trans,_cron,_dumps,_graphs,_locales,_lock,_log,_pictures,_plugins,_rss,_sessions,_tmp,_uploads}
+  export TEST_DB_NAME PLAYWRIGHT_VAR_DIR
+fi
 
 # Backup configuration files
 BACKUP_DIR=$(mktemp -d -t glpi-tests-backup-XXXXXXXXXX)

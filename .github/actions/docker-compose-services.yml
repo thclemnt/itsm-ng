@@ -4,7 +4,7 @@ services:
     image: "${DB_IMAGE:-mariadb:10.11}"
     environment:
       MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
-      MYSQL_DATABASE: "glpi"
+      MYSQL_DATABASE: "${TEST_DB_NAME:-glpi}"
     shm_size: '1gb'
     healthcheck:
       test: ["CMD", "mariadb-admin", "ping", "-h", "127.0.0.1", "-uroot"]

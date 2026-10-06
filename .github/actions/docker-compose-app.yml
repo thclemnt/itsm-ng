@@ -8,6 +8,7 @@ services:
     working_dir: "/var/itsm"
     command: ["sleep", "infinity"]
     environment:
+      TEST_DB_NAME: "${TEST_DB_NAME:-glpi}"
       TEST_DB_TYPE: "${TEST_DB_TYPE:-mysql}"
       CODE_COVERAGE: "${CODE_COVERAGE:-false}"
     volumes:

@@ -1,0 +1,3 @@
+#!/bin/sh
+# Fixture stdin and the native PHP exit status pass through unchanged.
+exec docker exec -i app php "$@"

@@ -12,7 +12,7 @@ case "${TEST_DB_TYPE:-mysql}" in
 esac
 bin/console itsmng:database:install \
   --config-dir=./tests/config --ansi --no-interaction \
-  --reconfigure --db-name=glpi --db-host=db --db-user=root --force "${database_options[@]}"
+  --reconfigure --db-name="${TEST_DB_NAME:-glpi}" --db-host=db --db-user=root --force "${database_options[@]}"
 
 # Execute update
 ## Must succeed, including an already-complete canonical history.

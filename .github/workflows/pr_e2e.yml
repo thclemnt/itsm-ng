@@ -33,7 +33,7 @@ jobs:
         run: ./tests/run_tests.sh --build e2e
 
       - name: Upload Playwright artifacts
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: playwright-artifacts-${{ matrix.database.id }}

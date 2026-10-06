@@ -14,6 +14,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: [
     ['list'],
+    ['json', { outputFile: path.join(dirname, '../files/_playwright/results.json') }],
     ['html', { open: 'never', outputFolder: path.join(dirname, '../files/_playwright/report') }],
   ],
   outputDir: path.join(dirname, '../files/_playwright/test-results'),

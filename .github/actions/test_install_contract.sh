@@ -29,7 +29,7 @@ chmod +x "$fixture_directory/bin/console" "$fixture_directory/commands/php"
 export PATH="$fixture_directory/commands:$PATH"
 export INSTALL_CONTRACT_CALLS="$fixture_directory/calls"
 export INSTALL_CONTRACT_ARGUMENTS="$fixture_directory/install-arguments"
-unset TEST_DB_TYPE
+unset TEST_DB_TYPE TEST_DB_NAME
 
 run_case() {
   export INSTALL_CONTRACT_INSTALL_STATUS=$1 INSTALL_CONTRACT_UPDATE_STATUS=$2 INSTALL_CONTRACT_VERIFY_STATUS=$3
@@ -44,6 +44,7 @@ run_case 0 0 0 0 $'itsmng:database:install\nitsmng:database:update\nverified'
 run_case 0 42 0 42 $'itsmng:database:install\nitsmng:database:update'
 run_case 0 0 43 43 $'itsmng:database:install\nitsmng:database:update\nverified'
 run_case 44 0 0 44 'itsmng:database:install'
+grep -Fx -- '--db-name=glpi' "$INSTALL_CONTRACT_ARGUMENTS"
 grep -Fx -- '--db-type=mysql' "$INSTALL_CONTRACT_ARGUMENTS"
 grep -Fx -- '--db-port=3306' "$INSTALL_CONTRACT_ARGUMENTS"
 export TEST_DB_TYPE=pgsql
@@ -51,4 +52,7 @@ run_case 0 0 0 0 $'itsmng:database:install\nitsmng:database:update\nverified'
 grep -Fx -- '--db-type=pgsql' "$INSTALL_CONTRACT_ARGUMENTS"
 grep -Fx -- '--db-port=5432' "$INSTALL_CONTRACT_ARGUMENTS"
 grep -Fx -- '--db-password=test' "$INSTALL_CONTRACT_ARGUMENTS"
-echo 'Installation wrapper status, readiness ordering and native provider arguments: five cases passed.'
+export TEST_DB_NAME=itsm_port_e2e
+run_case 0 0 0 0 $'itsmng:database:install\nitsmng:database:update\nverified'
+grep -Fx -- '--db-name=itsm_port_e2e' "$INSTALL_CONTRACT_ARGUMENTS"
+echo 'Installation wrapper status, readiness ordering and native provider arguments: six cases passed.'

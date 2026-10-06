@@ -1,24 +1,25 @@
 #!/bin/bash -e
 
-export PLAYWRIGHT_BASE_URL="${PLAYWRIGHT_BASE_URL:-http://app-web:8088}"
+export PLAYWRIGHT_BASE_URL="${PLAYWRIGHT_BASE_URL:-http://127.0.0.1:8088}"
 export PLAYWRIGHT_APP_TOKEN_FILE="${PLAYWRIGHT_APP_TOKEN_FILE:-tests/files/_playwright/app-token}"
 
+runtime_dir="${GLPI_VAR_DIR:-tests/files}"
 mkdir -p \
-  tests/files/_cache/cache_db \
-  tests/files/_cache/cache_trans \
-  tests/files/_cron \
-  tests/files/_dumps \
-  tests/files/_graphs \
-  tests/files/_locales \
-  tests/files/_lock \
-  tests/files/_log \
-  tests/files/_pictures \
+  "$runtime_dir"/_cache/cache_db \
+  "$runtime_dir"/_cache/cache_trans \
+  "$runtime_dir"/_cron \
+  "$runtime_dir"/_dumps \
+  "$runtime_dir"/_graphs \
+  "$runtime_dir"/_locales \
+  "$runtime_dir"/_lock \
+  "$runtime_dir"/_log \
+  "$runtime_dir"/_pictures \
   tests/files/_playwright \
-  tests/files/_plugins \
-  tests/files/_rss \
-  tests/files/_sessions \
-  tests/files/_tmp \
-  tests/files/_uploads
+  "$runtime_dir"/_plugins \
+  "$runtime_dir"/_rss \
+  "$runtime_dir"/_sessions \
+  "$runtime_dir"/_tmp \
+  "$runtime_dir"/_uploads
 
 bin/console itsmng:config:set --config-dir=./tests/config enable_api 1
 bin/console itsmng:config:set --config-dir=./tests/config enable_api_login_credentials 1
