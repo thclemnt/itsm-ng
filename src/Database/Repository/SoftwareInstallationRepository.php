@@ -157,6 +157,45 @@ final class SoftwareInstallationRepository
         return $rows;
     }
 
+    /**
+     * Current link fields for the exact targets selected before the installation table's form callbacks.
+     * These renderer-only rows do not replace getLink(), its item rights, or version parent checks.
+     */
+    public function displayDataForInstallations(array $installations): array
+    {
+        $data = ['softwares' => [], 'versions' => [], 'categories' => []];
+        foreach (array_chunk(array_values(array_unique(array_column($installations, 'softwares_id'))), 250) as $ids) {
+            $rows = $this->em->createQueryBuilder()
+                ->select('s.id, s.name, IDENTITY(s.entities) AS entities_id, s.is_recursive, s.is_template')
+                ->from(Entity\Software::class, 's')->where('s.id IN (:ids)')->setParameter('ids', $ids)
+                ->getQuery()->getScalarResult();
+            foreach ($rows as $row) {
+                $row['is_recursive'] = (int)$row['is_recursive'];
+                $row['is_template'] = (int)$row['is_template'];
+                $data['softwares'][(int)$row['id']] = $row;
+            }
+        }
+        foreach (array_chunk(array_values(array_unique(array_column($installations, 'verid'))), 250) as $ids) {
+            $rows = $this->em->createQueryBuilder()
+                ->select('v.id, v.name, IDENTITY(v.softwares) AS softwares_id')
+                ->from(Entity\SoftwareVersion::class, 'v')->where('v.id IN (:ids)')->setParameter('ids', $ids)
+                ->getQuery()->getScalarResult();
+            foreach ($rows as $row) {
+                $data['versions'][(int)$row['id']] = $row;
+            }
+        }
+        $categories = array_filter(array_unique(array_column($installations, 'softwarecategories_id')));
+        foreach (array_chunk(array_values($categories), 250) as $ids) {
+            $rows = $this->em->createQueryBuilder()->select('c.id, c.name, c.completename')
+                ->from(Entity\SoftwareCategory::class, 'c')->where('c.id IN (:ids)')->setParameter('ids', $ids)
+                ->getQuery()->getScalarResult();
+            foreach ($rows as $row) {
+                $data['categories'][(int)$row['id']] = $row;
+            }
+        }
+        return $data;
+    }
+
     /** API expansion already has an authorized owner; it has no UI category filter. */
     public function apiForSubject(string $kind, int $id): array
     {

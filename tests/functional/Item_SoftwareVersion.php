@@ -269,7 +269,7 @@ class Item_SoftwareVersion extends DbTestCase
         )->isIdenticalTo(1);
     }
 
-    public function testInstalledLicenseIdsKeepVersionPriorityAndHookWrites(): void
+    public function testInstalledSoftwareDisplayKeepsLinksAndCurrentHookReads(): void
     {
         global $DB, $PLUGIN_HOOKS;
         $session = $_SESSION;
@@ -280,9 +280,18 @@ class Item_SoftwareVersion extends DbTestCase
         $connection = $DB->getDoctrineConnection();
         $level = $connection->getTransactionNestingLevel();
         try {
-            [$software, $versions, $computers] = $this->installationFixtures();
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $child = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(),
+                'entities_id' => (int)$_SESSION['glpiactive_entity']]);
+            [$software, $versions, $computers] = $this->installationFixtures([$child->fields['name']]);
             $computer = $computers[0];
             $entity = (int)$software->fields['entities_id'];
+            $categoryParent = $this->createItem(\SoftwareCategory::class, ['name' => 'Parent ' . $this->getUniqueString()]);
+            $category = $this->createItem(\SoftwareCategory::class, ['name' => 'Child & category',
+                'softwarecategories_id' => $categoryParent->getID()]);
+            $this->boolean($software->update(['id' => $software->getID(),
+                'softwarecategories_id' => $category->getID(), 'comment' => 'Full permission fields']))->isTrue();
             $installations = [];
             $licenses = [];
             foreach ($versions as $index => $version) {
@@ -292,7 +301,7 @@ class Item_SoftwareVersion extends DbTestCase
                 ]);
                 $licenses[] = $this->createItem(\SoftwareLicense::class, [
                     'name' => $this->getUniqueString(), 'softwares_id' => $software->getID(),
-                    'entities_id' => $entity, 'number' => -1,
+                    'entities_id' => $entity, 'is_recursive' => 1, 'number' => -1,
                     'softwareversions_id_buy' => $versions[0]->getID(),
                     // Public zero input becomes an empty owning reference, retaining buy fallback.
                     'softwareversions_id_use' => $index === 0 ? 0 : $version->getID(),
@@ -304,9 +313,16 @@ class Item_SoftwareVersion extends DbTestCase
             }
             $this->boolean($licenses[0]->getFromDB($licenses[0]->getID()))->isTrue();
             $this->variable($licenses[0]->fields['softwareversions_id_use'])->isNull();
+            $this->boolean($DB->update('glpi_softwares', ['is_template' => true], ['id' => $software->getID()]))->isTrue();
+            $this->boolean($software->getFromDB($software->getID()))->isTrue();
+            // The installation lives in the child entity; the recursive parent software remains readable.
+            $this->setEntity((int)$child->getID(), false);
             $_SESSION['glpiactiveprofile']['software'] = READ;
+            $_SESSION['glpiactiveprofile']['dropdown'] = READ;
+            $_SESSION['glpiis_ids_visible'] = true;
             $_REQUEST['criterion'] = -1;
             $PLUGIN_HOOKS['item_can'] = [];
+            $PLUGIN_HOOKS['import_item'] = [];
             $render = function () use ($computer): array {
                 ob_start();
                 try {
@@ -331,22 +347,40 @@ class Item_SoftwareVersion extends DbTestCase
             foreach ($versions as $index => $version) {
                 $this->string($rows[$index][0])->isIdenticalTo($software->getLink());
                 $this->string($rows[$index][2])->isIdenticalTo($version->getLink());
+                $this->string($rows[$index][5])->isIdenticalTo($category->getLink());
             }
+            $this->string($rows[0][0])->contains('&withtemplate=1');
+            $this->string($rows[0][5])->contains(htmlentities($category->fields['completename'], ENT_QUOTES, 'utf-8'));
+            $_SESSION['glpiactiveprofile']['dropdown'] = 0;
+            $denied = $render();
+            $this->string($denied['dataSource']['rows'][0][5])->isIdenticalTo($category->getLink())->notContains('<a ');
+            $_SESSION['glpiactiveprofile']['dropdown'] = READ;
+            $this->boolean($DB->update('glpi_softwares', ['softwarecategories_id' => null], ['id' => $software->getID()]))->isTrue();
+            $uncategorized = $render();
+            $this->string($uncategorized['dataSource']['rows'][0][5])->isEmpty();
+            $this->boolean($DB->update('glpi_softwares', ['softwarecategories_id' => $category->getID()], ['id' => $software->getID()]))->isTrue();
 
             $calls = 0;
+            $comments = [];
+            $names = [];
             $plugins->setValue(null, [...$active, 'effective_license_fixture']);
             $PLUGIN_HOOKS['item_can'] = ['effective_license_fixture' => [\Software::class =>
-                static function (\Software $item) use (&$calls, $connection, $licenses, $versions): void {
+                static function (\Software $item) use (&$calls, &$comments, &$names, $connection, $licenses, $versions): void {
+                    $comments[] = $item->fields['comment'];
+                    $names[] = $item->fields['name'];
                     if (++$calls === 1) {
                         // The next installed row must observe this write rather than an earlier batch.
                         $connection->update('glpi_softwarelicenses', [
                             'softwareversions_id_use' => $versions[0]->getID(),
                         ], ['id' => $licenses[1]->getID()]);
+                        $connection->update('glpi_softwares', ['name' => 'Current callback name'], ['id' => $item->getID()]);
                         $item->right = false;
                     }
                 }]];
             $hooked = $render();
             $this->integer($calls)->isIdenticalTo(2);
+            $this->array($comments)->isIdenticalTo(['Full permission fields', 'Full permission fields']);
+            $this->array($names)->isIdenticalTo([$software->fields['name'], 'Current callback name']);
             $this->array(array_column($hooked['dataSource']['rows'], 3))->isIdenticalTo([
                 (string)$licenses[0]->getID(), '',
             ]);
@@ -407,6 +441,11 @@ class Item_SoftwareVersion extends DbTestCase
             $software = new \itsmng\Database\Entity\Software();
             $software->entities = $root;
             $software->name = 'Installation license projection';
+            $category = new \itsmng\Database\Entity\SoftwareCategory();
+            $category->name = 'Installation category';
+            $category->completename = 'Parent > Installation category';
+            $manager->persist($category);
+            $software->softwarecategories = $category;
             $manager->persist($software);
             $type = new \itsmng\Database\Entity\SoftwareLicenseType();
             $type->entities = $root;
@@ -572,6 +611,52 @@ class Item_SoftwareVersion extends DbTestCase
             ]);
             $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
             $this->object($manager->getConnection())->isIdenticalTo($connection);
+
+            $emptyDisplay = ['softwares' => [], 'versions' => [], 'categories' => []];
+            $logger->queries = [];
+            $this->array($repository->displayDataForInstallations([]))->isIdenticalTo($emptyDisplay);
+            $this->array($logger->queries)->isEmpty();
+            $displayRows = array_map(static fn ($version): array => [
+                'softwares_id' => $software->id, 'verid' => $version->id, 'softwarecategories_id' => $category->id,
+            ], $versions);
+            foreach ([1, 25] as $size) {
+                $logger->queries = [];
+                $display = $repository->displayDataForInstallations(array_slice($displayRows, 0, $size));
+                $this->array($logger->queries)->hasSize(3);
+                $this->array($display['softwares'])->isIdenticalTo([$software->id => [
+                    'id' => $software->id, 'name' => $software->name, 'entities_id' => 0,
+                    'is_recursive' => 0, 'is_template' => 0,
+                ]]);
+                $this->array($display['versions'])->hasSize($size);
+                $this->array($display['versions'][$versions[0]->id])->isIdenticalTo([
+                    'id' => $versions[0]->id, 'name' => $versions[0]->name, 'softwares_id' => $software->id,
+                ]);
+                $this->array($display['categories'])->isIdenticalTo([$category->id => [
+                    'id' => $category->id, 'name' => $category->name, 'completename' => $category->completename,
+                ]]);
+                $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+            }
+            $logger->queries = [];
+            $this->array($repository->displayDataForInstallations([[
+                'softwares_id' => $software->id, 'verid' => $versions[0]->id, 'softwarecategories_id' => 0,
+            ]])['categories'])->isEmpty();
+            $this->array($logger->queries)->hasSize(2);
+            $this->array($repository->displayDataForInstallations([[
+                'softwares_id' => PHP_INT_MAX, 'verid' => PHP_INT_MAX, 'softwarecategories_id' => PHP_INT_MAX,
+            ]]))->isIdenticalTo($emptyDisplay);
+            $displayBoundary = array_map(static fn (int $version): array => [
+                'softwares_id' => $software->id, 'verid' => $version, 'softwarecategories_id' => $category->id,
+            ], $boundaryVersions);
+            $logger->queries = [];
+            $display = $repository->displayDataForInstallations($displayBoundary);
+            $this->array($logger->queries)->hasSize(4);
+            $this->array(array_keys($display['versions']))->isIdenticalTo([$versions[0]->id, $versions[25]->id]);
+            $managedSoftware = $manager->find(\itsmng\Database\Entity\Software::class, $software->id);
+            $connection->update('glpi_softwares', ['name' => 'Fresh link label'], ['id' => $software->id]);
+            $this->string($repository->displayDataForInstallations([$displayRows[0]])['softwares'][$software->id]['name'])
+                ->isIdenticalTo('Fresh link label');
+            $this->string($managedSoftware->name)->isIdenticalTo('Installation license projection');
+            $this->boolean($manager->contains($managedSoftware))->isTrue();
         } finally {
             try {
                 $frame->rollBack();

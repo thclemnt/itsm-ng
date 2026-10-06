@@ -1227,10 +1227,13 @@ class Item_SoftwareVersion extends CommonDBRelation
         $datas = $iterator;
         // Link permission callbacks may update the next row's assignments.
         // Keep those reads at their original per-row boundary whenever hooks are registered.
-        $licenseIds = empty($GLOBALS['PLUGIN_HOOKS']['item_can'])
-            ? (new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB)))
-                ->effectiveLicenseIdsForVersions($itemtype, (int)$items_id, array_column($datas, 'verid'))
-            : null;
+        $licenseIds = null;
+        $displayData = null;
+        if ($datas && empty($GLOBALS['PLUGIN_HOOKS']['item_can'])) {
+            $repository = new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB));
+            $licenseIds = $repository->effectiveLicenseIdsForVersions($itemtype, (int)$items_id, array_column($datas, 'verid'));
+            $displayData = $repository->displayDataForInstallations($datas);
+        }
         foreach ($datas as $data) {
             $licids = $licenseIds !== null ? ($licenseIds[$data['verid']] ?? []) : self::softwareByCategory(
                 $data,
@@ -1242,11 +1245,23 @@ class Item_SoftwareVersion extends CommonDBRelation
             );
 
             $category = new SoftwareCategory();
-            $category->getFromDB($data['softwarecategories_id']);
+            if (isset($displayData['categories'][$data['softwarecategories_id']])) {
+                $category->fields = $displayData['categories'][$data['softwarecategories_id']];
+            } elseif ($displayData === null || $data['softwarecategories_id']) {
+                $category->getFromDB($data['softwarecategories_id']);
+            }
             $soft = new Software();
-            $soft->getFromDB($data['softwares_id']);
+            if (isset($displayData['softwares'][$data['softwares_id']])) {
+                $soft->fields = $displayData['softwares'][$data['softwares_id']];
+            } else {
+                $soft->getFromDB($data['softwares_id']);
+            }
             $version = new SoftwareVersion();
-            $version->getFromDB($data['verid']);
+            if (isset($displayData['versions'][$data['verid']])) {
+                $version->fields = $displayData['versions'][$data['verid']];
+            } else {
+                $version->getFromDB($data['verid']);
+            }
             $newValue = [
                $soft->getLink(),
                $data['state'],
