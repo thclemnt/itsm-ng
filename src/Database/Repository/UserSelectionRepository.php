@@ -72,6 +72,7 @@ final class UserSelectionRepository
         int $start,
         int $limit,
         bool $search = false,
+        bool $namesOnly = false,
     ): RowIterator {
         $matching = $this->em->createQueryBuilder()->select('r.id')->from(User::class, 'r');
         $compiler = new RecordCriteria($matching, $this->em->getClassMetadata(User::class));
@@ -112,7 +113,8 @@ final class UserSelectionRepository
             }
         }
         // Identity subquery prevents email/profile fan-out without comparing JSON values.
-        $query = $this->em->createQueryBuilder()->select($count ? 'COUNT(u.id) AS CPT' : 'u')->from(User::class, 'u')
+        $selection = $count ? 'COUNT(u.id) AS CPT' : ($namesOnly ? 'u.id, u.name, u.realname, u.firstname' : 'u');
+        $query = $this->em->createQueryBuilder()->select($selection)->from(User::class, 'u')
             ->where('u.id IN (' . $matching->getDQL() . ')');
         foreach ($matching->getParameters() as $parameter) {
             $query->setParameter($parameter->getName(), $parameter->getValue(), $parameter->getType());
@@ -127,6 +129,9 @@ final class UserSelectionRepository
         $query->addOrderBy('u.id');
         if ($limit > 0) {
             $query->setMaxResults($limit)->setFirstResult(max(0, $start));
+        }
+        if ($namesOnly) {
+            return new RowIterator($query->getQuery()->getScalarResult());
         }
         $records = new RecordRepository($this->em);
         $rows = [];

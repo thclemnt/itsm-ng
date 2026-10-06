@@ -3777,6 +3777,7 @@ class User extends CommonDBTM
      * @param integer         $limit            limit LIMIT value (default -1 no limit)
      * @param boolean         $inactive_deleted true to retreive also inactive or deleted users
      * @param array           $additionalCriteria structured criteria that further narrow eligible grants/users
+     * @param boolean         $namesOnly        project display names without hydrating complete users
      *
      * @return \itsmng\Database\RowIterator
      */
@@ -3791,7 +3792,8 @@ class User extends CommonDBTM
         $limit = -1,
         $inactive_deleted = 0,
         $with_no_right = 0,
-        array $additionalCriteria = []
+        array $additionalCriteria = [],
+        bool $namesOnly = false
     ) {
         global $DB;
 
@@ -3968,7 +3970,8 @@ class User extends CommonDBTM
             (int)($_SESSION['glpinames_format'] ?? self::REALNAME_BEFORE) === self::FIRSTNAME_BEFORE,
             (int)$start,
             (int)$limit,
-            $hasSearch
+            $hasSearch,
+            $namesOnly
         );
     }
 

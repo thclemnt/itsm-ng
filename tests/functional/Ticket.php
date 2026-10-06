@@ -42,6 +42,98 @@ use User;
 
 class Ticket extends DbTestCase
 {
+    public function testHelpdeskObserverChoicesRespectUserSelectorScope(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_child_1', false);
+        $child = (int)$_SESSION['glpiactive_entity'];
+        $parent = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $sibling = (int)getItemByTypeName('Entity', '_test_child_2', true);
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $profiles = [];
+            foreach (['helpdesk', 'central'] as $interface) {
+                $profile = new \itsmng\Database\Entity\Profile();
+                $profile->name = 'Observer choices ' . $interface . $this->getUniqueString();
+                $profile->interface = $interface;
+                $em->persist($profile);
+                $profiles[$interface] = $profile;
+            }
+            $users = [];
+            foreach ([
+                'local' => [$child, false, 'helpdesk'],
+                'recursive' => [$parent, true, 'helpdesk'],
+                'parent_only' => [$parent, false, 'helpdesk'],
+                'sibling' => [$sibling, false, 'helpdesk'],
+                'central' => [$child, false, 'central'],
+                'inactive' => [$child, false, 'helpdesk'],
+                'deleted' => [$child, false, 'helpdesk'],
+                'future' => [$child, false, 'helpdesk'],
+                'expired' => [$child, false, 'helpdesk'],
+                'no_profile' => [null, false, 'helpdesk'],
+            ] as $name => [$entity, $recursive, $interface]) {
+                $user = new \itsmng\Database\Entity\User();
+                $user->name = 'observer-' . $name . '-' . $this->getUniqueString();
+                $user->realname = '!! Observer ' . $name;
+                $user->firstname = 'Display';
+                $user->entities = $em->getReference(\itsmng\Database\Entity\Entity::class, $child);
+                $user->is_active = $name !== 'inactive';
+                $user->is_deleted = $name === 'deleted';
+                $user->begin_date = $name === 'future' ? new \DateTime('2099-01-01') : null;
+                $user->end_date = $name === 'expired' ? new \DateTime('2001-01-01') : null;
+                $em->persist($user);
+                $users[$name] = $user;
+                if ($entity !== null) {
+                    $grant = new \itsmng\Database\Entity\ProfileUser();
+                    $grant->users = $user;
+                    $grant->profiles = $profiles[$interface];
+                    $grant->entities = $em->getReference(\itsmng\Database\Entity\Entity::class, $entity);
+                    $grant->is_recursive = $recursive;
+                    $em->persist($grant);
+                }
+            }
+            $em->flush();
+            $ids = array_map(static fn ($user): int => (int)$user->id, $users);
+            $em->clear();
+            $options = ['entities_id' => $child, '_right' => 'all', '_user_index' => 1,
+                '_users_id_observer' => [1 => $ids['local']]];
+            ob_start();
+            try {
+                \Ticket::showFormHelpdeskObserver($options);
+                $html = ob_get_contents();
+            } finally {
+                ob_end_clean();
+            }
+            foreach ($ids as $name => $id) {
+                $this->boolean(str_contains($html, "value='$id'"))
+                    ->isIdenticalTo(in_array($name, ['local', 'recursive', 'central'], true));
+            }
+            $this->string($html)->contains("value='" . $ids['local'] . "' selected");
+            $this->output(fn () => \Ticket::showFormHelpdeskObserver(array_replace($options, ['_right' => 'interface'])))
+                ->contains("value='" . $ids['central'] . "'")
+                ->notContains("value='" . $ids['local'] . "'");
+            $this->output(fn () => \Ticket::showFormHelpdeskObserver(array_replace($options, ['entities_id' => $sibling])))
+                ->notContains("value='" . $ids['sibling'] . "'")
+                ->notContains("value='" . $ids['local'] . "'");
+            $loads = new class {
+                public int $count = 0;
+                public function postLoad(): void { ++$this->count; }
+            };
+            $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+            $repository = new \itsmng\Database\Repository\UserSelectionRepository($em);
+            $rows = iterator_to_array($repository->search(['glpi_users.id' => array_values($ids)], false, [], null, false, false, 0, 2, false, true));
+            $this->array($rows)->hasSize(2);
+            foreach ($rows as $row) {
+                $this->array(array_keys($row))->isIdenticalTo(['id', 'name', 'realname', 'firstname']);
+            }
+            $this->integer($loads->count)->isIdenticalTo(0);
+            $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+        } finally {
+            $em->clear();
+        }
+    }
+
     public function actorProjectionProvider(): array
     {
         return [

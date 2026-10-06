@@ -4222,35 +4222,26 @@ class Ticket extends CommonITILObject
             }
         }
 
-        $user_index = $params['_user_index'] ?? 0;
+        $user_index = max(0, (int)($params['_user_index'] ?? 0));
         $current_value = 0;
         if (isset($params['_users_id_observer']) && is_array($params['_users_id_observer'])) {
             $current_value = $params['_users_id_observer'][$user_index] ?? 0;
         }
 
-        try {
-            global $DB;
-            $query = "SELECT u.id, u.name, u.realname, u.firstname 
-                      FROM glpi_users u 
-                      WHERE u.is_active = 1 
-                      AND u.is_deleted = 0 
-                      ORDER BY u.realname, u.firstname
-                      LIMIT 100";
-
-            $result = $DB->query($query);
-            $users = [];
-            $users[0] = "-- " . __('Select') . " --";
-
-            while ($row = $DB->fetchAssoc($result)) {
+        $users = [0 => "-- " . __('Select') . " --"];
+        // AJAX options must not widen the session's permitted entity set.
+        $entity = filter_var($params['entities_id'], FILTER_VALIDATE_INT);
+        if ($entity !== false && Session::haveAccessToEntity($entity)) {
+            $rows = User::getSqlSearchResult(
+                false, $params['_right'], $entity, 0, [], '', 0, 100, 0, 0, [], true
+            );
+            foreach ($rows as $row) {
                 $display_name = trim($row['realname'] . ' ' . $row['firstname']);
                 if (empty($display_name)) {
                     $display_name = $row['name'];
                 }
                 $users[$row['id']] = $display_name . " (" . $row['name'] . ")";
             }
-
-        } catch (Exception $e) {
-            $users = [0 => "-- " . __('Select') . " --"];
         }
 
         echo "<div class='observer-container' style='margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9;'>";
