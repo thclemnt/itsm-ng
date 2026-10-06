@@ -170,4 +170,104 @@ class Reservation extends \DbTestCase
         }
         $this->integer($original->getDoctrineConnection()->getTransactionNestingLevel())->isIdenticalTo($level);
     }
+
+    public function testAvailablePeripheralLabelsUseProjectedClassification(): void
+    {
+        global $DB, $CFG_GLPI;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $session = $_SESSION;
+        $post = $_POST;
+        $reservationTypes = $CFG_GLPI['reservation_types'];
+        $connection = $DB->getDoctrineConnection();
+        $level = $connection->getTransactionNestingLevel();
+        $em = Orm::create($DB);
+        $listener = new class {
+            public int $loaded = 0;
+            public function postLoad(): void
+            {
+                ++$this->loaded;
+            }
+        };
+        $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+        try {
+            $this->boolean((bool)\Session::haveRight('reservation', \ReservationItem::RESERVEANITEM))->isTrue();
+            $prefix = 'Reservation classification ' . bin2hex(random_bytes(6));
+            $first = $this->createItem(\PeripheralType::class, ['name' => $prefix . ' first']);
+            $second = $this->createItem(\PeripheralType::class, ['name' => $prefix . ' second']);
+            $this->createItem(\DropdownTranslation::class, [
+                'itemtype' => 'PeripheralType', 'items_id' => $second->getID(),
+                'language' => 'en_GB', 'field' => 'name', 'value' => $prefix . ' translated',
+            ]);
+            $assets = $items = [];
+            foreach (['typed', 'untyped', 'inactive', 'outside'] as $kind) {
+                $input = ['name' => $prefix . ' ' . $kind, 'entities_id' => $kind === 'outside' ? 0 : $entity];
+                if ($kind !== 'untyped') {
+                    $input['peripheraltypes_id'] = $first->getID();
+                }
+                $assets[$kind] = $this->createItem(\Peripheral::class, $input);
+                $items[$kind] = $this->createItem(\ReservationItem::class, [
+                    'itemtype' => 'Peripheral', 'items_id' => $assets[$kind]->getID(),
+                    'entities_id' => $input['entities_id'], 'is_active' => $kind === 'inactive' ? 0 : 1,
+                ]);
+            }
+            $scope = ['AND' => [
+                getEntitiesRestrictCriteria(\Peripheral::getTable(), '', [$entity], false),
+                ['id' => array_map(static fn($asset) => (int)$asset->getID(), $assets)],
+            ]];
+            $repository = new \itsmng\Database\Repository\ReservationItemRepository($em);
+            $rows = array_column($repository->available('Peripheral', 'name', $scope, null, null), null, 'items_id');
+            $this->array($rows)->hasSize(2);
+            $this->integer((int)$rows[$assets['typed']->getID()]['peripheraltypes_id'])->isIdenticalTo((int)$first->getID());
+            $this->variable($rows[$assets['untyped']->getID()]['peripheraltypes_id'])->isNull();
+            $this->array($repository->available('Peripheral', 'name', $scope, null, null, (int)$first->getID()))->hasSize(1);
+            $this->integer($listener->loaded)->isIdenticalTo(0);
+            $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+
+            // A real managed entity is the positive hydration control. The scalar read must
+            // see this connection's current write without replacing its managed association.
+            $managed = $em->find(Record\Peripheral::class, (int)$assets['typed']->getID());
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+            $connection->update('glpi_peripherals', ['peripheraltypes_id' => $second->getID()], ['id' => $assets['typed']->getID()]);
+            $rows = array_column($repository->available('Peripheral', 'name', $scope, null, null), null, 'items_id');
+            $this->integer((int)$rows[$assets['typed']->getID()]['peripheraltypes_id'])->isIdenticalTo((int)$second->getID());
+            $this->integer((int)$em->getUnitOfWork()->getEntityIdentifier($managed->peripheraltypes)['id'])->isIdenticalTo((int)$first->getID());
+            $this->boolean($em->contains($managed))->isTrue();
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+            $this->array($repository->available('Peripheral', 'name', $scope, null, null, (int)$first->getID()))->isEmpty();
+
+            $_SESSION['glpiactiveentities'] = [$entity];
+            $_SESSION['glpilanguage'] = 'en_GB';
+            $_SESSION['glpi_dropdowntranslations']['PeripheralType']['name'] = 'name';
+            unset($_SESSION['glpi_saved']['ReservationItem']);
+            $CFG_GLPI['reservation_types'] = ['Peripheral'];
+            $_POST = [];
+            $render = static function (): string {
+                ob_start();
+                try {
+                    \ReservationItem::showListSimple();
+                    return ob_get_contents();
+                } finally {
+                    ob_end_clean();
+                }
+            };
+            $html = $render();
+            $this->string($html)->contains($prefix . ' typed')->contains($prefix . ' untyped')
+                ->contains("<small class='text-muted'>" . $prefix . ' translated</small>')
+                ->contains("<small class='text-muted'>" . htmlspecialchars(\Peripheral::getTypeName()) . '</small>')
+                ->contains('reservationitems_id=' . $items['typed']->getID())
+                ->notContains($prefix . ' inactive')->notContains($prefix . ' outside');
+            $_SESSION['glpiactiveprofile']['reservation'] = 0;
+            $this->string($render())->isIdenticalTo('');
+        } finally {
+            $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+            $em->clear();
+            $_SESSION = $session;
+            $_POST = $post;
+            $CFG_GLPI['reservation_types'] = $reservationTypes;
+        }
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+    }
+
 }

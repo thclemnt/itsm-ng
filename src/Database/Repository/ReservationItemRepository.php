@@ -75,8 +75,12 @@ final class ReservationItemRepository
                 ->setParameter('begin', new \DateTime($begin), Types::DATETIMETZ_MUTABLE)
                 ->setParameter('end', new \DateTime($end), Types::DATETIMETZ_MUTABLE);
         }
-        if ($type === 'Peripheral' && $peripheralType !== null) {
-            $query->andWhere('IDENTITY(r.peripheraltypes) = :peripheralType')->setParameter('peripheralType', $peripheralType, Types::INTEGER);
+        if ($type === 'Peripheral') {
+            // The availability list needs this owning identity only for its type label.
+            $query->addSelect('IDENTITY(r.peripheraltypes) AS peripheraltypes_id');
+            if ($peripheralType !== null) {
+                $query->andWhere('IDENTITY(r.peripheraltypes) = :peripheralType')->setParameter('peripheralType', $peripheralType, Types::INTEGER);
+            }
         }
         return $query->orderBy('r.entities')->addOrderBy($compiler->column($nameField))->addOrderBy('i.id')->getQuery()->getScalarResult();
     }

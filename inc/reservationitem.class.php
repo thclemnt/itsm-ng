@@ -594,14 +594,13 @@ class ReservationItem extends CommonDBChild
 
                 $typename = $item->getTypeName();
                 if ($itemtype == 'Peripheral') {
-                    $item->getFromDB($row['items_id']);
                     if (
-                        isset($item->fields["peripheraltypes_id"])
-                          && ($item->fields["peripheraltypes_id"] != 0)
+                        isset($row['peripheraltypes_id'])
+                          && ($row['peripheraltypes_id'] != 0)
                     ) {
                         $typename = Dropdown::getDropdownName(
                             "glpi_peripheraltypes",
-                            $item->fields["peripheraltypes_id"]
+                            $row['peripheraltypes_id']
                         );
                     }
                 }
