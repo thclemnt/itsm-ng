@@ -37,6 +37,70 @@ namespace tests\units;
 
 class Group_User extends \DbTestCase
 {
+    public function testPaginatedMemberLinksKeepTreeScopeAndCurrentLabels(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $session = $_SESSION;
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $prefix = 'Member presentation ' . bin2hex(random_bytes(6));
+        try {
+            $group = $this->createItem(\Group::class, [
+                'name' => $prefix . ' parent', 'entities_id' => $entity, 'comment' => 'Parent tooltip',
+            ]);
+            $child = $this->createItem(\Group::class, [
+                'name' => $prefix . ' child', 'entities_id' => $entity, 'groups_id' => $group->getID(), 'comment' => 'Child tooltip',
+            ]);
+            $users = $memberships = [];
+            foreach ([$group, $child] as $index => $owner) {
+                $users[$index] = $this->createItem(\User::class, [
+                    'name' => $prefix . ' user ' . $index, 'entities_id' => $entity, 'authtype' => \Auth::DB_GLPI,
+                ]);
+                $memberships[$index] = $this->createItem(\Group_User::class, [
+                    'groups_id' => $owner->getID(), 'users_id' => $users[$index]->getID(), 'is_manager' => $index,
+                ]);
+            }
+            $outside = $this->createItem(\User::class, [
+                'name' => $prefix . ' outside', 'entities_id' => 0, '_entities_id' => 0, 'authtype' => \Auth::DB_GLPI,
+            ]);
+            $this->createItem(\Profile_User::class, [
+                'users_id' => $outside->getID(), 'profiles_id' => $_SESSION['glpiactiveprofile']['id'],
+                'entities_id' => 0, 'is_recursive' => 0,
+            ]);
+            $this->createItem(\Group_User::class, ['groups_id' => $group->getID(), 'users_id' => $outside->getID()]);
+            $this->boolean($group->can((int)$group->getID(), READ))->isTrue();
+            $this->boolean($users[0]->can((int)$users[0]->getID(), READ))->isTrue();
+            $direct = \Group_User::getPaginatedMembersForGroup($group);
+            $this->integer($direct['total'])->isIdenticalTo(1);
+            $this->array($direct['rows'])->hasSize(1);
+            $this->string($direct['rows'][0]['group'])->isIdenticalTo($users[0]->getLink());
+            $this->string($direct['rows'][0]['parent'])->isIdenticalTo($group->getLink(['comments' => true]));
+            $tree = \Group_User::getPaginatedMembersForGroup($group, '', 1);
+            $this->integer($tree['total'])->isIdenticalTo(2);
+            $this->array($tree['rows'])->hasSize(2);
+            $this->array(array_column($tree['rows'], 'group'))->isIdenticalTo([
+                $group->getLink(['comments' => true]), $child->getLink(['comments' => true]),
+            ]);
+            $this->array(array_column($tree['rows'], 'parent'))->isIdenticalTo(array_column($tree['rows'], 'group'));
+            $this->string($tree['rows'][1]['manager'])->contains(__('Manager'));
+            $page = \Group_User::getPaginatedMembersForGroup($group, 'is_manager', 1, 0, 1);
+            $this->integer($page['total'])->isIdenticalTo(1);
+            $this->array($page['rows'])->hasSize(1);
+            $this->string($page['rows'][0]['group'])->isIdenticalTo($child->getLink(['comments' => true]));
+
+            $this->boolean($DB->update('glpi_groups', ['comment' => 'Current child tooltip'], ['id' => $child->getID()]))->isTrue();
+            $this->boolean($child->getFromDB($child->getID()))->isTrue();
+            $fresh = \Group_User::getPaginatedMembersForGroup($group, 'is_manager', 1);
+            $this->string($fresh['rows'][0]['group'])->isIdenticalTo($child->getLink(['comments' => true]))->contains('Current child tooltip');
+            $_SESSION['glpiactiveprofile']['group'] = 0;
+            $denied = \Group_User::getPaginatedMembersForGroup($group, 'is_manager', 1);
+            $this->string($denied['rows'][0]['group'])->isIdenticalTo($child->getLink(['comments' => true]))->notContains('<a ');
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
     public function testGetGroupUsers()
     {
         $group = new \Group();

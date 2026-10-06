@@ -423,26 +423,27 @@ class Group_User extends CommonDBRelation
         $iterator = new \itsmng\Database\RowIterator($page['rows']);
         $rows     = [];
         $user     = new User();
-        $tmpgrp   = new Group();
         $parent   = new Group();
 
         while ($data = $iterator->next()) {
-            $user->getFromDB($data["id"]);
             Session::addToNavigateListItems('User', $data["id"]);
+            $hasGroup = $parent->getFromDB($data['groups_id']);
+            if ($tree && $hasGroup) {
+                $memberLink = $parent->getLink(['comments' => true]);
+            } else {
+                $user->getFromDB($data['id']);
+                $memberLink = $user->getLink();
+            }
 
             $row = [
-               'group'     => $user->getLink(),
+               'group'     => $memberLink,
                'parent'    => __('Root'),
                'dynamic'   => '',
                'manager'   => '',
                'delegatee' => '',
             ];
 
-            if ($tree && $tmpgrp->getFromDB($data['groups_id'])) {
-                $row['group'] = $tmpgrp->getLink(['comments' => true]);
-            }
-
-            if ($parent->getFromDB($data['groups_id'])) {
+            if ($hasGroup) {
                 $row['parent'] = $parent->getLink(['comments' => true]);
             }
 
