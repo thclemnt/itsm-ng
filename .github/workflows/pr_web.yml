@@ -43,8 +43,39 @@ jobs:
       - name: Install ITSM-ng
         run: php bin/console itsmng:database:install --config-dir=${{ github.workspace }}/tests/config -H 127.0.0.1 -u $DB_USER -p $DB_PASSWORD -d $DB_DATABASE -n
 
-      - name: Start PHP development server
-        run: php -S localhost:8088 tests/router.php &>/dev/null &
-
       - name: Run web API tests
-        run: vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap.php --no-code-coverage --max-children-number 1 -d tests/web
+        run: |
+          python3 - <<'PYTHON'
+          import os, pathlib, re, signal, subprocess, sys
+          log = pathlib.Path(os.environ['RUNNER_TEMP']) / 'web-api-server.log'
+          result = 1
+          cleanup_errors = []
+          with log.open('w') as output:
+              server = subprocess.Popen(['php', '-S', 'localhost:8088', 'tests/router.php'], stdout=output, stderr=subprocess.STDOUT)
+              try:
+                  result = subprocess.run([
+                      'vendor/bin/atoum', '-p', 'php -d memory_limit=512M', '--debug',
+                      '--force-terminal', '--use-dot-report', '--bootstrap-file', 'tests/bootstrap.php',
+                      '--no-code-coverage', '--max-children-number', '1', '-d', 'tests/web',
+                  ]).returncode
+              finally:
+                  running = server.poll() is None
+                  if running:
+                      server.terminate()
+                  server_status = server.wait()
+                  if not running or server_status != -signal.SIGTERM:
+                      cleanup_errors.append(f'Owned server exited {server_status}')
+                  output.flush()
+                  diagnostics = re.sub(r'((?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) )\S+', r'\1[request URI omitted]', log.read_text(errors='replace'))
+                  log.with_name('web-api-server-diagnostics.log').write_text(diagnostics)
+                  print(f'API tests exit={result}; owned server exit={server_status}; cleanup errors={cleanup_errors}', flush=True)
+          sys.exit(result if result else bool(cleanup_errors))
+          PYTHON
+
+      - name: Retain PHP server diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-api-server-diagnostics
+          path: ${{ runner.temp }}/web-api-server-diagnostics.log
+          if-no-files-found: warn
