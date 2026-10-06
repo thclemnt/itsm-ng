@@ -123,7 +123,7 @@ class SoftwareLicense extends DbTestCase
             }
             $this->setEntity($entityId, false);
             $scope = \itsmng\Reporting\Criteria::entities();
-            $this->array($scope)->isIdenticalTo([$entityId]);
+            $this->array(array_values($scope))->isIdenticalTo([$entityId]);
             $repository = new \itsmng\Database\Repository\FinancialRepository($em);
             $rows = $repository->rows('SoftwareLicense', '2090-01-01', '2090-01-31', $scope, false);
             $this->integer($em->queries)->isIdenticalTo(1);
