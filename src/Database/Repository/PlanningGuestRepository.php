@@ -4,6 +4,7 @@
 
 namespace itsmng\Database\Repository;
 
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\LockMode;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
@@ -46,9 +47,17 @@ final class PlanningGuestRepository
                 throw new \InvalidArgumentException('Unknown planning event');
             }
             $this->em->lock($record, LockMode::PESSIMISTIC_WRITE);
-            foreach ($ids as $id) {
-                if ($this->em->find(User::class, $id) === null) {
-                    throw new \InvalidArgumentException('Unknown planning guest: ' . $id);
+            // Validate existence without hydrating each complete user. Bound the
+            // parameter list while retaining the first invalid selection's error.
+            foreach (array_chunk($ids, 1000) as $batch) {
+                $existing = array_fill_keys($this->em->createQueryBuilder()->select('u.id')
+                    ->from(User::class, 'u')->where('u.id IN (:guests)')
+                    ->setParameter('guests', $batch, ArrayParameterType::INTEGER)
+                    ->getQuery()->getSingleColumnResult(), true);
+                foreach ($batch as $id) {
+                    if (!isset($existing[$id])) {
+                        throw new \InvalidArgumentException('Unknown planning guest: ' . $id);
+                    }
                 }
             }
             $this->removeForEvent($event);
