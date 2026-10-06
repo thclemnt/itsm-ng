@@ -235,6 +235,48 @@ class Reservation extends \DbTestCase
             $_SESSION['glpinames_format'] = \User::FIRSTNAME_BEFORE;
             $_SESSION['glpiis_ids_visible'] = 0;
             $repository = new ReservationRepository($em);
+            $loads = new class () {
+                public int $count = 0;
+                public function postLoad(): void
+                {
+                    ++$this->count;
+                }
+            };
+            $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+            try {
+                $itemRows = $repository->forItem($items[0]->id, $_SESSION['glpi_currenttime'], false);
+                $this->array($itemRows)->hasSize(14);
+                $this->integer($itemRows[0]['reservationitems_id'])->isIdenticalTo($items[0]->id);
+                $this->integer($itemRows[0]['users_id'])->isIdenticalTo($user->id);
+                $this->integer($itemRows[0]['group'])->isIdenticalTo(0);
+                $this->string($itemRows[0]['begin'])->isIdenticalTo('2030-01-01 09:00:00');
+                $this->string($itemRows[0]['end'])->isIdenticalTo('2030-01-01 11:00:00');
+                $this->string($itemRows[0]['comment'])->isIdenticalTo("Current reservation 0\nsecond line");
+                $this->string($itemRows[0]['_user_name'])->isIdenticalTo($user->name);
+                $this->string($itemRows[0]['_user_realname'])->isIdenticalTo('Reader');
+                $this->string($itemRows[0]['_user_firstname'])->isIdenticalTo('Reservation Ada');
+                $anonymous = $itemRows[array_key_last($itemRows)];
+                $this->variable($anonymous['users_id'])->isNull();
+                foreach (['_user_name', '_user_realname', '_user_firstname'] as $field) {
+                    $this->string($anonymous[$field])->isIdenticalTo('');
+                }
+                $pastRows = $repository->forItem($items[0]->id, $_SESSION['glpi_currenttime'], true);
+                $this->array($pastRows)->hasSize(1);
+                $this->string($pastRows[0]['comment'])->isIdenticalTo('Past boundary reservation');
+                $this->array($repository->during($items[0]->id, '2030-01-01 10:00:00', '2030-01-01 11:00:00'))->hasSize(14);
+                $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+                $this->integer($loads->count)->isIdenticalTo(0);
+                // A managed user must not hide a later legacy write on the supplied connection.
+                $em->find(Record\User::class, $user->id);
+                $this->integer($loads->count)->isGreaterThan(0);
+                $connection->update('glpi_users', ['firstname' => 'Reservation Fresh'], ['id' => $user->id]);
+                $fresh = $repository->forItem($items[0]->id, $_SESSION['glpi_currenttime'], false);
+                $this->string($fresh[0]['_user_firstname'])->isIdenticalTo('Reservation Fresh');
+                $connection->update('glpi_users', ['firstname' => 'Reservation Ada'], ['id' => $user->id]);
+            } finally {
+                $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+                $em->clear();
+            }
             $rows = $repository->forUser($user->id, $_SESSION['glpi_currenttime'], false, [$rootId, $childId]);
             $this->array($rows)->hasSize(25);
             $this->string($rows[0]['itemtype'])->isIdenticalTo('Computer');

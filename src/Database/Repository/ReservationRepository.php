@@ -75,18 +75,32 @@ final class ReservationRepository
 
     private function rows(array $criteria, array $order): array
     {
-        $query = $this->em->createQueryBuilder()->select('r', 'u')->from(Reservation::class, 'r')->leftJoin('r.users', 'u');
+        $query = $this->em->createQueryBuilder()->select(
+            'r.id',
+            'r.begin',
+            'r.end',
+            'r.comment',
+            'r.group',
+            'IDENTITY(r.reservationitems) AS reservationitems_id',
+            'IDENTITY(r.users) AS users_id',
+            'u.name AS _user_name',
+            'u.realname AS _user_realname',
+            'u.firstname AS _user_firstname'
+        )->from(Reservation::class, 'r')->leftJoin('r.users', 'u');
         $compiler = new RecordCriteria($query, $this->em->getClassMetadata(Reservation::class));
         $query->where($compiler->where($criteria));
         $compiler->order($order);
-        $records = new RecordRepository($this->em);
-        $rows = [];
-        foreach ($query->getQuery()->getResult() as $reservation) {
-            $rows[] = $records->toRow($reservation) + [
-                '_user_name' => $reservation->users?->name ?? '',
-                '_user_realname' => $reservation->users?->realname ?? '',
-                '_user_firstname' => $reservation->users?->firstname ?? '',
-            ];
+        $rows = $query->getQuery()->getArrayResult();
+        foreach ($rows as &$row) {
+            foreach (['begin', 'end'] as $field) {
+                $row[$field] = $row[$field]?->format('Y-m-d H:i:s');
+            }
+            foreach (['reservationitems_id', 'users_id'] as $field) {
+                $row[$field] = $row[$field] === null ? null : (int)$row[$field];
+            }
+            foreach (['_user_name', '_user_realname', '_user_firstname'] as $field) {
+                $row[$field] ??= '';
+            }
         }
         return $rows;
     }
