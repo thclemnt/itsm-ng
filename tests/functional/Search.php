@@ -322,6 +322,65 @@ class Search extends DbTestCase
     }
 
 
+    public function testVolumeCapacityFiltersIndividualValuesInMainAndMetaSearch(): void
+    {
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)\Session::getActiveEntity();
+        $prefix = 'Volume capacity ' . $this->getUniqueString();
+        $computer = new \Computer();
+        $computerId = (int)$computer->add(['name' => $prefix, 'entities_id' => $entity]);
+        $this->integer($computerId)->isGreaterThan(0);
+        $this->boolean($computer->can($computerId, READ))->isTrue();
+        $appliance = new \Appliance();
+        $applianceId = (int)$appliance->add(['name' => $prefix, 'entities_id' => $entity]);
+        $this->integer($applianceId)->isGreaterThan(0);
+        $this->boolean($appliance->can($applianceId, READ))->isTrue();
+        $link = new \Appliance_Item();
+        $this->integer((int)$link->add([
+            'appliances_id' => $applianceId, 'itemtype' => 'Computer', 'items_id' => $computerId,
+        ]))->isGreaterThan(0);
+        $disk = new \Item_Disk();
+        foreach ([0, 1000, 4000] as $index => $size) {
+            $this->integer((int)$disk->add([
+                'itemtype' => 'Computer', 'items_id' => $computerId, 'entities_id' => $entity,
+                'name' => $prefix . ' ' . $index, 'mountpoint' => '/' . $index,
+                'totalsize' => $size, 'freesize' => $size === 0 ? 0 : 100,
+            ]))->isGreaterThan(0);
+        }
+        foreach (['Computer', 'Appliance'] as $type) {
+            foreach ([
+                [150, '>3500', 1], [150, '>4500', 0], [150, '4000', 1], [150, '9000', 0],
+                [152, 'NULL', 1],
+            ] as [$field, $value, $expected]) {
+                $criterion = ['field' => $field, 'searchtype' => 'contains', 'value' => $value];
+                if ($type === 'Appliance') {
+                    $criterion += ['meta' => true, 'itemtype' => 'Computer', 'link' => 'AND'];
+                }
+                $data = $this->doSearch($type, [
+                    'is_deleted' => 0, 'start' => 0, 'criteria' => [
+                        ['field' => 1, 'searchtype' => 'contains', 'value' => $prefix], $criterion,
+                    ],
+                ], $type === 'Computer' ? [150] : []);
+                $this->integer($data['data']['count'])->isIdenticalTo($expected);
+                if ($expected) {
+                    $this->array(array_keys($data['data']['items']))
+                        ->isIdenticalTo([$type === 'Computer' ? $computerId : $applianceId]);
+                    if ($type === 'Computer') {
+                        $values = $data['data']['rows'][0]['Computer_150'];
+                        $sizes = [];
+                        for ($index = 0; $index < $values['count']; $index++) {
+                            $sizes[] = (int)$values[$index]['name'];
+                        }
+                        sort($sizes);
+                        $this->array($sizes)->isIdenticalTo([0, 1000, 4000]);
+                    }
+                }
+            }
+        }
+    }
+
+
     public function testMetaComputerOS()
     {
         $search_params = ['is_deleted'   => 0,
