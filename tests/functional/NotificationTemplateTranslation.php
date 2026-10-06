@@ -104,18 +104,25 @@ class NotificationTemplateTranslation extends DbTestCase
             $this->array($repository->usedLanguages(-1))->isEmpty();
             $this->array($repository->usedLanguages($other->id))->isIdenticalTo(['en_GB' => 'en_GB']);
 
-            // Positive hydration control and parity with the unchanged full API,
-            // including duplicate/default locale folding and its native row order.
+            // Neither query specifies an order. Compare exact locale entries,
+            // including duplicate/default folding, independently of the scan plan.
+            $assertLanguages = function (array $actual, array $expected): void {
+                ksort($actual);
+                ksort($expected);
+                $this->array($actual)->isIdenticalTo($expected);
+            };
+
+            // Positive hydration control and parity with the unchanged full API.
             $full = $repository->translations($templateId);
             $this->integer($listener->loaded)->isGreaterThan(0);
             $fullLanguages = [];
             foreach ($full as $translation) {
                 $fullLanguages[$translation->language] = $translation->language;
             }
-            $this->array($languages)->isIdenticalTo($fullLanguages);
+            $assertLanguages($languages, $fullLanguages);
             $this->string($full[0]->subject)->isIdenticalTo('Untouched subject');
             $this->string($full[0]->content_text)->contains('Text body');
-            $this->array(\NotificationTemplateTranslation::getAllUsedLanguages($templateId))->isIdenticalTo($languages);
+            $assertLanguages(\NotificationTemplateTranslation::getAllUsedLanguages($templateId), $languages);
 
             $managed = $em->find(\itsmng\Database\Entity\NotificationTemplateTranslation::class, $japaneseId);
             $before = $listener->loaded;
@@ -123,10 +130,10 @@ class NotificationTemplateTranslation extends DbTestCase
             $expected = $languages;
             unset($expected['ja_JP']);
             $expected['de_DE'] = 'de_DE';
-            $this->array($repository->usedLanguages($templateId))->isIdenticalTo($expected);
+            $assertLanguages($repository->usedLanguages($templateId), $expected);
             $this->integer($listener->loaded)->isIdenticalTo($before);
             $this->string($managed->language)->isIdenticalTo('ja_JP');
-            $this->array(\NotificationTemplateTranslation::getAllUsedLanguages($templateId))->isIdenticalTo($expected);
+            $assertLanguages(\NotificationTemplateTranslation::getAllUsedLanguages($templateId), $expected);
             $this->object($em->getConnection())->isIdenticalTo($connection);
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
         } finally {

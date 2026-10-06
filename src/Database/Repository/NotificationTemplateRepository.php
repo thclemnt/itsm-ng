@@ -34,8 +34,9 @@ final class NotificationTemplateRepository
     public function usedLanguages(int $template): array
     {
         $languages = [];
-        // Keep PHP's exact string keys and first-occurrence order. SQL DISTINCT
-        // could merge differently cased locale strings under native collation.
+        // Keep PHP's exact string keys and duplicate folding. SQL DISTINCT could
+        // merge differently cased locale strings under native collation. Neither
+        // this query nor the full translation API specifies an ordering.
         foreach ($this->translationsQuery($template)->select('t.language')
             ->getQuery()->getSingleColumnResult() as $language) {
             $languages[$language] = $language;
