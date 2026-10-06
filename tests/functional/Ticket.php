@@ -240,6 +240,8 @@ class Ticket extends DbTestCase
                     $this->output(fn () => $item->showTimelineHeader())
                         ->contains("<h2 style='font-family: $expectedFont;'>")
                         ->contains("<h3 style='font-family: $expectedFont;'>");
+                    $this->output(fn () => $item->showTimeline(742))
+                        ->contains("<div style='font-family: $expectedFont;' class='h_item middle'>");
                     ob_start();
                     try {
                         $item->showTimelineForm(741);
@@ -260,6 +262,13 @@ class Ticket extends DbTestCase
             $custom = new class ($id) extends \Ticket {
                 public int $filterCalls = 0;
                 public function __construct(private int $preferenceUser) { parent::__construct(); }
+                public static function getType() { return 'Ticket'; }
+                public static function getTable($classname = null) { return \Ticket::getTable(); }
+                public function showTimelineHeader() {
+                    global $DB;
+                    parent::showTimelineHeader();
+                    $DB->update('glpi_users', ['access_font' => 'After header callback'], ['id' => $this->preferenceUser]);
+                }
                 public function filterTimeline() {
                     global $DB;
                     ++$this->filterCalls;
@@ -273,6 +282,15 @@ class Ticket extends DbTestCase
                 ->contains("<h2 style='font-family: Before callback;'>")
                 ->contains("<h3 style='font-family: After callback;'>");
             $this->integer($custom->filterCalls)->isIdenticalTo(1);
+            if ($type === \Ticket::class) {
+                $custom->fields = $item->fields;
+                $this->boolean($DB->update('glpi_users', ['access_font' => 'Before callback'], ['id' => $id]))->isTrue();
+                $this->output(fn () => $custom->showTimeline(743))
+                    ->contains("<h2 style='font-family: Before callback;'>")
+                    ->contains("<h3 style='font-family: After callback;'>")
+                    ->contains("<div style='font-family: After header callback;' class='h_item middle'>");
+                $this->integer($custom->filterCalls)->isIdenticalTo(2);
+            }
             $_SESSION = $session;
             $this->boolean($user->delete(['id' => $id], true))->isTrue();
             $this->array($repository->timelinePreferences($id))->isEmpty();
@@ -280,6 +298,8 @@ class Ticket extends DbTestCase
             $_SESSION['glpiactiveprofile']['accessibility'] = READ;
             $this->output(fn () => $item->showTimelineHeader())->contains("<h2 style='font-family: ;'>")
                 ->contains("<h3 style='font-family: ;'>");
+            $this->output(fn () => $item->showTimeline(744))
+                ->contains("<div style='font-family: ;' class='h_item middle'>");
         } finally {
             $_SESSION = $session;
             $manager->clear();

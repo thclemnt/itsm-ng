@@ -7919,12 +7919,10 @@ abstract class CommonITILObject extends CommonDBTM
         // show title for timeline
         $this->showTimelineHeader();
 
-        $thisUser = new User();
-        $thisUser->getFromDB(Session::getLoginUserID());
-
         $font = "\"Bitstream Vera Sans\", arial, Tahoma, \"Sans serif\"";
         if (Session::haveRight("accessibility", READ)) {
-            $font = $thisUser->fields["access_font"];
+            $font = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+                ->accessibilityFont((int)Session::getLoginUserID());
         }
 
         $timeline_index = 0;
