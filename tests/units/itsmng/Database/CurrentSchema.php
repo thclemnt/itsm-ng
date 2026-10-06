@@ -23,7 +23,7 @@ use itsmng\Database\Entity\CronTask;
 use itsmng\Database\Mapping\SchemaOwner;
 use itsmng\Database\Migration\V220\Baseline;
 use itsmng\Database\Migration\V220\IdentifierColumns;
-use itsmng\Database\Orm;
+use itsmng\Database\Orm as ApplicationOrm;
 use tests\fixtures\DisconnectedSchemaConnection;
 
 require_once dirname(__DIR__, 3) . '/fixtures/DisconnectedSchemaConnection.php';
@@ -32,7 +32,7 @@ class CurrentSchema extends \atoum\atoum\test
 {
     private function manager(AbstractPlatform $platform, bool $fixture = false): EntityManager
     {
-        $configuration = Orm::configuration($platform);
+        $configuration = ApplicationOrm::configuration($platform);
         if ($fixture) {
             $configuration->setMetadataDriverImpl(new CurrentDeclarationDriver($configuration->getMetadataDriverImpl()));
         }
