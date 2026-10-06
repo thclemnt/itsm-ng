@@ -5,6 +5,7 @@
 namespace itsmng\Database\Repository;
 
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Events;
 use itsmng\Database\EntityRegistry;
 
 /** ORM record access with the legacy model's scalar row contract at its boundary. */
@@ -17,6 +18,15 @@ final class RecordRepository
     public function find(string $table, string $column, int $id): ?array
     {
         $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
+        if (count($metadata->identifier) === 1
+            && !$metadata->hasLifecycleCallbacks(Events::postLoad)
+            && empty($metadata->entityListeners[Events::postLoad])
+            && !$this->em->getEventManager()->hasListeners(Events::postLoad)) {
+            $identifier = $metadata->getSingleIdentifierFieldName();
+            if ($metadata->hasField($identifier) && $metadata->getColumnName($identifier) === $column) {
+                return $this->scalarRow($metadata->name, $id);
+            }
+        }
         $field = $metadata->getFieldName($column);
         foreach ($metadata->associationMappings as $associationField => $mapping) {
             if (!$mapping->isToOneOwningSide()) {

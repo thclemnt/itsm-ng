@@ -41,6 +41,196 @@ use TicketTask;
 
 class CommonDBTM extends DbTestCase
 {
+    public function testMappedIdentifierReadsCompleteFreshRowsWithoutHydration(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity(0, true);
+        $entity = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $computer = $this->createItem(\Computer::class, ['name' => 'Before scalar read', 'entities_id' => $entity->getID()]);
+        $user = $this->createItem(\User::class, ['name' => $this->getUniqueString()]);
+        $ticket = $this->createItem(\Ticket::class, ['name' => $this->getUniqueString(),
+            'content' => 'Complete ticket fields', 'entities_id' => 0, '_disablenotif' => true]);
+        $json = json_encode(['quoted' => 'A "label" / path', 'enabled' => true, 'nested' => [1, null]], JSON_THROW_ON_ERROR);
+        $this->boolean($DB->update('glpi_users', \Toolbox::addslashes_deep([
+            'is_active' => false, 'firstname' => null, 'last_login' => '2020-02-03 04:05:06',
+            'access_custom_shortcuts' => $json,
+        ]), ['id' => $user->getID()]))->isTrue();
+        $this->boolean($DB->update('glpi_computers', ['ticket_tco' => '12.3456'], ['id' => $computer->getID()]))->isTrue();
+        $certificate = $this->createItem(\Certificate::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity->getID()]);
+        $binding = $this->createItem(\Certificate_Item::class, ['certificates_id' => $certificate->getID(),
+            'itemtype' => 'Computer', 'items_id' => $computer->getID()]);
+        $calendar = $this->createItem(\Calendar::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $segment = $this->createItem(\CalendarSegment::class, ['calendars_id' => $calendar->getID(),
+            'day' => 1, 'begin' => '00:00:00', 'end' => '24:00:00']);
+        $connection = $DB->getDoctrineConnection();
+        $manager = new class ($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+            public array $queries = [];
+            public function createQuery(string $dql = ''): \Doctrine\ORM\Query
+            {
+                $this->queries[] = $dql;
+                return parent::createQuery($dql);
+            }
+        };
+        $oracle = \itsmng\Database\Orm::create($DB);
+        $records = new \itsmng\Database\Repository\RecordRepository($manager);
+        try {
+            foreach ([['glpi_entities', 0], ['glpi_entities', (int)$entity->getID()],
+                ['glpi_tickets', (int)$ticket->getID()], ['glpi_users', (int)$user->getID()],
+                ['glpi_computers', (int)$computer->getID()], ['glpi_certificates_items', (int)$binding->getID()],
+                ['glpi_calendarsegments', (int)$segment->getID()]] as [$table, $id]) {
+                $class = \itsmng\Database\EntityRegistry::tables()[$table];
+                // An independent ordinary entity load retains the previous conversion oracle.
+                $managed = $oracle->getRepository($class)->findOneBy(['id' => $id]);
+                $expected = (new \itsmng\Database\Repository\RecordRepository($oracle))->toRow($managed);
+                $row = $records->find($table, 'id', $id);
+                $this->array($row)->isIdenticalTo($expected);
+                $connection = $DB->getDoctrineConnection();
+                $physical = $connection->fetchAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table)
+                    . ' WHERE ' . $connection->quoteIdentifier('id') . ' = ?', [$id]);
+                $actualColumns = array_keys($row);
+                $physicalColumns = array_keys($physical);
+                sort($actualColumns);
+                sort($physicalColumns);
+                $this->array($actualColumns)->isIdenticalTo($physicalColumns);
+                $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+                $this->variable($records->find($table, 'id', PHP_INT_MAX))->isNull();
+                $oracle->clear();
+            }
+            $row = $records->find('glpi_users', 'id', (int)$user->getID());
+            $this->integer($row['is_active'])->isIdenticalTo(0);
+            $this->variable($row['firstname'])->isNull();
+            $this->string($row['last_login'])->isIdenticalTo('2020-02-03 04:05:06');
+            $this->array(json_decode($row['access_custom_shortcuts'], true, 512, JSON_THROW_ON_ERROR))
+                ->isIdenticalTo(json_decode($json, true, 512, JSON_THROW_ON_ERROR));
+            $this->string($records->find('glpi_computers', 'id', (int)$computer->getID())['ticket_tco'])->isIdenticalTo('12.3456');
+            $this->string($records->find('glpi_entities', 'id', (int)$entity->getID())['ldap_mode'])
+                ->isIdenticalTo($DB->getDoctrineConnection()->fetchOne('SELECT ldap_mode FROM glpi_entities WHERE id = ?', [$entity->getID()]));
+
+            $this->string($records->find('glpi_calendarsegments', 'id', (int)$segment->getID())['end'])->isIdenticalTo('24:00:00');
+            $bindingRow = $records->find('glpi_certificates_items', 'id', (int)$binding->getID());
+            $this->integer((int)$bindingRow['items_id'])->isIdenticalTo((int)$computer->getID());
+            $this->integer((int)$bindingRow['computers_id'])->isIdenticalTo((int)$computer->getID());
+            foreach ($manager->queries as $query) {
+                $this->string($query)->contains(' AS value0')->notContains('SELECT r FROM');
+            }
+
+            // Nonidentifier owning-reference indexes retain the original entity lookup.
+            $indexed = $records->find('glpi_computers', 'entities_id', (int)$entity->getID());
+            $this->integer((int)$indexed['id'])->isIdenticalTo((int)$computer->getID());
+            $managed = $manager->find(\itsmng\Database\Entity\Computer::class, (int)$computer->getID());
+            $this->boolean($DB->update('glpi_computers', ['name' => 'After legacy update'], ['id' => $computer->getID()]))->isTrue();
+            $this->string($records->find('glpi_computers', 'id', (int)$computer->getID())['name'])->isIdenticalTo('After legacy update');
+            $this->string($managed->name)->isIdenticalTo('Before scalar read');
+            $this->boolean($manager->contains($managed))->isTrue();
+            $observed = \itsmng\Database\Orm::create($DB);
+            try {
+                $loads = new class () {
+                    public int $count = 0;
+                    public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
+                    {
+                        ++$this->count;
+                        if ($event->getObject() instanceof \itsmng\Database\Entity\Computer) {
+                            $event->getObject()->name = 'Listener transformed row';
+                        }
+                    }
+                };
+                $observed->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+                $transformed = (new \itsmng\Database\Repository\RecordRepository($observed))
+                    ->find('glpi_computers', 'id', (int)$computer->getID());
+                $this->string($transformed['name'])->isIdenticalTo('Listener transformed row');
+                $this->integer($loads->count)->isGreaterThan(0);
+                $this->array($observed->getUnitOfWork()->getIdentityMap())->isNotEmpty();
+            } finally {
+                $observed->clear();
+            }
+        } finally {
+            $manager->clear();
+            $oracle->clear();
+        }
+    }
+
+    public function testMappedIdentifierModelReadsKeepFreshTicketHooksActorsAndPermissions(): void
+    {
+        global $DB;
+        $database = $DB;
+        $session = $_SESSION;
+        $oracle = null;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $first = $this->createItem(\User::class, ['name' => $this->getUniqueString()]);
+            $second = $this->createItem(\User::class, ['name' => $this->getUniqueString()]);
+            $ticket = $this->createItem(\Ticket::class, ['name' => $this->getUniqueString(),
+                'content' => 'Before public hook', 'entities_id' => 0,
+                '_users_id_requester' => $first->getID(), '_disablenotif' => true]);
+            $id = (int)$ticket->getID();
+            $model = new class () extends \Ticket {
+                public array $loadedRows = [];
+                public static function getType()
+                {
+                    return 'Ticket';
+                }
+                public static function getTable($classname = null)
+                {
+                    return 'glpi_tickets';
+                }
+                public function post_getFromDB()
+                {
+                    $this->loadedRows[] = $this->fields;
+                    parent::post_getFromDB();
+                    $this->fields['_public_hook'] = count($this->loadedRows);
+                }
+            };
+            $oracle = \itsmng\Database\Orm::create($DB);
+            $expected = (new \itsmng\Database\Repository\RecordRepository($oracle))
+                ->toRow($oracle->find(\itsmng\Database\Entity\Ticket::class, $id));
+            $this->boolean($model->getFromDB($id))->isTrue();
+            $this->array($model->loadedRows)->isIdenticalTo([$expected]);
+            $this->integer($model->fields['_public_hook'])->isIdenticalTo(1);
+            $this->array(array_map('intval', array_column($model->getUsers(\CommonITILActor::REQUESTER), 'users_id')))
+                ->contains((int)$first->getID());
+            $this->boolean($model->can($id, READ))->isTrue();
+            $this->boolean($DB->update('glpi_tickets', ['content' => 'After public hook'], ['id' => $id]))->isTrue();
+            $this->boolean($DB->update(
+                'glpi_tickets_users',
+                ['users_id' => $second->getID()],
+                ['tickets_id' => $id, 'users_id' => $first->getID(), 'type' => \CommonITILActor::REQUESTER]
+            ))->isTrue();
+            $this->boolean($model->getFromDB($id))->isTrue();
+            $this->integer($model->fields['_public_hook'])->isIdenticalTo(2);
+            $this->string($model->loadedRows[1]['content'])->isIdenticalTo('After public hook');
+            $this->array($model->loadedRows[1])->notHasKey('_public_hook');
+            $this->array(array_map('intval', array_column($model->getUsers(\CommonITILActor::REQUESTER), 'users_id')))
+                ->contains((int)$second->getID())->notContains((int)$first->getID());
+            $_SESSION['glpiactiveprofile']['ticket'] = 0;
+            $_SESSION['glpiactiveprofile']['ticketvalidation'] = 0;
+            $this->boolean($model->can($id, READ))->isFalse();
+            $fields = $model->fields;
+            foreach ([null, '', PHP_INT_MAX] as $missing) {
+                $this->boolean($model->getFromDB($missing))->isFalse();
+                $this->array($model->fields)->isIdenticalTo($fields);
+                $this->array($model->loadedRows)->hasSize(2);
+            }
+            $connection = $DB->getDoctrineConnection();
+            $this->mockGenerator->orphanize('__construct');
+            $routed = new \mock\DBmysql();
+            $routes = 0;
+            $this->calling($routed)->getDoctrineConnection = static function () use ($connection, &$routes) {
+                ++$routes;
+                return $connection;
+            };
+            $DB = $routed;
+            $this->boolean($model->getFromDB($id))->isTrue();
+            $this->integer($routes)->isGreaterThan(0);
+            $this->integer($model->fields['_public_hook'])->isIdenticalTo(3);
+        } finally {
+            $oracle?->clear();
+            $DB = $database;
+            $_SESSION = $session;
+        }
+    }
+
     public function testSingleItemActivationReadsFreshPresenceAndRetainsEmptyHooks(): void
     {
         global $DB, $PLUGIN_HOOKS;
