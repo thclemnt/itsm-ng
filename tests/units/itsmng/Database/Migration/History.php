@@ -17,6 +17,66 @@ use itsmng\Database\Orm;
 
 class History extends \atoum\atoum\test
 {
+    public function testMysqlFreshReplacementDropsOnlyExistingOwnedTablesInOneStatement(): void
+    {
+        foreach ([new \Doctrine\DBAL\Platforms\MySQLPlatform(), new \Doctrine\DBAL\Platforms\MariaDBPlatform()] as $platform) {
+            foreach ([0, 1] as $checks) {
+                $connection = new FreshReplacementFixtureConnection($platform, $checks);
+                $connection->tables = ['plugin_keep', 'itsmng_migrations', 'glpi_users', 'glpi_computers',
+                    'glpi_networkportaggregateorigins', 'glpi_planningexternaleventguests'];
+                \itsmng\Database\Installer::resetMysqlCore($connection);
+                $this->array($connection->inspected)->isIdenticalTo(['plugin_keep']);
+                $this->integer($connection->checkReads)->isIdenticalTo(1);
+                $this->integer(count($connection->statements))->isIdenticalTo(3);
+                $this->string($connection->statements[0])->isIdenticalTo('SET FOREIGN_KEY_CHECKS = 0');
+                $this->string($connection->statements[2])->isIdenticalTo('SET FOREIGN_KEY_CHECKS = ' . $checks);
+                $this->string($connection->statements[1])->startsWith('DROP TABLE `itsmng_migrations`, ');
+                $targets = explode(', ', substr($connection->statements[1], strlen('DROP TABLE ')));
+                sort($targets);
+                $this->array($targets)->isIdenticalTo(['`glpi_computers`', '`glpi_networkportaggregateorigins`',
+                    '`glpi_planningexternaleventguests`', '`glpi_users`', '`itsmng_migrations`']);
+
+                // Empty/custom-only databases must not produce invalid empty DROP SQL.
+                foreach ([[], ['plugin_keep'], ['itsmng_migrations']] as $tables) {
+                    $empty = new FreshReplacementFixtureConnection($platform, $checks);
+                    $empty->tables = $tables;
+                    \itsmng\Database\Installer::resetMysqlCore($empty);
+                    $expected = ['SET FOREIGN_KEY_CHECKS = 0'];
+                    if ($tables === ['itsmng_migrations']) {
+                        $expected[] = 'DROP TABLE `itsmng_migrations`';
+                    }
+                    $expected[] = 'SET FOREIGN_KEY_CHECKS = ' . $checks;
+                    $this->array($empty->statements)->isIdenticalTo($expected);
+                }
+            }
+        }
+    }
+
+    public function testMysqlFreshReplacementRefusesCustomReferencesAndRestoresChecksAfterFailure(): void
+    {
+        foreach ([new \Doctrine\DBAL\Platforms\MySQLPlatform(), new \Doctrine\DBAL\Platforms\MariaDBPlatform()] as $platform) {
+            $connection = new FreshReplacementFixtureConnection($platform, 1);
+            $connection->tables = ['plugin_keep', 'plugin_refers_to_core', 'glpi_users'];
+            $connection->foreignKeys['plugin_refers_to_core'] = [new \Doctrine\DBAL\Schema\ForeignKeyConstraint(['users_id'], 'glpi_users', ['id'])];
+            $this->exception(static fn () => \itsmng\Database\Installer::resetMysqlCore($connection))
+                ->hasMessage('Cannot replace core schema referenced by custom table: plugin_refers_to_core. Use the validated upgrade path.');
+            $this->array($connection->inspected)->isIdenticalTo(['plugin_keep', 'plugin_refers_to_core']);
+            $this->array($connection->statements)->isEmpty();
+            $this->integer($connection->checkReads)->isIdenticalTo(0);
+
+            foreach ([0, 1] as $checks) {
+                $failed = new FreshReplacementFixtureConnection($platform, $checks);
+                $failed->tables = ['glpi_users'];
+                $failed->dropFailure = new \RuntimeException('Native DROP failed');
+                $this->exception(static fn () => \itsmng\Database\Installer::resetMysqlCore($failed))
+                    ->isIdenticalTo($failed->dropFailure);
+                $this->array($failed->statements)->isIdenticalTo([
+                    'SET FOREIGN_KEY_CHECKS = 0', 'DROP TABLE `glpi_users`', 'SET FOREIGN_KEY_CHECKS = ' . $checks,
+                ]);
+            }
+        }
+    }
+
     public function testFrozenBaselineIsIndependentOfMutableCurrentMetadata(): void
     {
         foreach ([['driver' => 'pdo_mysql', 'serverVersion' => '8.0.0'],
@@ -116,6 +176,60 @@ class History extends \atoum\atoum\test
         $this->array(Releases::pendingVersions($connection))->isIdenticalTo(['2.2.0']);
         $this->integer($connection->catalogueReads)->isIdenticalTo(4);
         $this->integer($connection->journalReads)->isIdenticalTo(4);
+    }
+}
+
+/** Observe installer SQL without opening a native connection or executing DDL. */
+final class FreshReplacementFixtureConnection extends Connection
+{
+    public array $tables = [];
+    public array $foreignKeys = [];
+    public array $inspected = [];
+    public array $statements = [];
+    public int $checkReads = 0;
+    public ?\RuntimeException $dropFailure = null;
+
+    public function __construct(private AbstractPlatform $platform, private int $checks)
+    {
+    }
+
+    public function getDatabasePlatform(): AbstractPlatform
+    {
+        return $this->platform;
+    }
+
+    public function createSchemaManager(): \Doctrine\DBAL\Schema\AbstractSchemaManager
+    {
+        return new class ($this, $this->platform) extends \Doctrine\DBAL\Schema\MySQLSchemaManager {
+            public function listTableNames(): array
+            {
+                return $this->connection->tables;
+            }
+
+            public function listTableForeignKeys(string $table): array
+            {
+                $this->connection->inspected[] = $table;
+                return $this->connection->foreignKeys[$table] ?? [];
+            }
+        };
+    }
+
+    public function fetchOne(string $query, array $params = [], array $types = []): mixed
+    {
+        if ($query !== 'SELECT @@FOREIGN_KEY_CHECKS') {
+            throw new \LogicException('Unexpected fresh replacement read: ' . $query);
+        }
+        ++$this->checkReads;
+        return $this->checks;
+    }
+
+    public function executeStatement(string $sql, array $params = [], array $types = []): int|string
+    {
+        $this->statements[] = $sql;
+        if (str_starts_with($sql, 'DROP TABLE ') && $this->dropFailure !== null) {
+            throw $this->dropFailure;
+        }
+        return 0;
     }
 }
 

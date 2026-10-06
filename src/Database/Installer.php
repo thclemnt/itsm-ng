@@ -59,13 +59,9 @@ final class Installer
         try {
             // A forced fresh install replaces the core schema and its adoption record.
             // An old completion/journal must never suppress the new seed conversion.
-            if (isset($existing[Migration\Ledger::TABLE])) {
-                $connection->executeStatement($platform->getDropTableSQL(Migration\Ledger::TABLE));
-            }
-            foreach ($names as $name) {
-                if (isset($existing[$name])) {
-                    $connection->executeStatement($platform->getDropTableSQL($platform->quoteIdentifier($name)));
-                }
+            $drop = array_filter([Migration\Ledger::TABLE, ...$names], static fn ($name) => isset($existing[$name]));
+            if ($drop !== []) {
+                $connection->executeStatement('DROP TABLE ' . implode(', ', array_map($platform->quoteIdentifier(...), $drop)));
             }
         } finally {
             $connection->executeStatement('SET FOREIGN_KEY_CHECKS = ' . $enabled);
