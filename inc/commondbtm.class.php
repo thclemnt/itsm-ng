@@ -4640,7 +4640,7 @@ class CommonDBTM extends CommonGLPI
 
         if (Infocom::canApplyOn($this)) {
             $ic = new Infocom();
-            if ($ic->getFromDBforDevice($this->getType(), $this->fields['id'])) {
+            if ($ic->isActivatedForDevice($this->getType(), $this->fields['id'])) {
                 $excluded[] = 'Infocom:activate';
             }
         }

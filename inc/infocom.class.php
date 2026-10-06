@@ -266,6 +266,30 @@ class Infocom extends CommonDBChild
     }
 
 
+    /**
+     * Activation presence for the single-item action menu, without loading the
+     * financial record. Missing records retain the model's empty-default hooks.
+     */
+    public function isActivatedForDevice($itemtype, $ID): bool
+    {
+        global $DB;
+
+        if (static::class !== self::class
+            || (\itsmng\Database\EntityRegistry::tables()[$this->getTable()] ?? null) !== \itsmng\Database\Entity\Infocom::class) {
+            return $this->getFromDBforDevice($itemtype, $ID);
+        }
+        $activated = (new \itsmng\Database\Repository\InfocomRepository(\itsmng\Database\Orm::create($DB)))
+            ->isActivatedFor($itemtype, (int)$ID);
+        if (!$activated) {
+            // item_empty hooks see defaults before the captured link is assigned.
+            $this->getEmpty();
+            $this->fields['items_id'] = $ID;
+            $this->fields['itemtype'] = $itemtype;
+        }
+        return $activated;
+    }
+
+
     public function prepareInputForAdd($input)
     {
         if (!$this->getFromDBforDevice($input['itemtype'], $input['items_id'])) {

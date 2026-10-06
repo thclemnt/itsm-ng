@@ -41,6 +41,112 @@ use TicketTask;
 
 class CommonDBTM extends DbTestCase
 {
+    public function testSingleItemActivationReadsFreshPresenceAndRetainsEmptyHooks(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+
+        $savedDb = $DB;
+        $savedSession = $_SESSION;
+        $savedHooks = $PLUGIN_HOOKS;
+        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $savedPlugins = $plugins->getValue();
+        $manager = null;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $computer = $this->createItem(\Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $id = (int)$computer->getID();
+            $existing = new \Infocom();
+            if ($existing->getFromDBforDevice('Computer', $id)) {
+                $this->boolean($existing->delete(['id' => $existing->getID()], true))->isTrue();
+            }
+            $emptyFields = [];
+            $emptyModels = [];
+            $plugins->setValue(null, [...$savedPlugins, 'financial_presence_fixture']);
+            $PLUGIN_HOOKS['item_empty']['financial_presence_fixture'][\Infocom::class] =
+                static function (\Infocom $model) use (&$emptyFields, &$emptyModels, $computer): void {
+                    $emptyFields[] = $model->fields;
+                    $emptyModels[] = $model;
+                    $model->fields['comment'] = 'Plugin empty default';
+                    $model->fields['items_id'] = 777;
+                    $model->fields['itemtype'] = 'Plugin placeholder';
+                    $computer->fields['id'] = PHP_INT_MAX;
+                };
+            $this->array($computer->getForbiddenSingleMassiveActions())->notContains('Infocom:activate');
+            $this->array($emptyModels)->hasSize(1);
+            $this->string($emptyFields[0]['items_id'])->isIdenticalTo('');
+            $this->string($emptyFields[0]['itemtype'])->isIdenticalTo('');
+            $this->integer((int)$emptyModels[0]->fields['items_id'])->isIdenticalTo($id);
+            $this->string($emptyModels[0]->fields['itemtype'])->isIdenticalTo('Computer');
+            $this->string($emptyModels[0]->fields['comment'])->isIdenticalTo('Plugin empty default');
+            $computer->fields['id'] = $id;
+            $fixtureHooks = $PLUGIN_HOOKS;
+            $PLUGIN_HOOKS = $savedHooks;
+            $financial = $this->createItem(\Infocom::class, ['itemtype' => 'Computer', 'items_id' => $id]);
+            $PLUGIN_HOOKS = $fixtureHooks;
+            $emptyFields = [];
+            $emptyModels = [];
+            $_SESSION['glpiactiveprofile']['infocom'] = 0;
+            $this->array($computer->getForbiddenSingleMassiveActions())->contains('Infocom:activate');
+            $this->array($emptyModels)->isEmpty();
+
+            $connection = $DB->getDoctrineConnection();
+            $manager = \itsmng\Database\Orm::create($DB);
+            $repository = new \itsmng\Database\Repository\InfocomRepository($manager);
+            $loads = new class {
+                public int $count = 0;
+                public function postLoad(): void { ++$this->count; }
+            };
+            $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+            $this->boolean($repository->isActivatedFor('Computer', $id))->isTrue();
+            $this->boolean($repository->isActivatedFor('Peripheral', $id))->isFalse();
+            $this->boolean($repository->isActivatedFor('Computer', PHP_INT_MAX))->isFalse();
+            $this->integer($loads->count)->isIdenticalTo(0);
+            $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+            // The listener is live: ordinary complete model hydration does call it.
+            $managed = $manager->find(\itsmng\Database\Entity\Infocom::class, $financial->getID());
+            $this->object($managed)->isInstanceOf(\itsmng\Database\Entity\Infocom::class);
+            $this->integer($loads->count)->isIdenticalTo(1);
+            // A legacy write must win even while a stale entity remains managed.
+            $this->boolean($financial->delete(['id' => $financial->getID()], true))->isTrue();
+            $this->boolean($repository->isActivatedFor('Computer', $id))->isFalse();
+            $this->boolean($manager->contains($managed))->isTrue();
+            $this->integer($loads->count)->isIdenticalTo(1);
+
+            // Subclasses retain their complete custom model-loading boundary.
+            $custom = new class extends \Infocom {
+                public array $calls = [];
+                public function getFromDBforDevice($itemtype, $ID)
+                {
+                    $this->calls[] = [$itemtype, $ID];
+                    $this->fields['comment'] = 'Custom loaded fields';
+                    return true;
+                }
+            };
+            $this->boolean($custom->isActivatedForDevice('Computer', $id))->isTrue();
+            $this->array($custom->calls)->isIdenticalTo([['Computer', $id]]);
+            $this->string($custom->fields['comment'])->isIdenticalTo('Custom loaded fields');
+
+            // Resolve the actual current adapter at each caller operation.
+            $this->mockGenerator->orphanize('__construct');
+            $routed = new \mock\DBmysql();
+            $routes = 0;
+            $this->calling($routed)->getDoctrineConnection = static function () use ($connection, &$routes) {
+                ++$routes;
+                return $connection;
+            };
+            $DB = $routed;
+            $this->array($computer->getForbiddenSingleMassiveActions())->notContains('Infocom:activate');
+            $this->integer($routes)->isGreaterThan(0);
+        } finally {
+            $manager?->clear();
+            $DB = $savedDb;
+            $_SESSION = $savedSession;
+            $PLUGIN_HOOKS = $savedHooks;
+            $plugins->setValue(null, $savedPlugins);
+        }
+    }
+
     public function testConnexityPermissionRetainsItsSingleLoadedOwner(): void
     {
         $session = $_SESSION;
