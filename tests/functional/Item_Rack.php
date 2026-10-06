@@ -179,7 +179,7 @@ class Item_Rack extends DbTestCase
             'name' => '_stats_half_model', 'required_units' => 2, 'depth' => 0.5,
             'is_half_rack' => 1, 'weight' => 20, 'power_consumption' => 100,
         ]);
-        $computers = [];
+        $computers = $placements = [];
         foreach ([
             [1, \Rack::FRONT, \Rack::POS_LEFT, 0],
             [4, \Rack::REAR, \Rack::POS_RIGHT, 1],
@@ -191,10 +191,35 @@ class Item_Rack extends DbTestCase
             }
             $computer = $this->createItem(\Computer::class, $input);
             $computers[] = (int)$computer->getID();
-            $this->createItem(\Item_Rack::class, [
+            $placements[] = $this->createItem(\Item_Rack::class, [
                 'racks_id' => $rack->getID(), 'itemtype' => 'Computer', 'items_id' => $computer->getID(),
                 'position' => $position, 'orientation' => $orientation, 'hpos' => $hpos, 'is_reserved' => $reserved,
             ]);
+        }
+        $this->boolean($rack->can((int)$rack->getID(), READ))->isTrue();
+        $this->boolean($rack->canEdit((int)$rack->getID()))->isTrue();
+        $renderItems = static function () use ($rack): string {
+            ob_start();
+            try {
+                \Item_Rack::showItems($rack);
+                return ob_get_contents();
+            } finally {
+                ob_end_clean();
+            }
+        };
+        $html = $renderItems();
+        foreach ($placements as $index => $placement) {
+            $asset = new \Computer();
+            $this->boolean($asset->getFromDB($computers[$index]))->isTrue();
+            $this->boolean($asset->can($computers[$index], READ))->isTrue();
+            $this->string($html)->contains($placement->getLinkURL())->contains($asset->getLink());
+        }
+        $session = $_SESSION;
+        try {
+            $_SESSION['glpiactiveprofile'][\Rack::$rightname] = 0;
+            $this->string($renderItems())->isIdenticalTo('');
+        } finally {
+            $_SESSION = $session;
         }
         $frontLeft = [\Rack::POS_LEFT => [1, 1, 0, 0], \Rack::POS_RIGHT => [0, 0, 0, 0]];
         $rearRight = [\Rack::POS_LEFT => [0, 0, 0, 0], \Rack::POS_RIGHT => [0, 0, 1, 1]];

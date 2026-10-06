@@ -182,7 +182,7 @@ class Item_Rack extends CommonDBRelation
         $outbound = [];
         foreach ($items as $row) {
             $rel  = new self();
-            $rel->getFromDB($row['id']);
+            $rel->fields = $row;
             $item = new $row['itemtype']();
             if (!$item->getFromDB($row['items_id'])) {
                 continue;
