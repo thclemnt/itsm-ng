@@ -381,6 +381,68 @@ class Search extends DbTestCase
     }
 
 
+    public function testVolumeNegativeCriteriaKeepNullAndEmptyOwnersDistinct(): void
+    {
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)\Session::getActiveEntity();
+        $prefix = 'Volume negatives ' . $this->getUniqueString();
+        $owners = [];
+        foreach (['mixed' => [0, 1000, 4000], 'known' => [1000, 4000], 'zero' => [0], 'empty' => []] as $kind => $sizes) {
+            $computer = new \Computer();
+            $computerId = (int)$computer->add(['name' => $prefix . ' ' . $kind, 'entities_id' => $entity]);
+            $this->integer($computerId)->isGreaterThan(0);
+            $this->boolean($computer->can($computerId, READ))->isTrue();
+            $appliance = new \Appliance();
+            $applianceId = (int)$appliance->add(['name' => $prefix . ' ' . $kind, 'entities_id' => $entity]);
+            $this->integer($applianceId)->isGreaterThan(0);
+            $this->boolean($appliance->can($applianceId, READ))->isTrue();
+            $link = new \Appliance_Item();
+            $this->integer((int)$link->add([
+                'appliances_id' => $applianceId, 'itemtype' => 'Computer', 'items_id' => $computerId,
+            ]))->isGreaterThan(0);
+            $owners['Computer'][$kind] = $computerId;
+            $owners['Appliance'][$kind] = $applianceId;
+            foreach ($sizes as $index => $size) {
+                $disk = new \Item_Disk();
+                $this->integer((int)$disk->add([
+                    'itemtype' => 'Computer', 'items_id' => $computerId, 'entities_id' => $entity,
+                    'name' => $prefix . ' ' . $kind . ' ' . $index, 'mountpoint' => '/' . $index,
+                    'totalsize' => $size, 'freesize' => $size === 0 ? 0 : 100,
+                ]))->isGreaterThan(0);
+            }
+        }
+        foreach (['Computer', 'Appliance'] as $type) {
+            foreach ([
+                [150, 'contains', '>3500', 'AND', ['mixed', 'known']],
+                [150, 'notcontains', '>3500', 'AND', ['empty', 'zero']],
+                [150, 'contains', '>3500', 'AND NOT', ['empty', 'zero']],
+                [150, 'notcontains', '>4500', 'AND', ['empty', 'known', 'mixed', 'zero']],
+                [150, 'contains', 'NULL', 'AND', ['empty']],
+                [150, 'notcontains', 'NULL', 'AND', ['known', 'mixed', 'zero']],
+                [152, 'contains', 'NULL', 'AND', ['empty', 'mixed', 'zero']],
+                [152, 'notcontains', 'NULL', 'AND', ['known']],
+            ] as [$field, $searchtype, $value, $link, $kinds]) {
+                $criterion = ['field' => $field, 'searchtype' => $searchtype, 'value' => $value, 'link' => $link];
+                if ($type === 'Appliance') {
+                    $criterion += ['meta' => true, 'itemtype' => 'Computer'];
+                }
+                $data = $this->doSearch($type, [
+                    'is_deleted' => 0, 'start' => 0, 'criteria' => [
+                        ['field' => 1, 'searchtype' => 'contains', 'value' => $prefix], $criterion,
+                    ],
+                ]);
+                $expected = array_map(fn (string $kind) => $owners[$type][$kind], $kinds);
+                $actual = array_keys($data['data']['items']);
+                sort($expected);
+                sort($actual);
+                $this->integer($data['data']['count'])->isIdenticalTo(count($expected));
+                $this->array($actual)->isIdenticalTo($expected);
+            }
+        }
+    }
+
+
     public function testMetaComputerOS()
     {
         $search_params = ['is_deleted'   => 0,
