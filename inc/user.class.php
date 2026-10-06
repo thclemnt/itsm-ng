@@ -77,21 +77,7 @@ class User extends CommonDBTM
         if (static::class !== self::class) {
             return $this->getFromDB($id);
         }
-        if ($id === null || strlen($id) == 0) {
-            return false;
-        }
-        $manager = Orm::create($DB);
-        try {
-            $row = (new UserRepository($manager))->timelineAuthor((int)Toolbox::cleanInteger($id));
-        } finally {
-            $manager->clear();
-        }
-        if ($row === null) {
-            return false;
-        }
-        $this->fields = $row;
-        $this->post_getFromDB();
-        return true;
+        return (new \itsmng\Database\TimelineAuthorReader())->load($this, $id, $DB);
     }
 
     public static function getTypeName($nb = 0)

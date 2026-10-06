@@ -212,6 +212,7 @@ class Ticket extends DbTestCase
     {
         global $DB, $PLUGIN_HOOKS;
         $this->login();
+        $database = $DB;
         $hooks = $PLUGIN_HOOKS;
         $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
         $active = $plugins->getValue();
@@ -220,17 +221,29 @@ class Ticket extends DbTestCase
                 'comment' => 'Complete author comment', 'phone' => '0123456789']);
             $ticket = $this->createItem(\Ticket::class, ['name' => 'Timeline author callback',
                 'content' => 'Original content', 'entities_id' => $_SESSION['glpiactive_entity']]);
-            $followup = $this->createItem(\ITILFollowup::class, ['itemtype' => 'Ticket',
-                'items_id' => $ticket->getID(), 'content' => 'Author callback followup', 'is_private' => 0]);
-            $this->boolean($DB->update('glpi_itilfollowups', ['users_id' => $user->getID()], ['id' => $followup->getID()]))->isTrue();
+            $followups = [];
+            foreach (['First', 'Second'] as $label) {
+                $followup = $this->createItem(\ITILFollowup::class, ['itemtype' => 'Ticket',
+                    'items_id' => $ticket->getID(), 'content' => $label . ' author callback followup', 'is_private' => 0]);
+                $this->boolean($DB->update('glpi_itilfollowups', ['users_id' => $user->getID()], ['id' => $followup->getID()]))->isTrue();
+                $followups[] = (int)$followup->getID();
+            }
+            $routed = clone $DB;
             $calls = [];
+            $expected = [];
             $beforeCalls = 0;
             $plugins->setValue(null, [...$active, 'timeline_author_fixture']);
             $PLUGIN_HOOKS['pre_show_item'] = ['timeline_author_fixture' =>
-                static function (array $context) use ($DB, $followup, $user, &$beforeCalls): void {
-                    if ($context['item'] instanceof \ITILFollowup && $context['item']->getID() == $followup->getID()) {
+                static function (array $context) use ($database, $routed, $followups, $user, &$beforeCalls, &$expected): void {
+                    global $DB;
+                    if ($context['item'] instanceof \ITILFollowup && in_array((int)$context['item']->getID(), $followups, true)) {
                         ++$beforeCalls;
-                        $DB->update('glpi_users', ['firstname' => 'After display callback'], ['id' => $user->getID()]);
+                        if ($beforeCalls === 2) {
+                            $DB = $routed;
+                        }
+                        $database->update('glpi_users', ['firstname' => 'After display callback ' . $beforeCalls], ['id' => $user->getID()]);
+                        $user->getFromDB($user->getID());
+                        $expected[] = $user->fields;
                     }
                 }];
             $PLUGIN_HOOKS['item_can'] = ['timeline_author_fixture' => [\User::class =>
@@ -242,13 +255,11 @@ class Ticket extends DbTestCase
                     }
                 }]];
             $this->output(fn () => $ticket->showTimeline(745))->contains('Plugin author label');
-            $this->integer($beforeCalls)->isIdenticalTo(1);
-            $this->boolean($user->getFromDB($user->getID()))->isTrue();
-            $this->array($calls)->isNotEmpty();
-            foreach ($calls as $fields) {
-                $this->array($fields)->isIdenticalTo($user->fields);
-            }
+            $this->integer($beforeCalls)->isIdenticalTo(2);
+            $this->object($DB)->isIdenticalTo($routed);
+            $this->array($calls)->isIdenticalTo($expected);
         } finally {
+            $DB = $database;
             $PLUGIN_HOOKS = $hooks;
             $plugins->setValue(null, $active);
         }

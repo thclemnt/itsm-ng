@@ -135,6 +135,74 @@ class User extends \DbTestCase
         }
     }
 
+    public function testTimelineAuthorReaderOwnsOnlyOneRenderAndFollowsCurrentRoute(): void
+    {
+        global $DB;
+        $this->login();
+        $user = $this->createItem(\User::class, ['name' => 'render-author-' . $this->getUniqueString()]);
+        $id = (int)$user->getID();
+        $reader = new \itsmng\Database\TimelineAuthorReader();
+        $model = new \User();
+        $this->boolean($reader->load($model, $id, $DB))->isTrue();
+        // Inspect our private operation owner, without exposing it in the API.
+        $owned = new \ReflectionProperty($reader, 'manager');
+        $manager = $owned->getValue($reader);
+        $loads = new class {
+            public int $count = 0;
+            public function postLoad(): void { ++$this->count; }
+        };
+        $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+        $previousCache = $GLOBALS['GLPI_CACHE'] ?? null;
+        $connection = $DB->getDoctrineConnection();
+        $alternate = $DB->getProvider() === 'pgsql'
+            ? \itsmng\Database\PostgresConnection::create($connection->getParams())
+            : \itsmng\Database\MySQLConnection::create($connection->getParams());
+        try {
+            $this->boolean($DB->update('glpi_users', ['comment' => 'Fresh callback write'], ['id' => $id]))->isTrue();
+            $this->boolean($reader->load($model, $id, $DB))->isTrue();
+            $this->object($owned->getValue($reader))->isIdenticalTo($manager);
+            $this->string($model->fields['comment'])->isIdenticalTo('Fresh callback write');
+            $this->integer($loads->count)->isIdenticalTo(0);
+            $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+            $this->mockGenerator->orphanize('__construct');
+            $routed = new \mock\DBmysql();
+            $currentConnection = $connection;
+            $this->calling($routed)->getDoctrineConnection = static function () use (&$currentConnection) { return $currentConnection; };
+            $this->boolean($reader->load($model, $id, $routed))->isTrue();
+            $adapterManager = $owned->getValue($reader);
+            $this->object($adapterManager)->isNotIdenticalTo($manager);
+            $currentConnection = $alternate;
+            $before = $model->fields;
+            $this->boolean($reader->load($model, PHP_INT_MAX, $routed))->isFalse();
+            $this->array($model->fields)->isIdenticalTo($before);
+            $this->object($owned->getValue($reader))->isNotIdenticalTo($adapterManager);
+            $this->object($owned->getValue($reader)->getConnection())->isIdenticalTo($alternate);
+            $this->boolean($reader->load($model, $id, $DB))->isTrue();
+            $beforePoolChange = $owned->getValue($reader);
+            $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache(new \Symfony\Component\Cache\Adapter\ArrayAdapter());
+            $this->boolean($reader->load($model, $id, $DB))->isTrue();
+            $this->object($owned->getValue($reader))->isNotIdenticalTo($beforePoolChange);
+            $metadata = $owned->getValue($reader)->getClassMetadata(\itsmng\Database\Entity\User::class);
+            $originalGenerator = $metadata->generatorType;
+            $metadata->setIdGeneratorType(\Doctrine\ORM\Mapping\ClassMetadata::GENERATOR_TYPE_NONE);
+            $GLOBALS['GLPI_CACHE']->clear();
+            $nextRender = new \itsmng\Database\TimelineAuthorReader();
+            $this->boolean($nextRender->load($model, $id, $DB))->isTrue();
+            $this->object($owned->getValue($nextRender))->isNotIdenticalTo($owned->getValue($reader));
+            $this->integer($owned->getValue($nextRender)->getClassMetadata(\itsmng\Database\Entity\User::class)->generatorType)
+                ->isIdenticalTo($originalGenerator);
+            $this->array($owned->getValue($nextRender)->getUnitOfWork()->getIdentityMap())->isEmpty();
+            // A normal load still fires the listener: zero above is not a missing observer.
+            $manager->find(\itsmng\Database\Entity\User::class, $id);
+            $this->integer($loads->count)->isGreaterThan(0);
+        } finally {
+            $GLOBALS['GLPI_CACHE'] = $previousCache;
+            unset($reader, $nextRender);
+            $manager->clear();
+            $alternate->close();
+        }
+    }
+
     public function testTimelineAuthorPreservesCompleteFreshRowsWithoutHydration(): void
     {
         global $DB;

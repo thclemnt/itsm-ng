@@ -7925,6 +7925,7 @@ abstract class CommonITILObject extends CommonDBTM
                 ->accessibilityFont((int)Session::getLoginUserID());
         }
 
+        $authors = new \itsmng\Database\TimelineAuthorReader();
         $timeline_index = 0;
         foreach ($timeline as $item) {
             $options = [ 'parent' => $this,
@@ -7985,7 +7986,7 @@ abstract class CommonITILObject extends CommonDBTM
             if ($item_i['users_id'] !== false) {
                 echo "<div class='h_user'>";
                 if (isset($item_i['users_id']) && ($item_i['users_id'] != 0)) {
-                    $user->getTimelineAuthorFromDB($item_i['users_id']);
+                    $authors->load($user, $item_i['users_id'], $DB);
 
                     echo "<div class='tooltip_picture_border'>";
                     echo "<img class='user_picture' alt=\"" . __s('Picture') . "\" src='" .
@@ -8180,7 +8181,7 @@ abstract class CommonITILObject extends CommonDBTM
             }
             if (isset($item_i['users_id_tech']) && ($item_i['users_id_tech'] > 0)) {
                 echo "<div class='users_id_tech' id='users_id_tech_" . $item_i['users_id_tech'] . "'>";
-                $user->getTimelineAuthorFromDB($item_i['users_id_tech']);
+                $authors->load($user, $item_i['users_id_tech'], $DB);
 
                 if (
                     Entity::getUsedConfig('anonymize_support_agents', $entity)
@@ -8218,7 +8219,7 @@ abstract class CommonITILObject extends CommonDBTM
                         __("Helpdesk")
                     );
                 } else {
-                    $user->getTimelineAuthorFromDB($item_i['users_id_editor']);
+                    $authors->load($user, $item_i['users_id_editor'], $DB);
                     $userdata = getUserName($item_i['users_id_editor'], 2);
                     echo sprintf(
                         __('Last edited on %1$s by %2$s'),
@@ -8270,7 +8271,7 @@ abstract class CommonITILObject extends CommonDBTM
             }
             if ($item['type'] == 'Solution' && $item_i['status'] != CommonITILValidation::WAITING && $item_i['status'] != CommonITILValidation::NONE) {
                 echo "<div class='users_id_approval' id='users_id_approval_" . $item_i['users_id_approval'] . "'>";
-                $user->getTimelineAuthorFromDB($item_i['users_id_approval']);
+                $authors->load($user, $item_i['users_id_approval'], $DB);
                 $userdata = getUserName($item_i['users_id_editor'], 2);
                 $message = __('%1$s on %2$s by %3$s');
                 $action = $item_i['status'] == CommonITILValidation::ACCEPTED ? __('Accepted') : __('Refused');
@@ -8383,7 +8384,7 @@ abstract class CommonITILObject extends CommonDBTM
             if ($requester['users_id'] > 0) {
                 // Display requester identity only if there is only one requester
                 // and only if it is not an anonymous user
-                $display_requester = $user->getTimelineAuthorFromDB($requester['users_id']);
+                $display_requester = $authors->load($user, $requester['users_id'], $DB);
             }
         }
 
