@@ -60,7 +60,7 @@ final class ITILStatisticsType
             }
         }
         $targets = [];
-        foreach ($em->getMetadataFactory()->getAllMetadata() as $metadata) {
+        foreach (self::reportingMetadata($em) as $metadata) {
             foreach ($metadata->associationMappings as $property => $association) {
                 if (!$association->isToOneOwningSide() || !isset($parents[$association->targetEntity])) {
                     continue;
@@ -94,5 +94,33 @@ final class ITILStatisticsType
             $definitions[$class] = ['definition' => $definition, 'error' => $error];
         }
         return $definitions;
+    }
+
+    /** Hydrate only reporting declarations for the known property-attribute driver. */
+    private static function reportingMetadata(EntityManager $em): iterable
+    {
+        $driver = $em->getConfiguration()->getMetadataDriverImpl();
+        $events = $em->getEventManager();
+        if (!$driver instanceof \itsmng\Database\Mapping\AttributeDriver
+            || $events->hasListeners(Events::loadClassMetadata)
+            || $events->hasListeners(Events::onClassMetadataNotFound)) {
+            yield from $em->getMetadataFactory()->getAllMetadata();
+            return;
+        }
+        // The driver owns visibility and ordering, including mapped superclasses.
+        // Reflection selects candidates only; actual ORM associations remain the
+        // authority for reporting roles, parent targets and duplicate diagnostics.
+        foreach ($driver->getAllClassNames() as $class) {
+            $reflection = new \ReflectionClass($class);
+            do {
+                foreach ($reflection->getProperties() as $property) {
+                    if ($property->getAttributes(ITILStatisticsRelation::class) !== []) {
+                        yield $em->getClassMetadata($class);
+                        continue 3;
+                    }
+                }
+                // Include inherited private declarations in candidate selection.
+            } while ($reflection = $reflection->getParentClass());
+        }
     }
 }

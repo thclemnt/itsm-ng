@@ -22,7 +22,7 @@ use Symfony\Component\Cache\Adapter\ArrayAdapter;
 /** No application bootstrap, database, session, or GLPITestCase data hooks. */
 class ITILStatisticsType extends \atoum\atoum\test
 {
-    private function manager(?StatisticsMappingDriver $driver = null, ?EventManager $events = null): EntityManager
+    private function manager(?MappingDriver $driver = null, ?EventManager $events = null): EntityManager
     {
         $connection = DriverManager::getConnection([
             'driver' => 'pdo_pgsql', 'serverVersion' => '16.0',
@@ -34,6 +34,105 @@ class ITILStatisticsType extends \atoum\atoum\test
         // cannot hide a second discovery or a listener's changed declarations.
         $configuration->setMetadataCache(new ArrayAdapter(storeSerialized: true));
         return new EntityManager($connection, $configuration, $events);
+    }
+
+    private function canonicalDriver(): \itsmng\Database\Mapping\AttributeDriver
+    {
+        return Orm::configuration(new \Doctrine\DBAL\Platforms\PostgreSQLPlatform())->getMetadataDriverImpl();
+    }
+
+    public function testCanonicalDiscoveryLeavesUnrelatedMetadataUnloaded(): void
+    {
+        $manager = $this->manager($this->canonicalDriver());
+        $this->array(StatisticsType::definition($manager, 'Ticket'))->isIdenticalTo([
+            Entity\Ticket::class, 'tickets', Entity\TicketUser::class, Entity\GroupTicket::class,
+            Entity\SupplierTicket::class, Entity\TicketTask::class, Entity\ItemTicket::class,
+        ]);
+        $this->array(StatisticsType::definition($manager, 'Problem'))->hasSize(7);
+        $this->array(StatisticsType::definition($manager, 'Change'))->hasSize(7);
+        $loaded = $manager->getMetadataFactory()->getLoadedMetadata();
+        $this->boolean(isset($loaded[Entity\TicketTask::class]))->isTrue();
+        $this->boolean(isset($loaded[Entity\Software::class]))->isFalse();
+        $this->boolean($manager->getConnection()->isConnected())->isFalse();
+    }
+
+    public function testCanonicalMetadataListenersRetainFullDiscovery(): void
+    {
+        $events = new EventManager();
+        $events->addEventListener(Events::loadClassMetadata, new class {
+            public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+            {
+                $metadata = $event->getClassMetadata();
+                if ($metadata->name === Entity\TicketTask::class) {
+                    unset($metadata->associationMappings['tickets']);
+                }
+            }
+        });
+        $manager = $this->manager($this->canonicalDriver(), $events);
+        $this->exception(static fn () => StatisticsType::definition($manager, 'Ticket'))
+            ->isInstanceOf(\LogicException::class)->hasMessage('Missing ITIL statistics association: Ticket.Tasks');
+        $this->boolean(isset($manager->getMetadataFactory()->getLoadedMetadata()[Entity\Software::class]))->isTrue();
+        $this->boolean($manager->getConnection()->isConnected())->isFalse();
+    }
+
+    public function testCanonicalMetadataNotFoundListenersRetainFullDiscovery(): void
+    {
+        $events = new EventManager();
+        $events->addEventListener(Events::onClassMetadataNotFound, new class {
+            public function onClassMetadataNotFound(): void
+            {
+            }
+        });
+        $manager = $this->manager($this->canonicalDriver(), $events);
+        $this->array(StatisticsType::definition($manager, 'Ticket'))->hasSize(7);
+        $this->boolean(isset($manager->getMetadataFactory()->getLoadedMetadata()[Entity\Software::class]))->isTrue();
+        $this->boolean($manager->getConnection()->isConnected())->isFalse();
+    }
+
+    public function testCanonicalInheritanceMatchesFullDiscoveryDiagnostics(): void
+    {
+        foreach (['public', 'private'] as $visibility) {
+            $directory = sys_get_temp_dir() . '/itsm-statistics-' . bin2hex(random_bytes(8));
+            mkdir($directory, 0700);
+            $file = $directory . '/Declarations.php';
+            $suffix = ucfirst($visibility);
+            // Real declarations are exposed through the canonical driver's own
+            // class locator. Both superclass and subclass must remain visible.
+            $declarations = '<?php namespace tests\\fixtures\\StatisticsDiscovery;'
+                . '#[\\Doctrine\\ORM\\Mapping\\MappedSuperclass] class Parent' . $suffix . ' {'
+                . '#[\\Doctrine\\ORM\\Mapping\\Id] #[\\Doctrine\\ORM\\Mapping\\Column(type: "integer")] public int $id;'
+                . '#[\\Doctrine\\ORM\\Mapping\\ManyToOne(targetEntity: \\itsmng\\Database\\Entity\\Ticket::class)]'
+                . '#[\\Doctrine\\ORM\\Mapping\\JoinColumn(name: "tickets_id")]'
+                . '#[\\itsmng\\Database\\Mapping\\ITILStatisticsRelation(\\itsmng\\Database\\Mapping\\ITILStatisticsRole::Tasks)]'
+                . $visibility . ' ?\\itsmng\\Database\\Entity\\Ticket $tickets = null; }'
+                . '#[\\Doctrine\\ORM\\Mapping\\Entity] class Child' . $suffix . ' extends Parent' . $suffix . ' {}';
+            file_put_contents($file, $declarations);
+            try {
+                $canonical = new \itsmng\Database\Mapping\AttributeDriver(
+                    [...$this->canonicalDriver()->getPaths(), $directory],
+                    new \Doctrine\DBAL\Platforms\PostgreSQLPlatform(),
+                );
+                $classes = $canonical->getAllClassNames();
+                $this->boolean(in_array('tests\\fixtures\\StatisticsDiscovery\\Parent' . $suffix, $classes, true))->isTrue();
+                $this->boolean(in_array('tests\\fixtures\\StatisticsDiscovery\\Child' . $suffix, $classes, true))->isTrue();
+                $outcome = static function (EntityManager $manager): array {
+                    try {
+                        return ['definition' => StatisticsType::definition($manager, 'Ticket')];
+                    } catch (\Throwable $error) {
+                        return ['error' => $error::class, 'message' => $error->getMessage()];
+                    }
+                };
+                $expected = $outcome($this->manager(new StatisticsMappingDriver($canonical)));
+                $this->array($outcome($this->manager($canonical)))->isIdenticalTo($expected);
+                $this->boolean(isset($expected['error']))->isTrue();
+                if ($visibility === 'public') {
+                    $this->string($expected['message'])->isIdenticalTo('Ambiguous ITIL statistics association: Ticket.Tasks');
+                }
+            } finally {
+                unlink($file);
+                rmdir($directory);
+            }
+        }
     }
 
     public function testAllFamiliesShareOneDiscoveryAcrossOperations(): void
@@ -49,6 +148,7 @@ class ITILStatisticsType extends \atoum\atoum\test
             $this->array(StatisticsType::definition($first, $type))->isIdenticalTo($definition);
         }
         $this->integer($driver->discoveries)->isIdenticalTo(1);
+        $this->boolean(isset($first->getMetadataFactory()->getLoadedMetadata()[Entity\Software::class]))->isTrue();
         $second = $this->manager($driver);
         foreach ($expected as $type => $definition) {
             $this->array(StatisticsType::definition($second, $type))->isIdenticalTo($definition);
