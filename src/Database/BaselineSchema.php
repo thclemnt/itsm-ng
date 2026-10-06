@@ -8,10 +8,12 @@ use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Schema\Schema;
+use Doctrine\DBAL\Schema\SchemaConfig;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Mapping\ReferenceKind;
 
 /** Current required schema for read-only inspection; installation replays frozen history. */
@@ -19,9 +21,21 @@ final class BaselineSchema
 {
     private array $extraSql = [];
 
+    /** Optional mapping source for independently declared current schemas. */
+    public function __construct(private readonly ?EntityManager $metadataManager = null)
+    {
+    }
+
     public function build(AbstractPlatform $platform, bool $foreignKeys = true): Schema
     {
+        if ($this->metadataManager !== null
+            && $this->metadataManager->getConnection()->getDatabasePlatform()::class !== $platform::class) {
+            throw new \InvalidArgumentException('Current schema metadata must use the selected platform.');
+        }
         $this->extraSql = [];
+        // Frozen Baseline creates Schema() with the default configuration. Own
+        // that same configuration explicitly when composing current declarations.
+        $configuration = new SchemaConfig();
         $baseline = new Migration\V220\Baseline();
         $schema = $baseline->build($platform);
         $this->extraSql['baseline'] = $baseline->extraSql($platform);
@@ -43,7 +57,7 @@ final class BaselineSchema
         Migration\V220\NetworkPortAggregateOrigins::configureSchema($schema);
         Migration\V220\PlanningEventGuests::configureSchema($schema);
         Migration\V220\UnusedProjectTemplateReference::configureTable($schema->getTable('glpi_projects'));
-        $this->configurePropertyColumns($schema, $platform);
+        $ownedTables = $this->configurePropertyColumns($schema, $platform, $configuration, $foreignKeys);
         $this->configureRequiredSubjects($schema, $platform);
         $this->extraSql['glpi_users'][] = Migration\V220\UserAuthenticationSources::checkSql();
         $this->extraSql['glpi_notificationtargets'][] = Migration\V220\NotificationRecipients::checkSql();
@@ -61,7 +75,7 @@ final class BaselineSchema
         if ($foreignKeys) {
             (new ForeignKeys())->addToSchema($schema);
         }
-        return $schema;
+        return CurrentSchema::replaceTables($schema, $ownedTables, $configuration);
     }
 
     public function toSql(AbstractPlatform $platform, bool $foreignKeys = true): array
@@ -71,10 +85,11 @@ final class BaselineSchema
     }
 
     /** Current schema inspection uses entity policies; historical replay remains immutable. */
-    private function configurePropertyColumns(Schema $schema, AbstractPlatform $platform): void
+    private function configurePropertyColumns(Schema &$schema, AbstractPlatform $platform, SchemaConfig $configuration, bool $foreignKeys): array
     {
-        $connection = \Doctrine\DBAL\DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
-        $em = new \Doctrine\ORM\EntityManager($connection, Orm::configuration($platform));
+        $connection = $this->metadataManager?->getConnection()
+            ?? \Doctrine\DBAL\DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
+        $em = $this->metadataManager ?? new EntityManager($connection, Orm::configuration($platform));
         try {
             $metadata = $em->getMetadataFactory()->getAllMetadata();
             $nativeTimestamps = NativeTimestampSchema::declarations($metadata);
@@ -83,6 +98,27 @@ final class BaselineSchema
             foreach ($metadata as $entity) {
                 $declarations[$entity->getTableName()] = $entity;
             }
+            $ownedTables = [];
+            $newTables = [];
+            foreach ($mapped->getTables() as $declaration) {
+                $entity = $declarations[$declaration->getName()];
+                if ((new \ReflectionClass($entity->name))->getAttributes(Mapping\SchemaOwner::class) !== []) {
+                    $owned = clone $declaration;
+                    if (!$foreignKeys) {
+                        foreach ($owned->getForeignKeys() as $foreignKey) {
+                            $owned->removeForeignKey($foreignKey->getName());
+                        }
+                    }
+                    $ownedTables[] = $owned;
+                    if (!$schema->hasTable($declaration->getName())) {
+                        $newTables[] = $owned;
+                    }
+                }
+            }
+            // New owned tables also participate in current native-policy projection.
+            // Final replacement keeps complete metadata authoritative after the
+            // remaining legacy overlays have run.
+            $schema = CurrentSchema::replaceTables($schema, $newTables, $configuration);
             foreach ($mapped->getTables() as $declaration) {
                 $table = $schema->getTable($declaration->getName());
                 $entity = $declarations[$declaration->getName()];
@@ -157,8 +193,11 @@ final class BaselineSchema
                     }
                 }
             }
+            return $ownedTables;
         } finally {
-            $connection->close();
+            if ($this->metadataManager === null) {
+                $connection->close();
+            }
         }
     }
 
@@ -191,8 +230,9 @@ final class BaselineSchema
     private function configureRequiredSubjects(Schema $schema, AbstractPlatform $platform): void
     {
         // An explicit version keeps offline schema inspection independent of a server.
-        $connection = \Doctrine\DBAL\DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
-        $em = new \Doctrine\ORM\EntityManager($connection, Orm::configuration($platform));
+        $connection = $this->metadataManager?->getConnection()
+            ?? \Doctrine\DBAL\DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
+        $em = $this->metadataManager ?? new EntityManager($connection, Orm::configuration($platform));
         try {
             foreach ($em->getMetadataFactory()->getAllMetadata() as $metadata) {
                 foreach ($metadata->fieldMappings as $property => $field) {
@@ -222,7 +262,9 @@ final class BaselineSchema
                 }
             }
         } finally {
-            $connection->close();
+            if ($this->metadataManager === null) {
+                $connection->close();
+            }
         }
     }
 

@@ -20,10 +20,22 @@ final class AttributeDriver extends \Doctrine\ORM\Mapping\Driver\AttributeDriver
         parent::loadMetadataForClass($className, $metadata);
         $writableClock = false;
         $entity = new \ReflectionClass($className);
+        $metadata->table['options'] = array_replace(
+            $metadata->table['options'] ?? [],
+            PlatformOptions::forDeclaration($entity, $this->platform),
+        );
         foreach ($entity->getAttributes(SchemaIndex::class) as $attribute) {
             $attribute->newInstance()->addToMetadata($metadata, $this->platform);
         }
         foreach ($entity->getProperties() as $property) {
+            $options = PlatformOptions::forDeclaration($property, $this->platform);
+            if ($options !== []) {
+                if (!isset($metadata->fieldMappings[$property->name])) {
+                    throw new \LogicException('Provider column options require a mapped scalar property.');
+                }
+                $field = $metadata->fieldMappings[$property->name];
+                $field->options = array_replace($field->options ?? [], $options);
+            }
             foreach ($property->getAttributes(ReferenceKey::class) as $attribute) {
                 $metadata->fieldMappings[$property->getName()]->columnDefinition = $attribute->newInstance()->declaration($this->platform);
             }
