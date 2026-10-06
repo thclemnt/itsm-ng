@@ -39,6 +39,111 @@ use DbTestCase;
 
 class ProjectTask extends DbTestCase
 {
+    public function testGanttRootProjectionKeepsRecursiveRenderingAndTeamAccess(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $session = $_SESSION;
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $connection = $DB->getDoctrineConnection();
+        $em = \itsmng\Database\Orm::create($DB);
+        $listener = new class {
+            public int $loaded = 0;
+            public function postLoad(): void
+            {
+                ++$this->loaded;
+            }
+        };
+        $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+        try {
+            $prefix = 'Gantt roots ' . bin2hex(random_bytes(6));
+            $owner = $this->createItem(\User::class, [
+                'name' => $prefix . ' owner', 'entities_id' => $entity, 'authtype' => \Auth::DB_GLPI,
+            ]);
+            $this->integer((int)$owner->getID())->isNotIdenticalTo((int)\Session::getLoginUserID());
+            $project = $this->createItem(\Project::class, ['name' => $prefix, 'entities_id' => $entity]);
+            $other = $this->createItem(\Project::class, ['name' => $prefix . ' other', 'entities_id' => $entity]);
+            $parent = $this->createItem(\ProjectTask::class, [
+                'name' => $prefix . ' parent', 'projects_id' => $project->getID(), 'entities_id' => $entity,
+                'users_id' => $owner->getID(), 'percent_done' => 25,
+            ]);
+            $child = $this->createItem(\ProjectTask::class, [
+                'name' => $prefix . ' child', 'projects_id' => $project->getID(), 'projecttasks_id' => $parent->getID(),
+                'entities_id' => $entity, 'users_id' => $owner->getID(),
+                'plan_start_date' => '2030-01-10 09:00:00', 'plan_end_date' => '2030-01-20 17:00:00',
+                'real_start_date' => '2030-01-12 09:00:00', 'real_end_date' => '2030-01-15 17:00:00',
+            ]);
+            $later = $this->createItem(\ProjectTask::class, [
+                'name' => $prefix . ' later', 'projects_id' => $project->getID(), 'entities_id' => $entity,
+                'users_id' => $owner->getID(), 'is_milestone' => 1, 'plan_start_date' => '2030-02-10 09:00:00',
+            ]);
+            $this->createItem(\ProjectTask::class, [
+                'name' => $prefix . ' excluded', 'projects_id' => $other->getID(), 'entities_id' => $entity,
+            ]);
+            $this->createItem(\ProjectTaskTeam::class, [
+                'projecttasks_id' => $child->getID(), 'itemtype' => 'User', 'items_id' => \Session::getLoginUserID(),
+            ]);
+            $legacyRoots = static fn(int $id): array => array_map('intval', array_column(
+                (new \ProjectTask())->find(['projects_id' => $id, 'projecttasks_id' => 0], ['plan_start_date', 'real_start_date']),
+                'id'
+            ));
+            $repository = new \itsmng\Database\Repository\ProjectTaskRepository($em);
+            $roots = $repository->rootIdsForGantt((int)$project->getID());
+            $this->array($roots)->isIdenticalTo($legacyRoots((int)$project->getID()))->hasSize(2);
+            $this->array($repository->rootIdsForGantt(0))->isIdenticalTo($legacyRoots(0));
+            $this->array($repository->rootIdsForGantt(PHP_INT_MAX))->isEmpty();
+            $this->integer($listener->loaded)->isIdenticalTo(0);
+            $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+            $managed = $em->find(\itsmng\Database\Entity\ProjectTask::class, (int)$later->getID());
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+            $connection->update('glpi_projecttasks', [
+                'name' => $prefix . ' current', 'plan_start_date' => '2030-01-01 09:00:00',
+                'plan_end_date' => '2030-01-01 09:00:00',
+            ], ['id' => $later->getID()]);
+            $roots = $repository->rootIdsForGantt((int)$project->getID());
+            $this->array($roots)->isIdenticalTo($legacyRoots((int)$project->getID()));
+            $this->string($managed->name)->isIdenticalTo($prefix . ' later');
+            $this->boolean($em->contains($managed))->isTrue();
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+
+            $_SESSION['glpiactiveprofile']['project'] = 0;
+            $_SESSION['glpiactiveprofile'][\ProjectTask::$rightname] = \ProjectTask::READMY;
+            $data = \ProjectTask::getDataToDisplayOnGanttForProject($project->getID());
+            $order = [];
+            foreach ($roots as $id) {
+                $order[] = $id;
+                if ($id === (int)$parent->getID()) {
+                    $order[] = (int)$child->getID();
+                }
+            }
+            $this->array(array_map('intval', array_column($data, 'id')))->isIdenticalTo($order);
+            $byId = array_column($data, null, 'id');
+            $this->string($byId[$parent->getID()]['from'])->isIdenticalTo('2030-01-12 09:00:00');
+            $this->string($byId[$parent->getID()]['to'])->isIdenticalTo('2030-01-15 17:00:00');
+            $this->integer($byId[$child->getID()]['parents'])->isIdenticalTo(1);
+            $this->string($byId[$child->getID()]['link'])->contains('<a ')->contains($child->getLinkURL());
+            $this->string($byId[$parent->getID()]['link'])->notContains('<a ');
+            $this->string($byId[$later->getID()]['name'])->isIdenticalTo($prefix . ' current');
+            $this->string($byId[$later->getID()]['percent'])->isIdenticalTo('');
+            $this->array(\ProjectTask::getDataToDisplayOnGantt(PHP_INT_MAX))->isEmpty();
+            $this->array(\ProjectTask::getDataToDisplayOnGanttForProject(PHP_INT_MAX))->isEmpty();
+
+            // Extensions still own discovery/rendering; their nonexistent rows are
+            // checked by the original concrete-record guard before custom rendering.
+            ProjectTaskGanttOverride::$roots = [(int)$later->getID(), PHP_INT_MAX];
+            ProjectTaskGanttOverride::$calls = [];
+            $this->array(ProjectTaskGanttOverride::getDataToDisplayOnGanttForProject($project->getID()))
+                ->isIdenticalTo(['custom' => ['id' => (int)$later->getID()]]);
+            $this->array(ProjectTaskGanttOverride::$calls)->isIdenticalTo([(int)$later->getID()]);
+        } finally {
+            ProjectTaskGanttOverride::$roots = ProjectTaskGanttOverride::$calls = [];
+            $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+            $em->clear();
+            $_SESSION = $session;
+        }
+    }
+
     public function testPlanningConflict()
     {
         $this->login();
@@ -190,5 +295,23 @@ class ProjectTask extends DbTestCase
          ]
         );
         $this->integer($ttask_id)->isGreaterThan(0);
+    }
+}
+
+
+class ProjectTaskGanttOverride extends \ProjectTask
+{
+    public static array $roots = [];
+    public static array $calls = [];
+
+    public function find($condition = [], $order = [], $limit = null)
+    {
+        return array_map(static fn(int $id): array => ['id' => $id], self::$roots);
+    }
+
+    public static function getDataToDisplayOnGantt($ID)
+    {
+        self::$calls[] = (int)$ID;
+        return ['custom' => ['id' => (int)$ID]];
     }
 }

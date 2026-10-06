@@ -20,6 +20,20 @@ final class ProjectTaskRepository
     {
     }
 
+    /** Root discovery only; recursive task rendering retains its own model and access checks. */
+    public function rootIdsForGantt(int $project): array
+    {
+        $query = $this->em->createQueryBuilder()->select('task.id')->from(ProjectTask::class, 'task')
+            ->where('task.projecttasks IS NULL');
+        if ($project === 0) {
+            $query->andWhere('task.projects IS NULL');
+        } else {
+            $query->andWhere('IDENTITY(task.projects) = :project')->setParameter('project', $project, Types::BIGINT);
+        }
+        return array_map('intval', $query->orderBy('task.plan_start_date')->addOrderBy('task.real_start_date')
+            ->getQuery()->getSingleColumnResult());
+    }
+
     /** Explicit groups take precedence; null selects the user or eligible central-profile users. */
     public function planning(int $user, ?array $groups, array $profileScope, \DateTimeInterface $begin, \DateTimeInterface $end, bool $showDone, bool $unplanned): array
     {

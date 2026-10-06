@@ -1561,8 +1561,23 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
     */
     public static function getDataToDisplayOnGanttForProject($ID)
     {
+        global $DB;
 
         $todisplay = [];
+        if (static::class === self::class) {
+            $em = \itsmng\Database\Orm::create($DB);
+            try {
+                $roots = (new \itsmng\Database\Repository\ProjectTaskRepository($em))->rootIdsForGantt((int)$ID);
+            } finally {
+                $em->clear();
+            }
+            foreach ($roots as $id) {
+                $todisplay += static::getDataToDisplayOnGantt($id);
+            }
+            return $todisplay;
+        }
+
+        // Extensions retain their custom discovery and missing-record guard.
 
         $task      = new self();
         // Get all tasks without father
