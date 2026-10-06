@@ -84,7 +84,8 @@ class OrmMigration extends \GLPITestCase
         $this->array(History::pendingVersions($connection))->isEmpty();
         $this->boolean(History::isInstalling($connection))->isFalse();
         $this->boolean(Ledger::state($connection, Baseline::PHASE)['installation_complete'])->isTrue();
-        $this->array(History::versions())->isIdenticalTo(['2.2.0']);
+        $this->array(History::versions())->isIdenticalTo(['2.2.0', \itsmng\Database\Migration\SensorSubjects::VERSION]);
+        $this->string($connection->fetchOne('SELECT value FROM glpi_configs WHERE context = ? AND name = ?', ['core', 'itsmdbversion']))->isIdenticalTo(ITSM_SCHEMA_VERSION);
     }
 
     public function testInterruptedBaselineAndSeedsCanResume(): void
@@ -123,6 +124,51 @@ class OrmMigration extends \GLPITestCase
         (new Seeds())->apply($connection, progress: static fn () => throw new \LogicException('Completed seeds replayed'));
         $this->string($connection->fetchOne('SELECT comment FROM glpi_rulerightparameters WHERE id = 1'))->isIdenticalTo('Retained seed edit');
         $this->array(Ledger::state($connection, Seeds::PHASE))->isIdenticalTo($receipt);
+
+        // Establish the real predecessor (including bigint target IDs) before testing forward DDL.
+        $predecessor = new \itsmng\Database\Migration\Version220();
+        $predecessor->apply($connection);
+        $predecessor->verify($connection);
+
+        // The forward phase has its own retained proof in the same ledger.
+        $connection->insert('glpi_devicesensors', ['id' => 100, 'designation' => 'Retry sensor', 'entities_id' => 0]);
+        $connection->insert('glpi_computers', ['id' => 100, 'name' => 'Retry subject', 'entities_id' => 0]);
+        $connection->insert('glpi_items_devicesensors', ['id' => 100, 'devicesensors_id' => 100,
+            'itemtype' => 'computer', 'items_id' => 100, 'entities_id' => 0]);
+        $forward = new \itsmng\Database\Migration\SensorSubjects();
+        $before = $this->rowBags($connection);
+        $this->exception(static fn () => $forward->plan($connection))->isInstanceOf(\RuntimeException::class);
+        $this->array($this->rowBags($connection))->isIdenticalTo($before);
+        $connection->update('glpi_items_devicesensors', ['itemtype' => 'Computer', 'items_id' => 101], ['id' => 100]);
+        $this->exception(static fn () => $forward->plan($connection))->isInstanceOf(\RuntimeException::class);
+        $connection->update('glpi_items_devicesensors', ['items_id' => 100], ['id' => 100]);
+        $this->exception(static fn () => $forward->apply($connection, static function (string $phase): void {
+            if ($phase === 'projection') {
+                throw new \RuntimeException('Interrupted Sensor projection');
+            }
+        }))->isInstanceOf(\RuntimeException::class)->hasMessage('Interrupted Sensor projection');
+        $forward->apply($connection);
+        $forward->verify($connection);
+        $retained = Ledger::state($connection, \itsmng\Database\Migration\SensorSubjects\Definition::PHASE);
+        $this->boolean($retained['complete'])->isTrue();
+        $this->array($retained['policy'])->hasKeys(['projection', 'check']);
+        $forward->apply($connection, static fn () => throw new \LogicException('Completed Sensor DDL replayed'));
+        $forward->verify($connection);
+        $this->array(Ledger::state($connection, \itsmng\Database\Migration\SensorSubjects\Definition::PHASE))->isIdenticalTo($retained);
+        $this->integer((int)$connection->fetchOne('SELECT items_id FROM glpi_items_devicesensors WHERE id = 100'))->isIdenticalTo(100);
+        $connection->insert('glpi_peripherals', ['id' => 100, 'name' => 'Other retry subject', 'entities_id' => 0]);
+        foreach ([['itemtype' => 'computer'], ['computers_id' => 0], ['peripherals_id' => 100], ['computers_id' => 101]] as $invalid) {
+            $this->exception(static fn () => $connection->transactional(static fn () =>
+                $connection->update('glpi_items_devicesensors', $invalid, ['id' => 100])))
+                ->isInstanceOf(\Doctrine\DBAL\Exception::class);
+        }
+        $forward->verify($connection);
+        $phase = \itsmng\Database\Migration\SensorSubjects\Definition::PHASE;
+        $connection->delete(Ledger::TABLE, ['version' => $phase]);
+        $this->exception(static fn () => $forward->plan($connection))->isInstanceOf(\RuntimeException::class);
+        Ledger::save($connection, $phase, $retained);
+        $forward->verify($connection);
+
     }
 
     public function testPublicUpgradeRefusesOldProvenanceAndPreservesPopulatedData(): void
@@ -138,6 +184,12 @@ class OrmMigration extends \GLPITestCase
         $legacyId = 2147483647;
         $audit = "Historical O'Reilly \\path 日本語";
         $connection->insert('glpi_computers', ['id' => $legacyId, 'name' => 'Imported computer', 'entities_id' => 0, 'computermodels_id' => 0]);
+        $connection->insert('glpi_peripherals', ['id' => 100, 'name' => 'Imported peripheral', 'entities_id' => 0]);
+        $connection->insert('glpi_devicesensors', ['id' => 100, 'designation' => 'Imported sensor', 'entities_id' => 0]);
+        foreach ([[101, 'Computer', $legacyId], [102, 'Peripheral', 100], [103, '', 0]] as [$id, $kind, $subject]) {
+            $connection->insert('glpi_items_devicesensors', ['id' => $id, 'devicesensors_id' => 100,
+                'itemtype' => $kind, 'items_id' => $subject, 'entities_id' => 0, 'serial' => $audit]);
+        }
         $connection->insert('glpi_certificates', ['id' => 100, 'name' => 'Imported certificate']);
         $connection->insert('glpi_certificates_items', ['id' => 101, 'certificates_id' => 100, 'itemtype' => 'Computer', 'items_id' => $legacyId]);
         $connection->insert('glpi_logs', ['id' => 2147483646, 'itemtype' => 'Computer', 'items_id' => $legacyId, 'user_name' => 'Original administrator', 'old_value' => $audit]);
@@ -187,6 +239,16 @@ class OrmMigration extends \GLPITestCase
             $this->string($connection->fetchOne('SELECT old_value FROM glpi_logs WHERE id = 2147483646'))->isIdenticalTo($audit);
             $this->string($connection->fetchOne('SELECT value FROM glpi_configs WHERE context = ? AND name = ?', ['core', 'smtp_passwd']))->isIdenticalTo($ciphertext);
             $this->string(\Toolbox::sodiumDecrypt($ciphertext))->isIdenticalTo('Original encrypted configuration');
+            $sensorRows = $connection->fetchAllAssociative('SELECT id, itemtype, items_id, computers_id, peripherals_id, serial FROM glpi_items_devicesensors ORDER BY id');
+            $this->array(array_map('intval', array_column($sensorRows, 'items_id')))->isIdenticalTo([$legacyId, 100, 0]);
+            $this->array(array_column($sensorRows, 'itemtype'))->isIdenticalTo(['Computer', 'Peripheral', null]);
+            $this->array(array_column($sensorRows, 'serial'))->isIdenticalTo([$audit, $audit, $audit]);
+            $this->variable($sensorRows[0]['peripherals_id'])->isNull();
+            $this->variable($sensorRows[1]['computers_id'])->isNull();
+            $this->variable($sensorRows[2]['computers_id'])->isNull();
+            $this->variable($sensorRows[2]['peripherals_id'])->isNull();
+            $this->boolean(Ledger::state($connection, \itsmng\Database\Migration\SensorSubjects::VERSION)['complete'])->isTrue();
+            $this->array(Ledger::state($connection, \itsmng\Database\Migration\SensorSubjects\Definition::PHASE)['policy'])->hasKeys(['projection', 'check']);
             $after = $this->rowBags($connection);
             [$status, $output] = $this->console($directory, ['db:update']);
             $this->integer($status)->isIdenticalTo(0, $output);

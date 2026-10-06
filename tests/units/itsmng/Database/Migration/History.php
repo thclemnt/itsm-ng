@@ -42,6 +42,30 @@ class History extends \atoum\atoum\test
         }
     }
 
+    public function testSensorForwardDeclarationIsFrozenAndUsesTheExistingLedger(): void
+    {
+        $definition = \itsmng\Database\Migration\SensorSubjects\Definition::class;
+        $release = new \itsmng\Database\Migration\SensorSubjects();
+        $this->string($release->version())->isNotIdenticalTo(Version220::VERSION);
+        $this->string($release->version())->isNotIdenticalTo($definition::PHASE);
+        $this->array(Releases::versions())->isIdenticalTo([Version220::VERSION, $release->version()]);
+        foreach ([new \Doctrine\DBAL\Platforms\MySQLPlatform(), new PostgreSQLPlatform()] as $platform) {
+            $table = new \Doctrine\DBAL\Schema\Table('glpi_items_devicesensors');
+            $table->addColumn('itemtype', 'string');
+            $table->addColumn('items_id', 'bigint');
+            $definition::configureTable($table, $platform);
+            $this->array(array_keys($table->getColumns()))->isIdenticalTo(['itemtype', 'items_id', 'computers_id', 'peripherals_id']);
+            $this->boolean($table->getColumn('items_id')->getNotnull())->isFalse();
+            $sql = $definition::checkSql($table->getName(), $platform);
+            $this->string($sql)->contains('computers_id >= 1')->contains('peripherals_id >= 1')
+                ->contains('itemtype IS NULL')->contains('computers_id IS NULL')->contains('peripherals_id IS NULL');
+            $this->string($table->getColumn('items_id')->getColumnDefinition())->contains('ELSE 0 END');
+            if ($platform instanceof \Doctrine\DBAL\Platforms\MySQLPlatform) {
+                $this->string($sql)->contains('CAST(itemtype AS BINARY)');
+            }
+        }
+    }
+
     public function testPreviewDefersDependentReleasesAndSkipsAppliedTargets(): void
     {
         $connection = new ReleaseJournalFixtureConnection();
@@ -79,12 +103,13 @@ class History extends \atoum\atoum\test
     public function testExperimentalCheckpointsDoNotPublishAnOrmRelease(): void
     {
         $connection = new ReleaseJournalFixtureConnection();
-        $this->array(Releases::pendingVersions($connection))->isIdenticalTo(['2.2.0']);
+        $this->array(Releases::pendingVersions($connection))->isIdenticalTo(['2.2.0', \itsmng\Database\Migration\SensorSubjects::VERSION]);
         $connection->states = array_fill_keys(Version220::PHASES, ['complete' => true]);
         $original = $connection->states;
-        $this->array(Releases::pendingVersions($connection))->isIdenticalTo(['2.2.0']);
+        $this->array(Releases::pendingVersions($connection))->isIdenticalTo(['2.2.0', \itsmng\Database\Migration\SensorSubjects::VERSION]);
         $this->array($connection->states)->isIdenticalTo($original);
         $connection->states[Version220::VERSION] = ['complete' => true];
+        $connection->states[\itsmng\Database\Migration\SensorSubjects::VERSION] = ['complete' => true];
         $this->array(Releases::pendingVersions($connection))->isEmpty();
         $connection->states[Baseline::PHASE] = ['complete' => false, 'origin' => 'installed', 'next' => 1];
         $this->array(Releases::pendingVersions($connection))->isIdenticalTo(['2.2.0']);
