@@ -82,7 +82,7 @@ class TicketTask extends DbTestCase
                 $task->groups_tech = $index === 7 ? null : $group;
                 $task->state = $index === 5 ? \Planning::DONE : \Planning::TODO;
                 $task->is_private = $index === 1;
-                $task->date_mod = $index === 7 ? null : new \DateTimeImmutable('2030-01-0' . ($index + 1) . ' 12:00:00');
+                $task->date_mod = $index === 7 ? null : new \DateTime('2030-01-0' . ($index + 1) . ' 12:00:00');
                 $writer->persist($task);
                 $parents[] = $parent;
                 $tasks[] = $task;
