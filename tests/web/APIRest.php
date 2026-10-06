@@ -638,54 +638,140 @@ class APIRest extends APIBaseClass
             } catch (\Throwable $error) {
                 $primary = $error;
             } finally {
-                try { $this->string(file_get_contents($this->getLogFilePath()))->isEmpty(); }
-                catch (\Throwable $error) { $cleanup[] = $error; }
-                // Bookings must be removed before the owned user; scope uses only the two owned endpoints.
-                $ownedBookings = [];
-                try { $ownedBookings = $this->reservationHttpRows($items); }
-                catch (\Throwable $error) { $cleanup[] = $error; }
-                foreach ($ownedBookings as $row) {
-                    try {
-                        $this->reservationHttpDelete('Reservation', (int)$row['id']);
-                    } catch (\Throwable $error) { $cleanup[] = $error; }
-                }
-                try {
-                    $this->boolean($DB->delete('glpi_events', ['type' => 'system', 'service' => 'login',
-                        'message' => ['LIKE', '%' . $marker . '%']]))->isTrue();
-                } catch (\Throwable $error) { $cleanup[] = $error; }
-                if ($outsideComputer !== null) {
-                    try {
-                        foreach ($DB->request(['FROM' => 'glpi_reservationitems',
-                            'WHERE' => ['itemtype' => 'Computer', 'items_id' => $outsideComputer]]) as $row) {
-                            $ownedBookings = [];
-                            try { $ownedBookings = $this->reservationHttpRows([(int)$row['id']]); }
-                            catch (\Throwable $error) { $cleanup[] = $error; }
-                            foreach ($ownedBookings as $booking) {
-                                try { $this->reservationHttpDelete('Reservation', (int)$booking['id']); }
-                                catch (\Throwable $error) { $cleanup[] = $error; }
-                            }
-                            try { $this->reservationHttpDelete('ReservationItem', (int)$row['id']); }
-                            catch (\Throwable $error) { $cleanup[] = $error; }
-                        }
-                    } catch (\Throwable $error) { $cleanup[] = $error; }
-                    try { $this->reservationHttpDelete('Computer', $outsideComputer); }
-                    catch (\Throwable $error) { $cleanup[] = $error; }
-                }
-                // Unique marker also recovers IDs if an HTTP assertion failed before assignment.
-                foreach (['User', 'Profile', 'Entity'] as $type) {
-                    try {
-                        $model = new $type();
-                        foreach ($model->find(['name' => $marker]) as $row) {
-                            $this->reservationHttpDelete($type, (int)$row['id']);
-                        }
-                    } catch (\Throwable $error) { $cleanup[] = $error; }
-                }
+                $cleanup = $this->cleanupReservationHttpFixtures($marker, $items, $outsideComputer);
             }
             foreach ($cleanup as $error) {
                 $primary = $primary === null ? $error : new \itsmng\Database\MutationCleanupFailure($primary, $error);
             }
             if ($primary !== null) { throw $primary; }
         });
+    }
+
+    /** @tags api */
+    public function testReservationCleanupRestoresOwnedFixturesAfterScopeFailure(): void
+    {
+        $baseline = $this->reservationHttpFixtureIdentitySets();
+        $marker = 'reservation-http-' . bin2hex(random_bytes(12));
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $computer = null;
+        $items = [];
+        $failure = new \RuntimeException('Owned reservation operation failed after changing API scope.');
+        $primary = null;
+        try {
+            $child = $this->query('createItems', ['verb' => 'POST', 'itemtype' => 'Entity',
+                'headers' => ['Session-Token' => $this->session_token],
+                'json' => ['input' => ['name' => $marker, 'entities_id' => $entity]]], 201)['id'];
+            $this->integer($child)->isGreaterThan(0);
+            $this->query('changeActiveEntities', ['verb' => 'POST',
+                'headers' => ['Session-Token' => $this->session_token],
+                'json' => ['entities_id' => $entity, 'is_recursive' => true]]);
+            $computer = (int)$this->createComputer()->getID();
+            $this->query('updateItems', ['verb' => 'PUT', 'itemtype' => 'Computer', 'id' => $computer,
+                'headers' => ['Session-Token' => $this->session_token],
+                'json' => ['input' => ['id' => $computer, 'entities_id' => $child]]]);
+            $item = $this->query('createItems', ['verb' => 'POST', 'itemtype' => 'ReservationItem',
+                'headers' => ['Session-Token' => $this->session_token], 'json' => ['input' => [
+                    'itemtype' => 'Computer', 'items_id' => $computer, 'entities_id' => $child, 'is_active' => true,
+                ]]], 201)['id'];
+            $this->integer($item)->isGreaterThan(0);
+            $items[] = $item;
+            $booking = $this->query('createItems', ['verb' => 'POST', 'itemtype' => 'Reservation',
+                'headers' => ['Session-Token' => $this->session_token], 'json' => ['input' => [
+                    'reservationitems_id' => $item, 'users_id' => (int)getItemByTypeName('User', TU_USER, true),
+                    'begin' => '2031-07-01 09:00:00', 'end' => '2031-07-01 10:00:00',
+                ]]], 201)['id'];
+            $this->integer($booking)->isGreaterThan(0);
+            $this->query('changeActiveEntities', ['verb' => 'POST',
+                'headers' => ['Session-Token' => $this->session_token],
+                'json' => ['entities_id' => $entity, 'is_recursive' => false]]);
+            $active = $this->query('getActiveEntities', [
+                'headers' => ['Session-Token' => $this->session_token]]);
+            $this->array($active['active_entity']['active_entities'])->notContains(['id' => $child]);
+            // The same owner finally must work when an operation stops with its child out of scope.
+            throw $failure;
+        } catch (\Throwable $error) {
+            $primary = $error;
+        } finally {
+            foreach ($this->cleanupReservationHttpFixtures($marker, $items, $computer) as $error) {
+                $primary = $primary === null ? $error : new \itsmng\Database\MutationCleanupFailure($primary, $error);
+            }
+        }
+        // A cleanup error stays visible instead of replacing or swallowing the original failure.
+        if ($primary !== $failure && $primary !== null) { throw $primary; }
+        $this->object($primary)->isIdenticalTo($failure);
+        $this->array($this->reservationHttpFixtureIdentitySets())->isIdenticalTo($baseline);
+    }
+
+    private function reservationHttpFixtureIdentitySets(): array
+    {
+        global $DB;
+        $ids = [];
+        foreach (['Entity', 'Computer', 'User', 'Profile', 'ReservationItem', 'Reservation'] as $type) {
+            $ids[$type] = [];
+            foreach ($DB->request(['SELECT' => 'id', 'FROM' => $type::getTable(), 'ORDER' => 'id ASC']) as $row) {
+                $ids[$type][] = (int)$row['id'];
+            }
+        }
+        return $ids;
+    }
+
+    /** Attempt every exact owned deletion, preserving each failure for the caller. */
+    private function cleanupReservationHttpFixtures(string $marker, array $items, ?int $outsideComputer): array
+    {
+        global $DB;
+        $cleanup = [];
+        try {
+            // The child can be committed before the operation refreshes its original API session.
+            // Select the existing parent grant again; never change the helpdesk user's grants.
+            $this->query('changeActiveEntities', ['verb' => 'POST',
+                'headers' => ['Session-Token' => $this->session_token], 'json' => [
+                    'entities_id' => (int)getItemByTypeName('Entity', '_test_root_entity', true),
+                    'is_recursive' => true,
+                ]]);
+        } catch (\Throwable $error) { $cleanup[] = $error; }
+        try { $this->string(file_get_contents($this->getLogFilePath()))->isEmpty(); }
+        catch (\Throwable $error) { $cleanup[] = $error; }
+        // Bookings must be removed before the owned user; scope uses only the owned endpoints.
+        $ownedBookings = [];
+        try { $ownedBookings = $this->reservationHttpRows($items); }
+        catch (\Throwable $error) { $cleanup[] = $error; }
+        foreach ($ownedBookings as $row) {
+            try {
+                $this->reservationHttpDelete('Reservation', (int)$row['id']);
+            } catch (\Throwable $error) { $cleanup[] = $error; }
+        }
+        try {
+            $this->boolean($DB->delete('glpi_events', ['type' => 'system', 'service' => 'login',
+                'message' => ['LIKE', '%' . $marker . '%']]))->isTrue();
+        } catch (\Throwable $error) { $cleanup[] = $error; }
+        if ($outsideComputer !== null) {
+            try {
+                foreach ($DB->request(['FROM' => 'glpi_reservationitems',
+                    'WHERE' => ['itemtype' => 'Computer', 'items_id' => $outsideComputer]]) as $row) {
+                    $ownedBookings = [];
+                    try { $ownedBookings = $this->reservationHttpRows([(int)$row['id']]); }
+                    catch (\Throwable $error) { $cleanup[] = $error; }
+                    foreach ($ownedBookings as $booking) {
+                        try { $this->reservationHttpDelete('Reservation', (int)$booking['id']); }
+                        catch (\Throwable $error) { $cleanup[] = $error; }
+                    }
+                    try { $this->reservationHttpDelete('ReservationItem', (int)$row['id']); }
+                    catch (\Throwable $error) { $cleanup[] = $error; }
+                }
+            } catch (\Throwable $error) { $cleanup[] = $error; }
+            try { $this->reservationHttpDelete('Computer', $outsideComputer); }
+            catch (\Throwable $error) { $cleanup[] = $error; }
+        }
+        // Unique marker also recovers IDs if an HTTP assertion failed before assignment.
+        foreach (['User', 'Profile', 'Entity'] as $type) {
+            try {
+                $model = new $type();
+                foreach ($model->find(['name' => $marker]) as $row) {
+                    $this->reservationHttpDelete($type, (int)$row['id']);
+                }
+            } catch (\Throwable $error) { $cleanup[] = $error; }
+        }
+        return $cleanup;
     }
 
     private function reservationHttpRows(array $items): array
