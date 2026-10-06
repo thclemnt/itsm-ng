@@ -5,9 +5,14 @@ LOG_FILE="./tests/files/_log/install.log"
 mkdir -p $(dirname "$LOG_FILE")
 
 # Execute install
+case "${TEST_DB_TYPE:-mysql}" in
+  mysql) database_options=(--db-type=mysql --db-port=3306) ;;
+  pgsql) database_options=(--db-type=pgsql --db-port=5432 --db-password=test) ;;
+  *) echo "Unsupported test database provider: $TEST_DB_TYPE" >&2; exit 1 ;;
+esac
 bin/console itsmng:database:install \
   --config-dir=./tests/config --ansi --no-interaction \
-  --reconfigure --db-name=glpi --db-host=db --db-user=root --force
+  --reconfigure --db-name=glpi --db-host=db --db-user=root --force "${database_options[@]}"
 
 # Execute update
 ## Must succeed, including an already-complete canonical history.

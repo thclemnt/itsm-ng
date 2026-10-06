@@ -130,7 +130,12 @@ fi
 # Define variables (some may be defined in .env file)
 APPLICATION_ROOT=$(readlink -f "$WORKING_DIR/..")
 [[ ! -z "$APP_CONTAINER_HOME" ]] || APP_CONTAINER_HOME=$(mktemp -d -t glpi-tests-home-XXXXXXXXXX)
-[[ ! -z "$DB_IMAGE" ]] || DB_IMAGE=mariadb:10.11
+[[ ! -z "$TEST_DB_TYPE" ]] || TEST_DB_TYPE=mysql
+case "$TEST_DB_TYPE" in
+  mysql) [[ ! -z "$DB_IMAGE" ]] || DB_IMAGE=mariadb:10.11 ;;
+  pgsql) [[ ! -z "$DB_IMAGE" ]] || DB_IMAGE=postgres:18 ;;
+  *) echo "Unsupported test database provider: $TEST_DB_TYPE" >&2; exit 1 ;;
+esac
 [[ ! -z "$PHP_IMAGE" ]] || PHP_IMAGE=itsm-tests-app:local
 COMPOSE_CMD="$APPLICATION_ROOT/.github/actions/docker-compose.sh"
 
@@ -141,11 +146,15 @@ find "$APPLICATION_ROOT/tests/config" -mindepth 1 ! -iname ".gitignore" -exec mv
 # Export variables to env (required for compose) and start containers
 export COMPOSE_FILE="$APPLICATION_ROOT/.github/actions/docker-compose-app.yml"
 [[ "${TESTS_TO_RUN[@]}" == "lint" ]] || export COMPOSE_FILE="$COMPOSE_FILE:$APPLICATION_ROOT/.github/actions/docker-compose-services.yml"
+if [[ "${TESTS_TO_RUN[@]}" != "lint" && "$TEST_DB_TYPE" == pgsql ]]; then
+  export COMPOSE_FILE="$COMPOSE_FILE:$APPLICATION_ROOT/.github/actions/docker-compose-postgres.yml"
+fi
 if [[ " ${TESTS_TO_RUN[*]} " == *" e2e "* ]]; then
   export COMPOSE_FILE="$COMPOSE_FILE:$APPLICATION_ROOT/.github/actions/docker-compose-e2e.yml"
 fi
 export APPLICATION_ROOT
 export APP_CONTAINER_HOME
+export TEST_DB_TYPE
 export DB_IMAGE
 export PHP_IMAGE
 cd $WORKING_DIR # Ensure compose will look for .env in current directory

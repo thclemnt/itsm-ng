@@ -15,6 +15,7 @@ RUN apt-get update \
     libjpeg62-turbo-dev \
     libldap2-dev \
     libpng-dev \
+    libpq-dev \
     libxml2-dev \
     libxslt1-dev \
     libzip-dev \
@@ -35,6 +36,8 @@ RUN apt-get update \
     opcache \
     pcntl \
     pdo_mysql \
+    pdo_pgsql \
+    pgsql \
     soap \
     xsl \
     zip \

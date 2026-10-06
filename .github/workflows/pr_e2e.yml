@@ -1,16 +1,29 @@
 name: End-to-End Tests
 
-on: [pull_request]
+on: [pull_request, workflow_dispatch]
 
 jobs:
   tests:
-    name: Run Playwright E2E tests
+    name: Playwright / ${{ matrix.database.label }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        database:
+          - image: mariadb:11.8
+            label: MariaDB 11.8
+            id: mariadb-11.8
+            provider: mysql
+          - image: postgres:18
+            label: PostgreSQL 18
+            id: postgres-18
+            provider: pgsql
     permissions:
       contents: read
     env:
-      DB_IMAGE: mariadb:10.11
+      DB_IMAGE: ${{ matrix.database.image }}
+      TEST_DB_TYPE: ${{ matrix.database.provider }}
       PHP_IMAGE: itsm-tests-app:local
 
     steps:
@@ -23,5 +36,5 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-artifacts
+          name: playwright-artifacts-${{ matrix.database.id }}
           path: tests/files/_playwright
