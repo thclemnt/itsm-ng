@@ -138,14 +138,16 @@ class NotificationTargetPlanningRecall extends NotificationTarget
     {
         $item = new $this->obj->fields['itemtype']();
         if ($item->getFromDB($this->obj->fields['items_id'])) {
-            $user = new User();
             if ($item->isField('users_id_guests')) {
                 foreach ($item->fields['users_id_guests'] as $users_id) {
-                    if ($user->getFromDB($users_id)) {
-                        $this->addToRecipientsList([
-                           'language' => $user->fields['language'],
-                           'users_id' => $user->fields['id']
-                        ]);
+                    // Recipient callbacks can change later guests or read routing.
+                    // Resolve each locale immediately before its delivery checks.
+                    if ($users_id === null || strlen($users_id) == 0) {
+                        continue;
+                    }
+                    $guest = $this->recipientRepository()->guestLanguage((int)Toolbox::cleanInteger($users_id));
+                    if ($guest !== null) {
+                        $this->addToRecipientsList($guest);
                     }
                 }
             }

@@ -39,6 +39,91 @@ use DbTestCase;
 
 class NotificationTarget extends DbTestCase
 {
+    public function testPlanningGuestLanguageKeepsRecipientCallbackFreshness(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_root_entity', false);
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $root = $em->getReference(\itsmng\Database\Entity\Entity::class, (int)$_SESSION['glpiactive_entity']);
+            $users = [];
+            foreach (['en_GB', 'fr_FR', 'de_DE'] as $language) {
+                $user = new \itsmng\Database\Entity\User();
+                $user->entities = $root;
+                $user->name = 'Recall locale ' . $this->getUniqueString();
+                $user->language = $language;
+                $em->persist($user);
+                $users[] = $user;
+            }
+            $em->flush();
+            [$first, $second, $missing] = array_map(static fn ($user): int => (int)$user->id, $users);
+            $em->remove($users[2]);
+            $em->flush();
+            $em->clear();
+            $loads = new class {
+                public int $count = 0;
+                public function postLoad(): void { ++$this->count; }
+            };
+            $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+            $repository = new \itsmng\Database\Repository\NotificationRecipientRepository($em);
+            $this->array($repository->guestLanguage($first))->isIdenticalTo(['language' => 'en_GB', 'users_id' => $first]);
+            $this->variable($repository->guestLanguage($missing))->isNull();
+            $this->integer($loads->count)->isIdenticalTo(0);
+            $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+            $this->integer(countElementsInTable('glpi_profiles_users', ['users_id' => [$first, $second]]))->isIdenticalTo(0);
+
+            // An extended event can provide duplicates and a currently missing
+            // identity. Its recipient callback must run before the next read.
+            $item = new class extends \PlanningExternalEvent {
+                public static array $guests = [];
+                public function getFromDB($id) {
+                    $this->fields = ['id' => $id, 'users_id_guests' => self::$guests];
+                    return true;
+                }
+            };
+            $item::$guests = [$first, $missing, $second, $first, PHP_INT_MAX, null, ''];
+            $target = new class extends \NotificationTargetPlanningRecall {
+                public array $seen = [];
+                public $onRecipient;
+                public function addToRecipientsList(array $data) {
+                    $this->seen[] = $data;
+                    ($this->onRecipient)(count($this->seen));
+                }
+            };
+            $target->obj = (object)['fields' => ['itemtype' => $item::class, 'items_id' => 1]];
+            $target->onRecipient = function (int $count) use ($DB, $first, $second, $missing): void {
+                if ($count !== 1) {
+                    return;
+                }
+                $this->boolean($DB->update('glpi_users', ['language' => 'it_IT'], ['id' => $second]))->isTrue();
+                $this->boolean($DB->update('glpi_users', ['language' => 'es_ES'], ['id' => $first]))->isTrue();
+                $writer = \itsmng\Database\Orm::create($DB);
+                try {
+                    $this->integer((new \itsmng\Database\Repository\RecordWriter($writer))->insert('glpi_users', [
+                        'id' => $missing, 'name' => 'Created during recall ' . $this->getUniqueString(),
+                        'entities_id' => (int)$_SESSION['glpiactive_entity'], 'language' => 'de_DE',
+                    ]))->isIdenticalTo($missing);
+                } finally {
+                    $writer->clear();
+                }
+            };
+            $target->addSpecificTargets(['type' => \Notification::USER_TYPE, 'items_id' => \Notification::PLANNING_EVENT_GUESTS], []);
+            $this->array($target->seen)->isIdenticalTo([
+                ['language' => 'en_GB', 'users_id' => $first],
+                ['language' => 'de_DE', 'users_id' => $missing],
+                ['language' => 'it_IT', 'users_id' => $second],
+                ['language' => 'es_ES', 'users_id' => $first],
+            ]);
+            // The preliminary projection does not grant notification access.
+            $delivery = new \NotificationTargetPlanningRecall();
+            $this->boolean($delivery->addToRecipientsList($target->seen[0]))->isFalse();
+            $this->array($delivery->target)->isEmpty();
+        } finally {
+            $em->clear();
+        }
+    }
+
     public function testShowForNotificationPreselectsExistingTargets()
     {
         $this->login();

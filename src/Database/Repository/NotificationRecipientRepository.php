@@ -19,6 +19,15 @@ final class NotificationRecipientRepository
     {
     }
 
+    /** Guest locale only; delivery eligibility is checked by the notification target. */
+    public function guestLanguage(int $id): ?array
+    {
+        $rows = $this->em->createQueryBuilder()->select('r.id AS users_id', 'r.language AS language')
+            ->from(Entity\User::class, 'r')->where('r.id = :guest')
+            ->setParameter('guest', $id, Types::BIGINT)->getQuery()->getScalarResult();
+        return $rows === [] ? null : ['language' => $rows[0]['language'], 'users_id' => (int)$rows[0]['users_id']];
+    }
+
     public function users(array $ids, array $profileCriteria): array
     {
         if (!$ids) {
