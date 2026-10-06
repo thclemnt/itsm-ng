@@ -4,6 +4,7 @@
 
 namespace itsmng\Database\Repository;
 
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity\NetworkPort;
@@ -46,9 +47,17 @@ final class NetworkPortAggregateRepository
             }
             // Serialize edits to one ordered membership set.
             $this->em->lock($board, \Doctrine\DBAL\LockMode::PESSIMISTIC_WRITE);
-            foreach ($ids as $id) {
-                if ($this->em->find(NetworkPort::class, $id) === null) {
-                    throw new \InvalidArgumentException('Unknown aggregate origin: ' . $id);
+            // Only existence is needed. Keep batches bounded and diagnose the
+            // first missing origin in selection order before changing membership.
+            foreach (array_chunk($ids, 1000) as $batch) {
+                $existing = array_fill_keys($this->em->createQueryBuilder()->select('p.id')
+                    ->from(NetworkPort::class, 'p')->where('p.id IN (:origins)')
+                    ->setParameter('origins', $batch, ArrayParameterType::INTEGER)
+                    ->getQuery()->getSingleColumnResult(), true);
+                foreach ($batch as $id) {
+                    if (!isset($existing[$id])) {
+                        throw new \InvalidArgumentException('Unknown aggregate origin: ' . $id);
+                    }
                 }
             }
             $this->removeForAggregate($aggregate);
