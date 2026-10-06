@@ -6,22 +6,16 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
-use itsmng\Database\Entity;
+use itsmng\Database\EntityRegistry;
 use itsmng\Database\ReferenceValues;
 
 /** Actor relationship rows without hydrating the associated ITIL object or recipient. */
 final class ITILActorRepository
 {
-    private const RELATIONS = [
-        'Ticket_User' => [Entity\TicketUser::class, 'tickets'],
-        'Group_Ticket' => [Entity\GroupTicket::class, 'tickets'],
-        'Supplier_Ticket' => [Entity\SupplierTicket::class, 'tickets'],
-        'Change_User' => [Entity\ChangeUser::class, 'changes'],
-        'Change_Group' => [Entity\ChangeGroup::class, 'changes'],
-        'Change_Supplier' => [Entity\ChangeSupplier::class, 'changes'],
-        'Problem_User' => [Entity\ProblemUser::class, 'problems'],
-        'Group_Problem' => [Entity\GroupProblem::class, 'problems'],
-        'Problem_Supplier' => [Entity\ProblemSupplier::class, 'problems'],
+    private const ACTOR_CLASSES = [
+        'Ticket_User', 'Group_Ticket', 'Supplier_Ticket',
+        'Change_User', 'Change_Group', 'Change_Supplier',
+        'Problem_User', 'Group_Problem', 'Problem_Supplier',
     ];
 
     public function __construct(private EntityManager $em)
@@ -31,14 +25,30 @@ final class ITILActorRepository
     public static function supports(string $actorClass): bool
     {
         // Subclasses retain their find()/getActors() dispatch, including plugin overrides.
-        return isset(self::RELATIONS[$actorClass]);
+        return in_array($actorClass, self::ACTOR_CLASSES, true);
     }
 
     public function rows(string $actorClass, int $item): array
     {
-        [$record, $parent] = self::RELATIONS[$actorClass]
-            ?? throw new \InvalidArgumentException('Unsupported ITIL actor relation');
+        if (!self::supports($actorClass)) {
+            throw new \InvalidArgumentException('Unsupported ITIL actor relation');
+        }
+        $record = EntityRegistry::tables()[$actorClass::getTable()]
+            ?? throw new \LogicException('ITIL actor relation has no mapped entity');
         $metadata = $this->em->getClassMetadata($record);
+        $parents = [];
+        foreach ($metadata->associationMappings as $property => $mapping) {
+            if (!$mapping->isToOneOwningSide() || count($mapping->joinColumns) !== 1) {
+                throw new \LogicException('ITIL actor relation requires single-column owning references');
+            }
+            if ($mapping->joinColumns[0]->name === $actorClass::getItilObjectForeignKey()) {
+                $parents[] = $property;
+            }
+        }
+        if (count($parents) !== 1) {
+            throw new \LogicException('ITIL actor relation requires exactly one mapped parent reference');
+        }
+        $parent = $parents[0];
         $query = $this->em->createQueryBuilder()->from($record, 'a')
             ->where('IDENTITY(a.' . $parent . ') = :item')->setParameter('item', $item, Types::BIGINT)
             ->orderBy('a.id');
