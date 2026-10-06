@@ -19,6 +19,11 @@ final readonly class DiscriminatorKey
 
     public function declaration(AbstractPlatform $platform, ClassMetadata $metadata, string $property): string
     {
+        return 'BIGINT GENERATED ALWAYS AS (' . $this->projectionExpression($platform, $metadata, $property) . ') STORED';
+    }
+
+    public function projectionExpression(AbstractPlatform $platform, ClassMetadata $metadata, string $property): string
+    {
         $column = $metadata->getColumnName($property);
         $cases = [];
         foreach ($metadata->associationMappings as $name => $association) {
@@ -38,8 +43,8 @@ final readonly class DiscriminatorKey
         if (!$cases) {
             throw new \LogicException('Generated discriminator identity requires owning associations');
         }
-        return 'BIGINT GENERATED ALWAYS AS (CASE ' . implode(' ', $cases) . ' ELSE '
-            . ($this->fallbackProperty === null ? ($this->emptyValue === null ? 'NULL' : (string)$this->emptyValue) : $platform->quoteIdentifier($metadata->getColumnName($this->fallbackProperty))) . ' END) STORED';
+        return 'CASE ' . implode(' ', $cases) . ' ELSE '
+            . ($this->fallbackProperty === null ? ($this->emptyValue === null ? 'NULL' : (string)$this->emptyValue) : $platform->quoteIdentifier($metadata->getColumnName($this->fallbackProperty))) . ' END';
     }
 
     /** Current owning schema derives from the key property, including optional stock. */
@@ -71,6 +76,13 @@ final readonly class DiscriminatorKey
 
     public function subjectCheckSql(AbstractPlatform $platform, ClassMetadata $metadata, string $property): string
     {
+        return 'ALTER TABLE ' . $platform->quoteIdentifier($metadata->getTableName()) . ' ADD CONSTRAINT '
+            . $platform->quoteIdentifier($this->subjectConstraintName($metadata)) . ' CHECK ('
+            . $this->subjectCheckExpression($platform, $metadata, $property) . ')';
+    }
+
+    public function subjectCheckExpression(AbstractPlatform $platform, ClassMetadata $metadata, string $property): string
+    {
         $bindings = $this->subjectBindings($metadata, $property);
         $columns = [];
         foreach ($bindings as $name => $binding) {
@@ -99,10 +111,14 @@ final readonly class DiscriminatorKey
             }
             $branches[] = '(' . implode(' AND ', $empty) . ')';
         }
+        return implode(' OR ', $branches);
+    }
+
+    public function subjectConstraintName(ClassMetadata $metadata): string
+    {
         $attributes = (new \ReflectionClass($metadata->name))->getAttributes(RequiredSubjectConstraint::class);
         $suffix = $attributes ? $attributes[0]->newInstance()->suffix : 'typed_item_kind';
-        return 'ALTER TABLE ' . $platform->quoteIdentifier($metadata->getTableName()) . ' ADD CONSTRAINT '
-            . $platform->quoteIdentifier($metadata->getTableName() . '_' . $suffix) . ' CHECK (' . implode(' OR ', $branches) . ')';
+        return $metadata->getTableName() . '_' . $suffix;
     }
 
     /** Existing required-only callers retain their explicit admission contract. */

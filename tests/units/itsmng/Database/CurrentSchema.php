@@ -277,6 +277,87 @@ class CurrentSchema extends \atoum\atoum\test
         $this->integer(strlen($index->getName()))->isLessThanOrEqualTo(31);
     }
 
+    public function testNativeSubjectExpressionsPreserveMeaningAcrossProviderFormatting(): void
+    {
+        $compare = \itsmng\Database\SubjectPolicyExpression::equivalent(...);
+        $this->boolean($compare(
+            "CASE WHEN itemtype IN ('Computer') THEN computers_id ELSE NULL END",
+            "CASE itemtype WHEN 'Computer'::text THEN computers_id ELSE NULL::bigint END", true
+        ))->isTrue();
+        $this->boolean($compare(
+            "CAST(`itemtype` AS BINARY) IN ('Computer') AND `computers_id` >= 1",
+            "((cast(`itemtype` as char charset binary) = _utf8mb4'Computer') and (`computers_id` >= 1))", false
+        ))->isTrue();
+        $this->boolean($compare(
+            "itemtype IS NULL OR (itemtype IS NOT NULL AND itemtype = 'Computer' AND computers_id >= 1) OR (itemtype IS NOT NULL AND itemtype = 'Peripheral' AND peripherals_id >= 1)",
+            "(itemtype IS NULL AND (itemtype IS NULL OR itemtype = '')) OR (itemtype IS NOT NULL AND ((itemtype = 'Computer' AND computers_id >= 1) OR (itemtype = 'Peripheral' AND peripherals_id >= 1)))", true
+        ))->isTrue();
+        $expected = "itemtype IS NOT NULL AND itemtype = 'Computer' AND computers_id IS NOT NULL AND computers_id >= 1";
+        foreach ([
+            "itemtype IS NOT NULL AND itemtype = 'computer' AND computers_id IS NOT NULL AND computers_id >= 1",
+            "itemtype IS NOT NULL AND itemtype = 'Computer' AND computers_id IS NOT NULL AND computers_id >= 0",
+            "itemtype IS NOT NULL OR itemtype = 'Computer' AND computers_id IS NOT NULL AND computers_id >= 1",
+            "itemtype = 'Computer' AND computers_id IS NOT NULL AND computers_id >= 1",
+            $expected . ' OR 1 = 1',
+            $expected . ' /* ignored? */',
+            'lower(itemtype) = \'computer\'',
+            '1 = 1',
+        ] as $changed) {
+            $this->boolean($compare($expected, $changed, true))->isFalse();
+        }
+        $this->boolean($compare("CAST(itemtype AS BINARY) = 'Computer'", "itemtype = 'Computer'", false))->isFalse();
+        $this->boolean($compare("itemtype = 'Computer'", '"itemtype" = \'Computer\'', false))->isFalse();
+        $this->boolean($compare("itemtype = 'Computer'", '"itemtype" = \'Computer\'', false, true))->isTrue();
+        $this->boolean($compare("CASE WHEN itemtype = 'Computer' THEN computers_id ELSE NULL END", "CASE WHEN itemtype = 'Computer' THEN peripherals_id ELSE NULL END", true))->isFalse();
+        $this->boolean($compare("itemtype = 'Computer'", "itemtype::text = 'Computer'::text", true))->isTrue();
+        $this->boolean($compare("itemtype = 'Computer'", "itemtype::varchar(1) = 'Computer'", true))->isFalse();
+    }
+
+    public function testCurrentSubjectPoliciesInspectNativeEnforcementWithoutReceipts(): void
+    {
+        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+            $builder = new BaselineSchema($this->manager($platform));
+            $schema = $builder->build($platform);
+            $all = $builder->subjectPolicies();
+            $table = 'glpi_certificates_items';
+            $policy = $all[$table]['items_id'];
+            $this->array($all)->hasKeys([$table, 'glpi_items_devicesensors', 'glpi_items_devicememories']);
+            $this->string($schema->getTable($table)->getColumn('items_id')->getColumnDefinition())->contains($policy['projection']);
+            $postgres = $platform instanceof PostgreSQLPlatform;
+            $columns = [$table => [
+                'items_id' => ['generated' => $postgres ? 's' : 'STORED GENERATED', 'expression' => $policy['projection']],
+                'itemtype' => ['deterministic' => true],
+            ]];
+            $checks = [$table => [$policy['constraint'] => ['clause' => $policy['check'], 'enforced' => 'YES', 'validated' => true]]];
+            $policies = [$table => ['items_id' => $policy]];
+            $compare = static fn (array $c, array $k): array => \itsmng\Database\NativeSubjectSchema::compare($policies, $c, $k, $postgres);
+            $this->array($compare($columns, $checks))->isEmpty();
+            $changed = $columns;
+            $changed[$table]['items_id']['expression'] = '0';
+            $this->array($compare($changed, $checks))->isIdenticalTo(['Changed or missing native subject projection: ' . $table . '.items_id']);
+            $changed = $columns;
+            $changed[$table]['items_id']['generated'] = '';
+            $this->array($compare($changed, $checks))->isIdenticalTo(['Changed or missing native subject projection: ' . $table . '.items_id']);
+            $this->array($compare($columns, []))->isIdenticalTo(['Changed, missing or unenforced native subject CHECK: ' . $table . '.' . $policy['constraint']]);
+            foreach (['clause' => '1 = 1', 'enforced' => 'NO', ...($postgres ? ['validated' => false] : [])] as $field => $value) {
+                $changed = $checks;
+                $changed[$table][$policy['constraint']][$field] = $value;
+                $this->array($compare($columns, $changed))->isIdenticalTo(['Changed, missing or unenforced native subject CHECK: ' . $table . '.' . $policy['constraint']]);
+            }
+            if ($postgres) {
+                $changed = $columns;
+                $changed[$table]['itemtype']['deterministic'] = false;
+                $this->array($compare($changed, $checks))->isIdenticalTo(['Expected deterministic subject discriminator: ' . $table . '.itemtype']);
+            }
+            // A future current policy must reject the old native declaration,
+            // even if old migration receipts (not inputs here) remain complete.
+            $policies[$table]['items_id']['projection'] = str_replace('computers_id', 'peripherals_id', $policy['projection']);
+            $this->array(\itsmng\Database\NativeSubjectSchema::compare($policies, $columns, $checks, $postgres))->isIdenticalTo([
+                'Changed or missing native subject projection: ' . $table . '.items_id',
+            ]);
+        }
+    }
+
     public function testSuppliedMetadataRequiresTheSelectedPlatform(): void
     {
         $builder = new BaselineSchema($this->manager(new PostgreSQLPlatform()));

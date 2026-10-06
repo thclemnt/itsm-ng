@@ -26,7 +26,12 @@ final class SchemaCheck
     /** Inspect current native definitions once without retaining a schema cache. */
     public function inspect(Connection $connection, ?Schema $expected = null): SchemaInspection
     {
-        $expected ??= (new BaselineSchema())->build($connection->getDatabasePlatform());
+        $subjectPolicies = [];
+        if ($expected === null) {
+            $owner = new BaselineSchema();
+            $expected = $owner->build($connection->getDatabasePlatform());
+            $subjectPolicies = $owner->subjectPolicies();
+        }
         $manager = $connection->createSchemaManager();
         $actual = $manager->introspectSchema();
         $comparator = $manager->createComparator();
@@ -77,6 +82,7 @@ final class SchemaCheck
                 $differences[] = 'Unexpected or changed foreign key: ' . $name . '.' . $key->getName();
             }
         }
-        return new SchemaInspection($actual, [...$differences, ...BooleanDomainSchema::differences($connection, $expected), ...NativeTimestampSchema::differences($connection, $expected)]);
+        return new SchemaInspection($actual, [...$differences, ...BooleanDomainSchema::differences($connection, $expected), ...NativeTimestampSchema::differences($connection, $expected),
+            ...NativeSubjectSchema::differences($connection, $subjectPolicies)]);
     }
 }

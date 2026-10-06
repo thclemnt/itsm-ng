@@ -20,6 +20,13 @@ use itsmng\Database\Mapping\ReferenceKind;
 final class BaselineSchema
 {
     private array $extraSql = [];
+    private array $subjectPolicies = [];
+
+    /** Native policies from this same current-schema build, never a historical receipt. */
+    public function subjectPolicies(): array
+    {
+        return $this->subjectPolicies;
+    }
 
     /** Optional mapping source for independently declared current schemas. */
     public function __construct(private readonly ?EntityManager $metadataManager = null)
@@ -33,6 +40,7 @@ final class BaselineSchema
             throw new \InvalidArgumentException('Current schema metadata must use the selected platform.');
         }
         $this->extraSql = [];
+        $this->subjectPolicies = [];
         // Frozen Baseline creates Schema() with the default configuration. Own
         // that same configuration explicitly when composing current declarations.
         $configuration = new SchemaConfig();
@@ -257,6 +265,21 @@ final class BaselineSchema
                             continue;
                         }
                         $key->configureSubjectTable($schema->getTable($metadata->getTableName()), $platform, $metadata, $property);
+                        $discriminators = [];
+                        foreach ($metadata->associationMappings as $association => $mapping) {
+                            foreach ((new \ReflectionProperty($metadata->name, $association))->getAttributes(Mapping\DiscriminatedBy::class) as $binding) {
+                                $binding = $binding->newInstance();
+                                if ($binding->legacyColumn === $metadata->getColumnName($property)) {
+                                    $discriminators[] = $metadata->getColumnName($binding->discriminator);
+                                }
+                            }
+                        }
+                        $this->subjectPolicies[$metadata->getTableName()][$metadata->getColumnName($property)] = [
+                            'projection' => $key->projectionExpression($platform, $metadata, $property),
+                            'constraint' => $key->subjectConstraintName($metadata),
+                            'check' => $key->subjectCheckExpression($platform, $metadata, $property),
+                            'discriminators' => array_values(array_unique($discriminators)),
+                        ];
                         $this->extraSql[$metadata->getTableName()][] = $key->subjectCheckSql($platform, $metadata, $property);
                     }
                 }

@@ -263,6 +263,7 @@ class OrmMigration extends \GLPITestCase
             $this->variable($sensorRows[2]['peripherals_id'])->isNull();
             $this->boolean(Ledger::state($connection, \itsmng\Database\Migration\SensorSubjects::VERSION)['complete'])->isTrue();
             $this->array(Ledger::state($connection, \itsmng\Database\Migration\SensorSubjects\Definition::PHASE)['policy'])->hasKeys(['projection', 'check']);
+            $this->assertCurrentSubjectNativeVerification($connection);
             $this->assertTerminalSensorVerification($connection);
             $this->assertTerminalReleaseOrder($connection);
             $after = $this->rowBags($connection);
@@ -283,6 +284,67 @@ class OrmMigration extends \GLPITestCase
             }
             rmdir($directory);
         }
+    }
+
+    /** Nonterminal subjects still belong to current native policy after later releases complete. */
+    private function assertCurrentSubjectNativeVerification(Connection $connection): void
+    {
+        $platform = $connection->getDatabasePlatform();
+        $builder = new \itsmng\Database\BaselineSchema();
+        $schema = $builder->build($platform);
+        $policies = $builder->subjectPolicies();
+        $table = 'glpi_certificates_items';
+        $policy = $policies[$table]['items_id'];
+        $selected = [$table => ['items_id' => $policy]];
+        $inspect = static fn (): array => \itsmng\Database\NativeSubjectSchema::differences($connection, $selected);
+        $this->array($inspect())->isEmpty();
+        $quote = $platform->quoteIdentifier(...);
+        $drop = 'ALTER TABLE ' . $quote($table) . ' DROP '
+            . ($platform instanceof \Doctrine\DBAL\Platforms\MySQLPlatform ? 'CHECK ' : 'CONSTRAINT ') . $quote($policy['constraint']);
+        $restore = 'ALTER TABLE ' . $quote($table) . ' ADD CONSTRAINT ' . $quote($policy['constraint'])
+            . ' CHECK (' . $policy['check'] . ')'
+            . ($platform instanceof \Doctrine\DBAL\Platforms\MySQLPlatform ? ' ENFORCED' : '');
+        $ledger = Ledger::states($connection);
+        $connection->executeStatement($drop);
+        try {
+            $diagnostic = 'Changed, missing or unenforced native subject CHECK: ' . $table . '.' . $policy['constraint'];
+            $this->array($inspect())->isIdenticalTo([$diagnostic]);
+            $published = false;
+            $this->exception(static function () use ($connection, &$published): void {
+                (new History())->upgrade($connection, onComplete: static function () use (&$published): void { $published = true; });
+            })->isInstanceOf(\RuntimeException::class)->hasMessage("Migration history did not converge:\n" . $diagnostic);
+            $this->boolean($published)->isFalse();
+            $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
+        } finally {
+            $connection->executeStatement($restore);
+        }
+        $this->array($inspect())->isEmpty();
+        $diagnostic = 'Changed or missing native subject projection: ' . $table . '.items_id';
+        if ($platform instanceof PostgreSQLPlatform) {
+            // PostgreSQL 14 cannot replace a generation expression in place.
+            // A rollback restores the original column and every dependent index.
+            $connection->beginTransaction();
+            try {
+                $connection->executeStatement('ALTER TABLE ' . $quote($table) . ' ALTER COLUMN items_id DROP EXPRESSION');
+                $this->array($inspect())->isIdenticalTo([$diagnostic]);
+            } finally {
+                $connection->rollBack();
+            }
+        } else {
+            $original = $connection->fetchOne('SELECT GENERATION_EXPRESSION FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$table, 'items_id']);
+            $comment = $schema->getTable($table)->getColumn('items_id')->getComment();
+            $alter = static fn (string $expression): string => 'ALTER TABLE ' . $quote($table)
+                . ' MODIFY COLUMN items_id BIGINT GENERATED ALWAYS AS (' . $expression . ') STORED'
+                . ($comment === '' ? '' : ' ' . $platform->getInlineColumnCommentSQL($comment));
+            $connection->executeStatement($alter('0'));
+            try {
+                $this->array($inspect())->isIdenticalTo([$diagnostic]);
+            } finally {
+                $connection->executeStatement($alter($original));
+            }
+        }
+        $this->array($inspect())->isEmpty();
+        $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
     }
 
     private function assertTerminalSensorVerification(Connection $connection): void
