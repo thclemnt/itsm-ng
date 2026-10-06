@@ -314,20 +314,19 @@ class Reservation extends CommonDBChild
     public function displayError($type, $ID)
     {
 
-        echo "<br><div class='center'>";
-        switch ($type) {
-            case "date":
-                echo __('Error in entering dates. The starting date is later than the ending date');
-                break;
-
-            case "is_res":
-                echo __('The required item is already reserved for this timeframe');
-                break;
-
-            default:
-                echo __("Unknown error");
+        $message = match ($type) {
+            'date' => __('Error in entering dates. The starting date is later than the ending date'),
+            'is_res' => __('The required item is already reserved for this timeframe'),
+            default => __('Unknown error'),
+        };
+        if (isAPI()) {
+            // Let the API collect the rejection and send its status and JSON body.
+            Session::addMessageAfterRedirect($message, false, ERROR);
+            return;
         }
 
+        echo "<br><div class='center'>";
+        echo $message;
         echo "<br><a href='reservation.php?reservationitems_id=$ID'>" . __('Back to planning') . "</a>";
         echo "</div>";
     }

@@ -270,6 +270,15 @@ class APIRest extends APIBaseClass
             $before = $this->reservationHttpRows($items);
             $response = $post($input); // Existing booking conflicts; no navigation or extra row.
             $this->integer($response->getStatusCode())->isIdenticalTo(400);
+            $failure = json_decode((string)$response->getBody(), true, 512, JSON_THROW_ON_ERROR);
+            $this->string($failure[0])->isIdenticalTo('ERROR_GLPI_ADD');
+            $this->string($failure[1])->contains(__('The required item is already reserved for this timeframe'));
+            $this->array($this->reservationHttpRows($items))->isIdenticalTo($before);
+            $response = $post(array_replace($input, ['end' => '2031-04-01 08:00:00']));
+            $this->integer($response->getStatusCode())->isIdenticalTo(400);
+            $failure = json_decode((string)$response->getBody(), true, 512, JSON_THROW_ON_ERROR);
+            $this->string($failure[0])->isIdenticalTo('ERROR_GLPI_ADD');
+            $this->string($failure[1])->contains(__('Error in entering dates. The starting date is later than the ending date'));
             $this->array($this->reservationHttpRows($items))->isIdenticalTo($before);
             $response = $this->doHttpRequest('POST', 'Reservation/', [
                 'json' => ['input' => $bulk], 'allow_redirects' => false, 'http_errors' => false,
@@ -296,13 +305,13 @@ class APIRest extends APIBaseClass
                 $href = $anchor->getAttribute('href');
                 parse_str((string)parse_url($href, PHP_URL_QUERY), $parameters);
                 if (str_ends_with((string)parse_url($href, PHP_URL_PATH), '/front/reservation.form.php')
-                    && ($parameters['begin'] ?? '') === '2031-5-01 12:00:00') {
+                    && ($parameters['begin'] ?? '') === '2031-05-01 12:00:00') {
                     $newForm = $parameters;
                     break;
                 }
             }
             $this->array($newForm)->isIdenticalTo(['id' => '', 'item' => [(string)$items[0] => (string)$items[0]],
-                'begin' => '2031-5-01 12:00:00']);
+                'begin' => '2031-05-01 12:00:00']);
             $single = $this->reservationHttpSubmit($browser, [$items[0]], $user, '2031-05-01', 'single');
             $target = $this->reservationHttpRedirect($single);
             $this->string(parse_url($target, PHP_URL_PATH))->endsWith('/front/reservation.php');
@@ -402,7 +411,7 @@ class APIRest extends APIBaseClass
                     'headers' => ['Session-Token' => $this->session_token], 'json' => ['input' => [
                         'name' => $marker, 'password' => $password, 'password2' => $password,
                         '_profiles_id' => $profile, '_entities_id' => $item->getEntityID(),
-                        'entities_id' => $item->getEntityID(), 'authtype' => \Auth::DB_GLPI,
+                        'entities_id' => $item->getEntityID(), '_is_recursive' => 0, 'authtype' => \Auth::DB_GLPI,
                     ]]], 201)['id'];
                 $this->integer($user)->isGreaterThan(0);
                 $browser = $this->reservationHttpLogin($marker, $password);
@@ -411,6 +420,13 @@ class APIRest extends APIBaseClass
                         'name' => $marker, 'entities_id' => $item->getEntityID(),
                     ]]], 201)['id'];
                 $this->integer($outsideEntity)->isGreaterThan(0);
+                // This entity did not exist when the administrator API session was opened.
+                $this->query('changeActiveEntities', ['verb' => 'POST',
+                    'headers' => ['Session-Token' => $this->session_token],
+                    'json' => ['entities_id' => $item->getEntityID(), 'is_recursive' => true]]);
+                $active = $this->query('getActiveEntities', [
+                    'headers' => ['Session-Token' => $this->session_token]]);
+                $this->array($active['active_entity']['active_entities'])->contains(['id' => $outsideEntity]);
                 $outsideComputer = (int)$this->createComputer()->getID();
                 $this->query('updateItems', ['verb' => 'PUT', 'itemtype' => 'Computer', 'id' => $outsideComputer,
                     'headers' => ['Session-Token' => $this->session_token],
@@ -442,6 +458,7 @@ class APIRest extends APIBaseClass
                 $sessionData = json_decode((string)$session->getBody(), true, 512, JSON_THROW_ON_ERROR);
                 $this->string($sessionData['session']['glpiactiveprofile']['interface'])->isIdenticalTo('helpdesk');
                 $this->array($sessionData['session']['glpiactiveprofile'])->notHasKey('computer');
+                $this->array($sessionData['session']['glpiactiveentities'])->notContains($outsideEntity);
                 $this->integer((int)$sessionData['session']['glpiactiveprofile']['reservation'])->isIdenticalTo(\ReservationItem::RESERVEANITEM);
                 $token = $sessionData['session_token'];
                 try {
