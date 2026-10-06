@@ -512,7 +512,7 @@ class Computer_Item extends CommonDBRelation
     public static function showForItem(CommonDBTM $item, $withtemplate = 0)
     {
         // Prints a direct connection to a computer
-        global $DB;
+        global $DB, $PLUGIN_HOOKS;
 
         $comp   = new Computer();
         $ID     = $item->getField('id');
@@ -612,9 +612,20 @@ class Computer_Item extends CommonDBRelation
             }
             $values = [];
             $massiveActionValues = [];
+            // Form/massive-action callbacks have finished. Permission hooks
+            // still require complete per-row reads and may change later rows.
+            $display = empty($PLUGIN_HOOKS['item_can'])
+                ? (new \itsmng\Database\Repository\AssetRepository(\itsmng\Database\Orm::create($DB)))
+                    ->computerDisplayData($compids)
+                : [];
             foreach ($compids as $key => $compid) {
-                $comp->getFromDB($compid);
-
+                if (isset($display[$compid])) {
+                    // Display-only fields stay inside the ordinary getLink/can
+                    // path; this model is never handed to a lifecycle writer.
+                    $comp->fields = $display[$compid];
+                } else {
+                    $comp->getFromDB($compid);
+                }
 
                 if ($canedit) {
                     $massiveActionValues[$key] = 'item[Computer_Item][' . $key . ']';

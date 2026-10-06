@@ -42,6 +42,21 @@ final class AssetRepository
         return $items;
     }
 
+    /** Link and serial fields for already selected connections; callers retain item rights. */
+    public function computerDisplayData(array $computers): array
+    {
+        if (!$computers) {
+            return [];
+        }
+        $rows = $this->em->createQueryBuilder()
+            ->select('c.id, c.name, c.serial, c.otherserial, c.is_template, c.is_recursive')
+            ->addSelect('IDENTITY(c.entities) AS entities_id')
+            ->from(Entity\Computer::class, 'c')->where('c.id IN (:computers)')
+            ->setParameter('computers', array_values(array_unique(array_map('intval', $computers))))
+            ->getQuery()->getArrayResult();
+        return array_column($rows, null, 'id');
+    }
+
     /** null = all authorized entities; an empty list deliberately matches none. */
     public function count(string $itemtype, ?array $entities): int
     {

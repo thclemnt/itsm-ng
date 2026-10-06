@@ -39,6 +39,135 @@ use DbTestCase;
 
 class Computer extends DbTestCase
 {
+    public function testConnectedComputerDisplayKeepsLinksAndCurrentHookReads(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $session = $_SESSION;
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $connection = $DB->getDoctrineConnection();
+        $em = new class($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+            public int $queries = 0;
+            public function createQuery(string $dql = ''): \Doctrine\ORM\Query
+            {
+                ++$this->queries;
+                return parent::createQuery($dql);
+            }
+        };
+        $loads = new class {
+            public int $count = 0;
+            public function postLoad(): void { ++$this->count; }
+        };
+        $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $entity = (int)$_SESSION['glpiactive_entity'];
+            $monitor = $this->createItem(\Monitor::class, ['name' => $this->getUniqueString(),
+                'entities_id' => $entity, 'is_global' => true]);
+            $computers = [];
+            $links = [];
+            foreach (['First', 'Second', 'Deleted connection'] as $index => $label) {
+                $computer = $this->createItem(\Computer::class, ['name' => $label . ' ' . $this->getUniqueString(),
+                    'entities_id' => $entity, 'serial' => 'Serial ' . $index, 'otherserial' => 'Inventory ' . $index,
+                    'comment' => 'Complete computer fields']);
+                $computers[(int)$computer->getID()] = $computer;
+                $links[] = $this->createItem(\Computer_Item::class, ['computers_id' => $computer->getID(),
+                    'itemtype' => 'Monitor', 'items_id' => $monitor->getID(), 'is_dynamic' => $index === 1]);
+            }
+            $this->boolean($DB->update('glpi_computers_items', ['is_deleted' => true], ['id' => $links[2]->getID()]))->isTrue();
+            $selected = iterator_to_array($DB->request(['SELECT' => ['id', 'computers_id', 'is_dynamic'],
+                'FROM' => 'glpi_computers_items', 'WHERE' => ['itemtype' => 'Monitor',
+                    'items_id' => $monitor->getID(), 'is_deleted' => false]]));
+            $this->array($selected)->hasSize(2);
+            $ids = array_map('intval', array_column($selected, 'computers_id'));
+            $linkIds = array_map('intval', array_column($selected, 'id'));
+            $repository = new \itsmng\Database\Repository\AssetRepository($em);
+            $this->array($repository->computerDisplayData([]))->isEmpty();
+            $this->integer($em->queries)->isIdenticalTo(0);
+            $data = $repository->computerDisplayData([$ids[1], $ids[0], $ids[1], PHP_INT_MAX]);
+            $this->array($data)->hasSize(2);
+            $this->integer($em->queries)->isIdenticalTo(1);
+            $this->integer($loads->count)->isIdenticalTo(0);
+            $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+            $this->array(array_keys($data[$ids[0]]))->isIdenticalTo([
+                'id', 'name', 'serial', 'otherserial', 'is_template', 'is_recursive', 'entities_id',
+            ]);
+            $managed = $em->find(\itsmng\Database\Entity\Computer::class, $ids[0]);
+            $oldSerial = $managed->serial;
+            $this->boolean($DB->update('glpi_computers', ['serial' => 'Current writer serial', 'is_template' => true], ['id' => $ids[0]]))->isTrue();
+            $this->string($repository->computerDisplayData([$ids[0]])[$ids[0]]['serial'])->isIdenticalTo('Current writer serial');
+            $this->string($managed->serial)->isIdenticalTo($oldSerial);
+            $this->boolean($em->contains($managed))->isTrue();
+            $this->integer($loads->count)->isIdenticalTo(1);
+            $this->object($em->getConnection())->isIdenticalTo($connection);
+            $level = $connection->getTransactionNestingLevel();
+
+            $_SESSION['glpiactiveprofile']['monitor'] = READ;
+            $_SESSION['glpiactiveprofile']['computer'] = READ;
+            $PLUGIN_HOOKS['item_can'] = [];
+            $PLUGIN_HOOKS['import_item'] = ['connected_display_fixture' => true];
+            $render = function () use ($monitor): array {
+                ob_start();
+                try {
+                    \Computer_Item::showForItem($monitor);
+                    $html = ob_get_contents();
+                } finally {
+                    ob_end_clean();
+                }
+                $this->integer(preg_match('/<script type="application\/json"[^>]*>(.*?)<\/script>/s', $html, $match))->isIdenticalTo(1);
+                $config = json_decode($match[1], true, 512, JSON_THROW_ON_ERROR);
+                return $config['dataSource']['rows'];
+            };
+            $rows = $render();
+            $this->array(array_keys($rows))->isIdenticalTo($linkIds);
+            foreach ($selected as $row) {
+                $computer = $computers[(int)$row['computers_id']];
+                $this->boolean($computer->getFromDB($computer->getID()))->isTrue();
+                $this->array($rows[$row['id']])->isIdenticalTo([
+                    'name' => $computer->getLink(),
+                    'entity' => \Dropdown::getDropdownName('glpi_entities', $entity),
+                    'serial' => $computer->fields['serial'], 'otherserial' => $computer->fields['otherserial'],
+                    'inventory' => \Dropdown::getYesNo($row['is_dynamic']),
+                ]);
+            }
+            $this->string($rows[$linkIds[0]]['name'])->contains('&withtemplate=1');
+            $_SESSION['glpiactiveprofile']['computer'] = 0;
+            $denied = $render();
+            foreach ($denied as $row) {
+                $this->string($row['name'])->notContains('<a ');
+            }
+            $_SESSION['glpiactiveprofile']['computer'] = READ;
+
+            $calls = [];
+            $plugins->setValue(null, [...$active, 'connected_display_fixture']);
+            $PLUGIN_HOOKS['item_can'] = ['connected_display_fixture' => [\Computer::class =>
+                static function (\Computer $computer) use (&$calls, $connection, $ids): void {
+                    $calls[] = ['id' => (int)$computer->getID(), 'comment' => $computer->fields['comment'],
+                        'serial' => $computer->fields['serial'], 'right' => $computer->right];
+                    if ((int)$computer->getID() === $ids[0]) {
+                        $connection->update('glpi_computers', ['serial' => 'Later callback serial'], ['id' => $ids[1]]);
+                        $computer->right = false;
+                    }
+                }]];
+            $hooked = $render();
+            $this->array(array_column($calls, 'id'))->isIdenticalTo($ids);
+            $this->array(array_column($calls, 'right'))->isIdenticalTo([READ, READ]);
+            $this->array(array_column($calls, 'comment'))->isIdenticalTo(['Complete computer fields', 'Complete computer fields']);
+            $this->string($calls[1]['serial'])->isIdenticalTo('Later callback serial');
+            $this->string($hooked[$linkIds[0]]['name'])->notContains('<a ');
+            $this->string($hooked[$linkIds[1]]['serial'])->isIdenticalTo('Later callback serial');
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+            $em->clear();
+            $_SESSION = $session;
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+        }
+    }
+
     public function testDisconnectPreservesDeviceAutoCleanAndHooks(): void
     {
         global $CFG_GLPI, $PLUGIN_HOOKS;
