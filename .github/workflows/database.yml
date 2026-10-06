@@ -133,6 +133,11 @@ jobs:
         run: composer test:units -- --fail-if-skipped-methods 2>&1 | tee "$RUNNER_TEMP/units.log"
       - name: Test application behavior
         run: composer test:function -- --fail-if-skipped-methods 2>&1 | tee "$RUNNER_TEMP/functional.log"
+      - name: Diagnose native subject definitions after failure
+        if: failure() && matrix.database.provider == 'mysql'
+        env:
+          ITSM_DIAGNOSTIC_DB_PORT: ${{ matrix.database.port }}
+        run: timeout --signal=TERM --kill-after=5s 60s php -d memory_limit=512M .github/actions/diagnose-native-subject.php > "$RUNNER_TEMP/native-subject.json"
       - name: Retain test diagnostics
         if: always()
         uses: actions/upload-artifact@v7
@@ -141,6 +146,7 @@ jobs:
           path: |
             ${{ runner.temp }}/migration.log
             ${{ runner.temp }}/migration.xml
+            ${{ runner.temp }}/native-subject.json
             ${{ runner.temp }}/units.log
             ${{ runner.temp }}/functional.log
             tests/files/_log/
