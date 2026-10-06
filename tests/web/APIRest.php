@@ -229,6 +229,117 @@ class APIRest extends APIBaseClass
     }
 
     /** @tags api */
+    public function testFinancialReportUsesCommittedLicenseQuantities(): void
+    {
+        $marker = 'financial-http-' . bin2hex(random_bytes(12));
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $primary = null;
+        $cleanup = [];
+        try {
+            $this->query('changeActiveEntities', ['verb' => 'POST',
+                'headers' => ['Session-Token' => $this->session_token],
+                'json' => ['entities_id' => $entity, 'is_recursive' => false]]);
+            $browser = $this->reservationHttpLogin(TU_USER, TU_PASS);
+            $response = $browser->get('front/central.php', ['query' => [
+                'active_entity' => $entity, 'is_recursive' => 0,
+            ]]);
+            $this->integer($response->getStatusCode())->isIdenticalTo(200);
+            $report = function () use ($browser): string {
+                $path = 'front/report.infocom.conso.php';
+                $response = $browser->get($path);
+                $this->integer($response->getStatusCode())->isIdenticalTo(200);
+                $document = new \DOMDocument();
+                @$document->loadHTML((string)$response->getBody());
+                $xpath = new \DOMXPath($document);
+                $forms = $xpath->query('//form[.//input[@name="date1"] and .//input[@name="date2"]]');
+                $this->integer($forms->length)->isIdenticalTo(1);
+                $data = [];
+                foreach ($xpath->query('.//input[@type="hidden"]', $forms->item(0)) as $input) {
+                    $data[$input->getAttribute('name')] = $input->getAttribute('value');
+                }
+                $this->string($data['_glpi_csrf_token'])->isNotEmpty();
+                $data['date1'] = '2090-01-01';
+                $data['date2'] = '2090-01-31';
+                $response = $browser->post($path, ['form_params' => $data,
+                    'headers' => ['Referer' => (string)$browser->getConfig('base_uri') . $path]]);
+                $this->integer($response->getStatusCode())->isIdenticalTo(200);
+                $document = new \DOMDocument();
+                @$document->loadHTML((string)$response->getBody());
+                $xpath = new \DOMXPath($document);
+                $headings = $xpath->query('//h3');
+                $prefix = explode('%1$s', __('Total: Value=%1$s - Account net value=%2$s'))[0];
+                $totals = [];
+                foreach ($headings as $heading) {
+                    if (str_starts_with(trim($heading->textContent), $prefix)) {
+                        $totals[] = trim($heading->textContent);
+                    }
+                }
+                $this->array($totals)->hasSize(1);
+                return $totals[0];
+            };
+            $totalPrefix = static fn (float $value): string => explode('%2$s', str_replace(
+                '%1$s', \Html::formatNumber($value), __('Total: Value=%1$s - Account net value=%2$s')
+            ))[0];
+            // Admit the existing entity/date window before adding any committed fixtures.
+            $this->string($report())->startWith($totalPrefix(0));
+            $software = $this->query('createItems', ['verb' => 'POST', 'itemtype' => 'Software',
+                'headers' => ['Session-Token' => $this->session_token],
+                'json' => ['input' => ['name' => $marker, 'entities_id' => $entity]]], 201)['id'];
+            foreach ([
+                ['global', 3, '12.5000', '2090-01-01', null],
+                ['individual', 5, '7.2500', '2090-01-02', null],
+                ['global', -1, '4.1250', null, '2090-01-03'],
+                ['global', 0, '2.5000', '2090-01-04', null],
+                ['global', 10, '99.0000', '2089-12-31', '2090-02-01'],
+            ] as $index => [$serial, $number, $value, $buy, $use]) {
+                $license = $this->query('createItems', ['verb' => 'POST', 'itemtype' => 'SoftwareLicense',
+                    'headers' => ['Session-Token' => $this->session_token], 'json' => ['input' => [
+                        'name' => $marker . '-' . $index, 'softwares_id' => $software, 'entities_id' => $entity,
+                        'serial' => $serial, 'number' => $number,
+                    ]]], 201)['id'];
+                $financial = new \Infocom();
+                $existing = $financial->getFromDBforDevice('SoftwareLicense', $license);
+                $input = ['itemtype' => 'SoftwareLicense', 'items_id' => $license,
+                    'value' => $value, 'buy_date' => $buy, 'use_date' => $use,
+                    'sink_type' => 1, 'sink_time' => 3, 'sink_coeff' => 2.0];
+                $params = ['verb' => $existing ? 'PUT' : 'POST', 'itemtype' => 'Infocom',
+                    'headers' => ['Session-Token' => $this->session_token], 'json' => ['input' => $input]];
+                if ($existing) {
+                    $params['id'] = $financial->getID();
+                    $params['json']['input']['id'] = $financial->getID();
+                }
+                $this->query($existing ? 'updateItems' : 'createItems', $params, $existing ? 200 : 201);
+            }
+            // 12.5 * 3 + 7.25 + 4.125 + 2.5; the fifth license is outside both date bounds.
+            $this->string($report())->startWith($totalPrefix(51.375));
+        } catch (\Throwable $error) {
+            $primary = $error;
+        } finally {
+            // Recover exact owned descendants even if an HTTP response failed before returning its ID.
+            try {
+                foreach ((new \Software())->find(['name' => $marker]) as $software) {
+                    foreach ((new \SoftwareLicense())->find(['softwares_id' => $software['id']]) as $license) {
+                        foreach ((new \Infocom())->find(['itemtype' => 'SoftwareLicense', 'items_id' => $license['id']]) as $financial) {
+                            try { $this->reservationHttpDelete('Infocom', (int)$financial['id']); }
+                            catch (\Throwable $error) { $cleanup[] = $error; }
+                        }
+                        try { $this->reservationHttpDelete('SoftwareLicense', (int)$license['id']); }
+                        catch (\Throwable $error) { $cleanup[] = $error; }
+                    }
+                    try { $this->reservationHttpDelete('Software', (int)$software['id']); }
+                    catch (\Throwable $error) { $cleanup[] = $error; }
+                }
+            } catch (\Throwable $error) {
+                $cleanup[] = $error;
+            }
+        }
+        foreach ($cleanup as $error) {
+            $primary = $primary === null ? $error : new \itsmng\Database\MutationCleanupFailure($primary, $error);
+        }
+        if ($primary !== null) { throw $primary; }
+    }
+
+    /** @tags api */
     public function testReservationCreateItemsReturnsCompletedBookings(): void
     {
         $this->withReservationHttpItems(function (array $items): void {
