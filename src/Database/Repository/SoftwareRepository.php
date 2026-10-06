@@ -19,6 +19,19 @@ final class SoftwareRepository
     {
     }
 
+    /** Raw names for software owners of already selected, authorized license rows. */
+    public function names(array $software): array
+    {
+        $names = [];
+        foreach (array_chunk(array_values(array_unique(array_map('intval', $software))), 250) as $ids) {
+            $rows = $this->em->createQueryBuilder()->select('s.id, s.name')->from(Entity\Software::class, 's')
+                ->where('s.id IN (:ids)')->setParameter('ids', $ids, \Doctrine\DBAL\ArrayParameterType::INTEGER)
+                ->getQuery()->getScalarResult();
+            $names += array_column($rows, 'name', 'id');
+        }
+        return $names;
+    }
+
     public function softwareForTransfer(int $entity, string $name, ?int $manufacturer): ?int
     {
         $query = $this->em->createQueryBuilder()->select('s.id AS id')->from(Entity\Software::class, 's')

@@ -373,7 +373,7 @@ class Document_Item extends CommonDBRelation
     **/
     public static function showForDocument(Document $doc)
     {
-        global $CFG_GLPI;
+        global $CFG_GLPI, $DB;
 
         $instID = $doc->fields['id'];
         if (!$doc->can($instID, READ)) {
@@ -498,6 +498,14 @@ class Document_Item extends CommonDBRelation
 
                 if ($itemtype == 'SoftwareLicense') {
                     $soft = new Software();
+                    $softwareName = null;
+                    $softwareIds = [];
+                    foreach ($iterator as $license) {
+                        $softwareIds[] = $license['softwares_id'];
+                    }
+                    $softwareNames = $softwareIds === [] ? []
+                        : (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))
+                            ->names($softwareIds);
                 }
 
                 foreach ($iterator as $data) {
@@ -523,11 +531,16 @@ class Document_Item extends CommonDBRelation
                     }
 
                     if ($itemtype == 'SoftwareLicense') {
-                        $soft->getFromDB($data['softwares_id']);
+                        if (array_key_exists($data['softwares_id'], $softwareNames)) {
+                            $softwareName = $softwareNames[$data['softwares_id']];
+                        } elseif ($soft->getFromDB($data['softwares_id'])) {
+                            // Retain the ordinary missing-owner read and last successful label.
+                            $softwareName = $soft->fields['name'];
+                        }
                         $data["name"] = sprintf(
                             __('%1$s - %2$s'),
                             $data["name"],
-                            $soft->fields['name']
+                            $softwareName
                         );
                     }
                     if ($item instanceof CommonDevice) {
