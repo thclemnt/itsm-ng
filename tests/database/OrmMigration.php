@@ -337,7 +337,6 @@ class OrmMigration extends \GLPITestCase
                 $connection->rollBack();
             }
         } else {
-            $original = $connection->fetchOne('SELECT GENERATION_EXPRESSION FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$table, 'items_id']);
             $comment = $schema->getTable($table)->getColumn('items_id')->getComment();
             $alter = static fn (string $expression): string => 'ALTER TABLE ' . $quote($table)
                 . ' MODIFY COLUMN items_id BIGINT GENERATED ALWAYS AS (' . $expression . ') STORED'
@@ -346,7 +345,9 @@ class OrmMigration extends \GLPITestCase
             try {
                 $this->array($inspect())->isIdenticalTo([$diagnostic]);
             } finally {
-                $connection->executeStatement($alter($original));
+                // The strict inspection above proved this current declaration matches.
+                // INFORMATION_SCHEMA may escape literal delimiters; its text is not DDL.
+                $connection->executeStatement($alter($policy['projection']));
             }
         }
         $this->array($inspect())->isEmpty();
