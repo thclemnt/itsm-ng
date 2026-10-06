@@ -632,7 +632,7 @@ class FieldUnicity extends CommonDropdown
                 $entities = getSonsOf('glpi_entities', $unicity->fields['entities_id']);
             }
             $results = (new \itsmng\Database\Repository\FieldUnicityRepository(\itsmng\Database\Orm::create($DB)))
-                ->duplicates($item->getTable(), $fields, $entities === null ? null : array_values($entities), $item->maybeTemplate());
+                ->duplicatesForItem($item, $fields, $entities === null ? null : array_values($entities));
 
             if (empty($results)) {
                 echo "<tr class='tab_bg_2'>";

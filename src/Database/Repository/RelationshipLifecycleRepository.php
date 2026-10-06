@@ -4,6 +4,8 @@
 
 namespace itsmng\Database\Repository;
 
+use Doctrine\DBAL\ArrayParameterType;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Mapping\ClassMetadata;
@@ -101,7 +103,7 @@ final class RelationshipLifecycleRepository
             ->setParameter('entities', array_map('intval', $entities) ?: [-1])->setMaxResults(1)->getQuery()->getScalarResult() !== [];
     }
 
-    private function linkOutside(ClassMetadata $metadata, QueryBuilder $query, string $target, array $entities, callable $resolveType): bool
+    private function linkOutside(ClassMetadata $metadata, QueryBuilder $query, ?string $target, array $entities, callable $resolveType): bool
     {
         if (($owner = $this->owner($metadata)) !== null) {
             if ($this->outside(clone $query, 'r', $owner, $entities)) {
@@ -146,15 +148,21 @@ final class RelationshipLifecycleRepository
         return false;
     }
 
-    /** Plugin declarations require mapped child records and real mapped peer ends. */
-    public function hasDeclaredOutsideEntities(string $table, array $links, int $id, string $itemtype, array $entities, callable $resolveType): bool
+    /** Core records retain ORM policies; declared plugin records use their actual model and schema. */
+    public function hasDeclaredOutsideEntities(string $table, array $relations, int $id, string $itemtype, array $entities, callable $resolveType): bool
     {
-        $target = EntityRegistry::tables()[$table] ?? throw new \InvalidArgumentException('Unmapped lifecycle target');
-        foreach ($links as $child => $columns) {
+        $target = $this->lifecycleTarget($table, $itemtype);
+        foreach ($relations[$table] ?? [] as $child => $columns) {
             if (str_starts_with($child, '_')) {
                 continue;
             }
-            $class = EntityRegistry::tables()[$child] ?? throw new \InvalidArgumentException('Plugin lifecycle requires a registered entity: ' . $child);
+            $class = EntityRegistry::tables()[$child] ?? null;
+            if ($class === null) {
+                if ($this->pluginLinkOutside($table, $child, (array)$columns, $relations, $id, $itemtype, $entities)) {
+                    return true;
+                }
+                continue;
+            }
             $metadata = $this->em->getClassMetadata($class);
             $columns = (array)$columns;
             $predicates = in_array('itemtype', $columns, true) ? [['items_id' => $id, 'itemtype' => $itemtype]]
@@ -170,11 +178,138 @@ final class RelationshipLifecycleRepository
         return false;
     }
 
+    private function lifecycleModel(string $table): \CommonDBTM
+    {
+        if (!preg_match('/^glpi_[a-z0-9_]+$/D', $table)) {
+            throw new \InvalidArgumentException('Invalid declared lifecycle table');
+        }
+        $item = getItemForItemtype(getItemTypeForTable($table));
+        if (!$item instanceof \CommonDBTM || $item->getTable() !== $table) {
+            throw new \InvalidArgumentException('Declared lifecycle table requires its actual model: ' . $table);
+        }
+        if (!isset(EntityRegistry::tables()[$table])) {
+            $plugin = isPluginItemType($item->getType());
+            if (!$plugin || !str_starts_with($table, 'glpi_plugin_' . strtolower($plugin['plugin']) . '_')
+                || !in_array(strtolower($plugin['plugin']), array_map('strtolower', \Plugin::getPlugins()), true)) {
+                throw new \InvalidArgumentException('Unmapped lifecycle table must belong to an active plugin model');
+            }
+        }
+        return $item;
+    }
+
+    private function lifecycleTarget(string $table, string $itemtype): ?string
+    {
+        $mapped = EntityRegistry::tables()[$table] ?? null;
+        if ($mapped === null) {
+            $model = $this->lifecycleModel($table);
+            if ($model->getType() !== $itemtype || !$model->isEntityAssign()) {
+                throw new \InvalidArgumentException('Plugin recursion requires its actual entity-assigned model');
+            }
+        }
+        return $mapped;
+    }
+
+    /** Inspect only declared plugin links; physical identifiers must belong to real model columns. */
+    private function pluginLinkOutside(string $target, string $child, array $columns, array $relations, int $id, string $itemtype, array $entities): bool
+    {
+        $connection = $this->em->getConnection();
+        $schemas = [];
+        $models = [];
+        $model = function (string $table) use (&$models): \CommonDBTM {
+            return $models[$table] ??= $this->lifecycleModel($table);
+        };
+        $column = static function (string $table, string $name, bool $text = false) use ($connection, &$schemas): string {
+            $schemas[$table] ??= $connection->createSchemaManager()->introspectTable($table);
+            if (!preg_match('/^[a-z][a-z0-9_]*$/D', $name) || !$schemas[$table]->hasColumn($name)
+                || !in_array(
+                    Type::lookupName($schemas[$table]->getColumn($name)->getType()),
+                    $text ? [Types::STRING, Types::ASCII_STRING, Types::TEXT] : [Types::SMALLINT, Types::INTEGER, Types::BIGINT],
+                    true
+                )) {
+                throw new \InvalidArgumentException('Invalid declared lifecycle column: ' . $table . '.' . $name);
+            }
+            return $connection->quoteIdentifier($name);
+        };
+        $item = $model($child);
+        $predicates = in_array('itemtype', $columns, true) ? [['items_id' => $id, 'itemtype' => $itemtype]]
+            : array_map(static fn (string $name): array => [$name => $id], $columns);
+        $relations = array_merge_recursive(EntityRegistry::lifecycleRelations(), $relations);
+        foreach ($predicates as $criteria) {
+            $query = $connection->createQueryBuilder()->select('1')->from($connection->quoteIdentifier($child), 'r')->setMaxResults(1);
+            foreach ($criteria as $name => $value) {
+                $text = is_string($value);
+                $query->andWhere('r.' . $column($child, $name, $text) . ' = :' . $name)
+                    ->setParameter($name, $value, $text ? Types::STRING : Types::INTEGER);
+            }
+            $outside = static function ($selection, string $alias, string $table) use ($column, $entities): bool {
+                return $selection->andWhere($alias . '.' . $column($table, 'entities_id') . ' NOT IN (:allowed_entities)')
+                    ->setParameter('allowed_entities', array_map('intval', $entities) ?: [-1], ArrayParameterType::INTEGER)
+                    ->executeQuery()->fetchOne() !== false;
+            };
+            if ($item->isEntityAssign()) {
+                if ($outside(clone $query, 'r', $child)) {
+                    return true;
+                }
+                continue;
+            }
+            foreach ($relations as $peerTable => $children) {
+                if ($peerTable === $target || !isset($children[$child])) {
+                    continue;
+                }
+                if ($peerTable === '_virtual_device') {
+                    $binding = array_values((array)$children[$child]);
+                    if (count($binding) !== 2) {
+                        throw new \InvalidArgumentException('Invalid declared virtual lifecycle binding');
+                    }
+                    [$reference, $discriminator] = $binding;
+                    $field = $column($child, $discriminator, true);
+                    $types = (clone $query)->select('DISTINCT r.' . $field)->setMaxResults(null)->executeQuery()->fetchFirstColumn();
+                    foreach ($types as $type) {
+                        $peer = getItemForItemtype($type);
+                        if (!$peer instanceof \CommonDBTM) {
+                            throw new \InvalidArgumentException('Unknown declared virtual lifecycle model');
+                        }
+                        $peer = $model($peer->getTable());
+                        if ($peer->isEntityAssign() && $outside((clone $query)->innerJoin(
+                            'r',
+                            $connection->quoteIdentifier($peer->getTable()),
+                            'peer',
+                            'peer.' . $column($peer->getTable(), $peer->getIndexName()) . ' = r.' . $column($child, $reference)
+                        )
+                            ->andWhere('r.' . $field . ' = :peer_type')->setParameter('peer_type', $type, Types::STRING), 'peer', $peer->getTable())) {
+                            return true;
+                        }
+                    }
+                } elseif (!str_starts_with($peerTable, '_') && $model($peerTable)->isEntityAssign()) {
+                    foreach ((array)$children[$child] as $reference) {
+                        if ($outside((clone $query)->innerJoin(
+                            'r',
+                            $connection->quoteIdentifier($peerTable),
+                            'peer',
+                            'peer.' . $column($peerTable, $model($peerTable)->getIndexName()) . ' = r.' . $column($child, $reference)
+                        ), 'peer', $peerTable)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     /** Resolve dynamic item types through their registered model; never interpolate database strings as DQL. */
     public function hasOutsideEntities(string $table, int $physicalId, int $logicalId, string $itemtype, array $entities, callable $resolveType): bool
     {
-        $target = EntityRegistry::tables()[$table] ?? throw new \InvalidArgumentException('Unmapped lifecycle target');
-        foreach ($this->incoming($table) as [$metadata, $property, $column, $discriminator]) {
+        $target = $this->lifecycleTarget($table, $itemtype);
+        $pluginTarget = $target === null ? $this->lifecycleModel($table) : null;
+        // A tree model owns its child relation even without a plugin hook declaration.
+        if ($pluginTarget instanceof \CommonTreeDropdown
+            && $this->pluginLinkOutside($table, $table, [$pluginTarget->getForeignKeyField()], [], $physicalId, $itemtype, $entities)) {
+            return true;
+        }
+        // Core association metadata cannot declare an unknown plugin target. Its
+        // incoming links are checked through the active plugin declarations below.
+        foreach ($target === null ? [] : $this->incoming($table) as [$metadata, $property, $column, $discriminator]) {
             $query = $this->selection($metadata, $property, $discriminator, $physicalId, $logicalId, $itemtype);
             if ($this->linkOutside($metadata, $query, $target, $entities, $resolveType)) {
                 return true;

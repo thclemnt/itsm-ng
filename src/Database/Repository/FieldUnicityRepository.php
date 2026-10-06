@@ -5,6 +5,7 @@
 namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
@@ -56,7 +57,78 @@ final class FieldUnicityRepository
             ->setParameter('plugin', '%Plugin' . $plugin . '%')->getQuery()->execute();
     }
 
-    /** Group only mapped fields; SQL expressions and unknown plugin tables fail closed. */
+    /** Registered plugin models retain their own schema; core records keep their ORM query. */
+    public function duplicatesForItem(\CommonDBTM $item, array $fields, ?array $entities): array
+    {
+        if (!$fields || $entities === []) {
+            return [];
+        }
+        $table = $item->getTable();
+        if (isset(EntityRegistry::tables()[$table])) {
+            return $this->duplicates($table, $fields, $entities, $item->maybeTemplate());
+        }
+        $plugin = \isPluginItemType($item->getType());
+        if (!$plugin || !in_array($item->getType(), $GLOBALS['CFG_GLPI']['unicity_types'] ?? [], true)
+            || !preg_match('/^glpi_plugin_[a-z0-9_]+$/D', $table)
+            || !str_starts_with($table, 'glpi_plugin_' . strtolower($plugin['plugin']) . '_')) {
+            throw new \InvalidArgumentException('Uniqueness requires a mapped record or a registered plugin model.');
+        }
+        $scoped = $entities !== null && $item->isEntityAssign();
+        $templates = $item->maybeTemplate();
+        $connection = $this->em->getConnection();
+        $schema = $connection->createSchemaManager()->introspectTable($table);
+        $integers = [Types::SMALLINT, Types::INTEGER, Types::BIGINT];
+        $strings = [Types::STRING, Types::ASCII_STRING, Types::TEXT];
+        $groupable = [...$integers, ...$strings, Types::BOOLEAN, Types::DECIMAL, Types::FLOAT,
+            Types::DATE_MUTABLE, Types::DATE_IMMUTABLE, Types::TIME_MUTABLE, Types::TIME_IMMUTABLE,
+            Types::DATETIME_MUTABLE, Types::DATETIME_IMMUTABLE, Types::DATETIMETZ_MUTABLE, Types::DATETIMETZ_IMMUTABLE];
+        $types = [];
+        foreach (array_unique([...$fields, ...($scoped ? ['entities_id'] : []), ...($templates ? ['is_template'] : [])]) as $field) {
+            if (!is_string($field) || !preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/D', $field) || !$schema->hasColumn($field)) {
+                throw new \InvalidArgumentException('Plugin uniqueness requires existing column names.');
+            }
+            $types[$field] = Type::lookupName($schema->getColumn($field)->getType());
+            if (!in_array($types[$field], $groupable, true)) {
+                throw new \InvalidArgumentException('Plugin uniqueness requires scalar columns.');
+            }
+        }
+        if (($scoped && !in_array($types['entities_id'], $integers, true))
+            || ($templates && !in_array($types['is_template'], [...$integers, Types::BOOLEAN], true))) {
+            throw new \InvalidArgumentException('Plugin uniqueness requires integer entity and boolean or integer template columns.');
+        }
+        $platform = $connection->getDatabasePlatform();
+        $query = $connection->createQueryBuilder()->select('COUNT(*) AS cpt')
+            ->from($platform->quoteIdentifier($table))->having('COUNT(*) > 1')->orderBy('cpt', 'DESC');
+        foreach (array_values($fields) as $index => $field) {
+            $column = $platform->quoteIdentifier($field);
+            $query->addSelect($column)->addGroupBy($column)->addOrderBy($column)->andWhere($column . ' IS NOT NULL');
+            if (\getTableNameForForeignKeyField($field) !== '') {
+                // Unmapped plugin references retain their legacy empty-zero sentinel.
+                if (!in_array($types[$field], [...$integers, ...$strings], true)) {
+                    throw new \InvalidArgumentException('Plugin uniqueness references require integer or text columns.');
+                }
+                $query->andWhere($column . ' <> :empty_' . $index)
+                    ->setParameter('empty_' . $index, in_array($types[$field], $strings, true) ? '0' : 0, $types[$field]);
+            } elseif (in_array($types[$field], $strings, true)) {
+                $query->andWhere($column . ' <> :empty_' . $index)->setParameter('empty_' . $index, '', $types[$field]);
+            }
+        }
+        if ($scoped) {
+            $query->andWhere($platform->quoteIdentifier('entities_id') . ' IN (:entities)')
+                ->setParameter('entities', array_map('intval', $entities), \Doctrine\DBAL\ArrayParameterType::INTEGER);
+        }
+        if ($templates) {
+            $query->andWhere($platform->quoteIdentifier('is_template') . ' = :template')
+                ->setParameter('template', $types['is_template'] === Types::BOOLEAN ? false : 0, $types['is_template']);
+        }
+        $rows = $query->executeQuery()->fetchAllAssociative();
+        foreach ($rows as &$row) {
+            $row['cpt'] = (int)$row['cpt'];
+        }
+        return $rows;
+    }
+
+    /** Group only mapped fields; SQL expressions and unknown tables fail closed. */
     public function duplicates(string $table, array $fields, ?array $entities, bool $excludeTemplates): array
     {
         if (!$fields || $entities === []) {

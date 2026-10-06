@@ -2958,7 +2958,7 @@ class CommonDBTM extends CommonGLPI
                 ?? throw new InvalidArgumentException('Lifecycle item type requires a registered entity: ' . $type);
         };
         if ($lifecycle->hasOutsideEntities($this->getTable(), (int)$ID, (int)$this->getID(), $this->getType(), $entities, $resolveType)
-            || $lifecycle->hasDeclaredOutsideEntities($this->getTable(), Plugin::getDatabaseRelations()[$this->getTable()] ?? [], (int)$this->getID(), $this->getType(), $entities, $resolveType)) {
+            || $lifecycle->hasDeclaredOutsideEntities($this->getTable(), Plugin::getDatabaseRelations(), (int)$this->getID(), $this->getType(), $entities, $resolveType)) {
             return false;
         }
 
