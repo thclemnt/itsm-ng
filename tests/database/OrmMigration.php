@@ -249,6 +249,8 @@ class OrmMigration extends \GLPITestCase
             $this->variable($sensorRows[2]['peripherals_id'])->isNull();
             $this->boolean(Ledger::state($connection, \itsmng\Database\Migration\SensorSubjects::VERSION)['complete'])->isTrue();
             $this->array(Ledger::state($connection, \itsmng\Database\Migration\SensorSubjects\Definition::PHASE)['policy'])->hasKeys(['projection', 'check']);
+            $this->assertTerminalSensorVerification($connection);
+            $this->assertTerminalReleaseOrder($connection);
             $after = $this->rowBags($connection);
             [$status, $output] = $this->console($directory, ['db:update']);
             $this->integer($status)->isIdenticalTo(0, $output);
@@ -267,6 +269,93 @@ class OrmMigration extends \GLPITestCase
             }
             rmdir($directory);
         }
+    }
+
+    private function assertTerminalSensorVerification(Connection $connection): void
+    {
+        $version = \itsmng\Database\Migration\SensorSubjects::VERSION;
+        $phase = \itsmng\Database\Migration\SensorSubjects\Definition::PHASE;
+        $receipt = Ledger::state($connection, $version);
+        $proof = Ledger::state($connection, $phase);
+        $table = 'glpi_items_devicesensors';
+        $constraint = $table . '_typed_item_kind';
+        $platform = $connection->getDatabasePlatform();
+        $drop = 'ALTER TABLE ' . $table . ' DROP '
+            . ($platform instanceof \Doctrine\DBAL\Platforms\MySQLPlatform ? 'CHECK ' : 'CONSTRAINT ') . $constraint;
+        $policy = static fn () => \itsmng\Database\Migration\V220\ExactDiscriminators::nativePolicy(
+            $connection, $table, ['column' => 'items_id', 'constraint' => $constraint]
+        );
+        foreach ([['complete' => true], ['complete' => false, 'applied' => true]] as $state) {
+            Ledger::save($connection, $version, $state);
+            foreach (['proof', 'missing-check', 'changed-check'] as $damage) {
+                if ($damage === 'proof') {
+                    $connection->delete(Ledger::TABLE, ['version' => $phase]);
+                    $diagnostic = 'Experimental typed-subject receipt lacks retained post-DDL native policy: ' . $table
+                        . '. Restore the genuine 2.1.3 source and apply the supported transition; no receipt or data was rewritten.';
+                } else {
+                    $connection->executeStatement($drop);
+                    if ($damage === 'changed-check') {
+                        $connection->executeStatement('ALTER TABLE ' . $table . ' ADD CONSTRAINT ' . $constraint . ' CHECK (1 = 1)');
+                    }
+                    $diagnostic = $damage === 'missing-check'
+                        ? 'Frozen typed subject conversion did not converge: ' . $table
+                        : 'Frozen subject native policy changed after authoritative DDL: ' . $table;
+                }
+                $before = Ledger::states($connection);
+                $native = $policy();
+                $published = false;
+                $this->exception(static function () use ($connection, &$published): void {
+                    (new History())->upgrade($connection, onComplete: static function () use (&$published): void {
+                        $published = true;
+                    });
+                })->isInstanceOf(\RuntimeException::class)->hasMessage($diagnostic);
+                $this->boolean($published)->isFalse();
+                $this->array(Ledger::states($connection))->isIdenticalTo($before, 'Neither predecessor nor terminal receipts are rewritten');
+                $this->array($policy())->isIdenticalTo($native, 'Failed verification does not repair native policy');
+                if ($damage === 'proof') {
+                    Ledger::save($connection, $phase, $proof);
+                } else {
+                    if ($damage === 'changed-check') {
+                        $connection->executeStatement($drop);
+                    }
+                    $connection->executeStatement(\itsmng\Database\Migration\SensorSubjects\Definition::checkSql($table, $platform)
+                        . ($platform instanceof \Doctrine\DBAL\Platforms\MySQLPlatform ? ' ENFORCED' : ''));
+                }
+                (new \itsmng\Database\Migration\SensorSubjects())->verify($connection);
+            }
+        }
+        Ledger::save($connection, $version, $receipt);
+    }
+
+    private function assertTerminalReleaseOrder(Connection $connection): void
+    {
+        $calls = new \ArrayObject();
+        $release = static fn (string $name) => new class ($name, $calls) implements \itsmng\Database\Migration\ReleaseMigration {
+            public function __construct(private string $name, private \ArrayObject $calls) {}
+            public function version(): string { return $this->name; }
+            public function plan(Connection $connection): array { throw new \LogicException('Replay cannot preview a release'); }
+            public function apply(Connection $connection, ?callable $progress = null): void { $this->calls[] = $this->name . '.apply'; }
+            public function verify(Connection $connection): void { $this->calls[] = $this->name . '.verify'; }
+        };
+        $history = new History([$release('fixture-predecessor'), $release('fixture-terminal')]);
+        foreach ([null, ['complete' => false, 'applied' => true], ['complete' => true]] as $state) {
+            Ledger::save($connection, 'fixture-predecessor', $state === null ? ['complete' => false, 'applied' => true] : ['complete' => true]);
+            if ($state !== null) {
+                Ledger::save($connection, 'fixture-terminal', $state);
+            }
+            $calls->exchangeArray([]);
+            $history->upgrade($connection, onComplete: static function () use ($calls): void { $calls[] = 'publish'; });
+            $this->array($calls->getArrayCopy())->isIdenticalTo($state === null
+                ? ['fixture-terminal.apply', 'fixture-terminal.verify', 'publish']
+                : ['fixture-terminal.verify', 'publish']);
+        }
+        $connection->delete(Ledger::TABLE, ['version' => 'fixture-predecessor']);
+        $connection->delete(Ledger::TABLE, ['version' => 'fixture-terminal']);
+        $before = Ledger::states($connection);
+        $calls->exchangeArray([]);
+        (new History([]))->upgrade($connection, onComplete: static function () use ($calls): void { $calls[] = 'publish'; });
+        $this->array($calls->getArrayCopy())->isIdenticalTo(['publish']);
+        $this->array(Ledger::states($connection))->isIdenticalTo($before);
     }
 
     private function rowBags(Connection $connection): array

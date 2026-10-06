@@ -107,9 +107,15 @@ final class History
     {
         CheckConstraintSupport::assertSupported($connection);
         $states = Ledger::states($connection);
-        foreach ($this->migrations as $migration) {
+        $terminal = array_key_last($this->migrations);
+        foreach ($this->migrations as $position => $migration) {
             $version = $migration->version();
             if (self::complete($version, $states) || ($states[$version]['applied'] ?? false) === true) {
+                // A receipt cannot replace the current owner's native proof.
+                // Earlier owners may have been superseded by later partial DDL.
+                if ($position === $terminal) {
+                    $migration->verify($connection);
+                }
                 continue;
             }
             $migration->apply($connection, $progress);
