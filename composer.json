@@ -136,7 +136,7 @@
                 "source": {
                     "type": "git",
                     "url": "https://github.com/EsupPortail/phpCAS",
-                    "reference": "master"
+                    "reference": "21f24f48b4ebcf1eaf80ca33c4164d1bf6294ec4"
                 }
             }
         }
