@@ -21,6 +21,23 @@ final class PlanningRepository
     {
     }
 
+    /** Planning selectors need only labels, with exact entity and optional membership scope. */
+    public function groupChoices(int $entity, ?array $groups = null): array
+    {
+        if ($groups === []) {
+            return [];
+        }
+        $query = $this->em->createQueryBuilder()->select('r.id, r.name')->from(\itsmng\Database\Entity\Group::class, 'r');
+        $criteria = ['entities_id' => $entity];
+        if ($groups !== null) {
+            $criteria['id'] = $groups;
+        }
+        $compiler = new RecordCriteria($query, $this->em->getClassMetadata(\itsmng\Database\Entity\Group::class));
+        $query->where($compiler->where($criteria));
+        $compiler->order(['name', 'id']);
+        return $query->getQuery()->getArrayResult();
+    }
+
     /** Select events once, including events with no category, with typed date and actor predicates. */
     public function externalEvents(array $criteria): array
     {

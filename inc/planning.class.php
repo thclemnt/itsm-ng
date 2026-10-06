@@ -1207,9 +1207,11 @@ class Planning extends CommonGLPI
      */
     public static function showAddGroupUsersForm()
     {
+        global $DB;
         echo Group::getTypeName(1) . " : <br>";
 
-        $groups = (new Group())->find(['entities_id' => $_SESSION['glpiactive_entity']], ['name', 'id']);
+        $groups = (new \itsmng\Database\Repository\PlanningRepository(\itsmng\Database\Orm::create($DB)))
+            ->groupChoices((int)$_SESSION['glpiactive_entity']);
 
         echo "<select name='groups_id' id='dropdown_groups_id'>";
         echo "<option value='0'>-----</option>";
@@ -1309,15 +1311,14 @@ class Planning extends CommonGLPI
      */
     public static function showAddGroupForm()
     {
+        global $DB;
         echo Group::getTypeName(1) . " : <br>";
 
-        $where_condition = [
-            'entities_id' => $_SESSION['glpiactive_entity']
-        ];
+        $memberships = null;
 
         if (!Session::haveRight('planning', self::READALL)) {
             if (isset($_SESSION['glpigroups']) && is_array($_SESSION['glpigroups']) && !empty($_SESSION['glpigroups'])) {
-                $where_condition['id'] = $_SESSION['glpigroups'];
+                $memberships = $_SESSION['glpigroups'];
             } else {
                 echo "<select name='groups_id' id='dropdown_groups_id'>";
                 echo "<option value='0'>-----</option>";
@@ -1329,7 +1330,8 @@ class Planning extends CommonGLPI
             }
         }
 
-        $groups = (new Group())->find($where_condition, ['name', 'id']);
+        $groups = (new \itsmng\Database\Repository\PlanningRepository(\itsmng\Database\Orm::create($DB)))
+            ->groupChoices((int)$_SESSION['glpiactive_entity'], $memberships);
 
         echo "<select name='groups_id' id='dropdown_groups_id'>";
         echo "<option value='0'>-----</option>";

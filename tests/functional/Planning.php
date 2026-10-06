@@ -37,6 +37,85 @@ namespace tests\units;
 
 class Planning extends \DbTestCase
 {
+    public function testGroupChoiceFormsKeepExactScopeAndFreshLabelsWithoutHydration(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $manager = null;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $parent = (int)$_SESSION['glpiactive_entity'];
+            $scope = $this->createItem(\Entity::class, ['name' => 'Planning choices ' . $this->getUniqueString(), 'entities_id' => $parent]);
+            $child = $this->createItem(\Entity::class, ['name' => 'Nested choices', 'entities_id' => (int)$scope->getID()]);
+            $groups = [];
+            foreach (['Beta', 'Alpha first', 'Alpha second'] as $name) {
+                $groups[] = $this->createItem(\Group::class, ['name' => $name, 'entities_id' => (int)$scope->getID()]);
+            }
+            $inherited = $this->createItem(\Group::class, ['name' => 'Recursive parent', 'entities_id' => $parent, 'is_recursive' => 1]);
+            $nested = $this->createItem(\Group::class, ['name' => 'Nested group', 'entities_id' => (int)$child->getID()]);
+            foreach ([$groups[1], $groups[2]] as $group) {
+                $this->boolean($DB->update('glpi_groups', ['name' => 'Alpha'], ['id' => $group->getID()]))->isTrue();
+            }
+            $this->setEntity((int)$scope->getID(), true);
+            $expected = [
+                ['id' => (int)$groups[1]->getID(), 'name' => 'Alpha'],
+                ['id' => (int)$groups[2]->getID(), 'name' => 'Alpha'],
+                ['id' => (int)$groups[0]->getID(), 'name' => 'Beta'],
+            ];
+            $manager = \itsmng\Database\Orm::create($DB);
+            $repository = new \itsmng\Database\Repository\PlanningRepository($manager);
+            $loads = new class {
+                public int $count = 0;
+                public function postLoad(): void { ++$this->count; }
+            };
+            $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+            $this->array($repository->groupChoices((int)$scope->getID()))->isIdenticalTo($expected);
+            $this->array($repository->groupChoices((int)$scope->getID(), []))->isEmpty();
+            $this->integer($loads->count)->isIdenticalTo(0);
+            $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+            $manager->find(\itsmng\Database\Entity\Group::class, (int)$groups[0]->getID());
+            $this->integer($loads->count)->isGreaterThan(0);
+
+            $options = static function (callable $render): array {
+                ob_start();
+                try {
+                    $render();
+                    $html = ob_get_contents();
+                } finally {
+                    ob_end_clean();
+                }
+                preg_match_all("/<option value='([0-9]+)'>(.*?)<\\/option>/s", $html, $matches, PREG_SET_ORDER);
+                return array_map(static fn (array $match): array => ['id' => (int)$match[1], 'name' => $match[2]], $matches);
+            };
+            $empty = ['id' => 0, 'name' => '-----'];
+            $_SESSION['glpiactiveprofile']['planning'] = \Planning::READALL;
+            $_SESSION['glpigroups'] = [];
+            $this->array($options([\Planning::class, 'showAddGroupForm']))->isIdenticalTo([$empty, ...$expected]);
+            $this->array($options([\Planning::class, 'showAddGroupUsersForm']))->isIdenticalTo([$empty, ...$expected]);
+            $_SESSION['glpiactiveprofile']['planning'] = \Planning::READGROUP;
+            $_SESSION['glpigroups'] = [$groups[0]->getID(), $inherited->getID(), $nested->getID()];
+            $this->array($options([\Planning::class, 'showAddGroupForm']))->isIdenticalTo([$empty, $expected[2]]);
+            $this->array($options([\Planning::class, 'showAddGroupUsersForm']))->isIdenticalTo([$empty, ...$expected]);
+            $_SESSION['glpigroups'] = [];
+            $this->array($options([\Planning::class, 'showAddGroupForm']))->isIdenticalTo([$empty]);
+
+            // Reusing the repository and rendering again must observe writes,
+            // even with the same Group already managed by the caller's manager.
+            $_SESSION['glpigroups'] = [$groups[0]->getID()];
+            foreach (['0', '', null, 'After write'] as $name) {
+                $this->boolean($DB->update('glpi_groups', ['name' => $name], ['id' => $groups[0]->getID()]))->isTrue();
+                $this->array($repository->groupChoices((int)$scope->getID(), $_SESSION['glpigroups']))
+                    ->isIdenticalTo([['id' => (int)$groups[0]->getID(), 'name' => $name]]);
+                $this->array($options([\Planning::class, 'showAddGroupForm']))
+                    ->isIdenticalTo([$empty, ['id' => (int)$groups[0]->getID(), 'name' => (string)$name]]);
+            }
+        } finally {
+            $_SESSION = $session;
+            $manager?->clear();
+        }
+    }
+
     public function testFilterExportsUseFreshSessionUserTokensAndLegacyIssuance(): void
     {
         global $DB, $CFG_GLPI;
