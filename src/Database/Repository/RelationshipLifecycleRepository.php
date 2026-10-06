@@ -16,7 +16,6 @@ use itsmng\Database\Mapping\ApplicationManaged;
 use itsmng\Database\Mapping\DiscriminatedBy;
 use itsmng\Database\Mapping\PolymorphicReference;
 use itsmng\Database\Mapping\ReferenceKind;
-use itsmng\Database\Mapping\VirtualAssetLink;
 use itsmng\Database\RecordCriteria;
 
 /** Generic lifecycle selections are derived from owning properties, not column-name guesses. */
@@ -103,7 +102,7 @@ final class RelationshipLifecycleRepository
             ->setParameter('entities', array_map('intval', $entities) ?: [-1])->setMaxResults(1)->getQuery()->getScalarResult() !== [];
     }
 
-    private function linkOutside(ClassMetadata $metadata, QueryBuilder $query, ?string $target, array $entities, callable $resolveType): bool
+    private function linkOutside(ClassMetadata $metadata, QueryBuilder $query, ?string $target, array $entities): bool
     {
         if (($owner = $this->owner($metadata)) !== null) {
             if ($this->outside(clone $query, 'r', $owner, $entities)) {
@@ -123,33 +122,11 @@ final class RelationshipLifecycleRepository
                 return true;
             }
         }
-        foreach ((new \ReflectionClass($metadata->name))->getProperties() as $asset) {
-            foreach ($asset->getAttributes(VirtualAssetLink::class) as $attribute) {
-                $binding = $attribute->newInstance();
-                $types = (clone $query)->select('DISTINCT r.' . $binding->discriminator . ' AS itemtype')->getQuery()->getScalarResult();
-                foreach ($types as $row) {
-                    $class = $resolveType($row['itemtype']);
-                    if ($class === null) {
-                        continue;
-                    }
-                    $peerOwner = $this->owner($this->em->getClassMetadata($class));
-                    if ($peerOwner !== null && $this->outside((clone $query)->innerJoin(
-                        $class,
-                        'peer',
-                        'WITH',
-                        'peer.id = r.' . $asset->name . ' AND r.' . $binding->discriminator . ' = :peer_type'
-                    )
-                        ->setParameter('peer_type', $row['itemtype'], Types::STRING), 'peer', $peerOwner, $entities)) {
-                        return true;
-                    }
-                }
-            }
-        }
         return false;
     }
 
     /** Core records retain ORM policies; declared plugin records use their actual model and schema. */
-    public function hasDeclaredOutsideEntities(string $table, array $relations, int $id, string $itemtype, array $entities, callable $resolveType): bool
+    public function hasDeclaredOutsideEntities(string $table, array $relations, int $id, string $itemtype, array $entities): bool
     {
         $target = $this->lifecycleTarget($table, $itemtype);
         foreach ($relations[$table] ?? [] as $child => $columns) {
@@ -170,7 +147,7 @@ final class RelationshipLifecycleRepository
             foreach ($predicates as $criteria) {
                 $query = $this->em->createQueryBuilder()->from($class, 'r');
                 $query->where((new RecordCriteria($query, $metadata))->where($criteria));
-                if ($this->linkOutside($metadata, $query, $target, $entities, $resolveType)) {
+                if ($this->linkOutside($metadata, $query, $target, $entities)) {
                     return true;
                 }
             }
@@ -297,8 +274,8 @@ final class RelationshipLifecycleRepository
         return false;
     }
 
-    /** Resolve dynamic item types through their registered model; never interpolate database strings as DQL. */
-    public function hasOutsideEntities(string $table, int $physicalId, int $logicalId, string $itemtype, array $entities, callable $resolveType): bool
+    /** Check core owners, plugin tree children and attached document ownership. */
+    public function hasOutsideEntities(string $table, int $physicalId, int $logicalId, string $itemtype, array $entities): bool
     {
         $target = $this->lifecycleTarget($table, $itemtype);
         $pluginTarget = $target === null ? $this->lifecycleModel($table) : null;
@@ -311,7 +288,7 @@ final class RelationshipLifecycleRepository
         // incoming links are checked through the active plugin declarations below.
         foreach ($target === null ? [] : $this->incoming($table) as [$metadata, $property, $column, $discriminator]) {
             $query = $this->selection($metadata, $property, $discriminator, $physicalId, $logicalId, $itemtype);
-            if ($this->linkOutside($metadata, $query, $target, $entities, $resolveType)) {
+            if ($this->linkOutside($metadata, $query, $target, $entities)) {
                 return true;
             }
         }

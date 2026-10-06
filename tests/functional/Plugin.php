@@ -350,7 +350,7 @@ class Plugin extends DbTestCase
             $this->exception(static fn () => $pluginTarget->canUnrecurs())->isInstanceOf(\InvalidArgumentException::class);
             $plugins->setValue(null, ['recursion']);
             $repository = new \itsmng\Database\Repository\RelationshipLifecycleRepository($manager);
-            $this->exception(static fn () => $repository->hasOutsideEntities($owner, 2, 2, \Computer::class, [$source], static fn () => null))
+            $this->exception(static fn () => $repository->hasOutsideEntities($owner, 2, 2, \Computer::class, [$source]))
                 ->isInstanceOf(\InvalidArgumentException::class);
             $frame->assertActive();
         } catch (\Throwable $error) {

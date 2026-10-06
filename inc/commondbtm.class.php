@@ -2949,16 +2949,8 @@ class CommonDBTM extends CommonGLPI
         $entities = getAncestorsOf('glpi_entities', $this->fields['entities_id']);
         $entities[] = $this->fields['entities_id'];
         $lifecycle = new \itsmng\Database\Repository\RelationshipLifecycleRepository(\itsmng\Database\Orm::create($DB));
-        $resolveType = static function (string $type): ?string {
-            $model = getItemForItemtype($type);
-            if (!$model || !$model->isEntityAssign()) {
-                return null;
-            }
-            return \itsmng\Database\EntityRegistry::tables()[$model->getTable()]
-                ?? throw new InvalidArgumentException('Lifecycle item type requires a registered entity: ' . $type);
-        };
-        if ($lifecycle->hasOutsideEntities($this->getTable(), (int)$ID, (int)$this->getID(), $this->getType(), $entities, $resolveType)
-            || $lifecycle->hasDeclaredOutsideEntities($this->getTable(), Plugin::getDatabaseRelations(), (int)$this->getID(), $this->getType(), $entities, $resolveType)) {
+        if ($lifecycle->hasOutsideEntities($this->getTable(), (int)$ID, (int)$this->getID(), $this->getType(), $entities)
+            || $lifecycle->hasDeclaredOutsideEntities($this->getTable(), Plugin::getDatabaseRelations(), (int)$this->getID(), $this->getType(), $entities)) {
             return false;
         }
 

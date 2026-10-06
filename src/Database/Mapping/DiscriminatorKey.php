@@ -121,23 +121,6 @@ final readonly class DiscriminatorKey
         return $metadata->getTableName() . '_' . $suffix;
     }
 
-    /** Existing required-only callers retain their explicit admission contract. */
-    public function configureRequiredTable(Table $table, AbstractPlatform $platform, ClassMetadata $metadata, string $property): void
-    {
-        if ($this->emptyValue !== null) {
-            throw new \LogicException('Required subject schema cannot use an optional identity');
-        }
-        $this->configureSubjectTable($table, $platform, $metadata, $property);
-    }
-
-    public function requiredCheckSql(AbstractPlatform $platform, ClassMetadata $metadata, string $property): string
-    {
-        if ($this->emptyValue !== null) {
-            throw new \LogicException('Required subject schema cannot use an optional identity');
-        }
-        return $this->subjectCheckSql($platform, $metadata, $property);
-    }
-
     /** Exact kinds are a property policy; MySQL text collations may fold case or spaces. */
     private function discriminatorSql(AbstractPlatform $platform, ClassMetadata $metadata, string $property): string
     {
