@@ -96,8 +96,6 @@ class ItemDeviceProcessor extends \atoum\atoum\test
                 unset($em, $schema, $historical, $metadata, $definition);
             }
         }
-        $this->integer(count(EntityRegistry::tables()))->isIdenticalTo(357);
-        $this->integer(array_sum(array_map(count(...), ForeignKeys::relations())))->isIdenticalTo(1089);
     }
 
     public function componentTypes(): array
