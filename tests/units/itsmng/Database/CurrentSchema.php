@@ -42,6 +42,41 @@ class CurrentSchema extends \atoum\atoum\test
         return new EntityManager(new DisconnectedSchemaConnection($platform), $configuration);
     }
 
+    public function testImportStorageAdmissionIncludesUnreferencedAuditTables(): void
+    {
+        foreach ([new MySQLPlatform(), new MariaDBPlatform(), new PostgreSQLPlatform()] as $platform) {
+            $connection = new \mock\Doctrine\DBAL\Connection([], (new DisconnectedSchemaConnection($platform))->getDriver());
+            $this->calling($connection)->getDatabasePlatform = $platform;
+            $queries = 0;
+            $engine = 'InnoDB';
+            $assertions = $this;
+            $this->calling($connection)->fetchAllAssociative = static function (string $sql) use ($assertions, &$queries, &$engine): array {
+                ++$queries;
+                $assertions->string($sql)->isIdenticalTo('SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()');
+                return [
+                    ['TABLE_NAME' => 'glpi_logs', 'ENGINE' => $engine],
+                    ['TABLE_NAME' => 'glpi_appliances', 'ENGINE' => 'innodb'],
+                    ['TABLE_NAME' => 'unowned_plugin_export', 'ENGINE' => 'MyISAM'],
+                ];
+            };
+            foreach (['Domains', 'Appliance'] as $aggregate) {
+                $engine = 'InnoDB';
+                \itsmng\Database\PluginImportMutation::assertTransactionalCore($connection, $aggregate);
+                foreach (['MyISAM', null] as $nontransactional) {
+                    $engine = $nontransactional;
+                    if ($platform instanceof PostgreSQLPlatform) {
+                        \itsmng\Database\PluginImportMutation::assertTransactionalCore($connection, $aggregate);
+                    } else {
+                        $this->exception(static fn () => \itsmng\Database\PluginImportMutation::assertTransactionalCore($connection, $aggregate))
+                            ->isInstanceOf(\RuntimeException::class)
+                            ->hasMessage($aggregate . ' lifecycle import requires transactional core tables: glpi_logs must use InnoDB; found ' . ($engine ?? 'no transactional engine') . '. Reconcile this table before importing; audit and hooks cannot roll back otherwise.');
+                    }
+                }
+            }
+            $this->integer($queries)->isIdenticalTo($platform instanceof PostgreSQLPlatform ? 0 : 6);
+        }
+    }
+
     public function ownedTableProvider(): array
     {
         return [

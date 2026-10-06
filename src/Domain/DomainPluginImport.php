@@ -10,6 +10,7 @@ use itsmng\Database\EntityRegistry;
 use itsmng\Database\Migration\History;
 use itsmng\Database\Migration\Ledger;
 use itsmng\Database\Orm;
+use itsmng\Database\PluginImportMutation;
 use itsmng\Database\SchemaCheck;
 use itsmng\Database\SequenceSynchronizer;
 
@@ -56,7 +57,7 @@ final class DomainPluginImport
                 $this->newBindings($em, $receipt);
                 return new DomainImportPlan($fingerprint, $receipt['counts'], alreadyImported: true, sourcePlugin: $sourcePlugin);
             }
-            $this->assertTransactionalCore();
+            PluginImportMutation::assertTransactionalCore($connection, 'Domains');
             $validation = new DomainImportValidation($em);
             $records = [];
             foreach ($snapshot->records() as [$model, $input]) {
@@ -112,9 +113,9 @@ final class DomainPluginImport
         global $CFG_GLPI;
         $hadInfocom = array_key_exists('auto_create_infocoms', $CFG_GLPI);
         $autoInfocom = $CFG_GLPI['auto_create_infocoms'] ?? null;
-        $session = $_SESSION;
+        $failure = null;
         try {
-            return $connection->transactional(function () use ($connection, $postgres, $progress, $autoInfocom): DomainImportPlan {
+            return PluginImportMutation::run($this->database, function (callable $assertActive, \itsmng\Database\LifecycleModelJournal $journal) use ($connection, $postgres, $progress, $autoInfocom): DomainImportPlan {
                 if ($postgres && !in_array($connection->fetchOne("SELECT pg_try_advisory_xact_lock(hashtext('itsmng_domains_import'))"), [true, 1, '1', 't'], true)) {
                     throw new \RuntimeException('Another Domains import is running.');
                 }
@@ -140,6 +141,7 @@ final class DomainPluginImport
                         // Normal configured automatic creation still runs for other Domains.
                         $GLOBALS['CFG_GLPI']['auto_create_infocoms'] = $record['class'] === Entity\Domain::class && isset($sourceFinancial[$record['values']['id']]) ? false : $autoInfocom;
                         $model = new $record['model']();
+                        $journal->remember($model);
                         $input = \Toolbox::addslashes_deep($record['input']);
                         foreach ($record['input'] as $field => $value) {
                             if ($value === 'NULL' || $value === 'null') {
@@ -148,7 +150,9 @@ final class DomainPluginImport
                         }
                         $input['_no_message'] = true;
                         $id = $record['values']['id'];
-                        if ($model->addWithAssignedIdentifier($id, $input) !== $id) {
+                        $created = $model->addWithAssignedIdentifier($id, $input);
+                        $assertActive();
+                        if ($created !== $id) {
                             throw new \RuntimeException('Domains lifecycle creation failed: ' . $record['table'] . '.' . $id);
                         }
                         if ($record['class'] === Entity\Domain::class && !isset($sourceFinancial[$id])) {
@@ -158,6 +162,7 @@ final class DomainPluginImport
                             }
                         }
                         $progress && $progress('created', $record['table'], $id);
+                        $assertActive();
                     }
                     (new DomainIdentityAdoption($em))->apply($plan->bindings);
                     (new DomainImportPolicy($em))->apply($plan->rights, $plan->policies);
@@ -166,11 +171,15 @@ final class DomainPluginImport
                 }
                 foreach ($plan->profiles as $profile) {
                     $model = new \Profile();
-                    if (!$model->update(['id' => $profile['id'], 'helpdesk_item_type' => \Toolbox::addslashes_deep(\exportArrayToDB($profile['types']))])) {
+                    $journal->remember($model);
+                    $updated = $model->update(['id' => $profile['id'], 'helpdesk_item_type' => \Toolbox::addslashes_deep(\exportArrayToDB($profile['types']))]);
+                    $assertActive();
+                    if (!$updated) {
                         throw new \RuntimeException('Domains profile adoption failed: ' . $profile['id']);
                     }
                 }
                 $progress && $progress('adopted', 'bindings', count($plan->bindings));
+                $assertActive();
                 SequenceSynchronizer::synchronize($connection);
                 $deferred = [];
                 foreach ($plan->records as $record) {
@@ -182,10 +191,11 @@ final class DomainPluginImport
                     'fingerprint' => $plan->fingerprint, 'counts' => $plan->counts, 'bindings' => $plan->bindings, 'source_plugin' => $plan->sourcePlugin,
                     'retained_bindings' => $this->sourceIdentityKeys(), 'retained_source_rights' => $this->sourceRights(), 'profiles' => $plan->profiles, 'rights' => $plan->rights, 'policies' => $plan->policies, 'generated' => $generated, 'deferred_domains' => $deferred]);
                 $progress && $progress('complete', 'receipt', 1);
+                $assertActive();
                 return $plan;
             });
         } catch (\Throwable $error) {
-            $_SESSION = $session;
+            $failure = $error;
             throw $error;
         } finally {
             if ($hadInfocom) {
@@ -194,7 +204,15 @@ final class DomainPluginImport
                 unset($CFG_GLPI['auto_create_infocoms']);
             }
             if (!$postgres) {
-                $connection->fetchOne('SELECT RELEASE_LOCK(?)', [$lock]);
+                try {
+                    $connection->fetchOne('SELECT RELEASE_LOCK(?)', [$lock]);
+                } catch (\Throwable $cleanup) {
+                    throw $failure === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure(
+                        $failure,
+                        $cleanup,
+                        $failure instanceof \itsmng\Database\MutationCleanupFailure && $failure->rollbackUnproven
+                    );
+                }
             }
         }
     }
@@ -218,21 +236,6 @@ final class DomainPluginImport
                 'homepage' => $plugin->homepage, 'license' => $plugin->license];
         }
         return $provenance;
-    }
-
-    /** Lifecycle hooks can write audit/financial core rows as well as the aggregate. */
-    private function assertTransactionalCore(): void
-    {
-        $connection = $this->database->getDoctrineConnection();
-        if (!$connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\AbstractMySQLPlatform) {
-            return;
-        }
-        $mapped = EntityRegistry::tables();
-        foreach ($connection->fetchAllAssociative('SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()') as $table) {
-            if (isset($mapped[$table['TABLE_NAME']]) && strcasecmp($table['ENGINE'] ?? '', 'InnoDB') !== 0) {
-                throw new \RuntimeException('Domains lifecycle import requires transactional core tables: ' . $table['TABLE_NAME'] . ' must use InnoDB; found ' . ($table['ENGINE'] ?? 'no transactional engine') . '. Reconcile this table before importing; audit and hooks cannot roll back otherwise.');
-            }
-        }
     }
 
     private function profiles(\Doctrine\ORM\EntityManager $em): array

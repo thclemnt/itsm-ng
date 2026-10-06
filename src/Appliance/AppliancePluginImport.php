@@ -12,6 +12,7 @@ use itsmng\Database\Mapping\LegacyInput;
 use itsmng\Database\Migration\History;
 use itsmng\Database\Migration\Ledger;
 use itsmng\Database\Orm;
+use itsmng\Database\PluginImportMutation;
 use itsmng\Database\ReferenceValues;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\SchemaCheck;
@@ -50,6 +51,7 @@ final class AppliancePluginImport
             // Later application edits and purges belong to users, not this historical export.
             return new ApplianceImportPlan($fingerprint, $receipt['counts'], alreadyImported: true);
         }
+        PluginImportMutation::assertTransactionalCore($connection, 'Appliance');
         $em = Orm::create($this->database);
         try {
             $records = $incoming = [];
@@ -180,9 +182,9 @@ final class AppliancePluginImport
         global $CFG_GLPI;
         $hadInfocom = array_key_exists('auto_create_infocoms', $CFG_GLPI);
         $infocom = $CFG_GLPI['auto_create_infocoms'] ?? null;
-        $session = $_SESSION;
+        $failure = null;
         try {
-            return $connection->transactional(function () use ($connection, $postgres, $progress): ApplianceImportPlan {
+            return PluginImportMutation::run($this->database, function (callable $assertActive, \itsmng\Database\LifecycleModelJournal $journal) use ($connection, $postgres, $progress): ApplianceImportPlan {
                 if ($postgres && !in_array($connection->fetchOne("SELECT pg_try_advisory_xact_lock(hashtext('itsmng_appliance_import'))"), [true, 1, '1', 't'], true)) {
                     throw new \RuntimeException('Another appliance import is running.');
                 }
@@ -194,6 +196,7 @@ final class AppliancePluginImport
                 $GLOBALS['CFG_GLPI']['auto_create_infocoms'] = false;
                 foreach ($plan->records as $record) {
                     $model = new $record['model']();
+                    $journal->remember($model);
                     $input = \Toolbox::addslashes_deep($record['input']);
                     foreach ($record['input'] as $field => $value) {
                         if ($value === 'NULL' || $value === 'null') {
@@ -201,10 +204,13 @@ final class AppliancePluginImport
                         }
                     }
                     $input['_no_message'] = true;
-                    if ($model->addWithAssignedIdentifier($record['values']['id'], $input) !== $record['values']['id']) {
+                    $created = $model->addWithAssignedIdentifier($record['values']['id'], $input);
+                    $assertActive();
+                    if ($created !== $record['values']['id']) {
                         throw new \RuntimeException('Appliance lifecycle creation failed: ' . $record['table'] . '.' . $record['values']['id']);
                     }
                     $progress && $progress('created', $record['table'], $record['values']['id']);
+                    $assertActive();
                 }
                 $em = Orm::create($this->database);
                 try {
@@ -235,18 +241,25 @@ final class AppliancePluginImport
                 }
                 foreach ($plan->profiles as $id) {
                     $profile = new \Profile();
-                    if (!$profile->getFromDB($id) || !$profile->replaceHelpdeskItemType(PluginApplianceSource::ITEMTYPE, 'Appliance')) {
+                    $journal->remember($profile);
+                    $loaded = $profile->getFromDB($id);
+                    $assertActive();
+                    $updated = $loaded && $profile->replaceHelpdeskItemType(PluginApplianceSource::ITEMTYPE, 'Appliance');
+                    $assertActive();
+                    if (!$updated) {
                         throw new \RuntimeException('Appliance profile adoption failed: ' . $id);
                     }
                 }
                 $progress && $progress('adopted', 'bindings', count($plan->bindings));
+                $assertActive();
                 SequenceSynchronizer::synchronize($connection);
                 Ledger::save($connection, self::RECEIPT, ['complete' => true, 'fingerprint' => $plan->fingerprint, 'counts' => $plan->counts]);
                 $progress && $progress('complete', 'receipt', 1);
+                $assertActive();
                 return $plan;
             });
         } catch (\Throwable $error) {
-            $_SESSION = $session;
+            $failure = $error;
             throw $error;
         } finally {
             if ($hadInfocom) {
@@ -255,7 +268,15 @@ final class AppliancePluginImport
                 unset($CFG_GLPI['auto_create_infocoms']);
             }
             if (!$postgres) {
-                $connection->fetchOne('SELECT RELEASE_LOCK(?)', [$lock]);
+                try {
+                    $connection->fetchOne('SELECT RELEASE_LOCK(?)', [$lock]);
+                } catch (\Throwable $cleanup) {
+                    throw $failure === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure(
+                        $failure,
+                        $cleanup,
+                        $failure instanceof \itsmng\Database\MutationCleanupFailure && $failure->rollbackUnproven
+                    );
+                }
             }
         }
     }
