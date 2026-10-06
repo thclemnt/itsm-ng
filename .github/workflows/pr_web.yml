@@ -103,6 +103,13 @@ jobs:
           log = pathlib.Path(os.environ['RUNNER_TEMP']) / 'web-api-server.log'
           result = 1
           cleanup_errors = []
+          repository = pathlib.Path.cwd()
+          router = log.with_name('web-api-router.php')
+          def php_literal(path):
+              return "'" + str(path).replace('\\', '\\\\').replace("'", "\\'") + "'"
+          router.write_text('<?php require ' + php_literal(repository / '.github/actions/api-server-runtime.php')
+              + '; return require ' + php_literal(repository / 'tests/router.php') + ';')
+          server_env = dict(os.environ, ITSM_API_SERVER_RUNTIME=str(log.with_name('web-api-server-runtime.json')))
           def enable_core_dump():
               _, hard_limit = resource.getrlimit(resource.RLIMIT_CORE)
               limit = 512 * 1024 * 1024
@@ -110,8 +117,8 @@ jobs:
                   limit = min(limit, hard_limit)
               resource.setrlimit(resource.RLIMIT_CORE, (limit, hard_limit))
           with log.open('w') as output:
-              server = subprocess.Popen(['php', '-S', 'localhost:8088', 'tests/router.php'],
-                  stdout=output, stderr=subprocess.STDOUT,
+              server = subprocess.Popen(['php', '-S', 'localhost:8088', str(router)],
+                  stdout=output, stderr=subprocess.STDOUT, env=server_env,
                   preexec_fn=enable_core_dump)
               try:
                   result = subprocess.run([
@@ -128,14 +135,31 @@ jobs:
                       cleanup_errors.append(f'Owned server exited {server_status}')
                   core = log.with_name(f'web-api-core.{server.pid}')
                   if server_status in (-signal.SIGSEGV, -signal.SIGABRT):
+                      symbols = log.with_name(f'web-api-symbols-{server.pid}')
+                      binary = str(pathlib.Path(shutil.which('php')).resolve())
                       try:
+                          collector = subprocess.Popen(['python3', '.github/actions/api-crash-symbols.py', binary, str(symbols)],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                          try:
+                              collector.wait(timeout=75)
+                          except subprocess.TimeoutExpired:
+                              try:
+                                  os.killpg(collector.pid, signal.SIGKILL)
+                              except ProcessLookupError:
+                                  pass
+                              collector.wait()
+                              cleanup_errors.append('Debug symbol collection timed out')
+
                           with log.with_name('web-api-backtrace.log').open('w') as trace:
                               if core.is_file():
                                   subprocess.run(['gdb', '-nx', '-nh', '--batch',
                                       '-iex', 'set auto-load off', '-iex', 'set debuginfod enabled off',
                                       '-iex', 'set print frame-arguments none',
+                                      '-iex', 'set print entry-values no',
+                                      '-iex', 'set debug-file-directory ' + str(symbols / 'usr/lib/debug'),
                                       '-ex', 'info sharedlibrary', '-ex', 'thread apply all bt 80',
-                                      str(pathlib.Path(shutil.which('php')).resolve()), str(core)],
+                                      '-ex', 'source .github/actions/api-php-frames.py',
+                                      binary, str(core)],
                                       stdout=trace, stderr=subprocess.STDOUT, timeout=30, check=True)
                               else:
                                   trace.write(f'Owned server exited {server_status}; no core dump was produced.\n')
@@ -148,8 +172,11 @@ jobs:
                                   with trace_path.open('r+b') as bounded:
                                       bounded.truncate(131072)
                               core.unlink(missing_ok=True)
+                              if symbols.exists():
+                                  shutil.rmtree(symbols)
                           except OSError as error:
                               cleanup_errors.append(f'Crash diagnostic cleanup failed: {error}')
+                  router.unlink(missing_ok=True)
                   output.flush()
                   diagnostics = re.sub(r'((?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) )\S+', r'\1[request URI omitted]', log.read_text(errors='replace'))
                   log.with_name('web-api-server-diagnostics.log').write_text(diagnostics)
@@ -165,5 +192,7 @@ jobs:
           path: |
             ${{ runner.temp }}/web-api-server-diagnostics.log
             ${{ runner.temp }}/web-api-runtime.json
+            ${{ runner.temp }}/web-api-server-runtime.json
+            ${{ runner.temp }}/web-api-symbols.json
             ${{ runner.temp }}/web-api-backtrace.log
           if-no-files-found: warn
