@@ -79,8 +79,11 @@ final class TwoPhasePlanner
         $displayLinked = [$table];
         $displayJoins = JoinBuilder::addDefaultJoin($type, $table, $displayLinked);
         foreach ($data['toview'] as $id) {
-            $display->merge(ProjectionBuilder::fields($type, (int)$id));
-            $displayJoins .= $this->join($type, $table, (int)$id, $options, $displayLinked);
+            $projection = ProjectionBuilder::fields($type, (int)$id);
+            $display->merge($projection);
+            if ($projection->requiresFieldJoin()) {
+                $displayJoins .= $this->join($type, $table, (int)$id, $options, $displayLinked);
+            }
         }
         $data['meta_toview'] = [];
         CriteriaBuilder::constructAdditionalSqlForMetacriteria($data['search']['criteria'], $display, $displayJoins, $displayLinked, $data);
@@ -167,17 +170,21 @@ final class TwoPhasePlanner
             }
             return 'COALESCE((' . $filter . '), FALSE)';
         }
+        $projection = isset($o['usehaving'])
+            ? ProjectionBuilder::fields($type, $id, $meta, $meta ? $type : 0, null, $data['itemtype']) : null;
         $linked = [$root];
         $from = ' FROM ' . $d->quote($root) . JoinBuilder::addDefaultJoin($data['itemtype'], $root, $linked);
-        if ($meta) {
-            $from .= JoinBuilder::addMetaLeftJoin($data['itemtype'], $type, $linked, $o['joinparams'] ?? []);
-            $from .= JoinBuilder::addLeftJoin($type, $type::getTable(), $linked, $o['table'], $o['linkfield'], 1, $type, $o['joinparams'] ?? [], $o['field']);
-        } else {
-            $from .= $this->join($type, $root, $id, $options, $linked);
+        // Correlated aggregates own their cost/link relations internally.
+        if ($projection === null || $projection->requiresFieldJoin()) {
+            if ($meta) {
+                $from .= JoinBuilder::addMetaLeftJoin($data['itemtype'], $type, $linked, $o['joinparams'] ?? []);
+                $from .= JoinBuilder::addLeftJoin($type, $type::getTable(), $linked, $o['table'], $o['linkfield'], 1, $type, $o['joinparams'] ?? [], $o['field']);
+            } else {
+                $from .= $this->join($type, $root, $id, $options, $linked);
+            }
         }
         $key = $d->quote($root . '.id');
         if (isset($o['usehaving'])) {
-            $projection = ProjectionBuilder::fields($type, $id, $meta, $meta ? $type : 0);
             $projection->add($key, '__id');
             $filter = CriteriaBuilder::addHaving('', false, $type, $id, $criterion['searchtype'], $criterion['value']);
             $query = 'SELECT `__id` FROM (SELECT ' . $projection->sql($d, true) . $from . ' GROUP BY ' . $key . ') AS criterion_values WHERE ' . $filter;

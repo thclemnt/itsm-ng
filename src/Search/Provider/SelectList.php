@@ -9,6 +9,19 @@ final class SelectList
     /** @var array<string, SelectExpression> */
     private array $fields = [];
     private array $legacy = [];
+    private bool $fieldJoinRequired = true;
+
+    /** A correlated root projection owns its subquery rather than a display join. */
+    public function withoutFieldJoin(): self
+    {
+        $this->fieldJoinRequired = false;
+        return $this;
+    }
+
+    public function requiresFieldJoin(): bool
+    {
+        return $this->fieldJoinRequired;
+    }
 
     public function addHookResult(string|self|null|false $sql, Dialect $dialect): self
     {

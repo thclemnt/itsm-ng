@@ -243,7 +243,11 @@ final class CriteriaBuilder
             //add toview for meta criterion
             $data['meta_toview'][$m_itemtype][] = $criterion['field'];
             if ($SELECT instanceof SelectList) {
-                $SELECT->merge(ProjectionBuilder::fields($m_itemtype, (int)$criterion['field'], true, $m_itemtype));
+                $projection = ProjectionBuilder::fields($m_itemtype, (int)$criterion['field'], true, $m_itemtype, null, $data['itemtype']);
+                $SELECT->merge($projection);
+                if (!$projection->requiresFieldJoin()) {
+                    continue;
+                }
             } else {
                 $SELECT .= ProjectionBuilder::addSelect($m_itemtype, $criterion['field'], true, $m_itemtype);
             }

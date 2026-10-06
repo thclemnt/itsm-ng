@@ -460,6 +460,7 @@ class Search extends DbTestCase
         $applianceId = (int)$appliance->add(['name' => $prefix, 'entities_id' => $entity]);
         $this->integer($applianceId)->isGreaterThan(0);
         $this->boolean($appliance->can($applianceId, READ))->isTrue();
+        $changes = [];
         foreach ([10, 100] as $index => $seconds) {
             $change = new \Change();
             $changeId = (int)$change->add([
@@ -467,6 +468,7 @@ class Search extends DbTestCase
                 '_users_id_requester' => array_slice($users, 0, $index + 1),
             ]);
             $this->integer($changeId)->isGreaterThan(0);
+            $changes[] = $changeId;
             $this->boolean($change->can($changeId, READ))->isTrue();
             $this->integer(countElementsInTable('glpi_changes_users', [
                 'changes_id' => $changeId, 'type' => \CommonITILActor::REQUESTER,
@@ -482,7 +484,7 @@ class Search extends DbTestCase
             ]))->isGreaterThan(0);
             $this->integer($cost->getTotalActionTimeForItem($changeId))->isIdenticalTo($seconds);
         }
-        $data = $this->doSearch('Appliance', [
+        $params = [
             'is_deleted' => 0, 'start' => 0, 'criteria' => [
                 ['field' => 1, 'searchtype' => 'contains', 'value' => $prefix],
                 ['meta' => true, 'itemtype' => 'Change', 'field' => 49, 'searchtype' => 'contains',
@@ -490,10 +492,53 @@ class Search extends DbTestCase
                 ['meta' => true, 'itemtype' => 'Change', 'field' => 4, 'searchtype' => 'equals',
                     'value' => (string)$users[0], 'link' => 'AND'],
             ],
-        ]);
+        ];
+        $data = $this->doSearch('Appliance', $params);
         $this->integer($data['data']['count'])->isIdenticalTo(1);
         $this->array(array_keys($data['data']['items']))->isIdenticalTo([$applianceId]);
         $this->float((float)$data['data']['rows'][0]['Change_49'][0]['name'])->isIdenticalTo(110.0);
+
+        // An old fanout result must not become an eligible total either.
+        $params['criteria'][1]['value'] = '140';
+        $this->integer($this->doSearch('Appliance', $params)['data']['count'])->isIdenticalTo(0);
+
+        // Equal durations are distinct costs; SUM(DISTINCT actiontime) would
+        // silently lose the second ten-second row.
+        $duplicateDuration = new \ChangeCost();
+        $this->integer((int)$duplicateDuration->add([
+            'changes_id' => $changes[0], 'name' => $prefix . ' second ten seconds',
+            'actiontime' => 10, 'cost_time' => 0, 'cost_fixed' => 0, 'cost_material' => 0,
+        ]))->isGreaterThan(0);
+        $this->integer($duplicateDuration->getTotalActionTimeForItem($changes[0]))->isIdenticalTo(20);
+        $params['criteria'][1]['value'] = '120';
+        $data = $this->doSearch('Appliance', $params);
+        $this->integer($data['data']['count'])->isIdenticalTo(1);
+        $this->array(array_keys($data['data']['items']))->isIdenticalTo([$applianceId]);
+        $this->float((float)$data['data']['rows'][0]['Change_49'][0]['name'])->isIdenticalTo(120.0);
+
+        // Main-parent sorting and filtering use the same total before paging.
+        foreach (['ASC' => $changes, 'DESC' => array_reverse($changes)] as $order => $expected) {
+            $data = $this->doSearch('Change', [
+                'is_deleted' => 0, 'start' => 0, 'sort' => 49, 'order' => $order,
+                'criteria' => [
+                    ['field' => 1, 'searchtype' => 'contains', 'value' => $prefix],
+                    ['field' => 49, 'searchtype' => 'contains', 'value' => '>0'],
+                ],
+            ]);
+            $this->integer($data['data']['count'])->isIdenticalTo(2);
+            $this->array(array_keys($data['data']['items']))->isIdenticalTo($expected);
+            foreach ($expected as $start => $id) {
+                $page = $this->doSearch('Change', [
+                    'is_deleted' => 0, 'start' => $start, 'list_limit' => 1, 'sort' => 49, 'order' => $order,
+                    'criteria' => [
+                        ['field' => 1, 'searchtype' => 'contains', 'value' => $prefix],
+                        ['field' => 49, 'searchtype' => 'contains', 'value' => '>0'],
+                    ],
+                ]);
+                $this->integer($page['data']['totalcount'])->isIdenticalTo(2);
+                $this->array(array_keys($page['data']['items']))->isIdenticalTo([$id]);
+            }
+        }
     }
 
 

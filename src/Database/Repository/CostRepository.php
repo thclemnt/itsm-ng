@@ -54,6 +54,64 @@ final class CostRepository
         return $rows;
     }
 
+    /**
+     * An action-time total belongs to cost identities, not to the fanout of a
+     * search's display joins. Build this correlated aggregate on the supplied
+     * connection; the caller retains ownership of its parent visibility rule.
+     *
+     * @param callable(string): string $parentScope Predicate for the parent alias
+     */
+    public function searchActionTime(string $type, string $subjectType, string $subjectTable, callable $parentScope): ?string
+    {
+        $definition = self::definition($type);
+        if ($definition === null) {
+            return null;
+        }
+        [$class, $parentProperty] = $definition;
+        $cost = $this->em->getClassMetadata($class);
+        if (!$cost->hasField('actiontime')) {
+            return null;
+        }
+        $parent = $this->em->getClassMetadata($cost->getAssociationTargetClass($parentProperty));
+        $parentType = \getItemTypeForTable($parent->getTableName());
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $column = fn ($metadata, string $property, string $alias) => $platform->quoteIdentifier($alias)
+            . '.' . $quote->getColumnName($property, $metadata, $platform);
+        $joinColumn = fn ($metadata, string $property, string $alias) => $platform->quoteIdentifier($alias)
+            . '.' . $quote->getJoinColumnName($metadata->getAssociationMapping($property)->joinColumns[0], $metadata, $platform);
+        $outer = $platform->quoteIdentifier($subjectTable) . '.' . $platform->quoteIdentifier('id');
+        $query = $connection->createQueryBuilder()
+            ->select('SUM(' . $column($cost, 'actiontime', 'cost_duration') . ')')
+            ->from($quote->getTableName($cost, $platform), $platform->quoteIdentifier('cost_duration'));
+        if ($parentType === $subjectType) {
+            return $query->where($joinColumn($cost, $parentProperty, 'cost_duration') . ' = ' . $outer)->getSQL();
+        }
+        [, $linkParent, , , , , $linkClass] = ITILStatisticsType::definition($this->em, $parentType);
+        try {
+            $assetProperty = $linkClass::referenceAssociation($subjectType);
+        } catch (\InvalidArgumentException) {
+            // Other meta relationships (including plugin associations) are not
+            // represented by the typed ITIL asset ownership being aggregated.
+            return null;
+        }
+        $link = $this->em->getClassMetadata($linkClass);
+        $parentId = $column($parent, $parent->getSingleIdentifierFieldName(), 'cost_parent');
+        $exists = $connection->createQueryBuilder()->select('1')
+            ->from($quote->getTableName($link, $platform), $platform->quoteIdentifier('cost_link'))
+            ->where($joinColumn($link, $linkParent, 'cost_link') . ' = ' . $parentId)
+            ->andWhere($joinColumn($link, $assetProperty, 'cost_link') . ' = ' . $outer);
+        $query->innerJoin($platform->quoteIdentifier('cost_duration'), $quote->getTableName($parent, $platform),
+            $platform->quoteIdentifier('cost_parent'), $joinColumn($cost, $parentProperty, 'cost_duration') . ' = ' . $parentId)
+            ->where('EXISTS (' . $exists->getSQL() . ')');
+        $scope = $parentScope('cost_parent');
+        if (trim($scope) !== '') {
+            $query->andWhere($scope);
+        }
+        return $query->getSQL();
+    }
+
     public function actionTime(string $type, int $parent): ?int
     {
         [$class, $association] = self::definition($type) ?? throw new \InvalidArgumentException('Unmapped cost type');

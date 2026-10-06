@@ -93,8 +93,10 @@ final class SQLProvider implements SearchProviderInterface
         $dialect = new Dialect($DB);
         $SELECT = ProjectionBuilder::defaults($data['itemtype']);
         $SELECT->add($dialect->quote($itemtable . '.id'), 'id')->add($dialect->literal($_SESSION['glpiname']), 'currentuser');
+        $fieldProjections = [];
         foreach ($data['toview'] as $val) {
-            $SELECT->merge(ProjectionBuilder::fields($data['itemtype'], (int)$val));
+            $fieldProjections[$val] = ProjectionBuilder::fields($data['itemtype'], (int)$val);
+            $SELECT->merge($fieldProjections[$val]);
         }
         if (!empty($data['search']['as_map']) && $data['itemtype'] !== 'Entity') {
             $SELECT->add($dialect->quote('glpi_locations.id'), 'loc_id');
@@ -111,6 +113,9 @@ final class SQLProvider implements SearchProviderInterface
         $FROM .= $COMMONLEFTJOIN;
         // Add all table for toview items
         foreach ($data['tocompute'] as $val) {
+            if (isset($fieldProjections[$val]) && !$fieldProjections[$val]->requiresFieldJoin()) {
+                continue;
+            }
             if (!in_array($searchopt[$val]["table"], $blacklist_tables)) {
                 $FROM .= JoinBuilder::addLeftJoin($data['itemtype'], $itemtable, $already_link_tables, $searchopt[$val]["table"], $searchopt[$val]["linkfield"], 0, 0, $searchopt[$val]["joinparams"], $searchopt[$val]["field"]);
             }

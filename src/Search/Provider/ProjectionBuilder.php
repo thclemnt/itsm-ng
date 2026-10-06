@@ -78,7 +78,7 @@ final class ProjectionBuilder
         return $sql === '' ? '' : $sql . ', ';
     }
 
-    public static function fields(string $itemtype, int $ID, bool $meta = false, $meta_type = 0, ?UnionMember $member = null): SelectList
+    public static function fields(string $itemtype, int $ID, bool $meta = false, $meta_type = 0, ?UnionMember $member = null, ?string $subjectType = null): SelectList
     {
         global $DB, $CFG_GLPI;
         $searchopt = & SearchOption::getOptions($itemtype);
@@ -211,6 +211,30 @@ final class ProjectionBuilder
                     return $fields;
                 }
                 break;
+        }
+        // Duration is a total of owning cost rows. Joining actors and several
+        // parents for display must never multiply those identities.
+        if ($field === 'actiontime' && isset($option['computation']) && $member === null
+            && empty($option['additionalfields']) && ($option['joinparams'] ?? []) === ['jointype' => 'child']) {
+            $costType = \getItemTypeForTable($table);
+            if (\itsmng\Database\Repository\CostRepository::supports($costType) && (!$meta || $subjectType !== null)) {
+                $subject = $subjectType ?? $itemtype;
+                $em = \itsmng\Database\Orm::create($DB);
+                try {
+                    $total = (new \itsmng\Database\Repository\CostRepository($em))->searchActionTime(
+                        $costType, $subject, JoinBuilder::getOrigTableName($subject),
+                        static fn (string $parentAlias) => \getEntitiesRestrictRequest('', $parentAlias)
+                    );
+                } finally {
+                    $em->clear();
+                }
+                if ($total !== null) {
+                    // Each group represents one root identity; MAX only makes
+                    // the correlated scalar legal in grouped SELECT/HAVING.
+                    $add('MAX((' . $total . '))', '', true);
+                    return $fields->withoutFieldJoin();
+                }
+            }
         }
         if (isset($option['computation'])) {
             $value = str_replace($DB->quoteName('TABLE'), 'TABLE', $option['computation']);
