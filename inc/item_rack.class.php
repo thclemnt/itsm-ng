@@ -461,7 +461,7 @@ JAVASCRIPT;
         ];
 
         foreach ($items as $row) {
-            if (array_key_exists('dimensions', $row)) {
+            if (static::class === self::class && array_key_exists('dimensions', $row)) {
                 $modelFields = $row['dimensions'];
             } else {
                 // Unmapped extensions retain their own legacy model-loading behavior.
