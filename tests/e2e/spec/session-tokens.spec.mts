@@ -349,13 +349,24 @@ test('status configuration requires its own mutation rights even with a valid br
       return rows;
     };
     const ticketCodes = async (): Promise<Array<[number, number]>> => {
-      const rows: Array<[number, number]> = [];
       expect(seed.owned.Ticket.length, 'The fixture must have actual stored ticket owners.').toBeGreaterThan(0);
-      for (const id of seed.owned.Ticket) {
-        const ticket = await getItem<{ status: number | string }>(request, admin!, 'Ticket', id);
-        rows.push([id, Number(ticket.status)]);
-      }
-      return rows;
+      // The real bulk endpoint runs the same per-item admission/read lifecycle,
+      // without bootstrapping a separate HTTP session for each owned ticket.
+      const params: Record<string, string> = { get_hateoas: 'false' };
+      seed.owned.Ticket.forEach((id, index) => {
+        params[`items[${index}][itemtype]`] = 'Ticket';
+        params[`items[${index}][items_id]`] = String(id);
+      });
+      const response = await request.get(`${admin!.apiUrl}getMultipleItems`, { headers, params });
+      expect(response.status(), 'The administrator must read every owned ticket through the real API.').toBe(200);
+      const rows = await response.json();
+      expect(Array.isArray(rows), 'The complete owned-ticket snapshot must be an array.').toBe(true);
+      expect(rows.map((ticket: { id: number | string }) => Number(ticket.id)),
+        'Each snapshot must retain every exact owned identity in request order.').toEqual(seed.owned.Ticket);
+      return rows.map((ticket: { id: number | string; status: number | string }) => {
+        expect(Number.isInteger(Number(ticket.status)), 'Each owned ticket must retain a real status code.').toBe(true);
+        return [Number(ticket.id), Number(ticket.status)];
+      });
     };
     const beforeStatuses = await statuses();
     const beforeTickets = await ticketCodes();
