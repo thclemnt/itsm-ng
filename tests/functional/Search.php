@@ -271,6 +271,14 @@ class Search extends DbTestCase
                 [[$leaf('0'), $leaf('NULL', 'contains', 'OR')], ['missing', 'zero']],
                 [[$leaf('>0')], ['positive']],
                 [[$leaf('>500')], []],
+                // Text matching must cast the whole numeric scalar on PG,
+                // just as the old HAVING-alias path did, including NULLs.
+                [[$leaf('not-a-number')], []],
+                [[$leaf('not-a-number', 'notcontains')], ['missing', 'zero', 'positive']],
+                [[$leaf('^2')], ['positive']],
+                [[$leaf('^2', 'notcontains')], ['missing', 'zero']],
+                [[$leaf('^$')], ['missing']],
+                [[$leaf('^$', 'notcontains')], ['zero', 'positive']],
             ] as [$criteria, $labels]) {
                 $data = $this->doSearch($type, [
                     'is_deleted' => 0, 'start' => 0, 'criteria' => [
