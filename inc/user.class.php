@@ -69,9 +69,6 @@ class User extends CommonDBTM
        'cookie_token',
     ];
 
-    private $entities = null;
-
-
     public static function getTypeName($nb = 0)
     {
         return _n('User', 'Users', $nb);
@@ -331,8 +328,8 @@ class User extends CommonDBTM
     {
         global $DB;
 
-        // The same legacy model can be reused for another account. Its cached
-        // visibility grants must not authorize a writer-side lifecycle decision.
+        // The same legacy model can be reused for another account. Resolve
+        // current visibility grants for this writer-side lifecycle decision.
         $entities = Profile_User::getUserEntities((int)$this->fields['id'], true);
         if (Session::canViewAllEntities() || !array_filter($entities, static fn ($entity): bool => !Session::haveAccessToEntity($entity))) {
             return \itsmng\Database\DeletionDecision::Proceed;
@@ -345,7 +342,6 @@ class User extends CommonDBTM
             return \itsmng\Database\DeletionDecision::Cancelled;
         }
         (new UserRepository(Orm::create($DB)))->detachEntityGrants((int)$this->fields['id'], $accessible);
-        $this->entities = null;
         return \itsmng\Database\DeletionDecision::ScopedDetachment;
     }
 
@@ -5486,11 +5482,9 @@ class User extends CommonDBTM
      */
     private function getEntities()
     {
-        //get user entities
-        if ($this->entities == null) {
-            $this->entities = Profile_User::getUserEntities($this->fields['id'], true);
-        }
-        return $this->entities;
+        // The model can change identity, and item_can hooks can change grants
+        // without reloading it. Permission checks must use current ownership.
+        return Profile_User::getUserEntities($this->fields['id'], true);
     }
 
 

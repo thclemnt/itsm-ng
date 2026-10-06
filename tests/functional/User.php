@@ -37,6 +37,94 @@ namespace tests\units;
 
 class User extends \DbTestCase
 {
+    public function testReusedUserPermissionScopesFollowCurrentIdentityAndGrants(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $database = $DB;
+        $session = $_SESSION;
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $parent = (int)$_SESSION['glpiactive_entity'];
+            $allowed = (int)getItemByTypeName('Entity', '_test_child_1', true);
+            $denied = (int)getItemByTypeName('Entity', '_test_child_2', true);
+            $first = $this->createItem(\User::class, ['name' => 'scope-a-' . $this->getUniqueString(),
+                '_entities_id' => $allowed, '_is_recursive' => 0, 'comment' => 'Complete permission fields']);
+            $second = $this->createItem(\User::class, ['name' => 'scope-b-' . $this->getUniqueString(),
+                '_entities_id' => $denied, '_is_recursive' => 0, 'comment' => 'Complete permission fields']);
+            $model = new \User();
+            $scopes = new \ReflectionMethod(\User::class, 'getEntities');
+            $this->setEntity('_test_child_1', false);
+            $_SESSION['glpiactiveprofile']['user'] |= READ;
+
+            // CLI deliberately bypasses canViewItem's entity restriction. Check
+            // its actual scope source and exercise the real restrictive hook/link
+            // boundary, without changing the production CLI policy.
+            $mutate = null;
+            $calls = [];
+            $callback = static function (\User $user) use ($scopes, &$mutate, &$calls): void {
+                $calls[] = ['id' => (int)$user->getID(), 'right' => $user->right, 'comment' => $user->fields['comment']];
+                if ($mutate !== null) {
+                    $mutate();
+                    $mutate = null;
+                }
+                if (!\Session::haveAccessToOneOfEntities($scopes->invoke($user))) {
+                    $user->right = false;
+                }
+            };
+            $plugins->setValue(null, [...$active, 'current_user_scope_fixture']);
+            $PLUGIN_HOOKS['item_can'] = ['current_user_scope_fixture' => [\User::class => $callback]];
+            foreach ([[$first, $allowed, true], [$second, $denied, false],
+                [$second, $denied, false], [$first, $allowed, true]] as [$account, $entity, $canLink]) {
+                $this->boolean($model->getFromDB($account->getID()))->isTrue();
+                $this->array(array_map('intval', $scopes->invoke($model)))->isIdenticalTo([$entity]);
+                $this->boolean(str_contains($model->getLink(), '<a '))->isIdenticalTo($canLink);
+            }
+            $this->array(array_column($calls, 'id'))->isIdenticalTo([(int)$first->getID(), (int)$second->getID(),
+                (int)$second->getID(), (int)$first->getID()]);
+            $this->array(array_column($calls, 'right'))->isIdenticalTo([READ, READ, READ, READ]);
+            $this->array(array_column($calls, 'comment'))->isIdenticalTo(array_fill(0, 4, 'Complete permission fields'));
+
+            $connection = $DB->getDoctrineConnection();
+            $mutate = static fn () => $connection->update('glpi_profiles_users', ['entities_id' => $denied], ['users_id' => $first->getID()]);
+            $this->string($model->getLink())->notContains('<a ');
+            $this->array(array_map('intval', $scopes->invoke($model)))->isIdenticalTo([$denied]);
+            $connection->update('glpi_profiles_users', ['entities_id' => $parent, 'is_recursive' => true], ['users_id' => $first->getID()],
+                ['is_recursive' => \Doctrine\DBAL\Types\Types::BOOLEAN]);
+            $this->boolean(in_array($allowed, $scopes->invoke($model)))->isTrue();
+            $this->string($model->getLink())->contains('<a ');
+            $connection->update('glpi_profiles_users', ['is_recursive' => false], ['users_id' => $first->getID()],
+                ['is_recursive' => \Doctrine\DBAL\Types\Types::BOOLEAN]);
+            $this->array(array_map('intval', $scopes->invoke($model)))->isIdenticalTo([$parent]);
+            $this->string($model->getLink())->notContains('<a ');
+
+            $before = $model->fields;
+            $this->boolean($model->getFromDB(PHP_INT_MAX))->isFalse();
+            $this->array($model->fields)->isIdenticalTo($before);
+            $this->array(array_map('intval', $scopes->invoke($model)))->isIdenticalTo([$parent]);
+
+            // Re-resolve the current adapter rather than retain a prior manager.
+            $this->mockGenerator->orphanize('__construct');
+            $routed = new \mock\DBmysql();
+            $reads = 0;
+            $this->calling($routed)->getDoctrineConnection = static function () use ($connection, &$reads) {
+                ++$reads;
+                return $connection;
+            };
+            $DB = $routed;
+            $this->array(array_map('intval', $scopes->invoke($model)))->isIdenticalTo([$parent]);
+            $this->integer($reads)->isGreaterThan(0);
+        } finally {
+            $DB = $database;
+            $_SESSION = $session;
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+        }
+    }
+
     public function testAccessibilityHeaderReadsCurrentFontWithoutUserHydration(): void
     {
         global $DB;
