@@ -330,6 +330,12 @@ final class CriteriaBuilder
                 case "number":
                 case "decimal":
                 case "timestamp":
+                    // A numeric zero is a value, not an empty string. In particular,
+                    // MySQL compares numeric columns with '' as zero.
+                    if ($val === 'NULL' || $val === 'null') {
+                        $operator = $NOT ? 'IS NOT NULL' : 'IS NULL';
+                        return " {$LINK} ({$DB->quoteName($NAME)} {$operator}) ";
+                    }
                     $search = ["/\\&lt;/", "/\\&gt;/"];
                     $replace = ["<", ">"];
                     $val = preg_replace($search, $replace, $val);
@@ -1131,6 +1137,12 @@ final class CriteriaBuilder
                 case "decimal":
                 case "timestamp":
                 case "progressbar":
+                    // Keep NULL distinct from zero for physical numeric values and
+                    // computed ratios, without the empty-text fallback below.
+                    if ($val === 'NULL' || $val === 'null') {
+                        $operator = $nott ? 'IS NOT NULL' : 'IS NULL';
+                        return " {$link} ({$tocompute} {$operator}) ";
+                    }
                     $search = ["/\\&lt;/", "/\\&gt;/"];
                     $replace = ["<", ">"];
                     $val = preg_replace($search, $replace, (string) $val);
