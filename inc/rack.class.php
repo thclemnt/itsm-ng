@@ -977,25 +977,36 @@ JAVASCRIPT;
     {
         global $DB;
 
-        $iterator = \itsmng\Database\MappedReads::matching($DB, Item_Rack::getTable(), ['racks_id' => $this->getID()]);
+        $manager = \itsmng\Database\Orm::create($DB);
+        try {
+            $iterator = (new \itsmng\Database\Repository\PlacementRepository($manager))->rackOccupancy((int)$this->getID());
+        } finally {
+            $manager->clear();
+        }
 
         $filled = [];
         foreach ($iterator as $row) {
-            $item = new $row['itemtype']();
-            if (!$item->getFromDB($row['items_id'])) {
-                continue;
-            }
             $units = 1;
-            $width = 1;
             $depth = 1;
-            if ($item->fields[strtolower($item->getType()) . 'models_id'] != 0) {
-                $model_class = $item->getType() . 'Model';
-                $modelsfield = strtolower($item->getType()) . 'models_id';
-                $model = new $model_class();
-                if ($model->getFromDB($item->fields[$modelsfield])) {
-                    $units = $model->fields['required_units'];
-                    $depth = $model->fields['depth'];
-                    $width = $model->fields['is_half_rack'] == 0 ? 1 : 0.5;
+            if (array_key_exists('dimensions', $row)) {
+                if ($row['dimensions'] === null) {
+                    continue;
+                }
+                $units = $row['dimensions']['required_units'];
+                $depth = $row['dimensions']['depth'];
+            } else {
+                $item = new $row['itemtype']();
+                if (!$item->getFromDB($row['items_id'])) {
+                    continue;
+                }
+                if ($item->fields[strtolower($item->getType()) . 'models_id'] != 0) {
+                    $model_class = $item->getType() . 'Model';
+                    $modelsfield = strtolower($item->getType()) . 'models_id';
+                    $model = new $model_class();
+                    if ($model->getFromDB($item->fields[$modelsfield])) {
+                        $units = $model->fields['required_units'];
+                        $depth = $model->fields['depth'];
+                    }
                 }
             }
             $position = $row['position'];

@@ -7,12 +7,55 @@ namespace itsmng\Database\Repository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity;
+use itsmng\Database\EntityRegistry;
 
 /** Placement exclusions are global: an asset cannot occupy two physical locations. */
 final class PlacementRepository
 {
     public function __construct(private EntityManager $em)
     {
+    }
+
+    /**
+     * Physical occupancy includes reserved assets in every entity. Read dimensions
+     * once per represented mapped type, without hydrating assets or their models.
+     * Unmapped extension types retain the legacy caller's model-loading path.
+     */
+    public function rackOccupancy(int $rack): array
+    {
+        $rows = $this->em->createQueryBuilder()
+            ->select('i.itemtype', 'i.items_id', 'i.position', 'i.orientation', 'i.hpos')
+            ->from(Entity\ItemRack::class, 'i')->where('i.racks = :rack')
+            ->setParameter('rack', $rack)->getQuery()->getArrayResult();
+        $groups = [];
+        foreach ($rows as $index => $row) {
+            $groups[$row['itemtype']][$index] = $row['items_id'];
+        }
+        $selections = EntityRegistry::discriminatedReferences('glpi_items_racks')['items_id']['selections'];
+        foreach ($groups as $kind => $identifiers) {
+            $target = $selections[$kind]['target'] ?? null;
+            $model = $target === null ? null : (EntityRegistry::references($target)[strtolower($kind) . 'models_id'] ?? null);
+            if ($model === null) {
+                continue;
+            }
+            $dimensions = $this->em->createQueryBuilder()
+                ->select('a.id AS asset_id', 'm.id AS model_id', 'm.required_units', 'm.depth')
+                ->from(EntityRegistry::tables()[$target], 'a')
+                ->leftJoin('a.' . $model->association, 'm')
+                ->where('a.id IN (:assets)')
+                ->setParameter('assets', array_values(array_unique($identifiers)), \Doctrine\DBAL\ArrayParameterType::INTEGER)
+                ->getQuery()->getArrayResult();
+            $byAsset = array_column($dimensions, null, 'asset_id');
+            foreach ($identifiers as $index => $id) {
+                $dimension = $byAsset[$id] ?? null;
+                // Missing assets are skipped; a missing model occupies one full unit.
+                $rows[$index]['dimensions'] = $dimension === null ? null : [
+                    'required_units' => $dimension['model_id'] === null ? 1 : $dimension['required_units'],
+                    'depth' => $dimension['model_id'] === null ? 1 : $dimension['depth'],
+                ];
+            }
+        }
+        return $rows;
     }
 
     public function rackSelection(): array

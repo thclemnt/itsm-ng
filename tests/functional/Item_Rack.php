@@ -39,6 +39,95 @@ use DbTestCase;
 
 class Item_Rack extends DbTestCase
 {
+    public function testRackOccupancyBatchesMappedTypesWithoutHydration(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $rack = $this->createItem(\Rack::class, [
+            'name' => '_projected_occupancy', 'entities_id' => $entity, 'number_units' => 30,
+        ]);
+        $connection = $DB->getDoctrineConnection();
+        $level = $connection->getTransactionNestingLevel();
+        $em = new class($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+            public array $queries = [];
+
+            public function createQuery(string $dql = ''): \Doctrine\ORM\Query
+            {
+                return $this->queries[] = parent::createQuery($dql);
+            }
+        };
+        $listener = new class {
+            public int $loaded = 0;
+
+            public function postLoad(): void
+            {
+                ++$this->loaded;
+            }
+        };
+        $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+        try {
+            $repository = new \itsmng\Database\Repository\PlacementRepository($em);
+            $this->array($repository->rackOccupancy((int)$rack->getID()))->isEmpty();
+            $this->array($em->queries)->hasSize(1);
+            $models = [];
+            $expected = [];
+            $half = [\Rack::POS_LEFT => [1, 1, 0, 0], \Rack::POS_RIGHT => [1, 1, 0, 0]];
+            foreach (['Computer', 'Monitor', 'NetworkEquipment', 'Peripheral', 'Enclosure', 'PDU', 'PassiveDCEquipment', 'Computer'] as $index => $kind) {
+                $models[$kind] ??= $this->createItem($kind . 'Model', [
+                    'name' => '_projected_occupancy_' . $kind, 'required_units' => 2, 'depth' => 0.5,
+                ]);
+                $asset = $this->createItem($kind, [
+                    'name' => '_projected_occupancy_' . $index, 'entities_id' => $entity,
+                    strtolower($kind) . 'models_id' => $models[$kind]->getID(),
+                ]);
+                $position = 3 * $index + 1;
+                $this->createItem(\Item_Rack::class, [
+                    'racks_id' => $rack->getID(), 'itemtype' => $kind, 'items_id' => $asset->getID(),
+                    'position' => $position, 'orientation' => \Rack::FRONT, 'hpos' => \Rack::POS_NONE,
+                    'is_reserved' => $index % 2,
+                ]);
+                $expected[$position] = $expected[$position + 1] = $half;
+            }
+            $em->queries = [];
+            $rows = $repository->rackOccupancy((int)$rack->getID());
+            $this->array($rows)->hasSize(8);
+            // Two Computer assignments still use one asset/model projection.
+            $this->array($em->queries)->hasSize(8);
+            foreach ($rows as $row) {
+                $this->array($row['dimensions'])->isIdenticalTo(['required_units' => 2, 'depth' => 0.5]);
+            }
+            $this->integer($listener->loaded)->isIdenticalTo(0);
+            $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+            $this->array($rack->getFilled())->isEqualTo($expected);
+
+            $managed = $em->find(\itsmng\Database\Entity\ComputerModel::class, (int)$models['Computer']->getID());
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+            $connection->update('glpi_computermodels', ['required_units' => 1, 'depth' => 0.25], ['id' => $managed->id]);
+            $em->queries = [];
+            $rows = $repository->rackOccupancy((int)$rack->getID());
+            foreach ($rows as $row) {
+                $this->array($row['dimensions'])->isIdenticalTo($row['itemtype'] === 'Computer'
+                    ? ['required_units' => 1, 'depth' => 0.25]
+                    : ['required_units' => 2, 'depth' => 0.5]);
+            }
+            $this->array($em->queries)->hasSize(8);
+            $this->integer($managed->required_units)->isIdenticalTo(2);
+            $this->float($managed->depth)->isIdenticalTo(0.5);
+            $this->boolean($em->contains($managed))->isTrue();
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+            $quarter = [\Rack::POS_LEFT => [1, 0, 0, 0], \Rack::POS_RIGHT => [1, 0, 0, 0]];
+            $expected[1] = $expected[22] = $quarter;
+            unset($expected[2], $expected[23]);
+            $this->array($rack->getFilled())->isEqualTo($expected);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+            $em->clear();
+        }
+    }
+
     public function testRackStatsAndOccupancyUseCurrentModelDimensions(): void
     {
         global $DB;
