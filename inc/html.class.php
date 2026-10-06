@@ -1651,11 +1651,10 @@ JAVASCRIPT
      */
     public static function accessibilityHeader()
     {
-        $user = new User();
-        $user->getFromDB(Session::getLoginUserID());
+        global $DB;
         if (Session::haveRight("accessibility", READ)) {
-            $factor = $user->fields["access_zoom_level"];
-            $font = $user->fields["access_font"];
+            $font = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+                ->accessibilityFont((int)Session::getLoginUserID());
             switch ($font) {
                 case "OpenDyslexic":
                     echo '<link href="http://fonts.cdnfonts.com/css/opendyslexic" rel="stylesheet">';     // Use CDNFonts for webfont delivery

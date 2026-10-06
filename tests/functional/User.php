@@ -37,6 +37,56 @@ namespace tests\units;
 
 class User extends \DbTestCase
 {
+    public function testAccessibilityHeaderReadsCurrentFontWithoutUserHydration(): void
+    {
+        global $DB;
+        $this->login();
+        $session = $_SESSION;
+        $user = $this->createItem(\User::class, [
+            'name' => 'accessibility-header-' . $this->getUniqueString(),
+            'access_font' => 'OpenDyslexic',
+        ]);
+        $id = (int)$user->getID();
+        $manager = \itsmng\Database\Orm::create($DB);
+        $loads = new class {
+            public int $count = 0;
+            public function postLoad(): void { ++$this->count; }
+        };
+        $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+        $repository = new \itsmng\Database\Repository\UserRepository($manager);
+        try {
+            $_SESSION['glpiID'] = $id;
+            $_SESSION['glpiactiveprofile']['accessibility'] = READ;
+            foreach ([
+                'OpenDyslexic' => 'http://fonts.cdnfonts.com/css/opendyslexic',
+                'OpenDyslexicAlta' => 'http://fonts.cdnfonts.com/css/opendyslexic?styles=29221',
+                'Tiresias Infofont' => 'http://fonts.cdnfonts.com/css/tiresias-infofont',
+            ] as $font => $url) {
+                $this->boolean($DB->update('glpi_users', ['access_font' => $font], ['id' => $id]))->isTrue();
+                $this->string($repository->accessibilityFont($id))->isIdenticalTo($font);
+                $this->output(fn () => \Html::accessibilityHeader())
+                    ->isIdenticalTo('<link href="' . $url . '" rel="stylesheet">');
+            }
+            $this->integer($loads->count)->isIdenticalTo(0);
+            $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+            foreach (['unknown-font', null] as $font) {
+                $this->boolean($DB->update('glpi_users', ['access_font' => $font], ['id' => $id]))->isTrue();
+                $this->variable($repository->accessibilityFont($id))->isIdenticalTo($font);
+                $this->output(fn () => \Html::accessibilityHeader())->isEmpty();
+            }
+            $this->boolean($DB->update('glpi_users', ['access_font' => 'OpenDyslexic'], ['id' => $id]))->isTrue();
+            $_SESSION['glpiactiveprofile']['accessibility'] = 0;
+            $this->output(fn () => \Html::accessibilityHeader())->isEmpty();
+            $this->boolean($user->delete(['id' => $id], true))->isTrue();
+            $this->variable($repository->accessibilityFont($id))->isNull();
+            $_SESSION['glpiactiveprofile']['accessibility'] = READ;
+            $this->output(fn () => \Html::accessibilityHeader())->isEmpty();
+        } finally {
+            $_SESSION = $session;
+            $manager->clear();
+        }
+    }
+
     public function testLockMessageUsesCurrentProjectedUserWithoutReload(): void
     {
         global $DB, $CFG_GLPI;
