@@ -22,16 +22,18 @@ final class PhysicalIndexSchema
         $platform = $connection->getDatabasePlatform();
         $mysql = $platform instanceof AbstractMySQLPlatform;
         if ($mysql) {
-            $visible = "IS_VISIBLE = 'YES'";
+            $visible = 'IS_VISIBLE';
+            $visibleValue = 'YES';
             if ($platform instanceof MariaDBPlatform) {
                 // IGNORED first exists in 10.6; earlier supported MariaDB
                 // versions cannot hide an index from the optimizer.
                 $version = CheckConstraintSupport::version($connection->getServerVersion(), true);
-                $visible = version_compare($version, '10.6', '>=') ? "IGNORED = 'NO'" : '1';
+                $visible = version_compare($version, '10.6', '>=') ? 'IGNORED' : "'NO'";
+                $visibleValue = 'NO';
             }
             $sql = 'SELECT TABLE_NAME AS table_name, INDEX_NAME AS index_name, NON_UNIQUE AS non_unique, '
                 . 'SEQ_IN_INDEX AS position, COLUMN_NAME AS column_name, SUB_PART AS prefix_length, '
-                . 'INDEX_TYPE AS access_method, (' . $visible . ') AS visible '
+                . 'INDEX_TYPE AS access_method, ' . $visible . ' AS visible '
                 . 'FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (?) '
                 . 'ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX';
         } else {
@@ -59,7 +61,9 @@ final class PhysicalIndexSchema
                     'unique' => $mysql ? !(bool)$row['non_unique'] : self::isTrue($row['is_unique']),
                     'primary' => $mysql ? $row['index_name'] === 'PRIMARY' : self::isTrue($row['is_primary']),
                     'method' => strtolower($row['access_method']),
-                    'usable' => $mysql ? self::isTrue($row['visible']) : self::isTrue($row['is_valid']) && self::isTrue($row['is_ready']),
+                    // Compare native visibility tokens in PHP: MySQL metadata and
+                    // connection literals can otherwise have incompatible collations.
+                    'usable' => $mysql ? $row['visible'] === $visibleValue : self::isTrue($row['is_valid']) && self::isTrue($row['is_ready']),
                     'predicate' => $row['predicate'] ?? null,
                     'expressions' => $row['expressions'] ?? null,
                     'standard_equality' => true,

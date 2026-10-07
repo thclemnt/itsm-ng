@@ -63,22 +63,30 @@ class CurrentSchema extends \atoum\atoum\test
     public function testPhysicalCatalogVisibilityMatchesSupportedServerCapabilities(): void
     {
         foreach ([
-            [new MariaDBPlatform(), '5.5.5-10.2.22-MariaDB', '(1) AS visible'],
-            [new MariaDBPlatform(), '10.5.29-MariaDB', '(1) AS visible'],
-            [new MariaDBPlatform(), '10.6.0-MariaDB', "(IGNORED = 'NO') AS visible"],
-            [new MySQLPlatform(), '8.0.16', "(IS_VISIBLE = 'YES') AS visible"],
-        ] as [$platform, $version, $fragment]) {
+            [new MariaDBPlatform(), '5.5.5-10.2.22-MariaDB', "'NO' AS visible", 'NO'],
+            [new MariaDBPlatform(), '10.5.29-MariaDB', "'NO' AS visible", 'NO'],
+            [new MariaDBPlatform(), '10.6.0-MariaDB', 'IGNORED AS visible', 'NO'],
+            [new MySQLPlatform(), '8.0.16', 'IS_VISIBLE AS visible', 'YES'],
+        ] as [$platform, $version, $fragment, $usable]) {
             $connection = new \mock\Doctrine\DBAL\Connection([], (new DisconnectedSchemaConnection($platform))->getDriver());
             $this->calling($connection)->getDatabasePlatform = $platform;
             $this->calling($connection)->getServerVersion = $version;
             $queries = [];
-            $this->calling($connection)->fetchAllAssociative = static function (string $sql, array $parameters, array $types) use (&$queries): array {
+            $values = ['YES', 'NO', null, '', 'true', 1, 0];
+            $this->calling($connection)->fetchAllAssociative = static function (string $sql, array $parameters, array $types) use (&$queries, $values): array {
                 $queries[] = [$sql, $parameters, $types];
-                return [];
+                return array_map(static fn ($value, $key): array => [
+                    'table_name' => 'glpi_items_devicesensors', 'index_name' => 'fixture_' . $key,
+                    'column_name' => 'computers_id', 'non_unique' => 1, 'access_method' => 'BTREE',
+                    'prefix_length' => null, 'visible' => $value,
+                ], $values, array_keys($values));
             };
-            $this->array(\itsmng\Database\PhysicalIndexSchema::catalog($connection, ['glpi_items_devicesensors']))->isEmpty();
+            $catalog = \itsmng\Database\PhysicalIndexSchema::catalog($connection, ['glpi_items_devicesensors']);
+            foreach ($values as $key => $value) {
+                $this->boolean($catalog['glpi_items_devicesensors']['fixture_' . $key]['usable'])->isIdenticalTo($value === $usable);
+            }
             $this->integer(count($queries))->isIdenticalTo(1);
-            $this->string($queries[0][0])->contains($fragment);
+            $this->string($queries[0][0])->contains($fragment)->notContains('IS_VISIBLE =')->notContains('IGNORED =');
             $this->array($queries[0][1])->isIdenticalTo([['glpi_items_devicesensors']]);
             $this->array($queries[0][2])->isIdenticalTo([\Doctrine\DBAL\ArrayParameterType::STRING]);
         }

@@ -80,7 +80,22 @@ class OrmMigration extends \GLPITestCase
             'SELECT COUNT(*) FROM glpi_plugins WHERE directory = ?',
             ['tester']
         ))->isIdenticalTo(0, 'Migration bootstrap must not register the ordinary test plugin');
-        $this->array((new SchemaCheck())->differences($connection))->isEmpty();
+        if ($connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\AbstractMySQLPlatform
+            && !$connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\MariaDBPlatform) {
+            // Exercise native metadata with the connection collation involved
+            // in the MySQL 8.4 public-install illegal-mix failure.
+            $collation = $connection->fetchOne('SELECT @@session.collation_connection');
+            try {
+                $connection->executeStatement("SET SESSION collation_connection = 'utf8mb3_unicode_ci'");
+                $this->string($connection->fetchOne('SELECT @@session.collation_connection'))->isIdenticalTo('utf8mb3_unicode_ci');
+                $this->array((new SchemaCheck())->differences($connection))->isEmpty();
+            } finally {
+                $connection->executeStatement('SET SESSION collation_connection = ?', [$collation]);
+            }
+            $this->string($connection->fetchOne('SELECT @@session.collation_connection'))->isIdenticalTo($collation);
+        } else {
+            $this->array((new SchemaCheck())->differences($connection))->isEmpty();
+        }
         $this->array(History::pendingVersions($connection))->isEmpty();
         $this->boolean(History::isInstalling($connection))->isFalse();
         $this->boolean(Ledger::state($connection, Baseline::PHASE)['installation_complete'])->isTrue();
