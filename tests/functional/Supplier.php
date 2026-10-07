@@ -33,7 +33,18 @@
 
 namespace tests\units;
 
+use Contact;
+use Contact_Supplier;
 use DbTestCase;
+use Domain;
+use InvalidArgumentException;
+use itsmng\Database\Entity\Domain as DomainRecord;
+use itsmng\Database\Entity\Entity as EntityRecord;
+use itsmng\Database\Entity\Supplier as SupplierRecord;
+use itsmng\Database\Orm;
+use RuntimeException;
+use Supplier as SupplierModel;
+use Transfer;
 
 class Supplier extends DbTestCase
 {
@@ -41,7 +52,7 @@ class Supplier extends DbTestCase
     {
         $this->login();
 
-        $obj = new \Supplier();
+        $obj = new SupplierModel();
         $id = $obj->add([
            'name'        => 'supplier-' . $this->getUniqueString(),
            'entities_id' => 0,
@@ -96,11 +107,11 @@ class Supplier extends DbTestCase
         global $DB;
 
         [$supplier, $domain, $source, $child, $sibling] = $this->commercialDomainFixture();
-        $contact = $this->createItem(\Contact::class, [
+        $contact = $this->createItem(Contact::class, [
             'name' => 'Supplier transfer contact ' . $this->getUniqueString(),
             'entities_id' => $source,
         ]);
-        $binding = $this->createItem(\Contact_Supplier::class, [
+        $binding = $this->createItem(Contact_Supplier::class, [
             'contacts_id' => $contact->getID(), 'suppliers_id' => $supplier->getID(),
         ]);
         $connection = $DB->getDoctrineConnection();
@@ -116,12 +127,12 @@ class Supplier extends DbTestCase
         }
         $error = null;
         try {
-            (new \Transfer())->moveItems(['Supplier' => [$supplier->getID()]], $sibling, []);
-        } catch (\RuntimeException $caught) {
+            (new Transfer())->moveItems(['Supplier' => [$supplier->getID()]], $sibling, []);
+        } catch (RuntimeException $caught) {
             // The test logger throws after Transfer has rolled back its owned frame.
             $error = $caught;
         }
-        $this->boolean($error instanceof \RuntimeException)->isTrue('Supplier Transfer must reject an out-of-scope commercial Domain');
+        $this->boolean($error instanceof RuntimeException)->isTrue('Supplier Transfer must reject an out-of-scope commercial Domain');
         $this->string($error->getMessage())->contains('Domain commercial supplier must belong to its owner entity or a recursive ancestor.');
         foreach ($rows as $table => $id) {
             $this->array($connection->fetchAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table) . ' WHERE id = ?', [$id]))
@@ -130,10 +141,10 @@ class Supplier extends DbTestCase
         $scope->assertActive();
         $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
         // A supplier without incoming Domains can still follow the normal transfer path.
-        $unlinked = $this->createItem(\Supplier::class, [
+        $unlinked = $this->createItem(SupplierModel::class, [
             'name' => 'Independent supplier ' . $this->getUniqueString(), 'entities_id' => $source,
         ]);
-        $this->boolean((new \Transfer())->moveItems(['Supplier' => [$unlinked->getID()]], $sibling, []))->isTrue();
+        $this->boolean((new Transfer())->moveItems(['Supplier' => [$unlinked->getID()]], $sibling, []))->isTrue();
         $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_suppliers WHERE id = ?', [$unlinked->getID()]))->isIdenticalTo($sibling);
         $scope->assertActive();
         $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
@@ -148,18 +159,18 @@ class Supplier extends DbTestCase
         $scope = $DB->captureManagedTransactionScope();
         $level = $connection->getTransactionNestingLevel();
         foreach (['is_recursive', 'entities'] as $field) {
-            $manager = \itsmng\Database\Orm::create($DB);
+            $manager = Orm::create($DB);
             try {
-                $record = $manager->find(\itsmng\Database\Entity\Supplier::class, $supplier->getID());
+                $record = $manager->find(SupplierRecord::class, $supplier->getID());
                 $record->$field = $field === 'is_recursive' ? false
-                    : $manager->getReference(\itsmng\Database\Entity\Entity::class, $sibling);
+                    : $manager->getReference(EntityRecord::class, $sibling);
                 $error = null;
                 try {
                     $manager->flush();
-                } catch (\InvalidArgumentException $caught) {
+                } catch (InvalidArgumentException $caught) {
                     $error = $caught;
                 }
-                $this->boolean($error instanceof \InvalidArgumentException)->isTrue('The owning ORM mutation must enforce commercial Domain ownership');
+                $this->boolean($error instanceof InvalidArgumentException)->isTrue('The owning ORM mutation must enforce commercial Domain ownership');
                 $this->string($error->getMessage())->contains('Domain commercial supplier must belong');
             } finally {
                 $manager->close();
@@ -169,16 +180,42 @@ class Supplier extends DbTestCase
             $this->integer((int)$connection->fetchOne('SELECT is_recursive FROM glpi_suppliers WHERE id = ?', [$supplier->getID()]))->isIdenticalTo(1);
             $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_suppliers WHERE id = ?', [$supplier->getID()]))->isIdenticalTo($source);
         }
+        // Persist validates the initial assignment; PreFlush must revalidate
+        // a new Domain after its Supplier changes later in the same unit of work.
+        $pendingSupplier = $this->createItem(SupplierModel::class, [
+            'name' => 'Pending commercial supplier ' . $this->getUniqueString(), 'entities_id' => $source, 'is_recursive' => 1,
+        ]);
+        $pendingName = 'Pending commercial domain ' . $this->getUniqueString();
+        $manager = Orm::create($DB);
+        try {
+            $record = $manager->find(SupplierRecord::class, $pendingSupplier->getID());
+            $pendingDomain = new DomainRecord();
+            $pendingDomain->name = $pendingName;
+            $pendingDomain->entities = $manager->getReference(EntityRecord::class, $child);
+            $pendingDomain->suppliers = $record;
+            $manager->persist($pendingDomain);
+            $this->variable($pendingDomain->id)->isNull();
+            $this->boolean($manager->getUnitOfWork()->isScheduledForInsert($pendingDomain))->isTrue();
+            $record->is_recursive = false;
+            $this->exception(static fn () => $manager->flush())->isInstanceOf(InvalidArgumentException::class)
+                ->hasMessage('Domain commercial supplier must belong to its owner entity or a recursive ancestor.');
+        } finally {
+            $manager->close();
+        }
+        $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_domains WHERE name = ?', [$pendingName]))->isIdenticalTo(0);
+        $this->integer((int)$connection->fetchOne('SELECT is_recursive FROM glpi_suppliers WHERE id = ?', [$pendingSupplier->getID()]))->isIdenticalTo(1);
+        $scope->assertActive();
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
         // Another public model can persist a Domain after this manager read the
         // Supplier and its then-empty incoming set, on the same physical writer.
-        $lateSupplier = $this->createItem(\Supplier::class, [
+        $lateSupplier = $this->createItem(SupplierModel::class, [
             'name' => 'Late commercial supplier ' . $this->getUniqueString(), 'entities_id' => $source, 'is_recursive' => 1,
         ]);
-        $manager = \itsmng\Database\Orm::create($DB);
+        $manager = Orm::create($DB);
         try {
-            $record = $manager->find(\itsmng\Database\Entity\Supplier::class, $lateSupplier->getID());
-            $this->array($manager->getRepository(\itsmng\Database\Entity\Domain::class)->findBy(['suppliers' => $record]))->isEmpty();
-            $lateDomain = $this->createItem(\Domain::class, [
+            $record = $manager->find(SupplierRecord::class, $lateSupplier->getID());
+            $this->array($manager->getRepository(DomainRecord::class)->findBy(['suppliers' => $record]))->isEmpty();
+            $lateDomain = $this->createItem(Domain::class, [
                 'name' => 'Late commercial domain ' . $this->getUniqueString(), 'entities_id' => $child,
                 'suppliers_id' => $lateSupplier->getID(),
             ]);
@@ -186,10 +223,10 @@ class Supplier extends DbTestCase
             $error = null;
             try {
                 $manager->flush();
-            } catch (\InvalidArgumentException $caught) {
+            } catch (InvalidArgumentException $caught) {
                 $error = $caught;
             }
-            $this->boolean($error instanceof \InvalidArgumentException)->isTrue('Supplier validation must include Domains added by another model on its writer');
+            $this->boolean($error instanceof InvalidArgumentException)->isTrue('Supplier validation must include Domains added by another model on its writer');
         } finally {
             $manager->close();
         }
@@ -198,15 +235,15 @@ class Supplier extends DbTestCase
         $scope->assertActive();
         $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
         // A coherent same-flush Domain reassignment must override persisted ownership.
-        $replacement = $this->createItem(\Supplier::class, [
+        $replacement = $this->createItem(SupplierModel::class, [
             'name' => 'Replacement local supplier ' . $this->getUniqueString(), 'entities_id' => $child,
         ]);
-        $manager = \itsmng\Database\Orm::create($DB);
+        $manager = Orm::create($DB);
         try {
-            $record = $manager->find(\itsmng\Database\Entity\Supplier::class, $supplier->getID());
-            $manager->getRepository(\itsmng\Database\Entity\Domain::class)->findBy(['suppliers' => $record]);
-            $managedDomain = $manager->find(\itsmng\Database\Entity\Domain::class, $domain->getID());
-            $managedDomain->suppliers = $manager->getReference(\itsmng\Database\Entity\Supplier::class, $replacement->getID());
+            $record = $manager->find(SupplierRecord::class, $supplier->getID());
+            $manager->getRepository(DomainRecord::class)->findBy(['suppliers' => $record]);
+            $managedDomain = $manager->find(DomainRecord::class, $domain->getID());
+            $managedDomain->suppliers = $manager->getReference(SupplierRecord::class, $replacement->getID());
             $record->is_recursive = false;
             $manager->flush();
         } finally {
@@ -225,10 +262,10 @@ class Supplier extends DbTestCase
         $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
         $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
         $sibling = (int)getItemByTypeName('Entity', '_test_child_2', true);
-        $supplier = $this->createItem(\Supplier::class, [
+        $supplier = $this->createItem(SupplierModel::class, [
             'name' => 'Commercial supplier ' . $this->getUniqueString(), 'entities_id' => $source, 'is_recursive' => 1,
         ]);
-        $domain = $this->createItem(\Domain::class, [
+        $domain = $this->createItem(Domain::class, [
             'name' => 'Commercial domain ' . $this->getUniqueString(), 'entities_id' => $child,
             'suppliers_id' => $supplier->getID(),
         ]);
@@ -237,7 +274,7 @@ class Supplier extends DbTestCase
 
     public function testGetLinksSanitizesOutput()
     {
-        $obj = new \Supplier();
+        $obj = new SupplierModel();
         $obj->fields = [
            'id'      => 0,
            'name'    => '\'"<svg/onload=alert(1)>',
