@@ -73,6 +73,38 @@ final class UserRepository
             ->getOneOrNullResult() ?? [];
     }
 
+    /** Fixed scalar preferences; supplied-manager queries retain their ORM behavior. */
+    public function nativeTimelinePreferences(int $user): array
+    {
+        $metadata = $this->em->getClassMetadata(User::class);
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $types = [];
+        $select = [];
+        foreach (['access_font', 'access_shortcuts'] as $field) {
+            $types[$field] = \Doctrine\DBAL\Types\Type::getType($metadata->getTypeOfField($field));
+            $select[] = $types[$field]->convertToPHPValueSQL('u.' . $quote->getColumnName($field, $metadata, $platform), $platform) . ' AS ' . $field;
+        }
+        $userType = \Doctrine\DBAL\Types\Type::getType(Types::BIGINT);
+        $rows = $connection->createQueryBuilder()->select(...$select)
+            ->from($quote->getTableName($metadata, $platform), 'u')
+            ->where('u.' . $quote->getColumnName('id', $metadata, $platform)
+                . ' = ' . $userType->convertToDatabaseValueSQL('?', $platform))
+            ->setParameter(0, $user, Types::BIGINT)->executeQuery()->fetchAllAssociative();
+        // Match getOneOrNullResult's conversion and multiplicity semantics.
+        foreach ($rows as &$row) {
+            foreach ($types as $field => $type) {
+                $row[$field] = $type->convertToPHPValue($row[$field], $platform);
+            }
+        }
+        unset($row);
+        if (count($rows) > 1) {
+            throw new \Doctrine\ORM\NonUniqueResultException();
+        }
+        return $rows[0] ?? [];
+    }
+
     /** Nullable account overrides; the caller supplies the current configuration defaults. */
     public function priorityColors(int $user): array
     {

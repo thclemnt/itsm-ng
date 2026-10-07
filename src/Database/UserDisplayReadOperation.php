@@ -11,6 +11,20 @@ final class UserDisplayReadOperation
 {
     use PrivateReadOwnership;
 
+    public function timelinePreferences(int $user): array
+    {
+        try {
+            $metadata = $this->metadata('glpi_users');
+            $repository = new Repository\UserRepository($this->manager);
+            if ($this->ownedMapping && $this->defaultIdentifiers($metadata) !== null && $metadata->isInheritanceTypeNone()) {
+                return $repository->nativeTimelinePreferences($user);
+            }
+            return $repository->timelinePreferences($user);
+        } catch (\Doctrine\ORM\NoResultException) {
+            return [];
+        }
+    }
+
     public function displayData(int $user): ?array
     {
         $metadata = $this->metadata('glpi_users');

@@ -299,6 +299,7 @@ class Ticket extends DbTestCase
             }
         };
         $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+        $reader = new \itsmng\Database\UserDisplayReadOperation($manager->getConnection());
         $defaultFont = '"Bitstream Vera Sans", arial, Tahoma, "Sans serif"';
         try {
             $_SESSION['glpiID'] = $id;
@@ -306,6 +307,7 @@ class Ticket extends DbTestCase
                 $this->boolean($DB->update('glpi_users', ['access_font' => $font, 'access_shortcuts' => $shortcuts], ['id' => $id]))->isTrue();
                 $this->array($repository->timelinePreferences($id))
                     ->isIdenticalTo(['access_font' => $font, 'access_shortcuts' => $shortcuts]);
+                $this->array($reader->timelinePreferences($id))->isIdenticalTo($repository->timelinePreferences($id));
                 foreach ([0, READ] as $right) {
                     $_SESSION['glpiactiveprofile']['accessibility'] = $right;
                     $expectedFont = $right ? (string)$font : $defaultFont;
@@ -326,6 +328,63 @@ class Ticket extends DbTestCase
                         $this->string($html)->contains("class='shortcutpop' style='font-family: $expectedFont;'");
                     }
                 }
+            }
+            $stringType = \Doctrine\DBAL\Types\Type::getType(\Doctrine\DBAL\Types\Types::STRING);
+            try {
+                \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::STRING, new class () extends \Doctrine\DBAL\Types\StringType {
+                    public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                    {
+                        return 'UPPER(' . $sqlExpr . ')';
+                    }
+                    public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+                    {
+                        return $value === null ? 'converted null' : 'converted ' . $value;
+                    }
+                });
+                foreach (['mixed font', null] as $font) {
+                    $this->boolean($DB->update('glpi_users', ['access_font' => $font], ['id' => $id]))->isTrue();
+                    $expected = ['access_font' => $font === null ? 'converted null' : 'converted MIXED FONT', 'access_shortcuts' => null];
+                    $this->array($repository->timelinePreferences($id))->isIdenticalTo($expected);
+                    $this->array($reader->timelinePreferences($id))->isIdenticalTo($expected);
+                }
+                \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::STRING, new class () extends \Doctrine\DBAL\Types\StringType {
+                    public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+                    {
+                        throw new \Doctrine\ORM\NoResultException();
+                    }
+                });
+                $this->array($repository->timelinePreferences($id))->isEmpty();
+                $this->array($reader->timelinePreferences($id))->isEmpty();
+            } finally {
+                \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::STRING, $stringType);
+            }
+            $bigintType = \Doctrine\DBAL\Types\Type::getType(\Doctrine\DBAL\Types\Types::BIGINT);
+            $booleanType = \Doctrine\DBAL\Types\Type::getType(\Doctrine\DBAL\Types\Types::BOOLEAN);
+            try {
+                \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::BOOLEAN, new class () extends \Doctrine\DBAL\Types\BooleanType {
+                    public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                    {
+                        return 'NOT (' . $sqlExpr . ')';
+                    }
+                    public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): ?bool
+                    {
+                        return !parent::convertToPHPValue($value, $platform);
+                    }
+                });
+                $expected = $repository->timelinePreferences($id);
+                $this->boolean($expected['access_shortcuts'])->isTrue();
+                $this->array($reader->timelinePreferences($id))->isIdenticalTo($expected);
+                \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::BIGINT, new class () extends \Doctrine\DBAL\Types\BigIntType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                    {
+                        return '(' . $sqlExpr . ' * 0 - 1)';
+                    }
+                });
+                $this->array($repository->timelinePreferences($id))->isEmpty();
+                $this->array($reader->timelinePreferences($id))->isEmpty();
+            } finally {
+                \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::BIGINT, $bigintType);
+                \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::BOOLEAN, $booleanType);
             }
             $this->integer($loads->count)->isIdenticalTo(0);
             $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
@@ -377,6 +436,7 @@ class Ticket extends DbTestCase
             $_SESSION = $session;
             $this->boolean($user->delete(['id' => $id], true))->isTrue();
             $this->array($repository->timelinePreferences($id))->isEmpty();
+            $this->array($reader->timelinePreferences($id))->isEmpty();
             $_SESSION['glpiID'] = $id;
             $_SESSION['glpiactiveprofile']['accessibility'] = READ;
             $this->output(fn () => $item->showTimelineHeader())->contains("<h2 style='font-family: ;'>")
@@ -385,6 +445,7 @@ class Ticket extends DbTestCase
                 ->contains("<div style='font-family: ;' class='h_item middle'>");
         } finally {
             $_SESSION = $session;
+            $reader->close();
             $manager->clear();
         }
     }

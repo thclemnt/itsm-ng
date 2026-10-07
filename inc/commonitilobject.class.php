@@ -7478,7 +7478,7 @@ abstract class CommonITILObject extends CommonDBTM
         echo "<div class='timeline_form' data-testid='timeline-form'>";
         echo "<ul class='timeline_choices'>";
 
-        $preferences = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+        $preferences = (new \itsmng\Database\UserDisplayReadOperation($DB->getDoctrineConnection()))
             ->timelinePreferences((int)Session::getLoginUserID());
         $canuse_shortcuts = $preferences['access_shortcuts'] ?? null;
         $font = "\"Bitstream Vera Sans\", arial, Tahoma, \"Sans serif\"";
