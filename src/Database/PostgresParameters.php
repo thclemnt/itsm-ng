@@ -4,6 +4,9 @@
 
 namespace itsmng\Database;
 
+use Generator;
+use InvalidArgumentException;
+
 /** Lexical parameter adaptation; SQL expressions and literal values are not inferred. */
 final class PostgresParameters
 {
@@ -20,7 +23,7 @@ final class PostgresParameters
             if ($kind === 'parameter') {
                 $position = (int)substr($text, 1);
                 if ($position < 1 || !array_key_exists($position - 1, $values)) {
-                    throw new \InvalidArgumentException('PostgreSQL parameter position has no supplied value.');
+                    throw new InvalidArgumentException('PostgreSQL parameter position has no supplied value.');
                 }
                 $bound[] = $values[$position - 1];
                 $used[$position] = true;
@@ -33,7 +36,7 @@ final class PostgresParameters
             }
         }
         if (count($used) !== count($values)) {
-            throw new \InvalidArgumentException('PostgreSQL parameter values must have corresponding SQL positions.');
+            throw new InvalidArgumentException('PostgreSQL parameter values must have corresponding SQL positions.');
         }
         return [$output, $bound];
     }
@@ -66,7 +69,7 @@ final class PostgresParameters
     }
 
     /** Tokens preserve all bytes outside explicitly adapted parameter/literal delimiters. */
-    private static function tokens(string $sql): \Generator
+    private static function tokens(string $sql): Generator
     {
         $length = strlen($sql);
         for ($offset = 0; $offset < $length;) {
@@ -95,7 +98,7 @@ final class PostgresParameters
                     }
                 }
                 if (!$closed) {
-                    throw new \InvalidArgumentException('Unterminated PostgreSQL literal or identifier.');
+                    throw new InvalidArgumentException('Unterminated PostgreSQL literal or identifier.');
                 }
             } elseif (substr($sql, $offset, 2) === '--') {
                 $offset += 2;
@@ -118,14 +121,14 @@ final class PostgresParameters
                     }
                 }
                 if ($depth !== 0) {
-                    throw new \InvalidArgumentException('Unterminated PostgreSQL comment.');
+                    throw new InvalidArgumentException('Unterminated PostgreSQL comment.');
                 }
             } elseif ($character === '$' && ($offset === 0 || !preg_match('/[a-zA-Z0-9_$\x80-\xff]/', $sql[$offset - 1]))) {
                 if (preg_match('/\G\$(?:[a-zA-Z_\x80-\xff][a-zA-Z0-9_\x80-\xff]*)?\$/', $sql, $match, 0, $offset)) {
                     $delimiter = $match[0];
                     $end = strpos($sql, $delimiter, $offset + strlen($delimiter));
                     if ($end === false) {
-                        throw new \InvalidArgumentException('Unterminated PostgreSQL dollar-quoted literal.');
+                        throw new InvalidArgumentException('Unterminated PostgreSQL dollar-quoted literal.');
                     }
                     $kind = 'dollar';
                     $offset = $end + strlen($delimiter);

@@ -7,24 +7,28 @@ namespace itsmng\Database\Driver;
 use Doctrine\DBAL\Driver\Connection;
 use Doctrine\DBAL\Driver\Result;
 use Doctrine\DBAL\Driver\Statement;
+use LogicException;
+use Throwable;
+use WeakMap;
+use WeakReference;
 
 /** A DBAL driver's commands and results cannot retain a closed physical session. */
 final class OwnedConnection implements Connection
 {
-    /** @var \WeakMap<OwnedStatement, true> */
-    private \WeakMap $statements;
-    /** @var \WeakMap<OwnedResult, true> */
-    private \WeakMap $results;
+    /** @var WeakMap<OwnedStatement, true> */
+    private WeakMap $statements;
+    /** @var WeakMap<OwnedResult, true> */
+    private WeakMap $results;
 
     public function __construct(private ?Connection $connection)
     {
-        $this->statements = new \WeakMap();
-        $this->results = new \WeakMap();
+        $this->statements = new WeakMap();
+        $this->results = new WeakMap();
     }
 
     public function prepare(string $sql): Statement
     {
-        $statement = new OwnedStatement($this->active()->prepare($sql), \WeakReference::create($this));
+        $statement = new OwnedStatement($this->active()->prepare($sql), WeakReference::create($this));
         $this->statements[$statement] = true;
         return $statement;
     }
@@ -89,7 +93,7 @@ final class OwnedConnection implements Connection
         foreach ($this->results as $result => $_) {
             try {
                 $result->close();
-            } catch (\Throwable $error) {
+            } catch (Throwable $error) {
                 $primary ??= $error;
             }
         }
@@ -97,19 +101,19 @@ final class OwnedConnection implements Connection
             foreach ($this->statements as $statement => $_) {
                 try {
                     $statement->close();
-                } catch (\Throwable $error) {
+                } catch (Throwable $error) {
                     $primary ??= $error;
                 }
             }
             // Logging middleware can throw from its real disconnect destructor.
             try {
                 $this->connection = null;
-            } catch (\Throwable $error) {
+            } catch (Throwable $error) {
                 $primary ??= $error;
             }
         } finally {
-            $this->results = new \WeakMap();
-            $this->statements = new \WeakMap();
+            $this->results = new WeakMap();
+            $this->statements = new WeakMap();
         }
         if ($primary !== null) {
             throw $primary;
@@ -118,6 +122,6 @@ final class OwnedConnection implements Connection
 
     private function active(): Connection
     {
-        return $this->connection ?? throw new \LogicException('Physical DBAL command owner is closed.');
+        return $this->connection ?? throw new LogicException('Physical DBAL command owner is closed.');
     }
 }

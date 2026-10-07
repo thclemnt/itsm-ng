@@ -7,11 +7,13 @@ namespace itsmng\Database\Driver;
 use Doctrine\DBAL\Driver\Result;
 use Doctrine\DBAL\Driver\Statement;
 use Doctrine\DBAL\ParameterType;
+use LogicException;
+use WeakReference;
 
 /** Retained DBAL statements delegate results to their exact physical owner. */
 final class OwnedStatement implements Statement
 {
-    public function __construct(private ?Statement $statement, private \WeakReference $owner)
+    public function __construct(private ?Statement $statement, private WeakReference $owner)
     {
     }
 
@@ -24,7 +26,7 @@ final class OwnedStatement implements Statement
     {
         $owner = $this->owner->get();
         if (!$owner instanceof OwnedConnection) {
-            throw new \LogicException('Prepared command owner no longer exists.');
+            throw new LogicException('Prepared command owner no longer exists.');
         }
         return $owner->ownResult($this->active()->execute());
     }
@@ -36,6 +38,6 @@ final class OwnedStatement implements Statement
 
     private function active(): Statement
     {
-        return $this->statement ?? throw new \LogicException('Prepared command owner is closed.');
+        return $this->statement ?? throw new LogicException('Prepared command owner is closed.');
     }
 }

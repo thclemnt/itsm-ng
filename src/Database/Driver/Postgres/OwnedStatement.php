@@ -4,9 +4,10 @@
 
 namespace itsmng\Database\Driver\Postgres;
 
-use Doctrine\DBAL\Driver\Statement as DriverStatement;
 use Doctrine\DBAL\Driver\Result as DriverResult;
+use Doctrine\DBAL\Driver\Statement as DriverStatement;
 use Doctrine\DBAL\ParameterType;
+use LogicException;
 
 /** A retained compatibility command cannot outlive its physical DBAL owner. */
 final class OwnedStatement implements DriverStatement
@@ -32,6 +33,6 @@ final class OwnedStatement implements DriverStatement
 
     private function active(): DriverStatement
     {
-        return $this->statement ?? throw new \LogicException('Prepared statement owner is closed.');
+        return $this->statement ?? throw new LogicException('Prepared statement owner is closed.');
     }
 }

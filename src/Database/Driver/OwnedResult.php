@@ -4,8 +4,10 @@
 
 namespace itsmng\Database\Driver;
 
-use Doctrine\DBAL\Driver\Result;
 use Doctrine\DBAL\Driver\PDO\Exception as PdoDriverException;
+use Doctrine\DBAL\Driver\Result;
+use LogicException;
+use PDOException;
 
 /** The owner can release a retained result without changing ordinary cursor semantics. */
 final class OwnedResult implements Result
@@ -80,13 +82,13 @@ final class OwnedResult implements Result
     {
         try {
             $result->free();
-        } catch (\PDOException $error) {
+        } catch (PDOException $error) {
             throw PdoDriverException::new($error);
         }
     }
 
     private function active(): Result
     {
-        return $this->result ?? throw new \LogicException('Result physical owner is closed.');
+        return $this->result ?? throw new LogicException('Result physical owner is closed.');
     }
 }
