@@ -4,14 +4,26 @@
 
 namespace itsmng\Domain;
 
+use CommonDBTM;
+use DateTimeImmutable;
+use DateTimeZone;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
 use itsmng\Database\Entity;
+use itsmng\Database\Entity\Domain;
+use itsmng\Database\Entity\DomainType;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\Mapping\DiscriminatedBy;
 use itsmng\Database\Mapping\LegacyInput;
 use itsmng\Database\ReferenceValues;
+use itsmng\Database\Repository\DomainRepository;
 use itsmng\Database\Repository\RecordRepository;
+use ReflectionProperty;
+use RuntimeException;
+use Throwable;
+
+use function getItemForItemtype;
 
 /** Current property metadata owns types and relationships; this service validates import input. */
 final class DomainImportValidation
@@ -46,34 +58,37 @@ final class DomainImportValidation
             $mapping = $metadata->getFieldMapping($metadata->getFieldName($column));
             if ($value === null) {
                 if (!$mapping->nullable) {
-                    throw new \RuntimeException('NULL Domains import field: ' . $label);
+                    throw new RuntimeException('NULL Domains import field: ' . $label);
                 }
                 continue;
             }
             if ($mapping->type === 'boolean') {
                 if (!in_array($value, [true, false, 0, 1, '0', '1'], true)) {
-                    throw new \RuntimeException('Invalid Domains import boolean: ' . $label);
+                    throw new RuntimeException('Invalid Domains import boolean: ' . $label);
                 }
                 $value = in_array($value, [true, 1, '1'], true);
             } elseif (in_array($mapping->type, ['integer', 'smallint', 'bigint'], true)) {
                 $value = $this->integer($value, $label, $column === 'id' ? 1 : 0);
             } elseif (in_array($mapping->type, ['date', 'datetime', 'datetimetz'], true)) {
-                $calendar = $class === \itsmng\Database\Entity\Domain::class && in_array($column, ['date_creation', 'date_expiration'], true);
+                $calendar = $class === Domain::class && in_array($column, ['date_creation', 'date_expiration'], true);
                 if ($value === '' || $value === ($calendar ? '0000-00-00' : '0000-00-00 00:00:00')) {
                     $value = null;
                     continue;
                 }
                 $format = $calendar ? 'Y-m-d' : 'Y-m-d H:i:s';
-                $date = \DateTimeImmutable::createFromFormat('!' . $format, (string)$value);
+                $date = DateTimeImmutable::createFromFormat('!' . $format, (string)$value);
                 if (!$date || $date->format($format) !== (string)$value) {
-                    throw new \RuntimeException('Invalid Domains import calendar date: ' . $label . '=' . $value);
+                    throw new RuntimeException('Invalid Domains import calendar date: ' . $label . '=' . $value);
                 }
                 $connection = $this->em->getConnection();
                 if ($connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
-                    if ($connection->fetchOne('SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?', [$metadata->getTableName(), $column]) === 'timestamp') {
+                    if ($connection->fetchOne(
+                        'SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?',
+                        [$metadata->getTableName(), $column]
+                    ) === 'timestamp') {
                         $instant = $connection->fetchOne('SELECT UNIX_TIMESTAMP(?)', [$date->format('Y-m-d H:i:s')]);
                         if ($instant === null || (float)$instant <= 0) {
-                            throw new \RuntimeException('Domains import exceeds native TIMESTAMP range: ' . $label . '=' . $value);
+                            throw new RuntimeException('Domains import exceeds native TIMESTAMP range: ' . $label . '=' . $value);
                         }
                     }
                     $timezone = $connection->fetchOne('SELECT @@SESSION.time_zone');
@@ -81,9 +96,9 @@ final class DomainImportValidation
                         $timezone = $connection->fetchOne('SELECT @@GLOBAL.system_time_zone');
                     }
                     try {
-                        $date = new \DateTimeImmutable($date->format('Y-m-d H:i:s'), new \DateTimeZone($timezone));
-                    } catch (\Throwable $error) {
-                        throw new \RuntimeException('Domains import requires an explicit supported database session timezone: ' . $timezone, previous: $error);
+                        $date = new DateTimeImmutable($date->format('Y-m-d H:i:s'), new DateTimeZone($timezone));
+                    } catch (Throwable $error) {
+                        throw new RuntimeException('Domains import requires an explicit supported database session timezone: ' . $timezone, previous: $error);
                     }
                 } else {
                     // Calendar values are interpreted in the destination session timezone,
@@ -91,13 +106,16 @@ final class DomainImportValidation
                     // PostgreSQL accepts POSIX offset names whose sign differs from
                     // PHP's timezone parser. Let the actual provider interpret its
                     // own session zone rather than translating that name in PHP.
-                    $native = $connection->fetchOne("SELECT CAST(? AS TIMESTAMP) AT TIME ZONE current_setting('TimeZone')", [$date->format('Y-m-d H:i:s')]);
-                    $date = new \DateTimeImmutable($native);
+                    $native = $connection->fetchOne(
+                        "SELECT CAST(? AS TIMESTAMP) AT TIME ZONE current_setting('TimeZone')",
+                        [$date->format('Y-m-d H:i:s')]
+                    );
+                    $date = new DateTimeImmutable($native);
                 }
                 $value = $date->format('Y-m-d H:i:sP');
             } else {
                 if (!is_scalar($value) || ($mapping->length !== null && mb_strlen((string)$value) > $mapping->length)) {
-                    throw new \RuntimeException('Invalid Domains import text: ' . $label);
+                    throw new RuntimeException('Invalid Domains import text: ' . $label);
                 }
                 $value = (string)$value;
             }
@@ -105,7 +123,7 @@ final class DomainImportValidation
         unset($value);
         foreach ($joins as $column => $join) {
             if (!$join->nullable && !array_key_exists($column, $values)) {
-                throw new \RuntimeException('Missing Domains import ownership: ' . $metadata->getTableName() . '.' . $column);
+                throw new RuntimeException('Missing Domains import ownership: ' . $metadata->getTableName() . '.' . $column);
             }
         }
         return $values;
@@ -114,7 +132,7 @@ final class DomainImportValidation
     public function integer(mixed $value, string $label, int $minimum): int
     {
         if (is_bool($value) || filter_var($value, FILTER_VALIDATE_INT) === false || (int)$value < $minimum) {
-            throw new \RuntimeException('Invalid Domains import identifier: ' . $label);
+            throw new RuntimeException('Invalid Domains import identifier: ' . $label);
         }
         return (int)$value;
     }
@@ -125,7 +143,7 @@ final class DomainImportValidation
         foreach ($records as $record) {
             $id = $record['values']['id'];
             if (isset($incoming[$record['table']][$id])) {
-                throw new \RuntimeException('Duplicate Domains plugin identifier: ' . $record['table'] . '.' . $id);
+                throw new RuntimeException('Duplicate Domains plugin identifier: ' . $record['table'] . '.' . $id);
             }
             $incoming[$record['table']][$id] = true;
         }
@@ -134,7 +152,7 @@ final class DomainImportValidation
             $metadata = $this->em->getClassMetadata($record['class']);
             $id = $record['values']['id'];
             if ($this->em->find($record['class'], $id) !== null) {
-                throw new \RuntimeException('Domains import ID collision: ' . $record['table'] . '.' . $id . '; existing core records are not owned by this export.');
+                throw new RuntimeException('Domains import ID collision: ' . $record['table'] . '.' . $id . '; existing core records are not owned by this export.');
             }
             foreach ($metadata->associationMappings as $association) {
                 if (!$association->isToOneOwningSide()) {
@@ -143,12 +161,12 @@ final class DomainImportValidation
                 $column = $association->joinColumns[0]->name;
                 $targetId = $record['values'][$column] ?? null;
                 $targetTable = $this->em->getClassMetadata($association->targetEntity)->getTableName();
-                if ($targetId !== null && in_array($association->targetEntity, [\itsmng\Database\Entity\Domain::class, \itsmng\Database\Entity\DomainType::class], true)
+                if ($targetId !== null && in_array($association->targetEntity, [Domain::class, DomainType::class], true)
                     && !isset($incoming[$targetTable][$targetId])) {
-                    throw new \RuntimeException('Missing Domains source owner: ' . $record['table'] . '.' . $id . '.' . $column . ' -> ' . $targetTable . '.' . $targetId);
+                    throw new RuntimeException('Missing Domains source owner: ' . $record['table'] . '.' . $id . '.' . $column . ' -> ' . $targetTable . '.' . $targetId);
                 }
                 if ($targetId !== null && !isset($incoming[$targetTable][$targetId]) && $this->em->find($association->targetEntity, $targetId) === null) {
-                    throw new \RuntimeException('Invalid Domains import target: ' . $record['table'] . '.' . $id . '.' . $column . ' -> ' . $targetTable . '.' . $targetId);
+                    throw new RuntimeException('Invalid Domains import target: ' . $record['table'] . '.' . $id . '.' . $column . ' -> ' . $targetTable . '.' . $targetId);
                 }
             }
             foreach ($metadata->table['uniqueConstraints'] ?? [] as $name => $constraint) {
@@ -173,12 +191,12 @@ final class DomainImportValidation
     {
         $types = [];
         foreach ($records as $record) {
-            if ($record['class'] === \itsmng\Database\Entity\DomainType::class) {
+            if ($record['class'] === DomainType::class) {
                 $types[$record['values']['id']] = $record['values'];
             }
         }
         foreach ($records as $record) {
-            if ($record['class'] !== \itsmng\Database\Entity\Domain::class) {
+            if ($record['class'] !== Domain::class) {
                 continue;
             }
             $domain = $record['values'];
@@ -188,9 +206,9 @@ final class DomainImportValidation
             }
             if (($domain['suppliers_id'] ?? null) !== null) {
                 try {
-                    (new \itsmng\Database\Repository\DomainRepository($this->em))->assertCommercialSupplierAssignment($domain);
-                } catch (\InvalidArgumentException $error) {
-                    throw new \RuntimeException('Domains import entity scope mismatch: glpi_domains.' . $domain['id'] . '.suppliers_id; ' . $error->getMessage(), 0, $error);
+                    (new DomainRepository($this->em))->assertCommercialSupplierAssignment($domain);
+                } catch (InvalidArgumentException $error) {
+                    throw new RuntimeException('Domains import entity scope mismatch: glpi_domains.' . $domain['id'] . '.suppliers_id; ' . $error->getMessage(), 0, $error);
                 }
             }
         }
@@ -220,11 +238,11 @@ final class DomainImportValidation
                     if ($kind === DomainPluginSource::ITEMTYPE) {
                         $scopes[] = $domains[$id];
                     } else {
-                        $model = \getItemForItemtype($kind);
-                        $class = $model instanceof \CommonDBTM ? (EntityRegistry::tables()[$model::getTable()] ?? null) : null;
+                        $model = getItemForItemtype($kind);
+                        $class = $model instanceof CommonDBTM ? (EntityRegistry::tables()[$model::getTable()] ?? null) : null;
                         $values = $class ? (new RecordRepository($this->em))->find($model::getTable(), 'id', $id) : null;
                         if ($values === null) {
-                            throw new \RuntimeException('Unsupported Domains impact endpoint: ' . $binding['table'] . '.' . $binding['id'] . '.' . $role);
+                            throw new RuntimeException('Unsupported Domains impact endpoint: ' . $binding['table'] . '.' . $binding['id'] . '.' . $role);
                         }
                         // Impact is still a scalar polymorphic relation. Read through
                         // ORM, then honor the actual public endpoint's capabilities
@@ -247,7 +265,7 @@ final class DomainImportValidation
             }
             $subject = null;
             foreach ($binding['associations'] as $association) {
-                if (($association['class'] ?? null) === Entity\Domain::class) {
+                if (($association['class'] ?? null) === Domain::class) {
                     $subject = $domains[$association['id']];
                 }
             }
@@ -259,7 +277,7 @@ final class DomainImportValidation
             foreach ($metadata->associationMappings as $property => $association) {
                 if (!$association->isToOneOwningSide() || $association->joinColumns[0]->nullable
                     || $association->targetEntity === Entity\Entity::class
-                    || (new \ReflectionProperty($metadata->name, $property))->getAttributes(DiscriminatedBy::class)) {
+                    || (new ReflectionProperty($metadata->name, $property))->getAttributes(DiscriminatedBy::class)) {
                     continue;
                 }
                 $this->coherent($subject, $this->ownership($row->$property), $binding['table'] . '.' . $binding['id'] . '.' . $association->joinColumns[0]->name);
@@ -271,7 +289,7 @@ final class DomainImportValidation
     {
         $domains = [];
         foreach ($records as $record) {
-            if ($record['class'] === Entity\Domain::class) {
+            if ($record['class'] === Domain::class) {
                 $domains[$record['values']['id']] = $record['values'];
             }
         }
@@ -295,13 +313,13 @@ final class DomainImportValidation
             || $this->inScope($second['entities_id'], $second['is_recursive'], $first['entities_id'], $label)) {
             return;
         }
-        throw new \RuntimeException('Domains import relation entity scope mismatch: ' . $label);
+        throw new RuntimeException('Domains import relation entity scope mismatch: ' . $label);
     }
 
     private function scope(int $owner, bool $recursive, int $subject, string $label): void
     {
         if (!$this->inScope($owner, $recursive, $subject, $label)) {
-            throw new \RuntimeException('Domains import entity scope mismatch: ' . $label);
+            throw new RuntimeException('Domains import entity scope mismatch: ' . $label);
         }
     }
 
@@ -311,12 +329,12 @@ final class DomainImportValidation
             return true;
         }
         if ($recursive) {
-            $entity = $this->em->find(\itsmng\Database\Entity\Entity::class, $subject);
+            $entity = $this->em->find(Entity\Entity::class, $subject);
             $seen = [];
             while ($entity->parent !== null) {
                 $entity = $entity->parent;
                 if (isset($seen[$entity->id])) {
-                    throw new \RuntimeException('Domains scope contains an entity cycle: ' . $label);
+                    throw new RuntimeException('Domains scope contains an entity cycle: ' . $label);
                 }
                 $seen[$entity->id] = true;
                 if ($entity->id === $owner) {
@@ -334,7 +352,10 @@ final class DomainImportValidation
             $parts = $params = [];
             foreach ($criteria as $column => $value) {
                 if ($connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
-                    $definition = $connection->fetchAssociative('SELECT CHARACTER_SET_NAME, COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?', [$table, $column]);
+                    $definition = $connection->fetchAssociative(
+                        'SELECT CHARACTER_SET_NAME, COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?',
+                        [$table, $column]
+                    );
                     if ($definition['COLLATION_NAME'] !== null) {
                         $expression = 'CONVERT(? USING ' . $connection->quoteIdentifier($definition['CHARACTER_SET_NAME']) . ') COLLATE ' . $connection->quoteIdentifier($definition['COLLATION_NAME']);
                         $parts[] = '(' . $expression . '=' . $expression . ')';
@@ -347,11 +368,11 @@ final class DomainImportValidation
                 }
             }
             if (!$parts || (int)$connection->fetchOne('SELECT ' . implode(' AND ', $parts), $params) === 1) {
-                throw new \RuntimeException('Domains import unique collision: ' . $table . '.' . $name);
+                throw new RuntimeException('Domains import unique collision: ' . $table . '.' . $name);
             }
         }
         if ((new RecordRepository($this->em))->countMatching($table, $criteria, legacyValues: false)) {
-            throw new \RuntimeException('Domains import unique collision: ' . $table . '.' . $name);
+            throw new RuntimeException('Domains import unique collision: ' . $table . '.' . $name);
         }
     }
 }

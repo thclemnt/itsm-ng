@@ -6,6 +6,7 @@ namespace itsmng\Domain;
 
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity;
+use RuntimeException;
 
 /** Domain-specific permission and expiry policy conflicts must be resolved before writes. */
 final class DomainImportPolicy
@@ -17,7 +18,7 @@ final class DomainImportPolicy
     public function plan(DomainPluginSnapshot $snapshot): array
     {
         if (count($snapshot->configs) !== 1 || (string)$snapshot->configs[0]['id'] !== '1') {
-            throw new \RuntimeException('Domains source requires exactly one config row with id 1.');
+            throw new RuntimeException('Domains source requires exactly one config row with id 1.');
         }
         $config = $snapshot->configs[0];
         $validation = new DomainImportValidation($this->em);
@@ -28,7 +29,7 @@ final class DomainImportPolicy
         foreach ($this->em->getRepository(Entity\Entity::class)->findAll() as $entity) {
             foreach ($fields as $field => $delay) {
                 if (!in_array($entity->$field, [-2, $delay], true)) {
-                    throw new \RuntimeException('Domains expiry settings conflict: glpi_entities.' . $entity->id . '.' . $field . '; reconcile configured policy before import.');
+                    throw new RuntimeException('Domains expiry settings conflict: glpi_entities.' . $entity->id . '.' . $field . '; reconcile configured policy before import.');
                 }
             }
             if ($entity->id === 0) {
@@ -38,12 +39,12 @@ final class DomainImportPolicy
         $notifications = $this->em->getRepository(Entity\Notification::class)->findBy(['itemtype' => DomainPluginSource::ITEMTYPE]);
         foreach ($notifications as $notification) {
             if (!in_array($notification->event, ['ExpiredDomains', 'DomainsWhichExpire'], true)) {
-                throw new \RuntimeException('Unsupported Domains notification event: ' . $notification->id . '.' . $notification->event);
+                throw new RuntimeException('Unsupported Domains notification event: ' . $notification->id . '.' . $notification->event);
             }
             if ($notification->is_active) {
                 foreach ($this->em->getRepository(Entity\Notification::class)->findBy(['itemtype' => 'Domain', 'event' => $notification->event, 'is_active' => true]) as $core) {
                     if (array_intersect($this->notificationScope($notification), $this->notificationScope($core))) {
-                        throw new \RuntimeException('Domains notification delivery conflict: ' . $notification->id . '.' . $notification->event . '; reconcile overlapping active core rules before import.');
+                        throw new RuntimeException('Domains notification delivery conflict: ' . $notification->id . '.' . $notification->event . '; reconcile overlapping active core rules before import.');
                     }
                 }
             }
@@ -52,12 +53,12 @@ final class DomainImportPolicy
         $crons = $this->em->getRepository(Entity\CronTask::class)->findBy(['itemtype' => DomainPluginSource::ITEMTYPE]);
         foreach ($crons as $cron) {
             if ($cron->name !== 'DomainsAlert' || $cron->itemtype !== DomainPluginSource::ITEMTYPE) {
-                throw new \RuntimeException('Unsupported Domains scheduler: glpi_crontasks.' . $cron->id);
+                throw new RuntimeException('Unsupported Domains scheduler: glpi_crontasks.' . $cron->id);
             }
             if ($coreCron) {
                 foreach (['frequency', 'param', 'state', 'mode', 'allowmode', 'hourmin', 'hourmax', 'logs_lifetime'] as $field) {
                     if ($coreCron->$field !== $cron->$field) {
-                        throw new \RuntimeException('Domains scheduler settings conflict: glpi_crontasks.' . $cron->id . '.' . $field . '; reconcile scheduling before import.');
+                        throw new RuntimeException('Domains scheduler settings conflict: glpi_crontasks.' . $cron->id . '.' . $field . '; reconcile scheduling before import.');
                     }
                 }
                 // Retain its identity and execution history as retired source provenance.
@@ -70,7 +71,7 @@ final class DomainImportPolicy
             && (bool)array_filter($notifications, static fn ($notification) => $notification->is_active);
         foreach ($this->em->getRepository(Entity\Entity::class)->findAll() as $entity) {
             if (!in_array($entity->use_domains_alert, [-2, (int)$sourceEnabled], true)) {
-                throw new \RuntimeException('Domains alert enablement conflict: glpi_entities.' . $entity->id . '.use_domains_alert; reconcile configured delivery before import.');
+                throw new RuntimeException('Domains alert enablement conflict: glpi_entities.' . $entity->id . '.use_domains_alert; reconcile configured delivery before import.');
             }
             if ($entity->id === 0) {
                 $policies[] = ['class' => Entity\Entity::class, 'id' => 0, 'fields' => ['use_domains_alert' => (int)$sourceEnabled]];
@@ -80,21 +81,21 @@ final class DomainImportPolicy
         foreach (['plugin_domains' => 'domain', 'plugin_domains_dropdown' => 'domaintype'] as $sourceName => $targetName) {
             foreach ($this->em->getRepository(Entity\ProfileRight::class)->findBy(['name' => $sourceName]) as $source) {
                 if ($source->name !== $sourceName) {
-                    throw new \RuntimeException('Noncanonical Domains permission name: glpi_profilerights.' . $source->id);
+                    throw new RuntimeException('Noncanonical Domains permission name: glpi_profilerights.' . $source->id);
                 }
                 if ($source->rights < 0 || ($source->rights & ~($sourceName === 'plugin_domains' ? 127 : 31)) !== 0) {
-                    throw new \RuntimeException('Unsupported Domains permission mask: glpi_profilerights.' . $source->id);
+                    throw new RuntimeException('Unsupported Domains permission mask: glpi_profilerights.' . $source->id);
                 }
                 $target = $this->em->getRepository(Entity\ProfileRight::class)->findOneBy(['profiles' => $source->profiles, 'name' => $targetName]);
                 if ($target && $target->rights !== 0 && $target->rights !== $source->rights) {
-                    throw new \RuntimeException('Domains permission conflict: profile ' . $source->profiles->id . '.' . $targetName . '; reconcile grants before import.');
+                    throw new RuntimeException('Domains permission conflict: profile ' . $source->profiles->id . '.' . $targetName . '; reconcile grants before import.');
                 }
                 $rights[] = ['source' => $source->id, 'profile' => $source->profiles->id, 'name' => $targetName, 'rights' => $source->rights, 'target' => $target?->id];
             }
         }
         foreach ($this->em->getRepository(Entity\ProfileRight::class)->findBy(['name' => 'plugin_domains_open_ticket']) as $source) {
             if ($source->name !== 'plugin_domains_open_ticket' || !in_array($source->rights, [0, 1], true)) {
-                throw new \RuntimeException('Unsupported Domains helpdesk permission: glpi_profilerights.' . $source->id);
+                throw new RuntimeException('Unsupported Domains helpdesk permission: glpi_profilerights.' . $source->id);
             }
         }
         return [$rights, $policies];
@@ -113,7 +114,7 @@ final class DomainImportPolicy
             $seen = [];
             while ($parent !== null) {
                 if (isset($seen[$parent->id])) {
-                    throw new \RuntimeException('Domains notification scope contains an entity cycle: ' . $entity->id);
+                    throw new RuntimeException('Domains notification scope contains an entity cycle: ' . $entity->id);
                 }
                 $seen[$parent->id] = true;
                 if ($parent->id === $owner) {

@@ -4,15 +4,33 @@
 
 namespace itsmng\Domain;
 
+use DBAdapter;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Schema\Schema;
+use Doctrine\DBAL\Types\StringType;
+use Doctrine\DBAL\Types\TextType;
+use Doctrine\ORM\EntityManager;
+use Domain_Item;
 use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
+use itsmng\Database\LifecycleModelJournal;
 use itsmng\Database\Migration\History;
 use itsmng\Database\Migration\Ledger;
+use itsmng\Database\MutationCleanupFailure;
 use itsmng\Database\Orm;
 use itsmng\Database\PluginImportMutation;
 use itsmng\Database\SchemaCheck;
 use itsmng\Database\SequenceSynchronizer;
+use Plugin;
+use Profile;
+use RecursiveArrayIterator;
+use RecursiveIteratorIterator;
+use RuntimeException;
+use Throwable;
+use Toolbox;
+
+use function exportArrayToDB;
+use function importArrayFromDB;
 
 /** Import a Domain aggregate through its public lifecycle with explicit ownership provenance. */
 final class DomainPluginImport
@@ -20,7 +38,7 @@ final class DomainPluginImport
     public const RECEIPT = '20261006_domains_plugin_import_v1';
     public const ADOPTION_RECEIPT = '20261006_domains_plugin_adoption_v1';
 
-    public function __construct(private \DBAdapter $database)
+    public function __construct(private DBAdapter $database)
     {
     }
 
@@ -30,13 +48,13 @@ final class DomainPluginImport
         $states = Ledger::states($connection);
         foreach (History::versions() as $version) {
             if (($states[$version]['complete'] ?? false) !== true) {
-                throw new \RuntimeException('Domains import requires completed canonical history; run db:migrate. Pending: ' . $version);
+                throw new RuntimeException('Domains import requires completed canonical history; run db:migrate. Pending: ' . $version);
             }
         }
         $inspection = (new SchemaCheck())->inspect($connection);
         $differences = $inspection->differences;
         if ($differences) {
-            throw new \RuntimeException('Domains import requires the canonical core schema: ' . implode('; ', array_slice($differences, 0, 5)));
+            throw new RuntimeException('Domains import requires the canonical core schema: ' . implode('; ', array_slice($differences, 0, 5)));
         }
         $snapshot = (new DomainPluginSource($connection))->read();
         $fingerprint = $snapshot->fingerprint();
@@ -49,7 +67,7 @@ final class DomainPluginImport
                 foreach ($receipts as $provenance) {
                     if (($provenance['complete'] ?? false) !== true || ($provenance['format'] ?? null) !== DomainPluginSnapshot::FORMAT
                         || ($provenance['fingerprint'] ?? null) !== $fingerprint || ($provenance['counts'] ?? null) !== $snapshot->counts()) {
-                        throw new \RuntimeException('Domains source differs from its completed import receipt; explicit reconciliation is required.');
+                        throw new RuntimeException('Domains source differs from its completed import receipt; explicit reconciliation is required.');
                     }
                 }
                 $this->assertKnownIdentitySpellings($em);
@@ -61,8 +79,8 @@ final class DomainPluginImport
             $validation = new DomainImportValidation($em);
             $records = [];
             foreach ($snapshot->records() as [$model, $input]) {
-                if ($model === \Domain_Item::class && !in_array($input['itemtype'], ['Computer', 'Monitor', 'NetworkEquipment', 'Peripheral', 'Phone', 'Printer', 'Software'], true)) {
-                    throw new \RuntimeException('Unsupported Domains plugin asset kind: glpi_plugin_domains_domains_items.' . $input['id'] . '=' . $input['itemtype']);
+                if ($model === Domain_Item::class && !in_array($input['itemtype'], ['Computer', 'Monitor', 'NetworkEquipment', 'Peripheral', 'Phone', 'Printer', 'Software'], true)) {
+                    throw new RuntimeException('Unsupported Domains plugin asset kind: glpi_plugin_domains_domains_items.' . $input['id'] . '=' . $input['itemtype']);
                 }
                 $table = $model::getTable();
                 $class = EntityRegistry::tables()[$table];
@@ -89,7 +107,7 @@ final class DomainPluginImport
             foreach ($this->sourceIdentityKeys() as $binding) {
                 if (!isset($covered[$binding['table']][$binding['id']][$binding['field']])
                     && !($binding['table'] === 'glpi_logs' && $binding['field'] === 'itemtype')) {
-                    throw new \RuntimeException('Unsupported Domains identity role: ' . $binding['table'] . '.' . $binding['id'] . '.' . $binding['field']);
+                    throw new RuntimeException('Unsupported Domains identity role: ' . $binding['table'] . '.' . $binding['id'] . '.' . $binding['field']);
                 }
             }
             $profiles = $this->profiles($em);
@@ -102,22 +120,22 @@ final class DomainPluginImport
     public function import(?callable $progress = null): DomainImportPlan
     {
         if ($this->database !== ($GLOBALS['DB'] ?? null) || $this->database->isSlave()) {
-            throw new \RuntimeException('Domains lifecycle import requires the application writable connection.');
+            throw new RuntimeException('Domains lifecycle import requires the application writable connection.');
         }
         $connection = $this->database->getDoctrineConnection();
         $postgres = $connection->getDatabasePlatform() instanceof PostgreSQLPlatform;
         $lock = 'itsmng_domains_import_' . sha1($connection->getDatabase());
         if (!$postgres && (int)$connection->fetchOne('SELECT GET_LOCK(?,0)', [$lock]) !== 1) {
-            throw new \RuntimeException('Another Domains import is running.');
+            throw new RuntimeException('Another Domains import is running.');
         }
         global $CFG_GLPI;
         $hadInfocom = array_key_exists('auto_create_infocoms', $CFG_GLPI);
         $autoInfocom = $CFG_GLPI['auto_create_infocoms'] ?? null;
         $failure = null;
         try {
-            return PluginImportMutation::run($this->database, function (callable $assertActive, \itsmng\Database\LifecycleModelJournal $journal) use ($connection, $postgres, $progress, $autoInfocom): DomainImportPlan {
+            return PluginImportMutation::run($this->database, function (callable $assertActive, LifecycleModelJournal $journal) use ($connection, $postgres, $progress, $autoInfocom): DomainImportPlan {
                 if ($postgres && !in_array($connection->fetchOne("SELECT pg_try_advisory_xact_lock(hashtext('itsmng_domains_import'))"), [true, 1, '1', 't'], true)) {
-                    throw new \RuntimeException('Another Domains import is running.');
+                    throw new RuntimeException('Another Domains import is running.');
                 }
                 $plan = $this->plan();
                 if ($plan->alreadyImported) {
@@ -142,7 +160,7 @@ final class DomainPluginImport
                         $GLOBALS['CFG_GLPI']['auto_create_infocoms'] = $record['class'] === Entity\Domain::class && isset($sourceFinancial[$record['values']['id']]) ? false : $autoInfocom;
                         $model = new $record['model']();
                         $journal->remember($model);
-                        $input = \Toolbox::addslashes_deep($record['input']);
+                        $input = Toolbox::addslashes_deep($record['input']);
                         foreach ($record['input'] as $field => $value) {
                             if ($value === 'NULL' || $value === 'null') {
                                 $input[$field] = $value === 'NULL' ? 'N\\ULL' : 'n\\ull';
@@ -153,7 +171,7 @@ final class DomainPluginImport
                         $created = $model->addWithAssignedIdentifier($id, $input);
                         $assertActive();
                         if ($created !== $id) {
-                            throw new \RuntimeException('Domains lifecycle creation failed: ' . $record['table'] . '.' . $id);
+                            throw new RuntimeException('Domains lifecycle creation failed: ' . $record['table'] . '.' . $id);
                         }
                         if ($record['class'] === Entity\Domain::class && !isset($sourceFinancial[$id])) {
                             $child = $em->getRepository(Entity\Infocom::class)->findOneBy(['itemtype' => 'Domain', 'items_id' => $id]);
@@ -170,12 +188,12 @@ final class DomainPluginImport
                     $em->clear();
                 }
                 foreach ($plan->profiles as $profile) {
-                    $model = new \Profile();
+                    $model = new Profile();
                     $journal->remember($model);
-                    $updated = $model->update(['id' => $profile['id'], 'helpdesk_item_type' => \Toolbox::addslashes_deep(\exportArrayToDB($profile['types']))]);
+                    $updated = $model->update(['id' => $profile['id'], 'helpdesk_item_type' => Toolbox::addslashes_deep(exportArrayToDB($profile['types']))]);
                     $assertActive();
                     if (!$updated) {
-                        throw new \RuntimeException('Domains profile adoption failed: ' . $profile['id']);
+                        throw new RuntimeException('Domains profile adoption failed: ' . $profile['id']);
                     }
                 }
                 $progress && $progress('adopted', 'bindings', count($plan->bindings));
@@ -194,7 +212,7 @@ final class DomainPluginImport
                 $assertActive();
                 return $plan;
             });
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $failure = $error;
             throw $error;
         } finally {
@@ -206,11 +224,11 @@ final class DomainPluginImport
             if (!$postgres) {
                 try {
                     $connection->fetchOne('SELECT RELEASE_LOCK(?)', [$lock]);
-                } catch (\Throwable $cleanup) {
-                    throw $failure === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure(
+                } catch (Throwable $cleanup) {
+                    throw $failure === null ? $cleanup : new MutationCleanupFailure(
                         $failure,
                         $cleanup,
-                        $failure instanceof \itsmng\Database\MutationCleanupFailure && $failure->rollbackUnproven
+                        $failure instanceof MutationCleanupFailure && $failure->rollbackUnproven
                     );
                 }
             }
@@ -218,18 +236,22 @@ final class DomainPluginImport
     }
 
     /** The historical app owns deactivation and its nontransactional plugin hooks. */
-    private function sourcePlugin(\Doctrine\ORM\EntityManager $em): ?array
+    private function sourcePlugin(EntityManager $em): ?array
     {
-        $plugins = $em->createQueryBuilder()->select('p')->from(Entity\Plugin::class, 'p')
-            ->where('LOWER(TRIM(p.directory)) = :directory')->setParameter('directory', 'domains')
-            ->getQuery()->getResult();
+        $plugins = $em->createQueryBuilder()
+            ->select('p')
+            ->from(Entity\Plugin::class, 'p')
+            ->where('LOWER(TRIM(p.directory)) = :directory')
+            ->setParameter('directory', 'domains')
+            ->getQuery()
+            ->getResult();
         $provenance = null;
         foreach ($plugins as $plugin) {
             if ($plugin->directory !== 'domains' || $provenance !== null) {
-                throw new \RuntimeException('Unsupported Domains plugin directory spelling: glpi_plugins.' . $plugin->id . '=' . $plugin->directory . '; reconcile the registration in the compatible historical application before exporting.');
+                throw new RuntimeException('Unsupported Domains plugin directory spelling: glpi_plugins.' . $plugin->id . '=' . $plugin->directory . '; reconcile the registration in the compatible historical application before exporting.');
             }
-            if (in_array($plugin->state, [\Plugin::ACTIVATED, \Plugin::TOBECONFIGURED], true)) {
-                throw new \RuntimeException('Domains plugin must be inactive before import: glpi_plugins.' . $plugin->id . '.state=' . $plugin->state . '. Deactivate it through the compatible historical application before maintenance/export, and keep the source application quiescent throughout import.');
+            if (in_array($plugin->state, [Plugin::ACTIVATED, Plugin::TOBECONFIGURED], true)) {
+                throw new RuntimeException('Domains plugin must be inactive before import: glpi_plugins.' . $plugin->id . '.state=' . $plugin->state . '. Deactivate it through the compatible historical application before maintenance/export, and keep the source application quiescent throughout import.');
             }
             $provenance = ['id' => $plugin->id, 'directory' => $plugin->directory, 'name' => $plugin->name,
                 'version' => $plugin->version, 'state' => $plugin->state, 'author' => $plugin->author,
@@ -238,7 +260,7 @@ final class DomainPluginImport
         return $provenance;
     }
 
-    private function profiles(\Doctrine\ORM\EntityManager $em): array
+    private function profiles(EntityManager $em): array
     {
         $result = [];
         $ticketRights = [];
@@ -247,17 +269,17 @@ final class DomainPluginImport
         }
         foreach ($em->getRepository(Entity\Profile::class)->findAll() as $profile) {
             $encoded = $profile->helpdesk_item_type ?? '';
-            $values = \importArrayFromDB($encoded);
+            $values = importArrayFromDB($encoded);
             if ($encoded !== '' && !is_array(json_decode($encoded, true))) {
                 foreach (explode(' ', $encoded) as $part) {
                     if ($part !== '' && count(explode('=>', $part)) !== 2) {
-                        throw new \RuntimeException('Invalid encoded Domains helpdesk types: glpi_profiles.' . $profile->id);
+                        throw new RuntimeException('Invalid encoded Domains helpdesk types: glpi_profiles.' . $profile->id);
                     }
                 }
             }
             foreach ($values as $value) {
                 if (is_string($value) && strncasecmp(trim($value), 'PluginDomains', 13) === 0 && $value !== DomainPluginSource::ITEMTYPE) {
-                    throw new \RuntimeException('Unsupported Domains helpdesk identity: glpi_profiles.' . $profile->id . '=' . $value);
+                    throw new RuntimeException('Unsupported Domains helpdesk identity: glpi_profiles.' . $profile->id . '=' . $value);
                 }
             }
             $changed = false;
@@ -267,12 +289,12 @@ final class DomainPluginImport
             }
             foreach ($values as $value) {
                 if (!is_string($value)) {
-                    throw new \RuntimeException('Invalid encoded Domains helpdesk types: glpi_profiles.' . $profile->id . '; expected one level of string values.');
+                    throw new RuntimeException('Invalid encoded Domains helpdesk types: glpi_profiles.' . $profile->id . '; expected one level of string values.');
                 }
             }
             $permission = $ticketRights[$profile->id] ?? 0;
             if ($permission === 0 && in_array('Domain', $values, true)) {
-                throw new \RuntimeException('Domains helpdesk policy conflict: profile ' . $profile->id . '; core Domain access differs from source permission.');
+                throw new RuntimeException('Domains helpdesk policy conflict: profile ' . $profile->id . '; core Domain access differs from source permission.');
             }
             foreach ($values as $key => &$value) {
                 if ($value === DomainPluginSource::ITEMTYPE) {
@@ -297,7 +319,7 @@ final class DomainPluginImport
     }
 
     /** Unmodeled external plugin rows are diagnosed, never treated as generic polymorphic owners. */
-    private function unknownExternalBindings(\Doctrine\DBAL\Schema\Schema $schema): void
+    private function unknownExternalBindings(Schema $schema): void
     {
         $connection = $this->database->getDoctrineConnection();
         $mapped = EntityRegistry::tables();
@@ -306,7 +328,7 @@ final class DomainPluginImport
                 continue;
             }
             foreach ($table->getColumns() as $column) {
-                if (!in_array($column->getType()::class, [\Doctrine\DBAL\Types\StringType::class, \Doctrine\DBAL\Types\TextType::class], true)) {
+                if (!in_array($column->getType()::class, [StringType::class, TextType::class], true)) {
                     continue;
                 }
                 $quote = $connection->quoteIdentifier(...);
@@ -315,14 +337,14 @@ final class DomainPluginImport
                     ['plugindomains%']
                 );
                 if ($row) {
-                    throw new \RuntimeException('Unsupported external Domains plugin binding: ' . $table->getName() . '.' . ($row['id'] ?? '?') . '.' . $column->getName());
+                    throw new RuntimeException('Unsupported external Domains plugin binding: ' . $table->getName() . '.' . ($row['id'] ?? '?') . '.' . $column->getName());
                 }
             }
         }
     }
 
     /** Unknown classes in the pinned plugin namespace require a verified adapter. */
-    private function assertKnownIdentitySpellings(\Doctrine\ORM\EntityManager $em): void
+    private function assertKnownIdentitySpellings(EntityManager $em): void
     {
         $kinds = [DomainPluginSource::ITEMTYPE, DomainPluginSource::TYPE, 'PluginDomainsDomaintype'];
         foreach ($em->getMetadataFactory()->getAllMetadata() as $metadata) {
@@ -330,23 +352,28 @@ final class DomainPluginImport
                 if (!$metadata->hasField($field)) {
                     continue;
                 }
-                $rows = $em->createQueryBuilder()->select('r.id, r.' . $field . ' AS kind')->from($metadata->name, 'r')
-                    ->where('LOWER(TRIM(r.' . $field . ')) LIKE :namespace')->setParameter('namespace', 'plugindomains%')->getQuery()->getArrayResult();
+                $rows = $em->createQueryBuilder()
+                    ->select('r.id, r.' . $field . ' AS kind')
+                    ->from($metadata->name, 'r')
+                    ->where('LOWER(TRIM(r.' . $field . ')) LIKE :namespace')
+                    ->setParameter('namespace', 'plugindomains%')
+                    ->getQuery()
+                    ->getArrayResult();
                 foreach ($rows as $row) {
                     if (!in_array($row['kind'], $kinds, true)) {
-                        throw new \RuntimeException('Unsupported Domains source identity spelling: ' . $metadata->getTableName() . '.' . $row['id'] . '.' . $field . '=' . $row['kind']);
+                        throw new RuntimeException('Unsupported Domains source identity spelling: ' . $metadata->getTableName() . '.' . $row['id'] . '.' . $field . '=' . $row['kind']);
                     }
                 }
             }
         }
     }
 
-    private function newBindings(\Doctrine\ORM\EntityManager $em, array $receipt): void
+    private function newBindings(EntityManager $em, array $receipt): void
     {
         foreach ($em->getRepository(Entity\Profile::class)->findAll() as $profile) {
-            foreach (new \RecursiveIteratorIterator(new \RecursiveArrayIterator(\importArrayFromDB($profile->helpdesk_item_type))) as $value) {
+            foreach (new RecursiveIteratorIterator(new RecursiveArrayIterator(importArrayFromDB($profile->helpdesk_item_type))) as $value) {
                 if (is_string($value) && strncasecmp(trim($value), 'PluginDomains', 13) === 0) {
-                    throw new \RuntimeException('New Domains plugin helpdesk binding after completed import: glpi_profiles.' . $profile->id . '; explicit reconciliation is required.');
+                    throw new RuntimeException('New Domains plugin helpdesk binding after completed import: glpi_profiles.' . $profile->id . '; explicit reconciliation is required.');
                 }
             }
         }
@@ -360,12 +387,12 @@ final class DomainPluginImport
         }
         foreach ($this->sourceRights() as $right) {
             if (($rights[$right['id']] ?? null) !== $right) {
-                throw new \RuntimeException('Changed or new Domains plugin permission after completed import: glpi_profilerights.' . $right['id'] . '; explicit reconciliation is required.');
+                throw new RuntimeException('Changed or new Domains plugin permission after completed import: glpi_profilerights.' . $right['id'] . '; explicit reconciliation is required.');
             }
         }
         foreach ($this->sourceIdentityKeys() as $binding) {
             if (!isset($known[$binding['table']][$binding['id']][$binding['field']])) {
-                throw new \RuntimeException('New Domains plugin binding after completed import: ' . $binding['table'] . '.' . $binding['id'] . '.' . $binding['field'] . '; explicit reconciliation is required.');
+                throw new RuntimeException('New Domains plugin binding after completed import: ' . $binding['table'] . '.' . $binding['id'] . '.' . $binding['field'] . '; explicit reconciliation is required.');
             }
         }
     }
@@ -376,9 +403,14 @@ final class DomainPluginImport
         $em = Orm::create($this->database);
         try {
             $result = [];
-            foreach ($em->createQueryBuilder()->select('r')->from(Entity\ProfileRight::class, 'r')
-                ->where('r.name IN (:names)')->setParameter('names', ['plugin_domains', 'plugin_domains_dropdown', 'plugin_domains_open_ticket'])
-                ->orderBy('r.id')->getQuery()->getResult() as $right) {
+            foreach ($em->createQueryBuilder()
+                ->select('r')
+                ->from(Entity\ProfileRight::class, 'r')
+                ->where('r.name IN (:names)')
+                ->setParameter('names', ['plugin_domains', 'plugin_domains_dropdown', 'plugin_domains_open_ticket'])
+                ->orderBy('r.id')
+                ->getQuery()
+                ->getResult() as $right) {
                 $result[] = ['id' => $right->id, 'profiles_id' => $right->profiles->id, 'name' => $right->name, 'rights' => $right->rights];
             }
             return $result;
@@ -398,8 +430,13 @@ final class DomainPluginImport
                     if (!$metadata->hasField($field)) {
                         continue;
                     }
-                    $ids = $em->createQueryBuilder()->select('r.id')->from($metadata->name, 'r')->where('r.' . $field . ' IN (:kinds)')
-                        ->setParameter('kinds', [DomainPluginSource::ITEMTYPE, DomainPluginSource::TYPE, 'PluginDomainsDomaintype'])->getQuery()->getSingleColumnResult();
+                    $ids = $em->createQueryBuilder()
+                        ->select('r.id')
+                        ->from($metadata->name, 'r')
+                        ->where('r.' . $field . ' IN (:kinds)')
+                        ->setParameter('kinds', [DomainPluginSource::ITEMTYPE, DomainPluginSource::TYPE, 'PluginDomainsDomaintype'])
+                        ->getQuery()
+                        ->getSingleColumnResult();
                     foreach ($ids as $id) {
                         $result[] = ['table' => $metadata->getTableName(), 'id' => (int)$id, 'field' => $field];
                     }

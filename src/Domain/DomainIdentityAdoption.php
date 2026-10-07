@@ -9,6 +9,10 @@ use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\Mapping\LegacyInput;
 use itsmng\Database\Repository\RecordRepository;
+use RuntimeException;
+
+use function exportArrayToDB;
+use function importArrayFromDB;
 
 /** Adopt verified historical identity roles while preserving the original binding rows. */
 final class DomainIdentityAdoption
@@ -25,12 +29,17 @@ final class DomainIdentityAdoption
             if (!$metadata->hasField('itemtype') || $metadata->name === Entity\CronTask::class) {
                 continue;
             }
-            $rows = $this->em->createQueryBuilder()->select('r')->from($metadata->name, 'r')->where('r.itemtype IN (:kinds)')
-                ->setParameter('kinds', $kinds)->getQuery()->getResult();
+            $rows = $this->em->createQueryBuilder()
+                ->select('r')
+                ->from($metadata->name, 'r')
+                ->where('r.itemtype IN (:kinds)')
+                ->setParameter('kinds', $kinds)
+                ->getQuery()
+                ->getResult();
             foreach ($rows as $row) {
                 $kind = $row->itemtype;
                 if (!in_array($kind, $kinds, true)) {
-                    throw new \RuntimeException('Noncanonical Domains identity spelling: ' . $metadata->getTableName() . '.' . $row->id . '=' . $kind);
+                    throw new RuntimeException('Noncanonical Domains identity spelling: ' . $metadata->getTableName() . '.' . $row->id . '=' . $kind);
                 }
                 $target = $kind === DomainPluginSource::ITEMTYPE ? Entity\Domain::class : Entity\DomainType::class;
                 $newKind = $target === Entity\Domain::class ? 'Domain' : 'DomainType';
@@ -43,15 +52,15 @@ final class DomainIdentityAdoption
                 } elseif ($metadata->hasField('items_id')) {
                     $id = $row->items_id;
                     if ($id === null || !isset($incoming[$this->em->getClassMetadata($target)->getTableName()][$id])) {
-                        throw new \RuntimeException('Invalid Domains plugin binding: ' . $metadata->getTableName() . '.' . $row->id . '; source subject is absent.');
+                        throw new RuntimeException('Invalid Domains plugin binding: ' . $metadata->getTableName() . '.' . $row->id . '; source subject is absent.');
                     }
                     if ($target === Entity\DomainType::class && $metadata->name !== Entity\DropdownTranslation::class) {
-                        throw new \RuntimeException('Unsupported Domains type binding: ' . $metadata->getTableName() . '.' . $row->id);
+                        throw new RuntimeException('Unsupported Domains type binding: ' . $metadata->getTableName() . '.' . $row->id);
                     }
                     $selections = EntityRegistry::discriminatedReferences($metadata->getTableName())['items_id']['selections'] ?? [];
                     if ($selections) {
                         if (!isset($selections[$newKind]) || !is_a($metadata->name, LegacyInput::class, true)) {
-                            throw new \RuntimeException('Binding cannot represent a core ' . $newKind . ': ' . $metadata->getTableName() . '.' . $row->id);
+                            throw new RuntimeException('Binding cannot represent a core ' . $newKind . ': ' . $metadata->getTableName() . '.' . $row->id);
                         }
                         foreach ($selections as $selectionKind => $_) {
                             $property = $metadata->name::referenceAssociation($selectionKind);
@@ -67,9 +76,15 @@ final class DomainIdentityAdoption
             }
         }
         // Audit linked labels have no owning identifier; preserve display text and values.
-        foreach ($this->em->createQueryBuilder()->select('r')->from(Entity\Log::class, 'r')->where('r.itemtype_link IN (:kinds)')->setParameter('kinds', $kinds)->getQuery()->getResult() as $row) {
+        foreach ($this->em->createQueryBuilder()
+            ->select('r')
+            ->from(Entity\Log::class, 'r')
+            ->where('r.itemtype_link IN (:kinds)')
+            ->setParameter('kinds', $kinds)
+            ->getQuery()
+            ->getResult() as $row) {
             if (!in_array($row->itemtype_link, $kinds, true)) {
-                throw new \RuntimeException('Noncanonical Domains linked audit identity: glpi_logs.' . $row->id . '=' . $row->itemtype_link);
+                throw new RuntimeException('Noncanonical Domains linked audit identity: glpi_logs.' . $row->id . '=' . $row->itemtype_link);
             }
             $result[] = ['class' => Entity\Log::class, 'table' => 'glpi_logs', 'id' => $row->id,
                 'original' => ['itemtype_link' => $row->itemtype_link], 'fields' => ['itemtype_link' => $row->itemtype_link === DomainPluginSource::ITEMTYPE ? 'Domain' : 'DomainType'], 'associations' => []];
@@ -81,7 +96,7 @@ final class DomainIdentityAdoption
                 if ($row->$property === DomainPluginSource::ITEMTYPE) {
                     $idProperty = 'items_id_' . $role;
                     if (!isset($incoming['glpi_domains'][$row->$idProperty])) {
-                        throw new \RuntimeException('Invalid Domains impact binding: glpi_impactrelations.' . $row->id . '.' . $property);
+                        throw new RuntimeException('Invalid Domains impact binding: glpi_impactrelations.' . $row->id . '.' . $property);
                     }
                     $fields[$property] = 'Domain';
                 }
@@ -113,23 +128,23 @@ final class DomainIdentityAdoption
     {
         if ($row instanceof Entity\DisplayPreference) {
             if ($newKind !== 'Domain') {
-                throw new \RuntimeException('Unsupported DomainType display preference: ' . $row->id);
+                throw new RuntimeException('Unsupported DomainType display preference: ' . $row->id);
             }
             $this->searchField($row->num, $row->id);
             return [];
         }
         if ($row instanceof Entity\SavedSearch) {
             if ($newKind !== 'Domain' || (int)$row->type !== 1) {
-                throw new \RuntimeException('Unsupported Domains saved search: ' . $row->id);
+                throw new RuntimeException('Unsupported Domains saved search: ' . $row->id);
             }
             $query = [];
             parse_str($row->query ?? '', $query);
             if (!$query || (($query['itemtype'] ?? DomainPluginSource::ITEMTYPE) !== DomainPluginSource::ITEMTYPE)) {
-                throw new \RuntimeException('Invalid encoded Domains saved search: ' . $row->id);
+                throw new RuntimeException('Invalid encoded Domains saved search: ' . $row->id);
             }
             $this->criteria($query['criteria'] ?? [], $row->id);
             if (!empty($query['metacriteria'])) {
-                throw new \RuntimeException('Unsupported Domains saved metacriteria: ' . $row->id);
+                throw new RuntimeException('Unsupported Domains saved metacriteria: ' . $row->id);
             }
             if (isset($query['sort'])) {
                 $this->searchField($query['sort'], $row->id);
@@ -139,28 +154,28 @@ final class DomainIdentityAdoption
         }
         if ($row instanceof Entity\Notification || $row instanceof Entity\NotificationTemplate || $row instanceof Entity\LinkItemtype) {
             if ($newKind !== 'Domain') {
-                throw new \RuntimeException('Unsupported DomainType class binding: ' . $row::class . '.' . $row->id);
+                throw new RuntimeException('Unsupported DomainType class binding: ' . $row::class . '.' . $row->id);
             }
             return [];
         }
         if ($row instanceof Entity\CronTask) {
-            throw new \RuntimeException('Domains scheduler must be planned by the notification policy service.');
+            throw new RuntimeException('Domains scheduler must be planned by the notification policy service.');
         }
         if ($row instanceof Entity\Fieldblacklist) {
             return ['field' => $this->property($row->field, $row->id)];
         }
         if ($row instanceof Entity\FieldUnicity) {
-            $fields = \importArrayFromDB($row->fields);
+            $fields = importArrayFromDB($row->fields);
             if (!$fields && $row->fields !== '' && $row->fields !== null) {
-                throw new \RuntimeException('Invalid encoded Domains unique fields: ' . $row->id);
+                throw new RuntimeException('Invalid encoded Domains unique fields: ' . $row->id);
             }
             foreach ($fields as &$field) {
                 $field = $this->property($field, $row->id);
             }
             unset($field);
-            return ['fields' => \exportArrayToDB($fields)];
+            return ['fields' => exportArrayToDB($fields)];
         }
-        throw new \RuntimeException('Unsupported Domains class binding: ' . $row::class . '.' . $row->id);
+        throw new RuntimeException('Unsupported Domains class binding: ' . $row::class . '.' . $row->id);
     }
 
     private function property(string $field, int $id): string
@@ -170,7 +185,7 @@ final class DomainIdentityAdoption
         }
         if (!in_array($field, ['name', 'entities_id', 'is_recursive', 'date_creation', 'date_expiration', 'users_id_tech', 'groups_id_tech',
             'suppliers_id', 'comment', 'others', 'is_helpdesk_visible', 'date_mod', 'is_deleted'], true)) {
-            throw new \RuntimeException('Unsupported Domains source property: ' . $id . '.' . $field);
+            throw new RuntimeException('Unsupported Domains source property: ' . $id . '.' . $field);
         }
         return $field;
     }
@@ -179,7 +194,7 @@ final class DomainIdentityAdoption
     private function searchField(mixed $field, int $id): void
     {
         if (!in_array((string)$field, ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '18', '30', '80', '81', 'all', 'view'], true)) {
-            throw new \RuntimeException('Unsupported Domains source search field: ' . $id . '.' . (is_scalar($field) ? $field : '?'));
+            throw new RuntimeException('Unsupported Domains source search field: ' . $id . '.' . (is_scalar($field) ? $field : '?'));
         }
     }
 
@@ -187,14 +202,14 @@ final class DomainIdentityAdoption
     {
         foreach ($criteria as $criterion) {
             if (!is_array($criterion)) {
-                throw new \RuntimeException('Invalid encoded Domains search criterion: ' . $id);
+                throw new RuntimeException('Invalid encoded Domains search criterion: ' . $id);
             }
             if (isset($criterion['criteria'])) {
                 $this->criteria($criterion['criteria'], $id);
             } elseif (isset($criterion['field'])) {
                 $this->searchField($criterion['field'], $id);
             } else {
-                throw new \RuntimeException('Missing Domains search field: ' . $id);
+                throw new RuntimeException('Missing Domains search field: ' . $id);
             }
         }
     }
@@ -204,11 +219,11 @@ final class DomainIdentityAdoption
         foreach ($bindings as $binding) {
             $row = $this->em->find($binding['class'], $binding['id']);
             if ($row === null) {
-                throw new \RuntimeException('Domains identity binding vanished during import.');
+                throw new RuntimeException('Domains identity binding vanished during import.');
             }
             foreach ($binding['original'] as $field => $original) {
                 if ($row->$field !== $original) {
-                    throw new \RuntimeException('Domains identity binding changed during import: ' . $binding['table'] . '.' . $binding['id']);
+                    throw new RuntimeException('Domains identity binding changed during import: ' . $binding['table'] . '.' . $binding['id']);
                 }
             }
             foreach ($binding['fields'] as $field => $value) {
