@@ -11,12 +11,13 @@ concurrency:
 
 jobs:
   tests:
-    name: LDAP / ${{ matrix.database.label }}
+    name: LDAP / PHP ${{ matrix.php }} / ${{ matrix.database.label }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
+        php: ['8.2', '8.5']
         database:
           - image: mariadb:11.8
             label: MariaDB 11.8
@@ -67,7 +68,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: 8.3
+          php-version: ${{ matrix.php }}
           extensions: mysqli, pdo_mysql, pgsql, pdo_pgsql, dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, ldap
           coverage: none
 

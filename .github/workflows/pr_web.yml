@@ -11,12 +11,13 @@ concurrency:
 
 jobs:
   tests:
-    name: Web API / ${{ matrix.database.label }}
+    name: Web API / PHP ${{ matrix.php }} / ${{ matrix.database.label }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
+        php: ['8.2', '8.5']
         database:
           - image: mariadb:11.8
             label: MariaDB 11.8
@@ -58,7 +59,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: 8.3
+          php-version: ${{ matrix.php }}
           extensions: mysqli, pdo_mysql, pgsql, pdo_pgsql, dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv
           coverage: none
 
@@ -192,7 +193,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: web-api-server-diagnostics-${{ matrix.database.id }}
+          name: web-api-server-diagnostics-php-${{ matrix.php }}-${{ matrix.database.id }}
           path: |
             ${{ runner.temp }}/web-api-server-diagnostics.log
             ${{ runner.temp }}/web-api-runtime.json

@@ -1,4 +1,5 @@
-FROM php:8.3-cli-bookworm
+ARG PHP_VERSION=8.2
+FROM php:${PHP_VERSION}-cli-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -33,7 +34,6 @@ RUN apt-get update \
     intl \
     ldap \
     mysqli \
-    opcache \
     pcntl \
     pdo_mysql \
     pdo_pgsql \
@@ -41,6 +41,9 @@ RUN apt-get update \
     soap \
     xsl \
     zip \
+ && if ! php -r 'exit(extension_loaded("Zend OPcache") ? 0 : 1);'; then \
+      docker-php-ext-install -j"$(nproc)" opcache; \
+    fi \
  && pecl install apcu redis \
  && docker-php-ext-enable apcu redis \
  && rm -rf /var/lib/apt/lists/*
