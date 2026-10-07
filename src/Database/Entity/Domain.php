@@ -94,10 +94,10 @@ class Domain
             $visited = new \SplObjectStorage();
             $identifiers = [];
             while ($owner !== null) {
-                if ($visited->contains($owner) || ($owner->id !== null && isset($identifiers[$owner->id]))) {
+                if ($visited->offsetExists($owner) || ($owner->id !== null && isset($identifiers[$owner->id]))) {
                     throw new \InvalidArgumentException('Domain commercial supplier owner hierarchy contains a cycle.');
                 }
-                $visited->attach($owner);
+                $visited->offsetSet($owner);
                 if ($owner->id !== null) {
                     $identifiers[$owner->id] = true;
                 }
