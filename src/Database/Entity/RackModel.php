@@ -8,6 +8,10 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_rackmodels')]
+#[\itsmng\Database\Mapping\PlatformOptions(\Doctrine\DBAL\Platforms\AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
+#[\itsmng\Database\Mapping\SchemaOwner]
+#[\itsmng\Database\Mapping\SchemaIndex('name', ['name'], postgresqlName: 'glpi_rackmodels_name')]
+#[\itsmng\Database\Mapping\SchemaIndex('product_number', ['product_number'], postgresqlName: 'glpi_rackmodels_product_number')]
 class RackModel
 {
     #[ORM\Id]

@@ -8,6 +8,12 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_passivedcequipmentmodels')]
+#[\itsmng\Database\Mapping\PlatformOptions(\Doctrine\DBAL\Platforms\AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
+#[\itsmng\Database\Mapping\SchemaOwner]
+#[\itsmng\Database\Mapping\SchemaIndex('name', ['name'], postgresqlName: 'glpi_passivedcequipmentmodels_name')]
+#[\itsmng\Database\Mapping\SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_passivedcequipmentmodels_date_mod')]
+#[\itsmng\Database\Mapping\SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_passivedcequipmentmodels_date_creation')]
+#[\itsmng\Database\Mapping\SchemaIndex('product_number', ['product_number'], postgresqlName: 'glpi_passivedcequipmentmodels_product_number')]
 class PassiveDCEquipmentModel
 {
     #[ORM\Id]
@@ -40,6 +46,7 @@ class PassiveDCEquipmentModel
     public int $power_consumption = 0;
 
     #[ORM\Column(name: '`is_half_rack`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[\itsmng\Database\Mapping\BooleanStorage(mysqlType: \Doctrine\DBAL\Types\Types::SMALLINT)]
     public bool $is_half_rack = false;
 
     #[ORM\Column(name: '`picture_front`', type: 'text', nullable: true)]

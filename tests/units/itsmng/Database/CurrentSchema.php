@@ -206,6 +206,15 @@ class CurrentSchema extends \atoum\atoum\test
             ['glpi_configs', 4, 2, [], []],
             ['glpi_computertypes', 5, 4, [], []],
             ['glpi_computermodels', 14, 5, [], []],
+            ['glpi_monitormodels', 14, 5, [], []],
+            ['glpi_networkequipmentmodels', 14, 5, [], []],
+            ['glpi_peripheralmodels', 14, 5, [], []],
+            ['glpi_phonemodels', 6, 5, [], []],
+            ['glpi_printermodels', 6, 5, [], []],
+            ['glpi_passivedcequipmentmodels', 14, 5, [], []],
+            ['glpi_enclosuremodels', 14, 5, [], []],
+            ['glpi_pdumodels', 15, 4, [], []],
+            ['glpi_rackmodels', 6, 3, [], []],
             ['glpi_monitortypes', 5, 4, [], []],
             ['glpi_networkequipmenttypes', 5, 4, [], []],
             ['glpi_peripheraltypes', 5, 4, [], []],
@@ -312,6 +321,74 @@ class CurrentSchema extends \atoum\atoum\test
             $this->integer($fresh->getColumn('name')->getLength())->isIdenticalTo(150);
             $this->boolean($fresh->hasColumn('comment'))->isTrue();
             $this->boolean($manager->getConnection()->isConnected())->isFalse();
+        }
+    }
+
+    public function testAssetModelPropertiesAndIndexesOwnCurrentSchema(): void
+    {
+        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+            $manager = $this->manager($platform);
+            $frozen = (new Baseline())->build($platform)->toSql($platform);
+            $models = [];
+            foreach ([
+                \itsmng\Database\Entity\MonitorModel::class,
+                \itsmng\Database\Entity\NetworkEquipmentModel::class,
+                \itsmng\Database\Entity\PeripheralModel::class,
+                \itsmng\Database\Entity\PhoneModel::class,
+                \itsmng\Database\Entity\PrinterModel::class,
+                \itsmng\Database\Entity\PassiveDCEquipmentModel::class,
+                \itsmng\Database\Entity\EnclosureModel::class,
+                \itsmng\Database\Entity\PDUModel::class,
+                \itsmng\Database\Entity\RackModel::class,
+            ] as $class) {
+                $metadata = $manager->getClassMetadata($class);
+                $table = $metadata->getTableName();
+                $metadata->fieldMappings['name']->length = 173;
+                $metadata->fieldMappings['name']->nullable = false;
+                $metadata->fieldMappings['name']->options['default'] = 'Current model';
+                $oldIndex = array_key_first(array_filter($metadata->table['indexes'], static fn ($index) => $index['columns'] === ['product_number']));
+                $this->variable($oldIndex)->isNotNull();
+                unset($metadata->table['indexes'][$oldIndex]);
+                $metadata->table['uniqueConstraints'][$table . '_current_model_name'] = ['columns' => ['name', 'product_number']];
+                $flags = [];
+                foreach ($metadata->fieldMappings as $property => $field) {
+                    if ($field->type === Types::BOOLEAN) {
+                        $field->nullable = true;
+                        $field->options['default'] = true;
+                        $flags[] = $property;
+                    }
+                }
+                $models[] = [$metadata, $oldIndex, $flags];
+            }
+            $current = (new BaselineSchema($manager))->build($platform);
+            $freshManager = $this->manager($platform);
+            $fresh = (new BaselineSchema($freshManager))->build($platform);
+            foreach ($models as [$metadata, $oldIndex, $flags]) {
+                $table = $metadata->getTableName();
+                $declaration = $current->getTable($table);
+                $this->integer($declaration->getColumn('name')->getLength())->isIdenticalTo(173);
+                $this->boolean($declaration->getColumn('name')->getNotnull())->isTrue();
+                $this->string($declaration->getColumn('name')->getDefault())->isIdenticalTo('Current model');
+                $this->boolean($declaration->hasIndex($oldIndex))->isFalse();
+                $this->array($declaration->getIndex($table . '_current_model_name')->getUnquotedColumns())->isIdenticalTo(['name', 'product_number']);
+                $this->boolean($declaration->getIndex($table . '_current_model_name')->isUnique())->isTrue();
+                $this->integer($fresh->getTable($table)->getColumn('name')->getLength())->isIdenticalTo(255);
+                $this->boolean($fresh->getTable($table)->getColumn('name')->getNotnull())->isFalse();
+                $this->boolean($fresh->getTable($table)->hasIndex($oldIndex))->isTrue();
+                $this->boolean($fresh->getTable($table)->hasIndex($table . '_current_model_name'))->isFalse();
+                foreach ($flags as $property) {
+                    $field = $metadata->fieldMappings[$property];
+                    $column = $declaration->getColumn($field->columnName);
+                    $this->string($field->type)->isIdenticalTo(Types::BOOLEAN);
+                    $this->string(Type::lookupName($column->getType()))->isIdenticalTo($platform instanceof PostgreSQLPlatform ? Types::BOOLEAN : Types::SMALLINT);
+                    $this->boolean($column->getNotnull())->isFalse();
+                    $this->variable($column->getDefault())->isIdenticalTo($platform instanceof PostgreSQLPlatform ? true : '1');
+                    $this->variable($fresh->getTable($table)->getColumn($field->columnName)->getDefault())->isIdenticalTo($platform instanceof PostgreSQLPlatform ? false : '0');
+                }
+            }
+            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
+            $this->boolean($manager->getConnection()->isConnected())->isFalse();
+            $this->boolean($freshManager->getConnection()->isConnected())->isFalse();
         }
     }
 

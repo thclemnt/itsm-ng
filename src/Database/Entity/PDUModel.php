@@ -8,6 +8,11 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_pdumodels')]
+#[\itsmng\Database\Mapping\PlatformOptions(\Doctrine\DBAL\Platforms\AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
+#[\itsmng\Database\Mapping\SchemaOwner]
+#[\itsmng\Database\Mapping\SchemaIndex('name', ['name'], postgresqlName: 'glpi_pdumodels_name')]
+#[\itsmng\Database\Mapping\SchemaIndex('is_rackable', ['is_rackable'], postgresqlName: 'glpi_pdumodels_is_rackable')]
+#[\itsmng\Database\Mapping\SchemaIndex('product_number', ['product_number'], postgresqlName: 'glpi_pdumodels_product_number')]
 class PDUModel
 {
     #[ORM\Id]
@@ -40,6 +45,7 @@ class PDUModel
     public int $max_power = 0;
 
     #[ORM\Column(name: '`is_half_rack`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[\itsmng\Database\Mapping\BooleanStorage(mysqlType: \Doctrine\DBAL\Types\Types::SMALLINT)]
     public bool $is_half_rack = false;
 
     #[ORM\Column(name: '`picture_front`', type: 'text', nullable: true)]
@@ -49,6 +55,7 @@ class PDUModel
     public ?string $picture_rear = null;
 
     #[ORM\Column(name: '`is_rackable`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[\itsmng\Database\Mapping\BooleanStorage(mysqlType: \Doctrine\DBAL\Types\Types::SMALLINT)]
     public bool $is_rackable = false;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
