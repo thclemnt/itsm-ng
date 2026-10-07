@@ -34,6 +34,18 @@
 namespace tests\units;
 
 use PHPMailer\PHPMailer\PHPMailer;
+use Config as ConfigModel;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Types\StringType;
+use Doctrine\DBAL\Types\TextType;
+use Doctrine\DBAL\Types\Type;
+use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use itsmng\Database\Entity\Config as ConfigRecord;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ConfigurationRepository;
+use LogicException;
+use mock\DBmysql as ConfigurationAdapter;
 use DbTestCase;
 use Log;
 use Session;
@@ -142,7 +154,7 @@ class Config extends DbTestCase
             $listener = new class () {
                 public int $loads = 0;
                 public bool $absent = false;
-                public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
                 {
                     ++$this->loads;
                     if ($this->absent) {
@@ -858,7 +870,7 @@ class Config extends DbTestCase
         $pool = new \Symfony\Component\Cache\Psr16Cache($memory);
         $listener = new class () {
             public int $loads = 0;
-            public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+            public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
             {
                 if ($event->getClassMetadata()->name === \itsmng\Database\Entity\Config::class) {
                     ++$this->loads;
@@ -1086,7 +1098,7 @@ class Config extends DbTestCase
                             public int $loads = 0;
                             public int $targetLoads = 0;
                             public ?\Doctrine\ORM\EntityManagerInterface $manager = null;
-                            public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+                            public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
                             {
                                 if ($event->getClassMetadata()->name === \itsmng\Database\Entity\Config::class) {
                                     ++$this->loads;
@@ -1181,7 +1193,7 @@ class Config extends DbTestCase
             $pool->clear();
             $manager = \itsmng\Database\Orm::create($DB);
             $manager->getEventManager()->addEventListener(\Doctrine\ORM\Events::loadClassMetadata, new class () {
-                public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
                 {
                     if ($event->getClassMetadata()->name === \itsmng\Database\Entity\Config::class) {
                         $event->getClassMetadata()->setPrimaryTable(['name' => 'private_plan_wrong_table']);
@@ -1259,6 +1271,145 @@ class Config extends DbTestCase
            'dbversion' => \ITSM_SCHEMA_VERSION,
            'version'   => \ITSM_VERSION
         ]);
+        global $DB;
+        $originalAdapter = $DB;
+        $connection = $DB->getDoctrineConnection();
+        $context = 'literal-NULL-' . $this->getUniqueString();
+        $literalName = $context . '-key';
+        $manager = Orm::forConnection($connection);
+        $ordinary = new ConfigurationRepository($manager);
+        $probe = new ConfigOidcScalarReadProbe($connection);
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new ConfigurationAdapter();
+        $this->calling($adapter)->getDoctrineConnection = $probe;
+        $this->calling($adapter)->getProvider = $DB->getProvider();
+        $string = Type::getType('string');
+        $text = Type::getType('text');
+        try {
+            foreach (['z-key' => 'first', 'a-key' => 'last', 'NULL' => 'NULL'] as $name => $value) {
+                $connection->insert('glpi_configs', ['context' => $context, 'name' => $name, 'value' => $value]);
+            }
+            $expected = ['z-key' => 'first', 'a-key' => 'last', 'NULL' => 'NULL'];
+            $this->array($ordinary->values($context))->isIdenticalTo($expected);
+            $DB = $adapter;
+            $this->array(ConfigModel::getConfigurationValues($context))->isIdenticalTo($expected);
+            $this->array($probe->queries)->hasSize(1);
+            $this->integer($probe->builders)->isIdenticalTo(1);
+
+            $this->array(ConfigModel::getConfigurationValues($context, ['later' => 'a-key', 'earlier' => 'z-key']))
+                ->isIdenticalTo(['z-key' => 'first', 'a-key' => 'last']);
+            $this->array(ConfigModel::getConfigurationValues($context, ['NULL']))->isIdenticalTo(['NULL' => 'NULL']);
+            $this->array(ConfigModel::getConfigurationValues($context, ['absent']))->isEmpty();
+            $connection->insert('glpi_configs', ['context' => 'NULL', 'name' => $literalName, 'value' => null]);
+            $this->array(ConfigModel::getConfigurationValues('NULL', [$literalName]))->isIdenticalTo([$literalName => null]);
+            $otherProbe = new ConfigOidcScalarReadProbe($connection);
+            $otherAdapter = new ConfigurationAdapter();
+            $this->calling($otherAdapter)->getDoctrineConnection = $otherProbe;
+            $contextCallback = new class ($context, $otherAdapter) {
+                public function __construct(private string $context, private object $replacement)
+                {
+                }
+
+                public function __toString(): string
+                {
+                    $GLOBALS['DB'] = $this->replacement;
+                    return $this->context;
+                }
+            };
+            $queryCount = count($probe->queries);
+            $this->array(ConfigModel::getConfigurationValues($contextCallback))->isIdenticalTo($expected);
+            $this->integer(count($probe->queries))->isIdenticalTo($queryCount + 1);
+            $this->array($otherProbe->queries)->isEmpty();
+            $this->object($DB)->isIdenticalTo($otherAdapter);
+            $DB = $adapter;
+
+            $connection->update('glpi_configs', ['value' => 'changed'], ['context' => $context, 'name' => 'z-key']);
+            $this->array(ConfigModel::getConfigurationValues($context, ['z-key']))->isIdenticalTo(['z-key' => 'changed']);
+            $connection->delete('glpi_configs', ['context' => $context, 'name' => 'NULL']);
+            $this->array(ConfigModel::getConfigurationValues($context, ['NULL']))->isEmpty();
+
+            Type::overrideType('text', new class () extends TextType {
+                public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                {
+                    return 'UPPER(' . $sqlExpr . ')';
+                }
+
+                public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
+                {
+                    throw new LogicException('Scalar projection must not apply PHP conversion');
+                }
+            });
+            $this->array(ConfigModel::getConfigurationValues($context))->isIdenticalTo($ordinary->values($context))
+                ->isIdenticalTo(['z-key' => 'CHANGED', 'a-key' => 'LAST']);
+            Type::overrideType('string', new class () extends StringType {
+                public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                {
+                    return "'same-key'";
+                }
+            });
+            // Distinct stored names collapse after SQL conversion; increasing id
+            // retains the same last-row overwrite as the original scalar reader.
+            $this->array(ConfigModel::getConfigurationValues($context))->isIdenticalTo($ordinary->values($context))
+                ->isIdenticalTo(['same-key' => 'LAST']);
+            Type::overrideType('text', new class () extends TextType {
+                public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                {
+                    return 'NULL';
+                }
+            });
+            $this->array(ConfigModel::getConfigurationValues($context))->isIdenticalTo($ordinary->values($context))
+                ->isIdenticalTo(['same-key' => null]);
+            Type::overrideType('text', $text);
+            Type::overrideType('string', $string);
+
+            $connection->insert('glpi_configs', ['context' => $context . '_sql', 'name' => 'z-key', 'value' => 'array-name']);
+            Type::overrideType('string', new class () extends StringType {
+                public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                {
+                    return $platform->getConcatExpression($sqlExpr, "'_sql'");
+                }
+            });
+            $this->array(ConfigModel::getConfigurationValues($context, ['z-key']))
+                ->isIdenticalTo($ordinary->values($context, ['z-key']))->isIdenticalTo(['z-key' => 'array-name']);
+            Type::overrideType('string', $string);
+
+            $extension = new class ($connection) extends ConfigOidcScalarReadProbe {
+                private ?EventManager $events = null;
+
+                public function getEventManager(): EventManager
+                {
+                    return $this->events ??= new EventManager();
+                }
+            };
+            $reader = ConfigurationRepository::forConnection($extension);
+            $listener = new class () {
+                public int $loads = 0;
+
+                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
+                {
+                    if ($event->getClassMetadata()->name === ConfigRecord::class) {
+                        ++$this->loads;
+                        $event->getClassMetadata()->fieldMappings['value']->columnName = 'name';
+                    }
+                }
+            };
+            $extension->getEventManager()->addEventListener(['loadClassMetadata'], $listener);
+            $this->array($reader->values($context))->isIdenticalTo(['z-key' => 'z-key', 'a-key' => 'a-key']);
+            $this->integer($listener->loads)->isIdenticalTo(1);
+            $this->integer($extension->builders)->isIdenticalTo(0);
+            $this->array($ordinary->values($context))->isIdenticalTo(['z-key' => 'changed', 'a-key' => 'last']);
+            $manager->getClassMetadata(ConfigRecord::class)->fieldMappings['value']->columnName = 'name';
+            $this->array($ordinary->values($context))->isIdenticalTo(['z-key' => 'z-key', 'a-key' => 'a-key']);
+            $this->array(ConfigModel::getConfigurationValues($context))->isIdenticalTo(['z-key' => 'changed', 'a-key' => 'last']);
+        } finally {
+            Type::overrideType('string', $string);
+            Type::overrideType('text', $text);
+            $DB = $originalAdapter;
+            $manager->clear();
+            $connection->delete('glpi_configs', ['context' => $context]);
+            $connection->delete('glpi_configs', ['context' => $context . '_sql']);
+            $connection->delete('glpi_configs', ['context' => 'NULL', 'name' => $literalName]);
+        }
     }
 
     public function testSetConfigurationValues()
@@ -1893,7 +2044,7 @@ final class ConfigRecordCallback
             'privateDriver' => $configuration->getMetadataDriverImpl() !== self::$publicDriver,
         ];
         $manager->getEventManager()->addEventListener(\Doctrine\ORM\Events::loadClassMetadata, new class () {
-            public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+            public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
             {
                 $event->getClassMetadata()->setPrimaryTable(['name' => 'callback_wrong_table']);
             }

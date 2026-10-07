@@ -35,6 +35,8 @@ namespace tests\units;
 
 use CommonDBTM;
 use Computer;
+use Config as ConfigModel;
+use Impact as ImpactModel;
 use ImpactCompound;
 use ImpactItem;
 use ImpactRelation;
@@ -237,6 +239,28 @@ class Impact extends \DbTestCase
             $not_enabled_or_itil = new ImpactCompound();
             $impact->getTabNameForItem($not_enabled_or_itil);
         })->isInstanceOf(\InvalidArgumentException::class);
+        global $CFG_GLPI;
+        $original = ConfigModel::getConfigurationValues('core', [ImpactModel::CONF_ENABLED]);
+        $allowed = $CFG_GLPI['impact_asset_types'];
+        try {
+            $CFG_GLPI['impact_asset_types'][Computer::class] = true;
+            ConfigModel::setConfigurationValues('core', [ImpactModel::CONF_ENABLED => exportArrayToDB([Computer::class, 'ForbiddenConfigurationItem'])]);
+            $this->array(ImpactModel::getEnabledItemtypes())->isIdenticalTo([Computer::class]);
+            unset($CFG_GLPI['impact_asset_types'][Computer::class]);
+            $this->array(ImpactModel::getEnabledItemtypes())->isEmpty();
+            $CFG_GLPI['impact_asset_types'][Computer::class] = true;
+            ConfigModel::setConfigurationValues('core', [ImpactModel::CONF_ENABLED => exportArrayToDB([])]);
+            $this->array(ImpactModel::getEnabledItemtypes())->isEmpty();
+            ConfigModel::deleteConfigurationValues('core', [ImpactModel::CONF_ENABLED]);
+            $this->array(ImpactModel::getEnabledItemtypes())->isEmpty();
+        } finally {
+            $CFG_GLPI['impact_asset_types'] = $allowed;
+            if (array_key_exists(ImpactModel::CONF_ENABLED, $original)) {
+                ConfigModel::setConfigurationValues('core', $original);
+            } else {
+                ConfigModel::deleteConfigurationValues('core', [ImpactModel::CONF_ENABLED]);
+            }
+        }
     }
 
     public function testGetTabNameForItem_tabCountDisabled()

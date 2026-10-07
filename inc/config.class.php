@@ -39,6 +39,7 @@ use Glpi\Exception\PasswordTooWeakException;
 use Laminas\Cache\Storage\FlushableInterface;
 use Laminas\Cache\Storage\TotalSpaceCapableInterface;
 use Laminas\Cache\Storage\AvailableSpaceCapableInterface;
+use itsmng\Database\Repository\ConfigurationRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -3078,7 +3079,7 @@ class Config extends CommonDBTM
     public static function getConfigurationValues($context, array $names = [])
     {
         global $DB;
-        return (new \itsmng\Database\Repository\ConfigurationRepository(\itsmng\Database\Orm::create($DB)))
+        return ConfigurationRepository::forConnection($DB->getDoctrineConnection())
             ->values((string)$context, $names);
     }
 
