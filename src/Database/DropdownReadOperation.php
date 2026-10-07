@@ -13,6 +13,31 @@ final class DropdownReadOperation implements ReadQueryOwner
 {
     use PrivateReadOwnership;
 
+    /** Only untranslated, explicit scalar labels bypass ORM query compilation. */
+    public function label(string $table, int $id, string $type, string $language, array $translations, ?array $columns = null): ?array
+    {
+        if ($translations === [] && $columns !== null) {
+            $metadata = $this->metadata($table);
+            $scalarColumns = $this->ownedMapping && $this->defaultIdentifiers($metadata) !== null
+                && $metadata->isInheritanceTypeNone()
+                && empty($metadata->fieldMappings['id']->enumType);
+            foreach ($columns as $column) {
+                $field = $metadata->getFieldName($column);
+                $scalarColumns = $scalarColumns && $metadata->hasField($field)
+                    && empty($metadata->fieldMappings[$field]->enumType);
+            }
+            if ($scalarColumns) {
+                return (new Repository\DropdownTranslationRepository($this->manager))->nativeLabel($table, $id, $columns);
+            }
+        }
+        $fallback = $this->fallbackManager();
+        try {
+            return (new Repository\DropdownTranslationRepository($fallback))->dropdownRow($table, $id, $type, $language, $translations, $columns);
+        } finally {
+            $fallback->clear();
+        }
+    }
+
     public function choices(string $table, array $criteria, array $order, array $translations, string $kind, string $language, int $limit, int $offset): array
     {
         $metadata = $this->metadata($table);

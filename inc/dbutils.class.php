@@ -1149,8 +1149,8 @@ final class DbUtils
             if ($table === Location::getTable()) {
                 $columns = array_merge($columns, ['address', 'town', 'country']);
             }
-            $result = (new \itsmng\Database\Repository\DropdownTranslationRepository(\itsmng\Database\Orm::create($DB)))
-                ->dropdownRow($table, (int)$ID, $type, $_SESSION['glpilanguage'] ?? '', $translations, $columns);
+            $result = (new \itsmng\Database\DropdownReadOperation($DB->getDoctrineConnection()))
+                ->label($table, (int)$ID, $type, $_SESSION['glpilanguage'] ?? '', $translations, $columns);
             $iterator = new \itsmng\Database\RowIterator($result === null ? [] : [$result]);
         } else {
             $SELECTNAME    = new \QueryExpression("'' AS " . $DB->quoteName('transname'));

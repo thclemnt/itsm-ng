@@ -362,8 +362,8 @@ class Dropdown
                     $item->getDropdownNameFields((bool)$tooltip),
                     \itsmng\Database\EntityRegistry::columnNames($table)
                 ));
-                $data = (new \itsmng\Database\Repository\DropdownTranslationRepository(\itsmng\Database\Orm::create($DB)))
-                    ->dropdownRow($table, (int)$id, $type, $_SESSION['glpilanguage'] ?? '', $translations, $columns);
+                $data = (new \itsmng\Database\DropdownReadOperation($DB->getDoctrineConnection()))
+                    ->label($table, (int)$id, $type, $_SESSION['glpilanguage'] ?? '', $translations, $columns);
                 $iterator = new \itsmng\Database\RowIterator($data === null ? [] : [$data]);
             } else {
                 $SELECTNAME    = new \QueryExpression("'' AS " . $DB->quoteName('transname'));

@@ -45,6 +45,55 @@ final class DropdownTranslationRepository
         return $ids ? (int)$ids[0] : null;
     }
 
+    /** Explicit scalar label; admission and callback isolation belong to the private owner. */
+    public function nativeLabel(string $table, int $id, array $columns): ?array
+    {
+        $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $columns = array_values($columns);
+        // The ORM selection also converts its unreturned index column.
+        $fields = ['dropdownRecordId' => 'id'];
+        foreach ($columns as $index => $column) {
+            $fields['column' . $index] = $metadata->getFieldName($column);
+        }
+        $types = [];
+        $select = [];
+        try {
+            foreach ($fields as $alias => $field) {
+                $types[$alias] = \Doctrine\DBAL\Types\Type::getType($metadata->getTypeOfField($field));
+                $select[] = $types[$alias]->convertToPHPValueSQL('r.' . $quote->getColumnName($field, $metadata, $platform), $platform)
+                    . ' AS ' . $platform->quoteSingleIdentifier($alias);
+            }
+            $idType = \Doctrine\DBAL\Types\Type::getType(Types::INTEGER);
+            $rows = $connection->createQueryBuilder()->select(...$select)
+                ->from($quote->getTableName($metadata, $platform), 'r')
+                ->where('r.' . $quote->getColumnName('id', $metadata, $platform)
+                    . ' = ' . $idType->convertToDatabaseValueSQL('?', $platform))
+                ->setParameter(0, $id, Types::INTEGER)->executeQuery()->fetchAllAssociative();
+            foreach ($rows as &$row) {
+                foreach ($types as $alias => $fieldType) {
+                    $row[$alias] = $fieldType->convertToPHPValue($row[$alias], $platform);
+                }
+            }
+            unset($row);
+        } catch (\Doctrine\ORM\NoResultException) {
+            return null;
+        }
+        if (count($rows) > 1) {
+            throw new \Doctrine\ORM\NonUniqueResultException();
+        }
+        if (!$rows) {
+            return null;
+        }
+        $result = [];
+        foreach ($columns as $index => $column) {
+            $result[$column] = RecordRepository::legacyScalarValue($rows[0]['column' . $index], $metadata->getTypeOfField($fields['column' . $index]));
+        }
+        return $result + ['transname' => '', 'transcomment' => ''];
+    }
+
     /** Bound type/field/language joins prevent translations crossing dropdown kinds. */
     public function dropdownRow(string $table, int $id, string $type, string $language, array $translations, ?array $columns = null): ?array
     {

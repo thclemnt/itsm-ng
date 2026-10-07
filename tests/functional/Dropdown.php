@@ -568,6 +568,7 @@ class Dropdown extends DbTestCase
         global $DB;
         $em = \itsmng\Database\Orm::create($DB);
         $repository = new \itsmng\Database\Repository\DropdownTranslationRepository($em);
+        $reader = new \itsmng\Database\DropdownReadOperation($em->getConnection());
         $listener = new class () {
             public int $loaded = 0;
 
@@ -599,6 +600,7 @@ class Dropdown extends DbTestCase
                         $expected[$column] = $full[$column];
                     }
                     $this->array($row)->isIdenticalTo($expected + ['transname' => '', 'transcomment' => '']);
+                    $this->array($reader->label($item->getTable(), $id, $type, 'en_GB', [], $columns))->isIdenticalTo($row);
                     $this->integer($listener->loaded)->isIdenticalTo(0);
                     $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
                 }
@@ -620,6 +622,26 @@ class Dropdown extends DbTestCase
             'begin_date' => '2026-02-03', 'end_date' => null, 'locations_id' => $location,
         ], ['id' => $budget], ['is_deleted' => \Doctrine\DBAL\Types\Types::BOOLEAN]);
         $repository = new \itsmng\Database\Repository\DropdownTranslationRepository(\itsmng\Database\Orm::create($DB));
+        $publicExpected = \Dropdown::getDropdownName('glpi_budgets', $budget, false, false, false);
+        $database = $DB;
+        $probe = new DropdownScalarReadProbe($connection);
+        try {
+            $this->mockGenerator->orphanize('__construct');
+            $DB = new \mock\DBmysql();
+            $this->calling($DB)->getProvider = $database->getProvider();
+            $routes = 0;
+            $this->calling($DB)->getDoctrineConnection = static function () use ($probe, &$routes) {
+                ++$routes;
+                return $probe;
+            };
+            $this->string(\Dropdown::getDropdownName('glpi_budgets', $budget, false, false, false))->isIdenticalTo($publicExpected);
+            $this->array($probe->queries)->hasSize(1);
+            $this->integer($routes)->isIdenticalTo(1);
+            $this->integer($probe->builders)->isIdenticalTo(1);
+        } finally {
+            $DB = $database;
+        }
+        $reader = new \itsmng\Database\DropdownReadOperation($connection);
         $columns = ['id', 'name', 'comment', 'is_deleted', 'begin_date', 'end_date', 'locations_id'];
         $expected = [
             'id' => $budget, 'name' => "O'Reilly\\budget", 'comment' => null, 'is_deleted' => 0,
@@ -628,6 +650,10 @@ class Dropdown extends DbTestCase
         ];
         $this->array($repository->dropdownRow('glpi_budgets', $budget, 'Budget', 'en_GB', [], $columns))
             ->isIdenticalTo($expected);
+        $this->array($reader->label('glpi_budgets', $budget, 'Budget', 'en_GB', [], $columns))->isIdenticalTo($expected);
+        $scalarColumns = array_values(array_diff($columns, ['locations_id']));
+        $this->array((new \itsmng\Database\DropdownReadOperation($connection))->label('glpi_budgets', $budget, 'Budget', 'en_GB', [], $scalarColumns))
+            ->isIdenticalTo(array_diff_key($expected, ['locations_id' => true]));
         $connection->update(
             'glpi_budgets',
             ['is_deleted' => true, 'locations_id' => null],
@@ -638,7 +664,50 @@ class Dropdown extends DbTestCase
         $expected['locations_id'] = null;
         $this->array($repository->dropdownRow('glpi_budgets', $budget, 'Budget', 'en_GB', [], $columns))
             ->isIdenticalTo($expected);
+        $this->array($reader->label('glpi_budgets', $budget, 'Budget', 'en_GB', [], $columns))->isIdenticalTo($expected);
+        $scalarColumns = array_values(array_diff($columns, ['locations_id']));
+        $this->array((new \itsmng\Database\DropdownReadOperation($connection))->label('glpi_budgets', $budget, 'Budget', 'en_GB', [], $scalarColumns))
+            ->isIdenticalTo(array_diff_key($expected, ['locations_id' => true]));
         $this->variable($repository->dropdownRow('glpi_budgets', -1, 'Budget', 'en_GB', [], $columns))->isNull();
+
+        $this->variable((new \itsmng\Database\DropdownReadOperation($connection))->label('glpi_budgets', -1, 'Budget', 'en_GB', [], ['name']))->isNull();
+        $originalString = \Doctrine\DBAL\Types\Type::getType('string');
+        $originalInteger = \Doctrine\DBAL\Types\Type::getType('integer');
+        try {
+            \Doctrine\DBAL\Types\Type::overrideType('string', new class () extends \Doctrine\DBAL\Types\StringType {
+                public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                {
+                    return 'UPPER(' . $sqlExpr . ')';
+                }
+                public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+                {
+                    return $value === null ? 'converted null' : 'converted ' . $value;
+                }
+            });
+            // Enum hydration remains authoritative even for explicit scalar selections.
+            $enumReader = new \itsmng\Database\DropdownReadOperation($connection);
+            $this->exception(fn () => $repository->dropdownRow('glpi_entities', 0, 'Entity', 'en_GB', [], ['ldap_mode']))
+                ->isInstanceOf(\ValueError::class);
+            $this->exception(fn () => $enumReader->label('glpi_entities', 0, 'Entity', 'en_GB', [], ['ldap_mode']))
+                ->isInstanceOf(\ValueError::class);
+            $enumReader->close();
+            $selected = ['name', 'name', 'comment'];
+            $ordinary = $repository->dropdownRow('glpi_budgets', $budget, 'Budget', 'en_GB', [], $selected);
+            $this->string($ordinary['name'])->isIdenticalTo("converted O'REILLY\\BUDGET");
+            $this->array((new \itsmng\Database\DropdownReadOperation($connection))->label('glpi_budgets', $budget, 'Budget', 'en_GB', [], $selected))->isIdenticalTo($ordinary);
+            \Doctrine\DBAL\Types\Type::overrideType('integer', new class () extends \Doctrine\DBAL\Types\IntegerType {
+                public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                {
+                    return '(' . $sqlExpr . ' * 0 - 1)';
+                }
+            });
+            $this->variable($repository->dropdownRow('glpi_budgets', $budget, 'Budget', 'en_GB', [], ['name']))->isNull();
+            $this->variable((new \itsmng\Database\DropdownReadOperation($connection))->label('glpi_budgets', $budget, 'Budget', 'en_GB', [], ['name']))->isNull();
+        } finally {
+            \Doctrine\DBAL\Types\Type::overrideType('string', $originalString);
+            \Doctrine\DBAL\Types\Type::overrideType('integer', $originalInteger);
+            $reader->close();
+        }
 
         $customName = new class () extends \Computer {
             public static function getNameField()
