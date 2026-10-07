@@ -34,6 +34,24 @@
 namespace tests\units;
 
 use DbTestCase;
+use Item_SoftwareVersion as ItemSoftwareVersionModel;
+use Computer as ComputerModel;
+use DbUtils as DbUtilsModel;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Types\BigIntType;
+use Doctrine\DBAL\Types\BooleanType;
+use Doctrine\DBAL\Types\IntegerType;
+use Doctrine\DBAL\Types\StringType;
+use Doctrine\DBAL\Types\Type;
+use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use Doctrine\ORM\Events;
+use itsmng\Database\EntityRestriction;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\SoftwareInstallationRepository;
+use itsmng\Database\SoftwareRenderingReadOperation;
+use LogicException;
+use mock\DBmysql as SoftwareAdapter;
 
 /* Test for inc/item_softwareversion.class.php */
 
@@ -323,6 +341,163 @@ class Item_SoftwareVersion extends DbTestCase
             $_REQUEST['criterion'] = -1;
             $PLUGIN_HOOKS['item_can'] = [];
             $PLUGIN_HOOKS['import_item'] = [];
+            // Exercise the real recursive public selection before the rendering callbacks.
+            $originalAdapter = $DB;
+            $scopeSession = $_SESSION;
+            $manager = Orm::forConnection($connection);
+            $ordinary = new SoftwareInstallationRepository($manager);
+            $probe = new SoftwareRenderingProbe($connection);
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new SoftwareAdapter();
+            $this->calling($adapter)->getDoctrineConnection = $probe;
+            $this->calling($adapter)->getProvider = $DB->getProvider();
+            $scope = (new DbUtilsModel())->getEntityRestriction('glpi_softwares', '', '', true);
+            $expected = $ordinary->forSubject('Computer', (int)$computer->getID(), $scope->wrappedCriteria(), true, null);
+            $this->array($expected)->hasSize(2);
+            $publicExpected = $expected;
+            foreach ($publicExpected as &$row) {
+                unset($row['is_dynamic']);
+            }
+            unset($row);
+            $reader = null;
+            $string = Type::getType('string');
+            $bigint = Type::getType('bigint');
+            $integer = Type::getType('integer');
+            $boolean = Type::getType('boolean');
+            try {
+                $DB = $adapter;
+                $this->array(ItemSoftwareVersionModel::getFromItem($computer))->isIdenticalTo($publicExpected);
+                $nativeLists = array_filter($probe->queryBuilders, static fn ($query) =>
+                    str_contains(str_replace(['`', '"'], '', $query->getSQL()), 'FROM glpi_items_softwareversions i'));
+                $this->array($nativeLists)->hasSize(1);
+                $DB = $originalAdapter;
+                $reader = new SoftwareRenderingReadOperation($probe);
+                foreach ([null, 0, (int)$category->getID(), PHP_INT_MAX] as $categoryFilter) {
+                    $this->array($reader->forSubject('Computer', (int)$computer->getID(), $scope, true, $categoryFilter))
+                        ->isIdenticalTo($ordinary->forSubject('Computer', (int)$computer->getID(), $scope->wrappedCriteria(), true, $categoryFilter));
+                }
+                foreach ([0, [], [$entity], (int)$child->getID()] as $entities) {
+                    $selection = (new DbUtilsModel())->getEntityRestriction('glpi_softwares', '', $entities, true);
+                    $this->array($reader->forSubject('Computer', (int)$computer->getID(), $selection, true, null))
+                        ->isIdenticalTo($ordinary->forSubject('Computer', (int)$computer->getID(), $selection->wrappedCriteria(), true, null));
+                }
+                $custom = new EntityRestriction(['glpi_softwares.name' => $software->fields['name']], 'glpi_softwares', 'entities_id', false, null);
+                $builders = $probe->builders;
+                $this->array($reader->forSubject('Computer', (int)$computer->getID(), $custom, true, null))->isIdenticalTo($expected);
+                $this->integer($probe->builders)->isIdenticalTo($builders);
+                $connection->update('glpi_items_softwareversions', ['is_deleted' => true], ['id' => $installations[0]->getID()], ['is_deleted' => 'boolean', 'id' => 'bigint']);
+                $this->array($reader->forSubject('Computer', (int)$computer->getID(), $scope, true, null))->hasSize(1);
+                $this->array($reader->forSubject('Computer', (int)$computer->getID(), $scope, false, null))->isIdenticalTo($expected);
+                $connection->update('glpi_items_softwareversions', ['is_deleted' => false], ['id' => $installations[0]->getID()], ['is_deleted' => 'boolean', 'id' => 'bigint']);
+                Type::overrideType('string', new class () extends StringType {
+                    public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return 'UPPER(' . $sqlExpr . ')';
+                    }
+                    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
+                    {
+                        throw new LogicException('Installation scalar aliases skip PHP conversion');
+                    }
+                });
+                $this->array($reader->forSubject('Computer', (int)$computer->getID(), $scope, true, null))
+                    ->isIdenticalTo($ordinary->forSubject('Computer', (int)$computer->getID(), $scope->wrappedCriteria(), true, null));
+                Type::overrideType('string', new class () extends StringType {
+                    public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return 'NULL';
+                    }
+                });
+                $this->array($reader->forSubject('Computer', (int)$computer->getID(), $scope, true, null))
+                    ->isIdenticalTo($ordinary->forSubject('Computer', (int)$computer->getID(), $scope->wrappedCriteria(), true, null));
+                Type::overrideType('integer', new class () extends IntegerType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return 'CASE WHEN ' . $sqlExpr . ' = -1 THEN -1 ELSE -1 END';
+                    }
+                });
+                foreach ([$entity, [$entity]] as $entities) {
+                    $convertedScope = (new DbUtilsModel())->getEntityRestriction('glpi_softwares', '', $entities, false);
+                    $this->array($ordinary->forSubject('Computer', (int)$computer->getID(), $convertedScope->wrappedCriteria(), true, null))->isEmpty();
+                    $this->array($reader->forSubject('Computer', (int)$computer->getID(), $convertedScope, true, null))->isEmpty();
+                }
+                Type::overrideType('integer', $integer);
+                Type::overrideType('boolean', new class () extends BooleanType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return '(CASE WHEN ' . $sqlExpr . ' THEN FALSE ELSE TRUE END)';
+                    }
+                });
+                $this->array($reader->forSubject('Computer', (int)$computer->getID(), $scope, true, null))
+                    ->isIdenticalTo($ordinary->forSubject('Computer', (int)$computer->getID(), $scope->wrappedCriteria(), true, null));
+                Type::overrideType('boolean', $boolean);
+                Type::overrideType('string', $string);
+                Type::overrideType('bigint', new class () extends BigIntType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return 'CASE WHEN ' . $sqlExpr . ' = -1 THEN -1 ELSE -1 END';
+                    }
+                });
+                $this->array($ordinary->forSubject('Computer', (int)$computer->getID(), $scope->wrappedCriteria(), true, null))->isEmpty();
+                $this->array($reader->forSubject('Computer', (int)$computer->getID(), $scope, true, null))->isEmpty();
+                Type::overrideType('bigint', $bigint);
+                $extension = new class ($connection) extends SoftwareRenderingProbe {
+                    private ?EventManager $events = null;
+                    public function getEventManager(): EventManager
+                    {
+                        return $this->events ??= new EventManager();
+                    }
+                };
+                $local = new SoftwareRenderingReadOperation($extension);
+                $listener = new class () {
+                    public int $loads = 0;
+                    public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
+                    {
+                        ++$this->loads;
+                    }
+                };
+                $extension->getEventManager()->addEventListener([Events::loadClassMetadata], $listener);
+                try {
+                    $this->array($local->forSubject('Computer', (int)$computer->getID(), $scope, true, null))->isIdenticalTo($expected);
+                    $this->integer($listener->loads)->isGreaterThan(0);
+                    $this->integer($extension->builders)->isIdenticalTo(0);
+                } finally {
+                    $local->close();
+                }
+                // getID can change current authority and global route after the owner captured its connection.
+                $callback = new class () extends ComputerModel {
+                    public mixed $replacement;
+                    public static function getType()
+                    {
+                        return 'Computer';
+                    }
+                    public function getID()
+                    {
+                        $GLOBALS['DB'] = $this->replacement;
+                        $_SESSION['glpiactiveentities'] = [];
+                        $_SESSION['glpishowallentities'] = false;
+                        return parent::getID();
+                    }
+                };
+                $callback->fields = $computer->fields;
+                $callback->replacement = $originalAdapter;
+                $DB = $adapter;
+                $probe->queries = [];
+                $this->array(ItemSoftwareVersionModel::getFromItem($callback))->isEmpty();
+                $selectedReads = array_filter($probe->queries, static fn ($query) =>
+                    str_contains(str_replace(['`', '"'], '', $query['sql']), 'FROM glpi_items_softwareversions i'));
+                $this->array($selectedReads)->hasSize(1);
+                $this->object($DB)->isIdenticalTo($originalAdapter);
+            } finally {
+                $DB = $originalAdapter;
+                $_SESSION = $scopeSession;
+                Type::overrideType('string', $string);
+                Type::overrideType('bigint', $bigint);
+                Type::overrideType('integer', $integer);
+                Type::overrideType('boolean', $boolean);
+                $connection->update('glpi_items_softwareversions', ['is_deleted' => false], ['id' => $installations[0]->getID()], ['is_deleted' => 'boolean', 'id' => 'bigint']);
+                $reader?->close();
+                $manager->clear();
+            }
             $render = function () use ($computer): array {
                 ob_start();
                 try {
@@ -777,10 +952,16 @@ class SoftwareRenderingProbe extends \Doctrine\DBAL\Connection
 {
     public int $builders = 0;
     public array $queries = [];
+    public array $queryBuilders = [];
 
     public function __construct(private readonly \Doctrine\DBAL\Connection $selected)
     {
         parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
+    }
+
+    public function isTransactionActive(): bool
+    {
+        return $this->selected->isTransactionActive();
     }
 
     public function getDatabasePlatform(): \Doctrine\DBAL\Platforms\AbstractPlatform
@@ -791,7 +972,7 @@ class SoftwareRenderingProbe extends \Doctrine\DBAL\Connection
     public function createQueryBuilder(): \Doctrine\DBAL\Query\QueryBuilder
     {
         ++$this->builders;
-        return parent::createQueryBuilder();
+        return $this->queryBuilders[] = parent::createQueryBuilder();
     }
 
     public function executeQuery(string $sql, array $params = [], array $types = [], ?\Doctrine\DBAL\Cache\QueryCacheProfile $qcp = null): \Doctrine\DBAL\Result

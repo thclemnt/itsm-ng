@@ -1085,14 +1085,18 @@ class Item_SoftwareVersion extends CommonDBRelation
         global $DB;
 
         $category = (int)Session::getSavedOption(__CLASS__, 'criterion', -1);
-        $rows = (new SoftwareInstallationRepository(Orm::create($DB)))
-            ->forSubject(
+        $reader = new SoftwareRenderingReadOperation($DB->getDoctrineConnection());
+        try {
+            $rows = $reader->forSubject(
                 $item->getType(),
                 (int)$item->getID(),
-                getEntitiesRestrictCriteria('glpi_softwares', '', '', true),
+                (new DbUtils())->getEntityRestriction('glpi_softwares', '', '', true),
                 $item->maybeDeleted(),
                 $category > -1 ? $category : null
             );
+        } finally {
+            $reader->close();
+        }
         if (!Plugin::haveImport()) {
             foreach ($rows as &$row) {
                 unset($row['is_dynamic']);
