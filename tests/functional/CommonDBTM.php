@@ -1819,6 +1819,218 @@ class CommonDBTM extends DbTestCase
         $this->boolean($entity->can(-1, CREATE, $input))->isFalse("Fail: can create entity in 2.1");
     }
 
+    public function testCustomIndexLifecycleReloadKeepsSourceCallbacksAndPhysicalReturn(): void
+    {
+        $savedSession = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            global $DB;
+            $connection = $DB->getDoctrineConnection();
+            $base = max(
+                (int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) FROM glpi_tickets'),
+                (int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) FROM glpi_ticketsatisfactions')
+            ) + 100;
+            $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            foreach (range(0, 3) as $offset) {
+                $ticket = new \Ticket();
+                $this->integer((int)$ticket->addWithAssignedIdentifier($base + $offset, [
+                    'name' => 'Custom index reload ' . $this->getUniqueString(), 'content' => 'Reload ownership fixture',
+                    'entities_id' => $entity, '_disablenotif' => true,
+                ]))->isIdenticalTo($base + $offset);
+            }
+            $connection->insert('glpi_ticketsatisfactions', ['id' => $base + 10, 'tickets_id' => $base,
+                'type' => 1, 'comment' => 'Existing survey']);
+            $peer = $connection->fetchAssociative('SELECT * FROM glpi_ticketsatisfactions WHERE id = ?', [$base + 10]);
+            $model = static function (int $physical): \TicketSatisfaction {
+                $item = new class () extends \TicketSatisfaction {
+                    public int $insertIdentity;
+                    public ?int $callbackPhysicalIdentity = null;
+                    public ?int $historyLogicalIdentity = null;
+                    public ?array $historyTarget = null;
+                    public array $events = [];
+                    public static function getType()
+                    {
+                        return 'TicketSatisfaction';
+                    }
+                    public static function getTable($classname = null)
+                    {
+                        return 'glpi_ticketsatisfactions';
+                    }
+                    public function addToDB()
+                    {
+                        // Assign only fixture-owned absent physical IDs; execute the real insert/reload.
+                        $this->fields['id'] = $this->insertIdentity;
+                        return parent::addToDB();
+                    }
+                    public function post_getFromDB()
+                    {
+                        parent::post_getFromDB();
+                        $this->events[] = ['reload', (int)$this->fields['id'], (int)$this->getID()];
+                        if ($this->callbackPhysicalIdentity !== null) {
+                            $this->fields['id'] = $this->callbackPhysicalIdentity;
+                        }
+                    }
+                    public function post_addItem()
+                    {
+                        $this->events[] = ['add', (int)$this->fields['id'], (int)$this->getID()];
+                        parent::post_addItem();
+                    }
+                    public function getLogTypeID()
+                    {
+                        $this->events[] = ['history', (int)$this->fields['id'], (int)$this->getID()];
+                        $this->historyTarget = parent::getLogTypeID();
+                        if ($this->historyLogicalIdentity !== null) {
+                            $this->fields['tickets_id'] = $this->historyLogicalIdentity;
+                        }
+                        return $this->historyTarget;
+                    }
+                    public function post_updateItem($history = 1)
+                    {
+                        $this->events[] = ['update', (int)$this->fields['id'], (int)$this->getID()];
+                        parent::post_updateItem($history);
+                    }
+                };
+                $item->insertIdentity = $physical;
+                return $item;
+            };
+            foreach ([[$base, $base + 1, 1], [$base + 11, $base + 2, 0]] as [$physical, $logical, $collision]) {
+                $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_ticketsatisfactions WHERE id = ?', [$physical]))->isIdenticalTo(0);
+                $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_ticketsatisfactions WHERE tickets_id = ?', [$physical]))->isIdenticalTo($collision);
+                $survey = $model($physical);
+                $this->integer((int)$survey->add(['tickets_id' => $logical, 'type' => 1,
+                    'comment' => 'New source survey', '_disablenotif' => true]))->isIdenticalTo($physical);
+                $this->integer((int)$survey->fields['id'])->isIdenticalTo($physical);
+                $this->integer((int)$survey->getID())->isIdenticalTo($logical);
+                $this->array($survey->events)->isIdenticalTo([['reload', $physical, $logical], ['add', $physical, $logical]]);
+                $this->string($survey->fields['comment'])->isIdenticalTo('New source survey');
+                $this->integer((int)$connection->fetchOne(
+                    'SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ? AND linked_action = ?',
+                    ['TicketSatisfaction', $physical, \Log::HISTORY_CREATE_ITEM]
+                ))->isIdenticalTo(1);
+                $this->array($connection->fetchAssociative('SELECT * FROM glpi_ticketsatisfactions WHERE id = ?', [$base + 10]))->isIdenticalTo($peer);
+                $survey->events = [];
+                $this->boolean($survey->update(['tickets_id' => $logical, 'satisfaction' => 4,
+                    'comment' => 'Updated source survey', '_disablenotif' => true]))->isTrue();
+                // History observes this survey and records its fields on the parent Ticket.
+                $this->array($survey->events)->isIdenticalTo([
+                    ['reload', $physical, $logical], ['history', $physical, $logical],
+                    ['reload', $physical, $logical], ['update', $physical, $logical],
+                ]);
+                $this->integer((int)$survey->fields['id'])->isIdenticalTo($physical);
+                $this->integer((int)$survey->getID())->isIdenticalTo($logical);
+                $this->string($survey->fields['comment'])->isIdenticalTo('Updated source survey');
+                $this->string($connection->fetchOne('SELECT comment FROM glpi_ticketsatisfactions WHERE id = ?', [$physical]))->isIdenticalTo('Updated source survey');
+                $this->integer((int)$connection->fetchOne(
+                    'SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ? AND linked_action = 0 AND id_search_option = 63 AND old_value = ? AND new_value = ?',
+                    ['Ticket', $logical, 'New source survey', 'Updated source survey']
+                ))->isIdenticalTo(1, 'Survey comments are logged on their source Ticket');
+                $this->array($connection->fetchAssociative('SELECT * FROM glpi_ticketsatisfactions WHERE id = ?', [$base + 10]))->isIdenticalTo($peer);
+                $this->integer((int)$connection->fetchOne(
+                    'SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ? AND linked_action = 0 AND id_search_option IN (62, 63)',
+                    ['Ticket', $base]
+                ))->isIdenticalTo(0, 'Update history never targets the collision peer');
+                // A public history hook may mutate fields to a real peer key or a missing key.
+                $survey->events = [];
+                $survey->historyLogicalIdentity = $collision ? $base : $base + 99;
+                $this->boolean($survey->update(['tickets_id' => $logical, 'satisfaction' => 5,
+                    'comment' => 'Source after history callback', '_disablenotif' => true]))->isTrue();
+                $this->string($survey->historyTarget[0])->isIdenticalTo('Ticket');
+                $this->integer((int)$survey->historyTarget[1])->isIdenticalTo($logical);
+                $this->array($survey->events)->isIdenticalTo([
+                    ['reload', $physical, $logical], ['history', $physical, $logical],
+                    ['reload', $physical, $logical], ['update', $physical, $logical],
+                ]);
+                $this->integer((int)$survey->fields['id'])->isIdenticalTo($physical);
+                $this->integer((int)$survey->getID())->isIdenticalTo($logical);
+                $this->string($survey->fields['comment'])->isIdenticalTo('Source after history callback');
+                $this->string($connection->fetchOne('SELECT comment FROM glpi_ticketsatisfactions WHERE id = ?', [$physical]))->isIdenticalTo('Source after history callback');
+                $this->integer((int)$connection->fetchOne(
+                    'SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ? AND linked_action = 0 AND id_search_option = 63 AND old_value = ? AND new_value = ?',
+                    ['Ticket', $logical, 'Updated source survey', 'Source after history callback']
+                ))->isIdenticalTo(1, 'Survey comments are logged on their source Ticket');
+                $this->integer((int)$connection->fetchOne(
+                    'SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ? AND linked_action = 0 AND id_search_option = 62 AND old_value = ? AND new_value = ?',
+                    ['Ticket', $logical, '4', '5']
+                ))->isIdenticalTo(1, 'Survey ratings retain their source Ticket through the history callback');
+                $this->array($connection->fetchAssociative('SELECT * FROM glpi_ticketsatisfactions WHERE id = ?', [$base + 10]))->isIdenticalTo($peer);
+                $this->integer((int)$connection->fetchOne(
+                    'SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ? AND linked_action = 0 AND id_search_option IN (62, 63)',
+                    ['Ticket', $base]
+                ))->isIdenticalTo(0);
+            }
+            $this->integer((int)$connection->fetchOne(
+                'SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ? AND linked_action = ?',
+                ['TicketSatisfaction', $base + 10, \Log::HISTORY_CREATE_ITEM]
+            ))->isIdenticalTo(0, 'The collision peer receives no creation history');
+            // Public callback mutation must not change the producer-owned return value.
+            $survey = $model($base + 12);
+            $survey->fields = ['tickets_id' => $base + 3, 'type' => 1];
+            $survey->callbackPhysicalIdentity = $base + 10;
+            $this->integer((int)$survey->addToDB())->isIdenticalTo($base + 12);
+            $this->array($survey->events)->isIdenticalTo([['reload', $base + 12, $base + 3]]);
+            $this->integer((int)$connection->fetchOne('SELECT tickets_id FROM glpi_ticketsatisfactions WHERE id = ?', [$base + 12]))->isIdenticalTo($base + 3);
+        } finally {
+            $_SESSION = $savedSession;
+        }
+    }
+
+    public function testCustomIndexAggregateAddCannotReplaceCollisionPeerOrigins(): void
+    {
+        $savedSession = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            global $DB;
+            $connection = $DB->getDoctrineConnection();
+            $base = max(
+                (int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) FROM glpi_networkports'),
+                (int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) FROM glpi_networkportaggregates')
+            ) + 100;
+            $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $equipment = $this->createItem(\NetworkEquipment::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+            foreach (range(0, 3) as $offset) {
+                $port = new \NetworkPort();
+                $this->integer((int)$port->addWithAssignedIdentifier($base + $offset, ['name' => 'Reload port ' . $offset,
+                    'items_id' => $equipment->getID(), 'itemtype' => 'NetworkEquipment', 'entities_id' => $entity]))->isIdenticalTo($base + $offset);
+            }
+            $manager = \itsmng\Database\Orm::create($DB);
+            try {
+                $writer = new \itsmng\Database\Repository\RecordWriter($manager);
+                $this->integer($writer->insert('glpi_networkportaggregates', ['id' => $base + 10, 'networkports_id' => $base]))->isIdenticalTo($base + 10);
+                $origins = new \itsmng\Database\Repository\NetworkPortAggregateRepository($manager);
+                $origins->replaceOrigins($base + 10, [$base + 2]);
+                $aggregate = new class () extends \NetworkPortAggregate {
+                    public int $insertIdentity;
+                    public static function getType()
+                    {
+                        return 'NetworkPortAggregate';
+                    }
+                    public static function getTable($classname = null)
+                    {
+                        return 'glpi_networkportaggregates';
+                    }
+                    public function addToDB()
+                    {
+                        $this->fields['id'] = $this->insertIdentity;
+                        return parent::addToDB();
+                    }
+                };
+                $aggregate->insertIdentity = $base;
+                $this->integer((int)$aggregate->add(['networkports_id' => $base + 1,
+                    'networkports_id_list' => [$base + 3]]))->isIdenticalTo($base);
+                $this->integer((int)$aggregate->fields['id'])->isIdenticalTo($base);
+                $this->integer((int)$aggregate->getID())->isIdenticalTo($base + 1);
+                $this->array($origins->originIds($base))->isIdenticalTo([$base + 3]);
+                $this->array($origins->originIds($base + 10))->isIdenticalTo([$base + 2], 'Another aggregate keeps its existing origins');
+            } finally {
+                $manager->clear();
+            }
+        } finally {
+            $_SESSION = $savedSession;
+        }
+    }
+
     public function testAdd()
     {
         $computer = new \Computer();

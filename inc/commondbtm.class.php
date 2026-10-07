@@ -772,8 +772,10 @@ class CommonDBTM extends CommonGLPI
         }
 
         if (count($oldvalues)) {
+            // History callbacks can mutate the model; reload the persisted source.
+            $updatedId = $this->getID();
             Log::constructHistory($this, $oldvalues, $this->fields);
-            $this->getFromDB($this->fields['id']);
+            $this->getFromDB($updatedId);
         }
 
         return true;
@@ -822,7 +824,9 @@ class CommonDBTM extends CommonGLPI
                 // Persistence owns this scalar identity before read callbacks
                 // can change the public model or perform another insertion.
                 $createdId = $this->fields['id'];
-                $this->getFromDB($createdId);
+                // Public reads use the declared index, which can differ from
+                // the physical identity returned by the insert producer.
+                $this->getFromDB($this->getID());
 
                 return $createdId;
             }
