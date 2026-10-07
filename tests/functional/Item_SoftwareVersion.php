@@ -657,6 +657,111 @@ class Item_SoftwareVersion extends DbTestCase
                 ->isIdenticalTo('Fresh link label');
             $this->string($managedSoftware->name)->isIdenticalTo('Installation license projection');
             $this->boolean($manager->contains($managedSoftware))->isTrue();
+            $probe = new SoftwareRenderingProbe($connection);
+            $reader = new \itsmng\Database\SoftwareRenderingReadOperation($probe);
+            $string = \Doctrine\DBAL\Types\Type::getType('string');
+            $bigint = \Doctrine\DBAL\Types\Type::getType('bigint');
+            try {
+                $this->array($reader->rendering('Computer', $owner, []))->isIdenticalTo([
+                    'licenses' => [], 'display' => $emptyDisplay,
+                ]);
+                $this->integer($probe->builders)->isIdenticalTo(0);
+                $expected = [
+                    'licenses' => $repository->effectiveLicenseIdsForVersions('Computer', $owner, array_column($displayRows, 'verid')),
+                    'display' => $repository->displayDataForInstallations($displayRows),
+                ];
+                $this->array($reader->rendering('Computer', $owner, $displayRows))->isIdenticalTo($expected);
+                $this->array($probe->queries)->hasSize(4);
+                $this->integer($probe->builders)->isIdenticalTo(4);
+                $this->array($probe->queries[0]['types'])->isIdenticalTo([
+                    \Doctrine\DBAL\Types\Types::BIGINT,
+                    \Doctrine\DBAL\ArrayParameterType::INTEGER,
+                    \Doctrine\DBAL\ArrayParameterType::INTEGER,
+                ]);
+                foreach (['Computer', 'Monitor'] as $kind) {
+                    $this->array($reader->rendering($kind, $owner, $displayBoundary))->isIdenticalTo([
+                        'licenses' => $repository->effectiveLicenseIdsForVersions($kind, $owner, array_column($displayBoundary, 'verid')),
+                        'display' => $repository->displayDataForInstallations($displayBoundary),
+                    ]);
+                }
+                $stringIds = array_map(static fn (array $row): array => array_map(strval(...), $row), $displayRows);
+                $this->array($reader->rendering('Computer', $owner, $stringIds))->isIdenticalTo($expected);
+                $connection->update('glpi_softwarecategories', ['name' => 'Fresh category'], ['id' => $category->id]);
+                $this->string($reader->rendering('Computer', $owner, $displayRows)['display']['categories'][$category->id]['name'])
+                    ->isIdenticalTo('Fresh category');
+                \Doctrine\DBAL\Types\Type::overrideType('string', new class () extends \Doctrine\DBAL\Types\StringType {
+                    public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                    {
+                        return 'UPPER(' . $sqlExpr . ')';
+                    }
+                    public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+                    {
+                        throw new \LogicException('Scalar result aliases must not run PHP conversion');
+                    }
+                });
+                $this->array($reader->rendering('Computer', $owner, $displayRows)['display'])
+                    ->isIdenticalTo($repository->displayDataForInstallations($displayRows));
+                $this->string($reader->rendering('Computer', $owner, $displayRows)['display']['softwares'][$software->id]['name'])
+                    ->isIdenticalTo('FRESH LINK LABEL');
+                \Doctrine\DBAL\Types\Type::overrideType('string', new class () extends \Doctrine\DBAL\Types\StringType {
+                    public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                    {
+                        return 'NULL';
+                    }
+                    public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+                    {
+                        throw new \LogicException('NULL scalar aliases must not run PHP conversion');
+                    }
+                });
+                $this->array($reader->rendering('Computer', $owner, $displayRows)['display'])
+                    ->isIdenticalTo($repository->displayDataForInstallations($displayRows));
+                $this->variable($reader->rendering('Computer', $owner, $displayRows)['display']['softwares'][$software->id]['name'])->isNull();
+                \Doctrine\DBAL\Types\Type::overrideType('string', $string);
+                \Doctrine\DBAL\Types\Type::overrideType('bigint', new class () extends \Doctrine\DBAL\Types\BigIntType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                    {
+                        return 'CASE WHEN ' . $sqlExpr . ' = -1 THEN -1 ELSE -1 END';
+                    }
+                });
+                $this->array($repository->effectiveLicenseIdsForVersions('Computer', $owner, array_column($displayRows, 'verid')))->isEmpty();
+                $converted = $reader->rendering('Computer', $owner, $displayRows);
+                $this->array($converted['licenses'])->isEmpty();
+                // Inferred array enum bindings must not acquire a per-ID BIGINT SQL conversion.
+                $this->array($converted['display'])->isIdenticalTo($repository->displayDataForInstallations($displayRows));
+                $this->array($converted['display']['softwares'])->hasSize(1);
+                \Doctrine\DBAL\Types\Type::overrideType('bigint', $bigint);
+                $extension = new class ($connection) extends SoftwareRenderingProbe {
+                    private ?\Doctrine\Common\EventManager $events = null;
+                    public function getEventManager(): \Doctrine\Common\EventManager
+                    {
+                        return $this->events ??= new \Doctrine\Common\EventManager();
+                    }
+                };
+                $local = new \itsmng\Database\SoftwareRenderingReadOperation($extension);
+                $listener = new class () {
+                    public int $loads = 0;
+                    public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+                    {
+                        ++$this->loads;
+                    }
+                };
+                $extension->getEventManager()->addEventListener([\Doctrine\ORM\Events::loadClassMetadata], $listener);
+                try {
+                    $this->array($local->rendering('Computer', $owner, $displayRows))->isIdenticalTo([
+                        'licenses' => $repository->effectiveLicenseIdsForVersions('Computer', $owner, array_column($displayRows, 'verid')),
+                        'display' => $repository->displayDataForInstallations($displayRows),
+                    ]);
+                    $this->integer($listener->loads)->isGreaterThan(0);
+                    $this->integer($extension->builders)->isIdenticalTo(0);
+                } finally {
+                    $local->close();
+                }
+            } finally {
+                \Doctrine\DBAL\Types\Type::overrideType('string', $string);
+                \Doctrine\DBAL\Types\Type::overrideType('bigint', $bigint);
+                $reader->close();
+            }
+
         } finally {
             try {
                 $frame->rollBack();
@@ -665,5 +770,33 @@ class Item_SoftwareVersion extends DbTestCase
             }
         }
         $this->integer($DB->getDoctrineConnection()->getTransactionNestingLevel())->isIdenticalTo($originalLevel);
+    }
+}
+
+class SoftwareRenderingProbe extends \Doctrine\DBAL\Connection
+{
+    public int $builders = 0;
+    public array $queries = [];
+
+    public function __construct(private readonly \Doctrine\DBAL\Connection $selected)
+    {
+        parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
+    }
+
+    public function getDatabasePlatform(): \Doctrine\DBAL\Platforms\AbstractPlatform
+    {
+        return $this->selected->getDatabasePlatform();
+    }
+
+    public function createQueryBuilder(): \Doctrine\DBAL\Query\QueryBuilder
+    {
+        ++$this->builders;
+        return parent::createQueryBuilder();
+    }
+
+    public function executeQuery(string $sql, array $params = [], array $types = [], ?\Doctrine\DBAL\Cache\QueryCacheProfile $qcp = null): \Doctrine\DBAL\Result
+    {
+        $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
+        return $this->selected->executeQuery($sql, $params, $types, $qcp);
     }
 }

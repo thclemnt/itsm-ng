@@ -4,6 +4,8 @@
 
 namespace itsmng\Database\Repository;
 
+use Doctrine\DBAL\ArrayParameterType;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
@@ -194,6 +196,127 @@ final class SoftwareInstallationRepository
             }
         }
         return $data;
+    }
+
+    public function nativeDisplayDataForInstallations(array $installations): array
+    {
+        $data = ['softwares' => [], 'versions' => [], 'categories' => []];
+        foreach (array_chunk(array_values(array_unique(array_column($installations, 'softwares_id'))), 250) as $ids) {
+            $rows = $this->nativeDisplayRows(
+                Entity\Software::class,
+                ['id', 'name', 'is_recursive', 'is_template'],
+                ['entities_id' => 'entities'],
+                $ids
+            );
+            foreach ($rows as $row) {
+                $row['is_recursive'] = (int)$row['is_recursive'];
+                $row['is_template'] = (int)$row['is_template'];
+                $data['softwares'][(int)$row['id']] = [
+                    'id' => $row['id'], 'name' => $row['name'], 'entities_id' => $row['entities_id'],
+                    'is_recursive' => $row['is_recursive'], 'is_template' => $row['is_template'],
+                ];
+            }
+        }
+        foreach (array_chunk(array_values(array_unique(array_column($installations, 'verid'))), 250) as $ids) {
+            $rows = $this->nativeDisplayRows(
+                Entity\SoftwareVersion::class,
+                ['id', 'name'],
+                ['softwares_id' => 'softwares'],
+                $ids
+            );
+            foreach ($rows as $row) {
+                $data['versions'][(int)$row['id']] = $row;
+            }
+        }
+        $categories = array_filter(array_unique(array_column($installations, 'softwarecategories_id')));
+        foreach (array_chunk(array_values($categories), 250) as $ids) {
+            $rows = $this->nativeDisplayRows(
+                Entity\SoftwareCategory::class,
+                ['id', 'name', 'completename'],
+                [],
+                $ids
+            );
+            foreach ($rows as $row) {
+                $data['categories'][(int)$row['id']] = $row;
+            }
+        }
+        return $data;
+    }
+
+    /** Fixed display columns only; scalar hydration deliberately skips PHP type conversion. */
+    private function nativeDisplayRows(string $class, array $fields, array $references, array $ids): array
+    {
+        $metadata = $this->em->getClassMetadata($class);
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $select = [];
+        foreach ($fields as $field) {
+            $select[] = Type::getType($metadata->getTypeOfField($field))->convertToPHPValueSQL(
+                'r.' . $quote->getColumnName($field, $metadata, $platform),
+                $platform
+            ) . ' AS ' . $field;
+        }
+        foreach ($references as $alias => $field) {
+            $reference = $metadata->associationMappings[$field];
+            $select[] = 'r.' . $quote->getJoinColumnName($reference->joinColumns[0], $metadata, $platform)
+                . ' AS ' . $alias;
+        }
+        return $connection->createQueryBuilder()->select(...$select)
+            ->from($quote->getTableName($metadata, $platform), 'r')
+            ->where('r.' . $quote->getColumnName('id', $metadata, $platform) . ' IN (?)')
+            // Match ORM inference: an array is a binding enum, not per-element mapped SQL conversion.
+            ->setParameter(0, $ids, is_int(reset($ids)) ? ArrayParameterType::INTEGER : ArrayParameterType::STRING)
+            ->executeQuery()->fetchAllAssociative();
+    }
+
+    /** Effective license IDs retain assignment multiplicity and their original ordering. */
+    public function nativeEffectiveLicenseIdsForVersions(string $kind, int $owner, array $versions): array
+    {
+        $rows = [];
+        if ($versions === []) {
+            return $rows;
+        }
+        $assignment = $this->em->getClassMetadata(Entity\ItemSoftwareLicense::class);
+        $license = $this->em->getClassMetadata(Entity\SoftwareLicense::class);
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $ownerReference = $assignment->associationMappings[Entity\ItemSoftwareLicense::referenceAssociation($kind)];
+        $licenseReference = $assignment->associationMappings['softwarelicenses'];
+        $useReference = $license->associationMappings['useVersion'];
+        $buyReference = $license->associationMappings['buyVersion'];
+        $use = 'l.' . $quote->getJoinColumnName($useReference->joinColumns[0], $license, $platform);
+        $buy = 'l.' . $quote->getJoinColumnName($buyReference->joinColumns[0], $license, $platform);
+        $licenseId = 'l.' . $quote->getColumnName('id', $license, $platform);
+        $ownerType = Type::getType(Types::BIGINT);
+        foreach (array_chunk(array_values(array_unique(array_map('intval', $versions))), 250) as $batch) {
+            $result = $connection->createQueryBuilder()
+                ->select(
+                    Type::getType($license->getTypeOfField('id'))->convertToPHPValueSQL($licenseId, $platform) . ' AS id',
+                    $use . ' AS use_version',
+                    $buy . ' AS buy_version'
+                )
+                ->from($quote->getTableName($assignment, $platform), 'i')
+                ->innerJoin(
+                    'i',
+                    $quote->getTableName($license, $platform),
+                    'l',
+                    'i.' . $quote->getJoinColumnName($licenseReference->joinColumns[0], $assignment, $platform) . ' = ' . $licenseId
+                )
+                ->where('i.' . $quote->getJoinColumnName($ownerReference->joinColumns[0], $assignment, $platform)
+                    . ' = ' . $ownerType->convertToDatabaseValueSQL('?', $platform))
+                ->andWhere($use . ' IN (?) OR (' . $use . ' IS NULL AND ' . $buy . ' IN (?))')
+                ->setParameter(0, $owner, Types::BIGINT)
+                ->setParameter(1, $batch, ArrayParameterType::INTEGER)
+                ->setParameter(2, $batch, ArrayParameterType::INTEGER)
+                ->orderBy('i.' . $quote->getColumnName('id', $assignment, $platform))
+                ->executeQuery();
+            foreach ($result->fetchAllAssociative() as $row) {
+                $rows[(int)($row['use_version'] ?? $row['buy_version'])][] = (int)$row['id'];
+            }
+        }
+        return $rows;
     }
 
     /** API expansion already has an authorized owner; it has no UI category filter. */

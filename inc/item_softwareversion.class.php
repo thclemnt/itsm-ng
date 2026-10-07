@@ -1236,9 +1236,14 @@ class Item_SoftwareVersion extends CommonDBRelation
         $licenseIds = null;
         $displayData = null;
         if ($datas && empty($GLOBALS['PLUGIN_HOOKS']['item_can'])) {
-            $repository = new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB));
-            $licenseIds = $repository->effectiveLicenseIdsForVersions($itemtype, (int)$items_id, array_column($datas, 'verid'));
-            $displayData = $repository->displayDataForInstallations($datas);
+            $reader = new \itsmng\Database\SoftwareRenderingReadOperation($DB->getDoctrineConnection());
+            try {
+                $rendering = $reader->rendering($itemtype, (int)$items_id, $datas);
+                $licenseIds = $rendering['licenses'];
+                $displayData = $rendering['display'];
+            } finally {
+                $reader->close();
+            }
         }
         foreach ($datas as $data) {
             $licids = $licenseIds !== null ? ($licenseIds[$data['verid']] ?? []) : self::softwareByCategory(
