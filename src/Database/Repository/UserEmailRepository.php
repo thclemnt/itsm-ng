@@ -33,6 +33,42 @@ final class UserEmailRepository
             ->getQuery()->getOneOrNullResult();
     }
 
+    /** Fixed private scalar projection; public supplied-manager reads remain ORM queries. */
+    public function nativePreferred(int $user): ?array
+    {
+        $metadata = $this->em->getClassMetadata(UserEmail::class);
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $reference = $metadata->associationMappings['users'];
+        if (!$reference->isToOneOwningSide() || count($reference->joinColumns) !== 1) {
+            throw new \LogicException('Preferred email requires a single owning user reference.');
+        }
+        $types = [];
+        $select = [];
+        foreach (['id', 'email'] as $field) {
+            $types[$field] = \Doctrine\DBAL\Types\Type::getType($metadata->getTypeOfField($field));
+            $select[] = $types[$field]->convertToPHPValueSQL('e.' . $quote->getColumnName($field, $metadata, $platform), $platform) . ' AS ' . $field;
+        }
+        $userType = \Doctrine\DBAL\Types\Type::getType(Types::INTEGER);
+        $row = $connection->createQueryBuilder()->select(...$select)
+            ->from($quote->getTableName($metadata, $platform), 'e')
+            ->where('e.' . $quote->getJoinColumnName($reference->joinColumns[0], $metadata, $platform)
+                . ' = ' . $userType->convertToDatabaseValueSQL(':user', $platform))
+            ->setParameter('user', $user, Types::INTEGER)
+            ->orderBy('e.' . $quote->getColumnName('is_default', $metadata, $platform), 'DESC')
+            ->addOrderBy('e.' . $quote->getColumnName('id', $metadata, $platform), 'ASC')
+            ->setMaxResults(1)->executeQuery()->fetchAssociative();
+        if ($row === false) {
+            return null;
+        }
+        // ObjectHydrator applies PHP conversions to these scalar selections.
+        foreach ($types as $field => $type) {
+            $row[$field] = $type->convertToPHPValue($row[$field], $platform);
+        }
+        return $row;
+    }
+
     public function contains(int $user, string $email): bool
     {
         return $this->em->createQueryBuilder()->select('e.id')->from(UserEmail::class, 'e')

@@ -96,7 +96,7 @@ class UserEmail extends CommonDBChild
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\UserEmailRepository(\itsmng\Database\Orm::create($DB)))->preferred((int)$users_id)['email'] ?? '';
+        return (new \itsmng\Database\UserEmailReadOperation($DB->getDoctrineConnection()))->preferred((int)$users_id)['email'] ?? '';
     }
 
 

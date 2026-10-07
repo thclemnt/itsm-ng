@@ -37,6 +37,128 @@ namespace tests\units;
 
 class User extends \DbTestCase
 {
+    public function testPreferredEmailUsesCurrentTypedSelectedRead(): void
+    {
+        global $DB;
+        $this->login();
+        $connection = $DB->getDoctrineConnection();
+        $user = $this->createItem(\User::class, ['name' => 'preferred-' . $this->getUniqueString()]);
+        $id = (int)$user->getID();
+        foreach (['first@example.test', 'second@example.test'] as $address) {
+            $connection->insert('glpi_useremails', ['users_id' => $id, 'email' => $address, 'is_default' => false, 'is_dynamic' => false], ['users_id' => 'bigint', 'email' => 'string', 'is_default' => 'boolean', 'is_dynamic' => 'boolean']);
+        }
+        $manager = \itsmng\Database\Orm::forConnection($connection);
+        $ordinary = new \itsmng\Database\Repository\UserEmailRepository($manager);
+        $expected = $ordinary->preferred($id);
+        $this->string($expected['email'])->isIdenticalTo('first@example.test');
+        $probe = new UserScalarReadProbe($connection);
+        $originalAdapter = $DB;
+        $scope = $connection->captureManagedTransactionScope();
+        $depth = $connection->getTransactionNestingLevel();
+        $this->mockGenerator->orphanize('__construct');
+        $adapter = new \mock\DBmysql();
+        $this->calling($adapter)->getDoctrineConnection = $probe;
+        $this->calling($adapter)->getProvider = $originalAdapter->getProvider();
+        try {
+            $DB = $adapter;
+            $this->string(\UserEmail::getDefaultForUser($id))->isIdenticalTo($expected['email']);
+            $this->array($probe->queries)->hasSize(1);
+            $this->integer($probe->builders)->isIdenticalTo(1);
+        } finally {
+            $DB = $originalAdapter;
+            $scope->assertActive();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+        }
+        $reader = new \itsmng\Database\UserEmailReadOperation($probe);
+        $integer = \Doctrine\DBAL\Types\Type::getType('integer');
+        $string = \Doctrine\DBAL\Types\Type::getType('string');
+        $bigint = \Doctrine\DBAL\Types\Type::getType('bigint');
+        try {
+            foreach ([0, -1, $id] as $selected) {
+                $this->variable($reader->preferred($selected))->isIdenticalTo($ordinary->preferred($selected));
+            }
+            $connection->update('glpi_useremails', ['is_default' => true], ['users_id' => $id, 'email' => 'second@example.test'], ['is_default' => 'boolean', 'users_id' => 'bigint', 'email' => 'string']);
+            $this->array($reader->preferred($id))->isIdenticalTo($ordinary->preferred($id));
+            $this->string($reader->preferred($id)['email'])->isIdenticalTo('second@example.test');
+            // Tied defaults still select the lowest physical identifier.
+            $connection->update('glpi_useremails', ['is_default' => true], ['id' => $expected['id']], ['is_default' => 'boolean', 'id' => 'bigint']);
+            $this->array($reader->preferred($id))->isIdenticalTo($expected);
+            \Doctrine\DBAL\Types\Type::overrideType('string', new class () extends \Doctrine\DBAL\Types\StringType {
+                public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                {
+                    return 'UPPER(' . $sqlExpr . ')';
+                }
+                public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+                {
+                    return $value === null ? 'converted-null' : 'php:' . $value;
+                }
+            });
+            $this->array($reader->preferred($id))->isIdenticalTo($ordinary->preferred($id));
+            $this->string($reader->preferred($id)['email'])->isIdenticalTo('php:FIRST@EXAMPLE.TEST');
+            $connection->update('glpi_useremails', ['email' => null], ['id' => $expected['id']]);
+            $this->array($reader->preferred($id))->isIdenticalTo($ordinary->preferred($id));
+            $this->string($reader->preferred($id)['email'])->isIdenticalTo('converted-null');
+            \Doctrine\DBAL\Types\Type::overrideType('string', $string);
+            $this->array($reader->preferred($id))->isIdenticalTo($ordinary->preferred($id));
+            $this->string(\UserEmail::getDefaultForUser($id))->isEmpty();
+            \Doctrine\DBAL\Types\Type::overrideType('integer', new class () extends \Doctrine\DBAL\Types\IntegerType {
+                public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                {
+                    return '(' . $sqlExpr . ' * 0 - 1)';
+                }
+            });
+            $this->variable($reader->preferred($id))->isNull();
+            $this->variable($ordinary->preferred($id))->isNull();
+            \Doctrine\DBAL\Types\Type::overrideType('integer', $integer);
+            \Doctrine\DBAL\Types\Type::overrideType('bigint', new class () extends \Doctrine\DBAL\Types\BigIntType {
+                public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): int|string|null
+                {
+                    throw new \Doctrine\ORM\NoResultException();
+                }
+            });
+            $this->variable($reader->preferred($id))->isNull();
+            $this->variable($ordinary->preferred($id))->isNull();
+            \Doctrine\DBAL\Types\Type::overrideType('bigint', new class () extends \Doctrine\DBAL\Types\BigIntType {
+                public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): int|string|null
+                {
+                    throw new \LogicException('Preferred email conversion failure');
+                }
+            });
+            $this->exception(fn () => $reader->preferred($id))->isInstanceOf(\LogicException::class);
+            $this->exception(fn () => $ordinary->preferred($id))->isInstanceOf(\LogicException::class);
+            \Doctrine\DBAL\Types\Type::overrideType('bigint', $bigint);
+            $extension = new class ($connection) extends UserScalarReadProbe {
+                private ?\Doctrine\Common\EventManager $events = null;
+                public function getEventManager(): \Doctrine\Common\EventManager
+                {
+                    return $this->events ??= new \Doctrine\Common\EventManager();
+                }
+            };
+            $local = new \itsmng\Database\UserEmailReadOperation($extension);
+            $listener = new class () {
+                public int $loads = 0;
+                public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+                {
+                    ++$this->loads;
+                }
+            };
+            $extension->getEventManager()->addEventListener([\Doctrine\ORM\Events::loadClassMetadata], $listener);
+            $this->array($local->preferred($id))->isIdenticalTo($ordinary->preferred($id));
+            $this->integer($listener->loads)->isGreaterThan(0);
+            $this->integer($extension->builders)->isIdenticalTo(0);
+            $local->close();
+            $connection->delete('glpi_useremails', ['users_id' => $id]);
+            $this->variable($reader->preferred($id))->isNull();
+            $this->string(\UserEmail::getDefaultForUser($id))->isEmpty();
+        } finally {
+            \Doctrine\DBAL\Types\Type::overrideType('integer', $integer);
+            \Doctrine\DBAL\Types\Type::overrideType('string', $string);
+            \Doctrine\DBAL\Types\Type::overrideType('bigint', $bigint);
+            $reader->close();
+            $manager->clear();
+        }
+    }
+
     public function testPrivateUserScopesAndDisplayUseFreshTypedScalarReads(): void
     {
         global $DB;
