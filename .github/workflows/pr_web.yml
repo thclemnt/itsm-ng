@@ -122,7 +122,9 @@ jobs:
                   limit = min(limit, hard_limit)
               resource.setrlimit(resource.RLIMIT_CORE, (limit, hard_limit))
           with log.open('w') as output:
-              server = subprocess.Popen(['php', '-S', 'localhost:8088', str(router)],
+              # Keep functional API tests independent of runner-provided JIT defaults.
+              server = subprocess.Popen(['php', '-d', 'opcache.jit=disable', '-d', 'opcache.jit_buffer_size=0',
+                  '-S', 'localhost:8088', str(router)],
                   stdout=output, stderr=subprocess.STDOUT, env=server_env,
                   preexec_fn=enable_core_dump)
               try:
