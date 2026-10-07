@@ -464,7 +464,8 @@ class Session
     {
 
         if (
-            isset($_SESSION['glpiprofiles'][$ID])
+            $ID !== null
+            && isset($_SESSION['glpiprofiles'][$ID])
             && count($_SESSION['glpiprofiles'][$ID]['entities'])
         ) {
             $profile = new Profile();

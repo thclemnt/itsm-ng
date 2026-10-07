@@ -186,6 +186,22 @@ class Session extends \DbTestCase
 
         $this->login('normal', 'normal');
 
+        // No profile grants make init() select key([]), which is null. Refusal
+        // must keep the active context usable without emitting PHP warnings.
+        $session_backup = $_SESSION;
+        try {
+            $_SESSION['glpiprofiles'] = [];
+            foreach ([key($_SESSION['glpiprofiles']), 0, '0', -1] as $profile_id) {
+                $_SESSION['glpimenu'] = ['stale profile menu'];
+                $expected_session = $_SESSION;
+                unset($expected_session['glpimenu']);
+                \Session::changeProfile($profile_id);
+                $this->array($_SESSION)->isIdenticalTo($expected_session);
+            }
+        } finally {
+            $_SESSION = $session_backup;
+        }
+
         // Test groups from whole entity tree
         $session_backup = $_SESSION;
         $_SESSION['glpiactiveentities'] = $entities_ids;
