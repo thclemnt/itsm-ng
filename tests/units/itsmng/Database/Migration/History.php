@@ -167,9 +167,42 @@ class History extends \atoum\atoum\test
         $manager = new EntityManager(DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']), Orm::configuration(new PostgreSQLPlatform()));
         $metadata = $manager->getClassMetadata(\itsmng\Database\Entity\ItemDeviceSensor::class);
         $metadata->associationMappings['computer']->joinColumns[0]->name = 'future_computer';
-        $this->array(array_map(static fn ($index): array => $index->getColumns(), $release::declarations()['glpi_items_devicesensors']))
+        $this->array(array_map(static fn ($index): array => $index->getUnquotedColumns(), $release::declarations()['glpi_items_devicesensors']))
             ->isIdenticalTo([['computers_id'], ['locations_id'], ['states_id']]);
         $this->boolean($manager->getConnection()->isConnected())->isFalse();
+    }
+
+    public function testPhysicalReferenceSqlPreservesMixedCaseColumnIdentifiers(): void
+    {
+        $indexes = \itsmng\Database\Migration\PhysicalReferenceIndexes::declarations()['glpi_dashboards'];
+        foreach ([new PostgreSQLPlatform(), new \Doctrine\DBAL\Platforms\MySQLPlatform(), new \Doctrine\DBAL\Platforms\MariaDBPlatform()] as $platform) {
+            foreach (['profileId', 'userId'] as $position => $column) {
+                $sql = $platform->getCreateIndexSQL($indexes[$position], $platform->quoteIdentifier('glpi_dashboards'));
+                $this->string($sql)->isIdenticalTo('CREATE INDEX ' . $indexes[$position]->getName()
+                    . ' ON ' . $platform->quoteIdentifier('glpi_dashboards') . ' (' . $platform->quoteIdentifier($column) . ')');
+                $this->array($indexes[$position]->getUnquotedColumns())->isIdenticalTo([$column]);
+            }
+        }
+    }
+
+    public function testPhysicalReferencePlanRefusesFoldedNativeNameCollision(): void
+    {
+        foreach ([new PostgreSQLPlatform(), new \Doctrine\DBAL\Platforms\MySQLPlatform()] as $platform) {
+            $driver = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0'])->getDriver();
+            $connection = new \mock\Doctrine\DBAL\Connection([], $driver);
+            $this->calling($connection)->getDatabasePlatform = $platform;
+            $this->calling($connection)->fetchAllAssociative = [[
+                'table_name' => 'glpi_apiclients', 'index_name' => 'idx_d00bb2e4f4829aed', 'column_name' => 'wrong_column',
+                'is_unique' => false, 'is_primary' => false, 'is_valid' => true, 'is_ready' => true,
+                'access_method' => 'btree', 'predicate' => null, 'expressions' => null,
+                'default_operator_class' => true, 'column_collation' => true, 'nulls_not_distinct' => false,
+                'non_unique' => 1, 'visible' => 1, 'prefix_length' => null,
+            ]];
+            $release = new \itsmng\Database\Migration\PhysicalReferenceIndexes();
+            $this->exception(static fn () => $release->plan($connection))->isInstanceOf(\RuntimeException::class)
+                ->hasMessage('Physical reference index name has a different definition: glpi_apiclients.IDX_D00BB2E4F4829AED');
+            $this->boolean($connection->isConnected())->isFalse();
+        }
     }
 
     private function release(string $version, \ArrayObject $calls): \itsmng\Database\Migration\ReleaseMigration

@@ -6,6 +6,7 @@ namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Index;
 use itsmng\Database\PhysicalIndexSchema;
 
@@ -97,7 +98,9 @@ final class PhysicalReferenceIndexes implements ReleaseMigration
     {
         $tables = [];
         foreach (self::INDEXES as [$table, $column, $name]) {
-            $tables[$table][] = new Index($name, [$column]);
+            // DBAL preserves quoted column identity across providers, including
+            // the historical mixed-case dashboard profileId/userId columns.
+            $tables[$table][] = new Index($name, ['`' . $column . '`']);
         }
         return $tables;
     }
@@ -111,7 +114,14 @@ final class PhysicalReferenceIndexes implements ReleaseMigration
         $platform = $connection->getDatabasePlatform();
         foreach (PhysicalIndexSchema::missing($required, $catalog) as $table => $indexes) {
             foreach ($indexes as $index) {
-                if (isset($catalog[$table][$index->getName()])) {
+                // Frozen index names are unquoted: PostgreSQL folds them to lower
+                // case; MySQL index identifiers compare without case sensitivity.
+                $nativeName = strtolower($index->getName());
+                $existing = $catalog[$table] ?? [];
+                if (!$platform instanceof PostgreSQLPlatform) {
+                    $existing = array_change_key_case($existing, CASE_LOWER);
+                }
+                if (isset($existing[$nativeName])) {
                     throw new \RuntimeException('Physical reference index name has a different definition: ' . $table . '.' . $index->getName());
                 }
                 $missing[] = $table . '.' . $index->getName();
