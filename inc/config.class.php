@@ -2232,9 +2232,9 @@ class Config extends CommonDBTM
                    'check'   => 'Symfony\\Component\\Console\\Application' ],
                  [ 'name'    => 'scssphp/scssphp',
                    'check'   => 'ScssPhp\ScssPhp\Compiler' ],
-                 [ 'name'    => 'laminas/laminas-mail',
+                 [ 'name'    => 'oroinc/laminas-mail',
                    'check'   => 'Laminas\\Mail\\Protocol\\Imap' ],
-                 [ 'name'    => 'laminas/laminas-mime',
+                 [ 'name'    => 'oroinc/laminas-mime',
                    'check'   => 'Laminas\\Mime\\Mime' ],
                  [ 'name'    => 'rlanvin/php-rrule',
                    'check'   => 'RRule\\RRule' ],
@@ -3450,7 +3450,7 @@ class Config extends CommonDBTM
 
         // Create adapter
         try {
-            $storage = Laminas\Cache\StorageFactory::factory($opt);
+            $storage = itsmng\Cache\StorageFactory::create($opt);
         } catch (Exception $e) {
             if (!$is_computed_config) {
                 Toolbox::logError($e->getMessage());
@@ -3472,7 +3472,7 @@ class Config extends CommonDBTM
                     mkdir($opt['options']['cache_dir']);
                 }
                 try {
-                    $storage = Laminas\Cache\StorageFactory::factory($opt);
+                    $storage = itsmng\Cache\StorageFactory::create($opt);
                     $fallback = true;
                 } catch (Exception $e1) {
                     Toolbox::logError($e1->getMessage());
@@ -3488,7 +3488,7 @@ class Config extends CommonDBTM
 
             if ($fallback === false) {
                 $opt = ['adapter' => 'memory'];
-                $storage = Laminas\Cache\StorageFactory::factory($opt);
+                $storage = itsmng\Cache\StorageFactory::create($opt);
             }
             if (
                 isset($_SESSION['glpi_use_mode'])

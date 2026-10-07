@@ -253,6 +253,57 @@ class Session extends \DbTestCase
         //cleanup -- keep at the end
         unlink(GLPI_LOCAL_I18N_DIR.'/core/en_GB.php');
         unlink(GLPI_LOCAL_I18N_DIR.'/core/en_GB.mo');
+
+        global $TRANSLATE;
+        $originalTranslator = $TRANSLATE;
+        $domain = 'i18nfixture' . $this->getUniqueString();
+        $directory = GLPI_LOCAL_I18N_DIR . '/' . $domain;
+        mkdir($directory);
+        $file = $directory . '/en_GB.php';
+        $messages = [
+            '' => ['plural_forms' => 'nplurals=2; plural=(n > 1);'],
+            'Late message' => 'Late plugin translation',
+            'Entry' => ['First entry', 'Many entries'],
+            "menu\x04Context" => 'Context translation',
+            $domain . "\x04Context entries" => ['Context first', 'Context many'],
+        ];
+        file_put_contents($file, '<?php return ' . var_export($messages, true) . ';');
+        try {
+            // A plugin domain may be registered after core translation has begun.
+            \Session::loadLanguage('en_GB', false);
+            $this->string(__('Login'))->isIdenticalTo('Login');
+            \Plugin::loadLang($domain, 'en_GB', 'en_GB');
+            $this->string(__('Late message', $domain))->isIdenticalTo('Late plugin translation');
+            $this->string(__('Entry', $domain))->isIdenticalTo('First entry');
+            $this->string(_n('Entry', 'Entries', 0, $domain))->isIdenticalTo('First entry');
+            $this->string(_n('Entry', 'Entries', 2, $domain))->isIdenticalTo('Many entries');
+            $this->string(_x('menu', 'Context', $domain))->isIdenticalTo('Context translation');
+            $this->string(__('Context entries', $domain))->isIdenticalTo('Context first');
+            $this->string($TRANSLATE->translate('Late message', $domain, ''))->isIdenticalTo('Late plugin translation');
+
+            // Cached TextDomain objects retain their plural AST when serialized.
+            $raw = new \Laminas\Cache\Storage\Adapter\Memory();
+            $cache = new \Laminas\Cache\Psr\SimpleCache\SimpleCacheDecorator($raw);
+            $cached = new \itsmng\Translation\Translator('en_GB', $cache);
+            $cached->addTranslationFile('phparray', $file, $domain, 'en_GB');
+            $this->string($cached->translatePlural('Entry', 'Entries', 0, $domain))->isIdenticalTo('First entry');
+            $key = 'itsmng-i18n3-' . $domain . '-en_GB';
+            $catalogue = $cache->get($key);
+            $this->object($catalogue)->isInstanceOf(\Laminas\I18n\Translator\TextDomain::class);
+            $cache->set($key, unserialize(serialize($catalogue)));
+            unlink($file);
+            $warm = new \itsmng\Translation\Translator('en_GB', $cache);
+            $warm->addTranslationFile('phparray', $file, $domain, 'en_GB');
+            $this->string($warm->translatePlural('Entry', 'Entries', 2, $domain))->isIdenticalTo('Many entries');
+            $this->array($warm->translate('Entry', $domain))->isIdenticalTo(['First entry', 'Many entries']);
+            $this->string($warm->translate('Missing', $domain))->isIdenticalTo('Missing');
+        } finally {
+            $TRANSLATE = $originalTranslator;
+            if (is_file($file)) {
+                unlink($file);
+            }
+            rmdir($directory);
+        }
     }
 
     protected function mustChangePasswordProvider()

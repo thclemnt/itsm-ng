@@ -795,6 +795,15 @@ class Config extends DbTestCase
             $this->integer($second->getOptions()->getTtl())->isIdenticalTo(29);
             $this->string($first->getOptions()->getNamespace())->isIdenticalTo('first');
 
+            $sessionSettings = ['adapter' => 'session', 'options' => ['namespace' => $context, 'ttl' => 23]];
+            $connection->update($table, ['value' => json_encode($sessionSettings, JSON_THROW_ON_ERROR)], ['context' => $context, 'name' => $name]);
+            $session = \Config::getCache($name, $context, false);
+            $this->object($session)->isInstanceOf(\itsmng\Cache\SessionAdapter::class);
+            $this->integer($session->getOptions()->getTtl())->isIdenticalTo(23);
+            $this->boolean($session->setItem('configuration', ['native' => true]))->isTrue();
+            $this->array($session->getItem('configuration'))->isIdenticalTo(['native' => true]);
+            $session->removeItem('configuration');
+
             // Neither SQL NULL, JSON null nor ciphertext is an adapter declaration.
             foreach ([null, 'null', $encrypted] as $value) {
                 $connection->update($table, ['value' => $value], ['context' => $context, 'name' => $name]);
@@ -806,7 +815,7 @@ class Config extends DbTestCase
             $this->object(\Config::getCache($name, $context, false))->isInstanceOf(\Laminas\Cache\Storage\Adapter\Filesystem::class);
             $this->array($memory->getValues())->isEmpty('Cache backend construction does not populate the ORM metadata cache');
 
-            // Consume only the four deliberate getCache debug messages, after
+            // Consume only the five deliberate getCache debug messages, after
             // checking their complete decoded payloads and order.
             $expectedPayloads = [];
             foreach ([['first', 17], ['second', 29]] as [$namespace, $ttl]) {
@@ -815,10 +824,11 @@ class Config extends DbTestCase
                     'options' => ['namespace' => $namespace, 'ttl' => $ttl],
                 ], true));
             }
+            $expectedPayloads[] = 'CACHE CONFIG  cache_db ' . str_replace("\n", "\n  ", print_r($sessionSettings, true));
             $expectedPayloads[] = 'CACHE CONFIG  cache_db NULL ';
             $expectedPayloads[] = 'CACHE CONFIG  cache_db NULL ';
             $records = $PHP_LOG_HANDLER->getRecords();
-            $this->array($records)->hasSize(4);
+            $this->array($records)->hasSize(5);
             foreach ($records as $index => $record) {
                 $this->string($record['level_name'])->isIdenticalTo('DEBUG');
                 [$caller, $payload] = explode("\n", $record['message'], 2);

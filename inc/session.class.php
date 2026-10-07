@@ -588,8 +588,6 @@ class Session
         if (isset($CFG_GLPI["languages"][$trytoload][5])) {
             $_SESSION['glpipluralnumber'] = $CFG_GLPI["languages"][$trytoload][5];
         }
-        $TRANSLATE = new Laminas\I18n\Translator\Translator();
-        $TRANSLATE->setLocale($trytoload);
 
         if (class_exists('Locale')) {
             // Locale class may be missing if intl extension is not installed.
@@ -600,9 +598,10 @@ class Session
         }
 
         $cache = Config::getCache('cache_trans', 'core', false);
-        if ($cache !== false && !defined('TU_USER')) {
-            $TRANSLATE->setCache($cache);
-        }
+        $TRANSLATE = new \itsmng\Translation\Translator(
+            $trytoload,
+            $cache !== false && !defined('TU_USER') ? new \Laminas\Cache\Psr\SimpleCache\SimpleCacheDecorator($cache) : null
+        );
 
         $TRANSLATE->addTranslationFile('gettext', GLPI_I18N_DIR . $newfile, 'glpi', $trytoload);
 
