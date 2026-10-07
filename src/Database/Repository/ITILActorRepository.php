@@ -65,6 +65,17 @@ final class ITILActorRepository
 
     public function rows(string $actorClass, int $item, ?\itsmng\Database\ReadQueryOwner $operation = null): array
     {
+        return $this->readRows($actorClass, $item, $operation, false);
+    }
+
+    /** Explicit private-owner scalar route; public/supplied-manager reads remain ordinary ORM. */
+    public function nativeRows(string $actorClass, int $item): array
+    {
+        return $this->readRows($actorClass, $item, null, true);
+    }
+
+    private function readRows(string $actorClass, int $item, ?\itsmng\Database\ReadQueryOwner $operation, bool $native): array
+    {
         if (!self::supports($actorClass)) {
             throw new \InvalidArgumentException('Unsupported ITIL actor relation');
         }
@@ -84,23 +95,43 @@ final class ITILActorRepository
             throw new \LogicException('ITIL actor relation requires exactly one mapped parent reference');
         }
         $parent = $parents[0];
-        $query = $this->em->createQueryBuilder()->from($record, 'a')
-            ->where('IDENTITY(a.' . $parent . ') = :item')->setParameter('item', $item, Types::BIGINT)
-            ->orderBy('a.id');
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $query = $native ? $connection->createQueryBuilder()->from($quote->getTableName($metadata, $platform), 'a')
+            : $this->em->createQueryBuilder()->from($record, 'a');
+        $parentExpression = $native
+            ? 'a.' . $quote->getJoinColumnName($metadata->associationMappings[$parent]->joinColumns[0], $metadata, $platform)
+            : 'IDENTITY(a.' . $parent . ')';
+        $parameter = $native ? \Doctrine\DBAL\Types\Type::getType(Types::BIGINT)->convertToDatabaseValueSQL(':item', $platform) : ':item';
+        $query->where($parentExpression . ' = ' . $parameter)->setParameter('item', $item, Types::BIGINT)
+            ->orderBy($native ? 'a.' . $quote->getColumnName('id', $metadata, $platform) : 'a.id');
         $columns = [];
         // Keep the complete relationship-row contract, including generated compatibility keys.
         foreach ($metadata->fieldMappings as $property => $mapping) {
-            $query->addSelect('a.' . $property . ' AS value' . count($columns));
+            $expression = 'a.' . $property;
+            if ($native) {
+                $expression = 'a.' . $quote->getColumnName($property, $metadata, $platform);
+                $expression = \Doctrine\DBAL\Types\Type::getType($mapping->type)->convertToPHPValueSQL($expression, $platform);
+            }
+            $query->addSelect($expression . ' AS value' . count($columns));
             $columns[] = [$mapping->columnName, $mapping->type];
         }
         foreach ($metadata->associationMappings as $property => $mapping) {
-            $query->addSelect('IDENTITY(a.' . $property . ') AS value' . count($columns));
+            $expression = $native ? 'a.' . $quote->getJoinColumnName($mapping->joinColumns[0], $metadata, $platform)
+                : 'IDENTITY(a.' . $property . ')';
+            $query->addSelect($expression . ' AS value' . count($columns));
             $columns[] = [$mapping->joinColumns[0]->name, Types::BIGINT];
         }
         $rows = [];
-        $compiled = $query->getQuery();
-        $operation?->prepareQuery($compiled, $metadata);
-        foreach ($compiled->getScalarResult() as $values) {
+        if ($native) {
+            $resultRows = $query->executeQuery()->fetchAllAssociative();
+        } else {
+            $compiled = $query->getQuery();
+            $operation?->prepareQuery($compiled, $metadata);
+            $resultRows = $compiled->getScalarResult();
+        }
+        foreach ($resultRows as $values) {
             $row = [];
             foreach ($columns as $index => [$column, $type]) {
                 $row[$column] = RecordRepository::legacyScalarValue($values['value' . $index], $type);

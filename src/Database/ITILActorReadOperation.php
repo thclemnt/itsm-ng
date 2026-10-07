@@ -16,8 +16,11 @@ final class ITILActorReadOperation implements ReadQueryOwner
         if (!ITILActorRepository::supports($actorClass)) {
             throw new \InvalidArgumentException('Unsupported ITIL actor relation');
         }
-        $this->metadata($actorClass::getTable());
-        $rows = (new ITILActorRepository($this->manager))->rows($actorClass, $item, $this);
+        $metadata = $this->metadata($actorClass::getTable());
+        $repository = new ITILActorRepository($this->manager);
+        $rows = $this->ownedMapping && $this->defaultIdentifiers($metadata) !== null && $metadata->isInheritanceTypeNone()
+            ? $repository->nativeRows($actorClass, $item)
+            : $repository->rows($actorClass, $item, $this);
         $actors = [];
         foreach ($rows as $row) {
             $actors[$row['type']][] = $row;

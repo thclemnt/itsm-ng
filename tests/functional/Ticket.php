@@ -550,19 +550,30 @@ class Ticket extends DbTestCase
         $parentModel = new $parentName();
         $parentModel->fields['id'] = $parent->id;
         $managers = new \ReflectionProperty(\itsmng\Database\Orm::class, 'unitsOfWork');
-        $previousPool = $GLOBALS['GLPI_CACHE'] ?? null;
-        $memory = new class (storeSerialized: false) extends \Symfony\Component\Cache\Adapter\ArrayAdapter {
-            public int $planWrites = 0;
-            public function save(\Psr\Cache\CacheItemInterface $item)
-            {
-                if (is_string($item->get()) && str_contains($item->get(), 'Doctrine\\ORM\\Query\\ParserResult')) {
-                    ++$this->planWrites;
-                }
-                return parent::save($item);
-            }
-        };
         try {
-            $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache($memory);
+            $probe = new TicketScalarReadProbe($em->getConnection());
+            $direct = new \itsmng\Database\ITILActorReadOperation($probe);
+            $this->array($direct->actors($legacy, $parent->id))->isIdenticalTo($grouped);
+            $this->array($probe->queries)->hasSize(1);
+            $this->integer($probe->builders)->isIdenticalTo(1);
+            $this->array($probe->queries[0]['params'])->isIdenticalTo(['item' => $parent->id]);
+            $this->array($probe->queries[0]['types'])->isIdenticalTo(['item' => \Doctrine\DBAL\Types\Types::BIGINT]);
+            if ($legacy === \Ticket_User::class) {
+                $originalBigint = \Doctrine\DBAL\Types\Type::getType('bigint');
+                try {
+                    \Doctrine\DBAL\Types\Type::overrideType('bigint', new class () extends \Doctrine\DBAL\Types\BigIntType {
+                        public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                        {
+                            return '(' . $sqlExpr . ' * 0 - 1)';
+                        }
+                    });
+                    $this->array($direct->actors($legacy, $parent->id))->isEmpty();
+                    $this->array($repository->actors($legacy, $parent->id))->isEmpty();
+                } finally {
+                    \Doctrine\DBAL\Types\Type::overrideType('bigint', $originalBigint);
+                }
+            }
+            $direct->close();
             $before = $managers->getValue();
             $parentModel->loadActors();
             $this->integer($managers->getValue() - $before)->isIdenticalTo(1);
@@ -582,22 +593,18 @@ class Ticket extends DbTestCase
                 $this->integer($rows[1]['actor_key'])->isIdenticalTo(0);
                 $this->string($rows[1]['actor_email_key'])->isIdenticalTo('projection@example.invalid');
             }
-            $this->integer($memory->planWrites)->isIdenticalTo(3);
             // A later operation observes writes; no actor rows or managers survive in a cache.
             $observer->type = \CommonITILActor::REQUESTER;
             $em->flush();
             $this->array($model->getActors($parent->id))->hasKey(\CommonITILActor::REQUESTER);
             $parentModel->loadActors();
             $this->array($parentModel->$getter(\CommonITILActor::REQUESTER))->hasSize(1);
-            $this->integer($memory->planWrites)->isIdenticalTo(3);
             $em->remove($observer);
             $em->flush();
             $this->array($model->getActors($parent->id))->notHasKey(\CommonITILActor::REQUESTER);
             $parentModel->loadActors();
             $this->array($parentModel->$getter(\CommonITILActor::REQUESTER))->isEmpty();
-            $this->integer($memory->planWrites)->isIdenticalTo(3);
         } finally {
-            $GLOBALS['GLPI_CACHE'] = $previousPool;
             $em->clear();
             $reader->clear();
         }
@@ -5231,5 +5238,35 @@ HTML
         $ticket = new \Ticket();
         $this->boolean($ticket->getFromDB($tickets_id))->isTrue();
         $this->boolean($ticket->isValidator($users_id))->isEqualTo($expected);
+    }
+}
+
+
+/** Observe the actual selected connection without opening another transaction or socket. */
+class TicketScalarReadProbe extends \Doctrine\DBAL\Connection
+{
+    public int $builders = 0;
+    public array $queries = [];
+
+    public function __construct(private readonly \Doctrine\DBAL\Connection $selected)
+    {
+        parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
+    }
+
+    public function getDatabasePlatform(): \Doctrine\DBAL\Platforms\AbstractPlatform
+    {
+        return $this->selected->getDatabasePlatform();
+    }
+
+    public function createQueryBuilder(): \Doctrine\DBAL\Query\QueryBuilder
+    {
+        ++$this->builders;
+        return parent::createQueryBuilder();
+    }
+
+    public function executeQuery(string $sql, array $params = [], array $types = [], ?\Doctrine\DBAL\Cache\QueryCacheProfile $qcp = null): \Doctrine\DBAL\Result
+    {
+        $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
+        return $this->selected->executeQuery($sql, $params, $types, $qcp);
     }
 }

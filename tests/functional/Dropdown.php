@@ -50,24 +50,86 @@ class Dropdown extends DbTestCase
         $id = (int)$child->getID();
         $expected = getEntitiesRestrictCriteria('glpi_suppliers', '', [$id], true);
         $counter = new \ReflectionProperty(\itsmng\Database\Orm::class, 'unitsOfWork');
-        $previous = $GLOBALS['GLPI_CACHE'] ?? null;
-        $memory = new DropdownOwnedPlanCache(storeSerialized: false);
-        $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache($memory);
+        $before = $counter->getValue();
+        $operation = new \itsmng\Database\EntityScopeReadOperation();
+        $this->array($operation->criteria('glpi_suppliers', '', [$id], true))->isIdenticalTo($expected);
+        $this->array($operation->criteria('glpi_suppliers', '', [$id], true))->isIdenticalTo($expected);
+        $this->integer($counter->getValue() - $before)->isIdenticalTo(1, 'One scalar operation owns one manager across current permission reads');
+        $connection->update('glpi_entities', ['entities_id' => 0], ['id' => $id]);
+        $fresh = getEntitiesRestrictCriteria('glpi_suppliers', '', [$id], true);
+        $this->array($fresh)->isNotIdenticalTo($expected);
+        $this->array($operation->criteria('glpi_suppliers', '', [$id], true))->isIdenticalTo($fresh);
+    }
+
+    public function testTreePointReadsUseTypedDbalAndRetainScalarValues(): void
+    {
+        global $DB;
+        $this->login();
+        $connection = $DB->getDoctrineConnection();
+        $entity = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $id = (int)$entity->getID();
+        $connection->update('glpi_entities', ['ancestors_cache' => 'cache lower', 'sons_cache' => null], ['id' => $id]);
+        $fields = ['id', 'entities_id', 'ancestors_cache', 'sons_cache'];
+        $manager = \itsmng\Database\Orm::forConnection($connection);
+        $oracle = new \itsmng\Database\Repository\TreeRepository($manager);
+        $expected = $oracle->rows('glpi_entities', $fields, ['id' => $id]);
+        $probe = new DropdownScalarReadProbe($connection);
+        $reader = new \itsmng\Database\TreeReadOperation($probe);
+        $originalText = \Doctrine\DBAL\Types\Type::getType('text');
+        $originalBigint = \Doctrine\DBAL\Types\Type::getType('bigint');
         try {
-            $before = $counter->getValue();
-            $operation = new \itsmng\Database\EntityScopeReadOperation();
-            $this->array($operation->criteria('glpi_suppliers', '', [$id], true))->isIdenticalTo($expected);
-            $writes = $memory->planWrites;
-            $this->integer($writes)->isGreaterThan(0);
-            $this->array($operation->criteria('glpi_suppliers', '', [$id], true))->isIdenticalTo($expected);
-            $this->integer($memory->planWrites)->isIdenticalTo($writes, 'Repeated current criteria reuse plans, not rows');
-            $this->integer($counter->getValue() - $before)->isIdenticalTo(1, 'One scalar operation owns one manager across current permission reads');
-            $connection->update('glpi_entities', ['entities_id' => 0], ['id' => $id]);
-            $fresh = getEntitiesRestrictCriteria('glpi_suppliers', '', [$id], true);
-            $this->array($fresh)->isNotIdenticalTo($expected);
-            $this->array($operation->criteria('glpi_suppliers', '', [$id], true))->isIdenticalTo($fresh);
+            $this->array($reader->rows('glpi_entities', $fields, ['id' => $id]))->isIdenticalTo($expected);
+            $this->array($probe->queries)->hasSize(1);
+            $this->integer($probe->builders)->isIdenticalTo(1);
+            $this->array($probe->queries[0]['types'])->isIdenticalTo(['id' => \Doctrine\DBAL\Types\Types::BIGINT]);
+            $this->array($probe->queries[0]['params'])->isIdenticalTo(['id' => (string)$id]);
+            $this->string($expected[0]['ancestors_cache'])->isIdenticalTo('cache lower');
+            $this->variable($expected[0]['sons_cache'])->isNull();
+            $this->array($reader->rows('glpi_entities', ['id', 'entities_id'], ['id' => 0]))
+                ->isIdenticalTo($oracle->rows('glpi_entities', ['id', 'entities_id'], ['id' => 0]));
+            $connection->update('glpi_entities', ['entities_id' => null, 'ancestors_cache' => 'changed lower'], ['id' => $id]);
+            $this->array($reader->rows('glpi_entities', $fields, ['id' => $id]))
+                ->isIdenticalTo($oracle->rows('glpi_entities', $fields, ['id' => $id]));
+            // Scalar SQL aliases historically do not call PHP value converters.
+            \Doctrine\DBAL\Types\Type::overrideType('text', new DropdownScalarSqlText());
+            $this->string($reader->rows('glpi_entities', ['ancestors_cache'], ['id' => $id])[0]['ancestors_cache'])
+                ->isIdenticalTo('CHANGED LOWER');
+            $this->array($reader->rows('glpi_entities', ['ancestors_cache'], ['id' => $id]))
+                ->isIdenticalTo($oracle->rows('glpi_entities', ['ancestors_cache'], ['id' => $id]));
+            \Doctrine\DBAL\Types\Type::overrideType('bigint', new DropdownNegativeScalarId());
+            $this->array($reader->rows('glpi_entities', ['id'], ['id' => $id]))->isEmpty();
+            \Doctrine\DBAL\Types\Type::overrideType('bigint', $originalBigint);
+            \Doctrine\DBAL\Types\Type::overrideType('text', $originalText);
+            $extension = new class ($connection) extends DropdownScalarReadProbe {
+                private ?\Doctrine\Common\EventManager $events = null;
+                public function getEventManager(): \Doctrine\Common\EventManager
+                {
+                    return $this->events ??= new \Doctrine\Common\EventManager();
+                }
+            };
+            $local = new \itsmng\Database\TreeReadOperation($extension);
+            $listener = new class () {
+                public int $loads = 0;
+                public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+                {
+                    ++$this->loads;
+                }
+            };
+            $extension->getEventManager()->addEventListener([\Doctrine\ORM\Events::loadClassMetadata], $listener);
+            $this->array($local->rows('glpi_entities', ['id', 'name'], ['id' => $id]))
+                ->isIdenticalTo($oracle->rows('glpi_entities', ['id', 'name'], ['id' => $id]));
+            $this->integer($listener->loads)->isGreaterThan(0);
+            $this->integer($extension->builders)->isIdenticalTo(0, 'Late inherited listeners retain the ordinary ORM path');
+            $local->close();
+            $builders = $probe->builders;
+            $this->array($reader->rows('glpi_entities', ['id'], ['id' => [$id]], ['id DESC']))
+                ->isIdenticalTo($oracle->rows('glpi_entities', ['id'], ['id' => [$id]], ['id DESC']));
+            $this->integer($probe->builders)->isIdenticalTo($builders, 'General predicates/order retain the existing ORM criteria contract');
         } finally {
-            $GLOBALS['GLPI_CACHE'] = $previous;
+            \Doctrine\DBAL\Types\Type::overrideType('text', $originalText);
+            \Doctrine\DBAL\Types\Type::overrideType('bigint', $originalBigint);
+            $reader->close();
+            $manager->clear();
         }
     }
 
@@ -2145,5 +2207,57 @@ final class DropdownUnknownRepository extends \itsmng\Database\Repository\Dropdo
             $row['name'] .= ' original override';
         }
         return $rows;
+    }
+}
+
+
+/** Observe the actual selected connection without opening another transaction or socket. */
+class DropdownScalarReadProbe extends \Doctrine\DBAL\Connection
+{
+    public int $builders = 0;
+    public array $queries = [];
+
+    public function __construct(private readonly \Doctrine\DBAL\Connection $selected)
+    {
+        parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
+    }
+
+    public function getDatabasePlatform(): \Doctrine\DBAL\Platforms\AbstractPlatform
+    {
+        return $this->selected->getDatabasePlatform();
+    }
+
+    public function createQueryBuilder(): \Doctrine\DBAL\Query\QueryBuilder
+    {
+        ++$this->builders;
+        return parent::createQueryBuilder();
+    }
+
+    public function executeQuery(string $sql, array $params = [], array $types = [], ?\Doctrine\DBAL\Cache\QueryCacheProfile $qcp = null): \Doctrine\DBAL\Result
+    {
+        $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
+        return $this->selected->executeQuery($sql, $params, $types, $qcp);
+    }
+}
+
+
+final class DropdownScalarSqlText extends \Doctrine\DBAL\Types\TextType
+{
+    public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+    {
+        return 'UPPER(' . $sqlExpr . ')';
+    }
+
+    public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+    {
+        throw new \LogicException('Scalar aliases must not acquire entity PHP conversion');
+    }
+}
+
+final class DropdownNegativeScalarId extends \Doctrine\DBAL\Types\BigIntType
+{
+    public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+    {
+        return '(' . $sqlExpr . ' * 0 - 1)';
     }
 }
