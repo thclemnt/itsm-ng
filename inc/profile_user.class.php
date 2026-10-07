@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\ProfileUserReadOperation;
+use itsmng\Database\Repository\RecordRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -744,11 +748,15 @@ class Profile_User extends CommonDBRelation
     public static function getUserProfiles($user_ID, $sqlfilter = [])
     {
         global $DB;
-        $ids = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))->identifiers(
-            self::getTable(),
-            'profiles_id',
-            ['users_id' => $user_ID] + $sqlfilter
-        );
+        $connection = $DB->getDoctrineConnection();
+        $table = self::getTable();
+        $ids = $sqlfilter === [] && $table === 'glpi_profiles_users'
+            ? (new ProfileUserReadOperation($connection))->profileIds($user_ID)
+            : (new RecordRepository(Orm::forConnection($connection)))->identifiers(
+                $table,
+                'profiles_id',
+                ['users_id' => $user_ID] + $sqlfilter
+            );
         $profiles = [];
         foreach ($ids as $id) {
             $profiles[$id] = $id;

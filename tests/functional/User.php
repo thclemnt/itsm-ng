@@ -164,7 +164,11 @@ class User extends \DbTestCase
         global $DB;
         $this->login();
         $connection = $DB->getDoctrineConnection();
-        $user = $this->createItem(\User::class, ['name' => 'scalar-' . $this->getUniqueString(), 'realname' => 'lower name']);
+        $stored = ['name' => 'scalar-' . $this->getUniqueString(), 'realname' => 'lower name'];
+        $user = new \User();
+        $createdId = $user->add($stored + ['_entities_id' => 0]);
+        $this->integer($createdId)->isGreaterThan(0);
+        $this->checkInput($user, $createdId, $stored);
         $profile = $this->createItem(\Profile::class, ['name' => $this->getUniqueString()]);
         $id = (int)$user->getID();
         $profileId = (int)$profile->getID();
@@ -174,6 +178,22 @@ class User extends \DbTestCase
         $manager = \itsmng\Database\Orm::forConnection($connection);
         $grants = new \itsmng\Database\Repository\ProfileUserRepository($manager);
         $users = new \itsmng\Database\Repository\UserRepository($manager);
+        $records = new \itsmng\Database\Repository\RecordRepository($manager);
+        $expectedProfiles = [];
+        foreach ($records->identifiers('glpi_profiles_users', 'profiles_id', ['users_id' => $id]) as $value) {
+            $expectedProfiles[$value] = $value;
+        }
+        $defaultProfileId = (int)\Profile::getDefault();
+        $this->integer($defaultProfileId)->isGreaterThan(0)->isNotIdenticalTo($profileId);
+        $baselineProfiles = [$defaultProfileId => $defaultProfileId, $profileId => $profileId];
+        ksort($expectedProfiles);
+        ksort($baselineProfiles);
+        $this->array($expectedProfiles)->isIdenticalTo($baselineProfiles);
+        $sortedIds = static function (array $ids): array {
+            sort($ids);
+            return $ids;
+        };
+        $baselineIds = $sortedIds([$defaultProfileId, $profileId]);
         $probe = new UserScalarReadProbe($connection);
         $expectedScope = [];
         foreach ($grants->scopes($id, $profileId) as $grant) {
@@ -194,8 +214,17 @@ class User extends \DbTestCase
             $DB = $adapter;
             $this->array(\Profile_User::getEntitiesForProfileByUser($id, $profileId))->isIdenticalTo($expectedScope);
             $this->string($utils->getUserName($id))->isIdenticalTo($expectedName);
+            $this->array($sortedIds(array_values(\Profile_User::getUserProfiles($id))))->isIdenticalTo($baselineIds);
+            $this->array($probe->queries)->hasSize(3);
+            $this->integer($probe->builders)->isIdenticalTo(3);
+            $this->array($probe->queries[2]['types'])->isIdenticalTo([\Doctrine\DBAL\Types\Types::INTEGER]);
+            $probe->builders = 0;
+            $probe->queries = [];
+            // Notification's entity filter remains the ordinary mapped criteria path.
+            $this->array($sortedIds(array_values(\Profile_User::getUserProfiles($id, ['entities_id' => 0]))))->isIdenticalTo($baselineIds);
+            $this->array(\Profile_User::getUserProfiles($id, ['entities_id' => PHP_INT_MAX]))->isEmpty();
             $this->array($probe->queries)->hasSize(2);
-            $this->integer($probe->builders)->isIdenticalTo(2);
+            $this->integer($probe->builders)->isIdenticalTo(0);
         } finally {
             $DB = $originalAdapter;
             $originalScope->assertActive();
@@ -219,6 +248,53 @@ class User extends \DbTestCase
             $this->integer($probe->builders)->isIdenticalTo(7);
             $this->array($display->displayData($id))->isIdenticalTo($users->displayData($id));
             $this->integer($probe->builders)->isIdenticalTo(8);
+            foreach ([$id, (string)$id, 0, -1, null, 'NULL', [$id]] as $selected) {
+                $this->array($scopes->profileIds($selected))->isIdenticalTo(
+                    $records->identifiers('glpi_profiles_users', 'profiles_id', ['users_id' => $selected])
+                );
+            }
+            $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $connection->insert('glpi_profiles_users', ['users_id' => $id, 'profiles_id' => $profileId,
+                'entities_id' => $entity, 'is_recursive' => false], ['users_id' => 'bigint',
+                'profiles_id' => 'bigint', 'entities_id' => 'bigint', 'is_recursive' => 'boolean']);
+            $this->array($sortedIds($scopes->profileIds($id)))->isIdenticalTo($sortedIds([$defaultProfileId, $profileId, $profileId]));
+            $this->array($sortedIds(array_values(\Profile_User::getUserProfiles($id))))->isIdenticalTo($baselineIds);
+            $connection->delete('glpi_profiles_users', ['users_id' => $id, 'profiles_id' => $profileId, 'entities_id' => $entity]);
+            $this->array($sortedIds($scopes->profileIds($id)))->isIdenticalTo($baselineIds);
+            \Doctrine\DBAL\Types\Type::overrideType('integer', new class () extends \Doctrine\DBAL\Types\IntegerType {
+                public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                {
+                    return 'CASE WHEN ' . $sqlExpr . ' = -1 THEN -1 ELSE -1 END';
+                }
+            });
+            $this->array($scopes->profileIds($id))->isEmpty();
+            $this->array($records->identifiers('glpi_profiles_users', 'profiles_id', ['users_id' => $id]))->isEmpty();
+            \Doctrine\DBAL\Types\Type::overrideType('integer', $integer);
+            \Doctrine\DBAL\Types\Type::overrideType('string', new class () extends \Doctrine\DBAL\Types\StringType {
+                public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                {
+                    return "'not-an-identifier'";
+                }
+                public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+                {
+                    throw new \LogicException('IDENTITY scalar values must not be converted');
+                }
+            });
+            $this->array($sortedIds($scopes->profileIds($id)))->isIdenticalTo($baselineIds);
+            $this->array($sortedIds($records->identifiers('glpi_profiles_users', 'profiles_id', ['users_id' => $id])))->isIdenticalTo($baselineIds);
+            \Doctrine\DBAL\Types\Type::overrideType('string', $string);
+
+            $originalTable = \Profile_User::getTable();
+            try {
+                \Profile_User::forceTable('glpi_groups_users');
+                $this->exception(fn () => $records->identifiers('glpi_groups_users', 'profiles_id', ['users_id' => $id]))
+                    ->isInstanceOf(\itsmng\Database\UnsupportedCriteria::class);
+                $this->exception(fn () => \Profile_User::getUserProfiles($id))
+                    ->isInstanceOf(\itsmng\Database\UnsupportedCriteria::class);
+            } finally {
+                \Profile_User::forceTable($originalTable);
+            }
+
             $this->variable($display->displayData(-1))->isNull();
             $connection->update('glpi_users', ['realname' => 'changed lower', 'phone' => null], ['id' => $id]);
             $this->array($display->displayData($id))->isIdenticalTo($users->displayData($id));
@@ -281,6 +357,7 @@ class User extends \DbTestCase
             $extension->getEventManager()->addEventListener([\Doctrine\ORM\Events::loadClassMetadata], $listener);
             $this->array($sort($localScopes->scopes($id)))->isIdenticalTo($sort($grants->scopes($id)));
             $this->array($localDisplay->displayData($id))->isIdenticalTo($users->displayData($id));
+            $this->array($localScopes->profileIds($id))->isIdenticalTo($records->identifiers('glpi_profiles_users', 'profiles_id', ['users_id' => $id]));
             $this->integer($listener->loads)->isGreaterThan(0);
             $this->integer($extension->builders)->isIdenticalTo(0);
             $localScopes->close();

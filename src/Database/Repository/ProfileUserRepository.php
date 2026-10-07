@@ -57,6 +57,26 @@ final class ProfileUserRepository
         return $profiles;
     }
 
+    /** Fixed scalar membership read, with the original RecordCriteria INTEGER binding. */
+    public function nativeProfileIds(int $user): array
+    {
+        $metadata = $this->em->getClassMetadata(ProfileUser::class);
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $users = $metadata->associationMappings['users'];
+        $profiles = $metadata->associationMappings['profiles'];
+        $rows = $connection->createQueryBuilder()
+            ->select('r.' . $quote->getJoinColumnName($profiles->joinColumns[0], $metadata, $platform))
+            ->from($quote->getTableName($metadata, $platform), 'r')
+            ->where('r.' . $quote->getJoinColumnName($users->joinColumns[0], $metadata, $platform)
+                . ' = ' . Type::getType(Types::INTEGER)->convertToDatabaseValueSQL('?', $platform))
+            ->setParameter(0, $user, Types::INTEGER)
+            ->executeQuery()->fetchFirstColumn();
+        // IDENTITY scalar hydration does not apply target or PHP type conversions.
+        return array_map('intval', $rows);
+    }
+
     public function scopes(int $user, ?int $profile = null, ?string $right = null, int $mask = 0): array
     {
         $query = $this->em->createQueryBuilder()
