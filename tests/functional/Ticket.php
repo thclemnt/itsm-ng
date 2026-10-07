@@ -2634,6 +2634,42 @@ class Ticket extends DbTestCase
         }
     }
 
+    public function testSatisfactionTabReadsOnlyClosedTickets(): void
+    {
+        $this->login();
+        $ticket = $this->createItem(\Ticket::class, ['name' => $this->getUniqueString(),
+            'content' => 'Satisfaction tab guard', '_disablenotif' => true]);
+        $satisfaction = new \TicketSatisfaction();
+        $this->integer((int)$satisfaction->add([
+            'tickets_id' => $ticket->getID(), 'type' => 1, 'date_begin' => $_SESSION['glpi_currenttime'],
+        ]))->isGreaterThan(0);
+        $this->boolean($satisfaction->getFromDB($ticket->getID()))->isTrue();
+        $factories = new \ReflectionProperty(\itsmng\Database\Orm::class, 'unitsOfWork');
+        $ticket->fields['status'] = $_SESSION['INCOMING'];
+        $before = $factories->getValue();
+        $open = $ticket->getTabNameForItem($ticket);
+        $openReads = $factories->getValue() - $before;
+        $this->array($open)->notHasKey(3);
+        $this->array($open)->hasKey(1);
+        $ticket->fields['status'] = $_SESSION['CLOSED'];
+        $before = $factories->getValue();
+        $closed = $ticket->getTabNameForItem($ticket);
+        $this->integer($factories->getValue() - $before)->isIdenticalTo($openReads + 1);
+        $this->array($closed)->hasKey(3);
+        $this->string($closed[3])->isIdenticalTo(__('Satisfaction'));
+        unset($closed[3]);
+        $this->array($closed)->isIdenticalTo($open);
+        // A missing satisfaction on a closed ticket still performs the current presence read.
+        $this->boolean($satisfaction->delete(['tickets_id' => $ticket->getID()], true))->isTrue();
+        $before = $factories->getValue();
+        $this->array($ticket->getTabNameForItem($ticket))->isIdenticalTo($open);
+        $this->integer($factories->getValue() - $before)->isIdenticalTo($openReads + 1);
+        $ticket->fields['status'] = $_SESSION['INCOMING'];
+        $before = $factories->getValue();
+        $this->array($ticket->getTabNameForItem($ticket))->isIdenticalTo($open);
+        $this->integer($factories->getValue() - $before)->isIdenticalTo($openReads);
+    }
+
     public function testTimelineCountAssociatedDocumentVisibility()
     {
         global $DB;

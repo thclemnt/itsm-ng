@@ -803,8 +803,8 @@ class Ticket extends CommonITILObject
                 // enquete si statut clos
                 $satisfaction = new TicketSatisfaction();
                 if (
-                    $satisfaction->getFromDB($item->getID())
-                    && $item->fields['status'] == $_SESSION['CLOSED']
+                    $item->fields['status'] == $_SESSION['CLOSED']
+                    && $satisfaction->getFromDB($item->getID())
                 ) {
                     $ong[3] = __('Satisfaction');
                 }
