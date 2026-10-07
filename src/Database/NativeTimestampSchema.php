@@ -10,6 +10,7 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Schema\Table;
 use itsmng\Database\Mapping\NativeTimestamp;
+use ReflectionProperty;
 
 /** Read-only native touch inspection, derived from the owning property declaration. */
 final class NativeTimestampSchema
@@ -19,7 +20,7 @@ final class NativeTimestampSchema
         $declarations = [];
         foreach ($metadata as $entity) {
             foreach ($entity->fieldMappings as $property => $field) {
-                foreach ((new \ReflectionProperty($entity->name, $property))->getAttributes(NativeTimestamp::class) as $attribute) {
+                foreach ((new ReflectionProperty($entity->name, $property))->getAttributes(NativeTimestamp::class) as $attribute) {
                     $declarations[$entity->getTableName()][trim($field->columnName, '`"')] = $attribute->newInstance();
                 }
             }
@@ -66,18 +67,24 @@ final class NativeTimestampSchema
         foreach ($touches as $table => $fields) {
             foreach ($fields as $column => $touch) {
                 if ($platform instanceof AbstractMySQLPlatform) {
-                    $extra = $connection->fetchOne('SELECT EXTRA FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$table, $column]);
+                    $extra = $connection->fetchOne(
+                        'SELECT EXTRA FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+                        [$table, $column]
+                    );
                     // A missing column has its own structural diagnostic.
                     if ($extra !== false && preg_match('/(?:^|\s)on update CURRENT_TIMESTAMP(?:\(\))?(?:\s|$)/iD', $extra) !== 1) {
                         $differences[] = 'Expected automatic timestamp touch: ' . $table . '.' . $column;
                     }
                 } elseif ($platform instanceof PostgreSQLPlatform) {
-                    $trigger = $connection->fetchAssociative("SELECT t.tgtype, t.tgenabled, t.tgnargs, t.tgattr = ''::int2vector AS all_columns, t.tgqual IS NULL AS no_when, "
+                    $trigger = $connection->fetchAssociative(
+                        "SELECT t.tgtype, t.tgenabled, t.tgnargs, t.tgattr = ''::int2vector AS all_columns, t.tgqual IS NULL AS no_when, "
                         . 'p.proname, p.prosrc, p.prosecdef, p.proconfig IS NULL AS no_settings, '
                         . 'p.pronamespace = c.relnamespace AS local_function, l.lanname '
                         . 'FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_proc p ON p.oid = t.tgfoid '
                         . 'JOIN pg_language l ON l.oid = p.prolang '
-                        . 'WHERE t.tgrelid = to_regclass(?) AND t.tgname = ? AND NOT t.tgisinternal', [$platform->quoteIdentifier($table), $touch['trigger']]);
+                        . 'WHERE t.tgrelid = to_regclass(?) AND t.tgname = ? AND NOT t.tgisinternal',
+                        [$platform->quoteIdentifier($table), $touch['trigger']]
+                    );
                     $true = static fn ($value): bool => in_array($value, [true, 1, '1', 't', 'true'], true);
                     $false = static fn ($value): bool => in_array($value, [false, 0, '0', 'f', 'false'], true);
                     $normalize = static fn (string $body): string => preg_replace('/\s+/', ' ', trim($body));

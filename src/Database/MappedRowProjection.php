@@ -9,6 +9,7 @@ use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\QueryBuilder;
 use itsmng\Database\Repository\RecordRepository;
+use LogicException;
 
 /** Complete typed legacy rows from mapped scalar fields and owning reference identities. */
 final class MappedRowProjection
@@ -29,7 +30,7 @@ final class MappedRowProjection
                 continue;
             }
             if (count($mapping->joinColumns) !== 1) {
-                throw new \LogicException('Scalar record reads require single-column owning references');
+                throw new LogicException('Scalar record reads require single-column owning references');
             }
             // Only private default reads supply this canonical declaration view.
             // Custom/supplied managers continue to inspect their actual target metadata.
@@ -40,7 +41,7 @@ final class MappedRowProjection
                 $target = $this->em->getClassMetadata($mapping->targetEntity);
                 $targetId = $target->getSingleIdentifierFieldName();
                 if (!$target->hasField($targetId) || $target->getColumnName($targetId) !== $mapping->joinColumns[0]->referencedColumnName) {
-                    throw new \LogicException('Scalar record references must target a scalar identifier');
+                    throw new LogicException('Scalar record references must target a scalar identifier');
                 }
                 $type = $target->getTypeOfField($targetId);
             }

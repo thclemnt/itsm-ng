@@ -4,12 +4,13 @@
 
 namespace itsmng\Database;
 
+use DBAdapter;
 use itsmng\Database\Repository\RecordRepository;
 
 /** Scoped ORM reads beneath the legacy model's row and lifecycle interfaces. */
 final class MappedReads
 {
-    public static function matching(\DBAdapter $database, string $table, array $criteria = [], array|string $order = [], ?int $limit = null, int $offset = 0): array
+    public static function matching(DBAdapter $database, string $table, array $criteria = [], array|string $order = [], ?int $limit = null, int $offset = 0): array
     {
         if (!isset(EntityRegistry::tables()[$table])) {
             throw new UnsupportedCriteria('Unmapped table requires a registered entity.');
@@ -22,7 +23,8 @@ final class MappedReads
             $operation->close();
         }
     }
-    public static function countMatching(\DBAdapter $database, string $table, array $criteria): int
+
+    public static function countMatching(DBAdapter $database, string $table, array $criteria): int
     {
         if (!isset(EntityRegistry::tables()[$table])) {
             throw new UnsupportedCriteria('Unmapped table requires a registered entity.');
@@ -35,7 +37,7 @@ final class MappedReads
         }
     }
 
-    public static function identifiers(\DBAdapter $database, string $table, string $column, array $criteria, array|string $order = []): array
+    public static function identifiers(DBAdapter $database, string $table, string $column, array $criteria, array|string $order = []): array
     {
         if (!isset(EntityRegistry::tables()[$table])) {
             throw new UnsupportedCriteria('Unmapped table requires a registered entity.');

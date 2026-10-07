@@ -4,11 +4,15 @@
 
 namespace itsmng\Database;
 
-use itsmng\Database\Mapping\ReferenceKind;
+use BackedEnum;
+use DateTime;
+use DateTimeInterface;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\QueryBuilder;
+use itsmng\Database\Mapping\ReferenceKind;
+use RuntimeException;
 
 /** Compile structured model criteria into typed DQL. No SQL text is rewritten. */
 final class RecordCriteria
@@ -79,7 +83,7 @@ final class RecordCriteria
                     throw new UnsupportedCriteria('Subqueries require a mapped query.');
                 }
                 if (!$value) {
-                    throw new \RuntimeException('Empty IN are not allowed');
+                    throw new RuntimeException('Empty IN are not allowed');
                 }
                 $includeEmpty = $optional && $this->legacyValues && (bool)array_filter($value, $isEmpty);
                 if ($includeEmpty) {
@@ -192,12 +196,12 @@ final class RecordCriteria
 
     private function value(mixed $value, string $type): string
     {
-        if ($value instanceof \BackedEnum) {
+        if ($value instanceof BackedEnum) {
             $value = $value->value;
         }
-        if ($value instanceof \DateTimeInterface && in_array($type, [Types::DATE_MUTABLE, Types::DATETIME_MUTABLE, Types::DATETIMETZ_MUTABLE], true)) {
+        if ($value instanceof DateTimeInterface && in_array($type, [Types::DATE_MUTABLE, Types::DATETIME_MUTABLE, Types::DATETIMETZ_MUTABLE], true)) {
             $parameter = 'p' . ++$this->parameter;
-            $this->query->setParameter($parameter, \DateTime::createFromInterface($value), $type);
+            $this->query->setParameter($parameter, DateTime::createFromInterface($value), $type);
             return ':' . $parameter;
         }
         if (is_object($value) || is_array($value)) {
@@ -211,7 +215,7 @@ final class RecordCriteria
                 Types::BOOLEAN => (bool)(int)$value,
                 Types::INTEGER, Types::SMALLINT => (int)$value,
                 Types::FLOAT => (float)$value,
-                Types::DATE_MUTABLE, Types::DATETIME_MUTABLE, Types::DATETIMETZ_MUTABLE => new \DateTime((string)$value),
+                Types::DATE_MUTABLE, Types::DATETIME_MUTABLE, Types::DATETIMETZ_MUTABLE => new DateTime((string)$value),
                 default => (string)$value,
             };
         }

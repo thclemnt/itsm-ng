@@ -5,11 +5,14 @@
 namespace itsmng\Database;
 
 use Doctrine\DBAL\Connection;
+use LogicException;
+use QueuedNotification;
+use WeakMap;
 
 /** One shared delivery barrier for deletion and required ownership updates. */
 final class LifecycleNotifications
 {
-    private static ?\WeakMap $scopes = null;
+    private static ?WeakMap $scopes = null;
     private array $notifications = [];
 
     private function __construct(private Connection $connection, private int $level)
@@ -18,7 +21,7 @@ final class LifecycleNotifications
 
     public static function begin(Connection $connection): self
     {
-        self::$scopes ??= new \WeakMap();
+        self::$scopes ??= new WeakMap();
         $scope = new self($connection, $connection->getTransactionNestingLevel());
         $scopes = self::$scopes[$connection] ?? [];
         $scopes[] = $scope;
@@ -41,7 +44,7 @@ final class LifecycleNotifications
     {
         $scopes = self::$scopes[$this->connection];
         if (array_pop($scopes) !== $this) {
-            throw new \LogicException('Lifecycle notification scopes closed out of order');
+            throw new LogicException('Lifecycle notification scopes closed out of order');
         }
         self::$scopes[$this->connection] = $scopes;
         if (!$accepted) {
@@ -58,7 +61,7 @@ final class LifecycleNotifications
     public static function deliver(array $notifications): void
     {
         foreach ($notifications as [$type, $id]) {
-            \QueuedNotification::forceSendFor($type, $id);
+            QueuedNotification::forceSendFor($type, $id);
         }
     }
 }

@@ -7,6 +7,7 @@ namespace itsmng\Database;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\MariaDBPlatform;
+use RuntimeException;
 
 /** CHECK syntax without enforcement is not a supported installation capability. */
 final class CheckConstraintSupport
@@ -18,7 +19,7 @@ final class CheckConstraintSupport
             $raw = preg_replace('/^5\.5\.5-/', '', $raw);
         }
         if (!preg_match('/^([0-9]+\.[0-9]+(?:\.[0-9]+)?)/', $raw, $match)) {
-            throw new \RuntimeException('Cannot establish database CHECK enforcement from server version: ' . $raw);
+            throw new RuntimeException('Cannot establish database CHECK enforcement from server version: ' . $raw);
         }
         return $match[1];
     }
@@ -39,11 +40,11 @@ final class CheckConstraintSupport
         $maria = $platform instanceof MariaDBPlatform;
         $version = $connection->getServerVersion();
         if (!self::supportsVersion($version, $maria)) {
-            throw new \RuntimeException('Enforced CHECK constraints with native inspection require MySQL 8.0.16 or later, or MariaDB 10.2.22 or later; found ' . $version . '. Upgrade the database engine before installation or migration.');
+            throw new RuntimeException('Enforced CHECK constraints with native inspection require MySQL 8.0.16 or later, or MariaDB 10.2.22 or later; found ' . $version . '. Upgrade the database engine before installation or migration.');
         }
         MySQLConnection::assertStrict($connection);
         if ($maria && (int)$connection->fetchOne('SELECT @@SESSION.check_constraint_checks') !== 1) {
-            throw new \RuntimeException('MariaDB check_constraint_checks is disabled for this connection. Enable CHECK enforcement before installation, migration or schema validation.');
+            throw new RuntimeException('MariaDB check_constraint_checks is disabled for this connection. Enable CHECK enforcement before installation, migration or schema validation.');
         }
     }
 }

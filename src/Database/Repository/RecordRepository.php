@@ -4,11 +4,17 @@
 
 namespace itsmng\Database\Repository;
 
+use BackedEnum;
 use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
+use Doctrine\ORM\Query;
+use InvalidArgumentException;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\MappedRowProjection;
+use itsmng\Database\ReadQueryOwner;
+use itsmng\Database\RecordCriteria;
+use LogicException;
 
 /** ORM record access with the legacy model's scalar row contract at its boundary. */
 final class RecordRepository
@@ -21,14 +27,18 @@ final class RecordRepository
     {
         $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
         if ($lockMode === LockMode::PESSIMISTIC_WRITE) {
-            $query = $this->em->createQueryBuilder()->select('r')->from($metadata->name, 'r');
-            $query->where((new \itsmng\Database\RecordCriteria($query, $metadata, false))->where([$column => $id]));
-            $record = $query->getQuery()->setHint(\Doctrine\ORM\Query::HINT_REFRESH, true)
-                ->setLockMode($lockMode)->getOneOrNullResult();
+            $query = $this->em->createQueryBuilder()
+                ->select('r')
+                ->from($metadata->name, 'r');
+            $query->where((new RecordCriteria($query, $metadata, false))->where([$column => $id]));
+            $record = $query->getQuery()
+                ->setHint(Query::HINT_REFRESH, true)
+                ->setLockMode($lockMode)
+                ->getOneOrNullResult();
             return $record === null ? null : $this->toRow($record);
         }
         if ($lockMode !== LockMode::NONE) {
-            throw new \InvalidArgumentException('Mapped model loads support ordinary or current write-lock reads.');
+            throw new InvalidArgumentException('Mapped model loads support ordinary or current write-lock reads.');
         }
         if (count($metadata->identifier) === 1
             && !$metadata->hasLifecycleCallbacks(Events::postLoad)
@@ -53,14 +63,15 @@ final class RecordRepository
     }
 
     /** Complete legacy row without creating managed records or association proxies. */
-    public function scalarRow(string $recordClass, int $id, ?array $defaultIdentifiers = null, ?\itsmng\Database\ReadQueryOwner $operation = null): ?array
+    public function scalarRow(string $recordClass, int $id, ?array $defaultIdentifiers = null, ?ReadQueryOwner $operation = null): ?array
     {
         $metadata = $this->em->getClassMetadata($recordClass);
         $identifier = $metadata->getSingleIdentifierFieldName();
         if (!$metadata->hasField($identifier)) {
-            throw new \LogicException('Scalar record reads require a scalar identifier');
+            throw new LogicException('Scalar record reads require a scalar identifier');
         }
-        $query = $this->em->createQueryBuilder()->from($recordClass, 'r')
+        $query = $this->em->createQueryBuilder()
+            ->from($recordClass, 'r')
             ->where('r.' . $identifier . ' = :id')
             ->setParameter('id', $id, $metadata->getTypeOfField($identifier));
         $projection = new MappedRowProjection($this->em, $metadata, $defaultIdentifiers);
@@ -68,16 +79,18 @@ final class RecordRepository
         // Scalar-only array hydration applies DBAL types without loading entities.
         $compiled = $query->getQuery();
         $operation?->prepareQuery($compiled, $metadata);
-        $values = $compiled->getOneOrNullResult(\Doctrine\ORM\Query::HYDRATE_ARRAY);
+        $values = $compiled->getOneOrNullResult(Query::HYDRATE_ARRAY);
         return $values === null ? null : $projection->toRow($values);
     }
 
     /** Select complete mapped records with bound criteria and database-side limits. */
-    public function matching(string $table, array $criteria = [], array|string $order = [], ?int $limit = null, int $offset = 0, bool $legacyValues = true, ?array $defaultIdentifiers = null, ?\itsmng\Database\ReadQueryOwner $operation = null): array
+    public function matching(string $table, array $criteria = [], array|string $order = [], ?int $limit = null, int $offset = 0, bool $legacyValues = true, ?array $defaultIdentifiers = null, ?ReadQueryOwner $operation = null): array
     {
         $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
-        $query = $this->em->createQueryBuilder()->select('r')->from($metadata->name, 'r');
-        $compiler = new \itsmng\Database\RecordCriteria($query, $metadata, $legacyValues);
+        $query = $this->em->createQueryBuilder()
+            ->select('r')
+            ->from($metadata->name, 'r');
+        $compiler = new RecordCriteria($query, $metadata, $legacyValues);
         $query->where($compiler->where($criteria));
         $compiler->order($order);
         if ($limit !== null && $limit > 0) {
@@ -96,7 +109,7 @@ final class RecordRepository
             $projection->select($query);
             $compiled = $query->getQuery();
             $operation?->prepareQuery($compiled, $metadata);
-            foreach ($compiled->toIterable([], \Doctrine\ORM\Query::HYDRATE_ARRAY) as $values) {
+            foreach ($compiled->toIterable([], Query::HYDRATE_ARRAY) as $values) {
                 $rows[] = $projection->toRow($values);
             }
             return $rows;
@@ -108,11 +121,13 @@ final class RecordRepository
         return $rows;
     }
 
-    public function countMatching(string $table, array $criteria, bool $legacyValues = true, ?\itsmng\Database\ReadQueryOwner $operation = null): int
+    public function countMatching(string $table, array $criteria, bool $legacyValues = true, ?ReadQueryOwner $operation = null): int
     {
         $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
-        $query = $this->em->createQueryBuilder()->select('COUNT(r.id)')->from($metadata->name, 'r');
-        $query->where((new \itsmng\Database\RecordCriteria($query, $metadata, $legacyValues))->where($criteria));
+        $query = $this->em->createQueryBuilder()
+            ->select('COUNT(r.id)')
+            ->from($metadata->name, 'r');
+        $query->where((new RecordCriteria($query, $metadata, $legacyValues))->where($criteria));
         $compiled = $query->getQuery();
         $operation?->prepareQuery($compiled, $metadata);
         return (int)$compiled->getSingleScalarResult();
@@ -122,9 +137,11 @@ final class RecordRepository
     public function distinctValues(string $table, string $column, array $criteria, array|string $order = []): array
     {
         $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
-        $query = $this->em->createQueryBuilder()->from($metadata->name, 'r');
-        $compiler = new \itsmng\Database\RecordCriteria($query, $metadata);
-        $query->select('DISTINCT ' . $compiler->column($column) . ' AS value')->where($compiler->where($criteria));
+        $query = $this->em->createQueryBuilder()
+            ->from($metadata->name, 'r');
+        $compiler = new RecordCriteria($query, $metadata);
+        $query->select('DISTINCT ' . $compiler->column($column) . ' AS value')
+            ->where($compiler->where($criteria));
         $compiler->order($order);
         return array_map(static fn (array $row): array => [$column => $row['value']], $query->getQuery()->getScalarResult());
     }
@@ -133,9 +150,11 @@ final class RecordRepository
     public function identifiers(string $table, string $column, array $criteria, array|string $order = []): array
     {
         $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
-        $query = $this->em->createQueryBuilder()->from($metadata->name, 'r');
-        $compiler = new \itsmng\Database\RecordCriteria($query, $metadata);
-        $query->select($compiler->column($column) . ' AS record_id')->where($compiler->where($criteria));
+        $query = $this->em->createQueryBuilder()
+            ->from($metadata->name, 'r');
+        $compiler = new RecordCriteria($query, $metadata);
+        $query->select($compiler->column($column) . ' AS record_id')
+            ->where($compiler->where($criteria));
         $compiler->order($order);
         return array_map('intval', array_column($query->getQuery()->getScalarResult(), 'record_id'));
     }
@@ -143,7 +162,7 @@ final class RecordRepository
     /** Scalar conversion shared by complete model rows and domain projections. */
     public static function legacyScalarValue(mixed $value, string $type): mixed
     {
-        if ($value instanceof \BackedEnum) {
+        if ($value instanceof BackedEnum) {
             $value = $value->value;
         }
         if ($value === null) {

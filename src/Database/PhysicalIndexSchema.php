@@ -4,6 +4,7 @@
 
 namespace itsmng\Database;
 
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\MariaDBPlatform;
@@ -53,7 +54,7 @@ final class PhysicalIndexSchema
                 . 'WHERE n.nspname = current_schema() AND t.relname IN (?) ORDER BY t.relname, x.relname, k.position';
         }
         $catalog = [];
-        foreach ($connection->fetchAllAssociative($sql, [$tables], [\Doctrine\DBAL\ArrayParameterType::STRING]) as $row) {
+        foreach ($connection->fetchAllAssociative($sql, [$tables], [ArrayParameterType::STRING]) as $row) {
             $index = &$catalog[$row['table_name']][$row['index_name']];
             if ($index === null) {
                 $index = [

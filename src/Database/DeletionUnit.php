@@ -5,12 +5,15 @@
 namespace itsmng\Database;
 
 use Doctrine\DBAL\Connection;
+use LogicException;
+use Throwable;
+use WeakMap;
 
 /** Database lifecycle boundary; nested operations share the supplied writer connection. */
 final class DeletionUnit
 {
-    /** @var \WeakMap<Connection, array>|null */
-    private static ?\WeakMap $units = null;
+    /** @var WeakMap<Connection, array>|null */
+    private static ?WeakMap $units = null;
 
     public static function isActive(Connection $connection): bool
     {
@@ -28,7 +31,7 @@ final class DeletionUnit
     {
         TransactionOwnership::assertManaged($connection);
         self::isActive($connection); // A stale parent cannot mint a fresh deletion authority.
-        self::$units ??= new \WeakMap();
+        self::$units ??= new WeakMap();
         $level = $connection->getTransactionNestingLevel();
         $outcome = DeletionOutcome::Cancelled;
         $frame = null;
@@ -49,7 +52,7 @@ final class DeletionUnit
             $registered = true;
             $outcome = $journal->observe($connection, $operation);
             if (!$outcome instanceof DeletionOutcome) {
-                throw new \LogicException('A deletion operation must return a structured outcome');
+                throw new LogicException('A deletion operation must return a structured outcome');
             }
             $frame->assertActive();
             $frames = self::$units[$connection];
@@ -63,7 +66,7 @@ final class DeletionUnit
                 $frame->commit();
                 $accepted = true;
             }
-        } catch (\Throwable $primary) {
+        } catch (Throwable $primary) {
             $outcome = DeletionOutcome::Cancelled;
             $failure = $primary;
             if ($primary instanceof DeletionCancelled) {
@@ -74,7 +77,7 @@ final class DeletionUnit
                     $rollbackAttempted = true;
                     $frame->rollBack();
                     $rolledBack = true;
-                } catch (\Throwable $cleanup) {
+                } catch (Throwable $cleanup) {
                     $failure = new MutationRollbackFailure($primary, $cleanup);
                 }
             }
@@ -90,7 +93,7 @@ final class DeletionUnit
             }
             try {
                 $notifications = $delivery->finish($accepted);
-            } catch (\Throwable $cleanup) {
+            } catch (Throwable $cleanup) {
                 $failure = self::preserveFailure($failure, $cleanup);
             }
             // Depth alone cannot prove rollback after commit/reopen or reconnect.
@@ -98,13 +101,13 @@ final class DeletionUnit
             if ($rolledBack) {
                 try {
                     $journal->restore();
-                } catch (\Throwable $cleanup) {
+                } catch (Throwable $cleanup) {
                     $failure = self::preserveFailure($failure, $cleanup);
                 }
                 if ($afterRollback !== null) {
                     try {
                         $afterRollback();
-                    } catch (\Throwable $cleanup) {
+                    } catch (Throwable $cleanup) {
                         $failure = self::preserveFailure($failure, $cleanup);
                     }
                 }
@@ -125,7 +128,7 @@ final class DeletionUnit
         }
     }
 
-    private static function preserveFailure(?\Throwable $primary, \Throwable $cleanup): \Throwable
+    private static function preserveFailure(?Throwable $primary, Throwable $cleanup): Throwable
     {
         return $primary === null ? $cleanup : new MutationCleanupFailure(
             $primary,

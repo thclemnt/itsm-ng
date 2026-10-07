@@ -4,10 +4,18 @@
 
 namespace itsmng\Database\Repository;
 
+use DateTime;
+use DateTimeInterface;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Id\AssignedGenerator;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use InvalidArgumentException;
+use itsmng\Database\BooleanValue;
 use itsmng\Database\EntityRegistry;
+use itsmng\Database\Mapping\LegacyInput;
+use QueryExpression;
+use QueryParam;
+use Stringable;
 
 /** Raw-value ORM persistence. Application callers must retain their lifecycle services. */
 final class RecordWriter
@@ -31,7 +39,7 @@ final class RecordWriter
         }
         foreach ($metadata->fieldMappings as $field => $mapping) {
             if (($mapping->options['default'] ?? null) === 'CURRENT_TIMESTAMP' && !array_key_exists($mapping->columnName, $values)) {
-                $record->$field = new \DateTime();
+                $record->$field = new DateTime();
             }
         }
         foreach ($metadata->associationMappings as $mapping) {
@@ -75,7 +83,7 @@ final class RecordWriter
                 : $metadata->getColumnName($field);
         }
         $this->em->flush();
-        return $record instanceof \itsmng\Database\Mapping\LegacyInput ? $record->legacyChanges($columns) : $columns;
+        return $record instanceof LegacyInput ? $record->legacyChanges($columns) : $columns;
     }
 
     public function delete(string $table, int $id): void
@@ -89,14 +97,14 @@ final class RecordWriter
 
     private function assign(ClassMetadata $metadata, object $record, array $values): void
     {
-        if ($record instanceof \itsmng\Database\Mapping\LegacyInput) {
+        if ($record instanceof LegacyInput) {
             $values = $record->normalizeInput($values);
         }
         // Reject invalid flags before any managed property is changed. A caller
         // may retain this unit of work after a rejected assignment.
         foreach ($metadata->fieldMappings as $mapping) {
             if ($mapping->type === 'boolean' && array_key_exists($mapping->columnName, $values)) {
-                $values[$mapping->columnName] = \itsmng\Database\BooleanValue::normalize($values[$mapping->columnName], (bool)$mapping->nullable, $metadata->getTableName() . '.' . $mapping->columnName);
+                $values[$mapping->columnName] = BooleanValue::normalize($values[$mapping->columnName], (bool)$mapping->nullable, $metadata->getTableName() . '.' . $mapping->columnName);
             }
         }
         $associations = [];
@@ -107,13 +115,13 @@ final class RecordWriter
             $associations[$mapping->joinColumns[0]->name] = $field;
         }
         foreach ($values as $column => $value) {
-            if ($value instanceof \QueryExpression || $value instanceof \QueryParam) {
-                throw new \InvalidArgumentException('Mapped persistence requires values, not SQL expressions.');
+            if ($value instanceof QueryExpression || $value instanceof QueryParam) {
+                throw new InvalidArgumentException('Mapped persistence requires values, not SQL expressions.');
             }
             if (isset($associations[$column])) {
                 $field = $associations[$column];
                 if ($value === null && !$metadata->getAssociationMapping($field)->joinColumns[0]->nullable) {
-                    throw new \InvalidArgumentException('Required relationship cannot be NULL: ' . $metadata->getTableName() . '.' . $column);
+                    throw new InvalidArgumentException('Required relationship cannot be NULL: ' . $metadata->getTableName() . '.' . $column);
                 }
                 $selfId = $values['id'] ?? ($record->id ?? null);
                 $self = $metadata->identifier === ['id'] && $metadata->getAssociationTargetClass($field) === $metadata->name
@@ -136,9 +144,9 @@ final class RecordWriter
                 $value = match ($mapping->type) {
                     'integer', 'smallint', 'bigint' => (int)$value,
                     'float' => (float)$value,
-                    'date', 'datetime', 'datetimetz' => $value instanceof \DateTimeInterface ? \DateTime::createFromInterface($value) : new \DateTime((string)$value),
+                    'date', 'datetime', 'datetimetz' => $value instanceof DateTimeInterface ? DateTime::createFromInterface($value) : new DateTime((string)$value),
                     'json' => is_array($value) ? $value : json_decode((string)$value, true, flags: JSON_THROW_ON_ERROR),
-                    default => is_scalar($value) || $value instanceof \Stringable ? (string)$value : throw new \InvalidArgumentException('Mapped fields require typed values, not SQL expressions.'),
+                    default => is_scalar($value) || $value instanceof Stringable ? (string)$value : throw new InvalidArgumentException('Mapped fields require typed values, not SQL expressions.'),
                 };
             }
             $record->$field = $value;

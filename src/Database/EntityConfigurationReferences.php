@@ -4,6 +4,7 @@
 
 namespace itsmng\Database;
 
+use InvalidArgumentException;
 use itsmng\Database\Mapping\MappedReference;
 use itsmng\Database\Mapping\ReferenceKind;
 
@@ -33,23 +34,23 @@ final class EntityConfigurationReferences
             }
             $value = $hasValue ? $values[$column] : null;
             if ($value !== null && !filter_var($value, FILTER_VALIDATE_INT) && !in_array($value, [0, '0', '', false], true)) {
-                throw new \InvalidArgumentException('Entity reference requires an integer: ' . $column);
+                throw new InvalidArgumentException('Entity reference requires an integer: ' . $column);
             }
             $value = $value === null ? null : (int)$value;
             $mode = $hasMode ? ($values[$modeColumn] instanceof ReferenceMode ? $values[$modeColumn] : ReferenceMode::from($values[$modeColumn]))
                 : ($value === -2 ? ReferenceMode::Inherit : ($value === -10 && !$definition->policy->emptyZero ? ReferenceMode::Unchanged : ReferenceMode::Explicit));
             if (($value !== null && $value < 0 && $value !== -2 && !($value === -10 && !$definition->policy->emptyZero))
                 || ($mode === ReferenceMode::Unchanged && $definition->policy->emptyZero)) {
-                throw new \InvalidArgumentException('Invalid entity reference policy: ' . $column);
+                throw new InvalidArgumentException('Invalid entity reference policy: ' . $column);
             }
             if ($mode !== ReferenceMode::Explicit) {
                 if ($hasValue && $value !== null && $value >= 0) {
-                    throw new \InvalidArgumentException('Inherited/unchanged policy cannot retain a selected reference: ' . $column);
+                    throw new InvalidArgumentException('Inherited/unchanged policy cannot retain a selected reference: ' . $column);
                 }
                 $values[$column] = null;
             } elseif ($hasValue) {
                 if ($value !== null && $value < 0) {
-                    throw new \InvalidArgumentException('Explicit entity reference cannot be negative: ' . $column);
+                    throw new InvalidArgumentException('Explicit entity reference cannot be negative: ' . $column);
                 }
                 $values[$column] = $definition->policy->emptyZero && $value === 0 ? null : $value;
             }
@@ -87,7 +88,7 @@ final class EntityConfigurationReferences
             $mode = $mode instanceof ReferenceMode ? $mode : ReferenceMode::from($mode);
             if (!array_key_exists($column, $input) && $mode === ReferenceMode::Explicit) {
                 if (!$definition->policy->emptyZero && (!isset($current[$column]) || (int)$current[$column] < 0)) {
-                    throw new \InvalidArgumentException('Explicit software entity requires a target');
+                    throw new InvalidArgumentException('Explicit software entity requires a target');
                 }
                 $input[$column] = max(0, (int)($current[$column] ?? 0));
             }

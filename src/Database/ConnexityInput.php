@@ -4,17 +4,22 @@
 
 namespace itsmng\Database;
 
+use CommonDBChild;
+use CommonDBConnexity;
+use CommonDBRelation;
+use InvalidArgumentException;
 use itsmng\Database\Mapping\LegacyInput;
+use LogicException;
 
 /** The public model's endpoint roles use the entity's authoritative owning declarations. */
 final class ConnexityInput
 {
     /** Discrimination that belongs to a recipient or another field is not an endpoint. */
-    public static function endpoints(\CommonDBConnexity $model): array
+    public static function endpoints(CommonDBConnexity $model): array
     {
-        $roles = $model instanceof \CommonDBRelation
+        $roles = $model instanceof CommonDBRelation
             ? [[$model::$itemtype_1, $model::$items_id_1], [$model::$itemtype_2, $model::$items_id_2]]
-            : ($model instanceof \CommonDBChild ? [[$model::$itemtype, $model::$items_id]] : []);
+            : ($model instanceof CommonDBChild ? [[$model::$itemtype, $model::$items_id]] : []);
         $references = EntityRegistry::discriminatedReferences($model::getTable());
         $endpoints = [];
         foreach ($roles as [$kind, $identity]) {
@@ -26,7 +31,7 @@ final class ConnexityInput
     }
 
     /** Keep the derived legacy identity available to authorization, caches and history. */
-    public static function normalize(\CommonDBConnexity $model, array $input): array
+    public static function normalize(CommonDBConnexity $model, array $input): array
     {
         $endpoints = self::endpoints($model);
         if (!$endpoints) {
@@ -35,7 +40,7 @@ final class ConnexityInput
         $class = EntityRegistry::tables()[$model::getTable()];
         $record = new $class();
         if (!$record instanceof LegacyInput) {
-            throw new \LogicException('A discriminated public endpoint requires its entity input policy.');
+            throw new LogicException('A discriminated public endpoint requires its entity input policy.');
         }
         foreach ($endpoints as $identity => $endpoint) {
             $discriminator = $endpoint['discriminator'];
@@ -50,7 +55,7 @@ final class ConnexityInput
             }
             $kind = $reference[$discriminator];
             if ($kind !== null && !is_string($kind) && !is_int($kind)) {
-                throw new \InvalidArgumentException('Invalid endpoint discriminator.');
+                throw new InvalidArgumentException('Invalid endpoint discriminator.');
             }
             $column = is_string($kind) || is_int($kind) ? ($endpoint['selections'][$kind]['column'] ?? null) : null;
             if (!array_key_exists($identity, $reference) && ($column === null || !array_key_exists($column, $reference))) {
@@ -66,14 +71,14 @@ final class ConnexityInput
         return $input;
     }
 
-    public static function fields(\CommonDBConnexity $model): array
+    public static function fields(CommonDBConnexity $model): array
     {
-        return $model instanceof \CommonDBRelation
+        return $model instanceof CommonDBRelation
             ? [$model::$itemtype_1, $model::$items_id_1, $model::$itemtype_2, $model::$items_id_2]
             : [$model::$itemtype, $model::$items_id];
     }
 
-    public static function endpointFields(\CommonDBConnexity $model): array
+    public static function endpointFields(CommonDBConnexity $model): array
     {
         $columns = self::fields($model);
         foreach (self::endpoints($model) as $endpoint) {

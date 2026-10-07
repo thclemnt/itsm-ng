@@ -4,12 +4,16 @@
 
 namespace itsmng\Database;
 
+use DBAdapter;
+use InvalidArgumentException;
 use itsmng\Database\Repository\RecordWriter;
+use QueryExpression;
+use QueryParam;
 
 /** Persistence adapter beneath CommonDBTM's validation, hooks and history. */
 final class MappedStorage
 {
-    public function __construct(private \DBAdapter $db)
+    public function __construct(private DBAdapter $db)
     {
     }
 
@@ -54,8 +58,8 @@ final class MappedStorage
     private static function values(array $values): array
     {
         foreach ($values as &$value) {
-            if ($value instanceof \QueryExpression || $value instanceof \QueryParam) {
-                throw new \InvalidArgumentException('Mapped persistence requires values, not SQL expressions.');
+            if ($value instanceof QueryExpression || $value instanceof QueryParam) {
+                throw new InvalidArgumentException('Mapped persistence requires values, not SQL expressions.');
             }
             // Decode CommonDBTM pre-escaping once before binding typed parameters.
             $value = LegacyValues::decode($value);

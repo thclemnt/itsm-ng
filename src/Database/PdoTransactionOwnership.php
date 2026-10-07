@@ -5,6 +5,10 @@
 namespace itsmng\Database;
 
 use Doctrine\DBAL\Driver\PDO\Exception;
+use PDO;
+use PDOException;
+use stdClass;
+use WeakReference;
 
 /** Physical state stays inside the DBAL owner; never infer it from application SQL. */
 trait PdoTransactionOwnership
@@ -17,7 +21,7 @@ trait PdoTransactionOwnership
         $native = $this->managedNative();
         try {
             $physical = $native->inTransaction();
-        } catch (\PDOException $error) {
+        } catch (PDOException $error) {
             throw $this->convertException(Exception::new($error));
         }
         if ($physical !== ($this->getTransactionNestingLevel() > 0)) {
@@ -33,8 +37,8 @@ trait PdoTransactionOwnership
         if ($level === 0 || $frame === null) {
             throw new TransactionOwnershipMismatch('Capture requires a frame begun through this managed DBAL owner.');
         }
-        $owner = \WeakReference::create($this);
-        $native = \WeakReference::create($this->managedNative());
+        $owner = WeakReference::create($this);
+        $native = WeakReference::create($this->managedNative());
         return new ManagedTransactionScope(static function () use ($owner, $native, $level, $frame): void {
             $connection = $owner->get();
             if ($connection === null) {
@@ -44,10 +48,10 @@ trait PdoTransactionOwnership
         });
     }
 
-    private function managedNative(): \PDO
+    private function managedNative(): PDO
     {
         $native = $this->getNativeConnection();
-        if (!$native instanceof \PDO) {
+        if (!$native instanceof PDO) {
             throw new TransactionOwnershipMismatch('The supplied transaction owner requires its current PDO connection.');
         }
         return $native;
@@ -55,7 +59,7 @@ trait PdoTransactionOwnership
 
     private function recordManagedFrame(): void
     {
-        $this->managedFrames[$this->getTransactionNestingLevel()] = new \stdClass();
+        $this->managedFrames[$this->getTransactionNestingLevel()] = new stdClass();
     }
 
     private function reconcileManagedFrames(): void
@@ -73,7 +77,7 @@ trait PdoTransactionOwnership
         $this->managedFrames = [];
     }
 
-    private function assertManagedFrame(int $level, object $frame, \WeakReference $native): void
+    private function assertManagedFrame(int $level, object $frame, WeakReference $native): void
     {
         // Check identities before obtaining a handle: a closed scope must not reconnect.
         if (($this->managedFrames[$level] ?? null) !== $frame || $this->getTransactionNestingLevel() < $level

@@ -40,7 +40,9 @@ final class SchemaCheck
         if ($connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
             // DBAL introspects both TIMESTAMP and DATETIME as datetime. Their
             // different timezone behavior must not disappear from this check.
-            foreach ($connection->fetchAllAssociative('SELECT TABLE_NAME AS table_name, COLUMN_NAME AS column_name, DATA_TYPE AS data_type FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()') as $column) {
+            foreach ($connection->fetchAllAssociative(
+                'SELECT TABLE_NAME AS table_name, COLUMN_NAME AS column_name, DATA_TYPE AS data_type FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()'
+            ) as $column) {
                 $nativeTypes[$column['table_name']][$column['column_name']] = $column['data_type'];
             }
         }

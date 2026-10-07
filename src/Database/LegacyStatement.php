@@ -4,6 +4,14 @@
 
 namespace itsmng\Database;
 
+use DBmysql;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\ParameterType;
+use Doctrine\DBAL\Statement;
+use Doctrine\DBAL\Types\Types;
+use InvalidArgumentException;
+use LogicException;
+
 /** Compatibility facade for legacy mysqli bind_param callers. Values remain bound. */
 final class LegacyStatement
 {
@@ -12,10 +20,10 @@ final class LegacyStatement
     private array $values = [];
     private string $types = '';
     private mixed $result = false;
-    private ?\Doctrine\DBAL\Statement $statement;
-    private readonly \Doctrine\DBAL\Connection $owner;
+    private ?Statement $statement;
+    private readonly Connection $owner;
 
-    public function __construct(private \DBmysql $db, private string $sql)
+    public function __construct(private DBmysql $db, private string $sql)
     {
         $this->owner = $db->getDoctrineConnection();
         $this->statement = $this->owner->prepare($sql);
@@ -24,7 +32,7 @@ final class LegacyStatement
     public function bind_param(string $types, mixed &...$values): bool
     {
         if (strlen($types) !== count($values) || preg_match('/[^idsb]/', $types)) {
-            throw new \InvalidArgumentException('Parameter types and values must match.');
+            throw new InvalidArgumentException('Parameter types and values must match.');
         }
         $this->values = &$values;
         $this->types = $types;
@@ -34,7 +42,7 @@ final class LegacyStatement
     public function execute(?array $values = null): bool
     {
         if ($this->db->getDoctrineConnection() !== $this->owner) {
-            throw new \LogicException('Prepared statement belongs to a different supplied DBAL owner.');
+            throw new LogicException('Prepared statement belongs to a different supplied DBAL owner.');
         }
         $values ??= $this->values;
         foreach ($values as $i => $value) {
@@ -51,16 +59,16 @@ final class LegacyStatement
             $this->db->freeResult($this->result);
         }
         if ($this->statement === null) {
-            throw new \LogicException('Prepared statement is closed.');
+            throw new LogicException('Prepared statement is closed.');
         }
         foreach ($values as $index => $value) {
             $type = match ($this->types[$index] ?? 's') {
-                'i' => \Doctrine\DBAL\ParameterType::INTEGER,
-                'd' => \Doctrine\DBAL\Types\Types::FLOAT,
-                'b' => is_resource($value) ? \Doctrine\DBAL\ParameterType::LARGE_OBJECT : \Doctrine\DBAL\ParameterType::BINARY,
-                default => \Doctrine\DBAL\ParameterType::STRING,
+                'i' => ParameterType::INTEGER,
+                'd' => Types::FLOAT,
+                'b' => is_resource($value) ? ParameterType::LARGE_OBJECT : ParameterType::BINARY,
+                default => ParameterType::STRING,
             };
-            $this->statement->bindValue($index + 1, $value, $value === null ? \Doctrine\DBAL\ParameterType::NULL : $type);
+            $this->statement->bindValue($index + 1, $value, $value === null ? ParameterType::NULL : $type);
         }
         $this->result = $this->db->executePrepared($this->statement, $this->sql);
         $this->error = $this->db->error();

@@ -4,6 +4,8 @@
 
 namespace itsmng\Database;
 
+use UnexpectedValueException;
+
 /** Recognize only the generated boolean-domain grammar, retaining SQL precedence. */
 final class BooleanCheckExpression
 {
@@ -39,7 +41,7 @@ final class BooleanCheckExpression
             if ($parser->position !== count($tokens)) {
                 return false;
             }
-        } catch (\UnexpectedValueException) {
+        } catch (UnexpectedValueException) {
             return false;
         }
         $column = strtolower($column);
@@ -77,9 +79,9 @@ final class BooleanCheckExpression
             $this->expect(')');
             return $value;
         }
-        $column = $this->tokens[$this->position++] ?? throw new \UnexpectedValueException();
+        $column = $this->tokens[$this->position++] ?? throw new UnexpectedValueException();
         if (!preg_match('/^' . self::identifierPattern($this->ansiQuotes) . '$/D', $column)) {
-            throw new \UnexpectedValueException();
+            throw new UnexpectedValueException();
         }
         if ($column[0] === '`' || ($this->ansiQuotes && $column[0] === '"')) {
             $quote = $column[0];
@@ -111,7 +113,7 @@ final class BooleanCheckExpression
     private function expect(string $token): void
     {
         if (!$this->take($token)) {
-            throw new \UnexpectedValueException();
+            throw new UnexpectedValueException();
         }
     }
 }

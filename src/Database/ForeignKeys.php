@@ -7,6 +7,7 @@ namespace itsmng\Database;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use Doctrine\DBAL\Schema\Schema;
+use RuntimeException;
 
 /** Explicit relationships: never infer a foreign key from a column's name. */
 final class ForeignKeys
@@ -43,7 +44,9 @@ final class ForeignKeys
         $quote = $connection->getDatabasePlatform()->quoteIdentifier(...);
         foreach ($this->upgradeRelations ?? self::relations() as $table => $relations) {
             foreach ($relations as $column => $parent) {
-                $count = (int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $quote($table) . ' c LEFT JOIN ' . $quote($parent) . ' p ON c.' . $quote($column) . ' = p.id WHERE c.' . $quote($column) . ' IS NOT NULL AND p.id IS NULL');
+                $count = (int)$connection->fetchOne(
+                    'SELECT COUNT(*) FROM ' . $quote($table) . ' c LEFT JOIN ' . $quote($parent) . ' p ON c.' . $quote($column) . ' = p.id WHERE c.' . $quote($column) . ' IS NOT NULL AND p.id IS NULL'
+                );
                 if ($count > 0) {
                     $problems[$table . '.' . $column] = $count;
                 }
@@ -64,7 +67,7 @@ final class ForeignKeys
                 foreach ($existing as $constraint) {
                     if ($constraint->getName() === $name) {
                         if (array_map(static fn ($name) => trim($name, '`"'), $constraint->getLocalColumns()) !== [$column] || $constraint->getForeignTableName() !== $parent || $constraint->getForeignColumns() !== ['id'] || !in_array($constraint->onDelete(), [null, 'RESTRICT', 'NO ACTION'], true) || !in_array($constraint->onUpdate(), [null, 'RESTRICT', 'NO ACTION'], true)) {
-                            throw new \RuntimeException('Existing foreign key has a different definition: ' . $name);
+                            throw new RuntimeException('Existing foreign key has a different definition: ' . $name);
                         }
                         continue 2;
                     }
@@ -80,7 +83,7 @@ final class ForeignKeys
     {
         $problems = $this->audit($connection);
         if ($problems) {
-            throw new \RuntimeException('Foreign keys were not installed; orphaned references: ' . json_encode($problems));
+            throw new RuntimeException('Foreign keys were not installed; orphaned references: ' . json_encode($problems));
         }
         // MySQL ALTER TABLE commits implicitly; each statement is idempotent on
         // retry. PostgreSQL callers can wrap the whole install in a transaction.
