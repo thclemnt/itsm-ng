@@ -31,6 +31,20 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\ITILActorReadOperation;
+use itsmng\Database\ITILDocumentAccess;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DocumentRepository;
+use itsmng\Database\Repository\ITILActorRepository;
+use itsmng\Database\Repository\ITILOriginRepository;
+use itsmng\Database\Repository\ITILStatisticsOptionsRepository;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\TimelineRepository;
+use itsmng\Database\Repository\UserRepository;
+use itsmng\Database\TimelineAuthorReader;
+use itsmng\Database\UserDisplayReadOperation;
+use itsmng\Reporting\Criteria;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -108,9 +122,9 @@ abstract class CommonITILObject extends CommonDBTM
                 }
                 $actorClass = $this->$link;
                 $class = new $actorClass();
-                if (\itsmng\Database\Repository\ITILActorRepository::supports($class::class)) {
+                if (ITILActorRepository::supports($class::class)) {
                     // One read operation owns metadata for all built-in actor families.
-                    $repository ??= new \itsmng\Database\ITILActorReadOperation($DB->getDoctrineConnection());
+                    $repository ??= new ITILActorReadOperation($DB->getDoctrineConnection());
                     $this->$field = $repository->actors($class::class, (int)$this->fields['id']);
                 } else {
                     // Custom dispatch may write later actors or change the supplied connection.
@@ -656,7 +670,7 @@ abstract class CommonITILObject extends CommonDBTM
         return countElementsInTable(
             [$itemtable, $linktable],
             [
-              "$linktable.$itemfk"    => new \QueryExpression(DBmysql::quoteName("$itemtable.id")),
+              "$linktable.$itemfk"    => new QueryExpression(DBmysql::quoteName("$itemtable.id")),
               "$linktable.$field"     => $id,
               "$linktable.type"       => $role,
               "$itemtable.is_deleted" => 0,
@@ -4816,10 +4830,10 @@ abstract class CommonITILObject extends CommonDBTM
     }
 
     /** Resolve again at each display boundary: virtual callbacks can write or change routing. */
-    protected function actorDisplayRepository(): \itsmng\Database\Repository\ITILActorRepository
+    protected function actorDisplayRepository(): ITILActorRepository
     {
         global $DB;
-        return new \itsmng\Database\Repository\ITILActorRepository(\itsmng\Database\Orm::create($DB));
+        return new ITILActorRepository(Orm::create($DB));
     }
 
     protected function getITILActorDefaultEmail(string $itemtype, int $id): string
@@ -6515,8 +6529,8 @@ abstract class CommonITILObject extends CommonDBTM
         ][$dimension] ?? null;
         $language = $labelType !== null && Session::haveTranslations($labelType, 'name')
             ? ($_SESSION['glpilanguage'] ?? null) : null;
-        return (new \itsmng\Database\Repository\ITILStatisticsOptionsRepository(\itsmng\Database\Orm::create($DB)))
-            ->options($this->getType(), $dimension, $begin, $end, \itsmng\Reporting\Criteria::entities(), $language);
+        return (new ITILStatisticsOptionsRepository(Orm::create($DB)))
+            ->options($this->getType(), $dimension, $begin, $end, Criteria::entities(), $language);
     }
 
 
@@ -7289,7 +7303,7 @@ abstract class CommonITILObject extends CommonDBTM
 
         $font = "\"Bitstream Vera Sans\", arial, Tahoma, \"Sans serif\"";
         if (Session::haveRight("accessibility", READ)) {
-            $font = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+            $font = (new UserRepository(Orm::create($DB)))
                 ->accessibilityFont((int)Session::getLoginUserID());
         }
 
@@ -7332,7 +7346,7 @@ abstract class CommonITILObject extends CommonDBTM
         global $DB;
         $font = "\"Bitstream Vera Sans\", arial, Tahoma, \"Sans serif\"";
         if (Session::haveRight("accessibility", READ)) {
-            $font = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+            $font = (new UserRepository(Orm::create($DB)))
                 ->accessibilityFont((int)Session::getLoginUserID());
         }
         echo "<h2 style='font-family: $font;'>" . __("Actions historical") . " : </h2>";
@@ -7478,7 +7492,7 @@ abstract class CommonITILObject extends CommonDBTM
         echo "<div class='timeline_form' data-testid='timeline-form'>";
         echo "<ul class='timeline_choices'>";
 
-        $preferences = (new \itsmng\Database\UserDisplayReadOperation($DB->getDoctrineConnection()))
+        $preferences = (new UserDisplayReadOperation($DB->getDoctrineConnection()))
             ->timelinePreferences((int)Session::getLoginUserID());
         $canuse_shortcuts = $preferences['access_shortcuts'] ?? null;
         $font = "\"Bitstream Vera Sans\", arial, Tahoma, \"Sans serif\"";
@@ -7856,10 +7870,10 @@ abstract class CommonITILObject extends CommonDBTM
         }
 
         $selection = $this->getTimelineSelection();
-        $manager = \itsmng\Database\Orm::create($DB);
+        $manager = Orm::create($DB);
         try {
-            $records = new \itsmng\Database\Repository\RecordRepository($manager);
-            $events = new \itsmng\Database\Repository\TimelineRepository($manager);
+            $records = new RecordRepository($manager);
+            $events = new TimelineRepository($manager);
             $task_class = static::getType() . 'Task';
             $validation_class = static::getType() . 'Validation';
             $count = $records->countMatching(ITILSolution::getTable(), $selection['solutions']);
@@ -7870,7 +7884,7 @@ abstract class CommonITILObject extends CommonDBTM
                 $count += $records->countMatching($task_class::getTable(), $selection['tasks']);
             }
             if ($selection['documents'] !== null) {
-                $count += (new \itsmng\Database\Repository\DocumentRepository($manager))->countTimelineDocuments(
+                $count += (new DocumentRepository($manager))->countTimelineDocuments(
                     static::getType(),
                     (int)$this->getID(),
                     static::getAssociatedDocumentAccess()
@@ -7928,11 +7942,11 @@ abstract class CommonITILObject extends CommonDBTM
 
         $font = "\"Bitstream Vera Sans\", arial, Tahoma, \"Sans serif\"";
         if (Session::haveRight("accessibility", READ)) {
-            $font = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+            $font = (new UserRepository(Orm::create($DB)))
                 ->accessibilityFont((int)Session::getLoginUserID());
         }
 
-        $authors = new \itsmng\Database\TimelineAuthorReader();
+        $authors = new TimelineAuthorReader();
         $timeline_index = 0;
         foreach ($timeline as $item) {
             $options = [ 'parent' => $this,
@@ -8423,7 +8437,7 @@ abstract class CommonITILObject extends CommonDBTM
         echo "<div class='b_right'>";
 
         if ($objType == 'Ticket') {
-            $result = (new \itsmng\Database\Repository\ITILOriginRepository(\itsmng\Database\Orm::create($DB)))
+            $result = (new ITILOriginRepository(Orm::create($DB)))
                 ->promotionSource((int)$this->getID());
             if ($result) {
                 echo Html::link(
@@ -8582,7 +8596,7 @@ abstract class CommonITILObject extends CommonDBTM
         }
         $fk = $this->getForeignKeyField();
 
-        $subquery1 = new \QuerySubQuery([
+        $subquery1 = new QuerySubQuery([
            'SELECT'    => [
               'usr.id AS users_id',
               'tu.type AS type'
@@ -8601,7 +8615,7 @@ abstract class CommonITILObject extends CommonDBTM
            ]
         ]);
 
-        $subquery2 = new \QuerySubQuery([
+        $subquery2 = new QuerySubQuery([
            'SELECT'    => [
               'usr.id AS users_id',
               'gt.type AS type'
@@ -8626,7 +8640,7 @@ abstract class CommonITILObject extends CommonDBTM
            ]
         ]);
 
-        $union = new \QueryUnion([$subquery1, $subquery2], false, 'allactors');
+        $union = new QueryUnion([$subquery1, $subquery2], false, 'allactors');
         $iterator = $DB->request([
            'SELECT'          => [
               'users_id',
@@ -9093,10 +9107,10 @@ abstract class CommonITILObject extends CommonDBTM
     }
 
     /** The attachment selector and mapped document reads share this access policy. */
-    public static function getAssociatedDocumentAccess($bypass_rights = false): \itsmng\Database\ITILDocumentAccess
+    public static function getAssociatedDocumentAccess($bypass_rights = false): ITILDocumentAccess
     {
         $task_class = static::getType() . 'Task';
-        return new \itsmng\Database\ITILDocumentAccess(
+        return new ITILDocumentAccess(
             (int)Session::getLoginUserID(),
             $bypass_rights || ITILFollowup::canView(),
             $bypass_rights || Session::haveRight(ITILFollowup::$rightname, ITILFollowup::SEEPRIVATE),
@@ -9224,7 +9238,7 @@ abstract class CommonITILObject extends CommonDBTM
             case 'Ticket':
                 return 'glpi_items_tickets';
             default:
-                throw new \RuntimeException('Unknown ITIL type ' . static::getType());
+                throw new RuntimeException('Unknown ITIL type ' . static::getType());
         }
     }
 

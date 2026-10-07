@@ -9,6 +9,7 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\NonUniqueResultException;
 use Doctrine\ORM\QueryBuilder;
 use InvalidArgumentException;
 use itsmng\Database\BooleanValue;
@@ -83,15 +84,20 @@ final class UserRepository
         $types = [];
         $select = [];
         foreach (['access_font', 'access_shortcuts'] as $field) {
-            $types[$field] = \Doctrine\DBAL\Types\Type::getType($metadata->getTypeOfField($field));
+            $types[$field] = Type::getType($metadata->getTypeOfField($field));
             $select[] = $types[$field]->convertToPHPValueSQL('u.' . $quote->getColumnName($field, $metadata, $platform), $platform) . ' AS ' . $field;
         }
-        $userType = \Doctrine\DBAL\Types\Type::getType(Types::BIGINT);
-        $rows = $connection->createQueryBuilder()->select(...$select)
+        $userType = Type::getType(Types::BIGINT);
+        $rows = $connection->createQueryBuilder()
+            ->select(...$select)
             ->from($quote->getTableName($metadata, $platform), 'u')
-            ->where('u.' . $quote->getColumnName('id', $metadata, $platform)
-                . ' = ' . $userType->convertToDatabaseValueSQL('?', $platform))
-            ->setParameter(0, $user, Types::BIGINT)->executeQuery()->fetchAllAssociative();
+            ->where(
+                'u.' . $quote->getColumnName('id', $metadata, $platform)
+                . ' = ' . $userType->convertToDatabaseValueSQL('?', $platform)
+            )
+            ->setParameter(0, $user, Types::BIGINT)
+            ->executeQuery()
+            ->fetchAllAssociative();
         // Match getOneOrNullResult's conversion and multiplicity semantics.
         foreach ($rows as &$row) {
             foreach ($types as $field => $type) {
@@ -100,7 +106,7 @@ final class UserRepository
         }
         unset($row);
         if (count($rows) > 1) {
-            throw new \Doctrine\ORM\NonUniqueResultException();
+            throw new NonUniqueResultException();
         }
         return $rows[0] ?? [];
     }
@@ -142,8 +148,10 @@ final class UserRepository
                 $query->setParameter('recursive', true, Types::BOOLEAN)
                     ->setParameter('ancestorEntities', $ancestors, ArrayParameterType::INTEGER);
             }
-            $query->andWhere($visible === [] ? '1 = 0' : 'EXISTS (SELECT grant.id FROM '
-                . ProfileUser::class . ' grant WHERE grant.users = r AND (' . implode(' OR ', $visible) . '))');
+            $query->andWhere(
+                $visible === [] ? '1 = 0' : 'EXISTS (SELECT grant.id FROM '
+                . ProfileUser::class . ' grant WHERE grant.users = r AND (' . implode(' OR ', $visible) . '))'
+            );
         }
         if ($parent !== null) {
             $this->apiParent($query, $compiler, $parent);
@@ -173,7 +181,7 @@ final class UserRepository
                     } else {
                         $parameter = 'booleanText' . count($query->getParameters());
                         $text = 'CASE WHEN ' . $column . ' IS NULL THEN NULL WHEN '
-                            . $column . " = true THEN '1' ELSE '0' END";
+                        . $column . " = true THEN '1' ELSE '0' END";
                         $query->andWhere('LOWER(' . $text . ') LIKE :' . $parameter)
                             ->setParameter($parameter, $pattern, Types::STRING);
                     }
@@ -244,15 +252,19 @@ final class UserRepository
         $parentMetadata = $this->em->getClassMetadata($class);
         foreach ($parentMetadata->associationMappings as $field => $mapping) {
             if ($mapping->isToOneOwningSide() && $mapping->joinColumns[0]->name === $parent['userForeignKey']) {
-                $query->andWhere('EXISTS (SELECT parent.id FROM ' . $class
-                    . ' parent WHERE parent.id = :parentId AND parent.' . $field . ' = r)')
+                $query->andWhere(
+                    'EXISTS (SELECT parent.id FROM ' . $class
+                    . ' parent WHERE parent.id = :parentId AND parent.' . $field . ' = r)'
+                )
                     ->setParameter('parentId', $parent['id'], Types::BIGINT);
                 return;
             }
         }
         if ($parentMetadata->hasField('itemtype') && $parentMetadata->hasField('items_id')) {
-            $query->andWhere('EXISTS (SELECT parent.id FROM ' . $class
-                . ' parent WHERE parent.id = :parentId AND parent.itemtype = :parentKind AND parent.items_id = r.id)')
+            $query->andWhere(
+                'EXISTS (SELECT parent.id FROM ' . $class
+                . ' parent WHERE parent.id = :parentId AND parent.itemtype = :parentKind AND parent.items_id = r.id)'
+            )
                 ->setParameter('parentId', $parent['id'], Types::BIGINT)
                 ->setParameter('parentKind', $parent['kind'], Types::STRING);
         }
@@ -264,7 +276,9 @@ final class UserRepository
     {
         $rows = $this->em->createQueryBuilder()
             ->select('u.id, u.name, u.realname, u.firstname, u.phone, u.mobile, u.picture')
-            ->addSelect('IDENTITY(u.locations) AS locations_id, IDENTITY(u.usertitles) AS usertitles_id, IDENTITY(u.usercategories) AS usercategories_id')
+            ->addSelect(
+                'IDENTITY(u.locations) AS locations_id, IDENTITY(u.usertitles) AS usertitles_id, IDENTITY(u.usercategories) AS usercategories_id'
+            )
             ->from(User::class, 'u')
             ->where('u.id = :user')
             ->setParameter('user', $user, Types::INTEGER)
@@ -399,8 +413,10 @@ final class UserRepository
         $query = $this->em->createQueryBuilder()
             ->select('r.id')
             ->from(User::class, 'r');
-        $query->where((new RecordCriteria($query, $this->em->getClassMetadata(User::class), $legacyValues))
-            ->where($criteria));
+        $query->where(
+            (new RecordCriteria($query, $this->em->getClassMetadata(User::class), $legacyValues))
+                ->where($criteria)
+        );
         return $query->setMaxResults(1)
             ->getQuery()
             ->getOneOrNullResult() !== null;
