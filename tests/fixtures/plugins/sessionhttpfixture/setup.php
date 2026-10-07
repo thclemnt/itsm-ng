@@ -56,12 +56,12 @@ function plugin_sessionhttpfixture_manifest(callable $operation): void
                 return;
             }
         }
-        foreach (['provision', 'closeBeforeToken', 'vetoCookie'] as $mode) {
+        foreach (['provision', 'closeBeforeToken', 'vetoCookie', 'extendDeletionScope'] as $mode) {
             if (!is_bool($state['mode'][$mode] ?? null)) {
                 return;
             }
         }
-        foreach (['provisioned', 'closedBeforeToken', 'cookieVeto'] as $observation) {
+        foreach (['provisioned', 'closedBeforeToken', 'cookieVeto', 'deletionGrants'] as $observation) {
             if (!is_int($state['observed'][$observation] ?? null) || $state['observed'][$observation] < 0) {
                 return;
             }
@@ -91,6 +91,41 @@ function plugin_init_sessionhttpfixture(): void
     global $PLUGIN_HOOKS;
 
     $PLUGIN_HOOKS['csrf_compliant']['sessionhttpfixture'] = true;
+    $PLUGIN_HOOKS['pre_item_delete']['sessionhttpfixture'][User::class] = static function (User $item): void {
+        plugin_sessionhttpfixture_manifest(static function (array &$state, callable $owned) use ($item): bool {
+            global $DB, $CFG_GLPI;
+
+            $target = $state['users']['delete_target'] ?? 0;
+            if (!$state['mode']['extendDeletionScope'] || $state['observed']['deletionGrants'] !== 0
+                || $item->getID() !== $target || Session::getLoginUserID() !== ($state['users']['delete_actor'] ?? 0)
+                || ($_SERVER['REQUEST_METHOD'] ?? '') !== 'DELETE'
+                || parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) !== rtrim($CFG_GLPI['root_doc'], '/') . '/apirest.php/User/' . $target
+                || !$owned('glpi_users', $target) || !$owned('glpi_profiles', $state['deletion']['profile'])
+                || !$owned('glpi_entities', $state['foreign'])) {
+                return false;
+            }
+            if (Session::canViewAllEntities() || array_values(array_map('intval', $_SESSION['glpiactiveentities'])) !== [$state['parent']]
+                || !Session::haveRight('user', DELETE) || !\itsmng\Database\DeletionUnit::isActive($DB->getDoctrineConnection())) {
+                throw new RuntimeException('Deletion fixture requires the real restricted actor and active writer frame');
+            }
+            $manager = Orm::create($DB);
+            $records = new RecordRepository($manager);
+            $grant = ['users_id' => $target, 'profiles_id' => $state['deletion']['profile']];
+            if ($records->countMatching('glpi_profiles_users', ['users_id' => $target], false) !== 1
+                || $records->countMatching('glpi_profiles_users', $grant + ['entities_id' => $state['parent']], false) !== 1) {
+                throw new RuntimeException('Deletion fixture target must initially have only its owned parent grant');
+            }
+            // Real can(DELETE) already passed. An ordinary lifecycle hook now
+            // changes grants in this writer frame without altering authorization.
+            $id = (new RecordWriter($manager))->insert('glpi_profiles_users', $grant + [
+                'entities_id' => $state['foreign'], 'is_recursive' => false, 'is_dynamic' => false, 'is_default_profile' => false,
+            ]);
+            $state['deletion']['foreignGrant'] = $id;
+            $state['owned'][Profile_User::class][] = $id;
+            ++$state['observed']['deletionGrants'];
+            return true;
+        });
+    };
     $PLUGIN_HOOKS['init_session']['sessionhttpfixture'] = static function (): void {
         plugin_sessionhttpfixture_manifest(static function (array &$state, callable $owned): bool {
             global $DB;

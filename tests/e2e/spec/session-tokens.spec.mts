@@ -10,8 +10,14 @@ interface Seed {
   personalTokens: Record<string, string>; parent: number; child: number; grandchild: number; foreign: number;
   profile: number; groups: Record<string, number>; computer: number; computerName: string; location: number;
   tasks: Record<string, number>; owned: Record<string, number[]>; cookieName: string; rememberName: string;
+  deletion: { profile: number; rights: number; parentGrant: number; foreignGrant: number | null };
 }
 interface Observation { provisioned: number; closedBeforeToken: number; cookieVeto: number; }
+interface DeletionObservation {
+  hookCount: number; foreignGrant: number | null;
+  delete_target: { retained: boolean; grants: Array<{ id: number; entity: number; profile: number; recursive: boolean }> };
+  delete_denied: DeletionObservation['delete_target'];
+}
 const config = process.env.PLAYWRIGHT_SESSION_CONFIG;
 const baseURL = process.env.PLAYWRIGHT_BASE_URL;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -91,7 +97,7 @@ test.beforeAll(async () => {
 });
 test.afterAll(async ({ request }) => {
   if (!seed) return;
-  await mode({ provision: false, closeBeforeToken: false, vetoCookie: false });
+  await mode({ provision: false, closeBeforeToken: false, vetoCookie: false, extendDeletionScope: false });
   let admin: ApiSession | undefined;
   try {
     admin = await initApiSession(request);
@@ -99,6 +105,18 @@ test.afterAll(async ({ request }) => {
     // policy. The CLI finalizer refuses to remove an unpurged owned domain row.
     for (const type of ['TicketTask', 'Ticket', 'Computer', 'Location', 'Group_User', 'Profile_User', 'User', 'Group', 'ProfileRight', 'Profile', 'Entity']) {
       for (const id of [...(seed.owned[type] || [])].reverse()) {
+        if (type === 'Profile_User' && id === seed.deletion.parentGrant) {
+          // Scoped detachment may already have committed, even if a later
+          // assertion failed. Skip only this exact owned, genuinely absent row.
+          const current = await request.get(`${admin.apiUrl}${type}/${id}`, {
+            headers: { 'App-Token': process.env.PLAYWRIGHT_APP_TOKEN!, 'Session-Token': admin.sessionToken },
+          });
+          if (current.status() === 404) {
+            expect((await current.json())[0]).toBe('ERROR_ITEM_NOT_FOUND');
+            continue;
+          }
+          expect(current.ok(), 'Owned grant cleanup must distinguish absence from an authorization/server failure.').toBe(true);
+        }
         const response = await request.delete(`${admin.apiUrl}${type}/${id}`, {
           headers: { 'App-Token': process.env.PLAYWRIGHT_APP_TOKEN!, 'Session-Token': admin.sessionToken },
           params: { force_purge: true },
@@ -109,6 +127,56 @@ test.afterAll(async ({ request }) => {
     await fixture('clean', { guard: seed.guard });
   } finally {
     if (admin) await closeApiSession(request, admin);
+  }
+});
+
+test('real restricted User deletion denies existing foreign grants and commits hook-triggered scoped detachment', async ({ page, context }) => {
+  await loginOwned(page, 'delete_actor');
+  const assertActor = async () => {
+    const actual = await session(context);
+    expect(Number(actual.glpiID)).toBe(seed.users.delete_actor);
+    expect(Number(actual.glpiactiveprofile.id)).toBe(seed.deletion.profile);
+    expect(Number(actual.glpiactiveprofile.user)).toBe(seed.deletion.rights);
+    expect(Object.values(actual.glpiactiveentities).map(Number)).toEqual([seed.parent]);
+    expect(Number(actual.glpiactive_entity)).toBe(seed.parent);
+    expect(Number(actual.glpishowallentities)).toBe(0);
+  };
+  await assertActor();
+  const remove = async (role: string) => context.request.delete(`/apirest.php/User/${seed.users[role]}`, {
+    headers: { 'App-Token': process.env.PLAYWRIGHT_APP_TOKEN!, 'Session-Token': (await cookie(context, seed.cookieName))!.value },
+    params: { force_purge: false },
+  });
+  const before = await fixture<DeletionObservation>('deletion-check', { guard: seed.guard });
+  expect(before.hookCount).toBe(0);
+  expect(before.delete_target).toEqual({ retained: true, grants: [
+    { id: seed.deletion.parentGrant, entity: seed.parent, profile: seed.deletion.profile, recursive: false },
+  ] });
+  expect(before.delete_denied.retained).toBe(true);
+  expect(before.delete_denied.grants.map(grant => grant.entity).sort((a, b) => a - b))
+    .toEqual([seed.parent, seed.foreign].sort((a, b) => a - b));
+  // The existing cross-scope target must fail real can(DELETE), before hooks.
+  const denied = await remove('delete_denied');
+  expect(denied.status()).toBe(400);
+  expect((await denied.json())[0]).toBe('ERROR_GLPI_DELETE');
+  expect(await fixture<DeletionObservation>('deletion-check', { guard: seed.guard })).toEqual(before);
+  await assertActor();
+  await mode({ extendDeletionScope: true });
+  try {
+    // This proves HTTP policy and lifecycle composition. The ordinary hook
+    // adds a real foreign grant after admission; no old-snapshot race is claimed.
+    const detached = await remove('delete_target');
+    expect(detached.status(), 'ScopedDetachment retains the existing public false/API error contract.').toBe(400);
+    expect((await detached.json())[0]).toBe('ERROR_GLPI_DELETE');
+    const after = await fixture<DeletionObservation>('deletion-check', { guard: seed.guard });
+    expect(after.hookCount).toBe(1);
+    expect(after.foreignGrant).toBeGreaterThan(0);
+    expect(after.delete_target).toEqual({ retained: true, grants: [
+      { id: after.foreignGrant, entity: seed.foreign, profile: seed.deletion.profile, recursive: false },
+    ] });
+    expect(after.delete_denied).toEqual(before.delete_denied);
+    await assertActor();
+  } finally {
+    await mode({ extendDeletionScope: false });
   }
 });
 

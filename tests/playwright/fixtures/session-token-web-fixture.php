@@ -49,8 +49,8 @@ if ($action === 'seed') {
     }
     $guard = bin2hex(random_bytes(20));
     $state = ['guard' => $guard, 'database' => $DB->dbdefault, 'prefix' => 'SessionHTTP-' . $guard . '-',
-        'owned' => [], 'mode' => ['provision' => false, 'closeBeforeToken' => false, 'vetoCookie' => false],
-        'observed' => ['provisioned' => 0, 'closedBeforeToken' => 0, 'cookieVeto' => 0],
+        'owned' => [], 'mode' => ['provision' => false, 'closeBeforeToken' => false, 'vetoCookie' => false, 'extendDeletionScope' => false],
+        'observed' => ['provisioned' => 0, 'closedBeforeToken' => 0, 'cookieVeto' => 0, 'deletionGrants' => 0],
         'savedConfig' => Config::getConfigurationValues('core', ['login_remember_time', 'login_remember_default'])];
 } else {
     if (!is_string($input['guard'] ?? null) || !preg_match('/^[a-f0-9]{40}$/D', $input['guard']) || !is_file($path)) {
@@ -108,18 +108,24 @@ if ($action === 'seed') {
             'task' => CommonITILTask::SEEPUBLIC, 'computer' => READ | UPDATE, 'location' => READ] as $name => $rights) {
             $create(ProfileRight::class, ['profiles_id' => $state['profile'], 'name' => $name, 'rights' => $rights]);
         }
+        $state['deletion'] = [
+            'profile' => $create(Profile::class, ['name' => $prefix . 'deletion-profile', 'interface' => 'central']),
+            'rights' => READ | DELETE, 'foreignGrant' => null,
+        ];
+        $create(ProfileRight::class, ['profiles_id' => $state['deletion']['profile'], 'name' => 'user', 'rights' => $state['deletion']['rights']]);
         $state['groups'] = [];
         foreach (['parent' => [$state['parent'], true], 'child' => [$state['child'], false], 'foreign' => [$state['foreign'], false]] as $kind => [$entity, $recursive]) {
             $state['groups'][$kind] = $create(Group::class, ['name' => $prefix . 'group-' . $kind, 'entities_id' => $entity, 'is_recursive' => $recursive]);
         }
         $state['users'] = $state['names'] = $state['personalTokens'] = [];
-        foreach (['direct', 'recursive', 'inactive', 'deleted', 'future', 'expired', 'no_grants', 'provisioned', 'remember'] as $kind) {
+        foreach (['direct', 'recursive', 'inactive', 'deleted', 'future', 'expired', 'no_grants', 'provisioned', 'remember', 'delete_actor', 'delete_target', 'delete_denied'] as $kind) {
             $state['personalTokens'][$kind] = bin2hex(random_bytes(24));
             $state['names'][$kind] = $prefix . $kind;
             $entity = $kind === 'remember' ? 0 : $state['parent'];
+            $profile = str_starts_with($kind, 'delete_') ? $state['deletion']['profile'] : $state['profile'];
             $state['users'][$kind] = $create(User::class, [
                 'name' => $state['names'][$kind], 'password' => Auth::getPasswordHash('SessionHTTP1!'),
-                'authtype' => Auth::DB_GLPI, 'profiles_id' => $state['profile'], 'entities_id' => $entity,
+                'authtype' => Auth::DB_GLPI, 'profiles_id' => $profile, 'entities_id' => $entity,
                 'personal_token' => $state['personalTokens'][$kind], 'cookie_token' => null, 'cookie_token_date' => null,
                 'is_active' => $kind !== 'inactive', 'is_deleted' => $kind === 'deleted',
                 'begin_date' => $kind === 'future' ? $futureAdmission : null,
@@ -128,10 +134,16 @@ if ($action === 'seed') {
                 'password_last_update' => new DateTimeImmutable(),
             ]);
             if (!in_array($kind, ['no_grants', 'provisioned'], true)) {
-                $create(Profile_User::class, ['users_id' => $state['users'][$kind], 'profiles_id' => $state['profile'],
+                $grant = $create(Profile_User::class, ['users_id' => $state['users'][$kind], 'profiles_id' => $profile,
                     'entities_id' => $entity, 'is_recursive' => $kind === 'recursive', 'is_default_profile' => true]);
+                if ($kind === 'delete_target') {
+                    $state['deletion']['parentGrant'] = $grant;
+                } elseif ($kind === 'delete_denied') {
+                    $create(Profile_User::class, ['users_id' => $state['users'][$kind], 'profiles_id' => $profile,
+                        'entities_id' => $state['foreign'], 'is_recursive' => false]);
+                }
             }
-            foreach ($state['groups'] as $group) {
+            foreach (str_starts_with($kind, 'delete_') ? [] : $state['groups'] as $group) {
                 $create(Group_User::class, ['users_id' => $state['users'][$kind], 'groups_id' => $group]);
             }
         }
@@ -161,7 +173,7 @@ if ($action === 'seed') {
     });
     Config::setConfigurationValues('core', ['login_remember_time' => DAY_TIMESTAMP, 'login_remember_default' => false]);
     $save();
-    $result = array_intersect_key($state, array_flip(['guard', 'prefix', 'users', 'names', 'personalTokens', 'parent', 'child', 'grandchild', 'foreign', 'profile', 'groups', 'computer', 'computerName', 'location', 'tasks', 'owned']));
+    $result = array_intersect_key($state, array_flip(['guard', 'prefix', 'users', 'names', 'personalTokens', 'parent', 'child', 'grandchild', 'foreign', 'profile', 'groups', 'computer', 'computerName', 'location', 'tasks', 'owned', 'deletion']));
     $result['cookieName'] = session_name();
     $result['rememberName'] = session_name() . '_rememberme';
 } elseif ($action === 'mode') {
@@ -177,6 +189,20 @@ if ($action === 'seed') {
     $result = ['configured' => true];
 } elseif ($action === 'observe') {
     $result = $state['observed'];
+} elseif ($action === 'deletion-check') {
+    // Read only the manifest-owned accounts. Authorization/deletion occurs by HTTP.
+    $result = ['hookCount' => $state['observed']['deletionGrants'], 'foreignGrant' => $state['deletion']['foreignGrant']];
+    foreach (['delete_target', 'delete_denied'] as $role) {
+        $row = $records->find('glpi_users', 'id', $state['users'][$role]);
+        if ($row !== null && $row['name'] !== $state['names'][$role]) {
+            throw new RuntimeException('Owned deletion account identity changed');
+        }
+        $result[$role] = ['retained' => $row !== null && !$row['is_deleted'],
+            'grants' => array_map(static fn (array $grant): array => [
+                'id' => (int)$grant['id'], 'entity' => (int)$grant['entities_id'],
+                'profile' => (int)$grant['profiles_id'], 'recursive' => (bool)$grant['is_recursive'],
+            ], $records->matching('glpi_profiles_users', ['users_id' => $state['users'][$role]], ['id']))];
+    }
 } elseif ($action === 'cookie-snapshot') {
     $row = $records->find('glpi_users', 'id', $state['users']['remember']);
     if (!$row || $row['name'] !== $state['names']['remember']) {
