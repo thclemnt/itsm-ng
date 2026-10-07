@@ -28,7 +28,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: mysqli, pdo_mysql, pgsql, pdo_pgsql, dom, curl, mbstring, zip, pcntl, intl, gd, ldap, exif
+          extensions: mysqli, pdo_mysql, pgsql, pdo_pgsql, dom, curl, mbstring, zip, pcntl, intl, gd, ldap, exif, apcu-5.1.28, redis-6.3.0
           coverage: none
       - uses: actions/setup-node@v7
         with:
@@ -99,7 +99,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: mysqli, pdo_mysql, pgsql, pdo_pgsql, dom, curl, mbstring, zip, pcntl, intl, gd, ldap, exif, soap, bcmath
+          extensions: mysqli, pdo_mysql, pgsql, pdo_pgsql, dom, curl, mbstring, zip, pcntl, intl, gd, ldap, exif, soap, bcmath, apcu-5.1.28, redis-6.3.0
           coverage: none
       - uses: actions/setup-node@v7
         with:

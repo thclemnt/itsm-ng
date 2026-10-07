@@ -44,7 +44,7 @@ RUN apt-get update \
  && if ! php -r 'exit(extension_loaded("Zend OPcache") ? 0 : 1);'; then \
       docker-php-ext-install -j"$(nproc)" opcache; \
     fi \
- && pecl install apcu redis \
+ && pecl install apcu-5.1.28 redis-6.3.0 \
  && docker-php-ext-enable apcu redis \
  && rm -rf /var/lib/apt/lists/*
 
