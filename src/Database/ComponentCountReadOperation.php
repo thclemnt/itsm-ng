@@ -4,6 +4,8 @@
 
 namespace itsmng\Database;
 
+use itsmng\Database\Repository\ComponentRepository;
+
 /** A core component tab owns one route and counts its declared families in order. */
 final class ComponentCountReadOperation
 {
@@ -11,7 +13,7 @@ final class ComponentCountReadOperation
 
     public function countForAsset(array $tables, string $type, int $id): int
     {
-        $repository = new Repository\ComponentRepository($this->manager);
+        $repository = new ComponentRepository($this->manager);
         if (!$this->ownedMapping) {
             return $repository->countForAsset($tables, $type, $id);
         }

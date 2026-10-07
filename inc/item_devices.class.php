@@ -31,6 +31,16 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\ComponentCountReadOperation;
+use itsmng\Database\DeletionCancelled;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Mapping\LegacyInput;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\ComponentRepository;
+use itsmng\Domain\ComponentDefinitionChange;
+use itsmng\Domain\ComponentDefinitionReplacement;
+
 /**
  * @since 0.84
  */
@@ -73,10 +83,10 @@ class Item_Devices extends CommonDBRelation
 
     public static $mustBeAttached_2 = false; // Mandatory to display creation form
 
-    private ?\itsmng\Domain\ComponentDefinitionChange $definitionChange = null;
+    private ?ComponentDefinitionChange $definitionChange = null;
 
     /** Invoked only by the actual definition owner's replacement lifecycle. */
-    final public function replaceDefinition(\itsmng\Domain\ComponentDefinitionReplacement $command, array $input, string $column): bool
+    final public function replaceDefinition(ComponentDefinitionReplacement $command, array $input, string $column): bool
     {
         if ($this->definitionChange !== null) {
             return false;
@@ -84,7 +94,7 @@ class Item_Devices extends CommonDBRelation
         $change = $command->bind($this, $input, $column);
         $this->definitionChange = $change;
         try {
-            return \itsmng\Database\OwnershipUpdateUnit::run(
+            return OwnershipUpdateUnit::run(
                 $GLOBALS['DB'],
                 $this,
                 $change->stored,
@@ -146,7 +156,7 @@ class Item_Devices extends CommonDBRelation
         }
         $this->definitionChange->assertActive();
         if ($persisted && !$this->definitionChange->verify($this)) {
-            throw new \itsmng\Database\DeletionCancelled('The component replacement callback changed its delegated write.');
+            throw new DeletionCancelled('The component replacement callback changed its delegated write.');
         }
     }
 
@@ -345,7 +355,7 @@ class Item_Devices extends CommonDBRelation
         foreach ($device_types as $device_type) {
             $item_device = method_exists($device_type, 'getItem_DeviceType') ? $device_type::getItem_DeviceType() : null;
             $reference = is_string($item_device) && is_subclass_of($item_device, self::class)
-                ? (\itsmng\Database\EntityRegistry::discriminatedReferences($item_device::getTable())['items_id'] ?? null)
+                ? (EntityRegistry::discriminatedReferences($item_device::getTable())['items_id'] ?? null)
                 : null;
             // Mapped owners declare affinity on their properties. Unmapped
             // plugin/core families retain their existing explicit configuration.
@@ -531,7 +541,7 @@ class Item_Devices extends CommonDBRelation
     {
         global $CFG_GLPI;
 
-        $reference = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id'] ?? null;
+        $reference = EntityRegistry::discriminatedReferences(static::getTable())['items_id'] ?? null;
         if ($reference !== null) {
             return array_keys($reference['selections']);
         }
@@ -679,8 +689,8 @@ class Item_Devices extends CommonDBRelation
             foreach ($olds as $data) {
                 $link = new $link_type();
                 unset($data['id']);
-                $entity = \itsmng\Database\EntityRegistry::tables()[$link_type::getTable()] ?? null;
-                if ($entity !== null && is_a($entity, \itsmng\Database\Mapping\LegacyInput::class, true) && method_exists($entity, 'withReference')) {
+                $entity = EntityRegistry::tables()[$link_type::getTable()] ?? null;
+                if ($entity !== null && is_a($entity, LegacyInput::class, true) && method_exists($entity, 'withReference')) {
                     $data = $entity::withReference($data, $itemtype, (int)$newid);
                 } else {
                     $data['items_id'] = $newid;
@@ -704,7 +714,7 @@ class Item_Devices extends CommonDBRelation
             if (in_array($item->getType(), self::getConcernedItems())) {
                 if ($_SESSION['glpishow_count_on_tabs']) {
                     $affinities = self::getItemAffinities($item->getType());
-                    $mapped = \itsmng\Database\EntityRegistry::legacyTables();
+                    $mapped = EntityRegistry::legacyTables();
                     $batch = isset($mapped[$item::class]);
                     $tables = [];
                     foreach ($affinities as $link_type) {
@@ -722,7 +732,7 @@ class Item_Devices extends CommonDBRelation
                         $tables[] = $table;
                     }
                     if ($batch && $tables) {
-                        $counts = new \itsmng\Database\ComponentCountReadOperation($DB->getDoctrineConnection());
+                        $counts = new ComponentCountReadOperation($DB->getDoctrineConnection());
                         try {
                             $nb = $counts->countForAsset(
                                 $tables,
@@ -1012,8 +1022,8 @@ class Item_Devices extends CommonDBRelation
         $table = $this->getTable();
         $peerTable = $peer_type ? getTableForItemType($peer_type) : null;
         $customCriteria = (new ReflectionMethod($this, 'getTableGroupCriteria'))->getDeclaringClass()->getName() !== self::class;
-        if ($customCriteria || !isset(\itsmng\Database\EntityRegistry::tables()[$table])
-            || ($peerTable && !isset(\itsmng\Database\EntityRegistry::tables()[$peerTable]))) {
+        if ($customCriteria || !isset(EntityRegistry::tables()[$table])
+            || ($peerTable && !isset(EntityRegistry::tables()[$peerTable]))) {
             return iterator_to_array($DB->request($this->getTableGroupCriteria($item, $peer_type)));
         }
         if (!$item instanceof CommonDevice) {
@@ -1022,9 +1032,9 @@ class Item_Devices extends CommonDBRelation
             ], $this->getDeviceForeignKey()));
         }
         $entities = $peerTable ? Session::getActiveEntityScope() : null;
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            return (new \itsmng\Database\Repository\ComponentRepository($em))->forDevice(
+            return (new ComponentRepository($em))->forDevice(
                 $table,
                 $this->getDeviceForeignKey(),
                 (int)$item->getID(),
@@ -1597,10 +1607,10 @@ class Item_Devices extends CommonDBRelation
             $link = getItemForItemtype($link_type);
             if ($link) {
                 if ($unaffect) {
-                    if (isset(\itsmng\Database\EntityRegistry::tables()[$link->getTable()])) {
-                        $em = \itsmng\Database\Orm::create($DB);
+                    if (isset(EntityRegistry::tables()[$link->getTable()])) {
+                        $em = Orm::create($DB);
                         try {
-                            (new \itsmng\Database\Repository\ComponentRepository($em))->detach($link->getTable(), $itemtype, (int)$items_id);
+                            (new ComponentRepository($em))->detach($link->getTable(), $itemtype, (int)$items_id);
                         } finally {
                             $em->clear();
                         }
@@ -1734,9 +1744,9 @@ class Item_Devices extends CommonDBRelation
     {
         global $DB;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            if (!(new \itsmng\Database\Repository\ComponentRepository($em))->hasSelectedSubject($this->getTable(), $this->fields)) {
+            if (!(new ComponentRepository($em))->hasSelectedSubject($this->getTable(), $this->fields)) {
                 return false;
             }
         } finally {
@@ -1747,7 +1757,7 @@ class Item_Devices extends CommonDBRelation
 
     public function addNeededInfoToInput($input)
     {
-        $owner = \itsmng\Database\EntityRegistry::entityScopeOwner($this->getTable());
+        $owner = EntityRegistry::entityScopeOwner($this->getTable());
         if ($owner === null) {
             return parent::addNeededInfoToInput($input);
         }

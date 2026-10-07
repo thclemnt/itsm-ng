@@ -4,10 +4,13 @@
 
 namespace itsmng\Database\Repository;
 
+use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\EntityRegistry;
+use itsmng\Database\Mapping\LegacyInput;
 use itsmng\Database\RecordCriteria;
+use LogicException;
 
 /** Component assignment persistence; asset access and lifecycle hooks remain with callers. */
 final class ComponentRepository
@@ -27,12 +30,15 @@ final class ComponentRepository
                 continue;
             }
             $subject = $reference === null ? 'r.items_id' : 'IDENTITY(r.' . $class::referenceAssociation($type) . ')';
-            $count += (int)$this->em->createQueryBuilder()->select('COUNT(r.id)')->from($class, 'r')
+            $count += (int)$this->em->createQueryBuilder()
+                ->select('COUNT(r.id)')
+                ->from($class, 'r')
                 ->where($subject . ' = :asset AND r.itemtype = :kind AND r.is_deleted = :deleted')
                 ->setParameter('asset', $id, Types::BIGINT)
                 ->setParameter('kind', $type, Types::STRING)
                 ->setParameter('deleted', false, Types::BOOLEAN)
-                ->getQuery()->getSingleScalarResult();
+                ->getQuery()
+                ->getSingleScalarResult();
         }
         return $count;
     }
@@ -55,21 +61,25 @@ final class ComponentRepository
         } else {
             $association = $metadata->associationMappings[$class::referenceAssociation($type)];
             if (!$association->isToOneOwningSide() || count($association->joinColumns) !== 1) {
-                throw new \LogicException('Component counts require a single owning subject reference.');
+                throw new LogicException('Component counts require a single owning subject reference.');
             }
             $subject = 'r.' . $quote->getJoinColumnName($association->joinColumns[0], $metadata, $platform);
         }
-        $asset = \Doctrine\DBAL\Types\Type::getType(Types::BIGINT);
-        $kind = \Doctrine\DBAL\Types\Type::getType(Types::STRING);
-        $deleted = \Doctrine\DBAL\Types\Type::getType(Types::BOOLEAN);
+        $asset = Type::getType(Types::BIGINT);
+        $kind = Type::getType(Types::STRING);
+        $deleted = Type::getType(Types::BOOLEAN);
         // COUNT's path and scalar hydration do not apply mapped SQL/PHP output converters.
-        return (int)$connection->createQueryBuilder()->select('COUNT(' . $column('id') . ')')
+        return (int)$connection->createQueryBuilder()
+            ->select('COUNT(' . $column('id') . ')')
             ->from($quote->getTableName($metadata, $platform), 'r')
             ->where($subject . ' = ' . $asset->convertToDatabaseValueSQL('?', $platform))
             ->andWhere($column('itemtype') . ' = ' . $kind->convertToDatabaseValueSQL('?', $platform))
             ->andWhere($column('is_deleted') . ' = ' . $deleted->convertToDatabaseValueSQL('?', $platform))
-            ->setParameter(0, $id, Types::BIGINT)->setParameter(1, $type, Types::STRING)
-            ->setParameter(2, false, Types::BOOLEAN)->executeQuery()->fetchOne();
+            ->setParameter(0, $id, Types::BIGINT)
+            ->setParameter(1, $type, Types::STRING)
+            ->setParameter(2, false, Types::BOOLEAN)
+            ->executeQuery()
+            ->fetchOne();
     }
 
     /** A selected typed subject must exist; stock deliberately selects no subject. */
@@ -91,9 +101,13 @@ final class ComponentRepository
         $target = $this->em->getClassMetadata($class)->getAssociationTargetClass($class::referenceAssociation($kind));
         // Scalar hydration checks the supplied writer, without accepting an ORM
         // reference proxy or invoking public-model read callbacks.
-        return $this->em->createQueryBuilder()->select('subject.id')->from($target, 'subject')
-            ->where('subject.id = :id')->setParameter('id', $values[$selection['column']], Types::BIGINT)
-            ->getQuery()->getOneOrNullResult() !== null;
+        return $this->em->createQueryBuilder()
+            ->select('subject.id')
+            ->from($target, 'subject')
+            ->where('subject.id = :id')
+            ->setParameter('id', $values[$selection['column']], Types::BIGINT)
+            ->getQuery()
+            ->getOneOrNullResult() !== null;
     }
 
     /** Null entity scope means all entities; an empty scope admits no attached assets. */
@@ -106,7 +120,9 @@ final class ComponentRepository
         } elseif ($reference !== null && !isset($reference['selections'][$assetType])) {
             return [];
         }
-        $query = $this->em->createQueryBuilder()->select('r')->from($class, 'r');
+        $query = $this->em->createQueryBuilder()
+            ->select('r')
+            ->from($class, 'r');
         $criteria = new RecordCriteria($query, $this->em->getClassMetadata($class), false);
         $query->where($criteria->where([$deviceColumn => $device, 'itemtype' => $assetType, 'is_deleted' => false]));
         if ($assetTable !== null && $entities !== null) {
@@ -121,9 +137,12 @@ final class ComponentRepository
             } else {
                 $query->innerJoin(EntityRegistry::tables()[$assetTable], 'a', 'WITH', 'a.id = r.items_id');
             }
-            $query->andWhere('IDENTITY(a.entities) IN (:entities)')->setParameter('entities', $entities);
+            $query->andWhere('IDENTITY(a.entities) IN (:entities)')
+                ->setParameter('entities', $entities);
         }
-        $query->orderBy('r.itemtype')->addOrderBy('r.items_id')->addOrderBy('r.id');
+        $query->orderBy('r.itemtype')
+            ->addOrderBy('r.items_id')
+            ->addOrderBy('r.id');
         $records = new RecordRepository($this->em);
         $rows = [];
         foreach ($query->getQuery()->toIterable() as $record) {
@@ -140,24 +159,35 @@ final class ComponentRepository
         $reference = EntityRegistry::discriminatedReferences($table)['items_id'] ?? null;
         if ($reference !== null) {
             if (!isset($reference['empty_value'])) {
-                throw new \LogicException('Returning components to stock requires an optional owning subject.');
+                throw new LogicException('Returning components to stock requires an optional owning subject.');
             }
             if (!isset($reference['selections'][$assetType])) {
                 return 0;
             }
             $association = $class::referenceAssociation($assetType);
-            return $this->em->createQueryBuilder()->update($class, 'r')
-                ->set('r.' . $association, 'NULL')->set('r.itemtype', 'NULL')
-                ->where('r.itemtype = :type')->setParameter('type', $assetType, Types::STRING)
-                ->andWhere('IDENTITY(r.' . $association . ') = :asset')->setParameter('asset', $asset, Types::BIGINT)
-                ->getQuery()->execute();
+            return $this->em->createQueryBuilder()
+                ->update($class, 'r')
+                ->set('r.' . $association, 'NULL')
+                ->set('r.itemtype', 'NULL')
+                ->where('r.itemtype = :type')
+                ->setParameter('type', $assetType, Types::STRING)
+                ->andWhere('IDENTITY(r.' . $association . ') = :asset')
+                ->setParameter('asset', $asset, Types::BIGINT)
+                ->getQuery()
+                ->execute();
         }
-        return $this->em->createQueryBuilder()->update(EntityRegistry::tables()[$table], 'r')
-            ->set('r.items_id', ':stock')->setParameter('stock', 0, Types::INTEGER)
-            ->set('r.itemtype', ':empty')->setParameter('empty', '', Types::STRING)
-            ->where('r.itemtype = :type')->setParameter('type', $assetType, Types::STRING)
-            ->andWhere('r.items_id = :asset')->setParameter('asset', $asset, Types::INTEGER)
-            ->getQuery()->execute();
+        return $this->em->createQueryBuilder()
+            ->update(EntityRegistry::tables()[$table], 'r')
+            ->set('r.items_id', ':stock')
+            ->setParameter('stock', 0, Types::INTEGER)
+            ->set('r.itemtype', ':empty')
+            ->setParameter('empty', '', Types::STRING)
+            ->where('r.itemtype = :type')
+            ->setParameter('type', $assetType, Types::STRING)
+            ->andWhere('r.items_id = :asset')
+            ->setParameter('asset', $asset, Types::INTEGER)
+            ->getQuery()
+            ->execute();
     }
 
     /** Complete stock candidates for the device's actual specificities, including legacy deleted stock. */
@@ -166,7 +196,7 @@ final class ComponentRepository
         $class = EntityRegistry::tables()[$table];
         $reference = EntityRegistry::discriminatedReferences($table)['items_id'] ?? null;
         if ($reference !== null && !isset($reference['empty_value'])) {
-            throw new \LogicException('A required component subject has no stock state.');
+            throw new LogicException('A required component subject has no stock state.');
         }
         $kind = $reference !== null ? null : '';
         return (new RecordRepository($this->em))->matching($table, [$deviceColumn => $device, 'itemtype' => $kind], ['id']);
@@ -194,7 +224,9 @@ final class ComponentRepository
         $reference = EntityRegistry::discriminatedReferences($table)['items_id'] ?? null;
         $identity = $reference !== null && count($reference['selections']) === 1
             ? 'IDENTITY(r.' . $class::referenceAssociation(array_key_first($reference['selections'])) . ')' : 'r.items_id';
-        $query = $this->em->createQueryBuilder()->select('r.itemtype AS kind', $identity . ' AS asset')->from($class, 'r');
+        $query = $this->em->createQueryBuilder()
+            ->select('r.itemtype AS kind', $identity . ' AS asset')
+            ->from($class, 'r');
         $query->where((new RecordCriteria($query, $this->em->getClassMetadata($class), false))->where([$deviceColumn => $device]));
         foreach ($query->getQuery()->toIterable() as $row) {
             if (!isset($movingAssets[$row['kind'] ?? ''][(int)$row['asset']])) {
@@ -212,7 +244,7 @@ final class ComponentRepository
             return false;
         }
         $values = [$deviceColumn => $device, 'itemtype' => $kind, 'items_id' => $asset];
-        if (is_a($class, \itsmng\Database\Mapping\LegacyInput::class, true) && method_exists($class, 'withReference')) {
+        if (is_a($class, LegacyInput::class, true) && method_exists($class, 'withReference')) {
             $values = $class::withReference($values, $kind, $asset);
         }
         (new RecordWriter($this->em))->update($table, $binding, $values);
