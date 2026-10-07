@@ -62,6 +62,14 @@ final class RecordRepository
         $query = $this->em->createQueryBuilder()->from($recordClass, 'r')
             ->where('r.' . $identifier . ' = :id')
             ->setParameter('id', $id, $metadata->getTypeOfField($identifier));
+        $columns = $this->selectScalarColumns($query, $metadata);
+        // Scalar-only array hydration applies DBAL types without loading entities.
+        $values = $query->getQuery()->getOneOrNullResult(\Doctrine\ORM\Query::HYDRATE_ARRAY);
+        return $values === null ? null : $this->scalarValuesToRow($values, $columns);
+    }
+
+    private function selectScalarColumns(\Doctrine\ORM\QueryBuilder $query, \Doctrine\ORM\Mapping\ClassMetadata $metadata): array
+    {
         $columns = [];
         foreach ($metadata->fieldMappings as $property => $mapping) {
             $query->addSelect('r.' . $property . ' AS value' . count($columns));
@@ -82,12 +90,11 @@ final class RecordRepository
             $query->addSelect('IDENTITY(r.' . $property . ') AS value' . count($columns));
             $columns[] = [$mapping->joinColumns[0]->name, $target->getTypeOfField($targetId), true];
         }
-        // Unlike HYDRATE_SCALAR, scalar-only array hydration applies DBAL types
-        // (including temporal values and enums), without loading any entities.
-        $values = $query->getQuery()->getOneOrNullResult(\Doctrine\ORM\Query::HYDRATE_ARRAY);
-        if ($values === null) {
-            return null;
-        }
+        return $columns;
+    }
+
+    private function scalarValuesToRow(array $values, array $columns): array
+    {
         $row = [];
         foreach ($columns as $index => [$column, $type, $reference]) {
             $value = $values['value' . $index];
@@ -116,6 +123,20 @@ final class RecordRepository
         }
         $query->setFirstResult(max(0, $offset));
         $rows = [];
+        // An existing identity map or post-load dispatch retains ordinary ORM semantics.
+        if ($this->em->getUnitOfWork()->size() === 0
+            && count($metadata->identifier) === 1
+            && $metadata->hasField($metadata->getSingleIdentifierFieldName())
+            && !$metadata->hasLifecycleCallbacks(Events::postLoad)
+            && empty($metadata->entityListeners[Events::postLoad])
+            && !$this->em->getEventManager()->hasListeners(Events::postLoad)) {
+            $query->resetDQLPart('select');
+            $columns = $this->selectScalarColumns($query, $metadata);
+            foreach ($query->getQuery()->toIterable([], \Doctrine\ORM\Query::HYDRATE_ARRAY) as $values) {
+                $rows[] = $this->scalarValuesToRow($values, $columns);
+            }
+            return $rows;
+        }
         foreach ($query->getQuery()->toIterable() as $record) {
             $rows[] = $this->toRow($record);
             $this->em->detach($record);

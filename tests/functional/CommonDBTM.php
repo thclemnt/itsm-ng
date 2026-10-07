@@ -259,6 +259,12 @@ class CommonDBTM extends DbTestCase
         $connection = $DB->getDoctrineConnection();
         $manager = new class ($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
             public array $queries = [];
+            public array $hydrationModes = [];
+            public function newHydrator(string|int $hydrationMode): \Doctrine\ORM\Internal\Hydration\AbstractHydrator
+            {
+                $this->hydrationModes[] = $hydrationMode;
+                return parent::newHydrator($hydrationMode);
+            }
             public function createQuery(string $dql = ''): \Doctrine\ORM\Query
             {
                 $this->queries[] = $dql;
@@ -278,6 +284,10 @@ class CommonDBTM extends DbTestCase
                 $expected = (new \itsmng\Database\Repository\RecordRepository($oracle))->toRow($managed);
                 $row = $records->find($table, 'id', $id);
                 $this->array($row)->isIdenticalTo($expected);
+                $manager->hydrationModes = [];
+                $this->array($records->matching($table, ['id' => $id], ['id']))->isIdenticalTo([$expected]);
+                $this->array($manager->hydrationModes)->isIdenticalTo([\Doctrine\ORM\Query::HYDRATE_ARRAY]);
+                $this->array($records->matching($table, ['id' => PHP_INT_MAX]))->isEmpty();
                 $connection = $DB->getDoctrineConnection();
                 $physical = $connection->fetchAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table)
                     . ' WHERE ' . $connection->quoteIdentifier('id') . ' = ?', [$id]);
@@ -312,6 +322,16 @@ class CommonDBTM extends DbTestCase
                 $this->string($query)->contains(' AS value0')->notContains('SELECT r FROM');
             }
 
+            $second = $this->createItem(\Computer::class, ['name' => 'Second matching row', 'entities_id' => 0]);
+            $ids = [(int)$computer->getID(), (int)$second->getID()];
+            $this->array(array_column($records->matching('glpi_computers', ['id' => $ids], ['id DESC']), 'id'))
+                ->isIdenticalTo(array_reverse($ids));
+            $this->array(array_column($records->matching('glpi_computers', ['id' => $ids], ['id'], 1, 1), 'id'))
+                ->isIdenticalTo([$ids[1]]);
+            $this->array($records->matching('glpi_computers', ['id' => $ids], ['id'], 1, 2))->isEmpty();
+            $this->array(array_column($records->matching('glpi_computers', ['id' => $ids], ['id'], 0, -1), 'id'))
+                ->isIdenticalTo($ids);
+
             // Nonidentifier owning-reference indexes retain the original entity lookup.
             $indexed = $records->find('glpi_computers', 'entities_id', (int)$entity->getID());
             $this->integer((int)$indexed['id'])->isIdenticalTo((int)$computer->getID());
@@ -320,6 +340,15 @@ class CommonDBTM extends DbTestCase
             $this->string($records->find('glpi_computers', 'id', (int)$computer->getID())['name'])->isIdenticalTo('After legacy update');
             $this->string($managed->name)->isIdenticalTo('Before scalar read');
             $this->boolean($manager->contains($managed))->isTrue();
+            // matching() historically observes and detaches a preexisting managed record.
+            $manager->hydrationModes = [];
+            $this->string($records->matching('glpi_computers', ['id' => $computer->getID()])[0]['name'])
+                ->isIdenticalTo('Before scalar read');
+            $this->array($manager->hydrationModes)->isIdenticalTo([\Doctrine\ORM\Query::HYDRATE_OBJECT]);
+            $this->boolean($manager->contains($managed))->isFalse();
+            $this->string($records->matching('glpi_computers', ['id' => $computer->getID()])[0]['name'])
+                ->isIdenticalTo('After legacy update');
+
             $observed = \itsmng\Database\Orm::create($DB);
             try {
                 $loads = new class () {
@@ -338,6 +367,13 @@ class CommonDBTM extends DbTestCase
                 $this->string($transformed['name'])->isIdenticalTo('Listener transformed row');
                 $this->integer($loads->count)->isGreaterThan(0);
                 $this->array($observed->getUnitOfWork()->getIdentityMap())->isNotEmpty();
+                $observed->clear();
+                $loads->count = 0;
+                $transformedRows = (new \itsmng\Database\Repository\RecordRepository($observed))
+                    ->matching('glpi_computers', ['id' => $computer->getID()]);
+                $this->string($transformedRows[0]['name'])->isIdenticalTo('Listener transformed row');
+                $this->integer($loads->count)->isGreaterThan(0);
+
             } finally {
                 $observed->clear();
             }
