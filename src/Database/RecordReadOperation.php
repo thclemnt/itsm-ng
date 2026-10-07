@@ -19,6 +19,7 @@ final class RecordReadOperation
     private ?SerializedMetadataCache $queryCache = null;
     private array $identifiers = [];
     private bool $ownedMapping;
+    private bool $persistentMetadataLoaded = false;
     private mixed $pool;
     private ?string $context = null;
 
@@ -45,17 +46,33 @@ final class RecordReadOperation
         }
     }
 
-    private function metadata(string $table): ClassMetadata
+    private function metadata(string $table, ?string $lookupColumn = null): ClassMetadata
     {
         $class = EntityRegistry::tables()[$table];
         // Only canonical source declarations enter the private persistent namespace.
         // Custom/composite roots continue with the independently mutable local cache.
-        $cache = isset($this->identifiers[$class]) && $this->context !== null
+        $persistent = isset($this->identifiers[$class]) && $this->context !== null
+            && ($lookupColumn === null || $this->identifiers[$class]['column'] === $lookupColumn);
+        $this->persistentMetadataLoaded = $this->persistentMetadataLoaded || $persistent;
+        $cache = $persistent
             ? new SerializedMetadataCache($this->pool, 'orm_record_metadata_' . $this->context)
             : new \Symfony\Component\Cache\Adapter\ArrayAdapter(storeSerialized: true);
         $this->manager->getConfiguration()->setMetadataCache($cache);
         $this->manager->getMetadataFactory()->setCache($cache);
         return $this->manager->getClassMetadata($class);
+    }
+
+    private function fallbackManager(): EntityManager
+    {
+        if ($this->persistentMetadataLoaded) {
+            return Orm::forConnection($this->connection);
+        }
+        // This manager has only local metadata. Retire private cache eligibility
+        // before callbacks can observe it, including on later operation reads.
+        $this->context = null;
+        $this->queryCache = null;
+        $this->identifiers = [];
+        return $this->manager;
     }
 
     private function scalar(ClassMetadata $metadata): bool
@@ -113,7 +130,7 @@ final class RecordReadOperation
 
     public function row(string $table, string $column, int $id): ?array
     {
-        $metadata = $this->metadata($table);
+        $metadata = $this->metadata($table, $column);
         if ($this->scalar($metadata) && $metadata->getColumnName($metadata->identifier[0]) === $column) {
             return (new RecordRepository($this->manager))->scalarRow(
                 $metadata->name,
@@ -125,7 +142,7 @@ final class RecordReadOperation
         }
         // Entity callbacks must receive wholly local metadata, not private cached
         // metadata whose backend alone was detached after it had already loaded.
-        $fallback = $this->ownedMapping ? Orm::forConnection($this->connection) : $this->manager;
+        $fallback = $this->fallbackManager();
         try {
             return (new RecordRepository($fallback))->find($table, $column, $id);
         } finally {
@@ -148,7 +165,7 @@ final class RecordReadOperation
                 $this,
             );
         }
-        $fallback = $this->ownedMapping ? Orm::forConnection($this->connection) : $this->manager;
+        $fallback = $this->fallbackManager();
         try {
             return (new RecordRepository($fallback))->matching($table, $criteria, $order, $limit, $offset);
         } finally {
