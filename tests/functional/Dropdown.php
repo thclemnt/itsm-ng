@@ -87,7 +87,8 @@ class Dropdown extends DbTestCase
             $this->variable($expected[0]['sons_cache'])->isNull();
             $this->array($reader->rows('glpi_entities', ['id', 'entities_id'], ['id' => 0]))
                 ->isIdenticalTo($oracle->rows('glpi_entities', ['id', 'entities_id'], ['id' => 0]));
-            $connection->update('glpi_entities', ['entities_id' => null, 'ancestors_cache' => 'changed lower'], ['id' => $id]);
+            $this->integer((int)$reader->rows('glpi_entities', ['entities_id'], ['id' => 0])[0]['entities_id'])->isIdenticalTo(-1);
+            $connection->update('glpi_entities', ['ancestors_cache' => 'changed lower'], ['id' => $id]);
             $this->array($reader->rows('glpi_entities', $fields, ['id' => $id]))
                 ->isIdenticalTo($oracle->rows('glpi_entities', $fields, ['id' => $id]));
             // Scalar SQL aliases historically do not call PHP value converters.
