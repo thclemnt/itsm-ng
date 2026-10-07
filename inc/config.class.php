@@ -3098,8 +3098,19 @@ class Config extends CommonDBTM
         // Bootstrap must inspect historic configuration before the current
         // entity shape or any profile/domain state can be required.
         $connection = $DB->getDoctrineConnection();
-        $config_tables = $connection->createSchemaManager()->listTableNames();
         $platform = $connection->getDatabasePlatform();
+        $postgres = $platform instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+        $schema = $postgres ? 'current_schema()' : $platform->getCurrentDatabaseExpression();
+        $filter = $connection->getConfiguration()->getSchemaAssetsFilter();
+        // Inspect only the two physical bootstrap tables. information_schema
+        // retains the selected connection's table/column privilege visibility.
+        // Keep this local: later bootstrap code must observe intervening DDL.
+        $config_tables = array_values(array_filter($connection->fetchFirstColumn(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = " . $schema
+                . " AND table_type = 'BASE TABLE' AND table_name IN (?, ?)"
+                . ($postgres ? " AND table_schema NOT LIKE ? AND table_schema <> 'information_schema'" : ''),
+            $postgres ? ['glpi_config', 'glpi_configs', 'pg\\_%'] : ['glpi_config', 'glpi_configs']
+        ), static fn (string $table): bool => in_array($table, ['glpi_config', 'glpi_configs'], true) && $filter($table)));
 
         $get_prior_to_078_config = static function () use ($connection, $platform, $config_tables) {
             if (!in_array('glpi_config', $config_tables, true)) {

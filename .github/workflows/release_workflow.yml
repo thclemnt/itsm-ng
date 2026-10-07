@@ -60,6 +60,11 @@ jobs:
           sudo mysql_tzinfo_to_sql /usr/share/zoneinfo | sudo mysql mysql
           sudo mysql -e "GRANT SELECT ON mysql.time_zone_name TO '$DB_USER'@'localhost'; FLUSH PRIVILEGES;"
 
+          # Match the disposable Config fixture scope used by application CI.
+          sudo mysql <<'SQL'
+          GRANT ALL ON `itsm\_test\_config\_catalog\_%`.* TO 'test'@'localhost';
+          SQL
+
       - name: Install ITSM-ng
         run: php bin/console itsmng:database:install -H localhost -u $DB_USER -p $DB_PASSWORD -d $DB_DATABASE -n
 

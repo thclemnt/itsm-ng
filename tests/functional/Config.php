@@ -42,6 +42,166 @@ use Session;
 
 class Config extends DbTestCase
 {
+    public function testLegacyConfigurationInspectsFreshPhysicalTablesOnSelectedConnection(): void
+    {
+        global $DB, $CFG_GLPI;
+        $original = $DB;
+        $originalConfig = $CFG_GLPI;
+        $parameters = $original->getDoctrineConnection()->getParams();
+        $postgres = $original->getProvider() === 'pgsql';
+        $factory = $postgres ? \itsmng\Database\PostgresConnection::class : \itsmng\Database\MySQLConnection::class;
+        $admin = $factory::create($parameters);
+        $namespace = 'itsm_test_config_catalog_' . bin2hex(random_bytes(6));
+        $quotedNamespace = $admin->quoteIdentifier($namespace);
+        $connection = null;
+        $created = false;
+        $roleCreated = false;
+        $logger = new class () extends \Psr\Log\AbstractLogger {
+            public array $queries = [];
+            public function log($level, $message, array $context = []): void
+            {
+                if (isset($context['sql'])) {
+                    // Capture actual driver SQL only, never connection or row data.
+                    $this->queries[] = strtolower(str_replace(['`', '"'], '', $context['sql']));
+                }
+            }
+        };
+        $configuration = new \Doctrine\DBAL\Configuration();
+        $configuration->setMiddlewares([new \Doctrine\DBAL\Logging\Middleware($logger)]);
+        try {
+            // A private physical namespace keeps DDL out of the suite's transaction.
+            // CI grants MySQL DDL only on itsm_test_config_catalog_* databases.
+            // PostgreSQL fixtures need CREATE SCHEMA, CREATEROLE and SET ROLE.
+            $admin->executeStatement(($postgres ? 'CREATE SCHEMA ' : 'CREATE DATABASE ') . $quotedNamespace);
+            $created = true;
+            if ($postgres) {
+                $parameters['search_path'] = $quotedNamespace;
+            } else {
+                $parameters['dbname'] = $namespace;
+            }
+            $connection = $factory::create($parameters, $configuration);
+            $probe = clone $original;
+            (new \ReflectionProperty(\DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
+            $probe->clearSchemaCache();
+            if ($postgres) {
+                $probe->dbschema = $namespace;
+            } else {
+                $probe->dbdefault = $namespace;
+            }
+            // Global DB already represents the configured reader or writer. The
+            // loader must use its connection, never acquire a default writer.
+            $probe->slave = true;
+            $DB = $probe;
+            $load = function (bool $olderFirst, ?string $marker) use (&$CFG_GLPI): void {
+                $CFG_GLPI = [];
+                $this->boolean(\Config::loadLegacyConfiguration($olderFirst, false))->isIdenticalTo($marker !== null);
+                $this->variable($CFG_GLPI['catalog_probe'] ?? null)->isIdenticalTo($marker);
+            };
+            $load(false, null);
+            $connection->executeStatement('CREATE TABLE glpi_config (id INTEGER NOT NULL, catalog_probe VARCHAR(40))');
+            $connection->insert('glpi_config', ['id' => 1, 'catalog_probe' => 'old']);
+            $load(false, 'old');
+            $connection->executeStatement('CREATE TABLE glpi_configs (id INTEGER NOT NULL, context VARCHAR(40), name VARCHAR(40), value VARCHAR(80))');
+            $connection->insert('glpi_configs', ['id' => 1, 'context' => 'core', 'name' => 'catalog_probe', 'value' => 'current']);
+            $connection->insert('glpi_configs', ['id' => 2, 'context' => 'other', 'name' => 'catalog_probe', 'value' => 'wrong-context']);
+            $load(true, 'old');
+            $load(false, 'current');
+
+            // Establish the actual full-catalog SQL baseline, then require that
+            // the loader's catalog query constrains the two bootstrap names.
+            $logger->queries = [];
+            $this->array($connection->createSchemaManager()->listTableNames())->contains('glpi_configs');
+            $catalogQueries = static fn (array $queries): array => array_values(array_filter(
+                $queries,
+                static fn (string $sql): bool => str_contains($sql, 'information_schema.tables') || str_contains($sql, 'from pg_class')
+            ));
+            $this->array($catalogQueries($logger->queries))->hasSize(1);
+            $logger->queries = [];
+            $load(false, 'current');
+            $catalog = $catalogQueries($logger->queries);
+            $this->array($catalog)->hasSize(1);
+            $targetedCatalog = array_values(array_filter($catalog, static fn (string $sql): bool =>
+                preg_match('/table_name\s+in\s*\(\s*(?:\?|\$[0-9]+)\s*,\s*(?:\?|\$[0-9]+)\s*\)/', $sql) === 1));
+            $this->array($targetedCatalog)->hasSize(1);
+            $this->array((new \ReflectionProperty(\DBAdapter::class, 'table_cache'))->getValue($probe))->isEmpty();
+
+            if ($postgres) {
+                // Empty search_path must not discover a same-named table in
+                // another schema (including the application's real schema).
+                $connection->executeStatement('SET search_path TO ' . $connection->quoteIdentifier($namespace . '_missing'));
+                $load(false, null);
+                $connection->executeStatement('SET search_path TO ' . $connection->quoteIdentifier($namespace . '_missing') . ', ' . $quotedNamespace);
+                $load(false, 'current');
+                $connection->executeStatement('SET search_path TO ' . $quotedNamespace);
+
+                // The historic information_schema scan only exposes tables
+                // visible through ownership, table grants, or column grants.
+                $admin->executeStatement('CREATE ROLE ' . $quotedNamespace);
+                $roleCreated = true;
+                $admin->executeStatement('GRANT USAGE ON SCHEMA ' . $quotedNamespace . ' TO ' . $quotedNamespace);
+                $admin->executeStatement('GRANT SELECT ON ' . $quotedNamespace . '.glpi_configs TO ' . $quotedNamespace);
+                $connection->executeStatement('SET ROLE ' . $quotedNamespace);
+                $visible = $connection->createSchemaManager()->listTableNames();
+                $this->array($visible)->contains('glpi_configs')->notContains('glpi_config');
+                $load(true, 'current'); // Hidden old table must not shadow current.
+                $connection->executeStatement('RESET ROLE');
+                $admin->executeStatement('GRANT SELECT (id) ON ' . $quotedNamespace . '.glpi_config TO ' . $quotedNamespace);
+                $connection->executeStatement('SET ROLE ' . $quotedNamespace);
+                $this->array($connection->createSchemaManager()->listTableNames())->contains('glpi_config');
+                // A column grant exposes the table, but SELECT * still fails;
+                // the loader must not mistake partial access for absence.
+                $this->exception(static fn () => \Config::loadLegacyConfiguration(true, false))
+                    ->isInstanceOf(\Doctrine\DBAL\Exception\DriverException::class);
+                $connection->executeStatement('RESET ROLE');
+            }
+
+            $manager = $connection->createSchemaManager();
+            $manager->renameTable('glpi_config', 'saved_config');
+            $load(true, 'current');
+            $manager->renameTable('glpi_configs', 'saved_configs');
+            $load(false, null);
+            $connection->executeStatement('CREATE VIEW glpi_configs AS SELECT * FROM saved_configs');
+            $load(false, null); // A view is not a physical configuration table.
+            $connection->executeStatement('DROP VIEW glpi_configs');
+            $manager->renameTable('saved_configs', 'glpi_configs');
+            $load(false, 'current');
+            $manager->renameTable('glpi_configs', $connection->quoteIdentifier('GLPI_CONFIGS'));
+            $exactNameExists = in_array('glpi_configs', $manager->listTableNames(), true);
+            $load(false, $exactNameExists ? 'current' : null);
+            $manager->renameTable($connection->quoteIdentifier('GLPI_CONFIGS'), 'glpi_configs');
+            $connection->getConfiguration()->setSchemaAssetsFilter(static fn (string $name): bool => $name !== 'glpi_configs');
+            $load(false, null);
+            $connection->getConfiguration()->setSchemaAssetsFilter(static fn (string $name): bool => true);
+            $load(false, 'current');
+
+            // Unsignaled DDL between loading configuration and cache bootstrap
+            // must remain visible to the adapter's formerly fresh first scan.
+            $manager->renameTable('glpi_configs', 'saved_configs');
+            $this->object(\Config::getCache('cache_db', 'core', false))
+                ->isInstanceOf(\Laminas\Cache\Storage\Adapter\Filesystem::class);
+            $this->boolean($probe->tableExists('glpi_configs', false))->isFalse();
+            $connection->executeStatement('CREATE TABLE glpi_configs (id INTEGER NOT NULL, catalog_probe VARCHAR(40))');
+            $connection->insert('glpi_configs', ['id' => 1, 'catalog_probe' => 'wide']);
+            $load(false, 'wide');
+            $manager->dropTable('glpi_configs');
+            $load(false, null);
+            $manager->renameTable('saved_config', 'glpi_config');
+            $load(false, 'old');
+            $this->object($original->getDoctrineConnection())->isNotIdenticalTo($connection);
+        } finally {
+            $DB = $original;
+            $CFG_GLPI = $originalConfig;
+            $connection?->close();
+            if ($created) {
+                $admin->executeStatement(($postgres ? 'DROP SCHEMA ' : 'DROP DATABASE ') . $quotedNamespace . ($postgres ? ' CASCADE' : ''));
+            }
+            if ($roleCreated) {
+                $admin->executeStatement('DROP ROLE ' . $quotedNamespace);
+            }
+            $admin->close();
+        }
+    }
+
     public function testSchemaInspectionDetectsCurrentConfigEditsWithoutChangingStorage(): void
     {
         global $DB;
