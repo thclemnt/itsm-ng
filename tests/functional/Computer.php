@@ -33,7 +33,16 @@
 
 namespace tests\units;
 
+use CommonDBTM;
+use Computer as ComputerModel;
+use Computer_Item;
 use DbTestCase;
+use Monitor;
+use Peripheral;
+use Phone;
+use Plugin;
+use Printer;
+use ReflectionProperty;
 
 /* Test for inc/computer.class.php */
 
@@ -199,14 +208,19 @@ class Computer extends DbTestCase
                 'locations_id' => $this->getNewLocationId(), 'users_id' => $this->getNewUserId(),
                 'groups_id' => $this->getNewGroupId(), 'states_id' => $this->getNewStateId(),
             ];
-            foreach (['ordinary', 'global', 'bypass'] as $mode) {
+            foreach (['ordinary', 'unchanged', 'global', 'bypass'] as $mode) {
                 $monitor = $this->createItem(\Monitor::class, [
                     'name' => '_disconnect_' . $mode, 'entities_id' => $entity,
                     'is_global' => (int)($mode === 'global'),
-                ] + $values);
+                ] + ($mode === 'unchanged' ? [
+                    'contact' => '', 'contact_num' => '',
+                    'locations_id' => 0, 'users_id' => 0, 'groups_id' => 0, 'states_id' => 0,
+                ] : $values));
                 $link = $this->createItem(\Computer_Item::class, [
                     'computers_id' => $computer->getID(), 'itemtype' => 'Monitor', 'items_id' => $monitor->getID(),
                 ]);
+                $this->boolean($monitor->getFromDB($monitor->getID()))->isTrue();
+                $storedFields = $monitor->fields;
                 $id = (int)$link->getID();
                 $updated = [];
                 $input = ['id' => $id];
@@ -223,6 +237,9 @@ class Computer extends DbTestCase
                     foreach (['locations_id', 'users_id', 'groups_id', 'states_id'] as $field) {
                         $this->variable($monitor->getField($field))->isNull();
                     }
+                } elseif ($mode === 'unchanged') {
+                    $this->array($updated)->isEmpty();
+                    $this->array($monitor->fields)->isIdenticalTo($storedFields);
                 } else {
                     $this->array($updated)->isEmpty();
                     foreach ($values as $field => $value) {
@@ -231,6 +248,102 @@ class Computer extends DbTestCase
                 }
             }
             $this->boolean($computer->getFromDB($computer->getID()))->isTrue();
+        } finally {
+            $CFG_GLPI = $savedConfig;
+            $PLUGIN_HOOKS = $savedHooks;
+            $plugins->setValue(null, $savedPlugins);
+        }
+    }
+
+    public function testDisconnectAutoCleanVetoPreservesConnectionAndParentPurge(): void
+    {
+        global $CFG_GLPI, $DB, $PLUGIN_HOOKS;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $savedConfig = $CFG_GLPI;
+        $savedHooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $savedPlugins = $plugins->getValue();
+        $attemptingDelete = false;
+        $cleanupCalls = [];
+        $completed = [];
+        $connection = $DB->getDoctrineConnection();
+        $level = $connection->getTransactionNestingLevel();
+        try {
+            foreach (['contact', 'user', 'group', 'location'] as $field) {
+                $CFG_GLPI['is_' . $field . '_autoupdate'] = 0;
+                $CFG_GLPI['is_' . $field . '_autoclean'] = (int)($field === 'contact');
+            }
+            $CFG_GLPI['state_autoupdate_mode'] = 0;
+            $CFG_GLPI['state_autoclean_mode'] = 0;
+            $plugins->setValue(null, [...$savedPlugins, 'disconnect_veto_fixture']);
+            foreach ([Monitor::class, Peripheral::class, Phone::class, Printer::class] as $type) {
+                $PLUGIN_HOOKS['pre_item_update']['disconnect_veto_fixture'][$type] = static function (CommonDBTM $item) use (
+                    &$attemptingDelete,
+                    &$cleanupCalls,
+                    &$mode
+                ): void {
+                    if (!$attemptingDelete) {
+                        return;
+                    }
+                    $cleanupCalls[] = (int)$item->getID();
+                    if ($mode === 'disconnect' || count($cleanupCalls) === 2) {
+                        $item->input = [];
+                    }
+                };
+                $PLUGIN_HOOKS['item_update']['disconnect_veto_fixture'][$type] = static function (CommonDBTM $item) use (&$completed): void {
+                    $completed[] = (int)$item->getID();
+                };
+                foreach (['disconnect', 'computer_purge'] as $mode) {
+                    $attemptingDelete = false;
+                    $cleanupCalls = [];
+                    $completed = [];
+                    $computer = $this->createItem(ComputerModel::class, [
+                        'name' => '_autoclean_veto_' . $type . '_' . $mode,
+                        'entities_id' => $entity,
+                    ]);
+                    $snapshots = [[$computer, $computer->fields]];
+                    // The first cleanup in a parent purge succeeds before the second veto.
+                    // Its persisted fields must also be restored by the owning deletion.
+                    foreach (['first', 'veto'] as $suffix) {
+                        $device = $this->createItem($type, [
+                            'name' => '_autoclean_veto_' . $type . '_' . $mode . '_' . $suffix,
+                            'entities_id' => $entity,
+                            'is_global' => 0,
+                            'contact' => 'Keep assigned contact',
+                            'contact_num' => '12345',
+                        ]);
+                        $link = $this->createItem(Computer_Item::class, [
+                            'computers_id' => $computer->getID(),
+                            'itemtype' => $type,
+                            'items_id' => $device->getID(),
+                        ]);
+                        $snapshots[] = [$device, $device->fields];
+                        $snapshots[] = [$link, $link->fields];
+                    }
+                    $attemptingDelete = true;
+                    $logs = iterator_to_array($DB->request(['FROM' => 'glpi_logs', 'ORDER' => 'id']));
+                    $target = $mode === 'disconnect' ? $link : $computer;
+                    $this->boolean($target->delete(['id' => $target->getID()], true))->isFalse();
+                    $attemptingDelete = false;
+                    $this->array($cleanupCalls)->hasSize($mode === 'computer_purge' ? 2 : 1);
+                    $this->array($completed)->isIdenticalTo($mode === 'computer_purge' ? [$cleanupCalls[0]] : []);
+                    $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+                    $this->array(iterator_to_array($DB->request([
+                        'FROM' => 'glpi_logs',
+                        'ORDER' => 'id',
+                    ])))->isIdenticalTo($logs);
+                    foreach ($snapshots as [$model, $fields]) {
+                        $this->boolean($model->getFromDB($fields['id']))->isTrue();
+                        $this->array($model->fields)->isIdenticalTo($fields);
+                    }
+                }
+                unset(
+                    $PLUGIN_HOOKS['pre_item_update']['disconnect_veto_fixture'][$type],
+                    $PLUGIN_HOOKS['item_update']['disconnect_veto_fixture'][$type]
+                );
+            }
         } finally {
             $CFG_GLPI = $savedConfig;
             $PLUGIN_HOOKS = $savedHooks;

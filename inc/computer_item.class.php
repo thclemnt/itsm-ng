@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\DeletionUnit;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -182,7 +184,9 @@ class Computer_Item extends CommonDBRelation
 
     public function cleanDBonPurge()
     {
-        global $CFG_GLPI;
+        global $CFG_GLPI, $DB;
+
+        $connection = $DB->getDoctrineConnection();
 
         if (!isset($this->input['_no_auto_action'])) {
             //Get device fields
@@ -190,13 +194,25 @@ class Computer_Item extends CommonDBRelation
                 if ($device->getFromDB($this->fields['items_id'])) {
                     if (!$device->getField('is_global')) {
                         $updates = [];
-                        if ($CFG_GLPI["is_location_autoclean"] && $device->isField('locations_id')) {
+                        if (
+                            $CFG_GLPI["is_location_autoclean"]
+                            && $device->isField('locations_id')
+                            && $device->getField('locations_id') !== null
+                        ) {
                             $updates['locations_id'] = 0;
                         }
-                        if ($CFG_GLPI["is_user_autoclean"] && $device->isField('users_id')) {
+                        if (
+                            $CFG_GLPI["is_user_autoclean"]
+                            && $device->isField('users_id')
+                            && $device->getField('users_id') !== null
+                        ) {
                             $updates['users_id'] = 0;
                         }
-                        if ($CFG_GLPI["is_group_autoclean"] && $device->isField('groups_id')) {
+                        if (
+                            $CFG_GLPI["is_group_autoclean"]
+                            && $device->isField('groups_id')
+                            && $device->getField('groups_id') !== null
+                        ) {
                             $updates['groups_id'] = 0;
                         }
                         if ($CFG_GLPI["is_contact_autoclean"] && $device->isField('contact')) {
@@ -208,6 +224,7 @@ class Computer_Item extends CommonDBRelation
                         if (
                             ($CFG_GLPI["state_autoclean_mode"] < 0)
                             && $device->isField('states_id')
+                            && $device->getField('states_id') !== null
                         ) {
                             $updates['states_id'] = 0;
                         }
@@ -222,7 +239,7 @@ class Computer_Item extends CommonDBRelation
 
                         if (count($updates)) {
                             $updates['id'] = $this->fields['items_id'];
-                            $device->update($updates);
+                            DeletionUnit::requireSuccess($connection, (bool)$device->update($updates));
                         }
                     }
                 }
