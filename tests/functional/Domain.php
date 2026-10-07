@@ -339,6 +339,25 @@ class Domain extends DbTestCase
 
         $this->array(\Entity::getEntitiesToNotify('use_domains_alert'))->isEmpty();
 
+        $connection = $DB->getDoctrineConnection();
+        $this->variable($connection->fetchOne('SELECT entities_id FROM glpi_entities WHERE id = 0'))->isNull();
+        $rootValue = $connection->fetchOne('SELECT use_domains_alert FROM glpi_entities WHERE id = 0');
+        try {
+            // Root has no parent; an inherited setting cannot index a NULL owner.
+            $connection->update('glpi_entities', ['use_domains_alert' => \Entity::CONFIG_PARENT], ['id' => 0]);
+            $this->array(\Entity::getEntitiesToNotify('use_domains_alert'))->isEmpty();
+            $connection->update('glpi_entities', ['use_domains_alert' => 1], ['id' => 0]);
+            $inherited = \Entity::getEntitiesToNotify('use_domains_alert');
+            foreach ([0, getItemByTypeName('Entity', '_test_root_entity', true),
+                getItemByTypeName('Entity', '_test_child_1', true), getItemByTypeName('Entity', '_test_child_2', true)] as $id) {
+                $this->integer((int)$inherited[$id])->isIdenticalTo(1);
+            }
+            $connection->update('glpi_entities', ['use_domains_alert' => 0], ['id' => 0]);
+            $this->array(\Entity::getEntitiesToNotify('use_domains_alert'))->isEmpty();
+        } finally {
+            $connection->update('glpi_entities', ['use_domains_alert' => $rootValue], ['id' => 0]);
+        }
+
         $entity = getItemByTypeName('Entity', '_test_root_entity');
         $this->boolean(
             $entity->update([

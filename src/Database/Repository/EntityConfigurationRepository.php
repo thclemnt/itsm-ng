@@ -40,7 +40,7 @@ final class EntityConfigurationRepository
             ->orderBy('root_order')->addOrderBy('r.level')->addOrderBy('r.id');
         $values = [];
         foreach ($query->getQuery()->getScalarResult() as $row) {
-            if (($row['value'] === null || $row['value'] == \Entity::CONFIG_PARENT) && isset($values[$row['parent']])) {
+            if (($row['value'] === null || $row['value'] == \Entity::CONFIG_PARENT) && $row['parent'] !== null && isset($values[$row['parent']])) {
                 $values[$row['entity']] = $values[$row['parent']];
             } elseif ($row['value'] > 0) {
                 $values[$row['entity']] = $row['value'];
