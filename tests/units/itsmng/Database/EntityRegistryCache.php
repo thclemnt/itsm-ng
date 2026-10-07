@@ -128,6 +128,16 @@ class EntityRegistryCache extends \atoum\atoum\test
                         $this->boolean(isset($actual[$metadata->name]))->isFalse();
                     }
                 }
+                $entity = $manager->getClassMetadata(\itsmng\Database\Entity\Entity::class);
+                $types = $enums = [];
+                foreach ($entity->fieldMappings as $mapping) {
+                    $types[$mapping->columnName] = $mapping->type;
+                    if ($mapping->enumType !== null) {
+                        $enums[$mapping->columnName] = $mapping->enumType;
+                    }
+                }
+                $this->array(EntityRegistry::fieldTypes('glpi_entities'))->isIdenticalTo($types);
+                $this->array(EntityRegistry::fieldEnums('glpi_entities'))->isIdenticalTo($enums);
                 ksort($expected);
                 $this->array($actual)->isIdenticalTo($expected);
                 $this->boolean($connection->isConnected())->isFalse();
@@ -243,14 +253,14 @@ class EntityRegistryCache extends \atoum\atoum\test
         $registry = new RegistryCache($cache, MappingFingerprint::forSource($this->root));
         $registry->load($build);
         $key = array_key_first($pool->getValues());
-        foreach (['a:0:{}', '1:' . str_repeat('0', 64) . ':a:0:{}', '1:' . hash('sha256', 'truncated') . ':truncated'] as $damaged) {
+        foreach (['a:0:{}', '2:' . str_repeat('0', 64) . ':a:0:{}', '2:' . hash('sha256', 'truncated') . ':truncated'] as $damaged) {
             $cache->set($key, $damaged);
             $value = $registry->load($build);
             $this->integer($value['generation'])->isIdenticalTo($builds);
         }
         $this->integer($builds)->isIdenticalTo(4);
         $unrecognized = serialize(['unexpected' => new RegistryCacheWakeupProbe()]);
-        $cache->set($key, '1:' . hash('sha256', $unrecognized) . ':' . $unrecognized);
+        $cache->set($key, '2:' . hash('sha256', $unrecognized) . ':' . $unrecognized);
         $this->array($registry->load($build))->isIdenticalTo(['generation' => 5]);
         $this->integer(RegistryCacheWakeupProbe::$wakeups)->isIdenticalTo(0);
         $cache->clear();
@@ -292,7 +302,7 @@ class EntityRegistryCache extends \atoum\atoum\test
         $first['next'] = &$second;
         foreach ([$cycle, $first, ['nested' => [['unknown' => new RegistryCacheWakeupProbe()]]]] as $invalid) {
             $bytes = serialize($invalid);
-            $cache->set($key, '1:' . hash('sha256', $bytes) . ':' . $bytes);
+            $cache->set($key, '2:' . hash('sha256', $bytes) . ':' . $bytes);
             $before = $builds;
             $this->string(serialize($registry->load($build)))->isIdenticalTo(serialize($model));
             $this->integer($builds)->isIdenticalTo($before + 1);
@@ -443,7 +453,7 @@ class EntityRegistryCache extends \atoum\atoum\test
         $previousModel = $model->getValue();
         $pool = new ArrayAdapter(storeSerialized: false);
         $GLOBALS['GLPI_CACHE'] = new Psr16Cache($pool);
-        $snapshot = static fn (): array => [EntityRegistry::tables(), EntityRegistry::legacyTables(), EntityRegistry::relations(), EntityRegistry::lifecycleRelations(), EntityRegistry::nativeTimestamps(), EntityRegistry::booleanColumns(), EntityRegistry::references('glpi_tickets')];
+        $snapshot = static fn (): array => [EntityRegistry::tables(), EntityRegistry::legacyTables(), EntityRegistry::relations(), EntityRegistry::lifecycleRelations(), EntityRegistry::nativeTimestamps(), EntityRegistry::booleanColumns(), EntityRegistry::references('glpi_tickets'), EntityRegistry::fieldTypes('glpi_entities'), EntityRegistry::fieldEnums('glpi_entities')];
         try {
             $model->setValue(null, null);
             $cold = serialize($snapshot());
@@ -453,6 +463,15 @@ class EntityRegistryCache extends \atoum\atoum\test
             }
             $model->setValue(null, null);
             $this->string(serialize($snapshot()))->isIdenticalTo($cold);
+            // A valid old-format payload has no enum facts and must be rebuilt.
+            $oldModel = $model->getValue();
+            unset($oldModel['enums']);
+            $bytes = serialize($oldModel);
+            $key = array_key_first($pool->getValues());
+            $GLOBALS['GLPI_CACHE']->set($key, '1:' . hash('sha256', $bytes) . ':' . $bytes);
+            $model->setValue(null, null);
+            $this->string(serialize($snapshot()))->isIdenticalTo($cold);
+            $this->string($GLOBALS['GLPI_CACHE']->get($key))->startWith('2:');
             $GLOBALS['GLPI_CACHE']->clear();
             $model->setValue(null, null);
             $this->string(serialize($snapshot()))->isIdenticalTo($cold);

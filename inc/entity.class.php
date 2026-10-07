@@ -2576,8 +2576,13 @@ class Entity extends CommonTreeDropdown
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\EntityConfigurationRepository(\itsmng\Database\Orm::create($DB)))
-            ->usedConfiguration($fieldref, (int)($entities_id ?? Session::getActiveEntity()), $fieldval ?: $fieldref, $default_value);
+        return \itsmng\Database\Repository\EntityConfigurationRepository::readUsedConfiguration(
+            $DB->getDoctrineConnection(),
+            $fieldref,
+            (int)($entities_id ?? Session::getActiveEntity()),
+            $fieldval ?: $fieldref,
+            $default_value,
+        );
     }
 
 

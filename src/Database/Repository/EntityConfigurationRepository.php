@@ -4,12 +4,15 @@
 
 namespace itsmng\Database\Repository;
 
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity\Entity;
 use itsmng\Database\EntityConfigurationReferences;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\RecordCriteria;
+use itsmng\Database\Orm;
 
 /** Read entity settings through mapped records, keeping the public scalar API. */
 final class EntityConfigurationRepository
@@ -58,6 +61,81 @@ final class EntityConfigurationRepository
         $query = $this->em->createQueryBuilder()->select('IDENTITY(r.parent) AS parent_id')->from(Entity::class, 'r')
             ->where('r.id = :entity');
         $compiler = new RecordCriteria($query, $metadata, false);
+        $columns = self::configurationColumns($reference, $valueField);
+        foreach ($columns as $index => $column) {
+            $query->addSelect($compiler->column($column) . ' AS setting' . $index);
+        }
+        return self::inheritConfiguration($reference, $entity, $valueField, $default, function (int $entity) use ($query, $columns, $metadata): ?array {
+            $result = $query->setParameter('entity', $entity, Types::INTEGER)->getQuery()->getOneOrNullResult();
+            if ($result === null) {
+                return null;
+            }
+            $row = [];
+            foreach ($columns as $index => $column) {
+                $mapping = $metadata->fieldMappings[$metadata->getFieldName($column)] ?? null;
+                $row[$column] = RecordRepository::legacyScalarValue($result['setting' . $index], $mapping?->type ?? Types::BIGINT);
+            }
+            return [$result['parent_id'], $row];
+        });
+    }
+
+    /** Canonical application route; supplied managers retain usedConfiguration(). */
+    public static function readUsedConfiguration(Connection $connection, string $reference, int $entity, string $valueField, mixed $default): mixed
+    {
+        if ($entity < 0) {
+            return $default;
+        }
+        $platform = $connection->getDatabasePlatform();
+        if (method_exists($connection, 'getEventManager')) {
+            return (new self(Orm::forConnection($connection)))->usedConfiguration($reference, $entity, $valueField, $default);
+        }
+        $columns = self::configurationColumns($reference, $valueField);
+        $types = EntityRegistry::fieldTypes('glpi_entities');
+        $enums = EntityRegistry::fieldEnums('glpi_entities');
+        return self::inheritConfiguration($reference, $entity, $valueField, $default, static function (int $entity) use ($connection, $platform, $columns, $types, $enums): ?array {
+            try {
+                // Resolve conversions for each fresh ancestor read, just as each ORM query does.
+                $query = $connection->createQueryBuilder()->select($platform->quoteIdentifier('entities_id') . ' AS parent_id')
+                    ->from($platform->quoteIdentifier('glpi_entities'));
+                foreach ($columns as $index => $column) {
+                    $expression = $platform->quoteIdentifier($column);
+                    if (isset($types[$column])) {
+                        $expression = Type::getType($types[$column])->convertToPHPValueSQL($expression, $platform);
+                    }
+                    $query->addSelect($expression . ' AS setting' . $index);
+                }
+                $query->where($platform->quoteIdentifier('id') . ' = ' . Type::getType(Types::INTEGER)->convertToDatabaseValueSQL(':entity', $platform))
+                    ->setParameter('entity', $entity, Types::INTEGER);
+                $result = $query->executeQuery()->fetchAssociative();
+                if ($result === false) {
+                    return null;
+                }
+                $parent = Type::getType(Types::STRING)->convertToPHPValue($result['parent_id'], $platform);
+                $row = [];
+                foreach ($columns as $index => $column) {
+                    // IDENTITY() is hydrated as an untyped string, without SQL conversion.
+                    $value = Type::getType($types[$column] ?? Types::STRING)->convertToPHPValue($result['setting' . $index], $platform);
+                    if ($value !== null && isset($enums[$column])) {
+                        $enum = $enums[$column];
+                        $integer = (new \ReflectionEnum($enum))->getBackingType()->getName() === 'int';
+                        $convert = static fn ($entry) => $enum::from($integer ? (int)$entry : $entry);
+                        $value = is_array($value) ? array_map($convert, $value) : $convert($value);
+                    }
+                    $row[$column] = $value;
+                }
+            } catch (\Doctrine\ORM\NoResultException) {
+                // getOneOrNullResult() treats this query/hydration outcome as no row.
+                return null;
+            }
+            foreach ($columns as $column) {
+                $row[$column] = RecordRepository::legacyScalarValue($row[$column], $types[$column] ?? Types::BIGINT);
+            }
+            return [$parent, $row];
+        });
+    }
+
+    private static function configurationColumns(string $reference, string $valueField): array
+    {
         $columns = [$reference, $valueField];
         $references = EntityConfigurationReferences::fields();
         foreach (array_unique($columns) as $column) {
@@ -66,26 +144,23 @@ final class EntityConfigurationRepository
             }
         }
         // Unknown reference/value names retain the existing missing-field/default behavior.
-        $columns = array_values(array_intersect(array_unique($columns), EntityRegistry::columnNames('glpi_entities')));
-        foreach ($columns as $index => $column) {
-            $query->addSelect($compiler->column($column) . ' AS setting' . $index);
-        }
+        return array_values(array_intersect(array_unique($columns), EntityRegistry::columnNames('glpi_entities')));
+    }
+
+    /** One inheritance walk for both canonical DBAL and externally configured ORM readers. */
+    private static function inheritConfiguration(string $reference, int $entity, string $valueField, mixed $default, callable $read): mixed
+    {
         $seen = [];
         while ($entity >= 0) {
             if (isset($seen[$entity])) {
                 throw new \RuntimeException('Cyclic entity configuration inheritance');
             }
             $seen[$entity] = true;
-            $result = $query->setParameter('entity', $entity, Types::INTEGER)->getQuery()->getOneOrNullResult();
+            $result = $read($entity);
             if ($result === null) {
                 return $default;
             }
-            $row = [];
-            foreach ($columns as $index => $column) {
-                $mapping = $metadata->fieldMappings[$metadata->getFieldName($column)] ?? null;
-                // Owning references are identifiers; scalar fields retain their mapped type.
-                $row[$column] = RecordRepository::legacyScalarValue($result['setting' . $index], $mapping?->type ?? Types::BIGINT);
-            }
+            [$parent, $row] = $result;
             $row = EntityConfigurationReferences::legacyRow($row);
             if (isset($row[$reference]) && (is_numeric($default) ? $row[$reference] != \Entity::CONFIG_PARENT : (bool)$row[$reference])) {
                 return array_key_exists($valueField, $row) ? $row[$valueField] : $default;
@@ -93,7 +168,7 @@ final class EntityConfigurationRepository
             if ($entity === 0) {
                 return $default;
             }
-            $entity = $result['parent_id'] === null ? -1 : (int)$result['parent_id'];
+            $entity = $parent === null ? -1 : (int)$parent;
         }
         return $default;
     }

@@ -35,7 +35,7 @@ final class EntityRegistryCache
             // Even memory/session adapters receive only strings, never objects
             // retained by callers. No manager, metadata or connection is saved.
             $serialized = serialize($model);
-            $this->cache->set($this->key, '1:' . hash('sha256', $serialized) . ':' . $serialized);
+            $this->cache->set($this->key, '2:' . hash('sha256', $serialized) . ':' . $serialized);
         } catch (\Throwable) {
             // Best-effort population; the authoritative projection is usable.
         }
@@ -44,7 +44,8 @@ final class EntityRegistryCache
 
     private function decode(mixed $payload): ?array
     {
-        if (!is_string($payload) || !str_starts_with($payload, '1:') || ($payload[66] ?? '') !== ':') {
+        // Version 2 includes scalar enum hydration facts; version 1 must rebuild.
+        if (!is_string($payload) || !str_starts_with($payload, '2:') || ($payload[66] ?? '') !== ':') {
             return null;
         }
         $serialized = substr($payload, 67);

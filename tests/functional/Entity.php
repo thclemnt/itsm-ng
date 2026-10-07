@@ -558,24 +558,86 @@ class Entity extends DbTestCase
         ], ['id' => $child]))->isTrue();
         $em = \itsmng\Database\Orm::create($DB);
         $settings = new \itsmng\Database\Repository\EntityConfigurationRepository($em);
-        $this->string($settings->usedConfiguration('admin_email', $child, 'comment', 'fallback'))
+        $read = $this->configurationReader($settings);
+        $this->string($read('admin_email', $child, 'comment', 'fallback'))
             ->isIdenticalTo('Parent setting');
         // A numeric default considers an empty string explicit; a string default inherits it.
-        $this->variable($settings->usedConfiguration('admin_email', $child, 'comment', -2))->isNull();
-        $this->integer($settings->usedConfiguration('id', $child, 'id', -2))->isIdenticalTo($child);
-        $this->integer($settings->usedConfiguration('id', $child, 'entities_id', -2))->isIdenticalTo($parent);
-        $this->string($settings->usedConfiguration('id', $child, 'max_closedate', -2))
+        $this->variable($read('admin_email', $child, 'comment', -2))->isNull();
+        $this->integer($read('id', $child, 'id', -2))->isIdenticalTo($child);
+        $this->integer($read('id', $child, 'entities_id', -2))->isIdenticalTo($parent);
+        $this->string($read('id', $child, 'max_closedate', -2))
             ->isIdenticalTo('2026-02-03 04:05:06');
-        $this->string($settings->usedConfiguration('id', $child, 'calendar_mode', -2))->isIdenticalTo('inherit');
+        $this->string($read('id', $child, 'calendar_mode', -2))->isIdenticalTo('inherit');
         $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
 
         // Reusing the repository must see writes on its supplied connection, including NULL.
         $this->boolean($DB->update('glpi_entities', ['admin_email' => 'child@example.test'], ['id' => $child]))->isTrue();
-        $this->variable($settings->usedConfiguration('admin_email', $child, 'comment', 'fallback'))->isNull();
+        $this->variable($read('admin_email', $child, 'comment', 'fallback'))->isNull();
         $this->boolean($DB->update('glpi_entities', ['comment' => 'Changed setting'], ['id' => $child]))->isTrue();
-        $this->string($settings->usedConfiguration('admin_email', $child, 'comment', 'fallback'))
+        $this->string($read('admin_email', $child, 'comment', 'fallback'))
             ->isIdenticalTo('Changed setting');
         $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+
+        $connection = $DB->getDoctrineConnection();
+        $probe = new EntityConfigurationReadProbe($connection);
+        $this->mockGenerator->orphanize('__construct');
+        $adapter = new \mock\DBmysql();
+        $this->calling($adapter)->getDoctrineConnection = $probe;
+        $original = $DB;
+        $counter = new \ReflectionProperty(\itsmng\Database\Orm::class, 'unitsOfWork');
+        $registry = \Doctrine\DBAL\Types\Type::getTypeRegistry();
+        $text = $registry->get(\Doctrine\DBAL\Types\Types::TEXT);
+        try {
+            $DB = $adapter;
+            $before = $counter->getValue();
+            $this->string(\Entity::getUsedConfig('admin_email', $child, 'comment', 'fallback'))->isIdenticalTo('Changed setting');
+            $this->integer($counter->getValue() - $before)->isIdenticalTo(0);
+            $this->array($probe->ids)->isIdenticalTo([$child]);
+            $original->update('glpi_entities', ['admin_email' => ''], ['id' => $child]);
+            $probe->ids = [];
+            $this->string(\Entity::getUsedConfig('admin_email', $child, 'comment', 'fallback'))->isIdenticalTo('Parent setting');
+            $this->array($probe->ids)->isIdenticalTo([$child, $parent]);
+            $registry->override(\Doctrine\DBAL\Types\Types::TEXT, new EntityConfigurationTextType());
+            $this->string($read('admin_email', $child, 'comment', 'fallback'))->isIdenticalTo('PARENT SETTING|php');
+            $registry->override(\Doctrine\DBAL\Types\Types::TEXT, new EntityConfigurationNoResultType());
+            $this->string($read('admin_email', $child, 'comment', 'fallback'))->isIdenticalTo('fallback');
+            $registry->override(\Doctrine\DBAL\Types\Types::TEXT, new EntityConfigurationFailureType());
+            $this->exception(static fn () => $settings->usedConfiguration('admin_email', $child, 'comment', 'fallback'))
+                ->isInstanceOf(\RuntimeException::class)->hasMessage('Configuration conversion failed');
+            $this->exception(static fn () => \Entity::getUsedConfig('admin_email', $child, 'comment', 'fallback'))
+                ->isInstanceOf(\RuntimeException::class)->hasMessage('Configuration conversion failed');
+            $registry->override(\Doctrine\DBAL\Types\Types::TEXT, new EntityConfigurationTextType());
+
+
+            // A supplied manager's local field edits are never replaced by canonical type facts.
+            $em->getClassMetadata(\itsmng\Database\Entity\Entity::class)->fieldMappings['comment']->type = 'string';
+            $this->string($settings->usedConfiguration('admin_email', $child, 'comment', 'fallback'))->isIdenticalTo('Parent setting');
+
+            $listenerConnection = new EntityConfigurationListenerProbe($connection);
+            $listener = new class () {
+                public int $loads = 0;
+                public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+                {
+                    if ($event->getClassMetadata()->name === \itsmng\Database\Entity\Entity::class) {
+                        ++$this->loads;
+                        $event->getClassMetadata()->fieldMappings['comment']->type = 'string';
+                    }
+                }
+            };
+            $listenerConnection->getEventManager()->addEventListener(\Doctrine\ORM\Events::loadClassMetadata, $listener);
+            $this->calling($adapter)->getDoctrineConnection = $listenerConnection;
+            $this->string(\Entity::getUsedConfig('admin_email', $child, 'comment', 'fallback'))->isIdenticalTo('Parent setting');
+            $this->integer($listener->loads)->isIdenticalTo(1);
+            $this->array($listenerConnection->ids)->isIdenticalTo([$child, $parent]);
+
+            $this->calling($adapter)->getDoctrineConnection = new EntityConfigurationPlatformProbe($connection);
+            $before = $counter->getValue();
+            $this->string(\Entity::getUsedConfig('admin_email', $child, 'comment', 'fallback'))->isIdenticalTo('PARENT SETTING|php');
+            $this->integer($counter->getValue() - $before)->isIdenticalTo(0);
+        } finally {
+            $DB = $original;
+            $registry->override(\Doctrine\DBAL\Types\Types::TEXT, $text);
+        }
     }
 
     public function testGetUsedConfigProjectionReferences(): void
@@ -596,23 +658,36 @@ class Entity extends DbTestCase
         ], ['id' => $child]))->isTrue();
         $em = \itsmng\Database\Orm::create($DB);
         $settings = new \itsmng\Database\Repository\EntityConfigurationRepository($em);
-        $this->integer($settings->usedConfiguration('calendars_id', $child, 'calendars_id', -2))
+        $read = $this->configurationReader($settings);
+        $this->integer($read('calendars_id', $child, 'calendars_id', -2))
             ->isIdenticalTo($calendarId);
-        $this->integer($settings->usedConfiguration('entities_id_software', $child, 'entities_id_software', -2))
+        $this->integer($read('entities_id_software', $child, 'entities_id_software', -2))
             ->isIdenticalTo(-10);
         // Both the gate and value need their own mode when they are different references.
-        $this->integer($settings->usedConfiguration('calendars_id', $child, 'entities_id_software', -2))
+        $this->integer($read('calendars_id', $child, 'entities_id_software', -2))
             ->isIdenticalTo(0);
-        $this->integer($settings->usedConfiguration('entities_id_software', $child, 'calendars_id', -2))
+        $this->integer($read('entities_id_software', $child, 'calendars_id', -2))
             ->isIdenticalTo(-2);
         $this->boolean($DB->update('glpi_entities', [
             'calendars_id' => null, 'calendar_mode' => 'explicit',
             'entities_id_software' => 0, 'software_entity_mode' => 'explicit',
         ], ['id' => $child]))->isTrue();
-        $this->integer($settings->usedConfiguration('calendars_id', $child, 'calendars_id', -2))->isIdenticalTo(0);
-        $this->integer($settings->usedConfiguration('entities_id_software', $child, 'entities_id_software', -2))
+        $this->integer($read('calendars_id', $child, 'calendars_id', -2))->isIdenticalTo(0);
+        $this->integer($read('entities_id_software', $child, 'entities_id_software', -2))
             ->isIdenticalTo(0);
-        $this->string($settings->usedConfiguration('id', $child, 'calendar_mode', -2))->isIdenticalTo('explicit');
+        $this->string($read('id', $child, 'calendar_mode', -2))->isIdenticalTo('explicit');
+        $registry = \Doctrine\DBAL\Types\Type::getTypeRegistry();
+        $string = $registry->get(\Doctrine\DBAL\Types\Types::STRING);
+        try {
+            $registry->override(\Doctrine\DBAL\Types\Types::STRING, new EntityConfigurationInvalidModeType());
+            $this->exception(static fn () => $settings->usedConfiguration('id', $child, 'calendar_mode', -2))
+                ->isInstanceOf(\ValueError::class);
+            $this->exception(static fn () => \Entity::getUsedConfig('id', $child, 'calendar_mode', -2))
+                ->isInstanceOf(\ValueError::class);
+        } finally {
+            $registry->override(\Doctrine\DBAL\Types\Types::STRING, $string);
+        }
+
         $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
     }
 
@@ -623,26 +698,38 @@ class Entity extends DbTestCase
         $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
         $em = \itsmng\Database\Orm::create($DB);
         $settings = new \itsmng\Database\Repository\EntityConfigurationRepository($em);
+        $read = $this->configurationReader($settings);
         foreach ([-1, PHP_INT_MAX, 0, $child] as $id) {
-            $this->string($settings->usedConfiguration('unknown_setting', $id, 'comment', 'fallback'))
+            $this->string($read('unknown_setting', $id, 'comment', 'fallback'))
                 ->isIdenticalTo('fallback');
         }
-        $this->string($settings->usedConfiguration('id', $child, 'unknown_setting', 'fallback'))
+        $this->string($read('id', $child, 'unknown_setting', 'fallback'))
             ->isIdenticalTo('fallback');
-        $this->string($settings->usedConfiguration('id', $child, 'name) FROM invalid', 'fallback'))
+        $this->string($read('id', $child, 'name) FROM invalid', 'fallback'))
             ->isIdenticalTo('fallback');
-        $this->variable($settings->usedConfiguration('id', 0, 'entities_id', -2))->isNull();
-        $this->integer($settings->usedConfiguration('id', 0, 'id', -2))->isIdenticalTo(0);
-        $this->string($settings->usedConfiguration('id', 0, 'id', 'fallback'))->isIdenticalTo('fallback');
+        $this->variable($read('id', 0, 'entities_id', -2))->isNull();
+        $this->integer($read('id', 0, 'id', -2))->isIdenticalTo(0);
+        $this->string($read('id', 0, 'id', 'fallback'))->isIdenticalTo('fallback');
         // Valid foreign keys can still form a cycle. Missing fields must not bypass its diagnostic.
         $this->boolean($DB->update('glpi_entities', ['entities_id' => $child], ['id' => $parent]))->isTrue();
         try {
-            $this->exception(static fn () => $settings->usedConfiguration('unknown_setting', $child, 'comment', 'fallback'))
+            $this->exception(static fn () => \Entity::getUsedConfig('unknown_setting', $child, 'comment', 'fallback'))
+                ->isInstanceOf(\RuntimeException::class)->hasMessage('Cyclic entity configuration inheritance');
+            $this->exception(static fn () => $read('unknown_setting', $child, 'comment', 'fallback'))
                 ->isInstanceOf(\RuntimeException::class)->hasMessage('Cyclic entity configuration inheritance');
         } finally {
             $this->boolean($DB->update('glpi_entities', ['entities_id' => 0], ['id' => $parent]))->isTrue();
         }
         $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+    }
+
+    private function configurationReader(\itsmng\Database\Repository\EntityConfigurationRepository $settings): \Closure
+    {
+        return function (string $reference, int $entity, string $value, mixed $default) use ($settings): mixed {
+            $expected = $settings->usedConfiguration($reference, $entity, $value, $default);
+            $this->variable(\Entity::getUsedConfig($reference, $entity, $value, $default))->isIdenticalTo($expected);
+            return $expected;
+        };
     }
 
     protected function customCssProvider()
@@ -813,5 +900,91 @@ class Entity extends DbTestCase
         $this->integer(getItemByTypeName('Entity', 'test clone entity (copy 2)', true))->isGreaterThan(0);
         $this->integer(getItemByTypeName('Entity', 'test clone entity (copy 3)', true))->isGreaterThan(0);
         $this->integer(getItemByTypeName('Entity', 'test clone entity (copy 4)', true))->isGreaterThan(0);
+    }
+}
+
+/** Keep fixture reads on the existing transaction while observing the selected route. */
+class EntityConfigurationReadProbe extends \Doctrine\DBAL\Connection
+{
+    public array $ids = [];
+
+    public function __construct(private readonly \Doctrine\DBAL\Connection $selected)
+    {
+        parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
+    }
+
+    public function getDatabasePlatform(): \Doctrine\DBAL\Platforms\AbstractPlatform
+    {
+        return $this->selected->getDatabasePlatform();
+    }
+
+    public function executeQuery(string $sql, array $params = [], array $types = [], ?\Doctrine\DBAL\Cache\QueryCacheProfile $qcp = null): \Doctrine\DBAL\Result
+    {
+        $this->ids[] = (int)reset($params);
+        return $this->selected->executeQuery($sql, $params, $types, $qcp);
+    }
+}
+
+class EntityConfigurationListenerProbe extends EntityConfigurationReadProbe
+{
+    private ?\Doctrine\Common\EventManager $events = null;
+
+    public function getEventManager(): \Doctrine\Common\EventManager
+    {
+        return $this->events ??= new \Doctrine\Common\EventManager();
+    }
+}
+
+class EntityConfigurationPlatformProbe extends EntityConfigurationReadProbe
+{
+    public function getDatabasePlatform(): \Doctrine\DBAL\Platforms\AbstractPlatform
+    {
+        return parent::getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform
+            ? new EntityConfigurationPostgreSQLPlatform() : new EntityConfigurationMySQLPlatform();
+    }
+}
+
+class EntityConfigurationPostgreSQLPlatform extends \Doctrine\DBAL\Platforms\PostgreSQLPlatform
+{
+}
+
+class EntityConfigurationMySQLPlatform extends \Doctrine\DBAL\Platforms\MySQLPlatform
+{
+}
+
+class EntityConfigurationTextType extends \Doctrine\DBAL\Types\TextType
+{
+    public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+    {
+        return 'UPPER(' . $sqlExpr . ')';
+    }
+
+    public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+    {
+        return $value === null ? null : $value . '|php';
+    }
+}
+
+class EntityConfigurationInvalidModeType extends \Doctrine\DBAL\Types\StringType
+{
+    public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+    {
+        return $value === 'explicit' ? 'invalid-mode' : $value;
+    }
+}
+
+class EntityConfigurationNoResultType extends \Doctrine\DBAL\Types\TextType
+{
+    public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+    {
+        throw new \Doctrine\ORM\NoResultException();
+    }
+}
+
+class EntityConfigurationFailureType extends \Doctrine\DBAL\Types\TextType
+{
+    public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+    {
+        throw new \RuntimeException('Configuration conversion failed');
     }
 }

@@ -61,6 +61,18 @@ final class EntityRegistry
         return (self::model()['types'][$table][$column] ?? null) === 'boolean';
     }
 
+    /** Canonical scalar projection types derived from the owning attributes. */
+    public static function fieldTypes(string $table): array
+    {
+        return self::model()['types'][$table] ?? [];
+    }
+
+    /** Enum hydration belongs to the same scalar property declaration as its type. */
+    public static function fieldEnums(string $table): array
+    {
+        return self::model()['enums'][$table] ?? [];
+    }
+
     /** Scalar fields and owning join columns, including generated compatibility identities. */
     public static function columnNames(string $table): array
     {
@@ -141,7 +153,7 @@ final class EntityRegistry
         $em = new EntityManager($connection, $configuration);
         $metadata = $em->getMetadataFactory()->getAllMetadata();
         $nativeTimestamps = NativeTimestampSchema::declarations($metadata);
-        $legacyTables = $tables = $types = $booleans = $booleanFields = $relations = $references = $discriminators = $lifecycle = $readOnly = $scopeOwners = [];
+        $legacyTables = $tables = $types = $enums = $booleans = $booleanFields = $relations = $references = $discriminators = $lifecycle = $readOnly = $scopeOwners = [];
         $scalarIdentifiers = [];
         foreach ($metadata as $record) {
             if (count($record->identifier) === 1) {
@@ -161,6 +173,9 @@ final class EntityRegistry
             $tables[$table] = $record->name;
             foreach ($record->fieldMappings as $mapping) {
                 $types[$table][$mapping->columnName] = $mapping->type;
+                if ($mapping->enumType !== null) {
+                    $enums[$table][$mapping->columnName] = $mapping->enumType;
+                }
                 if ($mapping->notInsertable && $mapping->notUpdatable) {
                     $readOnly[$table][] = $mapping->columnName;
                 }
@@ -287,6 +302,6 @@ final class EntityRegistry
         // Only immutable lookup projections survive bootstrap, not the offline unit of work.
         unset($em, $metadata, $record);
         gc_collect_cycles();
-        return ['legacy_tables' => $legacyTables, 'tables' => $tables, 'types' => $types, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners, 'native_timestamps' => $nativeTimestamps, 'scalar_identifiers' => $scalarIdentifiers];
+        return ['legacy_tables' => $legacyTables, 'tables' => $tables, 'types' => $types, 'enums' => $enums, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners, 'native_timestamps' => $nativeTimestamps, 'scalar_identifiers' => $scalarIdentifiers];
     }
 }
