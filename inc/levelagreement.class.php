@@ -414,8 +414,8 @@ abstract class LevelAgreement extends CommonDBChild
                'name'      => $dateField,
                'value'     => $ticket->fields[$dateField],
                'maybeempty' => false,
-               ($tt->isMandatoryField($dateField) ? 'required' : '') => true,
-               ($canupdate ? null : 'disabled') => true,
+               ...($tt->isMandatoryField($dateField) ? ['required' => true] : []),
+               ...($canupdate ? [] : ['disabled' => true]),
             ]);
             echo $tt->getEndHiddenFieldValue($dateField, $ticket);
             $data     = $this->find(

@@ -4293,6 +4293,14 @@ class Ticket extends DbTestCase
            'link_type'  => \Ticket_Ticket::SON_OF
         ];
 
+        // Email-only requesters and groups without members have no user identity.
+        // Retain their legacy empty-key bucket separately from real user roles.
+        $this->boolean($ticket->getFromDB($ticket1))->isTrue();
+        $actors = $ticket->getITILActors();
+        $this->array($actors[2])->contains(\Ticket_User::REQUESTER);
+        $this->array($actors[''])->contains(\Ticket_User::REQUESTER);
+        $this->boolean(array_key_exists(0, $actors))->isFalse();
+
         \Ticket::merge($ticket1, [$ticket2, $ticket3], $status, $mergeparams);
 
         $status_counts = array_count_values($status);
@@ -4332,6 +4340,11 @@ class Ticket extends DbTestCase
         $this->integer((int)$group_count)->isEqualTo(2);
         // Target ticket should have all suppliers not marked as duplicates above
         $this->integer((int)$supplier_count)->isEqualTo(3);
+
+        $this->boolean($ticket->getFromDB($ticket1))->isTrue();
+        $actors = $ticket->getITILActors();
+        $this->array($actors[2])->contains(\Ticket_User::REQUESTER)->contains(\Ticket_User::ASSIGN);
+        $this->array($actors[''])->contains(\Group_Ticket::REQUESTER)->contains(\Group_Ticket::ASSIGN);
     }
 
     /**
@@ -4489,7 +4502,9 @@ class Ticket extends DbTestCase
                     restore_error_handler();
                 }
             }
-        )->contains('src="data:image/png;base64,' . $base64Image . '"');
+        )->contains('src="data:image/png;base64,' . $base64Image . '"')
+            ->matches('/<input\b[^>]*\btype="datetime-local"/')
+            ->notMatches('/<input\b[^>]*\btype="datetime-local"[^>]*\s="1"/');
     }
 
     public function testScreenshotConvertedIntoDocument()
@@ -4631,7 +4646,9 @@ class Ticket extends DbTestCase
                     restore_error_handler();
                 }
             }
-        )->contains('src="data:image/png;base64,' . $base64Image . '"');
+        )->contains('src="data:image/png;base64,' . $base64Image . '"')
+            ->matches('/<input\b[^>]*\btype="datetime-local"/')
+            ->notMatches('/<input\b[^>]*\btype="datetime-local"[^>]*\s="1"/');
     }
 
 

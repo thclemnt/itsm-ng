@@ -8638,7 +8638,8 @@ abstract class CommonITILObject extends CommonDBTM
 
         $users_keys = [];
         while ($current_tu = $iterator->next()) {
-            $users_keys[$current_tu['users_id']][] = $current_tu['type'];
+            // Email-only actors and empty groups retain the legacy empty-key role bucket.
+            $users_keys[$current_tu['users_id'] ?? ''][] = $current_tu['type'];
         }
 
         return $users_keys;
