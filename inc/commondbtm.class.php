@@ -1650,8 +1650,10 @@ class CommonDBTM extends CommonGLPI
 
         $input['clone'] = true;
         $newID = $new_item->add($input, [], $history);
-        // If the item needs post clone (recursive cloning for example)
-        $new_item->post_clone($this, $history);
+        // A refused creation has no destination for dependent clone operations.
+        if ($newID !== false) {
+            $new_item->post_clone($this, $history);
+        }
         return $newID;
     }
 

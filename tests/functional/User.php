@@ -1446,7 +1446,26 @@ class User extends \DbTestCase
         $this->login();
         $this->setEntity('_test_root_entity', true);
 
-        $user = getItemByTypeName('User', TU_USER);
+        $user = new class () extends \User {
+            public static array $cloneTargets = [];
+            public static function getType()
+            {
+                return 'User';
+            }
+            public static function getTable($classname = null)
+            {
+                return 'glpi_users';
+            }
+            public function post_clone($source, $history)
+            {
+                self::$cloneTargets[] = (int)$this->getID();
+                // Record a refused dispatch without writing to a nonexistent user.
+                if ((int)$this->getID() > 0) {
+                    parent::post_clone($source, $history);
+                }
+            }
+        };
+        $this->boolean($user->getFromDB(getItemByTypeName('User', TU_USER, true)))->isTrue();
         $users_id = $user->getID();
         $entities_id = (int)getItemByTypeName('Entity', '_test_child_1', true);
 
@@ -1511,7 +1530,26 @@ class User extends \DbTestCase
         $source_profiles = $get_relations(\Profile_User::getTable(), $users_id, $profile_fields);
         $source_groups = $get_relations(\Group_User::getTable(), $users_id, $group_fields);
 
+        $connection = $DB->getDoctrineConnection();
+        $level = $connection->getTransactionNestingLevel();
+        $scope = $connection->captureManagedTransactionScope();
+        $counts = [];
+        foreach (['glpi_users', 'glpi_profiles_users', 'glpi_groups_users'] as $table) {
+            $counts[$table] = (int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $table);
+        }
+        $this->boolean($user->clone(['password' => 'Refused clone password', 'password2' => 'Different confirmation']))->isFalse();
+        $this->hasSessionMessages(ERROR, [__('Error: the two passwords do not match')]);
+        foreach ($counts as $table => $count) {
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $table))->isIdenticalTo($count);
+        }
+        $this->array($get_relations(\Profile_User::getTable(), $users_id, $profile_fields))->isIdenticalTo($source_profiles);
+        $this->array($get_relations(\Group_User::getTable(), $users_id, $group_fields))->isIdenticalTo($source_groups);
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        $scope->assertActive();
+        $this->array($user::$cloneTargets)->isEmpty('Refused User creation must not dispatch dependent clone hooks');
+
         $cloned_users_id = $user->clone();
+        $this->array($user::$cloneTargets)->isIdenticalTo([(int)$cloned_users_id]);
         $this->integer($cloned_users_id)->isGreaterThan($users_id);
 
         $this->array(
@@ -1520,6 +1558,10 @@ class User extends \DbTestCase
         $this->array(
             $get_relations(\Group_User::getTable(), $cloned_users_id, $group_fields)
         )->isIdenticalTo($source_groups);
+        $this->array($get_relations(\Profile_User::getTable(), $users_id, $profile_fields))->isIdenticalTo($source_profiles);
+        $this->array($get_relations(\Group_User::getTable(), $users_id, $group_fields))->isIdenticalTo($source_groups);
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        $scope->assertActive();
     }
 
     public function testGetFromDBbyDn()
