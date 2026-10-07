@@ -37,6 +37,197 @@ namespace tests\units;
 
 class User extends \DbTestCase
 {
+    public function testAccountDeletionReadsCurrentIncomingGrants(): void
+    {
+        global $DB;
+        $original = $DB;
+        $originalConnection = $original->getDoctrineConnection();
+        $originalScope = $originalConnection->captureManagedTransactionScope();
+        $originalLevel = $originalConnection->getTransactionNestingLevel();
+        $session = $_SESSION;
+        $mysql = $original->getProvider() !== 'pgsql';
+        $outside = (int)getItemByTypeName('Entity', '_test_child_1', true);
+        $logger = new class () extends \Psr\Log\AbstractLogger {
+            public array $locks = [];
+            public function log($level, $message, array $context = []): void
+            {
+                $sql = str_replace(['`', '"'], '', $context['sql'] ?? '');
+                if (preg_match('/^SELECT\b.*\bFROM\s+glpi_profiles_users\b.*\bFOR UPDATE\b/is', $sql)) {
+                    $this->locks[] = $sql;
+                }
+            }
+        };
+        $configuration = new \Doctrine\DBAL\Configuration();
+        $configuration->setMiddlewares([new \Doctrine\DBAL\Logging\Middleware($logger)]);
+        $reader = $writer = $frame = null;
+        $fixtures = [];
+        $failure = null;
+        $cleanup = static function (callable $operation) use (&$failure): void {
+            try {
+                $operation();
+            } catch (\Throwable $error) {
+                $failure = $failure === null ? $error : new \itsmng\Database\MutationCleanupFailure($failure, $error);
+            }
+        };
+        try {
+            $parameters = $originalConnection->getParams();
+            $reader = $mysql ? \itsmng\Database\MySQLConnection::create($parameters, $configuration)
+                : \itsmng\Database\PostgresConnection::create($parameters, $configuration);
+            $writer = $mysql ? \itsmng\Database\MySQLConnection::create($parameters)
+                : \itsmng\Database\PostgresConnection::create($parameters);
+            foreach ([$reader, $writer] as $connection) {
+                if ($mysql) {
+                    $connection->executeStatement('SET SESSION innodb_lock_wait_timeout = 5');
+                } else {
+                    $connection->executeStatement("SET SESSION lock_timeout = '5s'");
+                    $connection->executeStatement("SET SESSION statement_timeout = '20s'");
+                }
+            }
+            $profiles = array_map('intval', $writer->fetchFirstColumn('SELECT id FROM glpi_profiles ORDER BY id LIMIT 2'));
+            $this->array($profiles)->hasSize(2);
+            $this->integer($outside)->isGreaterThan(0);
+            $routed = clone $original;
+            (new \ReflectionProperty(\DBAdapter::class, 'doctrine'))->setValue($routed, $reader);
+            foreach ($mysql ? [false] : [false, true] as $strongSnapshot) {
+                $name = 'delete-grants-' . $this->getUniqueString();
+                $fixture = \itsmng\Database\OwnedMutationFrame::run($writer, static function () use ($writer, $name, $profiles): array {
+                    $manager = new \Doctrine\ORM\EntityManager($writer, \itsmng\Database\Orm::configuration($writer->getDatabasePlatform()));
+                    try {
+                        $user = new \itsmng\Database\Entity\User();
+                        $user->name = $name;
+                        $user->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, 0);
+                        $manager->persist($user);
+                        $grant = new \itsmng\Database\Entity\ProfileUser();
+                        $grant->users = $user;
+                        $grant->entities = $user->entities;
+                        $grant->profiles = $manager->getReference(\itsmng\Database\Entity\Profile::class, $profiles[0]);
+                        $grant->is_recursive = false;
+                        $manager->persist($grant);
+                        $manager->flush();
+                        return ['id' => $user->id, 'name' => $name, 'grants' => [$grant->id]];
+                    } finally {
+                        $manager->clear();
+                    }
+                });
+                $fixtures[] = $fixture;
+                $fixtureIndex = array_key_last($fixtures);
+                $reader->setTransactionIsolation($mysql ? \Doctrine\DBAL\TransactionIsolationLevel::REPEATABLE_READ
+                    : \Doctrine\DBAL\TransactionIsolationLevel::READ_COMMITTED);
+                $frame = \itsmng\Database\OwnedMutationFrame::begin($reader);
+                if ($strongSnapshot) {
+                    // Deliberately bypass DBAL's cached isolation value.
+                    $reader->executeStatement('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+                    $this->variable($reader->getTransactionIsolation())->isIdenticalTo(\Doctrine\DBAL\TransactionIsolationLevel::READ_COMMITTED);
+                }
+                $manager = new \Doctrine\ORM\EntityManager($reader, \itsmng\Database\Orm::configuration($reader->getDatabasePlatform()));
+                $grants = new \itsmng\Database\Repository\ProfileUserRepository($manager);
+                $this->array($grants->scopes($fixture['id']))->hasSize(1);
+                // Commit the new scope before the public deletion locks its owner.
+                $added = \itsmng\Database\OwnedMutationFrame::run($writer, static function () use ($writer, $fixture, $profiles, $outside): array {
+                    $manager = new \Doctrine\ORM\EntityManager($writer, \itsmng\Database\Orm::configuration($writer->getDatabasePlatform()));
+                    try {
+                        $rows = [];
+                        foreach ([[$profiles[1], 0], [$profiles[0], $outside]] as [$profile, $entity]) {
+                            $grant = new \itsmng\Database\Entity\ProfileUser();
+                            $grant->users = $manager->getReference(\itsmng\Database\Entity\User::class, $fixture['id']);
+                            $grant->profiles = $manager->getReference(\itsmng\Database\Entity\Profile::class, $profile);
+                            $grant->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, $entity);
+                            $grant->is_recursive = false;
+                            $manager->persist($grant);
+                            $rows[] = $grant;
+                        }
+                        $manager->flush();
+                        return array_map(static fn ($row): int => $row->id, $rows);
+                    } finally {
+                        $manager->clear();
+                    }
+                });
+                $fixtures[$fixtureIndex]['grants'] = [...$fixture['grants'], ...$added];
+                $this->array($grants->scopes($fixture['id']))->hasSize($mysql || $strongSnapshot ? 1 : 2);
+                $logger->locks = [];
+                $DB = $routed;
+                try {
+                    // CLI has global visibility. This proves the actual public
+                    // lifecycle's current read, not restricted HTTP authorization.
+                    $this->boolean((new \User())->delete(['id' => $fixture['id'], '_no_message' => 1, '_no_history' => 1], false, false))
+                        ->isIdenticalTo(!$strongSnapshot);
+                } finally {
+                    $DB = $original;
+                }
+                $frame->assertActive();
+                $this->integer($reader->getTransactionNestingLevel())->isIdenticalTo(1);
+                if ($strongSnapshot) {
+                    $this->array($logger->locks)->isEmpty();
+                    $this->exception(static fn () => $grants->currentDeletionScopes($fixture['id']))
+                        ->isInstanceOf(\itsmng\Database\CurrentReadUnavailable::class)
+                        ->hasMessage('Account deletion requires PostgreSQL READ COMMITTED; actual isolation is repeatable read. Retry outside the caller transaction.');
+                } else {
+                    $this->array($logger->locks)->hasSize(1);
+                    $this->string($logger->locks[0])->notContains('DISTINCT');
+                    $current = $grants->currentDeletionScopes($fixture['id']);
+                    $this->array($current)->hasSize(3, 'Lock every physical grant, including duplicate entity scopes');
+                    $entities = array_map('intval', array_column($current, 'entities_id'));
+                    sort($entities);
+                    $this->array($entities)->isIdenticalTo([0, 0, $outside]);
+                    $this->array($grants->scopes($fixture['id']))->hasSize($mysql ? 1 : 2);
+                }
+                $this->integer((int)$reader->fetchOne('SELECT is_deleted FROM glpi_users WHERE id = ? FOR UPDATE', [$fixture['id']]))
+                    ->isIdenticalTo($strongSnapshot ? 0 : 1);
+                $manager->clear();
+                $frame->rollBack();
+                $frame = null;
+                $this->integer((int)$writer->fetchOne('SELECT is_deleted FROM glpi_users WHERE id = ?', [$fixture['id']]))->isIdenticalTo(0);
+                $this->integer((int)$writer->fetchOne('SELECT COUNT(*) FROM glpi_profiles_users WHERE users_id = ?', [$fixture['id']]))->isIdenticalTo(3);
+            }
+        } catch (\Throwable $error) {
+            $failure = $error;
+        } finally {
+            $DB = $original;
+            $_SESSION = $session;
+            if ($frame !== null) {
+                $cleanup(static fn () => $frame->rollBack());
+            }
+            if ($reader !== null) {
+                $cleanup(static fn () => $reader->close());
+            }
+            if ($writer !== null) {
+                foreach ($fixtures as $fixture) {
+                    $cleanup(static fn () => \itsmng\Database\OwnedMutationFrame::run($writer, static function () use ($writer, $fixture): void {
+                        if ($writer->fetchOne('SELECT name FROM glpi_users WHERE id = ?', [$fixture['id']]) !== $fixture['name']) {
+                            throw new \LogicException('Refusing cleanup of an unowned account');
+                        }
+                        $ids = array_map('intval', $writer->fetchFirstColumn('SELECT id FROM glpi_profiles_users WHERE users_id = ? ORDER BY id', [$fixture['id']]));
+                        $expected = $fixture['grants'];
+                        sort($expected);
+                        if ($ids !== $expected) {
+                            throw new \LogicException('Refusing cleanup of unexpected account grants');
+                        }
+                        foreach ($ids as $id) {
+                            if ($writer->delete('glpi_profiles_users', ['id' => $id, 'users_id' => $fixture['id']]) !== 1) {
+                                throw new \LogicException('Owned account grant cleanup failed');
+                            }
+                        }
+                        if ($writer->delete('glpi_users', ['id' => $fixture['id'], 'name' => $fixture['name']]) !== 1) {
+                            throw new \LogicException('Owned account cleanup failed');
+                        }
+                    }));
+                }
+                $cleanup(static fn () => $writer->close());
+            }
+            $cleanup(static function () use ($originalConnection, $originalScope, $originalLevel): void {
+                $originalScope->assertActive();
+                if ($originalConnection->getTransactionNestingLevel() !== $originalLevel) {
+                    throw new \LogicException('Account deletion changed the original caller frame');
+                }
+            });
+        }
+        if ($failure !== null) {
+            throw $failure;
+        }
+        $this->object($DB)->isIdenticalTo($original);
+        $this->array($_SESSION)->isIdenticalTo($session);
+    }
+
     public function testPreferredEmailUsesCurrentTypedSelectedRead(): void
     {
         global $DB;

@@ -4,13 +4,17 @@
 
 namespace itsmng\Database\Repository;
 
+use Doctrine\DBAL\LockMode;
 use Doctrine\DBAL\ParameterType;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
+use itsmng\Database\CurrentReadUnavailable;
 use itsmng\Database\Entity\ProfileRight;
 use itsmng\Database\Entity\ProfileUser;
+use itsmng\Database\MySQLConnection;
 use itsmng\Database\RecordCriteria;
 use LogicException;
 
@@ -75,6 +79,34 @@ final class ProfileUserRepository
             ->executeQuery()->fetchFirstColumn();
         // IDENTITY scalar hydration does not apply target or PHP type conversions.
         return array_map('intval', $rows);
+    }
+
+    /** Current incoming grants while the deletion unit holds the User owner lock. */
+    public function currentDeletionScopes(int $user): array
+    {
+        $connection = $this->em->getConnection();
+        MySQLConnection::assertCurrentReads($connection);
+        if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
+            // A locking read cannot reveal child inserts outside a PostgreSQL
+            // strong snapshot. Inspect the physical session, not DBAL's cache.
+            $isolation = strtolower((string)$connection->fetchOne("SELECT current_setting('transaction_isolation')"));
+            if ($isolation !== 'read committed' && $isolation !== 'read uncommitted') {
+                throw new CurrentReadUnavailable(
+                    'Account deletion requires PostgreSQL READ COMMITTED; actual isolation is ' . $isolation
+                    . '. Retry outside the caller transaction.'
+                );
+            }
+        }
+        // Keep physical grant rows: PostgreSQL forbids FOR UPDATE with DISTINCT,
+        // and every grant must be locked even when two profiles share a scope.
+        return $this->em->createQueryBuilder()
+            ->select('IDENTITY(r.entities) AS entities_id', 'r.is_recursive AS is_recursive')
+            ->from(ProfileUser::class, 'r')
+            ->where('IDENTITY(r.users) = :user')
+            ->setParameter('user', $user, Types::INTEGER)
+            ->getQuery()
+            ->setLockMode(LockMode::PESSIMISTIC_WRITE)
+            ->getScalarResult();
     }
 
     public function scopes(int $user, ?int $profile = null, ?string $right = null, int $mask = 0): array

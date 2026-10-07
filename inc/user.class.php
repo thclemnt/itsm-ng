@@ -35,15 +35,29 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
-use Sabre\VObject;
+use Doctrine\DBAL\Exception;
 use Glpi\Exception\ForgetPasswordException;
 use Glpi\Exception\PasswordTooWeakException;
-use itsmng\Database\Orm;
-use itsmng\Database\Repository\UserRepository;
-use itsmng\Database\Repository\UserPasswordRepository;
-use itsmng\Database\Repository\LdapRepository;
-use itsmng\Database\Repository\UserSelectionRepository;
+use itsmng\Database\CurrentReadUnavailable;
+use itsmng\Database\DeletionDecision;
+use itsmng\Database\Entity\User as UserRecord;
+use itsmng\Database\EntityRegistry;
 use itsmng\Database\LegacyValues;
+use itsmng\Database\Orm;
+use itsmng\Database\ReferenceValues;
+use itsmng\Database\Repository\ITILUserRepository;
+use itsmng\Database\Repository\LdapRepository;
+use itsmng\Database\Repository\OidcRepository;
+use itsmng\Database\Repository\PlanningGuestRepository;
+use itsmng\Database\Repository\ProfileUserRepository;
+use itsmng\Database\Repository\UserItemRepository;
+use itsmng\Database\Repository\UserPasswordRepository;
+use itsmng\Database\Repository\UserRepository;
+use itsmng\Database\Repository\UserSelectionRepository;
+use itsmng\Database\RowIterator;
+use itsmng\Database\TimelineAuthorReader;
+use itsmng\Domain\Authentication\AuthenticationCompletion;
+use Sabre\VObject;
 
 class User extends CommonDBTM
 {
@@ -77,7 +91,7 @@ class User extends CommonDBTM
         if (static::class !== self::class) {
             return $this->getFromDB($id);
         }
-        return (new \itsmng\Database\TimelineAuthorReader())->load($this, $id, $DB);
+        return (new TimelineAuthorReader())->load($this, $id, $DB);
     }
 
     public static function getTypeName($nb = 0)
@@ -321,10 +335,10 @@ class User extends CommonDBTM
 
     public function pre_deleteItem()
     {
-        return $this->decideAccountDeletion() === \itsmng\Database\DeletionDecision::Proceed;
+        return $this->decideAccountDeletion() === DeletionDecision::Proceed;
     }
 
-    public function deletionDecision(): \itsmng\Database\DeletionDecision
+    public function deletionDecision(): DeletionDecision
     {
         // Existing extensions can veto deletion through their original hook.
         // Its false remains cancellation; typed scoped outcomes are opt-in via
@@ -335,25 +349,39 @@ class User extends CommonDBTM
         return $this->decideAccountDeletion();
     }
 
-    protected function decideAccountDeletion(): \itsmng\Database\DeletionDecision
+    protected function decideAccountDeletion(): DeletionDecision
     {
         global $DB;
 
-        // The same legacy model can be reused for another account. Resolve
-        // current visibility grants for this writer-side lifecycle decision.
-        $entities = Profile_User::getUserEntities((int)$this->fields['id'], true);
+        // Incoming grants need a current read as well as the locked User row.
+        // Reuse this writer and its deletion frame; ordinary scope APIs retain
+        // their normal read routing and snapshot semantics.
+        try {
+            $grants = (new ProfileUserRepository(Orm::create($DB)))
+                ->currentDeletionScopes((int)$this->fields['id']);
+        } catch (CurrentReadUnavailable $error) {
+            Session::addMessageAfterRedirect(__('Finish the current operation, then retry this account deletion.'), true, ERROR, false);
+            return DeletionDecision::Cancelled;
+        }
+        $entities = [];
+        foreach ($grants as $grant) {
+            $entities = $grant['is_recursive']
+                ? array_merge(getSonsOf('glpi_entities', $grant['entities_id']), $entities)
+                : [...$entities, $grant['entities_id']];
+        }
+        $entities = array_unique($entities);
         if (Session::canViewAllEntities() || !array_filter($entities, static fn ($entity): bool => !Session::haveAccessToEntity($entity))) {
-            return \itsmng\Database\DeletionDecision::Proceed;
+            return DeletionDecision::Proceed;
         }
         // Existing backend deletion detaches the account in accessible entities.
         // It returns false because the account itself is retained, not because
         // this explicit domain operation failed. All grants detach atomically.
         $accessible = array_values(array_filter($entities, static fn ($entity): bool => Session::haveAccessToEntity($entity)));
         if (!$accessible) {
-            return \itsmng\Database\DeletionDecision::Cancelled;
+            return DeletionDecision::Cancelled;
         }
         (new UserRepository(Orm::create($DB)))->detachEntityGrants((int)$this->fields['id'], $accessible);
-        return \itsmng\Database\DeletionDecision::ScopedDetachment;
+        return DeletionDecision::ScopedDetachment;
     }
 
 
@@ -362,19 +390,19 @@ class User extends CommonDBTM
 
         global $DB;
 
-        (new \itsmng\Database\Repository\ITILUserRepository(\itsmng\Database\Orm::create($DB)))
+        (new ITILUserRepository(Orm::create($DB)))
             ->reassignReferences((int)$this->getID(), empty($this->input['_replace_by']) ? null : (int)$this->input['_replace_by']);
 
-        (new \itsmng\Database\Repository\UserItemRepository(\itsmng\Database\Orm::create($DB)))
+        (new UserItemRepository(Orm::create($DB)))
             ->reassignPlanningOwners((int)$this->getID(), empty($this->input['_replace_by']) ? null : (int)$this->input['_replace_by']);
-        (new \itsmng\Database\Repository\PlanningGuestRepository(\itsmng\Database\Orm::create($DB)))
+        (new PlanningGuestRepository(Orm::create($DB)))
             ->reassignUser((int)$this->getID(), empty($this->input['_replace_by']) ? null : (int)$this->input['_replace_by']);
         (new Dashboard())->deleteByCriteria(['userId' => $this->getID()]);
 
         // Personal recalls and their delivery markers belong to the deleted recipient.
         (new PlanningRecall())->deleteByCriteria(['users_id' => $this->getID()]);
 
-        (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::create($DB)))->deleteUserState((int)$this->getID());
+        (new OidcRepository(Orm::create($DB)))->deleteUserState((int)$this->getID());
 
         // ObjectLock does not extends CommonDBConnexity
         $ol = new ObjectLock();
@@ -384,7 +412,7 @@ class User extends CommonDBTM
         $r = new Reminder();
         $r->deleteByCriteria(['users_id' => $this->fields['id']]);
 
-        (new \itsmng\Database\Repository\UserItemRepository(\itsmng\Database\Orm::create($DB)))
+        (new UserItemRepository(Orm::create($DB)))
             ->reassignPersonalContentOwners((int)$this->getID(), empty($this->input['_replace_by']) ? null : (int)$this->input['_replace_by']);
 
         // Delete private bookmark
@@ -396,7 +424,7 @@ class User extends CommonDBTM
             ]
         );
 
-        (new \itsmng\Database\Repository\UserItemRepository(\itsmng\Database\Orm::create($DB)))
+        (new UserItemRepository(Orm::create($DB)))
             ->releaseUserResources((int)$this->fields['id']);
 
         $this->deleteChildrenAndRelationsFromDb(
@@ -648,7 +676,7 @@ class User extends CommonDBTM
             $input["authtype"] = Auth::DB_GLPI;
         }
 
-        $authentication = (new \itsmng\Database\Entity\User())->prepareAuthenticationInput($input);
+        $authentication = (new UserRecord())->prepareAuthenticationInput($input);
         $input = $authentication['input'];
 
         // Check if user does not exists
@@ -816,12 +844,12 @@ class User extends CommonDBTM
     }
 
 
-    private ?\itsmng\Domain\Authentication\AuthenticationCompletion $authenticationCompletion = null;
-    private ?\itsmng\Domain\Authentication\AuthenticationCompletion $pendingAuthenticationCompletion = null;
+    private ?AuthenticationCompletion $authenticationCompletion = null;
+    private ?AuthenticationCompletion $pendingAuthenticationCompletion = null;
     private int $authenticationUpdateDepth = 0;
 
     /** Complete a verified existing local login through the ordinary public lifecycle. */
-    public function completeAuthentication(\itsmng\Domain\Authentication\AuthenticationCompletion $completion): bool
+    public function completeAuthentication(AuthenticationCompletion $completion): bool
     {
         if ((int)$this->getID() !== $completion->user) {
             throw new LogicException('Authentication completion belongs to another account.');
@@ -1083,7 +1111,7 @@ class User extends CommonDBTM
         }
 
         // Security on default profile update
-        if (isset($input['profiles_id']) && !\itsmng\Database\ReferenceValues::isEmptySelection($input['profiles_id'])) {
+        if (isset($input['profiles_id']) && !ReferenceValues::isEmptySelection($input['profiles_id'])) {
             if (!in_array($input['profiles_id'], Profile_User::getUserProfiles($input['id']))) {
                 unset($input['profiles_id']);
             }
@@ -1137,7 +1165,7 @@ class User extends CommonDBTM
             }
         }
 
-        $booleanFields = \itsmng\Database\EntityRegistry::booleanFields($this->getTable());
+        $booleanFields = EntityRegistry::booleanFields($this->getTable());
         foreach ($CFG_GLPI['user_pref_field'] as $f) {
             $inheritedBoolean = ($booleanFields[$f] ?? false) && array_key_exists($f, $input) && $input[$f] === null;
             if (isset($input[$f]) || $inheritedBoolean) {
@@ -1215,7 +1243,7 @@ class User extends CommonDBTM
         if ($this->fields['id'] != Session::getLoginUserID() || !is_array($this->input)) {
             return;
         }
-        $flags = \itsmng\Database\EntityRegistry::booleanFields($this->getTable());
+        $flags = EntityRegistry::booleanFields($this->getTable());
         $submitted = array_filter($CFG_GLPI['user_pref_field'], fn ($field) => ($flags[$field] ?? false) && array_key_exists($field, $this->input));
         if (!$submitted) {
             return;
@@ -2423,7 +2451,7 @@ class User extends CommonDBTM
             $timezones = $DB->getTimezones();
         }
 
-        $emails = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+        $emails = (new UserRepository(Orm::create($DB)))
             ->emails((int)$ID);
         $emailsValues = [];
         $defaultEmailTitle = __('Default email');
@@ -2838,7 +2866,7 @@ class User extends CommonDBTM
                           || (($this->fields["authtype"] == Auth::NOT_YET_AUTHENTIFIED)
                               && !empty($this->fields["password"])));
 
-            $repository = new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB));
+            $repository = new UserRepository(Orm::create($DB));
             $User_profile = $repository->profiles((int)$ID);
             $emails = $repository->emails((int)$ID);
             $emailsValues = [];
@@ -3786,7 +3814,7 @@ class User extends CommonDBTM
      * @param array           $additionalCriteria structured criteria that further narrow eligible grants/users
      * @param boolean         $namesOnly        project display names without hydrating complete users
      *
-     * @return \itsmng\Database\RowIterator
+     * @return RowIterator
      */
     public static function getSqlSearchResult(
         $count = true,
@@ -4262,7 +4290,7 @@ class User extends CommonDBTM
         ) {
             try {
                 (new UserRepository(Orm::create($DB)))->changeAuthentication($IDs, (int)$authtype, (int)$server);
-            } catch (\Doctrine\DBAL\Exception $error) {
+            } catch (Exception $error) {
                 Toolbox::logSqlError($error->getMessage());
                 return false;
             }
@@ -4353,7 +4381,7 @@ class User extends CommonDBTM
             $field_group = 'groups_id';
         }
 
-        $repository = new \itsmng\Database\Repository\UserItemRepository(\itsmng\Database\Orm::create($DB));
+        $repository = new UserItemRepository(Orm::create($DB));
         $groups = [];
         $iterator = $repository->groups((int)$ID);
         $number = count($iterator);
@@ -4393,7 +4421,7 @@ class User extends CommonDBTM
                 }
 
                 $scope = $item->isEntityAssign() ? getEntitiesRestrictCriteria($itemtable, '', '', $item->maybeRecursive()) : [];
-                $item_iterator = \itsmng\Database\Repository\UserItemRepository::supports($itemtype)
+                $item_iterator = UserItemRepository::supports($itemtype)
                     ? $repository->items($itemtype, $field_user, [(int)$ID], $scope)
                     : $item->find([$iterator_params['WHERE'], $scope]);
 
@@ -4488,7 +4516,7 @@ class User extends CommonDBTM
                     }
 
                     $scope = $item->isEntityAssign() ? getEntitiesRestrictCriteria($itemtable, '', '', $item->maybeRecursive()) : [];
-                    $group_iterator = \itsmng\Database\Repository\UserItemRepository::supports($itemtype)
+                    $group_iterator = UserItemRepository::supports($itemtype)
                         ? $repository->items($itemtype, $field_group, array_keys($groups), $scope)
                         : $item->find([$iterator_params['WHERE'], $scope]);
 
@@ -4565,7 +4593,7 @@ class User extends CommonDBTM
     {
         global $DB, $CFG_GLPI;
 
-        $id = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+        $id = (new UserRepository(Orm::create($DB)))
             ->preferredByEmail(stripslashes($email));
         if ($id !== null) {
             return $id;
@@ -4694,7 +4722,7 @@ class User extends CommonDBTM
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+        return (new UserRepository(Orm::create($DB)))
             ->uniqueId((string)$field, $escape ? addslashes($value) : $value, true) ?? false;
     }
 
