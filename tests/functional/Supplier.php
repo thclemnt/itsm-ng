@@ -74,6 +74,7 @@ class Supplier extends DbTestCase
         foreach ([['is_recursive' => 0], ['entities_id' => $sibling], ['is_recursive' => 0, 'entities_id' => $sibling]] as $change) {
             $this->boolean($supplier->update(['id' => $supplier->getID()] + $change))
                 ->isFalse('Supplier scope changes must preserve existing commercial Domain ownership');
+            $this->hasSessionMessages(ERROR, ['Domain commercial supplier must belong to its owner entity or a recursive ancestor.']);
             $this->array($connection->fetchAssociative('SELECT * FROM glpi_suppliers WHERE id = ?', [$supplier->getID()]))
                 ->isIdenticalTo($beforeSupplier);
             $this->array($connection->fetchAssociative('SELECT * FROM glpi_domains WHERE id = ?', [$domain->getID()]))
