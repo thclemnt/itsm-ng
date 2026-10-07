@@ -22,6 +22,7 @@ use itsmng\Database\Upgrade;
 class OrmMigration extends \GLPITestCase
 {
     private ?\DBAdapter $fixture = null;
+    private bool $fixtureCompleted = false;
 
     public function __construct(...$arguments)
     {
@@ -32,6 +33,7 @@ class OrmMigration extends \GLPITestCase
     private function emptyFixture(): \DBAdapter
     {
         global $DB;
+        $this->fixtureCompleted = false;
         $name = getenv('ITSM_TEST_MIGRATION_DB');
         $this->boolean(is_string($name) && preg_match('/^itsm_test_[a-z0-9_]+_migration$/D', $name) === 1
             && $name !== $DB->dbdefault)->isTrue('An explicit separate disposable migration database is required');
@@ -46,6 +48,13 @@ class OrmMigration extends \GLPITestCase
     {
         try {
             if ($this->fixture !== null) {
+                // Atoum records uncaught exceptions only after this callback.
+                // Delete only fixtures whose test body reached its normal end.
+                $score = $this->getScore();
+                if (!$this->fixtureCompleted || $score->getFailNumber() > 0 || $score->getErrorNumber() > 0
+                    || $score->getExceptionNumber() > 0 || $score->getRuntimeExceptionNumber() > 0) {
+                    return;
+                }
                 $connection = $this->fixture->getDoctrineConnection();
                 $platform = $connection->getDatabasePlatform();
                 $manager = $connection->createSchemaManager();
@@ -238,6 +247,7 @@ class OrmMigration extends \GLPITestCase
             $indexes->verify($connection);
             $this->array((new SchemaCheck())->differences($connection))->isEmpty();
         }
+        $this->fixtureCompleted = true;
     }
 
     public function testPublicUpgradeRefusesOldProvenanceAndPreservesPopulatedData(): void
@@ -341,6 +351,7 @@ class OrmMigration extends \GLPITestCase
             }
             rmdir($directory);
         }
+        $this->fixtureCompleted = true;
     }
 
     /** Nonterminal subjects still belong to current native policy after later releases complete. */
