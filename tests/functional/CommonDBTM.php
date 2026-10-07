@@ -631,7 +631,9 @@ class CommonDBTM extends DbTestCase
             $scope->assertActive();
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
         }
-        $posts = (object)['count' => 0];
+        // Computer's allocation trait retains its ordinary preliminary load;
+        // selected mutation authority must be consumed exactly once afterward.
+        $posts = (object)['ordinary' => 0, 'current' => 0, 'policy' => $policy];
         $template = new class ($posts) extends \Computer {
             public function __construct(private object $posts)
             {
@@ -646,14 +648,17 @@ class CommonDBTM extends DbTestCase
             }
             public function post_getFromDB()
             {
-                ++$this->posts->count;
+                $policy = $this->posts->policy->getValue($this);
+                $current = $policy !== null && $policy['owner'] === spl_object_id($this) && $policy['consumed'];
+                ++$this->posts->{$current ? 'current' : 'ordinary'};
                 parent::post_getFromDB();
                 $this->fields['is_template'] = 1;
             }
         };
         $this->boolean($template->delete(['id' => $computer->getID(), '_no_message' => 1, '_no_history' => 1], false, false))
             ->isFalse('A post-load callback cannot turn a current computer into a forced-purge template');
-        $this->integer($posts->count)->isIdenticalTo(1);
+        $this->integer($posts->ordinary)->isIdenticalTo(1, 'Retain the allocation trait preliminary public load');
+        $this->integer($posts->current)->isIdenticalTo(1, 'Consume selected current authority and public callback exactly once');
         $this->boolean($computer->getFromDB($computer->getID()))->isTrue();
         $this->integer((int)$computer->fields['is_template'])->isIdenticalTo(0);
         $this->integer((int)$computer->fields['is_deleted'])->isIdenticalTo(0);
