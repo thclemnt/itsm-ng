@@ -32,6 +32,11 @@
  */
 
 use Glpi\Event;
+use itsmng\Database\EntityConfigurationReferences;
+use itsmng\Database\Orm;
+use itsmng\Database\ReferenceValues;
+use itsmng\Database\Repository\EntityConfigurationRepository;
+use itsmng\Database\Repository\EntityOwnershipRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -234,7 +239,7 @@ class Entity extends CommonTreeDropdown
                         if (array_key_exists($field, $input)) {
                             $tmp[$field] = $input[$field];
                         }
-                        $mode = \itsmng\Database\EntityConfigurationReferences::fields()[$field]->policy->modeProperty ?? null;
+                        $mode = EntityConfigurationReferences::fields()[$field]->policy->modeProperty ?? null;
                         if ($mode !== null && array_key_exists($mode, $input)) {
                             $tmp[$mode] = $input[$mode];
                         }
@@ -246,7 +251,7 @@ class Entity extends CommonTreeDropdown
                         if (array_key_exists($field, $input)) {
                             $tmp[$field] = $input[$field];
                         }
-                        $mode = \itsmng\Database\EntityConfigurationReferences::fields()[$field]->policy->modeProperty ?? null;
+                        $mode = EntityConfigurationReferences::fields()[$field]->policy->modeProperty ?? null;
                         if ($mode !== null && array_key_exists($mode, $input)) {
                             $tmp[$mode] = $input[$mode];
                         }
@@ -284,14 +289,14 @@ class Entity extends CommonTreeDropdown
 
         $input = parent::prepareInputForAdd($input);
 
-        $input['id'] = (new \itsmng\Database\Repository\EntityConfigurationRepository(\itsmng\Database\Orm::create($DB)))->nextIdentifier();
+        $input['id'] = (new EntityConfigurationRepository(Orm::create($DB)))->nextIdentifier();
 
         $input['max_closedate'] = $_SESSION["glpi_currenttime"];
 
         if (!Session::isCron()) { // Filter input for connected
             $input = $this->checkRightDatas($input);
         }
-        return \itsmng\Database\EntityConfigurationReferences::legacyInput($input);
+        return EntityConfigurationReferences::legacyInput($input);
     }
 
 
@@ -331,7 +336,7 @@ class Entity extends CommonTreeDropdown
         if (!Session::isCron()) { // Filter input for connected
             $input = $this->checkRightDatas($input);
         }
-        return \itsmng\Database\EntityConfigurationReferences::legacyInput($input, $this->fields);
+        return EntityConfigurationReferences::legacyInput($input, $this->fields);
     }
 
 
@@ -501,17 +506,17 @@ class Entity extends CommonTreeDropdown
 
     public function post_getFromDB()
     {
-        $this->fields = \itsmng\Database\ReferenceValues::legacyRow($this->getTable(), $this->fields);
+        $this->fields = ReferenceValues::legacyRow($this->getTable(), $this->fields);
         parent::post_getFromDB();
     }
 
     public function post_getEmpty()
     {
-        foreach (\itsmng\Database\EntityConfigurationReferences::fields() as $column => $definition) {
+        foreach (EntityConfigurationReferences::fields() as $column => $definition) {
             $this->fields[$column] = null;
             $this->fields[$definition->policy->modeProperty] = $definition->defaultMode->value;
         }
-        $this->fields = \itsmng\Database\EntityConfigurationReferences::legacyRow($this->fields);
+        $this->fields = EntityConfigurationReferences::legacyRow($this->fields);
         parent::post_getEmpty();
     }
 
@@ -527,7 +532,7 @@ class Entity extends CommonTreeDropdown
                 $cached[] = substr($table, 1);
             }
         }
-        $owners = new \itsmng\Database\Repository\EntityOwnershipRepository(\itsmng\Database\Orm::create($DB));
+        $owners = new EntityOwnershipRepository(Orm::create($DB));
         $owners->moveCachedOwners($cached, (int)$this->getID(), (int)($this->input['_replace_by'] ?? 0));
         // An inaccessible replacement is rejected by User::prepareInputForUpdate.
         // Clear any remaining default to root without creating profile membership.
@@ -1423,7 +1428,7 @@ class Entity extends CommonTreeDropdown
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\EntityConfigurationRepository(\itsmng\Database\Orm::create($DB)))
+        return (new EntityConfigurationRepository(Orm::create($DB)))
             ->notificationValues($field);
     }
 
@@ -2246,7 +2251,7 @@ class Entity extends CommonTreeDropdown
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\EntityConfigurationRepository(\itsmng\Database\Orm::create($DB)))
+        return (new EntityConfigurationRepository(Orm::create($DB)))
             ->uniqueIdentifier($field, $value);
     }
 
@@ -2576,7 +2581,7 @@ class Entity extends CommonTreeDropdown
     {
         global $DB;
 
-        return \itsmng\Database\Repository\EntityConfigurationRepository::readUsedConfiguration(
+        return EntityConfigurationRepository::readUsedConfiguration(
             $DB->getDoctrineConnection(),
             $fieldref,
             (int)($entities_id ?? Session::getActiveEntity()),
@@ -3136,7 +3141,7 @@ class Entity extends CommonTreeDropdown
                 $this->showMap();
                 break;
             default:
-                throw new \RuntimeException("Unknown {$field['type']}");
+                throw new RuntimeException("Unknown {$field['type']}");
         }
     }
 

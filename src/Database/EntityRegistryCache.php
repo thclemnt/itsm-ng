@@ -4,7 +4,11 @@
 
 namespace itsmng\Database;
 
+use __PHP_Incomplete_Class;
 use Psr\SimpleCache\CacheInterface;
+use ReflectionReference;
+use Throwable;
+use UnexpectedValueException;
 
 /** Persist only the derived, connection-independent mapping projection. */
 final class EntityRegistryCache
@@ -26,7 +30,7 @@ final class EntityRegistryCache
             if ($model !== null) {
                 return $model;
             }
-        } catch (\Throwable) {
+        } catch (Throwable) {
             // An unavailable optional cache does not prevent mapping discovery.
         }
         // Mapping/validation failures belong to the caller, not cache recovery.
@@ -36,7 +40,7 @@ final class EntityRegistryCache
             // retained by callers. No manager, metadata or connection is saved.
             $serialized = serialize($model);
             $this->cache->set($this->key, '2:' . hash('sha256', $serialized) . ':' . $serialized);
-        } catch (\Throwable) {
+        } catch (Throwable) {
             // Best-effort population; the authoritative projection is usable.
         }
         return $model;
@@ -53,7 +57,7 @@ final class EntityRegistryCache
             return null;
         }
         set_error_handler(static function (int $severity, string $message): never {
-            throw new \UnexpectedValueException($message);
+            throw new UnexpectedValueException($message);
         });
         try {
             $model = unserialize($serialized, ['allowed_classes' => [
@@ -70,14 +74,14 @@ final class EntityRegistryCache
             while ($pending !== []) {
                 [$values, $ancestors] = array_pop($pending);
                 foreach ($values as $key => $value) {
-                    if ($value instanceof \__PHP_Incomplete_Class) {
+                    if ($value instanceof __PHP_Incomplete_Class) {
                         return null;
                     }
                     if (!is_array($value)) {
                         continue;
                     }
                     $path = $ancestors;
-                    $reference = \ReflectionReference::fromArrayElement($values, $key);
+                    $reference = ReflectionReference::fromArrayElement($values, $key);
                     if ($reference !== null) {
                         $id = $reference->getId();
                         if (isset($path[$id])) {
@@ -89,7 +93,7 @@ final class EntityRegistryCache
                 }
             }
             return $model;
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return null;
         } finally {
             restore_error_handler();

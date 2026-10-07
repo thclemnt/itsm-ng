@@ -10,6 +10,10 @@ use Doctrine\ORM\EntityManager;
 use itsmng\Database\Mapping\MappedReference;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use LogicException;
+use Psr\SimpleCache\CacheInterface;
+use ReflectionClass;
+use ReflectionProperty;
 
 /** Read-only lookup derived from entity attributes; contains no schema declarations. */
 final class EntityRegistry
@@ -137,7 +141,7 @@ final class EntityRegistry
             return self::$model;
         }
         $cache = $GLOBALS['GLPI_CACHE'] ?? null;
-        if ($cache instanceof \Psr\SimpleCache\CacheInterface) {
+        if ($cache instanceof CacheInterface) {
             return self::$model = (new EntityRegistryCache($cache, MappingFingerprint::current()))->load(self::buildModel(...));
         }
         return self::$model = self::buildModel();
@@ -168,7 +172,7 @@ final class EntityRegistry
             }
             $table = $record->getTableName();
             if (isset($tables[$table])) {
-                throw new \LogicException('Duplicate mapped core table: ' . $table);
+                throw new LogicException('Duplicate mapped core table: ' . $table);
             }
             $tables[$table] = $record->name;
             foreach ($record->fieldMappings as $mapping) {
@@ -185,7 +189,7 @@ final class EntityRegistry
                 }
             }
             foreach ($record->fieldMappings as $property => $mapping) {
-                foreach ((new \ReflectionProperty($record->name, $property))->getAttributes(Mapping\DiscriminatorKey::class) as $attribute) {
+                foreach ((new ReflectionProperty($record->name, $property))->getAttributes(Mapping\DiscriminatorKey::class) as $attribute) {
                     $key = $attribute->newInstance();
                     $discriminators[$table][$mapping->columnName]['empty_value'] = $key->emptyValue;
                     $discriminators[$table][$mapping->columnName]['fallback_column'] = $key->fallbackProperty === null
@@ -198,14 +202,14 @@ final class EntityRegistry
                 }
                 foreach ($association->joinColumns as $join) {
                     if ($join->referencedColumnName !== 'id') {
-                        throw new \LogicException('Foreign key requires explicit composite-target support: ' . $table . '.' . $join->name);
+                        throw new LogicException('Foreign key requires explicit composite-target support: ' . $table . '.' . $join->name);
                     }
                     $target = $em->getClassMetadata($association->targetEntity)->getTableName();
                     $relations[$table][$join->name] = $target;
-                    $propertyMetadata = new \ReflectionProperty($record->name, $property);
+                    $propertyMetadata = new ReflectionProperty($record->name, $property);
                     if ($propertyMetadata->getAttributes(Mapping\EntityScopeOwner::class)) {
                         if (isset($scopeOwners[$table]) || count($association->joinColumns) !== 1) {
-                            throw new \LogicException('An entity scope requires one explicit owning parent: ' . $table);
+                            throw new LogicException('An entity scope requires one explicit owning parent: ' . $table);
                         }
                         $scopeOwners[$table] = ['column' => $join->name, 'target' => $target];
                     }
@@ -215,7 +219,7 @@ final class EntityRegistry
                         $binding = $attribute->newInstance();
                         $logicalColumn = $binding->legacyColumn;
                         if (!$record->hasField($binding->discriminator) || !$record->hasField($record->getFieldName($binding->legacyColumn))) {
-                            throw new \LogicException('Discriminated reference requires mapped legacy fields');
+                            throw new LogicException('Discriminated reference requires mapped legacy fields');
                         }
                         $discriminators[$table][$binding->legacyColumn]['discriminator'] = $record->getColumnName($binding->discriminator);
                         if ($binding->discriminator === 'itemtype') {
@@ -223,12 +227,12 @@ final class EntityRegistry
                         }
                         foreach ($binding->values as $value) {
                             if (isset($discriminators[$table][$binding->legacyColumn]['selections'][$value])) {
-                                throw new \LogicException('Duplicate discriminated reference kind');
+                                throw new LogicException('Duplicate discriminated reference kind');
                             }
                             $discriminators[$table][$binding->legacyColumn]['selections'][$value] = ['column' => $join->name, 'target' => $target, 'empty_value' => $binding->emptyValue];
                             if ($logicalDiscriminator !== null) {
                                 if (isset($legacyTables[$value]) && $legacyTables[$value] !== $target) {
-                                    throw new \LogicException('Conflicting itemtype target table: ' . $value);
+                                    throw new LogicException('Conflicting itemtype target table: ' . $value);
                                 }
                                 $legacyTables[$value] = $target;
                             }
@@ -239,35 +243,35 @@ final class EntityRegistry
                     if ($logicalDiscriminator !== null) {
                         $lifecycle[$target][$child][] = $logicalDiscriminator;
                     }
-                    $attributes = (new \ReflectionProperty($record->name, $property))->getAttributes(ReferencePolicy::class);
+                    $attributes = (new ReflectionProperty($record->name, $property))->getAttributes(ReferencePolicy::class);
                     if ($attributes) {
                         $policy = $attributes[0]->newInstance();
                         if (in_array($policy->kind, [ReferenceKind::RootEntity, ReferenceKind::Audience, ReferenceKind::GlobalScope, ReferenceKind::RootParent], true) && $target !== 'glpi_entities') {
-                            throw new \LogicException('Entity scope policy requires an entity target: ' . $table . '.' . $join->name);
+                            throw new LogicException('Entity scope policy requires an entity target: ' . $table . '.' . $join->name);
                         }
                         $defaultMode = ReferenceMode::Explicit;
                         $modeColumn = $modeLength = null;
                         if ($policy->kind === ReferenceKind::Inherited) {
                             $mode = $record->getFieldMapping($policy->modeProperty);
                             if ($mode->enumType !== ReferenceMode::class) {
-                                throw new \LogicException('Inherited reference mode must use ReferenceMode: ' . $table . '.' . $join->name);
+                                throw new LogicException('Inherited reference mode must use ReferenceMode: ' . $table . '.' . $join->name);
                             }
                             $defaultMode = ReferenceMode::from($mode->options['default']);
                             $modeColumn = $mode->columnName;
                             $modeLength = $mode->length;
                         }
                         if ($policy->kind !== ReferenceKind::RootEntity && !$join->nullable) {
-                            throw new \LogicException('Sentinel reference must be nullable: ' . $table . '.' . $join->name);
+                            throw new LogicException('Sentinel reference must be nullable: ' . $table . '.' . $join->name);
                         }
                         $references[$table][$join->name] = new MappedReference($property, $join->name, $target, $policy, $defaultMode, $modeColumn, $modeLength);
                     }
                 }
             }
-            foreach ((new \ReflectionClass($record->name))->getProperties() as $property) {
+            foreach ((new ReflectionClass($record->name))->getProperties() as $property) {
                 foreach ($property->getAttributes(Mapping\PolymorphicReference::class) as $attribute) {
                     $binding = $attribute->newInstance();
                     if (!$record->hasField($property->name) || !$record->hasField($binding->discriminator)) {
-                        throw new \LogicException('Polymorphic lifecycle link requires mapped ID and discriminator fields');
+                        throw new LogicException('Polymorphic lifecycle link requires mapped ID and discriminator fields');
                     }
                     $target = $em->getClassMetadata($binding->target)->getTableName();
                     $child = ($binding->managed ? '_' : '') . $table;
@@ -277,7 +281,7 @@ final class EntityRegistry
                 foreach ($property->getAttributes(Mapping\VirtualAssetLink::class) as $attribute) {
                     $binding = $attribute->newInstance();
                     if (!$record->hasField($property->name) || !$record->hasField($binding->discriminator)) {
-                        throw new \LogicException('Virtual asset link requires mapped ID and discriminator fields');
+                        throw new LogicException('Virtual asset link requires mapped ID and discriminator fields');
                     }
                     $lifecycle['_virtual_device'][$table] = [$record->getColumnName($property->name), $record->getColumnName($binding->discriminator)];
                 }
