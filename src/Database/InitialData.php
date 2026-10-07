@@ -4,48 +4,14 @@
 
 namespace itsmng\Database;
 
+use DBAdapter;
 use Doctrine\DBAL\Types\Types;
 use itsmng\Database\Entity\CronTask;
-use itsmng\Database\Repository\RecordWriter;
 
-/** Import raw, translated installation values before relationship migrations and FK enforcement. */
+/** Installation preferences applied after frozen seed replay. */
 final class InitialData
 {
-    public static function load(\DBAdapter $database, array $tables, ?callable $progress = null): void
-    {
-        foreach (array_keys($tables) as $table) {
-            if (!isset(EntityRegistry::tables()[$table])) {
-                throw new \InvalidArgumentException('Unmapped installation table: ' . $table);
-            }
-        }
-        $em = Orm::create($database);
-        try {
-            $database->getDoctrineConnection()->transactional(static function () use ($em, $tables, $progress): void {
-                $writer = new RecordWriter($em);
-                foreach ($tables as $table => $rows) {
-                    foreach ($rows as $row) {
-                        // Raw values preserve literal NULL/backslashes and temporary legacy sentinels.
-                        if ($table === 'glpi_entities' && isset($row['id']) && (int)$row['id'] === 0 && array_key_exists('entities_id', $row)) {
-                            if ($row['entities_id'] !== null && !in_array($row['entities_id'], [-1, '-1', 0, '0'], true)) {
-                                throw new \InvalidArgumentException('The root entity cannot select a parent');
-                            }
-                            $row['entities_id'] = null;
-                        }
-                        $writer->insert($table, EntityConfigurationReferences::normalizeLegacy($table, $row));
-                        // Seed order can reference parents loaded later; discard placeholder proxies.
-                        $em->clear();
-                        if ($progress !== null) {
-                            $progress();
-                        }
-                    }
-                }
-            });
-        } finally {
-            $em->clear();
-        }
-    }
-
-    public static function enableSystemCron(\DBAdapter $database): void
+    public static function enableSystemCron(DBAdapter $database): void
     {
         Orm::create($database)->createQueryBuilder()->update(CronTask::class, 'r')->set('r.mode', ':mode')
             ->where('r.name <> :watcher AND BIT_AND(r.allowmode, :mode) = :mode')
