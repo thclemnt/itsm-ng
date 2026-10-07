@@ -34,6 +34,11 @@ final class CurrentSchema
             }
             $tables[$table->getName()] = clone $table;
         }
-        return new Schema(array_values($tables), $schema->getSequences(), $configuration, $schema->getNamespaces());
+        return new Schema(
+            array_values($tables),
+            $schema->getSequences(),
+            $configuration,
+            $schema->getNamespaces()
+        );
     }
 }

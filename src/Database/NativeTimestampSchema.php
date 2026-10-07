@@ -51,8 +51,10 @@ final class NativeTimestampSchema
         foreach ($declarations as $table => $fields) {
             foreach ($fields as $column => $timestamp) {
                 if ($timestamp->touchTrigger !== null && $expected->hasTable($table) && $expected->getTable($table)->hasColumn($column)) {
-                    $touches[$table][$column] = ['trigger' => $timestamp->touchTrigger,
-                        'body' => $timestamp->touchBody($connection->getDatabasePlatform(), $column)];
+                    $touches[$table][$column] = [
+                        'trigger' => $timestamp->touchTrigger,
+                        'body' => $timestamp->touchBody($connection->getDatabasePlatform(), $column),
+                    ];
                 }
             }
         }

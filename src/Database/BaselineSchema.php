@@ -4,17 +4,41 @@
 
 namespace itsmng\Database;
 
-use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Schema\SchemaConfig;
-use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
-use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\ORM\Tools\SchemaTool;
+use InvalidArgumentException;
+use itsmng\Database\Mapping\BooleanStorage;
+use itsmng\Database\Mapping\DiscriminatedBy;
+use itsmng\Database\Mapping\DiscriminatorKey;
 use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
+use itsmng\Database\Migration\V220\Baseline as FrozenBaseline;
+use itsmng\Database\Migration\V220\DashboardOwnership;
+use itsmng\Database\Migration\V220\DisplayPreferenceOwnership;
+use itsmng\Database\Migration\V220\EntityParents;
+use itsmng\Database\Migration\V220\IdentifierColumns;
+use itsmng\Database\Migration\V220\InventoryUniqueness;
+use itsmng\Database\Migration\V220\KanbanOwnership;
+use itsmng\Database\Migration\V220\NetworkPortAggregateOrigins;
+use itsmng\Database\Migration\V220\NotificationRecipients;
+use itsmng\Database\Migration\V220\OidcReferences;
+use itsmng\Database\Migration\V220\PlanningEventGuests;
+use itsmng\Database\Migration\V220\ServiceLevelCalendars;
+use itsmng\Database\Migration\V220\UnusedProjectTemplateReference;
+use itsmng\Database\Migration\V220\UserAuthenticationSources;
+use ReflectionClass;
+use ReflectionProperty;
 
 /** Current required schema for read-only inspection; installation replays frozen history. */
 final class BaselineSchema
@@ -37,49 +61,61 @@ final class BaselineSchema
     {
         if ($this->metadataManager !== null
             && $this->metadataManager->getConnection()->getDatabasePlatform()::class !== $platform::class) {
-            throw new \InvalidArgumentException('Current schema metadata must use the selected platform.');
+            throw new InvalidArgumentException('Current schema metadata must use the selected platform.');
         }
         $this->extraSql = [];
         $this->subjectPolicies = [];
         // Frozen Baseline creates Schema() with the default configuration. Own
         // that same configuration explicitly when composing current declarations.
         $configuration = new SchemaConfig();
-        $baseline = new Migration\V220\Baseline();
+        $baseline = new FrozenBaseline();
         $schema = $baseline->build($platform);
         $this->extraSql['baseline'] = $baseline->extraSql($platform);
         // Adoption retains this redundant historical index on old installations.
         // It is optional beside the current numeric dashboard primary key.
         $schema->getTable('glpi_dashboards')->dropIndex('dashboard_legacy_id');
         foreach (['glpi_slms', 'glpi_slas', 'glpi_olas'] as $tableName) {
-            Migration\V220\ServiceLevelCalendars::configureTable($schema->getTable($tableName));
+            ServiceLevelCalendars::configureTable($schema->getTable($tableName));
         }
-        foreach ([...EntityRegistry::relationsByPolicy(Mapping\ReferenceKind::Audience), ...EntityRegistry::relationsByPolicy(Mapping\ReferenceKind::GlobalScope)] as $name => $relations) {
-            $schema->getTable($name)->getColumn('entities_id')->setNotnull(false)->setDefault(null);
+        foreach ([
+            ...EntityRegistry::relationsByPolicy(ReferenceKind::Audience),
+            ...EntityRegistry::relationsByPolicy(ReferenceKind::GlobalScope),
+        ] as $name => $relations) {
+            $schema->getTable($name)
+                ->getColumn('entities_id')
+                ->setNotnull(false)
+                ->setDefault(null);
         }
-        Migration\V220\DashboardOwnership::configureTable($schema->getTable('glpi_dashboards'), $platform);
-        Migration\V220\OidcReferences::configureTable($schema->getTable('glpi_oidc_users'));
+        DashboardOwnership::configureTable($schema->getTable('glpi_dashboards'), $platform);
+        OidcReferences::configureTable($schema->getTable('glpi_oidc_users'));
         $this->configureInheritedReferences($schema, $platform);
-        Migration\V220\EntityParents::configureTable($schema->getTable('glpi_entities'));
-        Migration\V220\NotificationRecipients::configureTable($schema->getTable('glpi_notificationtargets'));
-        Migration\V220\UserAuthenticationSources::configureTable($schema->getTable('glpi_users'));
-        Migration\V220\NetworkPortAggregateOrigins::configureSchema($schema);
-        Migration\V220\PlanningEventGuests::configureSchema($schema);
-        Migration\V220\UnusedProjectTemplateReference::configureTable($schema->getTable('glpi_projects'));
+        EntityParents::configureTable($schema->getTable('glpi_entities'));
+        NotificationRecipients::configureTable($schema->getTable('glpi_notificationtargets'));
+        UserAuthenticationSources::configureTable($schema->getTable('glpi_users'));
+        NetworkPortAggregateOrigins::configureSchema($schema);
+        PlanningEventGuests::configureSchema($schema);
+        UnusedProjectTemplateReference::configureTable($schema->getTable('glpi_projects'));
         $ownedTables = $this->configurePropertyColumns($schema, $platform, $configuration, $foreignKeys);
         $this->configureRequiredSubjects($schema, $platform);
-        $this->extraSql['glpi_users'][] = Migration\V220\UserAuthenticationSources::checkSql();
-        $this->extraSql['glpi_notificationtargets'][] = Migration\V220\NotificationRecipients::checkSql();
-        $this->extraSql['glpi_entities'][] = Migration\V220\EntityParents::checkSql();
-        $this->extraSql['glpi_slms'][] = Migration\V220\ServiceLevelCalendars::checkSql();
-        foreach (EntityRegistry::relationsByPolicy(Mapping\ReferenceKind::EmptySelection) as $tableName => $relations) {
+        $this->extraSql['glpi_users'][] = UserAuthenticationSources::checkSql();
+        $this->extraSql['glpi_notificationtargets'][] = NotificationRecipients::checkSql();
+        $this->extraSql['glpi_entities'][] = EntityParents::checkSql();
+        $this->extraSql['glpi_slms'][] = ServiceLevelCalendars::checkSql();
+        foreach (EntityRegistry::relationsByPolicy(ReferenceKind::EmptySelection) as $tableName => $relations) {
             foreach ($relations as $column => $target) {
-                $schema->getTable($tableName)->getColumn($column)->setNotnull(false)->setDefault(null);
+                $schema->getTable($tableName)
+                    ->getColumn($column)
+                    ->setNotnull(false)
+                    ->setDefault(null);
             }
         }
-        Migration\V220\DisplayPreferenceOwnership::addToTable($schema->getTable('glpi_displaypreferences'), $platform);
-        Migration\V220\KanbanOwnership::addToTable($schema->getTable('glpi_items_kanbans'), $platform);
-        Migration\V220\InventoryUniqueness::addToTable($schema->getTable('glpi_items_operatingsystems'), Migration\V220\InventoryUniqueness::indexName($platform));
-        Migration\V220\IdentifierColumns::configureSchema($schema);
+        DisplayPreferenceOwnership::addToTable($schema->getTable('glpi_displaypreferences'), $platform);
+        KanbanOwnership::addToTable($schema->getTable('glpi_items_kanbans'), $platform);
+        InventoryUniqueness::addToTable(
+            $schema->getTable('glpi_items_operatingsystems'),
+            InventoryUniqueness::indexName($platform)
+        );
+        IdentifierColumns::configureSchema($schema);
         if ($foreignKeys) {
             (new ForeignKeys())->addToSchema($schema);
         }
@@ -96,17 +132,17 @@ final class BaselineSchema
     private function configurePropertyColumns(Schema &$schema, AbstractPlatform $platform, SchemaConfig $configuration, bool $foreignKeys): array
     {
         $connection = $this->metadataManager?->getConnection()
-            ?? \Doctrine\DBAL\DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
+            ?? DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
         $em = $this->metadataManager ?? new EntityManager($connection, Orm::configuration($platform));
         try {
             $metadata = $em->getMetadataFactory()->getAllMetadata();
             $nativeTimestamps = NativeTimestampSchema::declarations($metadata);
-            $mapped = (new \Doctrine\ORM\Tools\SchemaTool($em))->getSchemaFromMetadata($metadata);
+            $mapped = (new SchemaTool($em))->getSchemaFromMetadata($metadata);
             $declarations = [];
             foreach ($metadata as $entity) {
                 $declarations[$entity->getTableName()] = $entity;
                 foreach ($entity->fieldMappings as $property => $field) {
-                    foreach ((new \ReflectionProperty($entity->name, $property))->getAttributes(Mapping\BooleanStorage::class) as $attribute) {
+                    foreach ((new ReflectionProperty($entity->name, $property))->getAttributes(BooleanStorage::class) as $attribute) {
                         $attribute->newInstance()->configure($mapped->getTable($entity->getTableName())->getColumn($field->columnName), $platform, $field);
                     }
                 }
@@ -115,7 +151,7 @@ final class BaselineSchema
             $newTables = [];
             foreach ($mapped->getTables() as $declaration) {
                 $entity = $declarations[$declaration->getName()];
-                if ((new \ReflectionClass($entity->name))->getAttributes(Mapping\SchemaOwner::class) !== []) {
+                if ((new ReflectionClass($entity->name))->getAttributes(SchemaOwner::class) !== []) {
                     $owned = clone $declaration;
                     if (!$foreignKeys) {
                         foreach ($owned->getForeignKeys() as $foreignKey) {
@@ -136,7 +172,7 @@ final class BaselineSchema
                 $table = $schema->getTable($declaration->getName());
                 $entity = $declarations[$declaration->getName()];
                 $ownedIndexes = $ownedIndexColumns = [];
-                foreach ((new \ReflectionClass($entity->name))->getAttributes(Mapping\SchemaIndex::class) as $attribute) {
+                foreach ((new ReflectionClass($entity->name))->getAttributes(SchemaIndex::class) as $attribute) {
                     $index = $attribute->newInstance();
                     $ownedIndexes[] = $index->name($platform);
                     array_push($ownedIndexColumns, ...$index->columns);
@@ -169,7 +205,7 @@ final class BaselineSchema
                     }
                 }
                 foreach ($entity->associationMappings as $property => $association) {
-                    if ((new \ReflectionProperty($entity->name, $property))->getAttributes(Mapping\DiscriminatedBy::class)) {
+                    if ((new ReflectionProperty($entity->name, $property))->getAttributes(DiscriminatedBy::class)) {
                         foreach ($association->joinColumns as $join) {
                             $subjectColumns[] = $join->name;
                         }
@@ -223,7 +259,9 @@ final class BaselineSchema
                     continue;
                 }
                 $table = $schema->getTable($name);
-                $table->getColumn($reference->column)->setNotnull(false)->setDefault(null);
+                $table->getColumn($reference->column)
+                    ->setNotnull(false)
+                    ->setDefault(null);
                 $table->addColumn('`' . $reference->modeColumn . '`', Types::STRING, [
                     'length' => $reference->modeLength,
                     'notnull' => true,
@@ -244,7 +282,7 @@ final class BaselineSchema
     {
         // An explicit version keeps offline schema inspection independent of a server.
         $connection = $this->metadataManager?->getConnection()
-            ?? \Doctrine\DBAL\DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
+            ?? DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
         $em = $this->metadataManager ?? new EntityManager($connection, Orm::configuration($platform));
         try {
             foreach ($em->getMetadataFactory()->getAllMetadata() as $metadata) {
@@ -264,7 +302,7 @@ final class BaselineSchema
                             . ' ADD CONSTRAINT ' . $platform->quoteIdentifier($name) . ' CHECK (' . BooleanDomainSchema::expression($platform, $field->columnName, (bool)$field->nullable) . ')'
                             . ($platform instanceof MySQLPlatform ? ' ENFORCED' : '');
                     }
-                    foreach ((new \ReflectionProperty($metadata->name, $property))->getAttributes(Mapping\DiscriminatorKey::class) as $attribute) {
+                    foreach ((new ReflectionProperty($metadata->name, $property))->getAttributes(DiscriminatorKey::class) as $attribute) {
                         $key = $attribute->newInstance();
                         if ($key->fallbackProperty !== null) {
                             continue;
@@ -272,7 +310,7 @@ final class BaselineSchema
                         $key->configureSubjectTable($schema->getTable($metadata->getTableName()), $platform, $metadata, $property);
                         $discriminators = [];
                         foreach ($metadata->associationMappings as $association => $mapping) {
-                            foreach ((new \ReflectionProperty($metadata->name, $association))->getAttributes(Mapping\DiscriminatedBy::class) as $binding) {
+                            foreach ((new ReflectionProperty($metadata->name, $association))->getAttributes(DiscriminatedBy::class) as $binding) {
                                 $binding = $binding->newInstance();
                                 if ($binding->legacyColumn === $metadata->getColumnName($property)) {
                                     $discriminators[] = $metadata->getColumnName($binding->discriminator);

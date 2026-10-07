@@ -5,6 +5,11 @@
 namespace itsmng\Database;
 
 use Composer\InstalledVersions;
+use FilesystemIterator;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use RuntimeException;
+use Throwable;
 
 /** Content identity shared by derived mapping caches, never a schema declaration. */
 final class MappingFingerprint
@@ -27,16 +32,18 @@ final class MappingFingerprint
         // Like PHP's loaded classes, the cache assumes a coherent deployment
         // and opcode-cache reload. Content catches same-mtime source changes.
         set_error_handler(static function (int $severity, string $message): never {
-            throw new \RuntimeException($message);
+            throw new RuntimeException($message);
         });
         try {
             // Release archives may omit Composer manifests; InstalledVersions
             // below still identifies the dependencies actually shipped.
             $files = is_file($sourceRoot . '/composer.lock') ? [$sourceRoot . '/composer.lock'] : [];
-            $sources = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(
-                $sourceRoot . '/src/Database',
-                \FilesystemIterator::SKIP_DOTS,
-            ));
+            $sources = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator(
+                    $sourceRoot . '/src/Database',
+                    FilesystemIterator::SKIP_DOTS,
+                )
+            );
             foreach ($sources as $file) {
                 if ($file->isFile() && $file->getExtension() === 'php') {
                     $files[] = $file->getPathname();
@@ -53,7 +60,7 @@ final class MappingFingerprint
                 hash_update($hash, $file . "\0" . $digest);
             }
             return hash_final($hash);
-        } catch (\Throwable) {
+        } catch (Throwable) {
             // A partial/unreadable deployment must never select a stale key.
             return null;
         } finally {
