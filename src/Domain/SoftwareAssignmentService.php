@@ -4,10 +4,22 @@
 
 namespace itsmng\Domain;
 
+use CommonDBTM;
+use DBAdapter;
+use Doctrine\DBAL\Connection;
+use InvalidArgumentException;
+use Item_SoftwareLicense;
+use Item_SoftwareVersion;
+use itsmng\Database\ConnexityInput;
+use itsmng\Database\Entity\ItemSoftwareLicense;
 use itsmng\Database\LifecycleModelJournal;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\SoftwareAssignmentRepository;
+use itsmng\Database\Repository\SoftwareInstallationRepository;
 use itsmng\Database\Repository\SoftwareRepository;
+use Software;
+use SoftwareLicense;
+use Toolbox;
 
 /** Installation ownership and allocation eligibility share their aggregate writer. */
 final class SoftwareAssignmentService
@@ -15,17 +27,17 @@ final class SoftwareAssignmentService
     private SoftwareAssignmentRepository $assignments;
     private SoftwareRepository $software;
 
-    public function __construct(private \DBAdapter $database)
+    public function __construct(private DBAdapter $database)
     {
         $manager = Orm::create($database);
         $this->assignments = new SoftwareAssignmentRepository($manager);
         $this->software = new SoftwareRepository($manager);
     }
 
-    public static function forConnection(\Doctrine\DBAL\Connection $connection): self
+    public static function forConnection(Connection $connection): self
     {
         $database = $GLOBALS['DB'] ?? null;
-        if (!$database instanceof \DBAdapter || $database->isSlave() || $database->getDoctrineConnection() !== $connection) {
+        if (!$database instanceof DBAdapter || $database->isSlave() || $database->getDoctrineConnection() !== $connection) {
             throw new SoftwareAssignmentCancelled('Software mutations require their supplied active writer.');
         }
         SoftwareMutation::assertSupportedIsolation($database);
@@ -35,7 +47,7 @@ final class SoftwareAssignmentService
     /** Bulk owning changes acquire the same aggregate/row/subject graph. */
     public function lockSoftwareAssignments(array $software): void
     {
-        SoftwareMutation::assertTransactionalStorage($this->database, [\Software::getTable(), \SoftwareLicense::getTable(), \Item_SoftwareLicense::getTable()]);
+        SoftwareMutation::assertTransactionalStorage($this->database, [Software::getTable(), SoftwareLicense::getTable(), Item_SoftwareLicense::getTable()]);
         $this->assignments->lockSoftware($software);
         $licenses = $this->assignments->licensesForSoftware($software);
         $this->assignments->lockLicenses($licenses);
@@ -51,11 +63,11 @@ final class SoftwareAssignmentService
     {
         SoftwareMutation::assertSupportedIsolation($this->database);
         $subjects = [[$kind, $id]];
-        $installations = new \itsmng\Database\Repository\SoftwareInstallationRepository(Orm::create($this->database));
+        $installations = new SoftwareInstallationRepository(Orm::create($this->database));
         $versions = $installations->installationsForTransfer($kind, $id, []);
         $software = $this->assignments->softwareIdsForVersions(array_column($versions, 'softwareversions_id'));
         $licenses = $this->assignments->licensesForSubject($kind, $id, current: false);
-        $this->lockAllocations($licenses, [\Item_SoftwareVersion::getTable()], $subjects, $software);
+        $this->lockAllocations($licenses, [Item_SoftwareVersion::getTable()], $subjects, $software);
         if ($this->assignments->licensesForSubject($kind, $id) !== $licenses) {
             throw new SoftwareAssignmentCancelled('Transfer allocation membership changed before locking; retry the command.');
         }
@@ -71,15 +83,15 @@ final class SoftwareAssignmentService
     public function transferAllocation(int $assignmentId, int $destinationEntity, callable $copySoftware, callable $copyVersion, callable $add, callable $update, callable $delete): void
     {
         SoftwareMutation::assertSupportedIsolation($this->database);
-        $assignment = new \Item_SoftwareLicense();
-        $source = new \SoftwareLicense();
+        $assignment = new Item_SoftwareLicense();
+        $source = new SoftwareLicense();
         if (!$assignment->getFromDB($assignmentId) || !$source->getFromDB($assignment->fields['softwarelicenses_id'])) {
             throw new SoftwareAssignmentCancelled('A selected software allocation or licence is missing.');
         }
         $sourceFields = $source->fields;
         $targetSoftware = SoftwareAssignmentCancelled::requireIdentifier($copySoftware($sourceFields['softwares_id']), 'Software allocation destination');
         $this->assignments->lockSoftware(SoftwareAssignmentRepository::identifiers([(int)$sourceFields['softwares_id'], $targetSoftware]));
-        SoftwareMutation::assertTransactionalStorage($this->database, [\Software::getTable(), \SoftwareLicense::getTable(), \Item_SoftwareLicense::getTable()]);
+        SoftwareMutation::assertTransactionalStorage($this->database, [Software::getTable(), SoftwareLicense::getTable(), Item_SoftwareLicense::getTable()]);
         $currentSource = $this->assignments->licenseRecord((int)$source->getID());
         if ($currentSource === null || (int)$currentSource['softwares_id'] !== (int)$sourceFields['softwares_id']) {
             throw new SoftwareAssignmentCancelled('The selected source licence owner changed; retry the command.');
@@ -106,7 +118,7 @@ final class SoftwareAssignmentService
             throw new SoftwareAssignmentCancelled('The selected source licence disappeared.');
         }
         if ($targetId !== null) {
-            $target = new \SoftwareLicense();
+            $target = new SoftwareLicense();
             if (!$target->getFromDB($targetId)) {
                 throw new SoftwareAssignmentCancelled('The destination allocation licence disappeared.');
             }
@@ -128,8 +140,8 @@ final class SoftwareAssignmentService
             $input['softwares_id'] = $targetSoftware;
             $input['entities_id'] = $destinationEntity;
             $input['number'] = 1;
-            $target = new \SoftwareLicense();
-            $targetId = SoftwareAssignmentCancelled::requireIdentifier($add($target, \Toolbox::addslashes_deep($input)), 'Destination allocation licence');
+            $target = new SoftwareLicense();
+            $targetId = SoftwareAssignmentCancelled::requireIdentifier($add($target, Toolbox::addslashes_deep($input)), 'Destination allocation licence');
         }
         SoftwareAssignmentCancelled::requireSuccess($update($assignment, ['id' => $assignmentId, 'softwarelicenses_id' => $targetId]), 'Allocation reassignment');
         if ((int)$sourceFields['number'] > 1) {
@@ -147,11 +159,11 @@ final class SoftwareAssignmentService
         $software = [];
         foreach ($selection->items as $kind => $ids) {
             foreach ($ids as $id) {
-                if ($kind === \Software::class) {
+                if ($kind === Software::class) {
                     $software[] = (int)$id;
-                } elseif ($kind === \SoftwareLicense::class) {
+                } elseif ($kind === SoftwareLicense::class) {
                     $licenses[] = (int)$id;
-                } elseif ($kind === \Item_SoftwareLicense::class) {
+                } elseif ($kind === Item_SoftwareLicense::class) {
                     $allocation = $this->assignments->allocationOwner((int)$id, current: false);
                     if ($allocation === null) {
                         throw new SoftwareAssignmentCancelled('The selected transfer allocation is missing.');
@@ -160,10 +172,10 @@ final class SoftwareAssignmentService
                     $licenses[] = (int)$allocation['license'];
                 } else {
                     try {
-                        \itsmng\Database\Entity\ItemSoftwareLicense::referenceAssociation($kind);
+                        ItemSoftwareLicense::referenceAssociation($kind);
                         $subjects[] = [$kind, (int)$id];
                         $licenses = [...$licenses, ...$this->assignments->licensesForSubject($kind, (int)$id, current: false)];
-                    } catch (\InvalidArgumentException) {
+                    } catch (InvalidArgumentException) {
                         // A transfer of an unrelated domain creates no allocation graph.
                     }
                 }
@@ -179,7 +191,7 @@ final class SoftwareAssignmentService
         return SoftwareHierarchyUnit::run($this->database, $this->assignments->hierarchyRoots(software: $software, includeInstallations: true), $operation);
     }
 
-    public function mutateAllocation(\Item_SoftwareLicense $model, array $checkpoint, callable $operation, string $mode, ?callable $guard = null): mixed
+    public function mutateAllocation(Item_SoftwareLicense $model, array $checkpoint, callable $operation, string $mode, ?callable $guard = null): mixed
     {
         return $this->mutate($model, $checkpoint, $mode, function () use ($model, $checkpoint, $operation, $mode, $guard) {
             $licenses = SoftwareAssignmentRepository::identifiers([
@@ -209,7 +221,7 @@ final class SoftwareAssignmentService
             $selectedId = $mode === 'add' ? null : (int)$checkpoint['fields']['id'];
             $changed = $mode !== 'update' || (bool)array_intersect($model->updates, [
                 'softwarelicenses_id', 'itemtype', 'items_id', 'is_deleted',
-                ...\itsmng\Database\ConnexityInput::endpointFields($model),
+                ...ConnexityInput::endpointFields($model),
             ]);
             $result = $this->complete($operation, $mode);
             if ($mode === 'restore') {
@@ -236,7 +248,7 @@ final class SoftwareAssignmentService
         });
     }
 
-    private function assertAllocationPair(\Item_SoftwareLicense $model, ?int $selectedSoftware = null): int
+    private function assertAllocationPair(Item_SoftwareLicense $model, ?int $selectedSoftware = null): int
     {
         $subject = $this->assignments->allocationSubject($model->fields['itemtype'], (int)$model->fields['items_id']);
         $license = $this->assignments->license((int)$model->fields['softwarelicenses_id']);
@@ -254,7 +266,7 @@ final class SoftwareAssignmentService
         return $software->id;
     }
 
-    public function mutateInstallation(\Item_SoftwareVersion $model, array $checkpoint, callable $operation, string $mode, ?callable $guard = null): mixed
+    public function mutateInstallation(Item_SoftwareVersion $model, array $checkpoint, callable $operation, string $mode, ?callable $guard = null): mixed
     {
         return $this->mutate($model, $checkpoint, $mode, function () use ($model, $checkpoint, $operation, $mode, $guard) {
             $subjects = [[$model->fields['itemtype'], (int)$model->fields['items_id']]];
@@ -275,7 +287,7 @@ final class SoftwareAssignmentService
             foreach ($software as $id) {
                 $softwareScopes[$id] = $this->assignments->software($id, current: false)?->allocationScope();
             }
-            SoftwareMutation::assertTransactionalStorage($this->database, [$model->getTable(), \Software::getTable()]);
+            SoftwareMutation::assertTransactionalStorage($this->database, [$model->getTable(), Software::getTable()]);
             $this->assignments->lockSoftware($software);
             foreach ($softwareScopes as $id => $scope) {
                 if ($this->assignments->software($id)->allocationScope() !== $scope) {
@@ -311,7 +323,7 @@ final class SoftwareAssignmentService
         });
     }
 
-    public function mutateSubject(\CommonDBTM $model, array $checkpoint, callable $operation, string $mode): mixed
+    public function mutateSubject(CommonDBTM $model, array $checkpoint, callable $operation, string $mode): mixed
     {
         return $this->mutate($model, $checkpoint, $mode, function () use ($model, $operation, $mode) {
             SoftwareMutation::assertTransactionalStorage($this->database, [$model->getTable()]);
@@ -327,13 +339,13 @@ final class SoftwareAssignmentService
         });
     }
 
-    public function mutateLicense(\SoftwareLicense $model, array $checkpoint, callable $operation, string $mode): mixed
+    public function mutateLicense(SoftwareLicense $model, array $checkpoint, callable $operation, string $mode): mixed
     {
         return $this->mutate($model, $checkpoint, $mode, function () use ($model, $checkpoint, $operation, $mode) {
             $software = SoftwareAssignmentRepository::identifiers([
                 ($mode === 'add' ? 0 : ($checkpoint['fields']['softwares_id'] ?? 0)), $model->fields['softwares_id'] ?? 0,
             ]);
-            SoftwareMutation::assertTransactionalStorage($this->database, [$model->getTable(), \Software::getTable(), \Item_SoftwareLicense::getTable()]);
+            SoftwareMutation::assertTransactionalStorage($this->database, [$model->getTable(), Software::getTable(), Item_SoftwareLicense::getTable()]);
             $this->assignments->lockSoftware($software);
             if ($mode !== 'add') {
                 $this->assignments->lockLicenses([(int)$model->getID()]);
@@ -392,7 +404,7 @@ final class SoftwareAssignmentService
         });
     }
 
-    public function mutateSoftware(\Software $model, array $checkpoint, callable $operation, string $mode): mixed
+    public function mutateSoftware(Software $model, array $checkpoint, callable $operation, string $mode): mixed
     {
         return $this->mutate($model, $checkpoint, $mode, function () use ($model, $operation, $mode) {
             SoftwareMutation::assertTransactionalStorage($this->database, [$model->getTable()]);
@@ -408,7 +420,7 @@ final class SoftwareAssignmentService
 
     public function refreshLicenseValidity(int $id): bool
     {
-        $model = new \SoftwareLicense();
+        $model = new SoftwareLicense();
         if (!$model->getFromDB($id)) {
             return false;
         }
@@ -430,12 +442,12 @@ final class SoftwareAssignmentService
 
     public function refreshSoftwareValidity(int $id): bool
     {
-        $model = new \Software();
+        $model = new Software();
         if (!$model->getFromDB($id)) {
             return false;
         }
         return SoftwareMutation::run($this->database, $model, LifecycleModelJournal::state($model), function () use ($id, $model) {
-            SoftwareMutation::assertTransactionalStorage($this->database, [\Software::getTable(), \SoftwareLicense::getTable()]);
+            SoftwareMutation::assertTransactionalStorage($this->database, [Software::getTable(), SoftwareLicense::getTable()]);
             $this->assignments->lockSoftware([$id]);
             $expected = !$this->software->hasInvalidLicense($id, currentRead: true);
             $software = $this->assignments->software($id);
@@ -452,7 +464,7 @@ final class SoftwareAssignmentService
 
     private function lockAllocations(array $licenses, array $tables, array $subjects = [], array $extraSoftware = []): void
     {
-        SoftwareMutation::assertTransactionalStorage($this->database, [...$tables, \SoftwareLicense::getTable(), \Software::getTable(), \Item_SoftwareLicense::getTable()]);
+        SoftwareMutation::assertTransactionalStorage($this->database, [...$tables, SoftwareLicense::getTable(), Software::getTable(), Item_SoftwareLicense::getTable()]);
         $licenseOwners = $this->assignments->softwareIdsForLicenses($licenses);
         $owners = SoftwareAssignmentRepository::identifiers([...$licenseOwners, ...$extraSoftware]);
         $licenseScopes = [];
@@ -488,7 +500,7 @@ final class SoftwareAssignmentService
         $this->assignments->lockSubjects($subjects);
     }
 
-    private function mutate(\CommonDBTM $model, array $checkpoint, string $mode, callable $operation): mixed
+    private function mutate(CommonDBTM $model, array $checkpoint, string $mode, callable $operation): mixed
     {
         if ($mode !== 'add' && (int)($checkpoint['fields']['id'] ?? 0) !== (int)$model->getID()) {
             return SoftwareMutation::run($this->database, $model, $checkpoint, static function () {
@@ -512,7 +524,7 @@ final class SoftwareAssignmentService
                 if (array_key_exists('entities_id', $fields) && $fields['entities_id'] !== null) {
                     $roots[] = (int)$fields['entities_id'];
                 }
-                if ($model instanceof \Item_SoftwareVersion) {
+                if ($model instanceof Item_SoftwareVersion) {
                     if (isset($fields['itemtype'], $fields['items_id'])) {
                         $subjects[] = [$fields['itemtype'], (int)$fields['items_id']];
                         $licenses = [...$licenses, ...$this->assignments->licensesForSubject($fields['itemtype'], (int)$fields['items_id'], current: false)];
@@ -520,26 +532,26 @@ final class SoftwareAssignmentService
                     if ((int)($fields['softwareversions_id'] ?? 0) > 0) {
                         $software[] = $this->assignments->softwareForVersion((int)$fields['softwareversions_id']);
                     }
-                } elseif ($model instanceof \Item_SoftwareLicense) {
+                } elseif ($model instanceof Item_SoftwareLicense) {
                     if (isset($fields['itemtype'], $fields['items_id'])) {
                         $subjects[] = [$fields['itemtype'], (int)$fields['items_id']];
                     }
                     $licenses[] = (int)($fields['softwarelicenses_id'] ?? 0);
-                } elseif ($model instanceof \SoftwareLicense) {
+                } elseif ($model instanceof SoftwareLicense) {
                     $licenses[] = (int)($fields['id'] ?? 0);
                     $software[] = (int)($fields['softwares_id'] ?? 0);
-                } elseif ($model instanceof \Software) {
+                } elseif ($model instanceof Software) {
                     $software[] = (int)($fields['id'] ?? 0);
                     $includeInstallations = $mode === 'delete';
                 } else {
                     try {
-                        \itsmng\Database\Entity\ItemSoftwareLicense::referenceAssociation($model->getType());
+                        ItemSoftwareLicense::referenceAssociation($model->getType());
                         $includeInstallations = $mode === 'delete';
                         if ((int)($fields['id'] ?? 0) > 0) {
                             $subjects[] = [$model->getType(), (int)$fields['id']];
                             $licenses = [...$licenses, ...$this->assignments->licensesForSubject($model->getType(), (int)$fields['id'], current: false)];
                         }
-                    } catch (\InvalidArgumentException) {
+                    } catch (InvalidArgumentException) {
                         // Non-allocation domain models have no subject graph to reserve.
                     }
                 }

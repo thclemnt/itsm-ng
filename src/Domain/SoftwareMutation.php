@@ -4,17 +4,30 @@
 
 namespace itsmng\Domain;
 
+use Closure;
+use CommonDBTM;
+use DBAdapter;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use itsmng\Database\CurrentReadUnavailable;
 use itsmng\Database\LifecycleModelJournal;
 use itsmng\Database\LifecycleNotifications;
 use itsmng\Database\MutationCleanupFailure;
 use itsmng\Database\MutationRollbackFailure;
+use itsmng\Database\MySQLConnection;
 use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\TransactionOwnership;
+use itsmng\Database\TransactionOwnershipMismatch;
+use Log;
+use QueuedNotification;
+use Session;
+use Throwable;
 
 /** One prepared software command, including its required public lifecycle work. */
 final class SoftwareMutation
 {
     /** A public preload cannot replace the writer inherited by the ensuing mutation. */
-    public static function loadForMutation(\DBAdapter $database, \CommonDBTM $model, mixed $id, ?callable $admission = null): bool
+    public static function loadForMutation(DBAdapter $database, CommonDBTM $model, mixed $id, ?callable $admission = null): bool
     {
         if ($database->isSlave()) {
             return false;
@@ -24,12 +37,12 @@ final class SoftwareMutation
         $failure = null;
         try {
             $loaded = ($admission === null || $admission()) && $model->getFromDB($id);
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $failure = $error;
         }
         try {
             $assertOwner();
-        } catch (\Throwable $cleanup) {
+        } catch (Throwable $cleanup) {
             $failure = $failure === null ? $cleanup : new MutationCleanupFailure($failure, $cleanup, true);
         }
         if ($failure !== null) {
@@ -39,34 +52,34 @@ final class SoftwareMutation
     }
 
     /** Capture this mutation's supplied owner before an overridable preload. */
-    public static function writerContinuity(\DBAdapter $database): \Closure
+    public static function writerContinuity(DBAdapter $database): Closure
     {
         if (($GLOBALS['DB'] ?? null) !== $database) {
-            throw new \itsmng\Database\TransactionOwnershipMismatch('Software mutation changed its supplied writer.');
+            throw new TransactionOwnershipMismatch('Software mutation changed its supplied writer.');
         }
         $connection = $database->getDoctrineConnection();
-        \itsmng\Database\TransactionOwnership::assertManaged($connection);
+        TransactionOwnership::assertManaged($connection);
         $level = $connection->getTransactionNestingLevel();
         $scope = $level > 0 ? $connection->captureManagedTransactionScope() : null;
         return static function () use ($database, $connection, $scope, $level): void {
             if (($GLOBALS['DB'] ?? null) !== $database || $database->getDoctrineConnection() !== $connection) {
-                throw new \itsmng\Database\TransactionOwnershipMismatch('Software mutation changed its supplied writer.');
+                throw new TransactionOwnershipMismatch('Software mutation changed its supplied writer.');
             }
-            \itsmng\Database\TransactionOwnership::assertManaged($connection);
+            TransactionOwnership::assertManaged($connection);
             if ($connection->getTransactionNestingLevel() !== $level) {
-                throw new \itsmng\Database\TransactionOwnershipMismatch('Software preload or callback changed its managed nesting.');
+                throw new TransactionOwnershipMismatch('Software preload or callback changed its managed nesting.');
             }
             $scope?->assertActive();
         };
     }
 
-    public static function run(\DBAdapter $database, \CommonDBTM $model, array $checkpoint, callable $operation): mixed
+    public static function run(DBAdapter $database, CommonDBTM $model, array $checkpoint, callable $operation): mixed
     {
         if ($database !== ($GLOBALS['DB'] ?? null) || $database->isSlave()) {
             return false;
         }
         $connection = $database->getDoctrineConnection();
-        \itsmng\Database\TransactionOwnership::assertManaged($connection);
+        TransactionOwnership::assertManaged($connection);
         $frame = null;
         $frameRequested = false;
         $rolledBack = false;
@@ -83,7 +96,7 @@ final class SoftwareMutation
             self::assertSupportedIsolation($database);
             $frameRequested = true;
             $frame = OwnedMutationFrame::begin($connection);
-            self::assertTransactionalStorage($database, [\Log::getTable(), \QueuedNotification::getTable()]);
+            self::assertTransactionalStorage($database, [Log::getTable(), QueuedNotification::getTable()]);
             $result = $journal->observe($connection, $operation);
             if ($result !== false) {
                 $frame->commit();
@@ -92,12 +105,12 @@ final class SoftwareMutation
                 $frame->rollBack();
                 $rolledBack = true;
             }
-        } catch (\Throwable $primary) {
+        } catch (Throwable $primary) {
             if ($frame !== null) {
                 try {
                     $frame->rollBack();
                     $rolledBack = true;
-                } catch (\Throwable $cleanup) {
+                } catch (Throwable $cleanup) {
                     // The replacement frame is not ours. Preserve both actual
                     // errors and do not rewind models/session as if data reverted.
                     $failure = new MutationRollbackFailure($primary, $cleanup);
@@ -111,7 +124,7 @@ final class SoftwareMutation
         } finally {
             try {
                 $notifications = $delivery->finish($accepted);
-            } catch (\Throwable $cleanup) {
+            } catch (Throwable $cleanup) {
                 $failure = self::preserveFailure($failure, $cleanup);
             }
             // Before frame admission only preparation has occurred. Once a
@@ -119,7 +132,7 @@ final class SoftwareMutation
             if (!$accepted && ($rolledBack || !$frameRequested)) {
                 try {
                     $journal->restore();
-                } catch (\Throwable $cleanup) {
+                } catch (Throwable $cleanup) {
                     $failure = self::preserveFailure($failure, $cleanup);
                 }
                 try {
@@ -130,7 +143,7 @@ final class SoftwareMutation
                             $_SESSION['MESSAGE_AFTER_REDIRECT'][$type][] = $message;
                         }
                     }
-                } catch (\Throwable $cleanup) {
+                } catch (Throwable $cleanup) {
                     $failure = self::preserveFailure($failure, $cleanup);
                 }
             }
@@ -143,7 +156,7 @@ final class SoftwareMutation
         return $result;
     }
 
-    private static function preserveFailure(?\Throwable $primary, \Throwable $cleanup): \Throwable
+    private static function preserveFailure(?Throwable $primary, Throwable $cleanup): Throwable
     {
         return $primary === null ? $cleanup : new MutationCleanupFailure(
             $primary,
@@ -153,31 +166,31 @@ final class SoftwareMutation
     }
 
     /** PostgreSQL strong snapshots cannot see later allocation phantoms. */
-    public static function assertSupportedIsolation(\DBAdapter $database): void
+    public static function assertSupportedIsolation(DBAdapter $database): void
     {
         $connection = $database->getDoctrineConnection();
         try {
-            \itsmng\Database\MySQLConnection::assertCurrentReads($connection);
-        } catch (\itsmng\Database\CurrentReadUnavailable $error) {
-            \Session::addMessageAfterRedirect(__('Finish the current operation, then retry this software change.'), true, ERROR, false);
+            MySQLConnection::assertCurrentReads($connection);
+        } catch (CurrentReadUnavailable $error) {
+            Session::addMessageAfterRedirect(__('Finish the current operation, then retry this software change.'), true, ERROR, false);
             throw new SoftwareAssignmentCancelled($error->getMessage(), previous: $error);
         }
-        if ($connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform) {
+        if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
             // Inspect the actual physical session; DBAL's cached isolation may
             // differ after caller SQL. Never change the caller's isolation.
             $isolation = strtolower((string)$connection->fetchOne("SELECT current_setting('transaction_isolation')"));
             if ($isolation !== 'read committed' && $isolation !== 'read uncommitted') {
                 $message = __('Finish the current operation, then retry this software change.');
-                \Session::addMessageAfterRedirect($message, true, ERROR, false);
+                Session::addMessageAfterRedirect($message, true, ERROR, false);
                 throw new SoftwareAssignmentCancelled('Software allocation requires PostgreSQL READ COMMITTED; actual isolation is ' . $isolation . '. Retry outside the caller transaction.');
             }
         }
     }
 
-    public static function assertTransactionalStorage(\DBAdapter $database, array $tables): void
+    public static function assertTransactionalStorage(DBAdapter $database, array $tables): void
     {
         $connection = $database->getDoctrineConnection();
-        if (!$connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\AbstractMySQLPlatform) {
+        if (!$connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
             return;
         }
         foreach (array_unique($tables) as $table) {
