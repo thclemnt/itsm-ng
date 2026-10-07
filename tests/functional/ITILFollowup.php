@@ -44,6 +44,166 @@ use User;
 
 class ITILFollowup extends DbTestCase
 {
+    public function testFollowupReadsAvoidUnusedBuiltInParentsAndKeepCurrentAuthority(): void
+    {
+        global $DB;
+        $original = $DB;
+        $session = $_SESSION;
+        $level = $original->getDoctrineConnection()->getTransactionNestingLevel();
+        $scope = $original->getDoctrineConnection()->captureManagedTransactionScope();
+        $logger = new class () extends \Psr\Log\AbstractLogger {
+            public array $queries = [];
+            public function log($level, $message, array $context = []): void
+            {
+                if (isset($context['sql'])) {
+                    $this->queries[] = str_replace(['`', '"'], '', $context['sql']);
+                }
+            }
+        };
+        $configuration = new \Doctrine\DBAL\Configuration();
+        $configuration->setMiddlewares([new \Doctrine\DBAL\Logging\Middleware($logger)]);
+        $parameters = $original->getDoctrineConnection()->getParams();
+        $connection = $original->getProvider() === 'pgsql'
+            ? \itsmng\Database\PostgresConnection::create($parameters, $configuration)
+            : \itsmng\Database\MySQLConnection::create($parameters, $configuration);
+        $probe = clone $original;
+        (new \ReflectionProperty(\DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
+        $frame = null;
+        $primary = null;
+        try {
+            $DB = $probe;
+            $frame = \itsmng\Database\OwnedMutationFrame::begin($connection);
+            $this->login();
+            $this->setEntity(0, true);
+            foreach ([\Ticket::class, \Change::class, \Problem::class] as $kind) {
+                $parent = new $kind();
+                $parentId = $parent->add(['name' => $this->getUniqueString(), 'content' => 'Followup parent',
+                    'entities_id' => 0, '_disablenotif' => true]);
+                $this->integer($parentId)->isGreaterThan(0);
+                $followup = new CoreITILFollowup();
+                $id = $followup->add(['itemtype' => $kind, 'items_id' => $parentId,
+                    'content' => 'Followup read', '_disablenotif' => true]);
+                $this->integer($id)->isGreaterThan(0);
+                $model = new class () extends CoreITILFollowup {
+                    public int $posts = 0;
+                    public $afterRead = null;
+                    public static function getTable($classname = null)
+                    {
+                        return 'glpi_itilfollowups';
+                    }
+                    public static function getType()
+                    {
+                        return 'ITILFollowup';
+                    }
+                    public function post_getFromDB()
+                    {
+                        ++$this->posts;
+                        parent::post_getFromDB();
+                        if ($this->afterRead !== null) {
+                            ($this->afterRead)();
+                        }
+                    }
+                };
+                $this->boolean($model->getFromDB($id))->isTrue();
+                $model->posts = 0;
+                $logger->queries = [];
+                $this->boolean($model->getFromDB($id))->isTrue();
+                $this->integer($model->posts)->isIdenticalTo(1);
+                $this->array($logger->queries)->hasSize(1);
+                $this->string($logger->queries[0])->contains('glpi_itilfollowups');
+                $this->integer((int)$model->fields['items_id'])->isIdenticalTo($parentId);
+                // Positive control: ordinary parent reads still load their actors.
+                $logger->queries = [];
+                $this->boolean($parent->getFromDB($parentId))->isTrue();
+                $this->array($logger->queries)->hasSize(4);
+                $this->string($logger->queries[0])->contains($parent::getTable());
+                // A previously read followup cannot retain the parent's old authorization.
+                $_SESSION['glpiactiveprofile'][CoreITILFollowup::$rightname] = CoreITILFollowup::UPDATEALL | CoreITILFollowup::UPDATEMY;
+                $this->boolean($model->canUpdateItem())->isTrue();
+                $rights = $_SESSION['glpiactiveprofile'][$kind::$rightname];
+                $_SESSION['glpiactiveprofile'][$kind::$rightname] = 0;
+                $this->boolean($model->canUpdateItem())->isFalse();
+                $_SESSION['glpiactiveprofile'][$kind::$rightname] = $rights;
+                $this->boolean($model->canUpdateItem())->isTrue();
+                $connection->update('glpi_itilfollowups', ['content' => 'Changed after first read'], ['id' => $id]);
+                $this->boolean($model->getFromDB($id))->isTrue();
+                $this->string($model->fields['content'])->isIdenticalTo('Changed after first read');
+                if ($kind === \Change::class) {
+                    // A public followup callback changes real parent actors before permission evaluation.
+                    $connection->delete('glpi_changes_users', ['changes_id' => $parentId]);
+                    $connection->delete('glpi_changes_groups', ['changes_id' => $parentId]);
+                    $actor = new \Change_User();
+                    $this->integer($actor->add(['changes_id' => $parentId,
+                        'users_id' => \Session::getLoginUserID(), 'type' => CommonITILActor::REQUESTER]))->isGreaterThan(0);
+                    $_SESSION['glpiactiveprofile'][$kind::$rightname] = $kind::READMY;
+                    $this->boolean($model->canUpdateItem())->isTrue();
+                    $model->afterRead = static function () use ($connection, $parentId): void {
+                        $connection->delete('glpi_changes_users', ['changes_id' => $parentId]);
+                    };
+                    $this->boolean($model->getFromDB($id))->isTrue();
+                    $model->afterRead = null;
+                    $this->boolean($model->canUpdateItem())->isFalse();
+                    $this->integer($actor->add(['changes_id' => $parentId,
+                        'users_id' => \Session::getLoginUserID(), 'type' => CommonITILActor::REQUESTER]))->isGreaterThan(0);
+                    $this->boolean($model->canUpdateItem())->isTrue();
+                    $_SESSION['glpiactiveprofile'][$kind::$rightname] = $rights;
+                }
+
+            }
+            $frame->assertActive();
+        } catch (\Throwable $error) {
+            $primary = $error;
+        } finally {
+            $DB = $original;
+            $_SESSION = $session;
+            try {
+                if ($frame !== null) {
+                    $frame->rollBack();
+                }
+            } catch (\Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationRollbackFailure($primary, $cleanup);
+            }
+            try {
+                $connection->close();
+            } catch (\Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($primary, $cleanup);
+            }
+            try {
+                $scope->assertActive();
+                $this->integer($original->getDoctrineConnection()->getTransactionNestingLevel())->isIdenticalTo($level);
+            } catch (\Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($primary, $cleanup);
+            }
+        }
+        if ($primary !== null) {
+            throw $primary;
+        }
+    }
+
+    public function testCustomFollowupParentReadDispatchIsRetained(): void
+    {
+        $parent = new class () extends \Ticket {
+            public static array $reads = [];
+            public function getFromDB($id)
+            {
+                self::$reads[] = $id;
+                $this->fields = ['id' => $id];
+                $this->post_getFromDB();
+                return true;
+            }
+            public function post_getFromDB()
+            {
+                self::$reads[] = 'post';
+            }
+        };
+        $followup = new CoreITILFollowup();
+        $followup->fields = ['itemtype' => get_class($parent), 'items_id' => 37];
+        $followup->post_getFromDB();
+        $followup->fields['items_id'] = 38;
+        $followup->post_getFromDB();
+        $this->array($parent::$reads)->isIdenticalTo([37, 'post', 38, 'post']);
+    }
+
     public function testSearchAuthorVisibilityRequiresAnIdentity(): void
     {
         global $DB;

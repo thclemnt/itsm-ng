@@ -694,6 +694,11 @@ class ITILFollowup extends CommonDBChild
 
     public function post_getFromDB()
     {
+        // Built-in parents only load actors here, but this private parent is never read.
+        // Authorization loads its own current parent; preserve custom parent callbacks.
+        if (in_array($this->fields['itemtype'], [Ticket::class, Change::class, Problem::class], true)) {
+            return;
+        }
 
         $this->item = new $this->fields['itemtype']();
         $this->item->getFromDB($this->fields['items_id']);
