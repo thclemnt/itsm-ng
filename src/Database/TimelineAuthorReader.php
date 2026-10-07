@@ -4,13 +4,11 @@
 
 namespace itsmng\Database;
 
-use Doctrine\ORM\EntityManager;
-use itsmng\Database\Repository\UserRepository;
-
 /** One timeline render owns metadata, never author rows or managed entities. */
 final class TimelineAuthorReader
 {
-    private ?EntityManager $manager = null;
+    private ?RecordReadOperation $records = null;
+    private ?\Doctrine\DBAL\Connection $connection = null;
     private ?\DBAdapter $database = null;
     private mixed $cache = null;
 
@@ -25,14 +23,15 @@ final class TimelineAuthorReader
         // Resolve the current route after each extensible display callback.
         $connection = $database->getDoctrineConnection();
         $cache = $GLOBALS['GLPI_CACHE'] ?? null;
-        if ($this->manager === null || $this->database !== $database
-            || $this->manager->getConnection() !== $connection || $this->cache !== $cache) {
-            $this->manager?->clear();
-            $this->manager = Orm::create($database);
+        if ($this->records === null || $this->database !== $database
+            || $this->connection !== $connection || $this->cache !== $cache) {
+            $this->records?->close();
+            $this->records = new RecordReadOperation($connection);
+            $this->connection = $connection;
             $this->database = $database;
             $this->cache = $cache;
         }
-        $row = (new UserRepository($this->manager))->timelineAuthor((int)\Toolbox::cleanInteger($id));
+        $row = $this->records->scalarRow('glpi_users', (int)\Toolbox::cleanInteger($id));
         if ($row === null) {
             return false;
         }
@@ -43,6 +42,6 @@ final class TimelineAuthorReader
 
     public function __destruct()
     {
-        $this->manager?->clear();
+        $this->records?->close();
     }
 }

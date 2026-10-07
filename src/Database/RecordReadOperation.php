@@ -11,6 +11,18 @@ final class RecordReadOperation implements ReadQueryOwner
 {
     use PrivateReadOwnership;
 
+    /** Explicit scalar callers never dispatch entity postLoad, including extension mappings. */
+    public function scalarRow(string $table, int $id): ?array
+    {
+        $metadata = $this->metadata($table);
+        return (new RecordRepository($this->manager))->scalarRow(
+            $metadata->name,
+            $id,
+            $this->defaultIdentifiers($metadata),
+            $this,
+        );
+    }
+
     public function row(string $table, string $column, int $id): ?array
     {
         $metadata = $this->metadata($table, $column);

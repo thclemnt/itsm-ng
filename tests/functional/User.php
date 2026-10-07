@@ -569,14 +569,15 @@ class User extends \DbTestCase
     {
         global $DB;
         $this->login();
-        $user = $this->createItem(\User::class, ['name' => 'render-author-' . $this->getUniqueString()]);
+        $user = $this->createItem(\User::class, ['name' => 'render-author-' . $this->getUniqueString(), 'entities_id' => 0]);
         $id = (int)$user->getID();
         $reader = new \itsmng\Database\TimelineAuthorReader();
         $model = new \User();
         $this->boolean($reader->load($model, $id, $DB))->isTrue();
         // Inspect our private operation owner, without exposing it in the API.
-        $owned = new \ReflectionProperty($reader, 'manager');
-        $manager = $owned->getValue($reader);
+        $owned = new \ReflectionProperty($reader, 'records');
+        $getManager = static fn ($render) => (new \ReflectionProperty(\itsmng\Database\RecordReadOperation::class, 'manager'))->getValue($owned->getValue($render));
+        $manager = $getManager($reader);
         $loads = new class () {
             public int $count = 0;
             public function postLoad(): void
@@ -593,46 +594,87 @@ class User extends \DbTestCase
         try {
             $this->boolean($DB->update('glpi_users', ['comment' => 'Fresh callback write'], ['id' => $id]))->isTrue();
             $this->boolean($reader->load($model, $id, $DB))->isTrue();
-            $this->object($owned->getValue($reader))->isIdenticalTo($manager);
+            $this->object($getManager($reader))->isIdenticalTo($manager);
             $this->string($model->fields['comment'])->isIdenticalTo('Fresh callback write');
             $this->integer($loads->count)->isIdenticalTo(0);
             $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
             $this->mockGenerator->orphanize('__construct');
             $routed = new \mock\DBmysql();
             $currentConnection = $connection;
-            $this->calling($routed)->getDoctrineConnection = static function () use (&$currentConnection) {
+            $routeCalls = 0;
+            $this->calling($routed)->getDoctrineConnection = static function () use (&$currentConnection, &$routeCalls) {
+                ++$routeCalls;
                 return $currentConnection;
             };
             $this->boolean($reader->load($model, $id, $routed))->isTrue();
-            $adapterManager = $owned->getValue($reader);
+            $this->integer($routeCalls)->isIdenticalTo(1);
+            $adapterManager = $getManager($reader);
             $this->object($adapterManager)->isNotIdenticalTo($manager);
             $currentConnection = $alternate;
             $before = $model->fields;
             $this->boolean($reader->load($model, PHP_INT_MAX, $routed))->isFalse();
             $this->array($model->fields)->isIdenticalTo($before);
-            $this->object($owned->getValue($reader))->isNotIdenticalTo($adapterManager);
-            $this->object($owned->getValue($reader)->getConnection())->isIdenticalTo($alternate);
+            $this->object($getManager($reader))->isNotIdenticalTo($adapterManager);
+            $this->object($getManager($reader)->getConnection())->isIdenticalTo($alternate);
             $this->boolean($reader->load($model, $id, $DB))->isTrue();
-            $beforePoolChange = $owned->getValue($reader);
+            $beforePoolChange = $getManager($reader);
             $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache(new \Symfony\Component\Cache\Adapter\ArrayAdapter());
             $this->boolean($reader->load($model, $id, $DB))->isTrue();
-            $this->object($owned->getValue($reader))->isNotIdenticalTo($beforePoolChange);
-            $metadata = $owned->getValue($reader)->getClassMetadata(\itsmng\Database\Entity\User::class);
+            $this->object($getManager($reader))->isNotIdenticalTo($beforePoolChange);
+            $metadata = $getManager($reader)->getClassMetadata(\itsmng\Database\Entity\User::class);
             $originalGenerator = $metadata->generatorType;
             $metadata->setIdGeneratorType(\Doctrine\ORM\Mapping\ClassMetadata::GENERATOR_TYPE_NONE);
             $GLOBALS['GLPI_CACHE']->clear();
             $nextRender = new \itsmng\Database\TimelineAuthorReader();
             $this->boolean($nextRender->load($model, $id, $DB))->isTrue();
-            $this->object($owned->getValue($nextRender))->isNotIdenticalTo($owned->getValue($reader));
-            $this->integer($owned->getValue($nextRender)->getClassMetadata(\itsmng\Database\Entity\User::class)->generatorType)
+            $this->object($getManager($nextRender))->isNotIdenticalTo($getManager($reader));
+            $this->integer($getManager($nextRender)->getClassMetadata(\itsmng\Database\Entity\User::class)->generatorType)
                 ->isIdenticalTo($originalGenerator);
-            $this->array($owned->getValue($nextRender)->getUnitOfWork()->getIdentityMap())->isEmpty();
+            $this->array($getManager($nextRender)->getUnitOfWork()->getIdentityMap())->isEmpty();
+            $warmRender = new \itsmng\Database\TimelineAuthorReader();
+            $this->boolean($warmRender->load($model, $id, $DB))->isTrue();
+            $this->array(array_keys($getManager($warmRender)->getMetadataFactory()->getLoadedMetadata()))
+                ->isIdenticalTo([\itsmng\Database\Entity\User::class]);
+            $extension = new class ($connection) extends UserScalarReadProbe {
+                private ?\Doctrine\Common\EventManager $events = null;
+                public function getEventManager(): \Doctrine\Common\EventManager
+                {
+                    return $this->events ??= new \Doctrine\Common\EventManager();
+                }
+            };
+            $customLoads = new class () {
+                public int $metadata = 0;
+                public int $entities = 0;
+                public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+                {
+                    ++$this->metadata;
+                    if ($event->getClassMetadata()->name === \itsmng\Database\Entity\Entity::class) {
+                        $event->getClassMetadata()->fieldMappings['id']->type = 'decimal';
+                    }
+                }
+                public function postLoad(): void
+                {
+                    ++$this->entities;
+                }
+            };
+            $currentConnection = $extension;
+            $localRender = new \itsmng\Database\TimelineAuthorReader();
+            $extension->getEventManager()->addEventListener([\Doctrine\ORM\Events::loadClassMetadata, \Doctrine\ORM\Events::postLoad], $customLoads);
+            $this->boolean($localRender->load($model, $id, $routed))->isTrue();
+            $this->integer($customLoads->metadata)->isGreaterThan(0);
+            $this->integer($customLoads->entities)->isIdenticalTo(0);
+            $ordinaryManager = \itsmng\Database\Orm::forConnection($extension);
+            $this->array($model->fields)->isIdenticalTo((new \itsmng\Database\Repository\UserRepository($ordinaryManager))->timelineAuthor($id));
+            $this->string($model->fields['entities_id'])->isIdenticalTo('0');
+            $ordinaryManager->find(\itsmng\Database\Entity\User::class, $id);
+            $this->integer($customLoads->entities)->isGreaterThan(0);
+            $ordinaryManager->clear();
             // A normal load still fires the listener: zero above is not a missing observer.
             $manager->find(\itsmng\Database\Entity\User::class, $id);
             $this->integer($loads->count)->isGreaterThan(0);
         } finally {
             $GLOBALS['GLPI_CACHE'] = $previousCache;
-            unset($reader, $nextRender);
+            unset($reader, $nextRender, $warmRender, $localRender);
             $manager->clear();
             $alternate->close();
         }
