@@ -159,7 +159,10 @@ jobs:
       - name: Test native installation and populated migration boundaries
         env:
           ITSM_MIGRATION_XUNIT: ${{ runner.temp }}/migration.xml
-        run: timeout --signal=TERM --kill-after=10s 300s composer test:migration -- --use-tap-report -c tests/configurations/migration.php 2>&1 | tee "$RUNNER_TEMP/migration.log"
+          COMPOSER_PROCESS_TIMEOUT: '0'
+        # Complete MySQL runs reached 299s; allow headroom for runner variance.
+        # The finite outer timeout owns the suite, including Composer's child.
+        run: timeout --signal=TERM --kill-after=10s 600s composer test:migration -- --use-tap-report -c tests/configurations/migration.php 2>&1 | tee "$RUNNER_TEMP/migration.log"
       - name: Test ordinary units
         run: composer test:units -- --fail-if-skipped-methods 2>&1 | tee "$RUNNER_TEMP/units.log"
       - name: Test application behavior
