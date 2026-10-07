@@ -843,7 +843,12 @@ class Config extends DbTestCase
             \Config::setConfigurationValues($context, ['first' => 'before', 'second' => 'other']);
             $GLOBALS['GLPI_CACHE'] = $pool;
             $read = static fn (string $selected, int $offset = 0): array => \itsmng\Database\MappedReads::matching(
-                $DB, 'glpi_configs', ['context' => $selected], ['name'], 1, $offset
+                $DB,
+                'glpi_configs',
+                ['context' => $selected],
+                ['name'],
+                1,
+                $offset
             );
             $this->string($read($context)[0]['value'])->isIdenticalTo('before');
             $this->integer($memory->planWrites)->isIdenticalTo(1);

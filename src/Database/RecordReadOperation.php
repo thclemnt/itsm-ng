@@ -138,7 +138,14 @@ final class RecordReadOperation
         $metadata = $this->metadata($table);
         if ($this->scalar($metadata)) {
             return (new RecordRepository($this->manager))->matching(
-                $table, $criteria, $order, $limit, $offset, true, $this->defaultIdentifiers($metadata), $this,
+                $table,
+                $criteria,
+                $order,
+                $limit,
+                $offset,
+                true,
+                $this->defaultIdentifiers($metadata),
+                $this,
             );
         }
         $fallback = $this->ownedMapping ? Orm::forConnection($this->connection) : $this->manager;
