@@ -2407,6 +2407,8 @@ class Dropdown
     {
         global $DB, $CFG_GLPI;
 
+        $scopeReads = new \itsmng\Database\EntityScopeReadOperation();
+
         // Trusted PHP callers already own their component authorization. The
         // public AJAX boundary validates the issued kind and complete context.
 
@@ -2557,7 +2559,7 @@ class Dropdown
                 }
 
                 if (isset($post["entity_restrict"]) && !($post["entity_restrict"] < 0)) {
-                    $where = $where + getEntitiesRestrictCriteria(
+                    $where = $where + $scopeReads->criteria(
                         $table,
                         '',
                         $post["entity_restrict"],
@@ -2570,7 +2572,7 @@ class Dropdown
                 } else {
                     // If private item do not use entity
                     if (!$item->maybePrivate()) {
-                        $where = $where + getEntitiesRestrictCriteria($table, '', '', $recur);
+                        $where = $where + $scopeReads->criteria($table, '', '', $recur);
 
                         if (count((array)($_SESSION['glpiactiveentities'] ?? [])) > 1) {
                             $multi = true;
@@ -2611,7 +2613,8 @@ class Dropdown
                 self::choiceTranslations($post['itemtype'], true),
                 $post['itemtype'],
                 $limit,
-                $start
+                $start,
+                $scopeReads
             );
 
             // Empty search text : display first
@@ -2817,7 +2820,7 @@ class Dropdown
                 $multi = $item->maybeRecursive();
 
                 if (isset($post["entity_restrict"]) && !($post["entity_restrict"] < 0)) {
-                    $where = $where + getEntitiesRestrictCriteria(
+                    $where = $where + $scopeReads->criteria(
                         $table,
                         "entities_id",
                         $post["entity_restrict"],
@@ -2830,7 +2833,7 @@ class Dropdown
                 } else {
                     // Do not use entity if may be private
                     if (!$item->maybePrivate()) {
-                        $where = $where + getEntitiesRestrictCriteria($table, '', '', $multi);
+                        $where = $where + $scopeReads->criteria($table, '', '', $multi);
 
                         if (count((array)($_SESSION['glpiactiveentities'] ?? [])) > 1) {
                             $multi = true;
@@ -2891,7 +2894,7 @@ class Dropdown
                 $userConditions = $condition;
                 if (!empty($post['restrict_session_scope'])) {
                     // Component-selected users retain both requested and grant scopes.
-                    $userConditions[] = getEntitiesRestrictCriteria(
+                    $userConditions[] = $scopeReads->criteria(
                         'glpi_profiles_users',
                         '',
                         (array)($_SESSION['glpiactiveentities'] ?? []),
@@ -2999,7 +3002,8 @@ class Dropdown
                 self::choiceTranslations($post['itemtype'], false, $field),
                 $post['itemtype'],
                 $limit,
-                $start
+                $start,
+                $scopeReads
             );
 
             // Display first if no search
@@ -3134,15 +3138,16 @@ class Dropdown
     }
 
     /** Mapped choices cannot silently fall back to a plugin's SQL contract. */
-    private static function choiceRows(DBAdapter $database, CommonDBTM $model, array $criteria, array $order, array $translations, string $kind, int $limit, int $offset): iterable
+    private static function choiceRows(DBAdapter $database, CommonDBTM $model, array $criteria, array $order, array $translations, string $kind, int $limit, int $offset, ?\itsmng\Database\EntityScopeReadOperation $scopeReads = null): iterable
     {
+        $scopeReads ??= new \itsmng\Database\EntityScopeReadOperation();
         $table = $model->getTable();
         if ($model->isEntityAssign() && !$model->maybePrivate()) {
             $scope = Session::getActiveEntityScope();
             if ($scope !== null) {
                 // Caller restrictions are additional filters, never authority to
                 // select another entity. An empty session scope matches nothing.
-                $criteria[] = $scope ? getEntitiesRestrictCriteria(
+                $criteria[] = $scope ? $scopeReads->criteria(
                     $table,
                     '',
                     $scope,

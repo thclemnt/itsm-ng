@@ -665,9 +665,10 @@ function getEntitiesRestrictCriteria(
     $field = '',
     $value = '',
     $is_recursive = false,
-    $complete_request = false
+    $complete_request = false,
+    ?\itsmng\Database\EntityScopeReadOperation $treeReads = null
 ) {
-    $dbu = new DbUtils();
+    $dbu = new DbUtils($treeReads);
     $res = $dbu->getEntitiesRestrictCriteria(
         $table,
         $field,

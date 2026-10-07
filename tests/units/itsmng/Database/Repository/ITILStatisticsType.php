@@ -56,6 +56,16 @@ class ITILStatisticsType extends \atoum\atoum\test
         $this->boolean($manager->getConnection()->isConnected())->isFalse();
     }
 
+    public function testSuppliedMetadataEditsRemainLiveAfterDiscovery(): void
+    {
+        $manager = $this->manager($this->canonicalDriver());
+        $this->array(StatisticsType::definition($manager, 'Ticket'))->hasSize(7);
+        unset($manager->getClassMetadata(Entity\TicketTask::class)->associationMappings['tickets']);
+        $this->exception(static fn () => StatisticsType::definition($manager, 'Ticket'))
+            ->isInstanceOf(\LogicException::class)->hasMessage('Missing ITIL statistics association: Ticket.Tasks');
+        $this->boolean($manager->getConnection()->isConnected())->isFalse();
+    }
+
     public function testCanonicalMetadataListenersRetainFullDiscovery(): void
     {
         $events = new EventManager();
@@ -135,7 +145,7 @@ class ITILStatisticsType extends \atoum\atoum\test
         }
     }
 
-    public function testAllFamiliesShareOneDiscoveryAcrossOperations(): void
+    public function testEachSuppliedManagerOwnsItsDiscovery(): void
     {
         $first = $this->manager();
         $driver = $first->getConfiguration()->getMetadataDriverImpl();
@@ -147,13 +157,13 @@ class ITILStatisticsType extends \atoum\atoum\test
         foreach ($expected as $type => $definition) {
             $this->array(StatisticsType::definition($first, $type))->isIdenticalTo($definition);
         }
-        $this->integer($driver->discoveries)->isIdenticalTo(1);
+        $this->integer($driver->discoveries)->isIdenticalTo(3);
         $this->boolean(isset($first->getMetadataFactory()->getLoadedMetadata()[Entity\Software::class]))->isTrue();
         $second = $this->manager($driver);
         foreach ($expected as $type => $definition) {
             $this->array(StatisticsType::definition($second, $type))->isIdenticalTo($definition);
         }
-        $this->integer($driver->discoveries)->isIdenticalTo(1);
+        $this->integer($driver->discoveries)->isIdenticalTo(6);
         $this->object($second->getConnection())->isNotIdenticalTo($first->getConnection());
         $changed = StatisticsType::definition($second, 'Ticket');
         $changed[2] = 'Changed by a caller';

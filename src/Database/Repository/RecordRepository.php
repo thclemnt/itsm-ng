@@ -53,7 +53,7 @@ final class RecordRepository
     }
 
     /** Complete legacy row without creating managed records or association proxies. */
-    public function scalarRow(string $recordClass, int $id, ?\Psr\Cache\CacheItemPoolInterface $queryCache = null, ?array $defaultIdentifiers = null): ?array
+    public function scalarRow(string $recordClass, int $id, ?\Psr\Cache\CacheItemPoolInterface $queryCache = null, ?array $defaultIdentifiers = null, ?\itsmng\Database\RecordReadOperation $operation = null): ?array
     {
         $metadata = $this->em->getClassMetadata($recordClass);
         $identifier = $metadata->getSingleIdentifierFieldName();
@@ -70,12 +70,13 @@ final class RecordRepository
         if ($queryCache !== null) {
             $compiled->setQueryCache($queryCache);
         }
+        $operation?->prepareQuery($compiled, $metadata);
         $values = $compiled->getOneOrNullResult(\Doctrine\ORM\Query::HYDRATE_ARRAY);
         return $values === null ? null : $projection->toRow($values);
     }
 
     /** Select complete mapped records with bound criteria and database-side limits. */
-    public function matching(string $table, array $criteria = [], array|string $order = [], ?int $limit = null, int $offset = 0, bool $legacyValues = true): array
+    public function matching(string $table, array $criteria = [], array|string $order = [], ?int $limit = null, int $offset = 0, bool $legacyValues = true, ?array $defaultIdentifiers = null, ?\itsmng\Database\RecordReadOperation $operation = null): array
     {
         $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
         $query = $this->em->createQueryBuilder()->select('r')->from($metadata->name, 'r');
@@ -94,9 +95,11 @@ final class RecordRepository
             && !$metadata->hasLifecycleCallbacks(Events::postLoad)
             && empty($metadata->entityListeners[Events::postLoad])
             && !$this->em->getEventManager()->hasListeners(Events::postLoad)) {
-            $projection = new MappedRowProjection($this->em, $metadata);
+            $projection = new MappedRowProjection($this->em, $metadata, $defaultIdentifiers);
             $projection->select($query);
-            foreach ($query->getQuery()->toIterable([], \Doctrine\ORM\Query::HYDRATE_ARRAY) as $values) {
+            $compiled = $query->getQuery();
+            $operation?->prepareQuery($compiled, $metadata);
+            foreach ($compiled->toIterable([], \Doctrine\ORM\Query::HYDRATE_ARRAY) as $values) {
                 $rows[] = $projection->toRow($values);
             }
             return $rows;
@@ -108,12 +111,14 @@ final class RecordRepository
         return $rows;
     }
 
-    public function countMatching(string $table, array $criteria, bool $legacyValues = true): int
+    public function countMatching(string $table, array $criteria, bool $legacyValues = true, ?\itsmng\Database\RecordReadOperation $operation = null): int
     {
         $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
         $query = $this->em->createQueryBuilder()->select('COUNT(r.id)')->from($metadata->name, 'r');
         $query->where((new \itsmng\Database\RecordCriteria($query, $metadata, $legacyValues))->where($criteria));
-        return (int)$query->getQuery()->getSingleScalarResult();
+        $compiled = $query->getQuery();
+        $operation?->prepareQuery($compiled, $metadata);
+        return (int)$compiled->getSingleScalarResult();
     }
 
     /** Scalar distinct values retain the requested column name at the model boundary. */

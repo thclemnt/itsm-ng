@@ -138,10 +138,6 @@ final class EntityRegistry
         $connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
         $platform = new MySQLPlatform();
         $configuration = Orm::configuration($platform);
-        // Public configurations can customize their shared driver/local cache.
-        // This canonical projection must derive from pristine core declarations.
-        $configuration->setMetadataDriverImpl(new Mapping\AttributeDriver([__DIR__ . '/Entity'], $platform));
-        $configuration->setMetadataCache(new \Symfony\Component\Cache\Adapter\ArrayAdapter(storeSerialized: true));
         $em = new EntityManager($connection, $configuration);
         $metadata = $em->getMetadataFactory()->getAllMetadata();
         $nativeTimestamps = NativeTimestampSchema::declarations($metadata);

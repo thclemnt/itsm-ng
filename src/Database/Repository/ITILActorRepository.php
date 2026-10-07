@@ -63,7 +63,7 @@ final class ITILActorRepository
         return $actors;
     }
 
-    public function rows(string $actorClass, int $item): array
+    public function rows(string $actorClass, int $item, ?\itsmng\Database\RecordReadOperation $operation = null): array
     {
         if (!self::supports($actorClass)) {
             throw new \InvalidArgumentException('Unsupported ITIL actor relation');
@@ -98,7 +98,9 @@ final class ITILActorRepository
             $columns[] = [$mapping->joinColumns[0]->name, Types::BIGINT];
         }
         $rows = [];
-        foreach ($query->getQuery()->getScalarResult() as $values) {
+        $compiled = $query->getQuery();
+        $operation?->prepareQuery($compiled, $metadata);
+        foreach ($compiled->getScalarResult() as $values) {
             $row = [];
             foreach ($columns as $index => [$column, $type]) {
                 $row[$column] = RecordRepository::legacyScalarValue($values['value' . $index], $type);

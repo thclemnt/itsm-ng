@@ -550,36 +550,57 @@ class Ticket extends DbTestCase
         $parentModel = new $parentName();
         $parentModel->fields['id'] = $parent->id;
         $managers = new \ReflectionProperty(\itsmng\Database\Orm::class, 'unitsOfWork');
-        $before = $managers->getValue();
-        $parentModel->loadActors();
-        $this->integer($managers->getValue() - $before)->isIdenticalTo(1);
-        $getter = match ($actorName) {
-            'Group' => 'getGroups', 'User' => 'getUsers', 'Supplier' => 'getSuppliers'
-        };
-        foreach ([\CommonITILActor::ASSIGN, \CommonITILActor::OBSERVER, \CommonITILActor::REQUESTER] as $type) {
-            $this->array($parentModel->$getter($type))->isIdenticalTo($grouped[$type] ?? []);
-            foreach (array_diff(['getGroups', 'getUsers', 'getSuppliers'], [$getter]) as $emptyGetter) {
-                $this->array($parentModel->$emptyGetter($type))->isEmpty();
+        $previousPool = $GLOBALS['GLPI_CACHE'] ?? null;
+        $memory = new class (storeSerialized: false) extends \Symfony\Component\Cache\Adapter\ArrayAdapter {
+            public int $planWrites = 0;
+            public function save(\Psr\Cache\CacheItemInterface $item)
+            {
+                if (is_string($item->get()) && str_contains($item->get(), 'Doctrine\\ORM\\Query\\ParserResult')) {
+                    ++$this->planWrites;
+                }
+                return parent::save($item);
             }
+        };
+        try {
+            $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache($memory);
+            $before = $managers->getValue();
+            $parentModel->loadActors();
+            $this->integer($managers->getValue() - $before)->isIdenticalTo(1);
+            $getter = match ($actorName) {
+                'Group' => 'getGroups', 'User' => 'getUsers', 'Supplier' => 'getSuppliers'
+            };
+            foreach ([\CommonITILActor::ASSIGN, \CommonITILActor::OBSERVER, \CommonITILActor::REQUESTER] as $type) {
+                $this->array($parentModel->$getter($type))->isIdenticalTo($grouped[$type] ?? []);
+                foreach (array_diff(['getGroups', 'getUsers', 'getSuppliers'], [$getter]) as $emptyGetter) {
+                    $this->array($parentModel->$emptyGetter($type))->isEmpty();
+                }
+            }
+            $this->integer($rows[0]['id'])->isIdenticalTo($assign->id);
+            $this->integer($rows[1]['id'])->isIdenticalTo($observer->id);
+            if ($actorName !== 'Group') {
+                $this->integer($rows[1]['use_notification'])->isIdenticalTo(0);
+                $this->integer($rows[1]['actor_key'])->isIdenticalTo(0);
+                $this->string($rows[1]['actor_email_key'])->isIdenticalTo('projection@example.invalid');
+            }
+            $this->integer($memory->planWrites)->isIdenticalTo(3);
+            // A later operation observes writes; no actor rows or managers survive in a cache.
+            $observer->type = \CommonITILActor::REQUESTER;
+            $em->flush();
+            $this->array($model->getActors($parent->id))->hasKey(\CommonITILActor::REQUESTER);
+            $parentModel->loadActors();
+            $this->array($parentModel->$getter(\CommonITILActor::REQUESTER))->hasSize(1);
+            $this->integer($memory->planWrites)->isIdenticalTo(3);
+            $em->remove($observer);
+            $em->flush();
+            $this->array($model->getActors($parent->id))->notHasKey(\CommonITILActor::REQUESTER);
+            $parentModel->loadActors();
+            $this->array($parentModel->$getter(\CommonITILActor::REQUESTER))->isEmpty();
+            $this->integer($memory->planWrites)->isIdenticalTo(3);
+        } finally {
+            $GLOBALS['GLPI_CACHE'] = $previousPool;
+            $em->clear();
+            $reader->clear();
         }
-        $this->integer($rows[0]['id'])->isIdenticalTo($assign->id);
-        $this->integer($rows[1]['id'])->isIdenticalTo($observer->id);
-        if ($actorName !== 'Group') {
-            $this->integer($rows[1]['use_notification'])->isIdenticalTo(0);
-            $this->integer($rows[1]['actor_key'])->isIdenticalTo(0);
-            $this->string($rows[1]['actor_email_key'])->isIdenticalTo('projection@example.invalid');
-        }
-        // A later operation observes writes; no actor rows or managers survive in a cache.
-        $observer->type = \CommonITILActor::REQUESTER;
-        $em->flush();
-        $this->array($model->getActors($parent->id))->hasKey(\CommonITILActor::REQUESTER);
-        $parentModel->loadActors();
-        $this->array($parentModel->$getter(\CommonITILActor::REQUESTER))->hasSize(1);
-        $em->remove($observer);
-        $em->flush();
-        $this->array($model->getActors($parent->id))->notHasKey(\CommonITILActor::REQUESTER);
-        $parentModel->loadActors();
-        $this->array($parentModel->$getter(\CommonITILActor::REQUESTER))->isEmpty();
     }
 
     public function testCustomActorFinderKeepsDispatch(): void

@@ -101,21 +101,26 @@ abstract class CommonITILObject extends CommonDBTM
     {
         global $DB;
         $repository = null;
-        foreach (['grouplinkclass' => 'groups', 'userlinkclass' => 'users', 'supplierlinkclass' => 'suppliers'] as $link => $field) {
-            if (empty($this->$link)) {
-                continue;
+        try {
+            foreach (['grouplinkclass' => 'groups', 'userlinkclass' => 'users', 'supplierlinkclass' => 'suppliers'] as $link => $field) {
+                if (empty($this->$link)) {
+                    continue;
+                }
+                $actorClass = $this->$link;
+                $class = new $actorClass();
+                if (\itsmng\Database\Repository\ITILActorRepository::supports($class::class)) {
+                    // One read operation owns metadata for all built-in actor families.
+                    $repository ??= new \itsmng\Database\ITILActorReadOperation($DB->getDoctrineConnection());
+                    $this->$field = $repository->actors($class::class, (int)$this->fields['id']);
+                } else {
+                    // Custom dispatch may write later actors or change the supplied connection.
+                    $repository?->close();
+                    $repository = null;
+                    $this->$field = $class->getActors($this->fields['id']);
+                }
             }
-            $actorClass = $this->$link;
-            $class = new $actorClass();
-            if (\itsmng\Database\Repository\ITILActorRepository::supports($class::class)) {
-                // One read operation owns metadata for all built-in actor families.
-                $repository ??= new \itsmng\Database\Repository\ITILActorRepository(\itsmng\Database\Orm::create($DB));
-                $this->$field = $repository->actors($class::class, (int)$this->fields['id']);
-            } else {
-                // Custom dispatch may write later actors or change the supplied connection.
-                $repository = null;
-                $this->$field = $class->getActors($this->fields['id']);
-            }
+        } finally {
+            $repository?->close();
         }
     }
 

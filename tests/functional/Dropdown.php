@@ -40,6 +40,112 @@ use Generator;
 
 class Dropdown extends DbTestCase
 {
+    public function testOwnedEntityRestrictionsReadFreshRowsWithinOneOperation(): void
+    {
+        global $DB;
+        $this->login();
+        $connection = $DB->getDoctrineConnection();
+        $parent = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $child = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => $parent->getID()]);
+        $id = (int)$child->getID();
+        $expected = getEntitiesRestrictCriteria('glpi_suppliers', '', [$id], true);
+        $counter = new \ReflectionProperty(\itsmng\Database\Orm::class, 'unitsOfWork');
+        $before = $counter->getValue();
+        $operation = new \itsmng\Database\EntityScopeReadOperation();
+        $this->array($operation->criteria('glpi_suppliers', '', [$id], true))->isIdenticalTo($expected);
+        $this->array($operation->criteria('glpi_suppliers', '', [$id], true))->isIdenticalTo($expected);
+        $this->integer($counter->getValue() - $before)->isIdenticalTo(1, 'One scalar operation owns one manager across current permission reads');
+        $connection->update('glpi_entities', ['entities_id' => 0], ['id' => $id]);
+        $fresh = getEntitiesRestrictCriteria('glpi_suppliers', '', [$id], true);
+        $this->array($fresh)->isNotIdenticalTo($expected);
+        $this->array($operation->criteria('glpi_suppliers', '', [$id], true))->isIdenticalTo($fresh);
+    }
+
+    public function testOwnedEntityScopeResolvesOneCurrentRoutePerRead(): void
+    {
+        global $DB;
+        $this->login();
+        $connection = $DB->getDoctrineConnection();
+        $entity = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $id = (int)$entity->getID();
+        $depth = $connection->getTransactionNestingLevel();
+        $other = \Doctrine\DBAL\DriverManager::getConnection($connection->getParams(), $connection->getConfiguration());
+        $this->mockGenerator->orphanize('__construct');
+        $adapter = new \mock\DBmysql();
+        $calls = 0;
+        $this->calling($adapter)->getDoctrineConnection = static function () use (&$calls, $connection, $other) {
+            return ++$calls % 2 === 1 ? $connection : $other;
+        };
+        $operation = new \itsmng\Database\EntityScopeReadOperation();
+        try {
+            $first = $operation->rows($adapter, 'glpi_entities', ['id', 'name'], ['id' => $id]);
+            $this->array($first)->hasSize(1);
+            $this->integer($calls)->isIdenticalTo(1);
+            // The second route cannot see the first connection's uncommitted fixture.
+            $this->array($operation->rows($adapter, 'glpi_entities', ['id', 'name'], ['id' => $id]))->isEmpty();
+            $this->integer($calls)->isIdenticalTo(2);
+            $this->array($operation->rows($adapter, 'glpi_entities', ['id', 'name'], ['id' => $id]))->isIdenticalTo($first);
+            $this->integer($calls)->isIdenticalTo(3);
+        } finally {
+            unset($operation);
+            $other->close();
+            $this->boolean($other->isConnected())->isFalse();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+        }
+    }
+
+    public function testDropdownRecomputesCurrentAuthorityAfterVirtualCallbacks(): void
+    {
+        $this->login();
+        $session = $_SESSION;
+        try {
+            $left = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $right = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $leftId = (int)$left->getID();
+            $rightId = (int)$right->getID();
+            $name = $this->getUniqueString();
+            $one = $this->createItem(\Supplier::class, ['name' => $name . ' left', 'entities_id' => $leftId]);
+            $two = $this->createItem(\Supplier::class, ['name' => $name . ' right', 'entities_id' => $rightId]);
+            $collect = static function (array $rows) use (&$collect): array {
+                $ids = [];
+                foreach ($rows as $row) {
+                    if (isset($row['children'])) {
+                        $ids = array_merge($ids, $collect($row['children']));
+                    } elseif (isset($row['id']) && (int)$row['id'] > 0) {
+                        $ids[] = (int)$row['id'];
+                    }
+                }
+                sort($ids);
+                return $ids;
+            };
+            foreach ([
+                [[$leftId, $rightId], [$rightId], false, [(int)$two->getID()]],
+                [[$leftId, $rightId], [], true, []],
+                [[$leftId, $rightId], [$rightId], true, [(int)$one->getID(), (int)$two->getID()]],
+                [[$leftId], [$rightId], false, []],
+            ] as [$requested, $active, $showAll, $expected]) {
+                $_SESSION['glpiactiveentities'] = [$leftId];
+                $_SESSION['glpishowallentities'] = false;
+                ScopeCallbackSupplier::$checks = 0;
+                ScopeCallbackSupplier::$beforeAuthority = static function () use ($active, $showAll): void {
+                    $_SESSION['glpiactiveentities'] = $active;
+                    $_SESSION['glpishowallentities'] = $showAll;
+                };
+                $result = \Dropdown::getDropdownValue([
+                    'itemtype' => ScopeCallbackSupplier::class, 'entity_restrict' => $requested,
+                    'searchText' => $name, 'display_emptychoice' => false, 'page' => 1, 'page_limit' => 20,
+                ], false);
+                sort($expected);
+                $this->array($collect($result['results']))->isIdenticalTo($expected);
+                $this->integer(ScopeCallbackSupplier::$checks)->isIdenticalTo(2);
+            }
+        } finally {
+            ScopeCallbackSupplier::$beforeAuthority = null;
+            ScopeCallbackSupplier::$checks = 0;
+            $_SESSION = $session;
+        }
+    }
+
     public function testChoiceRowsProjectTypesTranslationsAndStablePages(): void
     {
         global $DB;
@@ -1829,5 +1935,26 @@ class Dropdown extends DbTestCase
 
             $this->variable($dropdown_entry['id'])->isEqualTo($expected[$key]);
         }
+    }
+}
+
+
+/** Change grants at the existing virtual callback immediately before the authority clamp. */
+class ScopeCallbackSupplier extends \Supplier
+{
+    public static int $checks = 0;
+    public static ?\Closure $beforeAuthority = null;
+
+    public static function getTable($classname = null)
+    {
+        return \Supplier::getTable();
+    }
+
+    public function isEntityAssign()
+    {
+        if (++self::$checks === 2 && self::$beforeAuthority !== null) {
+            (self::$beforeAuthority)();
+        }
+        return true;
     }
 }

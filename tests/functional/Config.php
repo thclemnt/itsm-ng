@@ -709,7 +709,7 @@ class Config extends DbTestCase
         }
     }
 
-    public function testOwnedMetadataCacheStartsAfterBootstrapAndKeepsManagersIsolated(): void
+    public function testPublicMetadataRemainsLocalAcrossManagersAndApplicationPools(): void
     {
         global $DB;
         $previous = $GLOBALS['GLPI_CACHE'] ?? null;
@@ -743,20 +743,17 @@ class Config extends DbTestCase
             $this->object($second)->isNotIdenticalTo($first);
             $this->object($second->getConnection())->isIdenticalTo($DB->getDoctrineConnection());
             $this->integer($second->getClassMetadata(\itsmng\Database\Entity\Config::class)->generatorType)->isIdenticalTo($original);
-            $this->integer($listener->loads)->isIdenticalTo(1, 'A fresh manager uses the persisted mapping without attribute discovery');
-            $this->array($memory->getValues())->isNotEmpty();
-            foreach ($memory->getValues() as $value) {
-                $this->string($value, 'Even an object-retaining backend receives only serialized bytes');
-            }
+            $this->integer($listener->loads)->isIdenticalTo(2, 'Every mutable public manager dispatches its own mapping listeners');
+            $this->array($memory->getValues())->isEmpty();
             $public = \itsmng\Database\Orm::configuration($DB->getDoctrineConnection()->getDatabasePlatform());
             $this->object($public->getMetadataCache())->isInstanceOf(\Symfony\Component\Cache\Adapter\ArrayAdapter::class);
             $this->variable($public->getQueryCache())->isNull();
             $pool->clear(); // The ordinary application cache-clear boundary.
             $owned()->getClassMetadata(\itsmng\Database\Entity\Config::class);
-            $this->integer($listener->loads)->isIdenticalTo(2);
+            $this->integer($listener->loads)->isIdenticalTo(3);
             $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache(new \Symfony\Component\Cache\Adapter\ArrayAdapter(storeSerialized: false));
             $owned()->getClassMetadata(\itsmng\Database\Entity\Config::class);
-            $this->integer($listener->loads)->isIdenticalTo(3, 'Replacing the configured pool cannot reuse the previous pool');
+            $this->integer($listener->loads)->isIdenticalTo(4, 'Public managers do not depend on the application cache pool');
         } finally {
             $GLOBALS['GLPI_CACHE'] = $previous;
         }
@@ -792,7 +789,7 @@ class Config extends DbTestCase
         }
     }
 
-    public function testOwnedQueryCacheRetainsFreshManagersAndLiveValues(): void
+    public function testPublicQueriesKeepMutableConfigurationAndLiveValues(): void
     {
         global $DB;
         $context = 'query-cache-' . bin2hex(random_bytes(6));
@@ -801,7 +798,8 @@ class Config extends DbTestCase
         $first = \itsmng\Database\Orm::create($DB);
         $second = \itsmng\Database\Orm::create($DB);
         $cache = $first->getConfiguration()->getQueryCache();
-        $this->object($cache)->isIdenticalTo($second->getConfiguration()->getQueryCache());
+        $this->variable($cache)->isNull();
+        $this->variable($second->getConfiguration()->getQueryCache())->isNull();
         $this->object($first)->isNotIdenticalTo($second);
         $this->object($first->getConnection())->isIdenticalTo($DB->getDoctrineConnection());
         $this->object($second->getConnection())->isIdenticalTo($DB->getDoctrineConnection());
@@ -817,22 +815,176 @@ class Config extends DbTestCase
                 ->getSingleScalarResult();
         };
         try {
-            $cache->clear();
             $this->string($read($first, 'first'))->isIdenticalTo('before');
             $this->integer(ConfigQueryCacheWalker::$compilations)->isIdenticalTo(1);
             $this->string($read($second, 'second'))->isIdenticalTo('other');
-            $this->integer(ConfigQueryCacheWalker::$compilations)->isIdenticalTo(1);
+            $this->integer(ConfigQueryCacheWalker::$compilations)->isIdenticalTo(2);
             \Config::setConfigurationValues($context, ['first' => 'after']);
             $this->string($read(\itsmng\Database\Orm::create($DB), 'first'))->isIdenticalTo('after');
-            $this->integer(ConfigQueryCacheWalker::$compilations)->isIdenticalTo(1);
-            $cache->clear();
+            $this->integer(ConfigQueryCacheWalker::$compilations)->isIdenticalTo(3);
             $this->string($read(\itsmng\Database\Orm::create($DB), 'first'))->isIdenticalTo('after');
-            $this->integer(ConfigQueryCacheWalker::$compilations)->isIdenticalTo(2);
+            $this->integer(ConfigQueryCacheWalker::$compilations)->isIdenticalTo(4);
         } finally {
             \Config::deleteConfigurationValues($context, ['first', 'second']);
         }
     }
 
+
+    public function testOwnedMatchingPlansKeepRowsParametersAndPaginationLive(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $previous = $GLOBALS['GLPI_CACHE'] ?? null;
+        $memory = new ConfigRecordPlanCache(storeSerialized: false);
+        $pool = new \Symfony\Component\Cache\Psr16Cache($memory);
+        $context = 'owned-matching-' . bin2hex(random_bytes(6));
+        $originalText = \Doctrine\DBAL\Types\Type::getType('text');
+        try {
+            \Config::setConfigurationValues($context, ['first' => 'before', 'second' => 'other']);
+            $GLOBALS['GLPI_CACHE'] = $pool;
+            $read = static fn (string $selected, int $offset = 0): array => \itsmng\Database\MappedReads::matching(
+                $DB, 'glpi_configs', ['context' => $selected], ['name'], 1, $offset
+            );
+            $this->string($read($context)[0]['value'])->isIdenticalTo('before');
+            $this->integer($memory->planWrites)->isIdenticalTo(1);
+            $this->string($pool->get($memory->planKeys[0]))->contains('Doctrine\\ORM\\Query\\ParserResult');
+            $this->string($read($context, 1)[0]['value'])->isIdenticalTo('other');
+            $this->array($read($context . '-absent'))->isEmpty();
+            $this->integer($memory->planWrites)->isIdenticalTo(1);
+            $connection->update('glpi_configs', ['value' => 'after'], ['context' => $context, 'name' => 'first']);
+            $this->string($read($context)[0]['value'])->isIdenticalTo('after');
+            \Doctrine\DBAL\Types\Type::overrideType('text', new ConfigRecordUpperTextType());
+            $this->string($read($context)[0]['value'])->isIdenticalTo('AFTER');
+            $this->integer($memory->planWrites)->isIdenticalTo(1);
+            \Doctrine\DBAL\Types\Type::overrideType('text', $originalText);
+            $count = static fn (): int => \itsmng\Database\MappedReads::countMatching($DB, 'glpi_configs', ['context' => $context]);
+            $this->integer($count())->isIdenticalTo(2);
+            $this->integer($memory->planWrites)->isIdenticalTo(2);
+            $connection->insert('glpi_configs', ['context' => $context, 'name' => 'third', 'value' => 'new']);
+            $this->integer($count())->isIdenticalTo(3);
+            $this->integer($memory->planWrites)->isIdenticalTo(2);
+
+            $owner = new \itsmng\Database\RecordReadOperation($connection);
+            $supplied = \itsmng\Database\Orm::forConnection($connection);
+            try {
+                $query = $supplied->createQuery('SELECT c.id FROM ' . \itsmng\Database\Entity\Config::class . ' c');
+                $metadata = $supplied->getClassMetadata(\itsmng\Database\Entity\Config::class);
+                $this->exception(static fn () => $owner->prepareQuery($query, $metadata))
+                    ->isInstanceOf(\LogicException::class)->hasMessage('A compiled read plan belongs to its private operation.');
+                $this->variable((new \ReflectionProperty(\Doctrine\ORM\Query::class, 'queryCache'))->getValue($query))->isNull();
+            } finally {
+                $owner->close();
+                $supplied->clear();
+            }
+        } finally {
+            \Doctrine\DBAL\Types\Type::overrideType('text', $originalText);
+            $GLOBALS['GLPI_CACHE'] = $previous;
+            $connection->delete('glpi_configs', ['context' => $context]);
+        }
+    }
+
+    public function testOwnedCountChecksActualAssociationParameterSqlType(): void
+    {
+        global $DB;
+        $this->login();
+        $connection = $DB->getDoctrineConnection();
+        $group = $this->createItem(\Group::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $groupId = (int)$group->getID();
+        $connection->insert('glpi_groups_users', ['groups_id' => $groupId, 'users_id' => (int)\Session::getLoginUserID()]);
+        $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_groups_users WHERE groups_id = -1'))->isIdenticalTo(0);
+        $previous = $GLOBALS['GLPI_CACHE'] ?? null;
+        $memory = new ConfigRecordPlanCache(storeSerialized: false);
+        $original = \Doctrine\DBAL\Types\Type::getType('integer');
+        try {
+            $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache($memory);
+            $manager = \itsmng\Database\Orm::forConnection($connection);
+            $types = array_column($manager->getClassMetadata(\itsmng\Database\Entity\GroupMembership::class)->fieldMappings, 'type');
+            $this->boolean(in_array('integer', $types, true))->isFalse();
+            $manager->clear();
+            $count = static fn (): int => \itsmng\Database\MappedReads::countMatching($DB, 'glpi_groups_users', ['groups_id' => $groupId]);
+            $this->integer($count())->isIdenticalTo(1);
+            $this->integer($memory->planWrites)->isIdenticalTo(1);
+            \Doctrine\DBAL\Types\Type::overrideType('integer', new ConfigReadNegativeIntegerType());
+            $this->integer($count())->isIdenticalTo(0);
+            $this->integer($memory->planWrites)->isIdenticalTo(1);
+            \Doctrine\DBAL\Types\Type::overrideType('integer', $original);
+            $this->integer($count())->isIdenticalTo(1);
+            $this->integer($memory->planWrites)->isIdenticalTo(1);
+        } finally {
+            \Doctrine\DBAL\Types\Type::overrideType('integer', $original);
+            $GLOBALS['GLPI_CACHE'] = $previous;
+        }
+    }
+
+    public function testOwnedReadsKeepExtensionPlatformsAndInheritedListenersLocal(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $existing = $connection->fetchAssociative('SELECT id, name FROM glpi_configs ORDER BY id LIMIT 1');
+        $this->array($existing)->isNotEmpty();
+        \itsmng\Database\EntityRegistry::tables();
+        $previous = $GLOBALS['GLPI_CACHE'] ?? null;
+        try {
+            foreach ([ConfigReadExtensionConnection::class, ConfigReadListenerConnection::class] as $wrapper) {
+                $params = $connection->getParams();
+                $params['wrapperClass'] = $wrapper;
+                $selected = \Doctrine\DBAL\DriverManager::getConnection($params, $connection->getConfiguration());
+                $memory = new ConfigRecordPlanCache(storeSerialized: false);
+                $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache($memory);
+                $listener = null;
+                $owner = null;
+                try {
+                    $owner = new \itsmng\Database\RecordReadOperation($selected);
+                    if ($selected instanceof ConfigReadListenerConnection) {
+                        $listener = new class () {
+                            public int $loads = 0;
+                            public int $targetLoads = 0;
+                            public ?\Doctrine\ORM\EntityManagerInterface $manager = null;
+                            public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+                            {
+                                if ($event->getClassMetadata()->name === \itsmng\Database\Entity\Config::class) {
+                                    ++$this->loads;
+                                    $event->getClassMetadata()->fieldMappings['name']->type = 'text';
+                                    $this->manager = $event->getEntityManager();
+                                }
+                                if ($event->getClassMetadata()->name === \itsmng\Database\Entity\Entity::class) {
+                                    ++$this->targetLoads;
+                                    $event->getClassMetadata()->fieldMappings['id']->type = 'decimal';
+                                }
+                            }
+                        };
+                        $selected->getEventManager()->addEventListener(\Doctrine\ORM\Events::loadClassMetadata, $listener);
+                    }
+                    $row = $owner->row('glpi_configs', 'id', (int)$existing['id']);
+                    $this->variable($row['name'])->isIdenticalTo($existing['name']);
+                    $this->integer($memory->planWrites)->isIdenticalTo(0);
+                    $this->array($memory->getValues())->isEmpty();
+                    if ($listener !== null) {
+                        $this->integer($listener->loads)->isIdenticalTo(1);
+                        $this->string($listener->manager->getClassMetadata(\itsmng\Database\Entity\Config::class)->getTypeOfField('name'))->isIdenticalTo('text');
+                        $this->object($listener->manager->getConfiguration()->getMetadataCache())->isInstanceOf(\Symfony\Component\Cache\Adapter\ArrayAdapter::class);
+                        $user = $selected->fetchAssociative('SELECT id, entities_id FROM glpi_users ORDER BY id LIMIT 1');
+                        $this->array($user)->isNotEmpty();
+                        $row = $owner->row('glpi_users', 'id', (int)$user['id']);
+                        $this->string($row['entities_id'])->isIdenticalTo((string)$user['entities_id']);
+                        $this->integer($listener->targetLoads)->isIdenticalTo(1);
+                        $this->integer($listener->loads)->isIdenticalTo(1);
+                        $this->integer($memory->planWrites)->isIdenticalTo(0);
+                        $this->array($memory->getValues())->isEmpty();
+                    }
+                } finally {
+                    $owner?->close();
+                    if ($listener !== null) {
+                        $listener->manager = null;
+                    }
+                    $selected->close();
+                    $this->boolean($selected->isConnected())->isFalse();
+                }
+            }
+        } finally {
+            $GLOBALS['GLPI_CACHE'] = $previous;
+        }
+    }
 
     public function testPrivateRecordPlansKeepLiveRowsAndRecoverDamagedCache(): void
     {
@@ -843,8 +995,6 @@ class Config extends DbTestCase
         $context = 'private-plan-' . bin2hex(random_bytes(6));
         $connection = $DB->getDoctrineConnection();
         $table = $connection->quoteIdentifier('glpi_configs');
-        $requestCaches = new \ReflectionProperty(\itsmng\Database\Orm::class, 'queryCaches');
-        $originalCaches = $requestCaches->getValue();
         try {
             \Config::setConfigurationValues($context, ['probe' => 'before']);
             $id = (int)$connection->fetchOne('SELECT id FROM ' . $table . ' WHERE context = ? AND name = ?', [$context, 'probe']);
@@ -861,7 +1011,6 @@ class Config extends DbTestCase
             $this->integer($memory->planWrites)->isIdenticalTo(1);
             $key = $memory->planKeys[0];
             $this->string($pool->get($key))->contains('Doctrine\\ORM\\Query\\ParserResult');
-            $requestCaches->setValue(null, null);
             $connection->update('glpi_configs', ['value' => 'after'], ['id' => $id]);
             $this->string($read()['value'])->isIdenticalTo('after');
             $this->integer($memory->planWrites)->isIdenticalTo(1);
@@ -899,7 +1048,6 @@ class Config extends DbTestCase
             $manager->clear();
         } finally {
             $GLOBALS['GLPI_CACHE'] = $previous;
-            $requestCaches->setValue(null, $originalCaches);
             $connection->delete('glpi_configs', ['context' => $context]);
         }
     }
@@ -932,11 +1080,18 @@ class Config extends DbTestCase
                 'noPersistentQuery' => true, 'privateDriver' => true,
             ]);
             $this->integer($memory->planWrites)->isIdenticalTo(0);
+            $rows = \itsmng\Database\MappedReads::matching($DB, 'glpi_configs', ['id' => $id]);
+            $this->string($rows[0]['value'])->isIdenticalTo('callback:live');
+            $this->array(ConfigRecordCallback::$observed)->isIdenticalTo([
+                'localConfiguration' => true, 'localFactory' => true,
+                'noPersistentQuery' => true, 'privateDriver' => true,
+            ]);
+            $this->integer($memory->planWrites)->isIdenticalTo(0);
             $registry->setValue(null, $original);
             $this->boolean($item->getFromDB($id))->isTrue();
             $this->string($item->fields['value'])->isIdenticalTo('live');
             $this->integer($memory->planWrites)->isIdenticalTo(1);
-            $this->object(\itsmng\Database\Orm::configuration($connection->getDatabasePlatform())->getMetadataDriverImpl())->isIdenticalTo(ConfigRecordCallback::$publicDriver);
+            $this->object(\itsmng\Database\Orm::configuration($connection->getDatabasePlatform())->getMetadataDriverImpl())->isNotIdenticalTo(ConfigRecordCallback::$publicDriver);
         } finally {
             $registry->setValue(null, $original);
             $GLOBALS['GLPI_CACHE'] = $previous;
@@ -1609,4 +1764,42 @@ final class ConfigRecordUpperTextType extends \Doctrine\DBAL\Types\TextType
     {
         return 'UPPER(' . $sqlExpr . ')';
     }
+}
+
+
+final class ConfigReadNegativeIntegerType extends \Doctrine\DBAL\Types\IntegerType
+{
+    public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+    {
+        return '(' . $sqlExpr . ' * 0 - 1)';
+    }
+}
+
+class ConfigReadListenerConnection extends \Doctrine\DBAL\Connection
+{
+    private ?\Doctrine\Common\EventManager $readEvents = null;
+
+    public function getEventManager(): \Doctrine\Common\EventManager
+    {
+        return $this->readEvents ??= new \Doctrine\Common\EventManager();
+    }
+}
+
+class ConfigReadExtensionConnection extends \Doctrine\DBAL\Connection
+{
+    private ?\Doctrine\DBAL\Platforms\AbstractPlatform $readPlatform = null;
+
+    public function getDatabasePlatform(): \Doctrine\DBAL\Platforms\AbstractPlatform
+    {
+        return $this->readPlatform ??= (parent::getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform
+            ? new ConfigReadPostgreSQLPlatform() : new ConfigReadMySQLPlatform());
+    }
+}
+
+class ConfigReadPostgreSQLPlatform extends \Doctrine\DBAL\Platforms\PostgreSQLPlatform
+{
+}
+
+class ConfigReadMySQLPlatform extends \Doctrine\DBAL\Platforms\MySQLPlatform
+{
 }

@@ -14,34 +14,12 @@ use itsmng\Database\Mapping\ITILStatisticsRole;
 /** Mapped parent and relationship types shared by statistics projections. */
 final class ITILStatisticsType
 {
-    /**
-     * Mapping drivers define immutable provider mapping scopes. Configuration
-     * clones share the driver, while each operation keeps its own unit of work.
-     * Values contain only class/property strings, never metadata or managers.
-     * Replacing a driver naturally invalidates its definitions; weak keys do not
-     * extend a custom driver's lifetime.
-     *
-     * @var \WeakMap<object, array<string, array{definition: array, error: ?array}>>|null
-     */
-    private static ?\WeakMap $definitions = null;
-
     public static function definition(EntityManager $em, string $type): array
     {
         $subject = ITILSolution::subjectAssociation($type);
         $class = $em->getClassMetadata(ITILSolution::class)->getAssociationTargetClass($subject);
-        $events = $em->getEventManager();
-        // Custom metadata listeners may change associations for this manager.
-        // They must not reuse definitions from another operation's metadata.
-        if ($events->hasListeners(Events::loadClassMetadata) || $events->hasListeners(Events::onClassMetadataNotFound)) {
-            $definitions = self::discover($em);
-        } else {
-            $driver = $em->getConfiguration()->getMetadataDriverImpl();
-            self::$definitions ??= new \WeakMap();
-            if (!isset(self::$definitions[$driver])) {
-                self::$definitions[$driver] = self::discover($em);
-            }
-            $definitions = self::$definitions[$driver];
-        }
+        // Supplied managers may edit loaded associations without changing drivers or listeners.
+        $definitions = self::discover($em);
         $definition = $definitions[$class] ?? ['definition' => [], 'error' => ['Missing', ITILStatisticsRole::cases()[0]->name]];
         if ($definition['error'] !== null) {
             [$reason, $role] = $definition['error'];

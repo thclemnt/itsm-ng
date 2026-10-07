@@ -14,12 +14,12 @@ final class MappedReads
         if (!isset(EntityRegistry::tables()[$table])) {
             throw new UnsupportedCriteria('Unmapped table requires a registered entity.');
         }
-        $em = Orm::create($database);
+        $operation = new RecordReadOperation($database->getDoctrineConnection());
         try {
-            $rows = (new RecordRepository($em))->matching($table, $criteria, $order, $limit, $offset);
+            $rows = $operation->matching($table, $criteria, $order, $limit, $offset);
             return array_map(static fn (array $row): array => ReferenceValues::legacyRow($table, $row), $rows);
         } finally {
-            $em->clear();
+            $operation->close();
         }
     }
     public static function countMatching(\DBAdapter $database, string $table, array $criteria): int
@@ -27,11 +27,11 @@ final class MappedReads
         if (!isset(EntityRegistry::tables()[$table])) {
             throw new UnsupportedCriteria('Unmapped table requires a registered entity.');
         }
-        $em = Orm::create($database);
+        $operation = new RecordReadOperation($database->getDoctrineConnection());
         try {
-            return (new RecordRepository($em))->countMatching($table, $criteria);
+            return $operation->countMatching($table, $criteria);
         } finally {
-            $em->clear();
+            $operation->close();
         }
     }
 

@@ -38,14 +38,49 @@ class EntityRegistryCache extends \atoum\atoum\test
     }
 
 
+    public function testPublicConfigurationsOwnMutableMappingState(): void
+    {
+        $connection = \Doctrine\DBAL\DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
+        $platform = $connection->getDatabasePlatform();
+        $first = \itsmng\Database\Orm::configuration($platform);
+        $second = \itsmng\Database\Orm::configuration($platform);
+        $this->object($second)->isNotIdenticalTo($first);
+        $this->object($second->getMetadataDriverImpl())->isNotIdenticalTo($first->getMetadataDriverImpl());
+        $this->object($second->getMetadataCache())->isNotIdenticalTo($first->getMetadataCache());
+        $this->variable($first->getQueryCache())->isNull();
+        $this->variable($second->getQueryCache())->isNull();
+        $first->getMetadataDriverImpl()->setFileExtension('.custom');
+        $this->string($second->getMetadataDriverImpl()->getFileExtension())->isNotIdenticalTo('.custom');
+        $custom = new \Doctrine\ORM\EntityManager($connection, $first);
+        $custom->getEventManager()->addEventListener(\Doctrine\ORM\Events::loadClassMetadata, new class () {
+            public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+            {
+                if ($event->getClassMetadata()->name === \itsmng\Database\Entity\Config::class) {
+                    $event->getClassMetadata()->setPrimaryTable(['name' => 'local_custom_config']);
+                }
+            }
+        });
+        $normal = new \Doctrine\ORM\EntityManager($connection, $second);
+        $this->string($custom->getClassMetadata(\itsmng\Database\Entity\Config::class)->getTableName())->isIdenticalTo('local_custom_config');
+        $this->string($normal->getClassMetadata(\itsmng\Database\Entity\Config::class)->getTableName())->isIdenticalTo('glpi_configs');
+        $first->addCustomNumericFunction('LOCAL_FUNCTION', \itsmng\Database\Query\BitCount::class);
+        $second->addCustomNumericFunction('LOCAL_FUNCTION', \itsmng\Database\Query\EpochSeconds::class);
+        $dql = 'SELECT LOCAL_FUNCTION(c.id) FROM ' . \itsmng\Database\Entity\Config::class . ' c';
+        $this->string($custom->createQuery($dql)->getSQL())->contains('BIT_COUNT(');
+        $this->string($normal->createQuery($dql)->getSQL())->contains('UNIX_TIMESTAMP(');
+        $first->addCustomNumericFunction('LOCAL_FUNCTION', \itsmng\Database\Query\EpochSeconds::class);
+        $this->string($custom->createQuery($dql)->getSQL())->contains('UNIX_TIMESTAMP(');
+        $this->boolean($connection->isConnected())->isFalse();
+        $custom->clear();
+        $normal->clear();
+        $connection->close();
+    }
+
     public function testScalarIdentifiersMatchBothProvidersAndIgnorePublicCustomization(): void
     {
         $previousCache = $GLOBALS['GLPI_CACHE'] ?? null;
         $model = new \ReflectionProperty(EntityRegistry::class, 'model');
         $previousModel = $model->getValue();
-        $templates = new \ReflectionProperty(\itsmng\Database\Orm::class, 'configurations');
-        $previousTemplates = $templates->getValue();
-        $templates->setValue(null, []);
         $model->setValue(null, null);
         $GLOBALS['GLPI_CACHE'] = new Psr16Cache(new ArrayAdapter(storeSerialized: false));
         try {
@@ -69,7 +104,7 @@ class EntityRegistryCache extends \atoum\atoum\test
             $actual = EntityRegistry::scalarIdentifiers();
             $this->string($actual[\itsmng\Database\Entity\Config::class]['type'])->isIdenticalTo('bigint');
             $this->string(EntityRegistry::tables()['glpi_configs'])->isIdenticalTo(\itsmng\Database\Entity\Config::class);
-            $this->object(\itsmng\Database\Orm::configuration($platform)->getMetadataDriverImpl())->isIdenticalTo($driver);
+            $this->object(\itsmng\Database\Orm::configuration($platform)->getMetadataDriverImpl())->isNotIdenticalTo($driver);
             $this->string($driver->getFileExtension())->isIdenticalTo('.public-custom-driver');
             $this->boolean($connection->isConnected())->isFalse();
             $manager->clear();
@@ -104,7 +139,6 @@ class EntityRegistryCache extends \atoum\atoum\test
         } finally {
             $GLOBALS['GLPI_CACHE'] = $previousCache;
             $model->setValue(null, $previousModel);
-            $templates->setValue(null, $previousTemplates);
         }
     }
 
