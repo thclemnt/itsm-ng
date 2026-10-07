@@ -34,7 +34,17 @@
 
 namespace itsmng\Search\Provider;
 
+use CommonITILCost;
+use DBAdapter;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CostRepository;
 use itsmng\Search\SearchOption;
+use Plugin;
+use Search;
+use Session;
+
+use function getEntitiesRestrictRequest;
+use function getItemTypeForTable as globalItemTypeForTable;
 
 final class ProjectionBuilder
 {
@@ -55,7 +65,7 @@ final class ProjectionBuilder
             $fields->add($d->quote('glpi_fieldunicities.itemtype'), 'ITEMTYPE');
         }
         if ($plug = isPluginItemType($itemtype)) {
-            $fields->addHookResult(\Plugin::doOneHook($plug['plugin'], 'addDefaultSelect', $itemtype), $d);
+            $fields->addHookResult(Plugin::doOneHook($plug['plugin'], 'addDefaultSelect', $itemtype), $d);
         }
         if ($table === 'glpi_entities') {
             return $fields->add($d->quote($table . '.id'), 'entities_id')->add('1', 'is_recursive');
@@ -102,16 +112,16 @@ final class ProjectionBuilder
             $fields->add($expression, $NAME . $suffix, $aggregate);
         };
         $packed = fn (string $expression, bool $nullable = true) => $d->concat(
-            $nullable ? $d->coalesceText($expression, \Search::NULLVALUE) : $expression,
-            $d->literal(\Search::SHORTSEP),
+            $nullable ? $d->coalesceText($expression, Search::NULLVALUE) : $expression,
+            $d->literal(Search::SHORTSEP),
             $id
         );
-        $translation = $d->coalesceText($d->quote($alias . '_trans_' . $field . '.value'), \Search::NULLVALUE);
-        $translated = \Session::haveTranslations(getItemTypeForTable($table), $field);
+        $translation = $d->coalesceText($d->quote($alias . '_trans_' . $field . '.value'), Search::NULLVALUE);
+        $translated = Session::haveTranslations(getItemTypeForTable($table), $field);
         foreach ($option['additionalfields'] ?? [] as $key) {
             $expression = $column($key);
             if ($many) {
-                $expression = $d->coalesceText($d->aggregate($packed($expression), true, [$id => 'ASC']), \Search::NULLVALUE . \Search::SHORTSEP);
+                $expression = $d->coalesceText($d->aggregate($packed($expression), true, [$id => 'ASC']), Search::NULLVALUE . Search::SHORTSEP);
             }
             $add($expression, '_' . $key, $many);
         }
@@ -119,13 +129,13 @@ final class ProjectionBuilder
             return $fields;
         }
         if ($plug = isPluginItemType($itemtype)) {
-            $raw = \Plugin::doOneHook($plug['plugin'], 'addSelect', $itemtype, $ID, "{$itemtype}_{$ID}");
+            $raw = Plugin::doOneHook($plug['plugin'], 'addSelect', $itemtype, $ID, "{$itemtype}_{$ID}");
             if ($raw) {
                 return $fields->addHookResult($raw, $d);
             }
         }
         if (preg_match('/^glpi_plugin_([a-z0-9]+)/', $table, $matches)) {
-            $raw = \Plugin::doOneHook($matches[1], 'addSelect', $itemtype, $ID, "{$itemtype}_{$ID}");
+            $raw = Plugin::doOneHook($matches[1], 'addSelect', $itemtype, $ID, "{$itemtype}_{$ID}");
             if ($raw) {
                 return $fields->addHookResult($raw, $d);
             }
@@ -140,7 +150,11 @@ final class ProjectionBuilder
                     $before = $option['joinparams']['beforejoin'] ?? [];
                     if (in_array($itemtype, ['Ticket', 'Problem', 'Change'], true) && in_array($before['table'] ?? '', ['glpi_tickets_users', 'glpi_problems_users', 'glpi_changes_users'], true)) {
                         $actor = $before['table'] . '_' . JoinBuilder::computeComplexJoinID($before['joinparams']) . $addmeta;
-                        $add($d->aggregate($d->concat($d->quote($actor . '.users_id'), $d->literal(' '), $d->quote($actor . '.alternative_email'))), '_2', true);
+                        $add($d->aggregate($d->concat(
+                            $d->quote($actor . '.users_id'),
+                            $d->literal(' '),
+                            $d->quote($actor . '.alternative_email')
+                        )), '_2', true);
                     }
                 } else {
                     $add($value);
@@ -180,12 +194,24 @@ final class ProjectionBuilder
             case 'glpi_softwareversions.name':
             case 'glpi_softwareversions.comment':
                 if ($meta && $meta_type === 'Software') {
-                    $v = $d->concat($d->quote('glpi_softwares.name'), $d->literal(' - '), $d->quote($table . $addtable2 . '.' . $field), $d->literal(\Search::SHORTSEP), $d->quote($table . $addtable2 . '.id'));
+                    $v = $d->concat(
+                        $d->quote('glpi_softwares.name'),
+                        $d->literal(' - '),
+                        $d->quote($table . $addtable2 . '.' . $field),
+                        $d->literal(Search::SHORTSEP),
+                        $d->quote($table . $addtable2 . '.id')
+                    );
                     $add($d->aggregate($v), '', true);
                     return $fields;
                 }
                 if ($field === 'comment') {
-                    $add($d->aggregate($d->concat($column('name'), $d->literal(' - '), $value, $d->literal(\Search::SHORTSEP), $id)), '', true);
+                    $add($d->aggregate($d->concat(
+                        $column('name'),
+                        $d->literal(' - '),
+                        $value,
+                        $d->literal(Search::SHORTSEP),
+                        $id
+                    )), '', true);
                     return $fields;
                 }
                 break;
@@ -198,7 +224,7 @@ final class ProjectionBuilder
                     $parts[] = $d->quote('glpi_softwareversions' . ($meta ? $addtable : '') . '.name');
                     $parts[] = $d->literal(' - ');
                     $a = $meta ? $table . $addtable2 : $alias;
-                    array_push($parts, $d->quote($a . '.' . $field), $d->literal(\Search::SHORTSEP), $d->quote($a . '.id'));
+                    array_push($parts, $d->quote($a . '.' . $field), $d->literal(Search::SHORTSEP), $d->quote($a . '.id'));
                     $add($d->aggregate($d->concat(...$parts)), '', true);
                     return $fields;
                 }
@@ -216,19 +242,19 @@ final class ProjectionBuilder
         // parents for display must never multiply those identities.
         if ($field === 'actiontime' && isset($option['computation']) && $member === null
             && empty($option['additionalfields']) && ($option['joinparams'] ?? []) === ['jointype' => 'child']) {
-            $costType = \getItemTypeForTable($table);
-            if (\itsmng\Database\Repository\CostRepository::supports($costType)
-                && is_subclass_of($costType, \CommonITILCost::class)
+            $costType = globalItemTypeForTable($table);
+            if (CostRepository::supports($costType)
+                && is_subclass_of($costType, CommonITILCost::class)
                 && $option['computation'] === $costType::durationSearchComputation($DB)
                 && (!$meta || $subjectType !== null)) {
                 $subject = $subjectType ?? $itemtype;
-                $em = \itsmng\Database\Orm::create($DB);
+                $em = Orm::create($DB);
                 try {
-                    $total = (new \itsmng\Database\Repository\CostRepository($em))->searchActionTime(
+                    $total = (new CostRepository($em))->searchActionTime(
                         $costType,
                         $subject,
                         JoinBuilder::getOrigTableName($subject),
-                        static fn (string $parentAlias) => \getEntitiesRestrictRequest('', $parentAlias)
+                        static fn (string $parentAlias) => getEntitiesRestrictRequest('', $parentAlias)
                     );
                 } finally {
                     $em->clear();
@@ -273,12 +299,16 @@ final class ProjectionBuilder
         return $fields;
     }
 
-    public static function dateDelay(array $option, string $alias, \DBAdapter $db): string
+    public static function dateDelay(array $option, string $alias, DBAdapter $db): string
     {
         $amount = $db->quoteName($alias . '.' . $option['datafields'][2]);
         if (isset($option['datafields'][3])) {
             $amount .= ' - ' . $db->quoteName($alias . '.' . $option['datafields'][3]);
         }
-        return $db->expressions()->dateAdd($db->quoteName($alias . '.' . $option['datafields'][1]), '(' . $amount . ')', trim($option['delayunit'] ?? 'MONTH'));
+        return $db->expressions()->dateAdd(
+            $db->quoteName($alias . '.' . $option['datafields'][1]),
+            '(' . $amount . ')',
+            trim($option['delayunit'] ?? 'MONTH')
+        );
     }
 }

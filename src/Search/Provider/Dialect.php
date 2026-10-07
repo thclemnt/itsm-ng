@@ -4,10 +4,15 @@
 
 namespace itsmng\Search\Provider;
 
+use DBAdapter;
+use InvalidArgumentException;
+use itsmng\Database\EntityRegistry;
+use Search;
+
 /** SQL differences are selected while building expressions, never by rewriting SQL. */
 final class Dialect
 {
-    public function __construct(private \DBAdapter $db)
+    public function __construct(private DBAdapter $db)
     {
     }
 
@@ -15,44 +20,51 @@ final class Dialect
     {
         return $this->db->getProvider() === 'pgsql';
     }
+
     public function quote(string $name): string
     {
         return $this->db->quoteName($name);
     }
+
     public function column(string $table, string $column, ?string $alias = null): string
     {
         $sql = $this->quote(($alias ?? $table) . '.' . $column);
-        if ($this->postgres() && \itsmng\Database\EntityRegistry::isBoolean($table, $column)) {
+        if ($this->postgres() && EntityRegistry::isBoolean($table, $column)) {
             // The existing display encoding uses 0/1. Preserve NULL on outer joins.
             return 'CAST(' . $sql . ' AS integer)';
         }
         return $sql;
     }
+
     public function literal(string $value): string
     {
         return $this->db->quoteValue($this->db->escape($value));
     }
+
     public function text(string $expression): string
     {
         return $this->postgres() ? "CAST($expression AS text)" : "CAST($expression AS CHAR)";
     }
+
     public function coalesceText(string $expression, string $fallback): string
     {
         return 'COALESCE(' . $this->text($expression) . ', ' . $this->literal($fallback) . ')';
     }
+
     public function concat(string ...$expressions): string
     {
         return $this->postgres()
             ? '(' . implode(' || ', array_map($this->text(...), $expressions)) . ')'
             : 'CONCAT(' . implode(', ', $expressions) . ')';
     }
+
     /** @param array<string, string> $order SQL expression => ASC/DESC */
-    public function aggregate(string $expression, bool $distinct = true, array $order = [], string $separator = \Search::LONGSEP): string
+    public function aggregate(string $expression, bool $distinct = true, array $order = [], string $separator = Search::LONGSEP): string
     {
         $sort = [];
         foreach ($order as $key => $direction) {
             if (!in_array($direction, ['ASC', 'DESC'], true)) {
-                throw new \InvalidArgumentException('Invalid aggregate ordering');
+                throw new InvalidArgumentException('Invalid aggregate ordering');
             }
             // MySQL puts NULL first for ASC, PostgreSQL last. Make the policy explicit.
             $sort[] = $key . ' ' . $direction . ($this->postgres() ? ($direction === 'ASC' ? ' NULLS FIRST' : ' NULLS LAST') : '');

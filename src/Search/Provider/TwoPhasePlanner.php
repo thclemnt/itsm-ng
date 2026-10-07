@@ -4,12 +4,14 @@
 
 namespace itsmng\Search\Provider;
 
+use DBAdapter;
+use InvalidArgumentException;
 use itsmng\Search\SearchOption;
 
 /** A criteria tree is a tree of matching ID sets, independent of display joins. */
 final class TwoPhasePlanner
 {
-    public function __construct(private \DBAdapter $db)
+    public function __construct(private DBAdapter $db)
     {
     }
 
@@ -45,7 +47,13 @@ final class TwoPhasePlanner
             $conditions[] = $d->quote($table . '.is_template') . " = '0'";
         }
         if ($data['item']->isEntityAssign() && $data['item']->isField('entities_id')) {
-            $entities = getEntitiesRestrictRequest('', $table, '', '', $data['item']->maybeRecursive() && $data['item']->isField('is_recursive'));
+            $entities = getEntitiesRestrictRequest(
+                '',
+                $table,
+                '',
+                '',
+                $data['item']->maybeRecursive() && $data['item']->isField('is_recursive')
+            );
             if (trim($entities) !== '') {
                 $conditions[] = $entities;
             }
@@ -86,9 +94,27 @@ final class TwoPhasePlanner
             }
         }
         $data['meta_toview'] = [];
-        CriteriaBuilder::constructAdditionalSqlForMetacriteria($data['search']['criteria'], $display, $displayJoins, $displayLinked, $data, true);
+        CriteriaBuilder::constructAdditionalSqlForMetacriteria(
+            $data['search']['criteria'],
+            $display,
+            $displayJoins,
+            $displayLinked,
+            $data,
+            true
+        );
         $hydrateOrder = $this->order($hydrateKeys, $d->quote($table . '.id'), $direction);
-        return new SearchPlan($count, 'SELECT ' . $page->sql($d, true), $from . $sortJoins, $where, $group, $pageOrder, 'SELECT ' . $display->sql($d, true), $quoted, $displayJoins, $hydrateOrder);
+        return new SearchPlan(
+            $count,
+            'SELECT ' . $page->sql($d, true),
+            $from . $sortJoins,
+            $where,
+            $group,
+            $pageOrder,
+            'SELECT ' . $display->sql($d, true),
+            $quoted,
+            $displayJoins,
+            $hydrateOrder
+        );
     }
 
     private function order(array $keys, string $id, string $direction): string
@@ -158,7 +184,7 @@ final class TwoPhasePlanner
         $options = SearchOption::getOptions($type);
         $id = (int)$criterion['field'];
         if (!isset($options[$id]['table'])) {
-            throw new \InvalidArgumentException('Unknown search criterion');
+            throw new InvalidArgumentException('Unknown search criterion');
         }
         $o = $options[$id];
         if (!$meta && (new FieldReference($type, $o))->alias === $root && empty($o['joinparams']) && empty($o['usehaving'])) {
@@ -166,7 +192,7 @@ final class TwoPhasePlanner
             // outside the matching set so negation still includes missing values.
             $filter = CriteriaBuilder::addWhere('', false, $type, $id, $criterion['searchtype'], $criterion['value']);
             if ($filter === false || trim($filter) === '') {
-                throw new \InvalidArgumentException('Unsupported search criterion');
+                throw new InvalidArgumentException('Unsupported search criterion');
             }
             return 'COALESCE((' . $filter . '), FALSE)';
         }
@@ -187,7 +213,17 @@ final class TwoPhasePlanner
         if ($projection === null || $projection->requiresFieldJoin()) {
             if ($meta) {
                 $from .= JoinBuilder::addMetaLeftJoin($data['itemtype'], $type, $linked, $o['joinparams'] ?? []);
-                $from .= JoinBuilder::addLeftJoin($type, $type::getTable(), $linked, $o['table'], $o['linkfield'], 1, $type, $o['joinparams'] ?? [], $o['field']);
+                $from .= JoinBuilder::addLeftJoin(
+                    $type,
+                    $type::getTable(),
+                    $linked,
+                    $o['table'],
+                    $o['linkfield'],
+                    1,
+                    $type,
+                    $o['joinparams'] ?? [],
+                    $o['field']
+                );
             } else {
                 $from .= $this->join($type, $root, $id, $options, $linked);
             }
@@ -200,7 +236,7 @@ final class TwoPhasePlanner
         } else {
             $filter = CriteriaBuilder::addWhere('', false, $type, $id, $criterion['searchtype'], $criterion['value'], $meta);
             if ($filter === false || trim($filter) === '') {
-                throw new \InvalidArgumentException('Unsupported search criterion');
+                throw new InvalidArgumentException('Unsupported search criterion');
             }
             // An explicit aggregate keeps each multivalue relation as its own
             // ID set. Otherwise MySQL can flatten dozens of IN subqueries into

@@ -4,6 +4,9 @@
 
 namespace itsmng\Search\Provider;
 
+use InvalidArgumentException;
+use RuntimeException;
+
 final class SelectList
 {
     /** @var array<string, SelectExpression> */
@@ -30,7 +33,7 @@ final class SelectList
         }
         if ($sql) {
             if ($dialect->postgres()) {
-                throw new \RuntimeException('This plugin supplies a MySQL search projection. It must supply portable search expressions for PostgreSQL.');
+                throw new RuntimeException('This plugin supplies a MySQL search projection. It must supply portable search expressions for PostgreSQL.');
             }
             $this->legacy[] = rtrim(trim($sql), ',');
         }
@@ -42,6 +45,7 @@ final class SelectList
         $this->fields[$alias] = new SelectExpression($sql, $alias, $aggregate, $boolean);
         return $this;
     }
+
     /** One value per root; MAX only adapts it to grouped display/sort queries. */
     public function addRootScalar(string $sql, string $alias): self
     {
@@ -60,10 +64,12 @@ final class SelectList
         $this->legacy = array_merge($this->legacy, $other->legacy);
         return $this;
     }
+
     public function get(string $alias): SelectExpression
     {
-        return $this->fields[$alias] ?? throw new \InvalidArgumentException('Unknown search projection: ' . $alias);
+        return $this->fields[$alias] ?? throw new InvalidArgumentException('Unknown search projection: ' . $alias);
     }
+
     public function sql(Dialect $dialect, bool $grouped = false): string
     {
         return implode(', ', array_merge(array_map(fn ($field) => $field->render($dialect, $grouped), $this->fields), $this->legacy));
