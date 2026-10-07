@@ -1250,7 +1250,7 @@ class Reservation extends CommonDBChild
 
         // Print reservation in progress
         $rows = (new \itsmng\Database\Repository\ReservationRepository(\itsmng\Database\Orm::create($DB)))
-            ->forUser((int)$ID, $now, false, \itsmng\Reporting\Criteria::entities());
+            ->nativeForUser((int)$ID, $now, false, \itsmng\Reporting\Criteria::entities());
 
         $entityNames = [];
         $userName = null;
@@ -1303,7 +1303,7 @@ class Reservation extends CommonDBChild
 
         // Print old reservations
         $rows = (new \itsmng\Database\Repository\ReservationRepository(\itsmng\Database\Orm::create($DB)))
-            ->forUser((int)$ID, $now, true, \itsmng\Reporting\Criteria::entities());
+            ->nativeForUser((int)$ID, $now, true, \itsmng\Reporting\Criteria::entities());
 
         echo "<div class='spaced'>";
         echo "<table class='tab_cadre_fixehov' aria-label='Past Reservations'>";

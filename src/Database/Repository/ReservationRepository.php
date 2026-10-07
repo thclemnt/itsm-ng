@@ -35,6 +35,73 @@ final class ReservationRepository
         }
         return $rows;
     }
+    /** Private display projection; retain the same live connection and two time partitions. */
+    public function nativeForUser(int $user, string $now, bool $past, ?array $entities): array
+    {
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $reservation = $this->em->getClassMetadata(Reservation::class);
+        $item = $this->em->getClassMetadata($reservation->associationMappings['reservationitems']->targetEntity);
+        $reference = static function ($metadata, string $property, string $alias) use ($quote, $platform): string {
+            $mapping = $metadata->associationMappings[$property];
+            if (!$mapping->isToOneOwningSide() || count($mapping->joinColumns) !== 1) {
+                throw new \LogicException('Reservation display requires single owning references');
+            }
+            return $alias . '.' . $quote->getJoinColumnName($mapping->joinColumns[0], $metadata, $platform);
+        };
+        $column = static fn ($metadata, string $property, string $alias): string => $alias . '.' . $quote->getColumnName($property, $metadata, $platform);
+        $types = [];
+        $scalar = static function ($metadata, string $property, string $alias, string $result) use ($column, $platform, &$types): string {
+            $types[$result] = \Doctrine\DBAL\Types\Type::getType($metadata->getTypeOfField($property));
+            return $types[$result]->convertToPHPValueSQL($column($metadata, $property, $alias), $platform)
+                . ' AS ' . $platform->quoteIdentifier($result);
+        };
+        $integer = \Doctrine\DBAL\Types\Type::getType(Types::INTEGER);
+        $instant = \Doctrine\DBAL\Types\Type::getType(Types::DATETIMETZ_MUTABLE);
+        $query = $connection->createQueryBuilder()->select(
+            $scalar($reservation, 'begin', 'r', 'begin'),
+            $scalar($reservation, 'end', 'r', 'end'),
+            $reference($reservation, 'users', 'r') . ' AS users_id',
+            $scalar($reservation, 'comment', 'r', 'comment'),
+            $scalar($item, 'id', 'i', 'reservationitems_id'),
+            $scalar($item, 'itemtype', 'i', 'itemtype'),
+            $scalar($item, 'items_id', 'i', 'items_id'),
+            $reference($item, 'entities', 'i') . ' AS entities_id'
+        )->from($quote->getTableName($reservation, $platform), 'r')
+            ->innerJoin(
+                'r',
+                $quote->getTableName($item, $platform),
+                'i',
+                $reference($reservation, 'reservationitems', 'r') . ' = i.' . $quote->getReferencedJoinColumnName(
+                    $reservation->associationMappings['reservationitems']->joinColumns[0],
+                    $item,
+                    $platform
+                )
+            )
+            ->where($reference($reservation, 'users', 'r') . ' = ' . $integer->convertToDatabaseValueSQL(':user', $platform))
+            ->andWhere($column($reservation, 'end', 'r') . ($past ? ' <= ' : ' > ') . $instant->convertToDatabaseValueSQL(':now', $platform))
+            ->setParameter('user', $user, Types::INTEGER)->setParameter('now', new \DateTime($now), Types::DATETIMETZ_MUTABLE)
+            ->orderBy($column($reservation, 'begin', 'r'), $past ? 'DESC' : 'ASC')
+            ->addOrderBy($column($reservation, 'id', 'r'), 'ASC');
+        if ($entities !== null) {
+            $query->andWhere($reference($item, 'entities', 'i') . ' IN (:entities)')
+                ->setParameter('entities', $entities ?: [-1], \Doctrine\DBAL\ArrayParameterType::INTEGER);
+        }
+        // Untyped DQL IDENTITY selections use the string hydration type.
+        $types['users_id'] = $types['entities_id'] = \Doctrine\DBAL\Types\Type::getType(Types::STRING);
+        $rows = $query->executeQuery()->fetchAllAssociative();
+        foreach ($rows as &$row) {
+            foreach ($types as $field => $type) {
+                $row[$field] = $type->convertToPHPValue($row[$field], $platform);
+            }
+            foreach (['begin', 'end'] as $field) {
+                $row[$field] = $row[$field]?->format('Y-m-d H:i:s');
+            }
+        }
+        return $rows;
+    }
+
     public function groupExists(int $item, int $group): bool
     {
         return (new RecordRepository($this->em))->countMatching('glpi_reservations', [

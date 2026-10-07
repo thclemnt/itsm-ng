@@ -284,6 +284,32 @@ class Reservation extends \DbTestCase
             $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
             $this->array($repository->forUser($user->id, $_SESSION['glpi_currenttime'], false, null))->hasSize(26);
             $this->array($repository->forUser(0, $_SESSION['glpi_currenttime'], false, null))->isEmpty();
+            // The direct DBAL display path must retain the ORM projection contract,
+            // including root scope, absent grants, time boundaries, and scalar types.
+            foreach ([false, true] as $past) {
+                foreach ([[$rootId, $childId], [0], [], null] as $scope) {
+                    $this->array($repository->nativeForUser($user->id, $_SESSION['glpi_currenttime'], $past, $scope))
+                        ->isIdenticalTo($repository->forUser($user->id, $_SESSION['glpi_currenttime'], $past, $scope));
+                }
+            }
+            $this->array($repository->nativeForUser(0, $_SESSION['glpi_currenttime'], false, null))->isEmpty();
+            $originalText = \Doctrine\DBAL\Types\Type::getType(\Doctrine\DBAL\Types\Types::TEXT);
+            try {
+                \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::TEXT, new ReservationDisplayTextType());
+                $converted = $repository->nativeForUser($user->id, $_SESSION['glpi_currenttime'], true, [$rootId, $childId]);
+                $this->array($converted)->isIdenticalTo($repository->forUser($user->id, $_SESSION['glpi_currenttime'], true, [$rootId, $childId]));
+                $this->string($converted[0]['comment'])->isIdenticalTo('PAST BOUNDARY RESERVATION|php');
+            } finally {
+                \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::TEXT, $originalText);
+            }
+
+            $connection->update('glpi_reservations', ['comment' => null], ['reservationitems_id' => $items[2]->id]);
+            $rootRows = $repository->nativeForUser($user->id, $_SESSION['glpi_currenttime'], false, [0]);
+            $this->array($rootRows)->hasSize(1);
+            $this->variable($rootRows[0]['comment'])->isNull();
+            $connection->update('glpi_reservations', ['comment' => 'Other entity reservation'], ['reservationitems_id' => $items[2]->id]);
+            $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+
             $render = static function (int $id): string {
                 ob_start();
                 try {
@@ -453,4 +479,17 @@ class Reservation extends \DbTestCase
         $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
     }
 
+}
+
+final class ReservationDisplayTextType extends \Doctrine\DBAL\Types\TextType
+{
+    public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+    {
+        return 'UPPER(' . $sqlExpr . ')';
+    }
+
+    public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): ?string
+    {
+        return $value === null ? null : (string)$value . '|php';
+    }
 }
