@@ -458,7 +458,7 @@ class Dropdown
                     case "glpi_contacts":
                         //TRANS: %1$s is the name, %2$s is the firstname
                         $name = sprintf(__('%1$s %2$s'), $name, $data["firstname"]);
-                        if ($tooltip) {
+                        if ($tooltip && $withcomment) {
                             if (!empty($data["phone"])) {
                                 $comment .= "<br>" . sprintf(
                                     __('%1$s: %2$s'),
@@ -498,7 +498,7 @@ class Dropdown
                         break;
 
                     case "glpi_suppliers":
-                        if ($tooltip) {
+                        if ($tooltip && $withcomment) {
                             if (!empty($data["phonenumber"])) {
                                 $comment .= "<br>" . sprintf(
                                     __('%1$s: %2$s'),
@@ -537,7 +537,7 @@ class Dropdown
                         break;
 
                     case "glpi_budgets":
-                        if ($tooltip) {
+                        if ($tooltip && $withcomment) {
                             if (!empty($data['locations_id'])) {
                                 $comment .= "<br>" . sprintf(
                                     __('%1$s: %2$s'),

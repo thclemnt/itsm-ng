@@ -873,7 +873,7 @@ class Dropdown extends DbTestCase
 
     public function testGetDropdownName()
     {
-        global $CFG_GLPI;
+        global $CFG_GLPI, $DB;
 
         $encoded_sep = \Toolbox::clean_cross_side_scripting_deep(' > ');
 
@@ -1003,6 +1003,34 @@ class Dropdown extends DbTestCase
                                          "Start date</span>: 2016-10-18 <br><span class='b'>End date</span>: 2016-12-31 "];
         $ret = \Dropdown::getDropdownName('glpi_budgets', $budget->getID(), true);
         $this->array($ret)->isIdenticalTo($expected);
+
+        // Default tooltip=true must not resolve references for a discarded comment.
+        $database = $DB;
+        $probe = new DropdownScalarReadProbe($database->getDoctrineConnection());
+        $this->mockGenerator->orphanize('__construct');
+        $adapter = new \mock\DBmysql();
+        $this->calling($adapter)->getProvider = $database->getProvider();
+        $this->calling($adapter)->getDoctrineConnection = $probe;
+        try {
+            $DB = $adapter;
+            $this->string(\Dropdown::getDropdownName('glpi_budgets', $budget->getID(), false, false))
+                ->isIdenticalTo($budget->getName());
+            $this->array($probe->queries)->hasSize(1);
+            $this->string($probe->queries[0]['sql'])->contains('glpi_budgets');
+            $this->array(array_values($probe->queries[0]['params']))->contains((int)$budget->getID());
+            $probe->queries = [];
+            $this->array(\Dropdown::getDropdownName('glpi_budgets', $budget->getID(), true, false))
+                ->isIdenticalTo($expected);
+            $this->array($probe->queries)->hasSize(3);
+            foreach ([0 => ['glpi_budgets', $budget->getID()],
+                1 => ['glpi_locations', $budget->fields['locations_id']],
+                2 => ['glpi_budgettypes', $budget->fields['budgettypes_id']]] as $index => [$table, $target]) {
+                $this->string($probe->queries[$index]['sql'])->contains($table);
+                $this->array(array_values($probe->queries[$index]['params']))->contains((int)$target);
+            }
+        } finally {
+            $DB = $database;
+        }
 
         // test of return without $tooltip
         $expected = ['name'    => $budget->getName(),
