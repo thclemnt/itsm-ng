@@ -109,6 +109,26 @@ final class ProfileUserRepository
             ->getScalarResult();
     }
 
+    /** Current grant scopes and their stable recursive descendants for account deletion. */
+    public function currentDeletionEntities(int $user): array
+    {
+        $entities = $recursive = [];
+        // Reject unsupported PostgreSQL snapshots before taking any hierarchy locks.
+        foreach ($this->currentDeletionScopes($user) as $grant) {
+            $entity = (int)$grant['entities_id'];
+            $entities[$entity] = true;
+            if ($grant['is_recursive']) {
+                $recursive[] = $entity;
+            }
+        }
+        foreach ((new EntityHierarchyRepository($this->em))->reserveDescendants($recursive) as $entity) {
+            $entities[$entity] = true;
+        }
+        $ids = array_keys($entities);
+        sort($ids);
+        return $ids;
+    }
+
     public function scopes(int $user, ?int $profile = null, ?string $right = null, int $mask = 0): array
     {
         $query = $this->em->createQueryBuilder()

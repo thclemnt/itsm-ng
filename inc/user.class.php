@@ -357,19 +357,12 @@ class User extends CommonDBTM
         // Reuse this writer and its deletion frame; ordinary scope APIs retain
         // their normal read routing and snapshot semantics.
         try {
-            $grants = (new ProfileUserRepository(Orm::create($DB)))
-                ->currentDeletionScopes((int)$this->fields['id']);
+            $entities = (new ProfileUserRepository(Orm::create($DB)))
+                ->currentDeletionEntities((int)$this->fields['id']);
         } catch (CurrentReadUnavailable $error) {
             Session::addMessageAfterRedirect(__('Finish the current operation, then retry this account deletion.'), true, ERROR, false);
             return DeletionDecision::Cancelled;
         }
-        $entities = [];
-        foreach ($grants as $grant) {
-            $entities = $grant['is_recursive']
-                ? array_merge(getSonsOf('glpi_entities', $grant['entities_id']), $entities)
-                : [...$entities, $grant['entities_id']];
-        }
-        $entities = array_unique($entities);
         if (Session::canViewAllEntities() || !array_filter($entities, static fn ($entity): bool => !Session::haveAccessToEntity($entity))) {
             return DeletionDecision::Proceed;
         }

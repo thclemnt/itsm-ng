@@ -33,9 +33,89 @@
 
 namespace tests\units;
 
+use itsmng\Database\Entity\Profile as ProfileRecord;
+use itsmng\Database\Entity\UserEmail as UserEmailRecord;
+use itsmng\Database\Entity\ObjectLock as ObjectLockRecord;
+use Alert;
+use Auth;
+use AuthLDAP;
+use AuthMail;
+use CommonGLPI;
+use CronTask;
+use DateTime;
+use DBAdapter;
+use DbTestCase;
+use DbUtils;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\DBAL\Configuration;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception\DriverException;
+use Doctrine\DBAL\Exception\LockWaitTimeoutException;
+use Doctrine\DBAL\Logging\Middleware;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Query\QueryBuilder;
+use Doctrine\DBAL\Result;
+use Doctrine\DBAL\Schema\ForeignKeyConstraint\Deferrability;
+use Doctrine\DBAL\TransactionIsolationLevel;
+use Doctrine\DBAL\Types\BigIntType;
+use Doctrine\DBAL\Types\IntegerType;
+use Doctrine\DBAL\Types\StringType;
+use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use Doctrine\ORM\Events;
+use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\ORM\NoResultException;
+use Glpi\Exception\ForgetPasswordException;
+use Group;
+use Group_User;
+use Html;
+use InvalidArgumentException;
+use itsmng\Database\CurrentReadUnavailable;
+use itsmng\Database\Entity\Computer;
+use itsmng\Database\Entity\Entity as EntityRecord;
+use itsmng\Database\Entity\ProfileUser;
+use itsmng\Database\Entity\User as UserRecord;
+use itsmng\Database\MutationCleanupFailure;
+use itsmng\Database\MutationRollbackFailure;
+use itsmng\Database\MySQLConnection;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\PostgresConnection;
+use itsmng\Database\ProfileUserReadOperation;
+use itsmng\Database\RecordReadOperation;
+use itsmng\Database\Repository\EntityConfigurationRepository;
+use itsmng\Database\Repository\EntityHierarchyRepository;
+use itsmng\Database\Repository\ProfileUserRepository;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\RecordWriter;
+use itsmng\Database\Repository\UserEmailRepository;
+use itsmng\Database\Repository\UserRepository;
+use itsmng\Database\TimelineAuthorReader;
+use itsmng\Database\UnsupportedCriteria;
+use itsmng\Database\UserDisplayReadOperation;
+use itsmng\Database\UserEmailReadOperation;
+use LogicException;
+use mock\DBmysql;
+use ObjectLock;
+use Plugin;
+use Profile;
+use Profile_User;
+use Psr\Log\AbstractLogger;
+use ReflectionMethod;
+use ReflectionProperty;
+use Session;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Symfony\Component\Cache\Psr16Cache;
+use Throwable;
+use User as UserModel;
+use UserEmail;
+
 /* Test for inc/user.class.php */
 
-class User extends \DbTestCase
+class User extends DbTestCase
 {
     public function testAccountDeletionReadsCurrentIncomingGrants(): void
     {
@@ -47,34 +127,38 @@ class User extends \DbTestCase
         $session = $_SESSION;
         $mysql = $original->getProvider() !== 'pgsql';
         $outside = (int)getItemByTypeName('Entity', '_test_child_1', true);
-        $logger = new class () extends \Psr\Log\AbstractLogger {
+        $logger = new class () extends AbstractLogger {
             public array $locks = [];
+            public array $entityLocks = [];
             public function log($level, $message, array $context = []): void
             {
                 $sql = str_replace(['`', '"'], '', $context['sql'] ?? '');
+                if (preg_match('/^SELECT\b.*\bFROM\s+glpi_entities\b.*\bFOR UPDATE\b/is', $sql)) {
+                    $this->entityLocks[] = $sql;
+                }
                 if (preg_match('/^SELECT\b.*\bFROM\s+glpi_profiles_users\b.*\bFOR UPDATE\b/is', $sql)) {
                     $this->locks[] = $sql;
                 }
             }
         };
-        $configuration = new \Doctrine\DBAL\Configuration();
-        $configuration->setMiddlewares([new \Doctrine\DBAL\Logging\Middleware($logger)]);
+        $configuration = new Configuration();
+        $configuration->setMiddlewares([new Middleware($logger)]);
         $reader = $writer = $frame = null;
         $fixtures = [];
         $failure = null;
         $cleanup = static function (callable $operation) use (&$failure): void {
             try {
                 $operation();
-            } catch (\Throwable $error) {
-                $failure = $failure === null ? $error : new \itsmng\Database\MutationCleanupFailure($failure, $error);
+            } catch (Throwable $error) {
+                $failure = $failure === null ? $error : new MutationCleanupFailure($failure, $error);
             }
         };
         try {
             $parameters = $originalConnection->getParams();
-            $reader = $mysql ? \itsmng\Database\MySQLConnection::create($parameters, $configuration)
-                : \itsmng\Database\PostgresConnection::create($parameters, $configuration);
-            $writer = $mysql ? \itsmng\Database\MySQLConnection::create($parameters)
-                : \itsmng\Database\PostgresConnection::create($parameters);
+            $reader = $mysql ? MySQLConnection::create($parameters, $configuration)
+                : PostgresConnection::create($parameters, $configuration);
+            $writer = $mysql ? MySQLConnection::create($parameters)
+                : PostgresConnection::create($parameters);
             foreach ([$reader, $writer] as $connection) {
                 if ($mysql) {
                     $connection->executeStatement('SET SESSION innodb_lock_wait_timeout = 5');
@@ -87,20 +171,20 @@ class User extends \DbTestCase
             $this->array($profiles)->hasSize(2);
             $this->integer($outside)->isGreaterThan(0);
             $routed = clone $original;
-            (new \ReflectionProperty(\DBAdapter::class, 'doctrine'))->setValue($routed, $reader);
+            (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($routed, $reader);
             foreach ($mysql ? [false] : [false, true] as $strongSnapshot) {
                 $name = 'delete-grants-' . $this->getUniqueString();
-                $fixture = \itsmng\Database\OwnedMutationFrame::run($writer, static function () use ($writer, $name, $profiles): array {
-                    $manager = new \Doctrine\ORM\EntityManager($writer, \itsmng\Database\Orm::configuration($writer->getDatabasePlatform()));
+                $fixture = OwnedMutationFrame::run($writer, static function () use ($writer, $name, $profiles): array {
+                    $manager = new EntityManager($writer, Orm::configuration($writer->getDatabasePlatform()));
                     try {
-                        $user = new \itsmng\Database\Entity\User();
+                        $user = new UserRecord();
                         $user->name = $name;
-                        $user->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, 0);
+                        $user->entities = $manager->getReference(EntityRecord::class, 0);
                         $manager->persist($user);
-                        $grant = new \itsmng\Database\Entity\ProfileUser();
+                        $grant = new ProfileUser();
                         $grant->users = $user;
                         $grant->entities = $user->entities;
-                        $grant->profiles = $manager->getReference(\itsmng\Database\Entity\Profile::class, $profiles[0]);
+                        $grant->profiles = $manager->getReference(ProfileRecord::class, $profiles[0]);
                         $grant->is_recursive = false;
                         $manager->persist($grant);
                         $manager->flush();
@@ -111,27 +195,27 @@ class User extends \DbTestCase
                 });
                 $fixtures[] = $fixture;
                 $fixtureIndex = array_key_last($fixtures);
-                $reader->setTransactionIsolation($mysql ? \Doctrine\DBAL\TransactionIsolationLevel::REPEATABLE_READ
-                    : \Doctrine\DBAL\TransactionIsolationLevel::READ_COMMITTED);
-                $frame = \itsmng\Database\OwnedMutationFrame::begin($reader);
+                $reader->setTransactionIsolation($mysql ? TransactionIsolationLevel::REPEATABLE_READ
+                    : TransactionIsolationLevel::READ_COMMITTED);
+                $frame = OwnedMutationFrame::begin($reader);
                 if ($strongSnapshot) {
                     // Deliberately bypass DBAL's cached isolation value.
                     $reader->executeStatement('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
-                    $this->variable($reader->getTransactionIsolation())->isIdenticalTo(\Doctrine\DBAL\TransactionIsolationLevel::READ_COMMITTED);
+                    $this->variable($reader->getTransactionIsolation())->isIdenticalTo(TransactionIsolationLevel::READ_COMMITTED);
                 }
-                $manager = new \Doctrine\ORM\EntityManager($reader, \itsmng\Database\Orm::configuration($reader->getDatabasePlatform()));
-                $grants = new \itsmng\Database\Repository\ProfileUserRepository($manager);
+                $manager = new EntityManager($reader, Orm::configuration($reader->getDatabasePlatform()));
+                $grants = new ProfileUserRepository($manager);
                 $this->array($grants->scopes($fixture['id']))->hasSize(1);
                 // Commit the new scope before the public deletion locks its owner.
-                $added = \itsmng\Database\OwnedMutationFrame::run($writer, static function () use ($writer, $fixture, $profiles, $outside): array {
-                    $manager = new \Doctrine\ORM\EntityManager($writer, \itsmng\Database\Orm::configuration($writer->getDatabasePlatform()));
+                $added = OwnedMutationFrame::run($writer, static function () use ($writer, $fixture, $profiles, $outside): array {
+                    $manager = new EntityManager($writer, Orm::configuration($writer->getDatabasePlatform()));
                     try {
                         $rows = [];
                         foreach ([[$profiles[1], 0], [$profiles[0], $outside]] as [$profile, $entity]) {
-                            $grant = new \itsmng\Database\Entity\ProfileUser();
-                            $grant->users = $manager->getReference(\itsmng\Database\Entity\User::class, $fixture['id']);
-                            $grant->profiles = $manager->getReference(\itsmng\Database\Entity\Profile::class, $profile);
-                            $grant->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, $entity);
+                            $grant = new ProfileUser();
+                            $grant->users = $manager->getReference(UserRecord::class, $fixture['id']);
+                            $grant->profiles = $manager->getReference(ProfileRecord::class, $profile);
+                            $grant->entities = $manager->getReference(EntityRecord::class, $entity);
                             $grant->is_recursive = false;
                             $manager->persist($grant);
                             $rows[] = $grant;
@@ -149,7 +233,7 @@ class User extends \DbTestCase
                 try {
                     // CLI has global visibility. This proves the actual public
                     // lifecycle's current read, not restricted HTTP authorization.
-                    $this->boolean((new \User())->delete(['id' => $fixture['id'], '_no_message' => 1, '_no_history' => 1], false, false))
+                    $this->boolean((new UserModel())->delete(['id' => $fixture['id'], '_no_message' => 1, '_no_history' => 1], false, false))
                         ->isIdenticalTo(!$strongSnapshot);
                 } finally {
                     $DB = $original;
@@ -157,9 +241,11 @@ class User extends \DbTestCase
                 $frame->assertActive();
                 $this->integer($reader->getTransactionNestingLevel())->isIdenticalTo(1);
                 if ($strongSnapshot) {
+                    $this->hasSessionMessages(ERROR, [__('Finish the current operation, then retry this account deletion.')]);
+                    $this->array($logger->entityLocks)->isEmpty();
                     $this->array($logger->locks)->isEmpty();
                     $this->exception(static fn () => $grants->currentDeletionScopes($fixture['id']))
-                        ->isInstanceOf(\itsmng\Database\CurrentReadUnavailable::class)
+                        ->isInstanceOf(CurrentReadUnavailable::class)
                         ->hasMessage('Account deletion requires PostgreSQL READ COMMITTED; actual isolation is repeatable read. Retry outside the caller transaction.');
                 } else {
                     $this->array($logger->locks)->hasSize(1);
@@ -179,7 +265,128 @@ class User extends \DbTestCase
                 $this->integer((int)$writer->fetchOne('SELECT is_deleted FROM glpi_users WHERE id = ?', [$fixture['id']]))->isIdenticalTo(0);
                 $this->integer((int)$writer->fetchOne('SELECT COUNT(*) FROM glpi_profiles_users WHERE users_id = ?', [$fixture['id']]))->isIdenticalTo(3);
             }
-        } catch (\Throwable $error) {
+            // A recursive grant's descendants can change after an RR snapshot,
+            // independently of the already reserved User/ProfileUser rows.
+            $prefix = 'delete-tree-' . $this->getUniqueString();
+            $fixture = OwnedMutationFrame::run($writer, static function () use ($writer, $prefix, $profiles): array {
+                $manager = new EntityManager($writer, Orm::configuration($writer->getDatabasePlatform()));
+                try {
+                    $next = (new EntityConfigurationRepository($manager))->nextIdentifier();
+                    $entities = [];
+                    foreach (['root', 'moved', 'nonrecursive', 'outside'] as $offset => $label) {
+                        $entity = new EntityRecord();
+                        $entity->id = $next + $offset;
+                        $entity->name = $prefix . '-' . $label;
+                        $entity->parent = $label === 'outside' ? $entities['nonrecursive']
+                            : $manager->getReference(EntityRecord::class, 0);
+                        $manager->persist($entity);
+                        $entities[$label] = $entity;
+                    }
+                    $user = new UserRecord();
+                    $user->name = $prefix;
+                    $user->entities = $entities['root'];
+                    $manager->persist($user);
+                    $grants = [];
+                    foreach (['root' => true, 'nonrecursive' => false] as $label => $recursive) {
+                        $grant = new ProfileUser();
+                        $grant->users = $user;
+                        $grant->entities = $entities[$label];
+                        $grant->profiles = $manager->getReference(ProfileRecord::class, $profiles[0]);
+                        $grant->is_recursive = $recursive;
+                        $manager->persist($grant);
+                        $grants[] = $grant;
+                    }
+                    $manager->flush();
+                    return ['id' => $user->id, 'name' => $prefix,
+                        'grants' => array_map(static fn ($grant): int => $grant->id, $grants),
+                        'entities' => array_map(static fn ($entity): array => ['id' => $entity->id, 'name' => $entity->name], $entities)];
+                } finally {
+                    $manager->clear();
+                }
+            });
+            $fixtures[] = $fixture;
+            $ids = array_map(static fn (array $entity): int => $entity['id'], $fixture['entities']);
+            $reader->setTransactionIsolation($mysql ? TransactionIsolationLevel::REPEATABLE_READ
+                : TransactionIsolationLevel::READ_COMMITTED);
+            $frame = OwnedMutationFrame::begin($reader);
+            $DB = $routed;
+            try {
+                $this->array(array_values(getSonsOf('glpi_entities', $ids['root'])))->isIdenticalTo([$ids['root']]);
+                // Actual mapped persistence commits a valid owning-parent change
+                // after the old reader snapshot and before its User owner lock.
+                OwnedMutationFrame::run($writer, static function () use ($writer, $ids): void {
+                    $manager = new EntityManager($writer, Orm::configuration($writer->getDatabasePlatform()));
+                    try {
+                        $moved = $manager->find(EntityRecord::class, $ids['moved']);
+                        $moved->parent = $manager->getReference(EntityRecord::class, $ids['root']);
+                        $manager->flush();
+                    } finally {
+                        $manager->clear();
+                    }
+                });
+                $logger->entityLocks = [];
+                $this->boolean((new UserModel())->delete(['id' => $fixture['id'], '_no_message' => 1, '_no_history' => 1], false, false))->isTrue();
+                // CLI remains globally authorized: prove the real deletion's
+                // hierarchy reads, not a restricted HTTP permission decision.
+                $this->array($logger->entityLocks)->isNotEmpty();
+                $manager = new EntityManager($reader, Orm::configuration($reader->getDatabasePlatform()));
+                $grants = new ProfileUserRepository($manager);
+                $this->array($grants->currentDeletionEntities($fixture['id']))
+                    ->isIdenticalTo([$ids['root'], $ids['moved'], $ids['nonrecursive']]);
+                $this->array(array_values(getSonsOf('glpi_entities', $ids['root'])))
+                    ->isIdenticalTo($mysql ? [$ids['root']] : [$ids['root'], $ids['moved']]);
+                $hierarchy = new EntityHierarchyRepository($manager);
+                $this->array($hierarchy->reserveDescendants([$ids['moved'], $ids['root'], $ids['root']]))
+                    ->isIdenticalTo([$ids['root'], $ids['moved']]);
+                $this->array($hierarchy->reserveDescendants([]))->isEmpty();
+                $missing = $ids['outside'] + 1000;
+                $this->variable($writer->fetchOne('SELECT id FROM glpi_entities WHERE id = ?', [$missing]))->isIdenticalTo(false);
+                $this->exception(static fn () => $hierarchy->reserveDescendants([$missing]))
+                    ->isInstanceOf(CurrentReadUnavailable::class);
+                // The real immediate parent FK must reserve incoming edges;
+                // FOR UPDATE must also retain the selected child's outgoing edge.
+                $selfParent = [];
+                foreach ($writer->createSchemaManager()->introspectTable('glpi_entities')->getForeignKeys() as $foreignKey) {
+                    $columns = array_map(static fn ($name): string => $name->getIdentifier()->getValue(), $foreignKey->getReferencingColumnNames());
+                    if ($columns === ['entities_id']) {
+                        $selfParent[] = $foreignKey;
+                    }
+                }
+                $this->array($selfParent)->hasSize(1);
+                $this->string($selfParent[0]->getReferencedTableName()->getUnqualifiedName()->getValue())->isIdenticalTo('glpi_entities');
+                $this->variable($selfParent[0]->getDeferrability())->isIdenticalTo(Deferrability::NOT_DEFERRABLE);
+                $writer->executeStatement($mysql ? 'SET SESSION innodb_lock_wait_timeout = 1' : "SET SESSION lock_timeout = '1s'");
+                foreach ([[$ids['outside'], $ids['root']], [$ids['moved'], $ids['nonrecursive']]] as [$child, $parent]) {
+                    $blocked = null;
+                    try {
+                        OwnedMutationFrame::run($writer, static function () use ($writer, $child, $parent): void {
+                            $writer->update('glpi_entities', ['entities_id' => $parent], ['id' => $child], ['entities_id' => 'bigint', 'id' => 'bigint']);
+                        });
+                    } catch (DriverException $error) {
+                        $blocked = $error;
+                    }
+                    // DBAL maps MySQL 1205 specifically; PostgreSQL 55P03 remains
+                    // DriverException. Require the native lock-timeout SQLSTATE.
+                    $this->object($blocked)->isInstanceOf($mysql ? LockWaitTimeoutException::class
+                        : DriverException::class);
+                    $this->string($blocked->getSQLState())->isIdenticalTo($mysql ? 'HY000' : '55P03');
+                    $this->integer($writer->getTransactionNestingLevel())->isIdenticalTo(0);
+                    $frame->assertActive();
+                }
+                $this->integer((int)$writer->fetchOne('SELECT entities_id FROM glpi_entities WHERE id = ?', [$ids['outside']]))->isIdenticalTo($ids['nonrecursive']);
+                $this->integer((int)$writer->fetchOne('SELECT entities_id FROM glpi_entities WHERE id = ?', [$ids['moved']]))->isIdenticalTo($ids['root']);
+                // Root zero is a real grant root, not an empty-selection sentinel.
+                // Do this only after the isolated subtree lock controls above.
+                $allEntities = array_map('intval', $writer->fetchFirstColumn('SELECT id FROM glpi_entities ORDER BY id'));
+                $this->array($hierarchy->reserveDescendants([0]))->isIdenticalTo($allEntities);
+                $manager->clear();
+            } finally {
+                $DB = $original;
+            }
+            $frame->rollBack();
+            $frame = null;
+            $this->integer((int)$writer->fetchOne('SELECT is_deleted FROM glpi_users WHERE id = ?', [$fixture['id']]))->isIdenticalTo(0);
+        } catch (Throwable $error) {
             $failure = $error;
         } finally {
             $DB = $original;
@@ -192,23 +399,28 @@ class User extends \DbTestCase
             }
             if ($writer !== null) {
                 foreach ($fixtures as $fixture) {
-                    $cleanup(static fn () => \itsmng\Database\OwnedMutationFrame::run($writer, static function () use ($writer, $fixture): void {
+                    $cleanup(static fn () => OwnedMutationFrame::run($writer, static function () use ($writer, $fixture): void {
                         if ($writer->fetchOne('SELECT name FROM glpi_users WHERE id = ?', [$fixture['id']]) !== $fixture['name']) {
-                            throw new \LogicException('Refusing cleanup of an unowned account');
+                            throw new LogicException('Refusing cleanup of an unowned account');
                         }
                         $ids = array_map('intval', $writer->fetchFirstColumn('SELECT id FROM glpi_profiles_users WHERE users_id = ? ORDER BY id', [$fixture['id']]));
                         $expected = $fixture['grants'];
                         sort($expected);
                         if ($ids !== $expected) {
-                            throw new \LogicException('Refusing cleanup of unexpected account grants');
+                            throw new LogicException('Refusing cleanup of unexpected account grants');
                         }
                         foreach ($ids as $id) {
                             if ($writer->delete('glpi_profiles_users', ['id' => $id, 'users_id' => $fixture['id']]) !== 1) {
-                                throw new \LogicException('Owned account grant cleanup failed');
+                                throw new LogicException('Owned account grant cleanup failed');
                             }
                         }
                         if ($writer->delete('glpi_users', ['id' => $fixture['id'], 'name' => $fixture['name']]) !== 1) {
-                            throw new \LogicException('Owned account cleanup failed');
+                            throw new LogicException('Owned account cleanup failed');
+                        }
+                        foreach (array_reverse($fixture['entities'] ?? []) as $entity) {
+                            if ($writer->delete('glpi_entities', ['id' => $entity['id'], 'name' => $entity['name']]) !== 1) {
+                                throw new LogicException('Owned recursive scope cleanup failed');
+                            }
                         }
                     }));
                 }
@@ -217,7 +429,7 @@ class User extends \DbTestCase
             $cleanup(static function () use ($originalConnection, $originalScope, $originalLevel): void {
                 $originalScope->assertActive();
                 if ($originalConnection->getTransactionNestingLevel() !== $originalLevel) {
-                    throw new \LogicException('Account deletion changed the original caller frame');
+                    throw new LogicException('Account deletion changed the original caller frame');
                 }
             });
         }
@@ -233,13 +445,13 @@ class User extends \DbTestCase
         global $DB;
         $this->login();
         $connection = $DB->getDoctrineConnection();
-        $user = $this->createItem(\User::class, ['name' => 'preferred-' . $this->getUniqueString()]);
+        $user = $this->createItem(UserModel::class, ['name' => 'preferred-' . $this->getUniqueString()]);
         $id = (int)$user->getID();
         foreach (['first@example.test', 'second@example.test'] as $address) {
             $connection->insert('glpi_useremails', ['users_id' => $id, 'email' => $address, 'is_default' => false, 'is_dynamic' => false], ['users_id' => 'bigint', 'email' => 'string', 'is_default' => 'boolean', 'is_dynamic' => 'boolean']);
         }
-        $manager = \itsmng\Database\Orm::forConnection($connection);
-        $ordinary = new \itsmng\Database\Repository\UserEmailRepository($manager);
+        $manager = Orm::forConnection($connection);
+        $ordinary = new UserEmailRepository($manager);
         $expected = $ordinary->preferred($id);
         $this->string($expected['email'])->isIdenticalTo('first@example.test');
         $probe = new UserScalarReadProbe($connection);
@@ -247,12 +459,12 @@ class User extends \DbTestCase
         $scope = $connection->captureManagedTransactionScope();
         $depth = $connection->getTransactionNestingLevel();
         $this->mockGenerator->orphanize('__construct');
-        $adapter = new \mock\DBmysql();
+        $adapter = new DBmysql();
         $this->calling($adapter)->getDoctrineConnection = $probe;
         $this->calling($adapter)->getProvider = $originalAdapter->getProvider();
         try {
             $DB = $adapter;
-            $this->string(\UserEmail::getDefaultForUser($id))->isIdenticalTo($expected['email']);
+            $this->string(UserEmail::getDefaultForUser($id))->isIdenticalTo($expected['email']);
             $this->array($probe->queries)->hasSize(1);
             $this->integer($probe->builders)->isIdenticalTo(1);
         } finally {
@@ -260,10 +472,10 @@ class User extends \DbTestCase
             $scope->assertActive();
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
         }
-        $reader = new \itsmng\Database\UserEmailReadOperation($probe);
-        $integer = \Doctrine\DBAL\Types\Type::getType('integer');
-        $string = \Doctrine\DBAL\Types\Type::getType('string');
-        $bigint = \Doctrine\DBAL\Types\Type::getType('bigint');
+        $reader = new UserEmailReadOperation($probe);
+        $integer = Type::getType('integer');
+        $string = Type::getType('string');
+        $bigint = Type::getType('bigint');
         try {
             foreach ([0, -1, $id] as $selected) {
                 $this->variable($reader->preferred($selected))->isIdenticalTo($ordinary->preferred($selected));
@@ -274,12 +486,12 @@ class User extends \DbTestCase
             // Tied defaults still select the lowest physical identifier.
             $connection->update('glpi_useremails', ['is_default' => true], ['id' => $expected['id']], ['is_default' => 'boolean', 'id' => 'bigint']);
             $this->array($reader->preferred($id))->isIdenticalTo($expected);
-            \Doctrine\DBAL\Types\Type::overrideType('string', new class () extends \Doctrine\DBAL\Types\StringType {
-                public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+            Type::overrideType('string', new class () extends StringType {
+                public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                 {
                     return 'UPPER(' . $sqlExpr . ')';
                 }
-                public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+                public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
                 {
                     return $value === null ? 'converted-null' : 'php:' . $value;
                 }
@@ -289,62 +501,62 @@ class User extends \DbTestCase
             $connection->update('glpi_useremails', ['email' => null], ['id' => $expected['id']]);
             $this->array($reader->preferred($id))->isIdenticalTo($ordinary->preferred($id));
             $this->string($reader->preferred($id)['email'])->isIdenticalTo('converted-null');
-            \Doctrine\DBAL\Types\Type::overrideType('string', $string);
+            Type::overrideType('string', $string);
             $this->array($reader->preferred($id))->isIdenticalTo($ordinary->preferred($id));
-            $this->string(\UserEmail::getDefaultForUser($id))->isEmpty();
-            \Doctrine\DBAL\Types\Type::overrideType('integer', new class () extends \Doctrine\DBAL\Types\IntegerType {
-                public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+            $this->string(UserEmail::getDefaultForUser($id))->isEmpty();
+            Type::overrideType('integer', new class () extends IntegerType {
+                public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                 {
                     return '(' . $sqlExpr . ' * 0 - 1)';
                 }
             });
             $this->variable($reader->preferred($id))->isNull();
             $this->variable($ordinary->preferred($id))->isNull();
-            \Doctrine\DBAL\Types\Type::overrideType('integer', $integer);
-            \Doctrine\DBAL\Types\Type::overrideType('bigint', new class () extends \Doctrine\DBAL\Types\BigIntType {
-                public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): int|string|null
+            Type::overrideType('integer', $integer);
+            Type::overrideType('bigint', new class () extends BigIntType {
+                public function convertToPHPValue(mixed $value, AbstractPlatform $platform): int|string|null
                 {
-                    throw new \Doctrine\ORM\NoResultException();
+                    throw new NoResultException();
                 }
             });
             $this->variable($reader->preferred($id))->isNull();
             $this->variable($ordinary->preferred($id))->isNull();
-            \Doctrine\DBAL\Types\Type::overrideType('bigint', new class () extends \Doctrine\DBAL\Types\BigIntType {
-                public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): int|string|null
+            Type::overrideType('bigint', new class () extends BigIntType {
+                public function convertToPHPValue(mixed $value, AbstractPlatform $platform): int|string|null
                 {
-                    throw new \LogicException('Preferred email conversion failure');
+                    throw new LogicException('Preferred email conversion failure');
                 }
             });
-            $this->exception(fn () => $reader->preferred($id))->isInstanceOf(\LogicException::class);
-            $this->exception(fn () => $ordinary->preferred($id))->isInstanceOf(\LogicException::class);
-            \Doctrine\DBAL\Types\Type::overrideType('bigint', $bigint);
+            $this->exception(fn () => $reader->preferred($id))->isInstanceOf(LogicException::class);
+            $this->exception(fn () => $ordinary->preferred($id))->isInstanceOf(LogicException::class);
+            Type::overrideType('bigint', $bigint);
             $extension = new class ($connection) extends UserScalarReadProbe {
-                private ?\Doctrine\Common\EventManager $events = null;
-                public function getEventManager(): \Doctrine\Common\EventManager
+                private ?EventManager $events = null;
+                public function getEventManager(): EventManager
                 {
-                    return $this->events ??= new \Doctrine\Common\EventManager();
+                    return $this->events ??= new EventManager();
                 }
             };
-            $local = new \itsmng\Database\UserEmailReadOperation($extension);
+            $local = new UserEmailReadOperation($extension);
             $listener = new class () {
                 public int $loads = 0;
-                public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
                 {
                     ++$this->loads;
                 }
             };
-            $extension->getEventManager()->addEventListener([\Doctrine\ORM\Events::loadClassMetadata], $listener);
+            $extension->getEventManager()->addEventListener([Events::loadClassMetadata], $listener);
             $this->array($local->preferred($id))->isIdenticalTo($ordinary->preferred($id));
             $this->integer($listener->loads)->isGreaterThan(0);
             $this->integer($extension->builders)->isIdenticalTo(0);
             $local->close();
             $connection->delete('glpi_useremails', ['users_id' => $id]);
             $this->variable($reader->preferred($id))->isNull();
-            $this->string(\UserEmail::getDefaultForUser($id))->isEmpty();
+            $this->string(UserEmail::getDefaultForUser($id))->isEmpty();
         } finally {
-            \Doctrine\DBAL\Types\Type::overrideType('integer', $integer);
-            \Doctrine\DBAL\Types\Type::overrideType('string', $string);
-            \Doctrine\DBAL\Types\Type::overrideType('bigint', $bigint);
+            Type::overrideType('integer', $integer);
+            Type::overrideType('string', $string);
+            Type::overrideType('bigint', $bigint);
             $reader->close();
             $manager->clear();
         }
@@ -356,25 +568,25 @@ class User extends \DbTestCase
         $this->login();
         $connection = $DB->getDoctrineConnection();
         $stored = ['name' => 'scalar-' . $this->getUniqueString(), 'realname' => 'lower name'];
-        $user = new \User();
+        $user = new UserModel();
         $createdId = $user->add($stored + ['_entities_id' => 0]);
         $this->integer($createdId)->isGreaterThan(0);
         $this->checkInput($user, $createdId, $stored);
-        $profile = $this->createItem(\Profile::class, ['name' => $this->getUniqueString()]);
+        $profile = $this->createItem(Profile::class, ['name' => $this->getUniqueString()]);
         $id = (int)$user->getID();
         $profileId = (int)$profile->getID();
         $connection->insert('glpi_profiles_users', ['users_id' => $id, 'profiles_id' => $profileId, 'entities_id' => 0, 'is_recursive' => false], ['users_id' => 'bigint', 'profiles_id' => 'bigint', 'entities_id' => 'bigint', 'is_recursive' => 'boolean']);
         $right = 'scalar_scope_' . $id;
         $connection->insert('glpi_profilerights', ['profiles_id' => $profileId, 'name' => $right, 'rights' => 5]);
-        $manager = \itsmng\Database\Orm::forConnection($connection);
-        $grants = new \itsmng\Database\Repository\ProfileUserRepository($manager);
-        $users = new \itsmng\Database\Repository\UserRepository($manager);
-        $records = new \itsmng\Database\Repository\RecordRepository($manager);
+        $manager = Orm::forConnection($connection);
+        $grants = new ProfileUserRepository($manager);
+        $users = new UserRepository($manager);
+        $records = new RecordRepository($manager);
         $expectedProfiles = [];
         foreach ($records->identifiers('glpi_profiles_users', 'profiles_id', ['users_id' => $id]) as $value) {
             $expectedProfiles[$value] = $value;
         }
-        $defaultProfileId = (int)\Profile::getDefault();
+        $defaultProfileId = (int)Profile::getDefault();
         $this->integer($defaultProfileId)->isGreaterThan(0)->isNotIdenticalTo($profileId);
         $baselineProfiles = [$defaultProfileId => $defaultProfileId, $profileId => $profileId];
         ksort($expectedProfiles);
@@ -390,7 +602,7 @@ class User extends \DbTestCase
         foreach ($grants->scopes($id, $profileId) as $grant) {
             $expectedScope[$grant['entities_id']] = $grant['entities_id'];
         }
-        $utils = new \DbUtils();
+        $utils = new DbUtils();
         $expectedName = $utils->getUserName($id);
         $this->array($expectedScope)->isNotEmpty();
         $this->string($expectedName)->isNotEmpty();
@@ -398,22 +610,22 @@ class User extends \DbTestCase
         $originalScope = $connection->captureManagedTransactionScope();
         $originalDepth = $connection->getTransactionNestingLevel();
         $this->mockGenerator->orphanize('__construct');
-        $adapter = new \mock\DBmysql();
+        $adapter = new DBmysql();
         $this->calling($adapter)->getDoctrineConnection = $probe;
         $this->calling($adapter)->getProvider = $originalAdapter->getProvider();
         try {
             $DB = $adapter;
-            $this->array(\Profile_User::getEntitiesForProfileByUser($id, $profileId))->isIdenticalTo($expectedScope);
+            $this->array(Profile_User::getEntitiesForProfileByUser($id, $profileId))->isIdenticalTo($expectedScope);
             $this->string($utils->getUserName($id))->isIdenticalTo($expectedName);
-            $this->array($sortedIds(array_values(\Profile_User::getUserProfiles($id))))->isIdenticalTo($baselineIds);
+            $this->array($sortedIds(array_values(Profile_User::getUserProfiles($id))))->isIdenticalTo($baselineIds);
             $this->array($probe->queries)->hasSize(3);
             $this->integer($probe->builders)->isIdenticalTo(3);
-            $this->array($probe->queries[2]['types'])->isIdenticalTo([\Doctrine\DBAL\Types\Types::INTEGER]);
+            $this->array($probe->queries[2]['types'])->isIdenticalTo([Types::INTEGER]);
             $probe->builders = 0;
             $probe->queries = [];
             // Notification's entity filter remains the ordinary mapped criteria path.
-            $this->array($sortedIds(array_values(\Profile_User::getUserProfiles($id, ['entities_id' => 0]))))->isIdenticalTo($baselineIds);
-            $this->array(\Profile_User::getUserProfiles($id, ['entities_id' => PHP_INT_MAX]))->isEmpty();
+            $this->array($sortedIds(array_values(Profile_User::getUserProfiles($id, ['entities_id' => 0]))))->isIdenticalTo($baselineIds);
+            $this->array(Profile_User::getUserProfiles($id, ['entities_id' => PHP_INT_MAX]))->isEmpty();
             $this->array($probe->queries)->hasSize(2);
             $this->integer($probe->builders)->isIdenticalTo(0);
         } finally {
@@ -423,10 +635,10 @@ class User extends \DbTestCase
         }
         $probe->builders = 0;
         $probe->queries = [];
-        $scopes = new \itsmng\Database\ProfileUserReadOperation($probe);
-        $display = new \itsmng\Database\UserDisplayReadOperation($probe);
-        $integer = \Doctrine\DBAL\Types\Type::getType('integer');
-        $string = \Doctrine\DBAL\Types\Type::getType('string');
+        $scopes = new ProfileUserReadOperation($probe);
+        $display = new UserDisplayReadOperation($probe);
+        $integer = Type::getType('integer');
+        $string = Type::getType('string');
         $sort = static function (array $rows): array {
             usort($rows, static fn (array $a, array $b): int => [$a['entities_id'], $a['is_recursive']] <=> [$b['entities_id'], $b['is_recursive']]);
             return $rows;
@@ -449,41 +661,41 @@ class User extends \DbTestCase
                 'entities_id' => $entity, 'is_recursive' => false], ['users_id' => 'bigint',
                 'profiles_id' => 'bigint', 'entities_id' => 'bigint', 'is_recursive' => 'boolean']);
             $this->array($sortedIds($scopes->profileIds($id)))->isIdenticalTo($sortedIds([$defaultProfileId, $profileId, $profileId]));
-            $this->array($sortedIds(array_values(\Profile_User::getUserProfiles($id))))->isIdenticalTo($baselineIds);
+            $this->array($sortedIds(array_values(Profile_User::getUserProfiles($id))))->isIdenticalTo($baselineIds);
             $connection->delete('glpi_profiles_users', ['users_id' => $id, 'profiles_id' => $profileId, 'entities_id' => $entity]);
             $this->array($sortedIds($scopes->profileIds($id)))->isIdenticalTo($baselineIds);
-            \Doctrine\DBAL\Types\Type::overrideType('integer', new class () extends \Doctrine\DBAL\Types\IntegerType {
-                public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+            Type::overrideType('integer', new class () extends IntegerType {
+                public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                 {
                     return 'CASE WHEN ' . $sqlExpr . ' = -1 THEN -1 ELSE -1 END';
                 }
             });
             $this->array($scopes->profileIds($id))->isEmpty();
             $this->array($records->identifiers('glpi_profiles_users', 'profiles_id', ['users_id' => $id]))->isEmpty();
-            \Doctrine\DBAL\Types\Type::overrideType('integer', $integer);
-            \Doctrine\DBAL\Types\Type::overrideType('string', new class () extends \Doctrine\DBAL\Types\StringType {
-                public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+            Type::overrideType('integer', $integer);
+            Type::overrideType('string', new class () extends StringType {
+                public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                 {
                     return "'not-an-identifier'";
                 }
-                public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+                public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
                 {
-                    throw new \LogicException('IDENTITY scalar values must not be converted');
+                    throw new LogicException('IDENTITY scalar values must not be converted');
                 }
             });
             $this->array($sortedIds($scopes->profileIds($id)))->isIdenticalTo($baselineIds);
             $this->array($sortedIds($records->identifiers('glpi_profiles_users', 'profiles_id', ['users_id' => $id])))->isIdenticalTo($baselineIds);
-            \Doctrine\DBAL\Types\Type::overrideType('string', $string);
+            Type::overrideType('string', $string);
 
-            $originalTable = \Profile_User::getTable();
+            $originalTable = Profile_User::getTable();
             try {
-                \Profile_User::forceTable('glpi_groups_users');
+                Profile_User::forceTable('glpi_groups_users');
                 $this->exception(fn () => $records->identifiers('glpi_groups_users', 'profiles_id', ['users_id' => $id]))
-                    ->isInstanceOf(\itsmng\Database\UnsupportedCriteria::class);
-                $this->exception(fn () => \Profile_User::getUserProfiles($id))
-                    ->isInstanceOf(\itsmng\Database\UnsupportedCriteria::class);
+                    ->isInstanceOf(UnsupportedCriteria::class);
+                $this->exception(fn () => Profile_User::getUserProfiles($id))
+                    ->isInstanceOf(UnsupportedCriteria::class);
             } finally {
-                \Profile_User::forceTable($originalTable);
+                Profile_User::forceTable($originalTable);
             }
 
             $this->variable($display->displayData(-1))->isNull();
@@ -494,9 +706,9 @@ class User extends \DbTestCase
             $this->array($scopes->scopes($id, $profileId))->isIdenticalTo($grants->scopes($id, $profileId));
             $connection->update('glpi_profilerights', ['rights' => 0], ['profiles_id' => $profileId, 'name' => $right]);
             $this->array($scopes->scopes($id, right: $right, mask: 1))->isEmpty();
-            $this->array(\Profile_User::getUserEntitiesForRight($id, $right, 1))->isEmpty();
-            \Doctrine\DBAL\Types\Type::overrideType('integer', new class () extends \Doctrine\DBAL\Types\IntegerType {
-                public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+            $this->array(Profile_User::getUserEntitiesForRight($id, $right, 1))->isEmpty();
+            Type::overrideType('integer', new class () extends IntegerType {
+                public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                 {
                     return '(' . $sqlExpr . ' * 0 - 1)';
                 }
@@ -505,21 +717,21 @@ class User extends \DbTestCase
             $this->array($grants->scopes($id))->isEmpty();
             $this->variable($display->displayData($id))->isNull();
             $this->variable($users->displayData($id))->isNull();
-            \Doctrine\DBAL\Types\Type::overrideType('integer', $integer);
-            \Doctrine\DBAL\Types\Type::overrideType('string', new class () extends \Doctrine\DBAL\Types\StringType {
-                public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+            Type::overrideType('integer', $integer);
+            Type::overrideType('string', new class () extends StringType {
+                public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                 {
                     return 'UPPER(' . $sqlExpr . ')';
                 }
-                public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+                public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
                 {
-                    throw new \LogicException('Explicit scalar aliases must not convert PHP values.');
+                    throw new LogicException('Explicit scalar aliases must not convert PHP values.');
                 }
             });
             $this->array($display->displayData($id))->isIdenticalTo($users->displayData($id));
             $this->string($display->displayData($id)['realname'])->isIdenticalTo('CHANGED LOWER');
-            \Doctrine\DBAL\Types\Type::overrideType('string', new class () extends \Doctrine\DBAL\Types\StringType {
-                public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+            Type::overrideType('string', new class () extends StringType {
+                public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                 {
                     return "'no-matching-permission'";
                 }
@@ -528,24 +740,24 @@ class User extends \DbTestCase
             $expectedRight = $grants->scopes($id, right: $right, mask: 1);
             $this->array($expectedRight)->isNotEmpty();
             $this->array($scopes->scopes($id, right: $right, mask: 1))->isIdenticalTo($expectedRight);
-            \Doctrine\DBAL\Types\Type::overrideType('string', $string);
+            Type::overrideType('string', $string);
             $extension = new class ($connection) extends UserScalarReadProbe {
-                private ?\Doctrine\Common\EventManager $events = null;
-                public function getEventManager(): \Doctrine\Common\EventManager
+                private ?EventManager $events = null;
+                public function getEventManager(): EventManager
                 {
-                    return $this->events ??= new \Doctrine\Common\EventManager();
+                    return $this->events ??= new EventManager();
                 }
             };
-            $localScopes = new \itsmng\Database\ProfileUserReadOperation($extension);
-            $localDisplay = new \itsmng\Database\UserDisplayReadOperation($extension);
+            $localScopes = new ProfileUserReadOperation($extension);
+            $localDisplay = new UserDisplayReadOperation($extension);
             $listener = new class () {
                 public int $loads = 0;
-                public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
                 {
                     ++$this->loads;
                 }
             };
-            $extension->getEventManager()->addEventListener([\Doctrine\ORM\Events::loadClassMetadata], $listener);
+            $extension->getEventManager()->addEventListener([Events::loadClassMetadata], $listener);
             $this->array($sort($localScopes->scopes($id)))->isIdenticalTo($sort($grants->scopes($id)));
             $this->array($localDisplay->displayData($id))->isIdenticalTo($users->displayData($id));
             $this->array($localScopes->profileIds($id))->isIdenticalTo($records->identifiers('glpi_profiles_users', 'profiles_id', ['users_id' => $id]));
@@ -554,8 +766,8 @@ class User extends \DbTestCase
             $localScopes->close();
             $localDisplay->close();
         } finally {
-            \Doctrine\DBAL\Types\Type::overrideType('integer', $integer);
-            \Doctrine\DBAL\Types\Type::overrideType('string', $string);
+            Type::overrideType('integer', $integer);
+            Type::overrideType('string', $string);
             $scopes->close();
             $display->close();
             $manager->clear();
@@ -570,7 +782,7 @@ class User extends \DbTestCase
         $originalScope = $originalConnection->captureManagedTransactionScope();
         $originalLevel = $originalConnection->getTransactionNestingLevel();
         $mysql = $original->getProvider() !== 'pgsql';
-        $logger = new class () extends \Psr\Log\AbstractLogger {
+        $logger = new class () extends AbstractLogger {
             public array $selections = [];
             public function log($level, $message, array $context = []): void
             {
@@ -580,24 +792,24 @@ class User extends \DbTestCase
                 }
             }
         };
-        $configuration = new \Doctrine\DBAL\Configuration();
-        $configuration->setMiddlewares([new \Doctrine\DBAL\Logging\Middleware($logger)]);
+        $configuration = new Configuration();
+        $configuration->setMiddlewares([new Middleware($logger)]);
         $reader = $writer = $frame = null;
         $fixtures = [];
         $failure = null;
         $cleanup = static function (callable $operation) use (&$failure): void {
             try {
                 $operation();
-            } catch (\Throwable $error) {
-                $failure = $failure === null ? $error : new \itsmng\Database\MutationCleanupFailure($failure, $error);
+            } catch (Throwable $error) {
+                $failure = $failure === null ? $error : new MutationCleanupFailure($failure, $error);
             }
         };
         try {
             $parameters = $originalConnection->getParams();
-            $reader = $mysql ? \itsmng\Database\MySQLConnection::create($parameters, $configuration)
-                : \itsmng\Database\PostgresConnection::create($parameters, $configuration);
-            $writer = $mysql ? \itsmng\Database\MySQLConnection::create($parameters)
-                : \itsmng\Database\PostgresConnection::create($parameters);
+            $reader = $mysql ? MySQLConnection::create($parameters, $configuration)
+                : PostgresConnection::create($parameters, $configuration);
+            $writer = $mysql ? MySQLConnection::create($parameters)
+                : PostgresConnection::create($parameters);
             foreach ([$reader, $writer] as $connection) {
                 if ($mysql) {
                     $connection->executeStatement('SET SESSION innodb_lock_wait_timeout = 5');
@@ -608,22 +820,22 @@ class User extends \DbTestCase
             }
             // PostgreSQL's RR rejects some changed locked rows with a legitimate
             // serialization failure. Only MySQL uses RR for this snapshot proof.
-            $reader->setTransactionIsolation($mysql ? \Doctrine\DBAL\TransactionIsolationLevel::REPEATABLE_READ
-                : \Doctrine\DBAL\TransactionIsolationLevel::READ_COMMITTED);
+            $reader->setTransactionIsolation($mysql ? TransactionIsolationLevel::REPEATABLE_READ
+                : TransactionIsolationLevel::READ_COMMITTED);
             foreach ([false, true] as $fallback) {
                 $token = 'default-current-' . $this->getUniqueString();
-                $fixture = \itsmng\Database\OwnedMutationFrame::run($writer, static function () use ($writer, $token): array {
-                    $manager = new \Doctrine\ORM\EntityManager($writer, \itsmng\Database\Orm::configuration($writer->getDatabasePlatform()));
+                $fixture = OwnedMutationFrame::run($writer, static function () use ($writer, $token): array {
+                    $manager = new EntityManager($writer, Orm::configuration($writer->getDatabasePlatform()));
                     try {
-                        $account = new \itsmng\Database\Entity\User();
+                        $account = new UserRecord();
                         $account->name = $token;
-                        $account->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, 0);
+                        $account->entities = $manager->getReference(EntityRecord::class, 0);
                         $manager->persist($account);
-                        $first = new \itsmng\Database\Entity\UserEmail();
+                        $first = new UserEmailRecord();
                         $first->users = $account;
                         $first->email = $token . '-a@example.org';
                         $first->is_default = true;
-                        $second = new \itsmng\Database\Entity\UserEmail();
+                        $second = new UserEmailRecord();
                         $second->users = $account;
                         $second->email = $token . '-b@example.org';
                         $manager->persist($first);
@@ -635,17 +847,17 @@ class User extends \DbTestCase
                     }
                 });
                 $fixtures[] = $fixture;
-                $frame = \itsmng\Database\OwnedMutationFrame::begin($reader);
-                $manager = new \Doctrine\ORM\EntityManager($reader, \itsmng\Database\Orm::configuration($reader->getDatabasePlatform()));
-                $repository = new \itsmng\Database\Repository\UserEmailRepository($manager);
+                $frame = OwnedMutationFrame::begin($reader);
+                $manager = new EntityManager($reader, Orm::configuration($reader->getDatabasePlatform()));
+                $repository = new UserEmailRepository($manager);
                 $this->integer((int)$repository->preferred($fixture['user'])['id'])->isIdenticalTo($fixture['first']);
-                \itsmng\Database\OwnedMutationFrame::run($writer, static function () use ($writer, $fixture): void {
+                OwnedMutationFrame::run($writer, static function () use ($writer, $fixture): void {
                     $writer->delete('glpi_useremails', ['id' => $fixture['first'], 'users_id' => $fixture['user']]);
                     $writer->update(
                         'glpi_useremails',
                         ['is_default' => true],
                         ['id' => $fixture['second'], 'users_id' => $fixture['user']],
-                        ['is_default' => \Doctrine\DBAL\Types\Types::BOOLEAN]
+                        ['is_default' => Types::BOOLEAN]
                     );
                 });
                 $context = $fallback ? 'Preferred survivor after concurrent deletion' : 'Explicit concurrently deleted address';
@@ -681,7 +893,7 @@ class User extends \DbTestCase
                 $originalScope->assertActive();
                 $this->integer($originalConnection->getTransactionNestingLevel())->isIdenticalTo($originalLevel);
             }
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $failure = $error;
         } finally {
             if ($frame !== null) {
@@ -694,25 +906,25 @@ class User extends \DbTestCase
             }
             if ($writer !== null) {
                 foreach ($fixtures as $fixture) {
-                    $cleanup(static fn () => \itsmng\Database\OwnedMutationFrame::run($writer, static function () use ($writer, $fixture): void {
+                    $cleanup(static fn () => OwnedMutationFrame::run($writer, static function () use ($writer, $fixture): void {
                         if ($writer->fetchOne('SELECT name FROM glpi_users WHERE id = ?', [$fixture['user']]) !== $fixture['name']) {
-                            throw new \LogicException('Refusing cleanup of an unowned user fixture');
+                            throw new LogicException('Refusing cleanup of an unowned user fixture');
                         }
                         $rows = $writer->fetchAllAssociative('SELECT id, email FROM glpi_useremails WHERE users_id = ?', [$fixture['user']]);
                         foreach ($rows as $row) {
                             $suffix = match ((int)$row['id']) {
                                 $fixture['first'] => '-a@example.org', $fixture['second'] => '-b@example.org',
-                                default => throw new \LogicException('Refusing cleanup of an unexpected user address'),
+                                default => throw new LogicException('Refusing cleanup of an unexpected user address'),
                             };
                             if ($row['email'] !== $fixture['name'] . $suffix) {
-                                throw new \LogicException('Refusing cleanup of a changed address identity');
+                                throw new LogicException('Refusing cleanup of a changed address identity');
                             }
                         }
                         foreach ($rows as $row) {
                             $writer->delete('glpi_useremails', ['id' => $row['id'], 'users_id' => $fixture['user'], 'email' => $row['email']]);
                         }
                         if ($writer->delete('glpi_users', ['id' => $fixture['user'], 'name' => $fixture['name']]) !== 1) {
-                            throw new \LogicException('Owned user fixture cleanup failed');
+                            throw new LogicException('Owned user fixture cleanup failed');
                         }
                     }));
                 }
@@ -733,7 +945,7 @@ class User extends \DbTestCase
         $database = $DB;
         $session = $_SESSION;
         $hooks = $PLUGIN_HOOKS;
-        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
         $active = $plugins->getValue();
         try {
             $this->login();
@@ -744,19 +956,19 @@ class User extends \DbTestCase
             $accounts = [];
             foreach ([['scope-a-', $allowed], ['scope-b-', $denied]] as [$prefix, $entity]) {
                 $stored = ['name' => $prefix . $this->getUniqueString(), 'comment' => 'Complete permission fields'];
-                $account = new \User();
+                $account = new UserModel();
                 $id = $account->add($stored + ['_entities_id' => $entity, '_is_recursive' => 0]);
                 // Form-only inputs create a grant; they are not stored User fields.
                 $this->checkInput($account, $id, $stored);
-                $grant = new \Profile_User();
+                $grant = new Profile_User();
                 $this->boolean($grant->getFromDBByCrit(['users_id' => $id]))->isTrue();
                 $this->integer((int)$grant->fields['entities_id'])->isIdenticalTo($entity);
                 $this->integer((int)$grant->fields['is_recursive'])->isIdenticalTo(0);
                 $accounts[] = $account;
             }
             [$first, $second] = $accounts;
-            $model = new \User();
-            $scopes = new \ReflectionMethod(\User::class, 'getEntities');
+            $model = new UserModel();
+            $scopes = new ReflectionMethod(UserModel::class, 'getEntities');
             $this->setEntity('_test_child_1', false);
             $_SESSION['glpiactiveprofile']['user'] |= READ;
 
@@ -765,18 +977,18 @@ class User extends \DbTestCase
             // boundary, without changing the production CLI policy.
             $mutate = null;
             $calls = [];
-            $callback = static function (\User $user) use ($scopes, &$mutate, &$calls): void {
+            $callback = static function (UserModel $user) use ($scopes, &$mutate, &$calls): void {
                 $calls[] = ['id' => (int)$user->getID(), 'right' => $user->right, 'comment' => $user->fields['comment']];
                 if ($mutate !== null) {
                     $mutate();
                     $mutate = null;
                 }
-                if (!\Session::haveAccessToOneOfEntities($scopes->invoke($user))) {
+                if (!Session::haveAccessToOneOfEntities($scopes->invoke($user))) {
                     $user->right = false;
                 }
             };
             $plugins->setValue(null, [...$active, 'current_user_scope_fixture']);
-            $PLUGIN_HOOKS['item_can'] = ['current_user_scope_fixture' => [\User::class => $callback]];
+            $PLUGIN_HOOKS['item_can'] = ['current_user_scope_fixture' => [UserModel::class => $callback]];
             foreach ([[$first, $allowed, true], [$second, $denied, false],
                 [$second, $denied, false], [$first, $allowed, true]] as [$account, $entity, $canLink]) {
                 $this->boolean($model->getFromDB($account->getID()))->isTrue();
@@ -796,7 +1008,7 @@ class User extends \DbTestCase
                 'glpi_profiles_users',
                 ['entities_id' => $parent, 'is_recursive' => true],
                 ['users_id' => $first->getID()],
-                ['is_recursive' => \Doctrine\DBAL\Types\Types::BOOLEAN]
+                ['is_recursive' => Types::BOOLEAN]
             );
             $this->boolean(in_array($allowed, $scopes->invoke($model)))->isTrue();
             $this->string($model->getLink())->contains('<a ');
@@ -804,7 +1016,7 @@ class User extends \DbTestCase
                 'glpi_profiles_users',
                 ['is_recursive' => false],
                 ['users_id' => $first->getID()],
-                ['is_recursive' => \Doctrine\DBAL\Types\Types::BOOLEAN]
+                ['is_recursive' => Types::BOOLEAN]
             );
             $this->array(array_map('intval', $scopes->invoke($model)))->isIdenticalTo([$parent]);
             $this->string($model->getLink())->notContains('<a ');
@@ -816,7 +1028,7 @@ class User extends \DbTestCase
 
             // Re-resolve the current adapter rather than retain a prior manager.
             $this->mockGenerator->orphanize('__construct');
-            $routed = new \mock\DBmysql();
+            $routed = new DBmysql();
             $reads = 0;
             $this->calling($routed)->getDoctrineConnection = static function () use ($connection, &$reads) {
                 ++$reads;
@@ -837,14 +1049,14 @@ class User extends \DbTestCase
     {
         global $DB;
         $this->login();
-        $user = $this->createItem(\User::class, ['name' => 'render-author-' . $this->getUniqueString(), 'entities_id' => 0]);
+        $user = $this->createItem(UserModel::class, ['name' => 'render-author-' . $this->getUniqueString(), 'entities_id' => 0]);
         $id = (int)$user->getID();
-        $reader = new \itsmng\Database\TimelineAuthorReader();
-        $model = new \User();
+        $reader = new TimelineAuthorReader();
+        $model = new UserModel();
         $this->boolean($reader->load($model, $id, $DB))->isTrue();
         // Inspect our private operation owner, without exposing it in the API.
-        $owned = new \ReflectionProperty($reader, 'records');
-        $getManager = static fn ($render) => (new \ReflectionProperty(\itsmng\Database\RecordReadOperation::class, 'manager'))->getValue($owned->getValue($render));
+        $owned = new ReflectionProperty($reader, 'records');
+        $getManager = static fn ($render) => (new ReflectionProperty(RecordReadOperation::class, 'manager'))->getValue($owned->getValue($render));
         $manager = $getManager($reader);
         $loads = new class () {
             public int $count = 0;
@@ -853,12 +1065,12 @@ class User extends \DbTestCase
                 ++$this->count;
             }
         };
-        $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+        $manager->getEventManager()->addEventListener([Events::postLoad], $loads);
         $previousCache = $GLOBALS['GLPI_CACHE'] ?? null;
         $connection = $DB->getDoctrineConnection();
         $alternate = $DB->getProvider() === 'pgsql'
-            ? \itsmng\Database\PostgresConnection::create($connection->getParams())
-            : \itsmng\Database\MySQLConnection::create($connection->getParams());
+            ? PostgresConnection::create($connection->getParams())
+            : MySQLConnection::create($connection->getParams());
         try {
             $this->boolean($DB->update('glpi_users', ['comment' => 'Fresh callback write'], ['id' => $id]))->isTrue();
             $this->boolean($reader->load($model, $id, $DB))->isTrue();
@@ -867,7 +1079,7 @@ class User extends \DbTestCase
             $this->integer($loads->count)->isIdenticalTo(0);
             $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
             $this->mockGenerator->orphanize('__construct');
-            $routed = new \mock\DBmysql();
+            $routed = new DBmysql();
             $currentConnection = $connection;
             $routeCalls = 0;
             $this->calling($routed)->getDoctrineConnection = static function () use (&$currentConnection, &$routeCalls) {
@@ -886,37 +1098,37 @@ class User extends \DbTestCase
             $this->object($getManager($reader)->getConnection())->isIdenticalTo($alternate);
             $this->boolean($reader->load($model, $id, $DB))->isTrue();
             $beforePoolChange = $getManager($reader);
-            $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache(new \Symfony\Component\Cache\Adapter\ArrayAdapter());
+            $GLOBALS['GLPI_CACHE'] = new Psr16Cache(new ArrayAdapter());
             $this->boolean($reader->load($model, $id, $DB))->isTrue();
             $this->object($getManager($reader))->isNotIdenticalTo($beforePoolChange);
-            $metadata = $getManager($reader)->getClassMetadata(\itsmng\Database\Entity\User::class);
+            $metadata = $getManager($reader)->getClassMetadata(UserRecord::class);
             $originalGenerator = $metadata->generatorType;
-            $metadata->setIdGeneratorType(\Doctrine\ORM\Mapping\ClassMetadata::GENERATOR_TYPE_NONE);
+            $metadata->setIdGeneratorType(ClassMetadata::GENERATOR_TYPE_NONE);
             $GLOBALS['GLPI_CACHE']->clear();
-            $nextRender = new \itsmng\Database\TimelineAuthorReader();
+            $nextRender = new TimelineAuthorReader();
             $this->boolean($nextRender->load($model, $id, $DB))->isTrue();
             $this->object($getManager($nextRender))->isNotIdenticalTo($getManager($reader));
-            $this->integer($getManager($nextRender)->getClassMetadata(\itsmng\Database\Entity\User::class)->generatorType)
+            $this->integer($getManager($nextRender)->getClassMetadata(UserRecord::class)->generatorType)
                 ->isIdenticalTo($originalGenerator);
             $this->array($getManager($nextRender)->getUnitOfWork()->getIdentityMap())->isEmpty();
-            $warmRender = new \itsmng\Database\TimelineAuthorReader();
+            $warmRender = new TimelineAuthorReader();
             $this->boolean($warmRender->load($model, $id, $DB))->isTrue();
             $this->array(array_keys($getManager($warmRender)->getMetadataFactory()->getLoadedMetadata()))
-                ->isIdenticalTo([\itsmng\Database\Entity\User::class]);
+                ->isIdenticalTo([UserRecord::class]);
             $extension = new class ($connection) extends UserScalarReadProbe {
-                private ?\Doctrine\Common\EventManager $events = null;
-                public function getEventManager(): \Doctrine\Common\EventManager
+                private ?EventManager $events = null;
+                public function getEventManager(): EventManager
                 {
-                    return $this->events ??= new \Doctrine\Common\EventManager();
+                    return $this->events ??= new EventManager();
                 }
             };
             $customLoads = new class () {
                 public int $metadata = 0;
                 public int $entities = 0;
-                public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
                 {
                     ++$this->metadata;
-                    if ($event->getClassMetadata()->name === \itsmng\Database\Entity\Entity::class) {
+                    if ($event->getClassMetadata()->name === EntityRecord::class) {
                         $event->getClassMetadata()->fieldMappings['id']->type = 'decimal';
                     }
                 }
@@ -926,19 +1138,19 @@ class User extends \DbTestCase
                 }
             };
             $currentConnection = $extension;
-            $localRender = new \itsmng\Database\TimelineAuthorReader();
-            $extension->getEventManager()->addEventListener([\Doctrine\ORM\Events::loadClassMetadata, \Doctrine\ORM\Events::postLoad], $customLoads);
+            $localRender = new TimelineAuthorReader();
+            $extension->getEventManager()->addEventListener([Events::loadClassMetadata, Events::postLoad], $customLoads);
             $this->boolean($localRender->load($model, $id, $routed))->isTrue();
             $this->integer($customLoads->metadata)->isGreaterThan(0);
             $this->integer($customLoads->entities)->isIdenticalTo(0);
-            $ordinaryManager = \itsmng\Database\Orm::forConnection($extension);
-            $this->array($model->fields)->isIdenticalTo((new \itsmng\Database\Repository\UserRepository($ordinaryManager))->timelineAuthor($id));
+            $ordinaryManager = Orm::forConnection($extension);
+            $this->array($model->fields)->isIdenticalTo((new UserRepository($ordinaryManager))->timelineAuthor($id));
             $this->string($model->fields['entities_id'])->isIdenticalTo('0');
-            $ordinaryManager->find(\itsmng\Database\Entity\User::class, $id);
+            $ordinaryManager->find(UserRecord::class, $id);
             $this->integer($customLoads->entities)->isGreaterThan(0);
             $ordinaryManager->clear();
             // A normal load still fires the listener: zero above is not a missing observer.
-            $manager->find(\itsmng\Database\Entity\User::class, $id);
+            $manager->find(UserRecord::class, $id);
             $this->integer($loads->count)->isGreaterThan(0);
         } finally {
             $GLOBALS['GLPI_CACHE'] = $previousCache;
@@ -953,11 +1165,11 @@ class User extends \DbTestCase
         global $DB;
         $this->login();
         $database = $DB;
-        $user = $this->createItem(\User::class, ['name' => 'timeline-author-' . $this->getUniqueString(),
-            'comment' => 'Complete author fields', 'authtype' => \Auth::DB_GLPI]);
+        $user = $this->createItem(UserModel::class, ['name' => 'timeline-author-' . $this->getUniqueString(),
+            'comment' => 'Complete author fields', 'authtype' => Auth::DB_GLPI]);
         $id = (int)$user->getID();
-        $manager = \itsmng\Database\Orm::create($DB);
-        $repository = new \itsmng\Database\Repository\UserRepository($manager);
+        $manager = Orm::create($DB);
+        $repository = new UserRepository($manager);
         $loads = new class () {
             public int $count = 0;
             public function postLoad(): void
@@ -965,9 +1177,9 @@ class User extends \DbTestCase
                 ++$this->count;
             }
         };
-        $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+        $manager->getEventManager()->addEventListener([Events::postLoad], $loads);
         try {
-            $model = new \User();
+            $model = new UserModel();
             foreach ([[true, '2020-02-03 04:05:06', 'Changed author'], [false, null, null]] as [$active, $date, $firstname]) {
                 $this->boolean($DB->update('glpi_users', ['is_active' => $active, 'last_login' => $date,
                     'firstname' => $firstname], ['id' => $id]))->isTrue();
@@ -979,7 +1191,7 @@ class User extends \DbTestCase
             $this->integer($loads->count)->isIdenticalTo(0);
             $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
             // Positive listener control: the same manager's ordinary entity load fires it.
-            $manager->find(\itsmng\Database\Entity\User::class, $id);
+            $manager->find(UserRecord::class, $id);
             $this->integer($loads->count)->isGreaterThan(0);
             $before = $model->fields;
             foreach ([null, '', PHP_INT_MAX] as $missing) {
@@ -987,7 +1199,7 @@ class User extends \DbTestCase
                 $this->array($model->fields)->isIdenticalTo($before);
             }
             $this->variable($repository->timelineAuthor(PHP_INT_MAX))->isNull();
-            $custom = new class () extends \User {
+            $custom = new class () extends UserModel {
                 public int $calls = 0;
                 public function getFromDB($id)
                 {
@@ -999,7 +1211,7 @@ class User extends \DbTestCase
             $this->integer($custom->calls)->isIdenticalTo(1);
             $connection = $database->getDoctrineConnection();
             $this->mockGenerator->orphanize('__construct');
-            $routed = new \mock\DBmysql();
+            $routed = new DBmysql();
             $reads = 0;
             $this->calling($routed)->getDoctrineConnection = static function () use ($connection, &$reads) {
                 ++$reads;
@@ -1020,17 +1232,17 @@ class User extends \DbTestCase
         global $DB;
         $this->login();
         $session = $_SESSION;
-        $user = $this->createItem(\User::class, ['name' => 'display-roundtrip-' . $this->getUniqueString()]);
+        $user = $this->createItem(UserModel::class, ['name' => 'display-roundtrip-' . $this->getUniqueString()]);
         $id = (int)$user->getID();
-        $display = new class () extends \CommonGLPI {
+        $display = new class () extends CommonGLPI {
             public static function getAvailableDisplayOptions()
             {
                 return ['test' => ['show_default' => ['default' => true]]];
             }
         };
         $type = $display::getType();
-        $manager = \itsmng\Database\Orm::create($DB);
-        $repository = new \itsmng\Database\Repository\UserRepository($manager);
+        $manager = Orm::create($DB);
+        $repository = new UserRepository($manager);
         $expected = ['show_default' => true, 'extra' => 'current "quoted" \\path /'];
         try {
             $_SESSION['glpiID'] = $id;
@@ -1054,19 +1266,19 @@ class User extends \DbTestCase
         $this->login();
         $session = $_SESSION;
         $database = $DB;
-        $user = $this->createItem(\User::class, ['name' => 'display-options-' . $this->getUniqueString()]);
+        $user = $this->createItem(UserModel::class, ['name' => 'display-options-' . $this->getUniqueString()]);
         $id = (int)$user->getID();
-        $display = new class () extends \CommonGLPI {
+        $display = new class () extends CommonGLPI {
             public static function getAvailableDisplayOptions()
             {
                 return ['test' => ['show_default' => ['default' => true]]];
             }
         };
         $type = $display::getType();
-        $manager = \itsmng\Database\Orm::create($database);
-        $repository = new \itsmng\Database\Repository\UserRepository($manager);
-        $writeManager = \itsmng\Database\Orm::create($database);
-        $writer = new \itsmng\Database\Repository\RecordWriter($writeManager);
+        $manager = Orm::create($database);
+        $repository = new UserRepository($manager);
+        $writeManager = Orm::create($database);
+        $writer = new RecordWriter($writeManager);
         $loads = new class () {
             public int $count = 0;
             public function postLoad(): void
@@ -1074,9 +1286,9 @@ class User extends \DbTestCase
                 ++$this->count;
             }
         };
-        $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+        $manager->getEventManager()->addEventListener([Events::postLoad], $loads);
         $this->mockGenerator->orphanize('__construct');
-        $routed = new \mock\DBmysql();
+        $routed = new DBmysql();
         $connection = $database->getDoctrineConnection();
         $reads = 0;
         $this->calling($routed)->getDoctrineConnection = static function () use ($connection, &$reads) {
@@ -1135,12 +1347,12 @@ class User extends \DbTestCase
         global $DB;
         $this->login();
         $session = $_SESSION;
-        $user = $this->createItem(\User::class, [
+        $user = $this->createItem(UserModel::class, [
             'name' => 'accessibility-header-' . $this->getUniqueString(),
             'access_font' => 'OpenDyslexic',
         ]);
         $id = (int)$user->getID();
-        $manager = \itsmng\Database\Orm::create($DB);
+        $manager = Orm::create($DB);
         $loads = new class () {
             public int $count = 0;
             public function postLoad(): void
@@ -1148,8 +1360,8 @@ class User extends \DbTestCase
                 ++$this->count;
             }
         };
-        $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
-        $repository = new \itsmng\Database\Repository\UserRepository($manager);
+        $manager->getEventManager()->addEventListener([Events::postLoad], $loads);
+        $repository = new UserRepository($manager);
         try {
             $_SESSION['glpiID'] = $id;
             $_SESSION['glpiactiveprofile']['accessibility'] = READ;
@@ -1160,7 +1372,7 @@ class User extends \DbTestCase
             ] as $font => $url) {
                 $this->boolean($DB->update('glpi_users', ['access_font' => $font], ['id' => $id]))->isTrue();
                 $this->string($repository->accessibilityFont($id))->isIdenticalTo($font);
-                $this->output(fn () => \Html::accessibilityHeader())
+                $this->output(fn () => Html::accessibilityHeader())
                     ->isIdenticalTo('<link href="' . $url . '" rel="stylesheet">');
             }
             $this->integer($loads->count)->isIdenticalTo(0);
@@ -1168,15 +1380,15 @@ class User extends \DbTestCase
             foreach (['unknown-font', null] as $font) {
                 $this->boolean($DB->update('glpi_users', ['access_font' => $font], ['id' => $id]))->isTrue();
                 $this->variable($repository->accessibilityFont($id))->isIdenticalTo($font);
-                $this->output(fn () => \Html::accessibilityHeader())->isEmpty();
+                $this->output(fn () => Html::accessibilityHeader())->isEmpty();
             }
             $this->boolean($DB->update('glpi_users', ['access_font' => 'OpenDyslexic'], ['id' => $id]))->isTrue();
             $_SESSION['glpiactiveprofile']['accessibility'] = 0;
-            $this->output(fn () => \Html::accessibilityHeader())->isEmpty();
+            $this->output(fn () => Html::accessibilityHeader())->isEmpty();
             $this->boolean($user->delete(['id' => $id], true))->isTrue();
             $this->variable($repository->accessibilityFont($id))->isNull();
             $_SESSION['glpiactiveprofile']['accessibility'] = READ;
-            $this->output(fn () => \Html::accessibilityHeader())->isEmpty();
+            $this->output(fn () => Html::accessibilityHeader())->isEmpty();
         } finally {
             $_SESSION = $session;
             $manager->clear();
@@ -1191,7 +1403,7 @@ class User extends \DbTestCase
         $session = $_SESSION;
         $configurationBefore = $CFG_GLPI;
         $originalLevel = $original->getDoctrineConnection()->getTransactionNestingLevel();
-        $logger = new class () extends \Psr\Log\AbstractLogger {
+        $logger = new class () extends AbstractLogger {
             public array $userReads = [];
 
             public function log($level, $message, array $context = []): void
@@ -1204,38 +1416,38 @@ class User extends \DbTestCase
                 }
             }
         };
-        $configuration = new \Doctrine\DBAL\Configuration();
-        $configuration->setMiddlewares([new \Doctrine\DBAL\Logging\Middleware($logger)]);
+        $configuration = new Configuration();
+        $configuration->setMiddlewares([new Middleware($logger)]);
         $parameters = $original->getDoctrineConnection()->getParams();
         $connection = $original->getProvider() === 'pgsql'
-            ? \itsmng\Database\PostgresConnection::create($parameters, $configuration)
-            : \itsmng\Database\MySQLConnection::create($parameters, $configuration);
+            ? PostgresConnection::create($parameters, $configuration)
+            : MySQLConnection::create($parameters, $configuration);
         $probe = clone $original;
-        (new \ReflectionProperty(\DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
+        (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
         $frame = null;
         $primary = null;
         try {
             $DB = $probe;
-            $frame = \itsmng\Database\OwnedMutationFrame::begin($connection);
-            $manager = \itsmng\Database\Orm::create($probe);
-            $root = $manager->getReference(\itsmng\Database\Entity\Entity::class, 0);
-            $locker = new \itsmng\Database\Entity\User();
+            $frame = OwnedMutationFrame::begin($connection);
+            $manager = Orm::create($probe);
+            $root = $manager->getReference(EntityRecord::class, 0);
+            $locker = new UserRecord();
             $locker->entities = $root;
             $locker->name = 'lock-display-' . bin2hex(random_bytes(6));
             $locker->firstname = 'Ada';
             $locker->realname = 'Lovelace';
-            $locker->authtype = \Auth::DB_GLPI;
+            $locker->authtype = Auth::DB_GLPI;
             $manager->persist($locker);
-            $email = new \itsmng\Database\Entity\UserEmail();
+            $email = new UserEmailRecord();
             $email->users = $locker;
             $email->email = 'locker@example.test';
             $email->is_default = true;
             $manager->persist($email);
-            $computer = new \itsmng\Database\Entity\Computer();
+            $computer = new Computer();
             $computer->entities = $root;
             $computer->name = 'Locked user display fixture';
             $manager->persist($computer);
-            $lock = new \itsmng\Database\Entity\ObjectLock();
+            $lock = new ObjectLockRecord();
             $lock->itemtype = 'Computer';
             $lock->subjectComputer = $computer;
             $lock->users = $locker;
@@ -1243,7 +1455,7 @@ class User extends \DbTestCase
             $manager->flush();
             $manager->clear();
 
-            $_SESSION['glpinames_format'] = \User::FIRSTNAME_BEFORE;
+            $_SESSION['glpinames_format'] = UserModel::FIRSTNAME_BEFORE;
             $_SESSION['glpiis_ids_visible'] = 0;
             $_SESSION['glpilock_autolock_mode'] = 1;
             $CFG_GLPI['lock_use_lock_item'] = 1;
@@ -1251,7 +1463,7 @@ class User extends \DbTestCase
             $CFG_GLPI['lock_lockprofile'] = $_SESSION['glpiactiveprofile'];
             $CFG_GLPI['lock_item_list'] = ['Computer'];
             $activeSession = $_SESSION;
-            $this->boolean(\Session::haveRightsOr('computer', [UPDATE, DELETE, PURGE, UPDATENOTE]))->isTrue();
+            $this->boolean(Session::haveRightsOr('computer', [UPDATE, DELETE, PURGE, UPDATENOTE]))->isTrue();
             foreach ([['Ada', true, true], ['Grace', false, true], ['Grace', true, false]] as [$firstname, $mailing, $hasEmail]) {
                 $_SESSION = $activeSession;
                 $CFG_GLPI['notifications_mailing'] = (int)$mailing;
@@ -1263,15 +1475,15 @@ class User extends \DbTestCase
                 $options = ['id' => $computer->id];
                 ob_start();
                 try {
-                    \ObjectLock::manageObjectLock('Computer', $options);
+                    ObjectLock::manageObjectLock('Computer', $options);
                     $html = ob_get_contents();
                 } finally {
                     ob_end_clean();
-                    \ObjectLock::revertProfile();
+                    ObjectLock::revertProfile();
                 }
                 $this->integer($options['locked'])->isIdenticalTo(1);
                 $this->string($html)->contains($firstname . ' Lovelace')
-                    ->contains("href='" . \User::getFormURLWithID($locker->id) . "'");
+                    ->contains("href='" . UserModel::getFormURLWithID($locker->id) . "'");
                 $this->boolean(str_contains($html, 'function askUnlock()'))->isIdenticalTo($mailing && $hasEmail);
                 $this->boolean(str_contains($html, 'locker@example.test'))->isIdenticalTo($hasEmail);
                 $this->array($logger->userReads)->hasSize(1);
@@ -1279,7 +1491,7 @@ class User extends \DbTestCase
                 $frame->assertActive();
                 $this->object($DB)->isIdenticalTo($probe);
             }
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $primary = $error;
         } finally {
             $DB = $original;
@@ -1289,13 +1501,13 @@ class User extends \DbTestCase
                 if ($frame !== null) {
                     $frame->rollBack();
                 }
-            } catch (\Throwable $cleanup) {
-                $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationRollbackFailure($primary, $cleanup);
+            } catch (Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new MutationRollbackFailure($primary, $cleanup);
             }
             try {
                 $probe->close();
-            } catch (\Throwable $cleanup) {
-                $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($primary, $cleanup);
+            } catch (Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
             }
         }
         if ($primary !== null) {
@@ -1353,7 +1565,7 @@ class User extends \DbTestCase
                 $result = $user->updateForgottenPassword($input);
             }
         )
-        ->isInstanceOf(\Glpi\Exception\ForgetPasswordException::class);
+        ->isInstanceOf(ForgetPasswordException::class);
 
         // Test reset password with good token
         // 1 - Refresh the in-memory instance of user and get the current password
@@ -1381,12 +1593,12 @@ class User extends \DbTestCase
         $this->variable($updateSuccess)->isNotFalse('password update failed');
 
         // Test the new password was saved
-        $this->variable(\Auth::checkPassword('NewPassword', $newHash))->isNotFalse();
+        $this->variable(Auth::checkPassword('NewPassword', $newHash))->isNotFalse();
     }
 
     public function testGetDefaultEmail()
     {
-        $user = new \User();
+        $user = new UserModel();
 
         $this->string($user->getDefaultEmail())->isIdenticalTo('');
         $this->array($user->getAllEmails())->isIdenticalTo([]);
@@ -1433,7 +1645,7 @@ class User extends \DbTestCase
         $this->boolean($user->getFromDB($uid))->isTrue();
         $this->string($token)->hasLength(40);
 
-        $user2 = new \User();
+        $user2 = new UserModel();
         $this->boolean($user2->getFromDBbyToken($token))->isTrue();
         $this->array($user2->fields)->isIdenticalTo($user->fields);
 
@@ -1535,34 +1747,34 @@ class User extends \DbTestCase
     public function testCanonicalAuthenticationCreation()
     {
         $this->login();
-        $ldap = new \AuthLDAP();
+        $ldap = new AuthLDAP();
         $ldapId = (int)$ldap->add(['name' => 'Canonical input directory', 'is_active' => 0, 'is_default' => 0]);
-        $otherLdap = new \AuthLDAP();
+        $otherLdap = new AuthLDAP();
         $otherId = (int)$otherLdap->add(['name' => 'Other canonical input directory', 'is_active' => 0, 'is_default' => 0]);
-        $mail = new \AuthMail();
+        $mail = new AuthMail();
         $mailId = (int)$mail->add(['name' => 'Canonical input mail server']);
         $this->integer($ldapId)->isGreaterThan(0);
         $this->integer($otherId)->isGreaterThan(0)->isNotEqualTo($ldapId);
         $this->integer($mailId)->isGreaterThan(0);
 
         foreach ([[], ['auths_id' => null], ['auths_id' => 0]] as $legacyDefault) {
-            $prepared = (new \User())->prepareInputForAdd(['name' => 'legacy-authentication-default'] + $legacyDefault);
+            $prepared = (new UserModel())->prepareInputForAdd(['name' => 'legacy-authentication-default'] + $legacyDefault);
             $this->integer($prepared['auths_id'])->isIdenticalTo(0);
-            $this->integer($prepared['authtype'])->isIdenticalTo(\Auth::DB_GLPI);
+            $this->integer($prepared['authtype'])->isIdenticalTo(Auth::DB_GLPI);
         }
 
         // A fallback account must not be mistaken for a real selected owner.
         // The same login is valid for distinct authentication identities.
         $login = 'canonical-authentication-input';
         foreach ([
-            [\Auth::LDAP, 'authldaps_id', null, 0],
-            [\Auth::LDAP, 'authldaps_id', $ldapId, $ldapId],
-            [\Auth::LDAP, 'authldaps_id', $otherId, $otherId],
-            [\Auth::MAIL, 'authmails_id', $mailId, $mailId],
-            [\Auth::DB_GLPI, 'auth_source_code', -5, -5],
+            [Auth::LDAP, 'authldaps_id', null, 0],
+            [Auth::LDAP, 'authldaps_id', $ldapId, $ldapId],
+            [Auth::LDAP, 'authldaps_id', $otherId, $otherId],
+            [Auth::MAIL, 'authmails_id', $mailId, $mailId],
+            [Auth::DB_GLPI, 'auth_source_code', -5, -5],
         ] as [$type, $column, $canonical, $selection]) {
             $input = ['name' => $login, 'authtype' => $type, $column => $canonical];
-            $user = new \User();
+            $user = new UserModel();
             $prepared = $user->prepareInputForAdd($input);
             $this->array($prepared)->notHasKey('auths_id');
             $this->variable($prepared[$column])->isIdenticalTo($canonical);
@@ -1573,9 +1785,9 @@ class User extends \DbTestCase
             $this->integer($before['auths_id'])->isIdenticalTo($selection);
             $this->variable($before[$column])->isIdenticalTo($canonical);
 
-            $this->boolean((new \User())->add($input))->isFalse();
+            $this->boolean((new UserModel())->add($input))->isFalse();
             $this->hasSessionMessages(ERROR, ['Unable to add. The user already exists.']);
-            $this->boolean((new \User())->add([
+            $this->boolean((new UserModel())->add([
                 'name' => $login, 'authtype' => $type, 'auths_id' => $selection,
             ]))->isFalse();
             $this->hasSessionMessages(ERROR, ['Unable to add. The user already exists.']);
@@ -1587,11 +1799,11 @@ class User extends \DbTestCase
             ['authldaps_id' => $ldapId, 'auths_id' => $otherId],
             ['authmails_id' => $mailId],
         ] as $conflict) {
-            $input = ['name' => 'rejected-canonical-authentication-input', 'authtype' => \Auth::LDAP] + $conflict;
+            $input = ['name' => 'rejected-canonical-authentication-input', 'authtype' => Auth::LDAP] + $conflict;
             $this->exception(static function () use ($input) {
-                (new \User())->add($input);
-            })->isInstanceOf(\InvalidArgumentException::class);
-            $this->boolean((new \User())->getFromDBbyName($input['name']))->isFalse();
+                (new UserModel())->add($input);
+            })->isInstanceOf(InvalidArgumentException::class);
+            $this->boolean((new UserModel())->getFromDBbyName($input['name']))->isFalse();
         }
     }
 
@@ -1757,7 +1969,7 @@ class User extends \DbTestCase
            ->string['name']->isIdenticalTo('create_user');
         $this->variable($user->fields['profiles_id'])->isNull();
 
-        $puser = new \Profile_User();
+        $puser = new Profile_User();
         $this->boolean($puser->getFromDBByCrit(['users_id' => $uid]))->isTrue();
         $this->array($puser->fields)
            ->integer['profiles_id']->isEqualTo($pid)
@@ -1765,7 +1977,7 @@ class User extends \DbTestCase
            ->integer['is_recursive']->isEqualTo(0)
            ->integer['is_dynamic']->isEqualTo(0);
 
-        $pid = (int)\Profile::getDefault();
+        $pid = (int)Profile::getDefault();
         $this->integer($pid)->isGreaterThan(0);
 
         //user without a profile (will take default one)
@@ -1779,7 +1991,7 @@ class User extends \DbTestCase
            ->string['name']->isIdenticalTo('create_user2');
         $this->variable($user->fields['profiles_id'])->isNull();
 
-        $puser = new \Profile_User();
+        $puser = new Profile_User();
         $this->boolean($puser->getFromDBByCrit(['users_id' => $uid2]))->isTrue();
         $this->array($puser->fields)
            ->integer['profiles_id']->isEqualTo($pid)
@@ -1800,7 +2012,7 @@ class User extends \DbTestCase
         $this->array($user->fields)
            ->string['name']->isIdenticalTo('create_user3');
 
-        $puser = new \Profile_User();
+        $puser = new Profile_User();
         $this->boolean($puser->getFromDBByCrit(['users_id' => $uid3]))->isTrue();
         $this->array($puser->fields)
            ->integer['profiles_id']->isEqualTo($pid)
@@ -1820,7 +2032,7 @@ class User extends \DbTestCase
         $this->array($user->fields)
            ->string['name']->isIdenticalTo('create_user4');
 
-        $puser = new \Profile_User();
+        $puser = new Profile_User();
         $this->boolean($puser->getFromDBByCrit(['users_id' => $uid4]))->isTrue();
         $this->array($puser->fields)
            ->integer['profiles_id']->isEqualTo($pid)
@@ -1845,7 +2057,7 @@ class User extends \DbTestCase
         $added = $user->clone();
         $this->integer((int)$added)->isGreaterThan(0);
 
-        $clonedUser = new \User();
+        $clonedUser = new UserModel();
         $this->boolean($clonedUser->getFromDB($added))->isTrue();
 
         $fields = $user->fields;
@@ -1861,8 +2073,8 @@ class User extends \DbTestCase
                     break;
                 case 'date_mod':
                 case 'date_creation':
-                    $dateClone = new \DateTime($clonedUser->getField($k));
-                    $expectedDate = new \DateTime($date);
+                    $dateClone = new DateTime($clonedUser->getField($k));
+                    $expectedDate = new DateTime($date);
                     $this->dateTime($dateClone)->isEqualTo($expectedDate);
                     break;
                 default:
@@ -1878,7 +2090,7 @@ class User extends \DbTestCase
         $this->login();
         $this->setEntity('_test_root_entity', true);
 
-        $user = new class () extends \User {
+        $user = new class () extends UserModel {
             public static array $cloneTargets = [];
             public static function getType()
             {
@@ -1901,7 +2113,7 @@ class User extends \DbTestCase
         $users_id = $user->getID();
         $entities_id = (int)getItemByTypeName('Entity', '_test_child_1', true);
 
-        $profile_user = new \Profile_User();
+        $profile_user = new Profile_User();
         $profile_users_id = $profile_user->add([
            'users_id'           => $users_id,
            'profiles_id'        => 3,
@@ -1912,7 +2124,7 @@ class User extends \DbTestCase
         ]);
         $this->integer($profile_users_id)->isGreaterThan(0);
 
-        $group = new \Group();
+        $group = new Group();
         $groups_id = $group->add([
            'name'         => 'Group copied with user',
            'entities_id'  => $entities_id,
@@ -1920,7 +2132,7 @@ class User extends \DbTestCase
         ]);
         $this->integer($groups_id)->isGreaterThan(0);
 
-        $group_user = new \Group_User();
+        $group_user = new Group_User();
         $group_users_id = $group_user->add([
            'users_id'        => $users_id,
            'groups_id'       => $groups_id,
@@ -1959,8 +2171,8 @@ class User extends \DbTestCase
            'is_manager',
            'is_userdelegate',
         ];
-        $source_profiles = $get_relations(\Profile_User::getTable(), $users_id, $profile_fields);
-        $source_groups = $get_relations(\Group_User::getTable(), $users_id, $group_fields);
+        $source_profiles = $get_relations(Profile_User::getTable(), $users_id, $profile_fields);
+        $source_groups = $get_relations(Group_User::getTable(), $users_id, $group_fields);
 
         $connection = $DB->getDoctrineConnection();
         $level = $connection->getTransactionNestingLevel();
@@ -1974,8 +2186,8 @@ class User extends \DbTestCase
         foreach ($counts as $table => $count) {
             $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $table))->isIdenticalTo($count);
         }
-        $this->array($get_relations(\Profile_User::getTable(), $users_id, $profile_fields))->isIdenticalTo($source_profiles);
-        $this->array($get_relations(\Group_User::getTable(), $users_id, $group_fields))->isIdenticalTo($source_groups);
+        $this->array($get_relations(Profile_User::getTable(), $users_id, $profile_fields))->isIdenticalTo($source_profiles);
+        $this->array($get_relations(Group_User::getTable(), $users_id, $group_fields))->isIdenticalTo($source_groups);
         $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
         $scope->assertActive();
         $this->array($user::$cloneTargets)->isEmpty('Refused User creation must not dispatch dependent clone hooks');
@@ -1985,13 +2197,13 @@ class User extends \DbTestCase
         $this->integer($cloned_users_id)->isGreaterThan($users_id);
 
         $this->array(
-            $get_relations(\Profile_User::getTable(), $cloned_users_id, $profile_fields)
+            $get_relations(Profile_User::getTable(), $cloned_users_id, $profile_fields)
         )->isIdenticalTo($source_profiles);
         $this->array(
-            $get_relations(\Group_User::getTable(), $cloned_users_id, $group_fields)
+            $get_relations(Group_User::getTable(), $cloned_users_id, $group_fields)
         )->isIdenticalTo($source_groups);
-        $this->array($get_relations(\Profile_User::getTable(), $users_id, $profile_fields))->isIdenticalTo($source_profiles);
-        $this->array($get_relations(\Group_User::getTable(), $users_id, $group_fields))->isIdenticalTo($source_groups);
+        $this->array($get_relations(Profile_User::getTable(), $users_id, $profile_fields))->isIdenticalTo($source_profiles);
+        $this->array($get_relations(Group_User::getTable(), $users_id, $group_fields))->isIdenticalTo($source_groups);
         $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
         $scope->assertActive();
     }
@@ -2054,13 +2266,13 @@ class User extends \DbTestCase
 
         $uid = (int)$user->add([
            'name'      => $name,
-           'authtype'  => \Auth::DB_GLPI,
+           'authtype'  => Auth::DB_GLPI,
            'auths_id'  => 12
         ]);
 
         $this->integer($uid)->isGreaterThan(0);
 
-        $this->boolean($user->getFromDBbyNameAndAuth($name, \Auth::DB_GLPI, 12))->isTrue();
+        $this->boolean($user->getFromDBbyNameAndAuth($name, Auth::DB_GLPI, 12))->isTrue();
         $this->array($user->fields)
            ->integer['id']->isIdenticalTo($uid)
            ->string['name']->isIdenticalTo($name);
@@ -2320,12 +2532,12 @@ class User extends \DbTestCase
         // second has its password set 11 day ago
         // and so on
         // tenth has its password set 91 day ago
-        $user = new \User();
+        $user = new UserModel();
         for ($i = 1; $i < 100; $i += 10) {
             $user_id = $user->add(
                 [
                   'name'     => 'cron_user_' . mt_rand(),
-                  'authtype' => \Auth::DB_GLPI,
+                  'authtype' => Auth::DB_GLPI,
             ]
             );
             $this->integer($user_id)->isGreaterThan(0);
@@ -2429,8 +2641,8 @@ class User extends \DbTestCase
 
         $this->login();
 
-        $crontask = new \CronTask();
-        $this->boolean($crontask->getFromDBbyName(\User::getType(), 'passwordexpiration'))->isTrue();
+        $crontask = new CronTask();
+        $this->boolean($crontask->getFromDBbyName(UserModel::getType(), 'passwordexpiration'))->isTrue();
         $crontask->fields['param'] = $cron_limit;
 
         $cfg_backup = $CFG_GLPI;
@@ -2439,47 +2651,47 @@ class User extends \DbTestCase
         $CFG_GLPI['password_expiration_lock_delay'] = $lock_delay;
         $CFG_GLPI['use_notifications']  = true;
         $CFG_GLPI['notifications_ajax'] = 1;
-        $result = \User::cronPasswordExpiration($crontask);
+        $result = UserModel::cronPasswordExpiration($crontask);
         $CFG_GLPI = $cfg_backup;
 
         $this->integer($result)->isEqualTo($expected_result);
         $this->integer(
-            countElementsInTable(\Alert::getTable(), ['itemtype' => \User::getType()])
+            countElementsInTable(Alert::getTable(), ['itemtype' => UserModel::getType()])
         )->isEqualTo($expected_notifications_count);
-        $DB->delete(\Alert::getTable(), ['itemtype' => \User::getType()]); // reset alerts
+        $DB->delete(Alert::getTable(), ['itemtype' => UserModel::getType()]); // reset alerts
 
         $user_crit = [
-           'authtype'  => \Auth::DB_GLPI,
+           'authtype'  => Auth::DB_GLPI,
            'is_active' => 0,
         ];
-        $this->integer(countElementsInTable(\User::getTable(), $user_crit))->isEqualTo($expected_lock_count);
-        $DB->update(\User::getTable(), ['is_active' => 1], $user_crit); // reset users
+        $this->integer(countElementsInTable(UserModel::getTable(), $user_crit))->isEqualTo($expected_lock_count);
+        $DB->update(UserModel::getTable(), ['is_active' => 1], $user_crit); // reset users
     }
 }
 
 /** Observe the actual selected connection without opening another transaction or socket. */
-class UserScalarReadProbe extends \Doctrine\DBAL\Connection
+class UserScalarReadProbe extends Connection
 {
     public int $builders = 0;
     public array $queries = [];
 
-    public function __construct(private readonly \Doctrine\DBAL\Connection $selected)
+    public function __construct(private readonly Connection $selected)
     {
         parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
     }
 
-    public function getDatabasePlatform(): \Doctrine\DBAL\Platforms\AbstractPlatform
+    public function getDatabasePlatform(): AbstractPlatform
     {
         return $this->selected->getDatabasePlatform();
     }
 
-    public function createQueryBuilder(): \Doctrine\DBAL\Query\QueryBuilder
+    public function createQueryBuilder(): QueryBuilder
     {
         ++$this->builders;
         return parent::createQueryBuilder();
     }
 
-    public function executeQuery(string $sql, array $params = [], array $types = [], ?\Doctrine\DBAL\Cache\QueryCacheProfile $qcp = null): \Doctrine\DBAL\Result
+    public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
     {
         $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
         return $this->selected->executeQuery($sql, $params, $types, $qcp);
