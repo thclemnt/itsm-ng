@@ -68,6 +68,8 @@ class Dropdown extends DbTestCase
         $connection = $DB->getDoctrineConnection();
         $entity = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
         $id = (int)$entity->getID();
+        $child = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => $id]);
+        $childId = (int)$child->getID();
         $connection->update('glpi_entities', ['ancestors_cache' => 'cache lower', 'sons_cache' => null], ['id' => $id]);
         $fields = ['id', 'entities_id', 'ancestors_cache', 'sons_cache'];
         $manager = \itsmng\Database\Orm::forConnection($connection);
@@ -77,12 +79,54 @@ class Dropdown extends DbTestCase
         $reader = new \itsmng\Database\TreeReadOperation($probe);
         $originalText = \Doctrine\DBAL\Types\Type::getType('text');
         $originalBigint = \Doctrine\DBAL\Types\Type::getType('bigint');
+        $database = $DB;
         try {
+            $publicProbe = new DropdownScalarReadProbe($connection);
+            $this->mockGenerator->orphanize('__construct');
+            $DB = new \mock\DBmysql();
+            $this->calling($DB)->getProvider = $database->getProvider();
+            $routes = 0;
+            $this->calling($DB)->getDoctrineConnection = static function () use ($publicProbe, &$routes) {
+                ++$routes;
+                return $publicProbe;
+            };
+            // Exercise the public scalar caller, which casts its ID to an IN list.
+            $this->array(getAncestorsOf('glpi_entities', $childId))->isIdenticalTo([0 => 0, $id => $id]);
+            $this->array($publicProbe->queries)->hasSize(2);
+            $this->integer($routes)->isIdenticalTo(4, 'Each ancestor read uses the selected connection');
+            $this->integer($publicProbe->builders)->isIdenticalTo(2);
+            $this->array($publicProbe->queries[0]['params'])->isIdenticalTo(['id0' => (string)$childId]);
+            $this->array($publicProbe->queries[0]['types'])->isIdenticalTo(['id0' => \Doctrine\DBAL\Types\Types::BIGINT]);
+            $connection->update('glpi_entities', ['entities_id' => 0], ['id' => $childId]);
+            $this->array(getAncestorsOf('glpi_entities', [$childId, $id, $childId, 0]))->isIdenticalTo([0 => 0]);
+            $this->array($publicProbe->queries)->hasSize(3);
+            $this->integer($publicProbe->builders)->isIdenticalTo(3, 'Tree rows remain live after reparenting');
+            $this->array(getAncestorsOf('glpi_entities', [$id => $id, $childId => $childId]))->isIdenticalTo([0 => 0]);
+            $this->integer($publicProbe->builders)->isIdenticalTo(4, 'Keyed entity scopes use the same ID projection');
+            $this->array(getAncestorsOf('glpi_entities', []))->isEmpty();
+            $this->array(getAncestorsOf('glpi_entities', 0))->isEmpty();
+            $this->array($publicProbe->queries)->hasSize(5, 'Empty selections skip SQL; entity zero is read without an ancestor');
+            $DB = $database;
             $this->array($reader->rows('glpi_entities', $fields, ['id' => $id]))->isIdenticalTo($expected);
             $this->array($probe->queries)->hasSize(1);
             $this->integer($probe->builders)->isIdenticalTo(1);
             $this->array($probe->queries[0]['types'])->isIdenticalTo(['id' => \Doctrine\DBAL\Types\Types::BIGINT]);
             $this->array($probe->queries[0]['params'])->isIdenticalTo(['id' => (string)$id]);
+            foreach ([[$id], [$id, 0, $id], [$id, null, 'NULL'], [null, 'null'], ['selected' => $id]] as $ids) {
+                $this->array($reader->rows('glpi_entities', $fields, ['id' => $ids]))
+                    ->isIdenticalTo($oracle->rows('glpi_entities', $fields, ['id' => $ids]));
+            }
+            $this->integer($probe->builders)->isIdenticalTo(6);
+            $this->array($probe->queries[3]['params'])->isIdenticalTo(['id0' => (string)$id, 'id1' => null, 'id2' => null]);
+            $this->array($probe->queries[3]['types'])->isIdenticalTo(array_fill_keys(['id0', 'id1', 'id2'], \Doctrine\DBAL\Types\Types::BIGINT));
+            $builders = $probe->builders;
+            foreach ([null, 'NULL', ['=', $id], ['>', $id], [true, $id]] as $criteria) {
+                $this->array($reader->rows('glpi_entities', ['id'], ['id' => $criteria]))
+                    ->isIdenticalTo($oracle->rows('glpi_entities', ['id'], ['id' => $criteria]));
+            }
+            $this->exception(static fn () => $reader->rows('glpi_entities', ['id'], ['id' => []]))
+                ->hasMessage('Empty IN are not allowed');
+            $this->integer($probe->builders)->isIdenticalTo($builders, 'Unsupported ID predicates retain the ordinary criteria path');
             $this->string($expected[0]['ancestors_cache'])->isIdenticalTo('cache lower');
             $this->variable($expected[0]['sons_cache'])->isNull();
             $this->array($reader->rows('glpi_entities', ['id', 'entities_id'], ['id' => 0]))
@@ -97,8 +141,13 @@ class Dropdown extends DbTestCase
                 ->isIdenticalTo('CHANGED LOWER');
             $this->array($reader->rows('glpi_entities', ['ancestors_cache'], ['id' => $id]))
                 ->isIdenticalTo($oracle->rows('glpi_entities', ['ancestors_cache'], ['id' => $id]));
+            $this->array($reader->rows('glpi_entities', ['ancestors_cache'], ['id' => [$id, null]]))
+                ->isIdenticalTo($oracle->rows('glpi_entities', ['ancestors_cache'], ['id' => [$id, null]]));
             \Doctrine\DBAL\Types\Type::overrideType('bigint', new DropdownNegativeScalarId());
             $this->array($reader->rows('glpi_entities', ['id'], ['id' => $id]))->isEmpty();
+            $this->array($reader->rows('glpi_entities', ['id'], ['id' => [$id, 0]]))->isEmpty();
+            $this->array($reader->rows('glpi_entities', ['id'], ['id' => [$id, 0]]))
+                ->isIdenticalTo($oracle->rows('glpi_entities', ['id'], ['id' => [$id, 0]]));
             \Doctrine\DBAL\Types\Type::overrideType('bigint', $originalBigint);
             \Doctrine\DBAL\Types\Type::overrideType('text', $originalText);
             $extension = new class ($connection) extends DropdownScalarReadProbe {
@@ -119,6 +168,8 @@ class Dropdown extends DbTestCase
             $extension->getEventManager()->addEventListener([\Doctrine\ORM\Events::loadClassMetadata], $listener);
             $this->array($local->rows('glpi_entities', ['id', 'name'], ['id' => $id]))
                 ->isIdenticalTo($oracle->rows('glpi_entities', ['id', 'name'], ['id' => $id]));
+            $this->array($local->rows('glpi_entities', ['id', 'name'], ['id' => [$id]]))
+                ->isIdenticalTo($oracle->rows('glpi_entities', ['id', 'name'], ['id' => [$id]]));
             $this->integer($listener->loads)->isGreaterThan(0);
             $this->integer($extension->builders)->isIdenticalTo(0, 'Late inherited listeners retain the ordinary ORM path');
             $local->close();
@@ -127,6 +178,7 @@ class Dropdown extends DbTestCase
                 ->isIdenticalTo($oracle->rows('glpi_entities', ['id'], ['id' => [$id]], ['id DESC']));
             $this->integer($probe->builders)->isIdenticalTo($builders, 'General predicates/order retain the existing ORM criteria contract');
         } finally {
+            $DB = $database;
             \Doctrine\DBAL\Types\Type::overrideType('text', $originalText);
             \Doctrine\DBAL\Types\Type::overrideType('bigint', $originalBigint);
             $reader->close();
@@ -2226,6 +2278,11 @@ class DropdownScalarReadProbe extends \Doctrine\DBAL\Connection
     public function getDatabasePlatform(): \Doctrine\DBAL\Platforms\AbstractPlatform
     {
         return $this->selected->getDatabasePlatform();
+    }
+
+    public function isTransactionActive(): bool
+    {
+        return $this->selected->isTransactionActive();
     }
 
     public function createQueryBuilder(): \Doctrine\DBAL\Query\QueryBuilder

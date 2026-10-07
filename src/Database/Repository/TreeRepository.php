@@ -38,7 +38,7 @@ final class TreeRepository
         return $compiled->getScalarResult();
     }
 
-    /** Private-owner point projection; null means the ordinary criteria path is required. */
+    /** Private-owner ID projection; null means the ordinary criteria path is required. */
     public function pointRows(string $table, array $fields, array $criteria): ?array
     {
         $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
@@ -48,9 +48,27 @@ final class TreeRepository
         }
         $identifier = $metadata->identifier[0];
         $column = $metadata->getColumnName($identifier);
-        if (array_keys($criteria) !== [$column] || !is_scalar($criteria[$column])
-            || (is_string($criteria[$column]) && strtolower($criteria[$column]) === 'null')) {
+        if (array_keys($criteria) !== [$column]) {
             return null;
+        }
+        $ids = $criteria[$column];
+        $list = is_array($ids);
+        if ($list) {
+            // Only flat ID selections; operators and empty IN retain RecordCriteria semantics.
+            if (!$ids) {
+                return null;
+            }
+            foreach ($ids as $id) {
+                if ($id !== null && !is_int($id)
+                    && !(is_string($id) && (is_numeric($id) || $id === 'null' || $id === 'NULL'))) {
+                    return null;
+                }
+            }
+            $ids = array_values($ids);
+        } elseif (!is_scalar($ids) || (is_string($ids) && strtolower($ids) === 'null')) {
+            return null;
+        } else {
+            $ids = [$ids];
         }
         $connection = $this->em->getConnection();
         $platform = $connection->getDatabasePlatform();
@@ -89,16 +107,26 @@ final class TreeRepository
             $query->addSelect($expression . ' AS ' . $connection->quoteIdentifier($field));
         }
         $typeName = $metadata->getTypeOfField($identifier);
-        $value = \itsmng\Database\LegacyValues::decode($criteria[$column]);
-        $value = match ($typeName) {
-            Types::BOOLEAN => (bool)(int)$value,
-            Types::INTEGER, Types::SMALLINT => (int)$value,
-            Types::FLOAT => (float)$value,
-            default => (string)$value,
-        };
-        $parameter = \Doctrine\DBAL\Types\Type::getType($typeName)->convertToDatabaseValueSQL(':id', $platform);
-        $query->where('r.' . $quote->getColumnName($identifier, $metadata, $platform) . ' = ' . $parameter)
-            ->setParameter('id', $value, $typeName);
+        $type = \Doctrine\DBAL\Types\Type::getType($typeName);
+        $parameters = [];
+        foreach ($ids as $index => $id) {
+            $value = \itsmng\Database\LegacyValues::decode($id);
+            if ($value !== null) {
+                $value = match ($typeName) {
+                    Types::BOOLEAN => (bool)(int)$value,
+                    Types::INTEGER, Types::SMALLINT => (int)$value,
+                    Types::FLOAT => (float)$value,
+                    default => (string)$value,
+                };
+            }
+            $name = $list ? 'id' . $index : 'id';
+            // RecordCriteria converts each typed IN parameter, including SQL type
+            // overrides. ArrayParameterType would bypass those conversions.
+            $parameters[] = $type->convertToDatabaseValueSQL(':' . $name, $platform);
+            $query->setParameter($name, $value, $typeName);
+        }
+        $query->where('r.' . $quote->getColumnName($identifier, $metadata, $platform)
+            . ($list ? ' IN (' . implode(', ', $parameters) . ')' : ' = ' . $parameters[0]));
         // ORM scalar aliases intentionally preserve native DBAL values too: JSON
         // caches remain strings and no entity hydration/PHP type conversion runs.
         return $query->executeQuery()->fetchAllAssociative();
