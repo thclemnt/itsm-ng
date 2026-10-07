@@ -8,6 +8,11 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_phonetypes')]
+#[\itsmng\Database\Mapping\PlatformOptions(\Doctrine\DBAL\Platforms\AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
+#[\itsmng\Database\Mapping\SchemaOwner]
+#[\itsmng\Database\Mapping\SchemaIndex('name', ['name'], postgresqlName: 'glpi_phonetypes_name')]
+#[\itsmng\Database\Mapping\SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_phonetypes_date_mod')]
+#[\itsmng\Database\Mapping\SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_phonetypes_date_creation')]
 class PhoneType
 {
     #[ORM\Id]

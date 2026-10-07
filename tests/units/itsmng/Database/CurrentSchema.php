@@ -204,6 +204,12 @@ class CurrentSchema extends \atoum\atoum\test
         return [
             ['glpi_crontasks', 16, 5, [], []],
             ['glpi_configs', 4, 2, [], []],
+            ['glpi_computertypes', 5, 4, [], []],
+            ['glpi_monitortypes', 5, 4, [], []],
+            ['glpi_networkequipmenttypes', 5, 4, [], []],
+            ['glpi_peripheraltypes', 5, 4, [], []],
+            ['glpi_phonetypes', 5, 4, [], []],
+            ['glpi_printertypes', 5, 4, [], []],
             // DBAL also retains the implicit parent-reference index when composing FKs.
             ['glpi_crontasklogs', 8, 5, ['crontasklogs_id'], [
                 'crontasks_id' => 'glpi_crontasks', 'crontasklogs_id' => 'glpi_crontasklogs',
@@ -304,6 +310,51 @@ class CurrentSchema extends \atoum\atoum\test
             $fresh = (new BaselineSchema())->build($platform)->getTable('glpi_crontasks');
             $this->integer($fresh->getColumn('name')->getLength())->isIdenticalTo(150);
             $this->boolean($fresh->hasColumn('comment'))->isTrue();
+            $this->boolean($manager->getConnection()->isConnected())->isFalse();
+        }
+    }
+
+    public function testAssetTypePropertiesAndIndexesOwnCurrentExpectation(): void
+    {
+        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+            $manager = $this->manager($platform);
+            $frozen = (new Baseline())->build($platform)->toSql($platform);
+            $tables = [];
+            foreach ([
+                \itsmng\Database\Entity\ComputerType::class, \itsmng\Database\Entity\MonitorType::class,
+                \itsmng\Database\Entity\NetworkEquipmentType::class, \itsmng\Database\Entity\PeripheralType::class,
+                \itsmng\Database\Entity\PhoneType::class, \itsmng\Database\Entity\PrinterType::class,
+            ] as $class) {
+                $metadata = $manager->getClassMetadata($class);
+                $table = $metadata->getTableName();
+                $tables[] = $table;
+                $metadata->fieldMappings['name']->length = 173;
+                $metadata->fieldMappings['name']->nullable = false;
+                $metadata->fieldMappings['name']->options['default'] = 'Current type';
+                $metadata->fieldMappings['comment']->type = Types::STRING;
+                $metadata->fieldMappings['comment']->length = 311;
+                $index = $platform instanceof PostgreSQLPlatform ? $table . '_name' : 'name';
+                unset($metadata->table['indexes'][$index]);
+                $metadata->table['indexes'][$table . '_current_label']['columns'] = ['name', 'date_mod'];
+            }
+            $current = (new BaselineSchema($manager))->build($platform);
+            $fresh = (new BaselineSchema($this->manager($platform)))->build($platform);
+            foreach ($tables as $table) {
+                $declaration = $current->getTable($table);
+                $index = $platform instanceof PostgreSQLPlatform ? $table . '_name' : 'name';
+                $this->integer($declaration->getColumn('name')->getLength())->isIdenticalTo(173);
+                $this->boolean($declaration->getColumn('name')->getNotnull())->isTrue();
+                $this->string($declaration->getColumn('name')->getDefault())->isIdenticalTo('Current type');
+                $this->string(Type::lookupName($declaration->getColumn('comment')->getType()))->isIdenticalTo(Types::STRING);
+                $this->integer($declaration->getColumn('comment')->getLength())->isIdenticalTo(311);
+                $this->boolean($declaration->hasIndex($index))->isFalse();
+                $this->array($declaration->getIndex($table . '_current_label')->getColumns())->isIdenticalTo(['name', 'date_mod']);
+                $this->integer($fresh->getTable($table)->getColumn('name')->getLength())->isIdenticalTo(255);
+                $this->boolean($fresh->getTable($table)->getColumn('name')->getNotnull())->isFalse();
+                $this->boolean($fresh->getTable($table)->hasIndex($index))->isTrue();
+                $this->boolean($fresh->getTable($table)->hasIndex($table . '_current_label'))->isFalse();
+            }
+            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
             $this->boolean($manager->getConnection()->isConnected())->isFalse();
         }
     }
