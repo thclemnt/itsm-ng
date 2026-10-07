@@ -16,6 +16,27 @@ final class ComponentRepository
     {
     }
 
+    /** Count attached rows in one operation; duplicate affinities retain their multiplicity. */
+    public function countForAsset(array $tables, string $type, int $id): int
+    {
+        $count = 0;
+        foreach ($tables as $table) {
+            $class = EntityRegistry::tables()[$table];
+            $reference = EntityRegistry::discriminatedReferences($table)['items_id'] ?? null;
+            if ($reference !== null && !isset($reference['selections'][$type])) {
+                continue;
+            }
+            $subject = $reference === null ? 'r.items_id' : 'IDENTITY(r.' . $class::referenceAssociation($type) . ')';
+            $count += (int)$this->em->createQueryBuilder()->select('COUNT(r.id)')->from($class, 'r')
+                ->where($subject . ' = :asset AND r.itemtype = :kind AND r.is_deleted = :deleted')
+                ->setParameter('asset', $id, Types::BIGINT)
+                ->setParameter('kind', $type, Types::STRING)
+                ->setParameter('deleted', false, Types::BOOLEAN)
+                ->getQuery()->getSingleScalarResult();
+        }
+        return $count;
+    }
+
     /** A selected typed subject must exist; stock deliberately selects no subject. */
     public function hasSelectedSubject(string $table, array $values): bool
     {

@@ -21,6 +21,12 @@ final class EntityRegistry
         return self::model()['tables'];
     }
 
+    /** Exact public item classes declared by itemtype owning-reference branches. */
+    public static function legacyTables(): array
+    {
+        return self::model()['legacy_tables'];
+    }
+
     /** Compatibility role derived only from the annotated owning association. */
     public static function entityScopeOwner(string $table): ?array
     {
@@ -127,7 +133,7 @@ final class EntityRegistry
         $em = new EntityManager($connection, Orm::configuration(new MySQLPlatform()));
         $metadata = $em->getMetadataFactory()->getAllMetadata();
         $nativeTimestamps = NativeTimestampSchema::declarations($metadata);
-        $tables = $types = $booleans = $booleanFields = $relations = $references = $discriminators = $lifecycle = $readOnly = $scopeOwners = [];
+        $legacyTables = $tables = $types = $booleans = $booleanFields = $relations = $references = $discriminators = $lifecycle = $readOnly = $scopeOwners = [];
         foreach ($metadata as $record) {
             $table = $record->getTableName();
             if (isset($tables[$table])) {
@@ -186,6 +192,12 @@ final class EntityRegistry
                                 throw new \LogicException('Duplicate discriminated reference kind');
                             }
                             $discriminators[$table][$binding->legacyColumn]['selections'][$value] = ['column' => $join->name, 'target' => $target, 'empty_value' => $binding->emptyValue];
+                            if ($logicalDiscriminator !== null) {
+                                if (isset($legacyTables[$value]) && $legacyTables[$value] !== $target) {
+                                    throw new \LogicException('Conflicting itemtype target table: ' . $value);
+                                }
+                                $legacyTables[$value] = $target;
+                            }
                         }
                     }
                     $child = ($propertyMetadata->getAttributes(Mapping\ApplicationManaged::class) ? '_' : '') . $table;
@@ -256,6 +268,6 @@ final class EntityRegistry
         // Only immutable lookup projections survive bootstrap, not the offline unit of work.
         unset($em, $metadata, $record);
         gc_collect_cycles();
-        return ['tables' => $tables, 'types' => $types, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners, 'native_timestamps' => $nativeTimestamps];
+        return ['legacy_tables' => $legacyTables, 'tables' => $tables, 'types' => $types, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners, 'native_timestamps' => $nativeTimestamps];
     }
 }

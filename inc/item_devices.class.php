@@ -697,20 +697,52 @@ class Item_Devices extends CommonDBRelation
 
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
     {
+        global $DB;
 
         if ($item->canView()) {
             $nb = 0;
             if (in_array($item->getType(), self::getConcernedItems())) {
                 if ($_SESSION['glpishow_count_on_tabs']) {
-                    foreach (self::getItemAffinities($item->getType()) as $link_type) {
-                        $nb   += countElementsInTable(
-                            $link_type::getTable(),
-                            [
-                              'items_id'   => $item->getID(),
-                              'itemtype'   => $item->getType(),
-                              'is_deleted' => 0
-                            ]
-                        );
+                    $affinities = self::getItemAffinities($item->getType());
+                    $mapped = \itsmng\Database\EntityRegistry::legacyTables();
+                    $batch = isset($mapped[$item::class]);
+                    $tables = [];
+                    foreach ($affinities as $link_type) {
+                        // Declared public models have no custom table dispatch.
+                        // Extensions retain their original calls and routing.
+                        if (!$batch || !isset($mapped[$link_type])) {
+                            $batch = false;
+                            break;
+                        }
+                        $table = $link_type::getTable();
+                        if ($mapped[$link_type] !== $table) {
+                            $batch = false;
+                            break;
+                        }
+                        $tables[] = $table;
+                    }
+                    if ($batch && $tables) {
+                        $em = \itsmng\Database\Orm::create($DB);
+                        try {
+                            $nb = (new \itsmng\Database\Repository\ComponentRepository($em))->countForAsset(
+                                $tables,
+                                $item->getType(),
+                                (int)$item->getID(),
+                            );
+                        } finally {
+                            $em->clear();
+                        }
+                    } else {
+                        foreach ($affinities as $link_type) {
+                            $nb += countElementsInTable(
+                                $link_type::getTable(),
+                                [
+                                    'items_id' => $item->getID(),
+                                    'itemtype' => $item->getType(),
+                                    'is_deleted' => 0,
+                                ],
+                            );
+                        }
                     }
                 }
                 return self::createTabEntry(

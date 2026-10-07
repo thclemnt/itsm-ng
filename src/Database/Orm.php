@@ -30,7 +30,8 @@ final class Orm
         if (++self::$unitsOfWork % 8 === 0) {
             gc_collect_cycles();
         }
-        $configuration = self::configuration($db->getDoctrineConnection()->getDatabasePlatform());
+        $connection = $db->getDoctrineConnection();
+        $configuration = self::configuration($connection->getDatabasePlatform());
         // Cache compiled DQL, never rows or managed entities. Only this owned
         // configuration participates: public configurations may replace mapping
         // drivers/listeners and must not inherit a different mapping's SQL.
@@ -41,12 +42,12 @@ final class Orm
         // Public configuration() and custom mapping/listener callers stay isolated.
         $pool = $GLOBALS['GLPI_CACHE'] ?? null;
         if ($pool instanceof \Psr\SimpleCache\CacheInterface && ($fingerprint = MappingFingerprint::current()) !== null) {
-            $context = hash('sha256', $fingerprint . "\0" . $db->getDoctrineConnection()->getDatabasePlatform()::class
+            $context = hash('sha256', $fingerprint . "\0" . $connection->getDatabasePlatform()::class
                 . "\0" . $driver::class . "\0" . $configuration->getProxyDir());
             $configuration->setMetadataCache(new SerializedMetadataCache($pool, 'orm_metadata_' . $context));
         }
         $configuration->setQueryCache(self::$queryCaches[$driver] ??= new ArrayAdapter(storeSerialized: true));
-        return new EntityManager($db->getDoctrineConnection(), $configuration);
+        return new EntityManager($connection, $configuration);
     }
 
     public static function configuration(AbstractPlatform $platform): Configuration

@@ -255,6 +255,40 @@ class EntityRegistryCache extends \atoum\atoum\test
         $this->array($logger->levels)->isIdenticalTo(['warning', 'warning', 'warning']);
     }
 
+    public function testPublicTypesComeFromOwningDiscriminatorTargets(): void
+    {
+        $types = EntityRegistry::legacyTables();
+        $this->string($types['Computer'])->isIdenticalTo('glpi_computers');
+        $this->string($types['NetworkEquipment'])->isIdenticalTo('glpi_networkequipments');
+        $this->string($types['Peripheral'])->isIdenticalTo('glpi_peripherals');
+        $this->string($types['Phone'])->isIdenticalTo('glpi_phones');
+        $this->string($types['Printer'])->isIdenticalTo('glpi_printers');
+        $this->string($types['Enclosure'])->isIdenticalTo('glpi_enclosures');
+        $this->string($types['Item_DeviceMemory'])->isIdenticalTo('glpi_items_devicememories');
+        $this->string($types['Item_DeviceGeneric'])->isIdenticalTo('glpi_items_devicegenerics');
+        $components = array_filter($types, static fn (string $table): bool => str_starts_with($table, 'glpi_items_device'));
+        $this->array($components)->hasSize(17);
+        $this->boolean(isset($types['mock\\Computer']))->isFalse();
+        $this->boolean(isset($types['mock\\Item_DeviceMemory']))->isFalse();
+        $declared = [];
+        foreach (EntityRegistry::tables() as $table => $class) {
+            foreach (EntityRegistry::discriminatedReferences($table) as $reference) {
+                if (($reference['discriminator'] ?? null) !== 'itemtype') {
+                    continue;
+                }
+                foreach ($reference['selections'] as $kind => $selection) {
+                    if (isset($declared[$kind])) {
+                        $this->string($selection['target'])->isIdenticalTo($declared[$kind]);
+                    }
+                    $declared[$kind] = $selection['target'];
+                }
+            }
+        }
+        ksort($declared);
+        ksort($types);
+        $this->array($types)->isIdenticalTo($declared);
+    }
+
     public function testRealRegistryColdAndWarmProjectionsAreIdentical(): void
     {
         $previous = $GLOBALS['GLPI_CACHE'] ?? null;
@@ -262,7 +296,7 @@ class EntityRegistryCache extends \atoum\atoum\test
         $previousModel = $model->getValue();
         $pool = new ArrayAdapter(storeSerialized: false);
         $GLOBALS['GLPI_CACHE'] = new Psr16Cache($pool);
-        $snapshot = static fn (): array => [EntityRegistry::tables(), EntityRegistry::relations(), EntityRegistry::lifecycleRelations(), EntityRegistry::nativeTimestamps(), EntityRegistry::booleanColumns(), EntityRegistry::references('glpi_tickets')];
+        $snapshot = static fn (): array => [EntityRegistry::tables(), EntityRegistry::legacyTables(), EntityRegistry::relations(), EntityRegistry::lifecycleRelations(), EntityRegistry::nativeTimestamps(), EntityRegistry::booleanColumns(), EntityRegistry::references('glpi_tickets')];
         try {
             $model->setValue(null, null);
             $cold = serialize($snapshot());

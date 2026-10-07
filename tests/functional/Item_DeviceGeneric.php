@@ -115,6 +115,9 @@ class Item_DeviceGeneric extends DbTestCase
             $em = \itsmng\Database\Orm::create($DB);
             try {
                 $repository = new \itsmng\Database\Repository\ComponentRepository($em);
+                $this->integer($repository->countForAsset([$link->getTable()], 'Computer', $assetId))->isIdenticalTo(1);
+                $this->integer($repository->countForAsset([$link->getTable(), $link->getTable()], 'Computer', $assetId))->isIdenticalTo(2);
+                $this->integer($repository->countForAsset([$link->getTable()], 'Computer', (int)$other->getID()))->isIdenticalTo(1);
                 $this->integer($repository->detach($link->getTable(), 'Monitor', $assetId))->isIdenticalTo(0);
                 $this->integer($repository->detach($link->getTable(), 'Computer', $assetId))->isIdenticalTo(2);
             } finally {
@@ -138,6 +141,164 @@ class Item_DeviceGeneric extends DbTestCase
         } finally {
             $_SESSION = $savedSession;
             error_reporting($savedReporting);
+        }
+    }
+
+    public function testComponentTabCountOwnsOneManagerAndPreservesCustomDispatch(): void
+    {
+        global $DB, $GLPI_CACHE, $CFG_GLPI;
+
+        $database = $DB;
+        $session = $_SESSION;
+        $configuration = $CFG_GLPI;
+        $hadAffinities = $GLPI_CACHE->has('item_device_affinities');
+        $savedAffinities = $hadAffinities ? $GLPI_CACHE->get('item_device_affinities') : null;
+        $manager = null;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $_SESSION['glpishow_count_on_tabs'] = 1;
+            $asset = $this->createItem(\Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $other = $this->createItem(\Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $device = $this->createItem(\DeviceMemory::class, ['designation' => $this->getUniqueString(), 'entities_id' => 0]);
+            $common = ['devicememories_id' => (int)$device->getID(), 'entities_id' => 0];
+            $this->createItem(\Item_DeviceMemory::class, $common + ['itemtype' => 'Computer', 'items_id' => (int)$asset->getID()]);
+            $this->createItem(\Item_DeviceMemory::class, $common + ['itemtype' => 'Computer', 'items_id' => (int)$asset->getID()]);
+            $this->createItem(\Item_DeviceMemory::class, $common + ['itemtype' => 'Computer', 'items_id' => (int)$asset->getID(), 'is_deleted' => true]);
+            $this->createItem(\Item_DeviceMemory::class, $common + ['itemtype' => 'Computer', 'items_id' => (int)$other->getID()]);
+            $this->createItem(\Item_DeviceMemory::class, $common + ['itemtype' => '', 'items_id' => 0]);
+            $affinities = array_keys($this->componentFamilies());
+            $this->array($affinities)->hasSize(17);
+            $GLPI_CACHE->set('item_device_affinities', ['' => $affinities, 'Computer' => $affinities]);
+            $tables = array_map(static fn (string $class): string => $class::getTable(), $affinities);
+            $criteria = ['items_id' => $asset->getID(), 'itemtype' => 'Computer', 'is_deleted' => 0];
+            // Observe actual factory invocations without changing production factory behavior.
+            $factories = new \ReflectionProperty(\itsmng\Database\Orm::class, 'unitsOfWork');
+            $before = $factories->getValue();
+            $legacy = 0;
+            foreach ($tables as $table) {
+                $legacy += countElementsInTable($table, $criteria);
+            }
+            $this->integer($legacy)->isIdenticalTo(2);
+            $rows = $DB->getDoctrineConnection()->fetchAllAssociative('SELECT * FROM glpi_items_devicememories WHERE devicememories_id = ?', [(int)$device->getID()]);
+            $this->array($rows)->hasSize(5);
+            $active = array_filter($rows, static fn (array $row): bool => $row['itemtype'] === 'Computer'
+                && (int)$row['items_id'] === (int)$asset->getID() && !(bool)$row['is_deleted']);
+            $this->integer(count($active))->isIdenticalTo($legacy);
+
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(17);
+            $tab = new \Item_Devices();
+            $expected = \Item_Devices::createTabEntry(_n('Component', 'Components', \Session::getPluralNumber()), $legacy);
+            $before = $factories->getValue();
+            $this->string($tab->getTabNameForItem($asset))->isIdenticalTo($expected);
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(1);
+
+            // Each original COUNT remains a real ORM query on the supplied connection.
+            $connection = $DB->getDoctrineConnection();
+            $manager = new class ($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+                public array $queries = [];
+                public function createQuery(string $dql = ''): \Doctrine\ORM\Query
+                {
+                    $this->queries[] = $dql;
+                    return parent::createQuery($dql);
+                }
+            };
+            $repository = new \itsmng\Database\Repository\ComponentRepository($manager);
+            $this->integer($repository->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
+            $this->array($manager->queries)->hasSize(17);
+            foreach ($manager->queries as $index => $query) {
+                $this->string($query)->startWith('SELECT COUNT(r.id) FROM ')->notContains(' JOIN ');
+                $reference = \itsmng\Database\EntityRegistry::discriminatedReferences($tables[$index])['items_id'] ?? null;
+                $class = \itsmng\Database\EntityRegistry::tables()[$tables[$index]];
+                $subject = $reference === null ? 'r.items_id' : 'IDENTITY(r.' . $class::referenceAssociation('Computer') . ')';
+                $this->string($query)->contains($subject . ' = :asset')->contains('r.itemtype = :kind')->contains('r.is_deleted = :deleted');
+                if ($reference !== null) {
+                    $this->string($query)->notContains('r.items_id');
+                }
+            }
+            $this->integer($manager->getUnitOfWork()->size())->isIdenticalTo(0);
+            $GLPI_CACHE->set('item_device_affinities', ['' => $affinities, 'Computer' => [\Item_DeviceMemory::class, \Item_DeviceMemory::class]]);
+            $this->string($tab->getTabNameForItem($asset))->isIdenticalTo(\Item_Devices::createTabEntry(_n('Component', 'Components', \Session::getPluralNumber()), 4));
+            $_SESSION['glpishow_count_on_tabs'] = 0;
+            $before = $factories->getValue();
+            $this->string($tab->getTabNameForItem($asset))->isIdenticalTo(\Item_Devices::createTabEntry(_n('Component', 'Components', \Session::getPluralNumber())));
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+            $_SESSION['glpishow_count_on_tabs'] = 1;
+            $rights = $_SESSION['glpiactiveprofile']['computer'];
+            $_SESSION['glpiactiveprofile']['computer'] = 0;
+            $before = $factories->getValue();
+            $this->string($tab->getTabNameForItem($asset))->isEmpty();
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+            $_SESSION['glpiactiveprofile']['computer'] = $rights;
+
+            $events = [];
+            $custom = new class () extends \Computer {
+                public static array $events = [];
+                public static function getType()
+                {
+                    self::$events[] = 'type';
+                    return 'Computer';
+                }
+                public function getID()
+                {
+                    self::$events[] = 'id';
+                    return parent::getID();
+                }
+            };
+            $customLink = new class () extends \Item_DeviceMemory {
+                public static array $events = [];
+                public static function getTable($classname = null)
+                {
+                    self::$events[] = 'table';
+                    return \Item_DeviceMemory::getTable();
+                }
+            };
+            $custom::$events = & $events;
+            $customLink::$events = & $events;
+            $custom->fields = $asset->fields;
+            // Mutable table aliases must not admit extension classes into the core batch.
+            $CFG_GLPI['glpitablesitemtype'][$custom::class] = 'glpi_computers';
+            $CFG_GLPI['glpitablesitemtype'][$customLink::class] = 'glpi_items_devicememories';
+            $GLPI_CACHE->set('item_device_affinities', ['' => $affinities, 'Computer' => [$customLink::class, \Item_DeviceGeneric::class, $customLink::class]]);
+            $before = $factories->getValue();
+            $this->string($tab->getTabNameForItem($custom))->isIdenticalTo(\Item_Devices::createTabEntry(_n('Component', 'Components', \Session::getPluralNumber()), 4));
+            $this->array($events)->isIdenticalTo(['type', 'type', 'table', 'id', 'type', 'id', 'type', 'table', 'id', 'type']);
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(3);
+            $events = [];
+            $before = $factories->getValue();
+            $this->string($tab->getTabNameForItem($asset))->isIdenticalTo(\Item_Devices::createTabEntry(_n('Component', 'Components', \Session::getPluralNumber()), 4));
+            $this->array($events)->isIdenticalTo(['table', 'table']);
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(3);
+            $GLPI_CACHE->set('item_device_affinities', ['' => $affinities, 'Computer' => [\Item_DeviceMemory::class, \Item_DeviceMemory::class]]);
+            $events = [];
+            $before = $factories->getValue();
+            $this->string($tab->getTabNameForItem($custom))->isIdenticalTo(\Item_Devices::createTabEntry(_n('Component', 'Components', \Session::getPluralNumber()), 4));
+            $this->array($events)->isIdenticalTo(['type', 'type', 'id', 'type', 'id', 'type']);
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(2);
+
+            $this->mockGenerator->orphanize('__construct');
+            $routed = new \mock\DBmysql();
+            $routes = 0;
+            $this->calling($routed)->getDoctrineConnection = static function () use ($connection, &$routes) {
+                ++$routes;
+                return $connection;
+            };
+            $DB = $routed;
+            $GLPI_CACHE->set('item_device_affinities', ['' => $affinities, 'Computer' => $affinities]);
+            $before = $factories->getValue();
+            $this->string($tab->getTabNameForItem($asset))->isIdenticalTo($expected);
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(1);
+            $this->integer($routes)->isIdenticalTo(1);
+        } finally {
+            $manager?->clear();
+            $DB = $database;
+            $_SESSION = $session;
+            $CFG_GLPI = $configuration;
+            if ($hadAffinities) {
+                $GLPI_CACHE->set('item_device_affinities', $savedAffinities);
+            } else {
+                $GLPI_CACHE->delete('item_device_affinities');
+            }
         }
     }
 
