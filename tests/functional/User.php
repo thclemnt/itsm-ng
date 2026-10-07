@@ -37,6 +37,141 @@ namespace tests\units;
 
 class User extends \DbTestCase
 {
+    public function testPrivateUserScopesAndDisplayUseFreshTypedScalarReads(): void
+    {
+        global $DB;
+        $this->login();
+        $connection = $DB->getDoctrineConnection();
+        $user = $this->createItem(\User::class, ['name' => 'scalar-' . $this->getUniqueString(), 'realname' => 'lower name']);
+        $profile = $this->createItem(\Profile::class, ['name' => $this->getUniqueString()]);
+        $id = (int)$user->getID();
+        $profileId = (int)$profile->getID();
+        $connection->insert('glpi_profiles_users', ['users_id' => $id, 'profiles_id' => $profileId, 'entities_id' => 0, 'is_recursive' => false], ['users_id' => 'bigint', 'profiles_id' => 'bigint', 'entities_id' => 'bigint', 'is_recursive' => 'boolean']);
+        $right = 'scalar_scope_' . $id;
+        $connection->insert('glpi_profilerights', ['profiles_id' => $profileId, 'name' => $right, 'rights' => 5]);
+        $manager = \itsmng\Database\Orm::forConnection($connection);
+        $grants = new \itsmng\Database\Repository\ProfileUserRepository($manager);
+        $users = new \itsmng\Database\Repository\UserRepository($manager);
+        $probe = new UserScalarReadProbe($connection);
+        $expectedScope = [];
+        foreach ($grants->scopes($id, $profileId) as $grant) {
+            $expectedScope[$grant['entities_id']] = $grant['entities_id'];
+        }
+        $utils = new \DbUtils();
+        $expectedName = $utils->getUserName($id);
+        $this->array($expectedScope)->isNotEmpty();
+        $this->string($expectedName)->isNotEmpty();
+        $originalAdapter = $DB;
+        $originalScope = $connection->captureManagedTransactionScope();
+        $originalDepth = $connection->getTransactionNestingLevel();
+        $this->mockGenerator->orphanize('__construct');
+        $adapter = new \mock\DBmysql();
+        $this->calling($adapter)->getDoctrineConnection = $probe;
+        $this->calling($adapter)->getProvider = $originalAdapter->getProvider();
+        try {
+            $DB = $adapter;
+            $this->array(\Profile_User::getEntitiesForProfileByUser($id, $profileId))->isIdenticalTo($expectedScope);
+            $this->string($utils->getUserName($id))->isIdenticalTo($expectedName);
+            $this->array($probe->queries)->hasSize(2);
+            $this->integer($probe->builders)->isIdenticalTo(2);
+        } finally {
+            $DB = $originalAdapter;
+            $originalScope->assertActive();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($originalDepth);
+        }
+        $probe->builders = 0;
+        $probe->queries = [];
+        $scopes = new \itsmng\Database\ProfileUserReadOperation($probe);
+        $display = new \itsmng\Database\UserDisplayReadOperation($probe);
+        $integer = \Doctrine\DBAL\Types\Type::getType('integer');
+        $string = \Doctrine\DBAL\Types\Type::getType('string');
+        $sort = static function (array $rows): array {
+            usort($rows, static fn (array $a, array $b): int => [$a['entities_id'], $a['is_recursive']] <=> [$b['entities_id'], $b['is_recursive']]);
+            return $rows;
+        };
+        try {
+            foreach ([[null, null, 0], [$profileId, null, 0], [0, null, 0], [null, $right, 1], [null, $right, 2], [null, $right, 0], [null, '', 1]] as [$selectedProfile, $selectedRight, $mask]) {
+                $this->array($sort($scopes->scopes($id, $selectedProfile, $selectedRight, $mask)))
+                    ->isIdenticalTo($sort($grants->scopes($id, $selectedProfile, $selectedRight, $mask)));
+            }
+            $this->integer($probe->builders)->isIdenticalTo(7);
+            $this->array($display->displayData($id))->isIdenticalTo($users->displayData($id));
+            $this->integer($probe->builders)->isIdenticalTo(8);
+            $this->variable($display->displayData(-1))->isNull();
+            $connection->update('glpi_users', ['realname' => 'changed lower', 'phone' => null], ['id' => $id]);
+            $this->array($display->displayData($id))->isIdenticalTo($users->displayData($id));
+            $this->string($display->displayData($id)['realname'])->isIdenticalTo('changed lower');
+            $connection->update('glpi_profiles_users', ['is_recursive' => true], ['users_id' => $id, 'profiles_id' => $profileId], ['is_recursive' => 'boolean', 'users_id' => 'bigint', 'profiles_id' => 'bigint']);
+            $this->array($scopes->scopes($id, $profileId))->isIdenticalTo($grants->scopes($id, $profileId));
+            $connection->update('glpi_profilerights', ['rights' => 0], ['profiles_id' => $profileId, 'name' => $right]);
+            $this->array($scopes->scopes($id, right: $right, mask: 1))->isEmpty();
+            $this->array(\Profile_User::getUserEntitiesForRight($id, $right, 1))->isEmpty();
+            \Doctrine\DBAL\Types\Type::overrideType('integer', new class () extends \Doctrine\DBAL\Types\IntegerType {
+                public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                {
+                    return '(' . $sqlExpr . ' * 0 - 1)';
+                }
+            });
+            $this->array($scopes->scopes($id))->isEmpty();
+            $this->array($grants->scopes($id))->isEmpty();
+            $this->variable($display->displayData($id))->isNull();
+            $this->variable($users->displayData($id))->isNull();
+            \Doctrine\DBAL\Types\Type::overrideType('integer', $integer);
+            \Doctrine\DBAL\Types\Type::overrideType('string', new class () extends \Doctrine\DBAL\Types\StringType {
+                public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                {
+                    return 'UPPER(' . $sqlExpr . ')';
+                }
+                public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+                {
+                    throw new \LogicException('Explicit scalar aliases must not convert PHP values.');
+                }
+            });
+            $this->array($display->displayData($id))->isIdenticalTo($users->displayData($id));
+            $this->string($display->displayData($id)['realname'])->isIdenticalTo('CHANGED LOWER');
+            \Doctrine\DBAL\Types\Type::overrideType('string', new class () extends \Doctrine\DBAL\Types\StringType {
+                public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                {
+                    return "'no-matching-permission'";
+                }
+            });
+            $connection->update('glpi_profilerights', ['rights' => 5], ['profiles_id' => $profileId, 'name' => $right]);
+            $expectedRight = $grants->scopes($id, right: $right, mask: 1);
+            $this->array($expectedRight)->isNotEmpty();
+            $this->array($scopes->scopes($id, right: $right, mask: 1))->isIdenticalTo($expectedRight);
+            \Doctrine\DBAL\Types\Type::overrideType('string', $string);
+            $extension = new class ($connection) extends UserScalarReadProbe {
+                private ?\Doctrine\Common\EventManager $events = null;
+                public function getEventManager(): \Doctrine\Common\EventManager
+                {
+                    return $this->events ??= new \Doctrine\Common\EventManager();
+                }
+            };
+            $localScopes = new \itsmng\Database\ProfileUserReadOperation($extension);
+            $localDisplay = new \itsmng\Database\UserDisplayReadOperation($extension);
+            $listener = new class () {
+                public int $loads = 0;
+                public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+                {
+                    ++$this->loads;
+                }
+            };
+            $extension->getEventManager()->addEventListener([\Doctrine\ORM\Events::loadClassMetadata], $listener);
+            $this->array($sort($localScopes->scopes($id)))->isIdenticalTo($sort($grants->scopes($id)));
+            $this->array($localDisplay->displayData($id))->isIdenticalTo($users->displayData($id));
+            $this->integer($listener->loads)->isGreaterThan(0);
+            $this->integer($extension->builders)->isIdenticalTo(0);
+            $localScopes->close();
+            $localDisplay->close();
+        } finally {
+            \Doctrine\DBAL\Types\Type::overrideType('integer', $integer);
+            \Doctrine\DBAL\Types\Type::overrideType('string', $string);
+            $scopes->close();
+            $display->close();
+            $manager->clear();
+        }
+    }
+
     public function testDefaultAddressSelectionUsesCurrentSurvivorsInCallerTransaction(): void
     {
         global $DB;
@@ -1845,5 +1980,34 @@ class User extends \DbTestCase
         ];
         $this->integer(countElementsInTable(\User::getTable(), $user_crit))->isEqualTo($expected_lock_count);
         $DB->update(\User::getTable(), ['is_active' => 1], $user_crit); // reset users
+    }
+}
+
+/** Observe the actual selected connection without opening another transaction or socket. */
+class UserScalarReadProbe extends \Doctrine\DBAL\Connection
+{
+    public int $builders = 0;
+    public array $queries = [];
+
+    public function __construct(private readonly \Doctrine\DBAL\Connection $selected)
+    {
+        parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
+    }
+
+    public function getDatabasePlatform(): \Doctrine\DBAL\Platforms\AbstractPlatform
+    {
+        return $this->selected->getDatabasePlatform();
+    }
+
+    public function createQueryBuilder(): \Doctrine\DBAL\Query\QueryBuilder
+    {
+        ++$this->builders;
+        return parent::createQueryBuilder();
+    }
+
+    public function executeQuery(string $sql, array $params = [], array $types = [], ?\Doctrine\DBAL\Cache\QueryCacheProfile $qcp = null): \Doctrine\DBAL\Result
+    {
+        $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
+        return $this->selected->executeQuery($sql, $params, $types, $qcp);
     }
 }

@@ -1600,7 +1600,7 @@ final class DbUtils
         }
 
         if ($ID) {
-            $data = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+            $data = (new \itsmng\Database\UserDisplayReadOperation($DB->getDoctrineConnection()))
                 ->displayData((int)$ID);
 
             if ($link == 2) {

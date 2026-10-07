@@ -210,6 +210,32 @@ final class UserRepository
         return $rows[0] ?? null;
     }
 
+    /** Fixed scalar display projection on the private selected connection. */
+    public function nativeDisplayData(int $user): ?array
+    {
+        $metadata = $this->em->getClassMetadata(User::class);
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $select = [];
+        foreach (['id', 'name', 'realname', 'firstname', 'phone', 'mobile', 'picture'] as $field) {
+            $type = \Doctrine\DBAL\Types\Type::getType($metadata->getTypeOfField($field));
+            $select[] = $type->convertToPHPValueSQL('u.' . $quote->getColumnName($field, $metadata, $platform), $platform) . ' AS ' . $field;
+        }
+        foreach (['locations', 'usertitles', 'usercategories'] as $field) {
+            $mapping = $metadata->associationMappings[$field];
+            if (!$mapping->isToOneOwningSide() || count($mapping->joinColumns) !== 1) {
+                throw new \LogicException('User display requires a single owning reference.');
+            }
+            $select[] = 'u.' . $quote->getJoinColumnName($mapping->joinColumns[0], $metadata, $platform) . ' AS ' . $field . '_id';
+        }
+        $parameter = \Doctrine\DBAL\Types\Type::getType(Types::INTEGER)->convertToDatabaseValueSQL(':user', $platform);
+        $row = $connection->createQueryBuilder()->select(...$select)->from($quote->getTableName($metadata, $platform), 'u')
+            ->where('u.' . $quote->getColumnName('id', $metadata, $platform) . ' = ' . $parameter)
+            ->setParameter('user', $user, Types::INTEGER)->executeQuery()->fetchAssociative();
+        return $row === false ? null : $row;
+    }
+
     /** Current name fields for an already selected audience, keyed by identity. */
     public function friendlyNameData(array $users): array
     {

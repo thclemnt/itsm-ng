@@ -667,7 +667,7 @@ class Profile_User extends CommonDBRelation
      **/
     public static function getUserEntities($user_ID, $is_recursive = true, $default_first = false)
     {
-        $iterator = new \itsmng\Database\RowIterator(self::repository()->scopes((int)$user_ID));
+        $iterator = new \itsmng\Database\RowIterator(self::scopeReader()->scopes((int)$user_ID));
         $entities = [];
 
         while ($data = $iterator->next()) {
@@ -710,7 +710,7 @@ class Profile_User extends CommonDBRelation
      **/
     public static function getUserEntitiesForRight($user_ID, $rightname, $rights, $is_recursive = true)
     {
-        $iterator = new \itsmng\Database\RowIterator(self::repository()->scopes((int)$user_ID, right: $rightname, mask: (int)$rights));
+        $iterator = new \itsmng\Database\RowIterator(self::scopeReader()->scopes((int)$user_ID, right: $rightname, mask: (int)$rights));
 
         if (count($iterator) > 0) {
             $entities = [];
@@ -769,7 +769,7 @@ class Profile_User extends CommonDBRelation
      **/
     public static function getEntitiesForProfileByUser($users_id, $profiles_id, $child = false)
     {
-        $iterator = new \itsmng\Database\RowIterator(self::repository()->scopes((int)$users_id, (int)$profiles_id));
+        $iterator = new \itsmng\Database\RowIterator(self::scopeReader()->scopes((int)$users_id, (int)$profiles_id));
 
         $entities = [];
         while ($data = $iterator->next()) {
@@ -801,7 +801,7 @@ class Profile_User extends CommonDBRelation
      **/
     public static function getEntitiesForUser($users_id, $child = false)
     {
-        $iterator = new \itsmng\Database\RowIterator(self::repository()->scopes((int)$users_id));
+        $iterator = new \itsmng\Database\RowIterator(self::scopeReader()->scopes((int)$users_id));
 
         $entities = [];
         while ($data = $iterator->next()) {
@@ -839,6 +839,12 @@ class Profile_User extends CommonDBRelation
         return getAllDataFromTable('glpi_profiles_users', $condition);
     }
 
+
+    private static function scopeReader(): \itsmng\Database\ProfileUserReadOperation
+    {
+        global $DB;
+        return new \itsmng\Database\ProfileUserReadOperation($DB->getDoctrineConnection());
+    }
 
     private static function repository(): \itsmng\Database\Repository\ProfileUserRepository
     {

@@ -62,6 +62,54 @@ final class ProfileUserRepository
         return $query->getQuery()->getScalarResult();
     }
 
+    /** Fixed private authorization projection; callers still expand recursive grants freshly. */
+    public function nativeScopes(int $user, ?int $profile = null, ?string $right = null, int $mask = 0): array
+    {
+        $metadata = $this->em->getClassMetadata(ProfileUser::class);
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $reference = static function ($metadata, string $property, string $alias) use ($quote, $platform): string {
+            $mapping = $metadata->associationMappings[$property];
+            if (!$mapping->isToOneOwningSide() || count($mapping->joinColumns) !== 1) {
+                throw new \LogicException('A profile grant requires a single owning reference.');
+            }
+            return $alias . '.' . $quote->getJoinColumnName($mapping->joinColumns[0], $metadata, $platform);
+        };
+        $scalar = static function ($metadata, string $property, string $alias) use ($quote, $platform): string {
+            $type = \Doctrine\DBAL\Types\Type::getType($metadata->getTypeOfField($property));
+            return $type->convertToPHPValueSQL($alias . '.' . $quote->getColumnName($property, $metadata, $platform), $platform);
+        };
+        $integer = \Doctrine\DBAL\Types\Type::getType(Types::INTEGER);
+        $query = $connection->createQueryBuilder()->select(
+            $reference($metadata, 'entities', 'r') . ' AS entities_id',
+            $scalar($metadata, 'is_recursive', 'r') . ' AS is_recursive'
+        )->distinct()->from($quote->getTableName($metadata, $platform), 'r')
+            ->where($reference($metadata, 'users', 'r') . ' = ' . $integer->convertToDatabaseValueSQL(':user', $platform))
+            ->setParameter('user', $user, Types::INTEGER);
+        if ($profile !== null) {
+            $query->andWhere($reference($metadata, 'profiles', 'r') . ' = ' . $integer->convertToDatabaseValueSQL(':profile', $platform))
+                ->setParameter('profile', $profile, Types::INTEGER);
+        }
+        if ($right !== null) {
+            $permission = $this->em->getClassMetadata(ProfileRight::class);
+            // Predicates use physical columns, exactly as DQL path comparisons do.
+            $name = 'permission.' . $quote->getColumnName('name', $permission, $platform);
+            $rights = 'permission.' . $quote->getColumnName('rights', $permission, $platform);
+            $parameter = ':right';
+            $query->innerJoin(
+                'r',
+                $quote->getTableName($permission, $platform),
+                'permission',
+                $reference($permission, 'profiles', 'permission') . ' = ' . $reference($metadata, 'profiles', 'r')
+            )
+                ->andWhere($name . ' = ' . $parameter)
+                ->andWhere($platform->getBitAndComparisonExpression($rights, $integer->convertToDatabaseValueSQL(':mask', $platform)) . ' <> 0')
+                ->setParameter('right', $right, \Doctrine\DBAL\ParameterType::STRING)->setParameter('mask', $mask, Types::INTEGER);
+        }
+        return $query->executeQuery()->fetchAllAssociative();
+    }
+
     public function usersInEntity(int $entity): array
     {
         $query = $this->em->createQueryBuilder()->select('r', 'u', 'p')->from(ProfileUser::class, 'r')
