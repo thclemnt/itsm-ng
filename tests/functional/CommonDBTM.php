@@ -244,9 +244,10 @@ class CommonDBTM extends DbTestCase
         $computer = $this->createItem(\Computer::class, ['name' => 'Reference metadata before', 'entities_id' => $entity->getID()]);
         $connection = $DB->getDoctrineConnection();
         $cache = new \Symfony\Component\Cache\Adapter\ArrayAdapter(storeSerialized: true);
-        $configuration = static function () use ($connection): \Doctrine\ORM\Configuration {
+        $configuration = static function () use ($connection, $cache): \Doctrine\ORM\Configuration {
             $config = \itsmng\Database\Orm::configuration($connection->getDatabasePlatform());
             $config->setMetadataCache(new \Symfony\Component\Cache\Adapter\ArrayAdapter(storeSerialized: true));
+            $config->setQueryCache($cache);
             return $config;
         };
         $oracle = new \Doctrine\ORM\EntityManager($connection, $configuration());
@@ -265,7 +266,7 @@ class CommonDBTM extends DbTestCase
             $identifiers[$class] = ['property' => $property, 'column' => $declaration->getColumnName($property),
                 'type' => $declaration->getTypeOfField($property)];
         }
-        $read = static function (?array $facts, bool $custom = false) use ($connection, $configuration, $cache, $computer): array {
+        $read = static function (?array $facts, bool $custom = false) use ($connection, $configuration, $computer): array {
             $manager = new class ($connection, $configuration()) extends \Doctrine\ORM\EntityManager {
                 public array $metadataCalls = [];
                 public function getClassMetadata(string $className): \Doctrine\ORM\Mapping\ClassMetadata
@@ -288,7 +289,6 @@ class CommonDBTM extends DbTestCase
                 $row = (new \itsmng\Database\Repository\RecordRepository($manager))->scalarRow(
                     \itsmng\Database\Entity\Computer::class,
                     (int)$computer->getID(),
-                    $cache,
                     $facts,
                 );
                 return [$row, array_keys($manager->getMetadataFactory()->getLoadedMetadata()), $manager->metadataCalls];

@@ -63,18 +63,18 @@ final class ITILActorRepository
         return $actors;
     }
 
-    public function rows(string $actorClass, int $item, ?\itsmng\Database\ReadQueryOwner $operation = null): array
+    public function rows(string $actorClass, int $item): array
     {
-        return $this->readRows($actorClass, $item, $operation, false);
+        return $this->readRows($actorClass, $item, false);
     }
 
     /** Explicit private-owner scalar route; public/supplied-manager reads remain ordinary ORM. */
     public function nativeRows(string $actorClass, int $item): array
     {
-        return $this->readRows($actorClass, $item, null, true);
+        return $this->readRows($actorClass, $item, true);
     }
 
-    private function readRows(string $actorClass, int $item, ?\itsmng\Database\ReadQueryOwner $operation, bool $native): array
+    private function readRows(string $actorClass, int $item, bool $native): array
     {
         if (!self::supports($actorClass)) {
             throw new \InvalidArgumentException('Unsupported ITIL actor relation');
@@ -128,7 +128,6 @@ final class ITILActorRepository
             $resultRows = $query->executeQuery()->fetchAllAssociative();
         } else {
             $compiled = $query->getQuery();
-            $operation?->prepareQuery($compiled, $metadata);
             $resultRows = $compiled->getScalarResult();
         }
         foreach ($resultRows as $values) {

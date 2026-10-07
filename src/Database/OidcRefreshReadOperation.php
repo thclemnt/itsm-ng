@@ -5,7 +5,7 @@
 namespace itsmng\Database;
 
 /** One bootstrap check owns its selected connection and never caches auth state. */
-final class OidcRefreshReadOperation implements ReadQueryOwner
+final class OidcRefreshReadOperation
 {
     use PrivateReadOwnership;
 

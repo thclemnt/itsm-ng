@@ -7,7 +7,7 @@ namespace itsmng\Database;
 use itsmng\Database\Repository\ITILActorRepository;
 
 /** One loadActors invocation owns its three built-in relationship reads. */
-final class ITILActorReadOperation implements ReadQueryOwner
+final class ITILActorReadOperation
 {
     use PrivateReadOwnership;
 
@@ -20,7 +20,7 @@ final class ITILActorReadOperation implements ReadQueryOwner
         $repository = new ITILActorRepository($this->manager);
         $rows = $this->ownedMapping && $this->defaultIdentifiers($metadata) !== null && $metadata->isInheritanceTypeNone()
             ? $repository->nativeRows($actorClass, $item)
-            : $repository->rows($actorClass, $item, $this);
+            : $repository->rows($actorClass, $item);
         $actors = [];
         foreach ($rows as $row) {
             $actors[$row['type']][] = $row;

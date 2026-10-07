@@ -5,7 +5,7 @@
 namespace itsmng\Database;
 
 /** One fresh domain read owns its mapping and selected connection. */
-final class UserDisplayReadOperation implements ReadQueryOwner
+final class UserDisplayReadOperation
 {
     use PrivateReadOwnership;
 

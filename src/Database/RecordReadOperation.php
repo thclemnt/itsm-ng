@@ -18,7 +18,6 @@ final class RecordReadOperation implements ReadQueryOwner
             return (new RecordRepository($this->manager))->scalarRow(
                 $metadata->name,
                 $id,
-                null,
                 $this->defaultIdentifiers($metadata),
                 $this,
             );
