@@ -47,6 +47,7 @@ class Config extends DbTestCase
         global $DB;
         $this->login();
         $connection = $DB->getDoctrineConnection();
+        $pendingColumn = $connection->getDatabasePlatform()->quoteSingleIdentifier('update');
         $user = $this->createItem(\User::class, ['name' => $this->getUniqueString()]);
         $id = (int)$user->getID();
         $manager = \itsmng\Database\Orm::forConnection($connection);
@@ -66,13 +67,13 @@ class Config extends DbTestCase
             $this->integer($probe->builders)->isIdenticalTo(1);
             $this->array($probe->queries[0]['params'])->isIdenticalTo(['user' => $id, 'pending' => false]);
             $this->array($probe->queries[0]['types'])->isIdenticalTo(['user' => 'integer', 'pending' => 'boolean']);
-            $connection->insert('glpi_oidc_users', ['user_id' => $id, 'update' => false], ['user_id' => 'bigint', 'update' => 'boolean']);
+            $connection->insert('glpi_oidc_users', ['user_id' => $id, $pendingColumn => false], ['user_id' => 'bigint', $pendingColumn => 'boolean']);
             $this->boolean($reader->needsRefresh($id))->isTrue();
             $this->boolean($reader->needsRefresh($id))->isIdenticalTo($ordinary->needsRefresh($id));
-            $connection->update('glpi_oidc_users', ['update' => true], ['user_id' => $id], ['update' => 'boolean', 'user_id' => 'bigint']);
+            $connection->update('glpi_oidc_users', [$pendingColumn => true], ['user_id' => $id], [$pendingColumn => 'boolean', 'user_id' => 'bigint']);
             $this->boolean($reader->needsRefresh($id))->isFalse();
             $this->boolean($reader->needsRefresh($id))->isIdenticalTo($ordinary->needsRefresh($id));
-            $connection->update('glpi_oidc_users', ['update' => false], ['user_id' => $id], ['update' => 'boolean', 'user_id' => 'bigint']);
+            $connection->update('glpi_oidc_users', [$pendingColumn => false], ['user_id' => $id], [$pendingColumn => 'boolean', 'user_id' => 'bigint']);
             $observed = new class () extends \Doctrine\DBAL\Types\BigIntType {
                 public int $conversions = 0;
                 public int $sql = 0;
