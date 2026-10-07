@@ -277,6 +277,22 @@ class Session extends \DbTestCase
             $this->string(__('Entry', $domain))->isIdenticalTo('First entry');
             $this->string(_n('Entry', 'Entries', 0, $domain))->isIdenticalTo('First entry');
             $this->string(_n('Entry', 'Entries', 2, $domain))->isIdenticalTo('Many entries');
+            foreach ([null, '', '0', '1', '2', 1.9, 2.9, -1.9, -2.9, false, true] as $count) {
+                // This fixture uses n > 1; v2 first cast to int, then took abs.
+                $expected = abs((int)$count) > 1 ? 'Many entries' : 'First entry';
+                $this->string(_n('Entry', 'Entries', $count, $domain))->isIdenticalTo($expected);
+            }
+            $this->string(\Rule::getTypeName())->isIdenticalTo('Rules');
+            $this->string(\Rule::getTypeName(null))->isIdenticalTo('Rules');
+            $this->string(\Rule::getTypeName(1.9))->isIdenticalTo('Rule');
+            $loadedTranslator = $TRANSLATE;
+            try {
+                $TRANSLATE = null;
+                $this->string(_n('Entry', 'Entries', null, $domain))->isIdenticalTo('Entries');
+            } finally {
+                $TRANSLATE = $loadedTranslator;
+            }
+
             $this->string(_x('menu', 'Context', $domain))->isIdenticalTo('Context translation');
             $this->string(__('Context entries', $domain))->isIdenticalTo('Context first');
             $this->string($TRANSLATE->translate('Late message', $domain, ''))->isIdenticalTo('Late plugin translation');

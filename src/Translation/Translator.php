@@ -58,8 +58,10 @@ final class Translator implements TranslationCollectorInterface
         return is_array($value) ? $value : $translated;
     }
 
-    public function translatePlural(string $singular, string $plural, int $number, string $textDomain = 'default', ?string $locale = null): string
+    public function translatePlural(string $singular, string $plural, mixed $number, string $textDomain = 'default', ?string $locale = null): string
     {
-        return $this->translator->translatePlural($singular, $plural, $number, $textDomain, $locale === '' ? null : $locale);
+        // Laminas v2 evaluated registered catalogues with abs((int) $number).
+        // Cast explicitly so null and fractional counts retain that contract.
+        return $this->translator->translatePlural($singular, $plural, (int)$number, $textDomain, $locale === '' ? null : $locale);
     }
 }
