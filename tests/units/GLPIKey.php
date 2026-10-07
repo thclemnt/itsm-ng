@@ -37,6 +37,27 @@ namespace tests\units;
 
 class GLPIKey extends \GLPITestCase
 {
+    protected function decryptUsingLegacyKeyProvider()
+    {
+        return [
+            ['xuaZ3tnr1ufS', 'mykey', 'My string'],
+            ['5NDK1d3m7NDI69DZ', 'keepmykey', 'keepmysecret'],
+            ['/gAAfg==', "\x80\xff", "\xff\x80\x01\xfe"],
+            ['/wB+f/3+', "\xff", "\x00\x01\x7f\x80\xfe\xff"],
+            ['', 'mykey', ''],
+        ];
+    }
+
+    /**
+     * @dataProvider decryptUsingLegacyKeyProvider
+     */
+    public function testDecryptUsingLegacyKey($ciphertext, $key, $expected)
+    {
+        $this->string((new \GLPIKey())->decryptUsingLegacyKey($ciphertext, $key))
+            ->isIdenticalTo($expected);
+        $this->error()->withType(E_DEPRECATED)->withAnyMessage()->notExists();
+    }
+
     protected function getExpectedKeyPathProvider()
     {
         return [

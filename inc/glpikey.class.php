@@ -339,7 +339,7 @@ class GLPIKey
         for ($i = 0; $i < strlen($string); $i++) {
             $char    = substr($string, $i, 1);
             $keychar = substr($key, ($i % strlen($key)) - 1, 1);
-            $char    = chr(ord($char) - ord($keychar));
+            $char    = chr((ord($char) - ord($keychar)) & 0xff);
             $result .= $char;
         }
 

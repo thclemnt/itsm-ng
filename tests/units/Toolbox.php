@@ -456,8 +456,29 @@ class Toolbox extends \GLPITestCase
     {
         return [
            ['My string', 'mykey', 'xuaZ3tnr1ufS'],
-           ['keepmysecret', 'keepmykey', '5NDK1d3m7NDI69DZ']
+           ['keepmysecret', 'keepmykey', '5NDK1d3m7NDI69DZ'],
+           ["\xff\x80\x01\xfe", "\x80\xff", '/gAAfg=='],
+           ["\x00\x01\x7f\x80\xfe\xff", "\xff", '/wB+f/3+'],
+           ['', 'mykey', '']
         ];
+    }
+
+    /**
+     * @dataProvider encryptProvider
+     */
+    public function testEncrypt($string, $key, $expected)
+    {
+        $crypted = null;
+        $this->when(
+            function () use ($string, $key, &$crypted) {
+                $crypted = \Toolbox::encrypt($string, $key);
+            }
+        )->error()
+            ->withType(E_USER_DEPRECATED)
+            ->withMessage('Use sodiumEncrypt')
+            ->exists();
+        $this->string($crypted)->isIdenticalTo($expected);
+        $this->error()->withType(E_DEPRECATED)->withAnyMessage()->notExists();
     }
 
     protected function sodiumEncryptProvider()

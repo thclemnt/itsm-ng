@@ -270,7 +270,7 @@ class Toolbox
         for ($i = 0; $i < $strlen; $i++) {
             $char    = substr($string, $i, 1);
             $keychar = substr($key, ($i % strlen($key)) - 1, 1);
-            $char    = chr(ord($char) + ord($keychar));
+            $char    = chr((ord($char) + ord($keychar)) & 0xff);
             $result .= $char;
         }
         return base64_encode($result);
