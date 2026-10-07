@@ -71,11 +71,21 @@ class Software extends DbTestCase
         };
         $before = $rows();
         $models = [
-            new class extends \Computer { use SoftwarePreloadObserver; },
-            new class extends \Software { use SoftwarePreloadObserver; },
-            new class extends \SoftwareLicense { use SoftwarePreloadObserver; },
-            new class extends \Item_SoftwareLicense { use SoftwarePreloadObserver; },
-            new class extends \Item_SoftwareVersion { use SoftwarePreloadObserver; },
+            new class () extends \Computer {
+                use SoftwarePreloadObserver;
+            },
+            new class () extends \Software {
+                use SoftwarePreloadObserver;
+            },
+            new class () extends \SoftwareLicense {
+                use SoftwarePreloadObserver;
+            },
+            new class () extends \Item_SoftwareLicense {
+                use SoftwarePreloadObserver;
+            },
+            new class () extends \Item_SoftwareVersion {
+                use SoftwarePreloadObserver;
+            },
         ];
         foreach ($models as $index => $model) {
             foreach (['replace', 'replace-false', 'replace-throw', 'writer', 'false', 'throw', 'valid'] as $mode) {
@@ -86,7 +96,13 @@ class Software extends DbTestCase
                 $marker = new \RuntimeException('Owned preload callback marker');
                 $primary = null;
                 $model->preloadCallback = function ($loadedModel, bool $loaded) use (
-                    &$calls, &$replacement, $connection, $database, $witness, $mode, $marker
+                    &$calls,
+                    &$replacement,
+                    $connection,
+                    $database,
+                    $witness,
+                    $mode,
+                    $marker
                 ): bool {
                     global $DB;
                     if (++$calls !== 1) {
@@ -212,7 +228,9 @@ class Software extends DbTestCase
         $readSource = static fn () => $connection->fetchAssociative('SELECT * FROM glpi_softwares WHERE id = ?', [$source->getID()]);
         $before = $readSource();
         $configuration = $CFG_GLPI;
-        $model = new class extends \Software { use SoftwarePreloadObserver; };
+        $model = new class () extends \Software {
+            use SoftwarePreloadObserver;
+        };
         try {
             $CFG_GLPI['softwarecategories_id_ondelete'] = $category->getID();
             foreach (['replace', 'replace-false', 'replace-throw', 'writer', 'false', 'throw', 'valid'] as $mode) {
@@ -223,7 +241,13 @@ class Software extends DbTestCase
                 $marker = new \RuntimeException('Merged source preload marker');
                 $primary = null;
                 $model->preloadCallback = function ($loadedModel, bool $loaded) use (
-                    &$calls, &$replacement, $connection, $database, $witness, $mode, $marker
+                    &$calls,
+                    &$replacement,
+                    $connection,
+                    $database,
+                    $witness,
+                    $mode,
+                    $marker
                 ): bool {
                     global $DB;
                     if (++$calls !== 1) {
