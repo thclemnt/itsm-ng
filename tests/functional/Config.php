@@ -673,6 +673,119 @@ class Config extends DbTestCase
         }
     }
 
+
+    public function testPrivateRecordPlansKeepLiveRowsAndRecoverDamagedCache(): void
+    {
+        global $DB;
+        $previous = $GLOBALS['GLPI_CACHE'] ?? null;
+        $memory = new ConfigRecordPlanCache(storeSerialized: false);
+        $pool = new \Symfony\Component\Cache\Psr16Cache($memory);
+        $context = 'private-plan-' . bin2hex(random_bytes(6));
+        $connection = $DB->getDoctrineConnection();
+        $table = $connection->quoteIdentifier('glpi_configs');
+        $requestCaches = new \ReflectionProperty(\itsmng\Database\Orm::class, 'queryCaches');
+        $originalCaches = $requestCaches->getValue();
+        try {
+            \Config::setConfigurationValues($context, ['probe' => 'before']);
+            $id = (int)$connection->fetchOne('SELECT id FROM ' . $table . ' WHERE context = ? AND name = ?', [$context, 'probe']);
+            $GLOBALS['GLPI_CACHE'] = $pool;
+            $read = static function () use ($id): array {
+                $item = new \Config();
+                if (!$item->getFromDB($id)) {
+                    throw new \RuntimeException('The private record fixture disappeared.');
+                }
+                return $item->fields;
+            };
+            $this->string($read()['value'])->isIdenticalTo('before');
+            // Observe a real serialized ParserResult, not an inferred cache hit.
+            $this->integer($memory->planWrites)->isIdenticalTo(1);
+            $key = $memory->planKeys[0];
+            $this->string($pool->get($key))->contains('Doctrine\\ORM\\Query\\ParserResult');
+            $requestCaches->setValue(null, null);
+            $connection->update('glpi_configs', ['value' => 'after'], ['id' => $id]);
+            $this->string($read()['value'])->isIdenticalTo('after');
+            $this->integer($memory->planWrites)->isIdenticalTo(1);
+            $originalText = \Doctrine\DBAL\Types\Type::getType('text');
+            try {
+                \Doctrine\DBAL\Types\Type::overrideType('text', new ConfigRecordUpperTextType());
+                $this->string($read()['value'])->isIdenticalTo('AFTER');
+                $this->integer($memory->planWrites)->isIdenticalTo(1);
+            } finally {
+                \Doctrine\DBAL\Types\Type::overrideType('text', $originalText);
+            }
+            $this->string($read()['value'])->isIdenticalTo('after');
+            $this->integer($memory->planWrites)->isIdenticalTo(1);
+            $pool->set($key, 'invalid serialized query plan');
+            $this->string($read()['value'])->isIdenticalTo('after');
+            $this->integer($memory->planWrites)->isIdenticalTo(2);
+            $pool->clear();
+            $this->string($read()['value'])->isIdenticalTo('after');
+            $this->integer($memory->planWrites)->isIdenticalTo(3);
+
+            // Public manager customization must not poison the private metadata.
+            $pool->clear();
+            $manager = \itsmng\Database\Orm::create($DB);
+            $manager->getEventManager()->addEventListener(\Doctrine\ORM\Events::loadClassMetadata, new class () {
+                public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+                {
+                    if ($event->getClassMetadata()->name === \itsmng\Database\Entity\Config::class) {
+                        $event->getClassMetadata()->setPrimaryTable(['name' => 'private_plan_wrong_table']);
+                    }
+                }
+            });
+            $this->string($manager->getClassMetadata(\itsmng\Database\Entity\Config::class)->getTableName())->isIdenticalTo('private_plan_wrong_table');
+            $this->string($read()['value'])->isIdenticalTo('after');
+            $this->integer($memory->planWrites)->isIdenticalTo(4);
+            $manager->clear();
+        } finally {
+            $GLOBALS['GLPI_CACHE'] = $previous;
+            $requestCaches->setValue(null, $originalCaches);
+            $connection->delete('glpi_configs', ['context' => $context]);
+        }
+    }
+
+    public function testPrivateRecordFallbackDetachesCachesBeforeCallbacks(): void
+    {
+        global $DB;
+        $previous = $GLOBALS['GLPI_CACHE'] ?? null;
+        $memory = new ConfigRecordPlanCache(storeSerialized: false);
+        $context = 'private-callback-' . bin2hex(random_bytes(6));
+        $connection = $DB->getDoctrineConnection();
+        \itsmng\Database\EntityRegistry::tables();
+        $registry = new \ReflectionProperty(\itsmng\Database\EntityRegistry::class, 'model');
+        $original = $registry->getValue();
+        $public = \itsmng\Database\Orm::configuration($connection->getDatabasePlatform());
+        ConfigRecordCallback::$publicDriver = $public->getMetadataDriverImpl();
+        ConfigRecordCallback::$observed = [];
+        try {
+            \Config::setConfigurationValues($context, ['probe' => 'live']);
+            $id = (int)$connection->fetchOne('SELECT id FROM ' . $connection->quoteIdentifier('glpi_configs') . ' WHERE context = ? AND name = ?', [$context, 'probe']);
+            $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache($memory);
+            $model = $original;
+            $model['tables']['glpi_configs'] = ConfigRecordCallback::class;
+            $registry->setValue(null, $model);
+            $item = new \Config();
+            $this->boolean($item->getFromDB($id))->isTrue();
+            $this->string($item->fields['value'])->isIdenticalTo('callback:live');
+            $this->array(ConfigRecordCallback::$observed)->isIdenticalTo([
+                'localConfiguration' => true, 'localFactory' => true,
+                'noPersistentQuery' => true, 'privateDriver' => true,
+            ]);
+            $this->integer($memory->planWrites)->isIdenticalTo(0);
+            $registry->setValue(null, $original);
+            $this->boolean($item->getFromDB($id))->isTrue();
+            $this->string($item->fields['value'])->isIdenticalTo('live');
+            $this->integer($memory->planWrites)->isIdenticalTo(1);
+            $this->object(\itsmng\Database\Orm::configuration($connection->getDatabasePlatform())->getMetadataDriverImpl())->isIdenticalTo(ConfigRecordCallback::$publicDriver);
+        } finally {
+            $registry->setValue(null, $original);
+            $GLOBALS['GLPI_CACHE'] = $previous;
+            ConfigRecordCallback::$publicDriver = null;
+            ConfigRecordCallback::$observed = [];
+            $connection->delete('glpi_configs', ['context' => $context]);
+        }
+    }
+
     public function testGetConfigurationValues()
     {
         $conf = \Config::getConfigurationValues('core');
@@ -1269,5 +1382,71 @@ final class ConfigQueryCacheWalker extends \Doctrine\ORM\Query\SqlOutputWalker
     {
         ++self::$compilations;
         return parent::getFinalizer($AST);
+    }
+}
+
+/** Count actual persistent plan writes; leave ordinary cache behavior unchanged. */
+final class ConfigRecordPlanCache extends \Symfony\Component\Cache\Adapter\ArrayAdapter
+{
+    public int $planWrites = 0;
+    public array $planKeys = [];
+
+    public function save(\Psr\Cache\CacheItemInterface $item)
+    {
+        if (is_string($item->get()) && str_contains($item->get(), 'Doctrine\\ORM\\Query\\ParserResult')) {
+            ++$this->planWrites;
+            $this->planKeys[] = $item->getKey();
+        }
+        return parent::save($item);
+    }
+}
+
+#[\Doctrine\ORM\Mapping\Entity]
+#[\Doctrine\ORM\Mapping\Table(name: 'glpi_configs')]
+#[\Doctrine\ORM\Mapping\HasLifecycleCallbacks]
+final class ConfigRecordCallback
+{
+    public static ?object $publicDriver = null;
+    public static array $observed = [];
+
+    #[\Doctrine\ORM\Mapping\Id]
+    #[\Doctrine\ORM\Mapping\Column(type: 'bigint')]
+    public ?int $id = null;
+    #[\Doctrine\ORM\Mapping\Column(type: 'string', nullable: true)]
+    public ?string $context = null;
+    #[\Doctrine\ORM\Mapping\Column(type: 'string', nullable: true)]
+    public ?string $name = null;
+    #[\Doctrine\ORM\Mapping\Column(type: 'text', nullable: true)]
+    public ?string $value = null;
+
+    #[\Doctrine\ORM\Mapping\PostLoad]
+    public function loaded(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
+    {
+        $manager = $event->getObjectManager();
+        $configuration = $manager->getConfiguration();
+        $factoryCache = new \ReflectionMethod($manager->getMetadataFactory(), 'getCache');
+        self::$observed = [
+            'localConfiguration' => $configuration->getMetadataCache() instanceof \Symfony\Component\Cache\Adapter\ArrayAdapter,
+            'localFactory' => $factoryCache->invoke($manager->getMetadataFactory()) === $configuration->getMetadataCache(),
+            'noPersistentQuery' => $configuration->getQueryCache() === null,
+            'privateDriver' => $configuration->getMetadataDriverImpl() !== self::$publicDriver,
+        ];
+        $manager->getEventManager()->addEventListener(\Doctrine\ORM\Events::loadClassMetadata, new class () {
+            public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+            {
+                $event->getClassMetadata()->setPrimaryTable(['name' => 'callback_wrong_table']);
+            }
+        });
+        $manager->getClassMetadata(\itsmng\Database\Entity\Config::class);
+        $this->value = 'callback:' . $this->value;
+    }
+}
+
+/** A supported global type extension whose SQL must not inherit a warm core plan. */
+final class ConfigRecordUpperTextType extends \Doctrine\DBAL\Types\TextType
+{
+    public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+    {
+        return 'UPPER(' . $sqlExpr . ')';
     }
 }

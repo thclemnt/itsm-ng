@@ -344,20 +344,24 @@ class CommonDBTM extends CommonGLPI
                 }
                 $lock = \Doctrine\DBAL\LockMode::PESSIMISTIC_WRITE;
             }
-            $manager = \itsmng\Database\Orm::create($DB);
-            try {
-                if ($lock === \Doctrine\DBAL\LockMode::PESSIMISTIC_WRITE
-                    && $manager->getConnection() !== $this->currentRead['connection']) {
-                    throw new \itsmng\Database\TransactionOwnershipMismatch('The selected model manager changed its supplied connection.');
+            if ($lock === \Doctrine\DBAL\LockMode::NONE) {
+                $row = \itsmng\Database\Orm::readRecord($DB, $this->getTable(), $this->getIndexName(), (int)Toolbox::cleanInteger($ID));
+            } else {
+                $manager = \itsmng\Database\Orm::create($DB);
+                try {
+                    if ($lock === \Doctrine\DBAL\LockMode::PESSIMISTIC_WRITE
+                        && $manager->getConnection() !== $this->currentRead['connection']) {
+                        throw new \itsmng\Database\TransactionOwnershipMismatch('The selected model manager changed its supplied connection.');
+                    }
+                    $row = (new \itsmng\Database\Repository\RecordRepository($manager))->find(
+                        $this->getTable(),
+                        $this->getIndexName(),
+                        (int)Toolbox::cleanInteger($ID),
+                        $lock
+                    );
+                } finally {
+                    $manager->clear();
                 }
-                $row = (new \itsmng\Database\Repository\RecordRepository($manager))->find(
-                    $this->getTable(),
-                    $this->getIndexName(),
-                    (int)Toolbox::cleanInteger($ID),
-                    $lock
-                );
-            } finally {
-                $manager->clear();
             }
             if ($row === null) {
                 return false;
