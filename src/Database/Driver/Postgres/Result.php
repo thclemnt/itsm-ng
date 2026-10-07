@@ -10,22 +10,41 @@ use Doctrine\DBAL\Driver\PDO\Exception;
 /** Native PDO values remain unchanged for ORM and ordinary DBAL consumers. */
 final class Result extends AbstractResultMiddleware
 {
-    private array $types = [];
+    private array $metadata = [];
 
-    public function __construct(\PDOStatement $statement)
+    public function __construct(private readonly \PDOStatement $statement)
     {
         parent::__construct(new \Doctrine\DBAL\Driver\PDO\Result($statement));
+    }
+
+    /** Only explicit column inspection and the legacy row boundary need metadata. */
+    private function columnMetadata(int $column): array
+    {
+        if (isset($this->metadata[$column])) {
+            return $this->metadata[$column];
+        }
         try {
-            for ($column = 0; $column < $statement->columnCount(); $column++) {
-                $metadata = $statement->getColumnMeta($column);
-                if ($metadata === false || !isset($metadata['native_type'])) {
-                    throw new \RuntimeException('PostgreSQL driver did not supply native column type metadata.');
-                }
-                $this->types[] = $metadata['native_type'];
-            }
+            $metadata = $this->statement->getColumnMeta($column);
+        } catch (\ValueError $error) {
+            throw \Doctrine\DBAL\Exception\InvalidColumnIndex::new($column, $error);
         } catch (\PDOException $error) {
             throw Exception::new($error);
         }
+        if ($metadata === false) {
+            throw \Doctrine\DBAL\Exception\InvalidColumnIndex::new($column);
+        }
+        return $this->metadata[$column] = $metadata;
+    }
+
+    public function getColumnName(int $index): string
+    {
+        return $this->columnMetadata($index)['name'];
+    }
+
+    public function free(): void
+    {
+        $this->metadata = [];
+        parent::free();
     }
 
     /** Normalize only the legacy row API, using this result's actual wire types. */
@@ -35,7 +54,11 @@ final class Result extends AbstractResultMiddleware
             if ($value === null) {
                 continue;
             }
-            $type = $this->types[$column];
+            $metadata = $this->columnMetadata($column);
+            if (!isset($metadata['native_type'])) {
+                throw new \RuntimeException('PostgreSQL driver did not supply native column type metadata.');
+            }
+            $type = $metadata['native_type'];
             if (in_array($type, ['int2', 'int4', 'int8'], true) && filter_var($value, FILTER_VALIDATE_INT) !== false) {
                 $row[$column] = (int)$value;
             } elseif (in_array($type, ['float4', 'float8'], true)) {
