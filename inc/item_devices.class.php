@@ -722,15 +722,15 @@ class Item_Devices extends CommonDBRelation
                         $tables[] = $table;
                     }
                     if ($batch && $tables) {
-                        $em = \itsmng\Database\Orm::create($DB);
+                        $counts = new \itsmng\Database\ComponentCountReadOperation($DB->getDoctrineConnection());
                         try {
-                            $nb = (new \itsmng\Database\Repository\ComponentRepository($em))->countForAsset(
+                            $nb = $counts->countForAsset(
                                 $tables,
                                 $item->getType(),
                                 (int)$item->getID(),
                             );
                         } finally {
-                            $em->clear();
+                            $counts->close();
                         }
                     } else {
                         foreach ($affinities as $link_type) {

@@ -190,8 +190,24 @@ class Item_DeviceGeneric extends DbTestCase
             $tab = new \Item_Devices();
             $expected = \Item_Devices::createTabEntry(_n('Component', 'Components', \Session::getPluralNumber()), $legacy);
             $before = $factories->getValue();
-            $this->string($tab->getTabNameForItem($asset))->isIdenticalTo($expected);
-            $this->integer($factories->getValue() - $before)->isIdenticalTo(1);
+            $connection = $DB->getDoctrineConnection();
+            $probe = new ComponentCountQueryProbe($connection);
+            $this->mockGenerator->orphanize('__construct');
+            $countAdapter = new \mock\DBmysql();
+            $this->calling($countAdapter)->getDoctrineConnection = $probe;
+            try {
+                $DB = $countAdapter;
+                $this->string($tab->getTabNameForItem($asset))->isIdenticalTo($expected);
+                $this->integer($factories->getValue() - $before)->isIdenticalTo(1);
+                $this->array($probe->queries)->hasSize(17);
+                $this->integer($probe->builders)->isIdenticalTo(17);
+                foreach ($probe->queries as $query) {
+                    $this->array($query['params'])->isIdenticalTo([(int)$asset->getID(), 'Computer', false]);
+                    $this->array($query['types'])->isIdenticalTo(['bigint', 'string', 'boolean']);
+                }
+            } finally {
+                $DB = $database;
+            }
 
             // Each original COUNT remains a real ORM query on the supplied connection.
             $connection = $DB->getDoctrineConnection();
@@ -217,6 +233,92 @@ class Item_DeviceGeneric extends DbTestCase
                 }
             }
             $this->integer($manager->getUnitOfWork()->size())->isIdenticalTo(0);
+            $native = new \itsmng\Database\ComponentCountReadOperation($probe);
+            $bigint = \Doctrine\DBAL\Types\Type::getType('bigint');
+            $string = \Doctrine\DBAL\Types\Type::getType('string');
+            $boolean = \Doctrine\DBAL\Types\Type::getType('boolean');
+            $integer = \Doctrine\DBAL\Types\Type::getType('integer');
+            try {
+                $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
+                $this->integer($native->countForAsset([$tables[0], $tables[0]], 'Computer', (int)$asset->getID()))
+                    ->isIdenticalTo($repository->countForAsset([$tables[0], $tables[0]], 'Computer', (int)$asset->getID()));
+                $this->integer($native->countForAsset([], 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
+                $this->integer($native->countForAsset($tables, 'UnsupportedComponentSubject', (int)$asset->getID()))
+                    ->isIdenticalTo($repository->countForAsset($tables, 'UnsupportedComponentSubject', (int)$asset->getID()));
+                $activeId = (int)reset($active)['id'];
+                $connection->update('glpi_items_devicememories', ['is_deleted' => true], ['id' => $activeId], ['is_deleted' => 'boolean', 'id' => 'bigint']);
+                $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(1);
+                $connection->update('glpi_items_devicememories', ['is_deleted' => false], ['id' => $activeId], ['is_deleted' => 'boolean', 'id' => 'bigint']);
+                \Doctrine\DBAL\Types\Type::overrideType('bigint', new class () extends \Doctrine\DBAL\Types\BigIntType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                    {
+                        return '(' . $sqlExpr . ' * 0 - 1)';
+                    }
+                });
+                $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
+                $this->integer($repository->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
+                \Doctrine\DBAL\Types\Type::overrideType('bigint', new class () extends \Doctrine\DBAL\Types\BigIntType {
+                    public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                    {
+                        throw new \LogicException('COUNT must use the raw identifier expression');
+                    }
+                });
+                \Doctrine\DBAL\Types\Type::overrideType('integer', new class () extends \Doctrine\DBAL\Types\IntegerType {
+                    public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): ?int
+                    {
+                        throw new \LogicException('Single scalar COUNT must not apply PHP conversion');
+                    }
+                });
+                $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
+                $this->integer($repository->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
+                \Doctrine\DBAL\Types\Type::overrideType('bigint', $bigint);
+                \Doctrine\DBAL\Types\Type::overrideType('integer', $integer);
+                \Doctrine\DBAL\Types\Type::overrideType('string', new class () extends \Doctrine\DBAL\Types\StringType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                    {
+                        return "CASE WHEN " . $sqlExpr . " = '' THEN 'no-component-kind' ELSE 'no-component-kind' END";
+                    }
+                });
+                $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
+                $this->integer($repository->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
+                \Doctrine\DBAL\Types\Type::overrideType('string', $string);
+                \Doctrine\DBAL\Types\Type::overrideType('boolean', new class () extends \Doctrine\DBAL\Types\BooleanType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                    {
+                        return '(NOT ' . $sqlExpr . ')';
+                    }
+                });
+                $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(1);
+                $this->integer($repository->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(1);
+                \Doctrine\DBAL\Types\Type::overrideType('boolean', $boolean);
+                $extension = new class ($connection) extends ComponentCountQueryProbe {
+                    private ?\Doctrine\Common\EventManager $events = null;
+                    public function getEventManager(): \Doctrine\Common\EventManager
+                    {
+                        return $this->events ??= new \Doctrine\Common\EventManager();
+                    }
+                };
+                $local = new \itsmng\Database\ComponentCountReadOperation($extension);
+                $listener = new class () {
+                    public int $loads = 0;
+                    public function loadClassMetadata(): void
+                    {
+                        ++$this->loads;
+                    }
+                };
+                $extension->getEventManager()->addEventListener([\Doctrine\ORM\Events::loadClassMetadata], $listener);
+                $this->integer($local->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
+                $this->integer($listener->loads)->isGreaterThan(0);
+                $this->integer($extension->builders)->isIdenticalTo(0);
+                $local->close();
+            } finally {
+                \Doctrine\DBAL\Types\Type::overrideType('bigint', $bigint);
+                \Doctrine\DBAL\Types\Type::overrideType('string', $string);
+                \Doctrine\DBAL\Types\Type::overrideType('boolean', $boolean);
+                \Doctrine\DBAL\Types\Type::overrideType('integer', $integer);
+                $native->close();
+            }
+
             $GLPI_CACHE->set('item_device_affinities', ['' => $affinities, 'Computer' => [\Item_DeviceMemory::class, \Item_DeviceMemory::class]]);
             $this->string($tab->getTabNameForItem($asset))->isIdenticalTo(\Item_Devices::createTabEntry(_n('Component', 'Components', \Session::getPluralNumber()), 4));
             $_SESSION['glpishow_count_on_tabs'] = 0;
@@ -439,5 +541,33 @@ class Item_DeviceGeneric extends DbTestCase
             $_POST = [];
             error_reporting($previous_error_reporting);
         }
+    }
+}
+
+class ComponentCountQueryProbe extends \Doctrine\DBAL\Connection
+{
+    public int $builders = 0;
+    public array $queries = [];
+
+    public function __construct(private readonly \Doctrine\DBAL\Connection $selected)
+    {
+        parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
+    }
+
+    public function getDatabasePlatform(): \Doctrine\DBAL\Platforms\AbstractPlatform
+    {
+        return $this->selected->getDatabasePlatform();
+    }
+
+    public function createQueryBuilder(): \Doctrine\DBAL\Query\QueryBuilder
+    {
+        ++$this->builders;
+        return parent::createQueryBuilder();
+    }
+
+    public function executeQuery(string $sql, array $params = [], array $types = [], ?\Doctrine\DBAL\Cache\QueryCacheProfile $qcp = null): \Doctrine\DBAL\Result
+    {
+        $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
+        return $this->selected->executeQuery($sql, $params, $types, $qcp);
     }
 }

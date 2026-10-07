@@ -37,6 +37,41 @@ final class ComponentRepository
         return $count;
     }
 
+    /** One private family count; retain the same scalar result and bound conversions as DQL. */
+    public function nativeCountForAsset(string $table, string $type, int $id): int
+    {
+        $class = EntityRegistry::tables()[$table];
+        $reference = EntityRegistry::discriminatedReferences($table)['items_id'] ?? null;
+        if ($reference !== null && !isset($reference['selections'][$type])) {
+            return 0;
+        }
+        $metadata = $this->em->getClassMetadata($class);
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $column = static fn (string $field): string => 'r.' . $quote->getColumnName($field, $metadata, $platform);
+        if ($reference === null) {
+            $subject = $column('items_id');
+        } else {
+            $association = $metadata->associationMappings[$class::referenceAssociation($type)];
+            if (!$association->isToOneOwningSide() || count($association->joinColumns) !== 1) {
+                throw new \LogicException('Component counts require a single owning subject reference.');
+            }
+            $subject = 'r.' . $quote->getJoinColumnName($association->joinColumns[0], $metadata, $platform);
+        }
+        $asset = \Doctrine\DBAL\Types\Type::getType(Types::BIGINT);
+        $kind = \Doctrine\DBAL\Types\Type::getType(Types::STRING);
+        $deleted = \Doctrine\DBAL\Types\Type::getType(Types::BOOLEAN);
+        // COUNT's path and scalar hydration do not apply mapped SQL/PHP output converters.
+        return (int)$connection->createQueryBuilder()->select('COUNT(' . $column('id') . ')')
+            ->from($quote->getTableName($metadata, $platform), 'r')
+            ->where($subject . ' = ' . $asset->convertToDatabaseValueSQL('?', $platform))
+            ->andWhere($column('itemtype') . ' = ' . $kind->convertToDatabaseValueSQL('?', $platform))
+            ->andWhere($column('is_deleted') . ' = ' . $deleted->convertToDatabaseValueSQL('?', $platform))
+            ->setParameter(0, $id, Types::BIGINT)->setParameter(1, $type, Types::STRING)
+            ->setParameter(2, false, Types::BOOLEAN)->executeQuery()->fetchOne();
+    }
+
     /** A selected typed subject must exist; stock deliberately selects no subject. */
     public function hasSelectedSubject(string $table, array $values): bool
     {
