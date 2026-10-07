@@ -7,9 +7,13 @@ namespace itsmng\Database\Repository;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
 use itsmng\Database\Entity\ITILSolution;
+use itsmng\Database\Mapping\AttributeDriver;
 use itsmng\Database\Mapping\DiscriminatedBy;
 use itsmng\Database\Mapping\ITILStatisticsRelation;
 use itsmng\Database\Mapping\ITILStatisticsRole;
+use LogicException;
+use ReflectionClass;
+use ReflectionProperty;
 
 /** Mapped parent and relationship types shared by statistics projections. */
 final class ITILStatisticsType
@@ -23,7 +27,7 @@ final class ITILStatisticsType
         $definition = $definitions[$class] ?? ['definition' => [], 'error' => ['Missing', ITILStatisticsRole::cases()[0]->name]];
         if ($definition['error'] !== null) {
             [$reason, $role] = $definition['error'];
-            throw new \LogicException($reason . ' ITIL statistics association: ' . $type . '.' . $role);
+            throw new LogicException($reason . ' ITIL statistics association: ' . $type . '.' . $role);
         }
         return $definition['definition'];
     }
@@ -33,7 +37,7 @@ final class ITILStatisticsType
     {
         $parents = [];
         foreach ($em->getClassMetadata(ITILSolution::class)->associationMappings as $property => $association) {
-            if ((new \ReflectionProperty(ITILSolution::class, $property))->getAttributes(DiscriminatedBy::class) !== []) {
+            if ((new ReflectionProperty(ITILSolution::class, $property))->getAttributes(DiscriminatedBy::class) !== []) {
                 $parents[$association->targetEntity] = true;
             }
         }
@@ -43,7 +47,7 @@ final class ITILStatisticsType
                 if (!$association->isToOneOwningSide() || !isset($parents[$association->targetEntity])) {
                     continue;
                 }
-                foreach ((new \ReflectionProperty($metadata->name, $property))->getAttributes(ITILStatisticsRelation::class) as $attribute) {
+                foreach ((new ReflectionProperty($metadata->name, $property))->getAttributes(ITILStatisticsRelation::class) as $attribute) {
                     $role = $attribute->newInstance()->role->name;
                     $target = $association->targetEntity;
                     $tuple = $targets[$target] ?? ['parent' => $property, 'roles' => [], 'error' => null];
@@ -79,7 +83,7 @@ final class ITILStatisticsType
     {
         $driver = $em->getConfiguration()->getMetadataDriverImpl();
         $events = $em->getEventManager();
-        if (!$driver instanceof \itsmng\Database\Mapping\AttributeDriver
+        if (!$driver instanceof AttributeDriver
             || $events->hasListeners(Events::loadClassMetadata)
             || $events->hasListeners(Events::onClassMetadataNotFound)) {
             yield from $em->getMetadataFactory()->getAllMetadata();
@@ -89,7 +93,7 @@ final class ITILStatisticsType
         // Reflection selects candidates only; actual ORM associations remain the
         // authority for reporting roles, parent targets and duplicate diagnostics.
         foreach ($driver->getAllClassNames() as $class) {
-            $reflection = new \ReflectionClass($class);
+            $reflection = new ReflectionClass($class);
             do {
                 foreach ($reflection->getProperties() as $property) {
                     if ($property->getAttributes(ITILStatisticsRelation::class) !== []) {
