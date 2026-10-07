@@ -24,7 +24,7 @@ final class LifecycleModelJournal
 
     public function remember(\CommonDBTM $model, ?array $state = null): void
     {
-        if (!$this->models->contains($model)) {
+        if (!$this->models->offsetExists($model)) {
             $this->models[$model] = $state ?? self::state($model);
         }
     }

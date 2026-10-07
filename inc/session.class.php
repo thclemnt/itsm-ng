@@ -159,7 +159,7 @@ class Session
                     self::initEntityProfiles(self::getLoginUserID());
 
                     // Use default profile if exist
-                    if (isset($_SESSION['glpiprofiles'][$auth->user->fields['profiles_id']])) {
+                    if (isset($auth->user->fields['profiles_id'], $_SESSION['glpiprofiles'][$auth->user->fields['profiles_id']])) {
                         self::changeProfile($auth->user->fields['profiles_id']);
                     } else { // Else use first
                         self::changeProfile(key($_SESSION['glpiprofiles']));
