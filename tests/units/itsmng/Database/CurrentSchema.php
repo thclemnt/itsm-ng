@@ -205,6 +205,7 @@ class CurrentSchema extends \atoum\atoum\test
             ['glpi_crontasks', 16, 5, [], []],
             ['glpi_configs', 4, 2, [], []],
             ['glpi_computertypes', 5, 4, [], []],
+            ['glpi_computermodels', 14, 5, [], []],
             ['glpi_monitortypes', 5, 4, [], []],
             ['glpi_networkequipmenttypes', 5, 4, [], []],
             ['glpi_peripheraltypes', 5, 4, [], []],
@@ -310,6 +311,69 @@ class CurrentSchema extends \atoum\atoum\test
             $fresh = (new BaselineSchema())->build($platform)->getTable('glpi_crontasks');
             $this->integer($fresh->getColumn('name')->getLength())->isIdenticalTo(150);
             $this->boolean($fresh->hasColumn('comment'))->isTrue();
+            $this->boolean($manager->getConnection()->isConnected())->isFalse();
+        }
+    }
+
+    public function testComputerModelOwnsBooleanStorageDefaultsAndNullability(): void
+    {
+        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+            $manager = $this->manager($platform);
+            $metadata = $manager->getClassMetadata(\itsmng\Database\Entity\ComputerModel::class);
+            $field = $metadata->fieldMappings['is_half_rack'];
+            $this->string($field->type)->isIdenticalTo(Types::BOOLEAN);
+            $this->boolean((new \itsmng\Database\Entity\ComputerModel())->is_half_rack)->isFalse();
+            $frozen = (new Baseline())->build($platform)->toSql($platform);
+            $builder = new BaselineSchema($manager);
+            $metadata->fieldMappings['name']->length = 173;
+            $metadata->fieldMappings['weight']->options['default'] = '7';
+            foreach ([[false, false], [true, false], [null, true]] as [$default, $nullable]) {
+                $field->nullable = $nullable;
+                $field->options['default'] = $default;
+                $field->options['comment'] = 'Current rack flag';
+                $current = $builder->build($platform)->getTable('glpi_computermodels');
+                $column = $current->getColumn('is_half_rack');
+                $this->string(Type::lookupName($column->getType()))->isIdenticalTo($platform instanceof PostgreSQLPlatform ? Types::BOOLEAN : Types::SMALLINT);
+                $this->variable($column->getDefault())->isIdenticalTo($default === null || $platform instanceof PostgreSQLPlatform ? $default : (string)(int)$default);
+                $this->boolean($column->getNotnull())->isIdenticalTo(!$nullable);
+                $this->string($column->getComment())->isIdenticalTo('Current rack flag');
+                $this->integer($current->getColumn('name')->getLength())->isIdenticalTo(173);
+                $this->string($current->getColumn('weight')->getDefault())->isIdenticalTo('7');
+                $this->string($field->type)->isIdenticalTo(Types::BOOLEAN, 'The physical projection must not change ORM hydration');
+                $this->variable($field->options['default'])->isIdenticalTo($default);
+            }
+            $sql = implode("\n", $builder->toSql($platform));
+            if ($platform instanceof PostgreSQLPlatform) {
+                $this->string($sql)->notContains('glpi_computermodels_is_half_rack_boolean');
+            } else {
+                $this->string($sql)->contains('ADD CONSTRAINT `glpi_computermodels_is_half_rack_boolean` CHECK (`is_half_rack` IS NULL OR `is_half_rack` IN (0, 1))');
+                $field->nullable = false;
+                $field->options['default'] = false;
+                $this->string(implode("\n", $builder->toSql($platform)))
+                    ->contains('ADD CONSTRAINT `glpi_computermodels_is_half_rack_boolean` CHECK (`is_half_rack` IS NOT NULL AND `is_half_rack` IN (0, 1))');
+            }
+            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
+            $this->boolean($manager->getConnection()->isConnected())->isFalse();
+        }
+    }
+
+    public function testBooleanStorageRejectsNonBooleanFieldsAndDefaults(): void
+    {
+        $this->exception(static fn () => new \itsmng\Database\Mapping\BooleanStorage(Types::STRING))
+            ->isInstanceOf(\InvalidArgumentException::class);
+        $storage = new \itsmng\Database\Mapping\BooleanStorage(Types::SMALLINT);
+        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+            $manager = $this->manager($platform);
+            $metadata = $manager->getClassMetadata(\itsmng\Database\Entity\ComputerModel::class);
+            $field = $metadata->fieldMappings['is_half_rack'];
+            $field->type = Types::INTEGER;
+            $this->exception(static fn () => (new BaselineSchema($manager))->build($platform))
+                ->isInstanceOf(\InvalidArgumentException::class)
+                ->hasMessage('BooleanStorage requires an ORM boolean field.');
+            $field->type = Types::BOOLEAN;
+            $column = new \Doctrine\DBAL\Schema\Column('is_half_rack', Type::getType(Types::BOOLEAN), ['default' => 2]);
+            $this->exception(static fn () => $storage->configure($column, $platform, $field))
+                ->isInstanceOf(\InvalidArgumentException::class);
             $this->boolean($manager->getConnection()->isConnected())->isFalse();
         }
     }

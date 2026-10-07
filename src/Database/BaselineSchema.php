@@ -105,6 +105,11 @@ final class BaselineSchema
             $declarations = [];
             foreach ($metadata as $entity) {
                 $declarations[$entity->getTableName()] = $entity;
+                foreach ($entity->fieldMappings as $property => $field) {
+                    foreach ((new \ReflectionProperty($entity->name, $property))->getAttributes(Mapping\BooleanStorage::class) as $attribute) {
+                        $attribute->newInstance()->configure($mapped->getTable($entity->getTableName())->getColumn($field->columnName), $platform, $field);
+                    }
+                }
             }
             $ownedTables = [];
             $newTables = [];
