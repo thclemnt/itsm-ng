@@ -447,7 +447,7 @@ class CommonDBTM extends DbTestCase
         $alternate = $DB->getProvider() === 'pgsql'
             ? \itsmng\Database\PostgresConnection::create(['driver' => 'pdo_pgsql', 'serverVersion' => '14.0'])
             : \itsmng\Database\MySQLConnection::create(['driver' => 'pdo_mysql', 'serverVersion' => '8.0.0']);
-        $routed = new class ($connection, $alternate) extends \DB {
+        $routed = new class ($connection, $alternate) extends \DBmysql {
             public function __construct(private \Doctrine\DBAL\Connection $current, private \Doctrine\DBAL\Connection $alternate)
             {
             }
