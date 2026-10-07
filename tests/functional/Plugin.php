@@ -42,6 +42,238 @@ class Plugin extends DbTestCase
     private $test_plugin_directory = 'test';
     private $anothertest_plugin_directory = 'anothertest';
 
+    public function testPluginDropdownImportAndUsageKeepTheirModelScope(): void
+    {
+        $this->withPluginLifecycleFixture(function ($connection, array $tables, int $entity, int $child): void {
+            [$dropdownTable, $treeTable, $linkTable] = $tables;
+            $name = "Plugin's \\ label";
+            $connection->insert($dropdownTable, ['id' => 100, 'name' => $name, 'entities_id' => $entity]);
+            $connection->insert($dropdownTable, ['id' => 101, 'name' => $name, 'entities_id' => $child]);
+            $dropdown = new \PluginRecursionDropdown();
+            $input = ['name' => addslashes($name), 'entities_id' => $entity];
+            // Before the fix this actual public import lookup rejects the plugin table.
+            $this->integer($dropdown->findID($input))->isIdenticalTo(100);
+            $this->integer($dropdown->import($input))->isIdenticalTo(100);
+            $this->integer(\PluginRecursionDropdown::$additions)->isIdenticalTo(0);
+            $input['entities_id'] = $child;
+            $this->integer($dropdown->findID($input))->isIdenticalTo(101);
+            $connection->delete($dropdownTable, ['id' => 101]);
+            $this->integer($dropdown->findID($input))->isIdenticalTo(-1);
+            $connection->update($dropdownTable, ['is_recursive' => true], ['id' => 100], ['is_recursive' => \Doctrine\DBAL\Types\Types::BOOLEAN]);
+            $this->integer($dropdown->findID($input))->isIdenticalTo(100, 'Recursive ancestor scope is retained');
+            $input['entities_id'] = [];
+            $this->integer($dropdown->findID($input))->isIdenticalTo(-1, 'Empty scope cannot import another entity row');
+            $new = ['name' => 'new ' . $this->getUniqueString(), 'entities_id' => $entity, '_no_history' => 1];
+            $id = $dropdown->import($new);
+            $this->integer((int)$id)->isGreaterThan(0);
+            $this->integer(\PluginRecursionDropdown::$additions)->isIdenticalTo(1, 'Missing rows use the public add lifecycle');
+            $this->integer((int)$dropdown->import($new))->isIdenticalTo((int)$id);
+            $this->integer(\PluginRecursionDropdown::$additions)->isIdenticalTo(1);
+            $this->boolean($dropdown->getFromDB(100))->isTrue();
+            $this->boolean($dropdown->isUsed())->isFalse();
+            $connection->insert($linkTable, ['id' => 100, 'targets_id' => 100]);
+            \PluginRecursionLink::$relations = [$dropdownTable => [$linkTable => 'targets_id']];
+            $this->boolean($dropdown->isUsed())->isTrue();
+            \PluginRecursionLink::$relations = [$dropdownTable => ['_' . $linkTable => 'targets_id']];
+            $this->boolean($dropdown->isUsed())->isFalse('Managed relations are excluded');
+            \PluginRecursionLink::$relations = [$dropdownTable => [$linkTable => ['items_id', 'itemtype']]];
+            $connection->update($linkTable, ['items_id' => 100, 'itemtype' => \Manufacturer::class], ['id' => 100]);
+            $this->boolean($dropdown->isUsed())->isFalse('A discriminator mismatch is not a use');
+            $connection->update($linkTable, ['itemtype' => \PluginRecursionDropdown::class], ['id' => 100]);
+            $this->boolean($dropdown->isUsed())->isTrue();
+            $manufacturer = $this->createItem(\Manufacturer::class, ['name' => $this->getUniqueString()]);
+            \PluginRecursionLink::$relations = [\Manufacturer::getTable() => [$linkTable => 'targets_id']];
+            $connection->update($linkTable, ['targets_id' => $manufacturer->getID()], ['id' => 100]);
+            $this->boolean($manufacturer->isUsed())->isTrue('Core dropdowns include their declared plugin children');
+            $connection->update($linkTable, ['targets_id' => 0], ['id' => 100]);
+            $this->boolean($manufacturer->isUsed())->isFalse();
+            // CommonTreeDropdown has its own import lookup. Exercise that existing path too.
+            $tree = new \PluginRecursionOwner();
+            $connection->insert($treeTable, ['id' => 100, 'name' => 'tree', 'completename' => 'tree', 'entities_id' => $entity]);
+            $treeInput = ['name' => 'tree', 'entities_id' => $entity];
+            $this->integer((int)$tree->findID($treeInput))->isIdenticalTo(100);
+            $this->integer((int)$tree->import($treeInput))->isIdenticalTo(100);
+            $this->boolean($tree->getFromDB(100))->isTrue();
+            \PluginRecursionLink::$relations = [$treeTable => [$linkTable => 'targets_id']];
+            $connection->update($linkTable, ['targets_id' => 100], ['id' => 100]);
+            $this->boolean($tree->isUsed())->isTrue();
+            \PluginRecursionLink::$relations = [$dropdownTable => [$linkTable => 'missing_column']];
+            $this->exception(static fn () => $dropdown->isUsed())->isInstanceOf(\InvalidArgumentException::class);
+            $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+            $plugins->setValue(null, []);
+            $this->exception(static fn () => $dropdown->findID($input))->isInstanceOf(\InvalidArgumentException::class);
+            $plugins->setValue(null, ['recursion']);
+        });
+    }
+
+    public function testPluginPurgeKeepsDeclaredChildUpdateLifecycle(): void
+    {
+        $this->withPluginLifecycleFixture(function ($connection, array $tables, int $entity): void {
+            [$dropdownTable, , $linkTable] = $tables;
+            $connection->insert($linkTable, ['id' => 100]);
+            $plain = new \PluginRecursionLink();
+            // A plain plugin model with no children must also be purgeable.
+            $this->boolean($plain->delete(['id' => 100], true, false))->isTrue();
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $connection->quoteIdentifier($linkTable) . ' WHERE id = 100'))->isIdenticalTo(0);
+            $manufacturer = $this->createItem(\Manufacturer::class, ['name' => $this->getUniqueString()]);
+            $replacement = $this->createItem(\Manufacturer::class, ['name' => $this->getUniqueString()]);
+            $connection->insert($linkTable, ['id' => 101, 'targets_id' => $manufacturer->getID()]);
+            $connection->insert($linkTable, ['id' => 102, 'targets_id' => $replacement->getID()]);
+            \PluginRecursionLink::$relations = [\Manufacturer::getTable() => [$linkTable => 'targets_id']];
+            \PluginRecursionLink::$refuseUpdate = true;
+            $this->boolean($manufacturer->delete(['id' => $manufacturer->getID(), '_replace_by' => $replacement->getID()], true, false))->isFalse();
+            $this->boolean($manufacturer->getFromDB($manufacturer->getID()))->isTrue('A child veto preserves the core parent');
+            $this->integer((int)$connection->fetchOne('SELECT targets_id FROM ' . $connection->quoteIdentifier($linkTable) . ' WHERE id = 101'))->isIdenticalTo((int)$manufacturer->getID());
+            \PluginRecursionLink::$refuseUpdate = false;
+            \PluginRecursionLink::$updates = [];
+            $this->boolean($manufacturer->delete(['id' => $manufacturer->getID(), '_replace_by' => $replacement->getID()], true, false))->isTrue();
+            $this->array(\PluginRecursionLink::$updates)->hasSize(1);
+            $this->integer((int)\PluginRecursionLink::$updates[0]['id'])->isIdenticalTo(101);
+            $this->integer((int)$connection->fetchOne('SELECT targets_id FROM ' . $connection->quoteIdentifier($linkTable) . ' WHERE id = 101'))->isIdenticalTo((int)$replacement->getID());
+            \PluginRecursionLink::$updates = [];
+            $this->boolean($replacement->delete(['id' => $replacement->getID()], true, false))->isTrue();
+            $this->array(\PluginRecursionLink::$updates)->hasSize(2);
+            $this->array(array_map('intval', $connection->fetchFirstColumn('SELECT targets_id FROM ' . $connection->quoteIdentifier($linkTable) . ' ORDER BY id')))->isIdenticalTo([0, 0]);
+            $connection->insert($dropdownTable, ['id' => 100, 'name' => 'plugin parent', 'entities_id' => $entity]);
+            $connection->insert($dropdownTable, ['id' => 101, 'name' => 'replacement', 'entities_id' => $entity]);
+            $connection->update($linkTable, ['items_id' => 100, 'itemtype' => \PluginRecursionDropdown::class], ['id' => 101]);
+            $connection->update($linkTable, ['items_id' => 100, 'itemtype' => \Manufacturer::class], ['id' => 102]);
+            \PluginRecursionLink::$relations = [$dropdownTable => [$linkTable => ['items_id', 'itemtype']]];
+            \PluginRecursionLink::$updates = [];
+            $parent = new \PluginRecursionDropdown();
+            $this->boolean($parent->delete(['id' => 100, '_replace_by' => 101], true, false))->isTrue();
+            $this->array(\PluginRecursionLink::$updates)->hasSize(1);
+            $this->array(array_map('intval', $connection->fetchFirstColumn('SELECT items_id FROM ' . $connection->quoteIdentifier($linkTable) . ' ORDER BY id')))->isIdenticalTo([101, 100]);
+            $this->boolean($parent->getFromDB(101))->isTrue('The replacement survives the public purge');
+        });
+    }
+
+    public function testPluginPurgeKeepsDeclaredChildPublicIndex(): void
+    {
+        $this->withPluginLifecycleFixture(function ($connection, array $tables): void {
+            $linkTable = $tables[3];
+            $parent = $this->createItem(\Manufacturer::class, ['name' => $this->getUniqueString()]);
+            $replacement = $this->createItem(\Manufacturer::class, ['name' => $this->getUniqueString()]);
+            $connection->insert($linkTable, ['id' => 100, 'public_id' => 900, 'targets_id' => $parent->getID()]);
+            $connection->insert($linkTable, ['id' => 900, 'public_id' => 100, 'targets_id' => $replacement->getID()]);
+            \PluginRecursionLink::$relations = [\Manufacturer::getTable() => [$linkTable => 'targets_id']];
+            $this->boolean($parent->isUsed())->isTrue();
+            $this->boolean($parent->delete(['id' => $parent->getID(), '_replace_by' => $replacement->getID()], true, false))->isTrue();
+            $this->array(\PluginRecursionLink::$updates)->hasSize(1);
+            $this->integer((int)\PluginRecursionLink::$updates[0]['public_id'])->isIdenticalTo(900);
+            $this->boolean(\PluginRecursionLink::$updates[0]['_disablenotif'])->isTrue();
+            $this->integer((int)$connection->fetchOne('SELECT targets_id FROM ' . $connection->quoteIdentifier($linkTable) . ' WHERE id = 100'))
+                ->isIdenticalTo((int)$replacement->getID());
+            $this->integer((int)$connection->fetchOne('SELECT targets_id FROM ' . $connection->quoteIdentifier($linkTable) . ' WHERE id = 900'))
+                ->isIdenticalTo((int)$replacement->getID());
+        });
+    }
+
+    /** Plugin DDL and rows belong to one separate physical owner, never the caller frame. */
+    private function withPluginLifecycleFixture(callable $operation): void
+    {
+        global $DB, $CFG_GLPI;
+        require_once __DIR__ . '/../fixtures/pluginrecursion.php';
+        $original = $DB;
+        $config = $CFG_GLPI;
+        $session = $_SESSION;
+        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $declarations = \PluginRecursionLink::$relations;
+        $updates = \PluginRecursionLink::$updates;
+        $refuse = \PluginRecursionLink::$refuseUpdate;
+        $additions = \PluginRecursionDropdown::$additions;
+        $caller = $original->getDoctrineConnection();
+        $scope = $caller->captureManagedTransactionScope();
+        $level = $caller->getTransactionNestingLevel();
+        $connection = $original->getProvider() === 'pgsql'
+            ? \itsmng\Database\PostgresConnection::create($caller->getParams())
+            : \itsmng\Database\MySQLConnection::create($caller->getParams());
+        $probe = clone $original;
+        (new \ReflectionProperty(\DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
+        $schema = $connection->createSchemaManager();
+        $tables = [\PluginRecursionDropdown::getTable(), \PluginRecursionOwner::getTable(), \PluginRecursionLink::getTable(), \PluginRecursionPublicLink::getTable()];
+        $created = [];
+        $frame = null;
+        $failure = null;
+        try {
+            \itsmng\Database\TransactionOwnership::assertManaged($connection);
+            foreach ($tables as $table) {
+                $this->boolean($schema->tablesExist([$table]))->isFalse();
+                $definition = new \Doctrine\DBAL\Schema\Table($table);
+                $definition->addColumn('id', \Doctrine\DBAL\Types\Types::INTEGER, ['autoincrement' => true]);
+                $definition->setPrimaryKey(['id']);
+                if (in_array($table, [$tables[2], $tables[3]], true)) {
+                    if ($table === $tables[3]) {
+                        $definition->addColumn('public_id', \Doctrine\DBAL\Types\Types::INTEGER);
+                        $definition->addUniqueIndex(['public_id']);
+                    }
+                    foreach (['targets_id', 'items_id'] as $column) {
+                        $definition->addColumn($column, \Doctrine\DBAL\Types\Types::INTEGER, ['default' => 0]);
+                    }
+                    $definition->addColumn('itemtype', \Doctrine\DBAL\Types\Types::STRING, ['length' => 100, 'default' => '']);
+                } else {
+                    $definition->addColumn('name', \Doctrine\DBAL\Types\Types::STRING, ['length' => 255]);
+                    $definition->addColumn('entities_id', \Doctrine\DBAL\Types\Types::INTEGER);
+                    $definition->addColumn('is_recursive', \Doctrine\DBAL\Types\Types::BOOLEAN, ['default' => false]);
+                    if ($table === $tables[1]) {
+                        $definition->addColumn('completename', \Doctrine\DBAL\Types\Types::STRING, ['length' => 255]);
+                        $definition->addColumn(\PluginRecursionOwner::getForeignKeyField(), \Doctrine\DBAL\Types\Types::INTEGER, ['default' => 0]);
+                    }
+                }
+                $schema->createTable($definition);
+                $created[] = $table;
+            }
+            $DB = $probe;
+            $frame = \itsmng\Database\OwnedMutationFrame::begin($connection);
+            $plugins->setValue(null, ['recursion']);
+            foreach ([\PluginRecursionDropdown::class, \PluginRecursionOwner::class, \PluginRecursionLink::class, \PluginRecursionPublicLink::class] as $class) {
+                $this->boolean(\Plugin::registerClass($class))->isTrue();
+            }
+            \PluginRecursionLink::$relations = [];
+            \PluginRecursionLink::$updates = [];
+            \PluginRecursionLink::$refuseUpdate = false;
+            \PluginRecursionDropdown::$additions = 0;
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $operation($connection, $tables, (int)getItemByTypeName('Entity', '_test_root_entity', true), (int)getItemByTypeName('Entity', '_test_child_1', true));
+            $frame->assertActive();
+        } catch (\Throwable $error) {
+            $failure = $error;
+        } finally {
+            $DB = $original;
+            $CFG_GLPI = $config;
+            $_SESSION = $session;
+            $plugins->setValue(null, $active);
+            \PluginRecursionLink::$relations = $declarations;
+            \PluginRecursionLink::$updates = $updates;
+            \PluginRecursionLink::$refuseUpdate = $refuse;
+            \PluginRecursionDropdown::$additions = $additions;
+            try {
+                $frame?->rollBack();
+                \itsmng\Database\TransactionOwnership::assertManaged($connection);
+                if ($connection->getTransactionNestingLevel() !== 0) {
+                    throw new \itsmng\Database\TransactionOwnershipMismatch('Plugin fixture DDL requires its own frame closed.');
+                }
+                foreach (array_reverse($created) as $table) {
+                    $schema->dropTable($table);
+                }
+            } catch (\Throwable $cleanup) {
+                $failure = $failure === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($failure, $cleanup);
+            }
+            try {
+                $probe->close();
+                $scope->assertActive();
+                $this->integer($caller->getTransactionNestingLevel())->isIdenticalTo($level);
+            } catch (\Throwable $cleanup) {
+                $failure = $failure === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($failure, $cleanup);
+            }
+        }
+        if ($failure !== null) {
+            throw $failure;
+        }
+    }
+
     public function testRegisteredPluginUniquenessUsesItsOwnSchema(): void
     {
         global $DB, $CFG_GLPI;

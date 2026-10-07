@@ -31,6 +31,13 @@
  * ---------------------------------------------------------------------
  */
 
+
+use itsmng\Database\LegacyValues;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DropdownLifecycleRepository;
+use itsmng\Database\Repository\KnowledgeBaseRepository;
+use itsmng\Database\Repository\RelationshipLifecycleRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -219,7 +226,7 @@ abstract class CommonDropdown extends CommonDBTM
 
         // if item based on location, create item in the same entity as location
         if (isset($input['locations_id']) && !isset($input['_is_update'])) {
-            $entity = (new \itsmng\Database\Repository\DropdownLifecycleRepository(\itsmng\Database\Orm::create($DB)))
+            $entity = (new DropdownLifecycleRepository(Orm::create($DB)))
                 ->locationEntity((int)$input['locations_id']);
             if ($entity !== null) {
                 $input['entities_id'] = $entity;
@@ -428,23 +435,23 @@ abstract class CommonDropdown extends CommonDBTM
     {
         global $DB;
 
-        if ((new \itsmng\Database\Repository\DropdownLifecycleRepository(\itsmng\Database\Orm::create($DB)))
+        if ((new DropdownLifecycleRepository(Orm::create($DB)))
             ->isUsed($this->getTable(), (int)$this->fields['id'], $this->getType())) {
             return true;
         }
-        // Plugin links use the same mapped boundary and must register their entities.
+        $relations = new RelationshipLifecycleRepository(Orm::create($DB));
         foreach (Plugin::getDatabaseRelations()[$this->getTable()] ?? [] as $table => $columns) {
             if (str_starts_with($table, '_')) {
                 continue;
             }
             $columns = (array)$columns;
             if (in_array('itemtype', $columns, true)) {
-                if (\itsmng\Database\MappedReads::countMatching($DB, $table, ['items_id' => $this->fields['id'], 'itemtype' => $this->getType()])) {
+                if ($relations->declaredReferenceExists($table, ['items_id' => $this->fields['id'], 'itemtype' => $this->getType()])) {
                     return true;
                 }
             } else {
                 foreach ($columns as $column) {
-                    if (\itsmng\Database\MappedReads::countMatching($DB, $table, [$column => $this->fields['id']])) {
+                    if ($relations->declaredReferenceExists($table, [$column => $this->fields['id']])) {
                         return true;
                     }
                 }
@@ -562,8 +569,8 @@ abstract class CommonDropdown extends CommonDBTM
                 );
             }
 
-            return (new \itsmng\Database\Repository\DropdownLifecycleRepository(\itsmng\Database\Orm::create($DB)))
-                ->findId($this->getTable(), \itsmng\Database\LegacyValues::decodeString((string)$input['name']), $scope);
+            return (new DropdownLifecycleRepository(Orm::create($DB)))
+                ->findId($this->getTable(), LegacyValues::decodeString((string)$input['name']), $scope);
         }
         return -1;
     }
@@ -803,9 +810,9 @@ abstract class CommonDropdown extends CommonDBTM
             $rand = mt_rand();
             $kbitem = new KnowbaseItem();
             $visibleIds = KnowbaseItem::getForCategory($this->fields['knowbaseitemcategories_id']);
-            $em = \itsmng\Database\Orm::create($DB);
+            $em = Orm::create($DB);
             try {
-                $found_ids = (new \itsmng\Database\Repository\KnowledgeBaseRepository($em))->existingLinkIds($visibleIds);
+                $found_ids = (new KnowledgeBaseRepository($em))->existingLinkIds($visibleIds);
             } finally {
                 $em->clear();
             }

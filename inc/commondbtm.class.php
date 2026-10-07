@@ -31,7 +31,32 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\LockMode;
 use Glpi\Event;
+use itsmng\Database\BooleanValue;
+use itsmng\Database\CloneInput;
+use itsmng\Database\CurrentReadUnavailable;
+use itsmng\Database\DeletionCancelled;
+use itsmng\Database\DeletionDecision;
+use itsmng\Database\DeletionOutcome;
+use itsmng\Database\DeletionUnit;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\ForeignKeys;
+use itsmng\Database\LifecycleModelJournal;
+use itsmng\Database\MappedReads;
+use itsmng\Database\MappedStorage;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\MutationCleanupFailure;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\DeletionRepository;
+use itsmng\Database\Repository\HistoryRepository;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\RelationshipLifecycleRepository;
+use itsmng\Database\TransactionOwnership;
+use itsmng\Database\TransactionOwnershipMismatch;
+use itsmng\Database\UnsupportedCriteria;
 use itsmng\Timezone;
 
 if (!defined('GLPI_ROOT')) {
@@ -270,18 +295,18 @@ class CommonDBTM extends CommonGLPI
     }
 
     /** Load one selected mapped row with a current write lock in the supplied caller frame. */
-    final public function getFromDBForUpdate($ID, \Doctrine\DBAL\Connection $connection): bool
+    final public function getFromDBForUpdate($ID, Connection $connection): bool
     {
         global $DB;
 
         if ((!is_int($ID) && !is_string($ID)) || filter_var($ID, FILTER_VALIDATE_INT) === false) {
             return false;
         }
-        \itsmng\Database\TransactionOwnership::assertManaged($connection);
+        TransactionOwnership::assertManaged($connection);
         $writer = $DB;
         if ($writer->getDoctrineConnection() !== $connection
-            || !isset(\itsmng\Database\EntityRegistry::tables()[$this->getTable()])) {
-            throw new \itsmng\Database\CurrentReadUnavailable('Current model loads require their supplied mapped writer.');
+            || !isset(EntityRegistry::tables()[$this->getTable()])) {
+            throw new CurrentReadUnavailable('Current model loads require their supplied mapped writer.');
         }
         $scope = $connection->captureManagedTransactionScope();
         $level = $connection->getTransactionNestingLevel();
@@ -294,7 +319,7 @@ class CommonDBTM extends CommonGLPI
         try {
             $result = (bool)$this->getFromDB($ID);
             $consumed = $this->currentRead['consumed'];
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $failure = $error;
         } finally {
             $this->currentRead = $previous;
@@ -303,16 +328,16 @@ class CommonDBTM extends CommonGLPI
             $scope->assertActive();
             if ($connection->getTransactionNestingLevel() !== $level || $writer !== ($GLOBALS['DB'] ?? null)
                 || $writer->getDoctrineConnection() !== $connection) {
-                throw new \itsmng\Database\TransactionOwnershipMismatch('The current model load replaced its supplied writer or frame.');
+                throw new TransactionOwnershipMismatch('The current model load replaced its supplied writer or frame.');
             }
-        } catch (\Throwable $cleanup) {
-            $failure = $failure === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($failure, $cleanup, true);
+        } catch (Throwable $cleanup) {
+            $failure = $failure === null ? $cleanup : new MutationCleanupFailure($failure, $cleanup, true);
         }
         if ($failure !== null) {
             throw $failure;
         }
         if ($result && !$consumed) {
-            throw new \itsmng\Database\CurrentReadUnavailable('A custom mutation load must delegate its selected row to the mapped current-read boundary.');
+            throw new CurrentReadUnavailable('A custom mutation load must delegate its selected row to the mapped current-read boundary.');
         }
         return $result;
     }
@@ -334,26 +359,26 @@ class CommonDBTM extends CommonGLPI
             return false;
         }
 
-        if (isset(\itsmng\Database\EntityRegistry::tables()[$this->getTable()])) {
-            $lock = \Doctrine\DBAL\LockMode::NONE;
+        if (isset(EntityRegistry::tables()[$this->getTable()])) {
+            $lock = LockMode::NONE;
             if ($this->currentRead !== null && $this->currentRead['owner'] === spl_object_id($this)
                 && $this->currentRead['table'] === $this->getTable() && $this->currentRead['index'] === $this->getIndexName()
                 && $this->currentRead['id'] === (int)Toolbox::cleanInteger($ID)) {
                 if ($DB->getDoctrineConnection() !== $this->currentRead['connection']) {
-                    throw new \itsmng\Database\TransactionOwnershipMismatch('The selected model read changed its supplied connection.');
+                    throw new TransactionOwnershipMismatch('The selected model read changed its supplied connection.');
                 }
-                $lock = \Doctrine\DBAL\LockMode::PESSIMISTIC_WRITE;
+                $lock = LockMode::PESSIMISTIC_WRITE;
             }
-            if ($lock === \Doctrine\DBAL\LockMode::NONE) {
-                $row = \itsmng\Database\Orm::readRecord($DB, $this->getTable(), $this->getIndexName(), (int)Toolbox::cleanInteger($ID));
+            if ($lock === LockMode::NONE) {
+                $row = Orm::readRecord($DB, $this->getTable(), $this->getIndexName(), (int)Toolbox::cleanInteger($ID));
             } else {
-                $manager = \itsmng\Database\Orm::create($DB);
+                $manager = Orm::create($DB);
                 try {
-                    if ($lock === \Doctrine\DBAL\LockMode::PESSIMISTIC_WRITE
+                    if ($lock === LockMode::PESSIMISTIC_WRITE
                         && $manager->getConnection() !== $this->currentRead['connection']) {
-                        throw new \itsmng\Database\TransactionOwnershipMismatch('The selected model manager changed its supplied connection.');
+                        throw new TransactionOwnershipMismatch('The selected model manager changed its supplied connection.');
                     }
-                    $row = (new \itsmng\Database\Repository\RecordRepository($manager))->find(
+                    $row = (new RecordRepository($manager))->find(
                         $this->getTable(),
                         $this->getIndexName(),
                         (int)Toolbox::cleanInteger($ID),
@@ -366,7 +391,7 @@ class CommonDBTM extends CommonGLPI
             if ($row === null) {
                 return false;
             }
-            if ($lock === \Doctrine\DBAL\LockMode::PESSIMISTIC_WRITE) {
+            if ($lock === LockMode::PESSIMISTIC_WRITE) {
                 $this->currentRead['consumed'] = true;
             }
             $this->fields = $row;
@@ -452,16 +477,16 @@ class CommonDBTM extends CommonGLPI
         global $DB;
 
         try {
-            $rows = \itsmng\Database\MappedReads::matching($DB, $this->getTable(), $crit, limit: 2);
+            $rows = MappedReads::matching($DB, $this->getTable(), $crit, limit: 2);
             if (count($rows) === 1) {
                 return $this->getFromDB($rows[0][$this->getIndexName()]);
             }
             if (count($rows) > 1) {
-                $count = \itsmng\Database\MappedReads::countMatching($DB, $this->getTable(), $crit);
+                $count = MappedReads::countMatching($DB, $this->getTable(), $crit);
                 trigger_error(sprintf('getFromDBByCrit expects to get one result, %s found.', $count), E_USER_WARNING);
             }
             return false;
-        } catch (\itsmng\Database\UnsupportedCriteria $unsupported) {
+        } catch (UnsupportedCriteria $unsupported) {
             // SQL expressions and plugin tables still need dedicated mapped queries.
         }
 
@@ -516,7 +541,7 @@ class CommonDBTM extends CommonGLPI
                 $requestedLimit = is_numeric($request['LIMIT'] ?? null) && (int)$request['LIMIT'] > 0 ? (int)$request['LIMIT'] : null;
                 $limit = $requestedLimit === null ? 2 : min(2, $requestedLimit);
                 $offset = $requestedLimit === null ? 0 : max(0, (int)($request['START'] ?? 0));
-                $rows = \itsmng\Database\MappedReads::matching(
+                $rows = MappedReads::matching(
                     $DB,
                     $this->getTable(),
                     $request['WHERE'] ?? [],
@@ -530,12 +555,12 @@ class CommonDBTM extends CommonGLPI
                     return true;
                 }
                 if (count($rows) > 1) {
-                    $count = max(0, \itsmng\Database\MappedReads::countMatching($DB, $this->getTable(), $request['WHERE'] ?? []) - $offset);
+                    $count = max(0, MappedReads::countMatching($DB, $this->getTable(), $request['WHERE'] ?? []) - $offset);
                     $count = $requestedLimit === null ? $count : min($count, $requestedLimit);
                     Toolbox::logWarning(sprintf('getFromDBByRequest expects to get one result, %s found!', $count));
                 }
                 return false;
-            } catch (\itsmng\Database\UnsupportedCriteria $unsupported) {
+            } catch (UnsupportedCriteria $unsupported) {
                 // Remaining SQL constructs use the existing path until mapped.
             }
         }
@@ -612,9 +637,9 @@ class CommonDBTM extends CommonGLPI
         global $DB;
 
         try {
-            $rows = \itsmng\Database\MappedReads::matching($DB, $this->getTable(), $condition, $order, $limit === null ? null : (int)$limit);
+            $rows = MappedReads::matching($DB, $this->getTable(), $condition, $order, $limit === null ? null : (int)$limit);
             return array_column($rows, null, 'id');
-        } catch (\itsmng\Database\UnsupportedCriteria $unsupported) {
+        } catch (UnsupportedCriteria $unsupported) {
             // Remaining SQL constructs use the existing path until mapped.
         }
 
@@ -673,8 +698,8 @@ class CommonDBTM extends CommonGLPI
             return false;
         }
 
-        $columns = \itsmng\Database\MappedStorage::supports($table)
-            ? \itsmng\Database\EntityRegistry::columnNames($table)
+        $columns = MappedStorage::supports($table)
+            ? EntityRegistry::columnNames($table)
             : array_keys($DB->listFields($table) ?: []);
         if ($columns) {
             foreach ($columns as $key) {
@@ -734,7 +759,7 @@ class CommonDBTM extends CommonGLPI
     {
         global $DB;
 
-        $mapped = \itsmng\Database\MappedStorage::supports($this->getTable());
+        $mapped = MappedStorage::supports($this->getTable());
         $changedColumns = [];
         if ($mapped) {
             $values = [];
@@ -744,7 +769,7 @@ class CommonDBTM extends CommonGLPI
                 }
             }
             if ($values) {
-                $changedColumns = (new \itsmng\Database\MappedStorage($DB))->update(
+                $changedColumns = (new MappedStorage($DB))->update(
                     $this->getTable(),
                     (int)$this->fields['id'],
                     $values
@@ -810,8 +835,8 @@ class CommonDBTM extends CommonGLPI
                 $params[$key] = $value;
             }
 
-            if (\itsmng\Database\MappedStorage::supports($this->getTable())) {
-                $this->fields['id'] = (new \itsmng\Database\MappedStorage($DB))->insert($this->getTable(), $params);
+            if (MappedStorage::supports($this->getTable())) {
+                $this->fields['id'] = (new MappedStorage($DB))->insert($this->getTable(), $params);
                 $result = true;
             } else {
                 $result = $DB->insert($this->getTable(), $params);
@@ -855,8 +880,8 @@ class CommonDBTM extends CommonGLPI
                 $params['date_mod'] = $_SESSION["glpi_currenttime"];
             }
 
-            if (\itsmng\Database\MappedStorage::supports($this->getTable())) {
-                (new \itsmng\Database\MappedStorage($DB))->update($this->getTable(), (int)$this->fields['id'], $params);
+            if (MappedStorage::supports($this->getTable())) {
+                (new MappedStorage($DB))->update($this->getTable(), (int)$this->fields['id'], $params);
                 return true;
             }
             if ($DB->update($this->getTable(), $params, ['id' => $this->fields['id']])) {
@@ -881,17 +906,17 @@ class CommonDBTM extends CommonGLPI
 
         $writer = $DB;
         $connection = $writer->getDoctrineConnection();
-        $scope = \itsmng\Database\DeletionUnit::isActive($connection)
+        $scope = DeletionUnit::isActive($connection)
             ? $connection->captureManagedTransactionScope() : null;
         $identity = $this->fields['id'];
         $publicIdentity = $this->getID();
         $assertWriter = function () use ($writer, $connection, $scope, $identity, $publicIdentity): void {
             $scope?->assertActive();
             if ($writer !== ($GLOBALS['DB'] ?? null) || $writer->getDoctrineConnection() !== $connection) {
-                throw new \itsmng\Database\TransactionOwnershipMismatch('The deletion callback replaced its supplied writer.');
+                throw new TransactionOwnershipMismatch('The deletion callback replaced its supplied writer.');
             }
             if (($this->fields['id'] ?? null) !== $identity || $this->getID() !== $publicIdentity) {
-                throw new \itsmng\Database\DeletionCancelled('The deletion callback replaced its selected owner.');
+                throw new DeletionCancelled('The deletion callback replaced its selected owner.');
             }
         };
 
@@ -914,8 +939,8 @@ class CommonDBTM extends CommonGLPI
             $this->cleanRelationTable();
             $assertWriter();
 
-            $result = \itsmng\Database\MappedStorage::supports($this->getTable())
-                ? (new \itsmng\Database\MappedStorage($DB))->delete($this->getTable(), (int)$this->fields['id'])
+            $result = MappedStorage::supports($this->getTable())
+                ? (new MappedStorage($DB))->delete($this->getTable(), (int)$this->fields['id'])
                 : $DB->delete($this->getTable(), ['id' => $this->fields['id']]);
             if ($result) {
                 $this->post_deleteFromDB();
@@ -930,8 +955,8 @@ class CommonDBTM extends CommonGLPI
             }
 
             $params = ['is_deleted' => 1] + $toadd;
-            if (\itsmng\Database\MappedStorage::supports($this->getTable())) {
-                (new \itsmng\Database\MappedStorage($DB))->update($this->getTable(), (int)$this->fields['id'], $params);
+            if (MappedStorage::supports($this->getTable())) {
+                (new MappedStorage($DB))->update($this->getTable(), (int)$this->fields['id'], $params);
                 $result = true;
             } else {
                 $result = $DB->update($this->getTable(), $params, ['id' => $this->fields['id']]);
@@ -958,7 +983,7 @@ class CommonDBTM extends CommonGLPI
         global $DB;
 
         if ($this->dohistory) {
-            (new \itsmng\Database\Repository\HistoryRepository(\itsmng\Database\Orm::create($DB)))
+            (new HistoryRepository(Orm::create($DB)))
                 ->deleteForItem($this->getType(), (int)$this->getID());
         }
     }
@@ -983,7 +1008,7 @@ class CommonDBTM extends CommonGLPI
             }
             $physicalReplacement = $replacement->fields['id'];
         }
-        $lifecycle = new \itsmng\Database\Repository\RelationshipLifecycleRepository(\itsmng\Database\Orm::create($DB));
+        $lifecycle = new RelationshipLifecycleRepository(Orm::create($DB));
         $index = static function (string $table): ?string {
             $model = getItemForItemtype(getItemTypeForTable($table));
             return $model ? $model->getIndexName() : null;
@@ -991,11 +1016,11 @@ class CommonDBTM extends CommonGLPI
         foreach ($lifecycle->replacements($this->getTable(), (int)$this->fields['id'], (int)$this->getID(), $this->getType(), $index) as $selection) {
             foreach ($selection['ids'] as $id) {
                 $related = getItemForItemtype(getItemTypeForTable($selection['table']));
-                \itsmng\Database\DeletionUnit::requireSuccess($DB->getDoctrineConnection(), $this->updateReplacementRelation($related, [$selection['index'] => $id, $selection['column'] => $selection['physical'] ? $physicalReplacement : $newval, '_disablenotif' => true], $selection['column']));
+                DeletionUnit::requireSuccess($DB->getDoctrineConnection(), $this->updateReplacementRelation($related, [$selection['index'] => $id, $selection['column'] => $selection['physical'] ? $physicalReplacement : $newval, '_disablenotif' => true], $selection['column']));
             }
         }
 
-        // Plugin links keep the public lifecycle, with mapped identifier reads.
+        // Plugin links retain their actual model schema and public update lifecycle.
         foreach (Plugin::getDatabaseRelations()[$this->getTable()] ?? [] as $table => $columns) {
             if (str_starts_with($table, '_')) {
                 continue;
@@ -1010,14 +1035,14 @@ class CommonDBTM extends CommonGLPI
                 if ($column === $model->getIndexName()) {
                     continue;
                 }
-                $physical = (\itsmng\Database\ForeignKeys::relations()[$table][$column] ?? null) === $this->getTable();
+                $physical = (ForeignKeys::relations()[$table][$column] ?? null) === $this->getTable();
                 $criteria = [$column => $physical ? $this->fields['id'] : $this->getID()];
                 if ($paired) {
                     $criteria['itemtype'] = $this->getType();
                 }
-                foreach (\itsmng\Database\MappedReads::identifiers($DB, $table, $model->getIndexName(), $criteria) as $id) {
+                foreach ($lifecycle->declaredIdentifiers($table, $model->getIndexName(), $criteria) as $id) {
                     $related = getItemForItemtype($model->getType());
-                    \itsmng\Database\DeletionUnit::requireSuccess($DB->getDoctrineConnection(), $this->updateReplacementRelation($related, [$model->getIndexName() => $id, $column => $physical ? $physicalReplacement : $newval, '_disablenotif' => true], $column));
+                    DeletionUnit::requireSuccess($DB->getDoctrineConnection(), $this->updateReplacementRelation($related, [$model->getIndexName() => $id, $column => $physical ? $physicalReplacement : $newval, '_disablenotif' => true], $column));
                 }
             }
         }
@@ -1028,7 +1053,7 @@ class CommonDBTM extends CommonGLPI
             $itemsticket = new Item_Ticket();
 
             foreach ($itemsticket->find(['items_id' => $this->getID(), 'itemtype' => $this->getType()]) as $data) {
-                $cnt = \itsmng\Database\MappedReads::countMatching($DB, 'glpi_items_tickets', ['tickets_id' => $data['tickets_id']]);
+                $cnt = MappedReads::countMatching($DB, 'glpi_items_tickets', ['tickets_id' => $data['tickets_id']]);
                 $itemsticket->delete(["id" => $data["id"]]);
                 if ($cnt == 1 && !$CFG_GLPI["keep_tickets_on_delete"]) {
                     $job->delete(["id" => $data["tickets_id"]]);
@@ -1122,7 +1147,7 @@ class CommonDBTM extends CommonGLPI
     {
         global $CFG_GLPI, $DB;
 
-        if (isset(\itsmng\Database\EntityRegistry::discriminatedReferences(ObjectLock::getTable())['items_id']['selections'][$this->getType()])) {
+        if (isset(EntityRegistry::discriminatedReferences(ObjectLock::getTable())['items_id']['selections'][$this->getType()])) {
             (new ObjectLock())->deleteByCriteria(['itemtype' => $this->getType(), 'items_id' => $this->getID()]);
         }
 
@@ -1160,18 +1185,18 @@ class CommonDBTM extends CommonGLPI
             $ci->cleanDBonItemDelete($this->getType(), $this->fields['id']);
         }
 
-        if (isset(\itsmng\Database\EntityRegistry::discriminatedReferences(Certificate_Item::getTable())['items_id']['selections'][$this->getType()])) {
+        if (isset(EntityRegistry::discriminatedReferences(Certificate_Item::getTable())['items_id']['selections'][$this->getType()])) {
             (new Certificate_Item())->cleanDBonItemDelete($this->getType(), $this->getID());
         }
 
-        if (isset(\itsmng\Database\EntityRegistry::discriminatedReferences(Item_Project::getTable())['items_id']['selections'][$this->getType()])) {
+        if (isset(EntityRegistry::discriminatedReferences(Item_Project::getTable())['items_id']['selections'][$this->getType()])) {
             (new Item_Project())->cleanDBonItemDelete($this->getType(), $this->getID());
         }
 
-        if (isset(\itsmng\Database\EntityRegistry::discriminatedReferences(Appliance_Item::getTable())['items_id']['selections'][$this->getType()])) {
+        if (isset(EntityRegistry::discriminatedReferences(Appliance_Item::getTable())['items_id']['selections'][$this->getType()])) {
             (new Appliance_Item())->cleanDBonItemDelete($this->getType(), $this->getID());
         }
-        if (isset(\itsmng\Database\EntityRegistry::discriminatedReferences(Appliance_Item_Relation::getTable())['items_id']['selections'][$this->getType()])) {
+        if (isset(EntityRegistry::discriminatedReferences(Appliance_Item_Relation::getTable())['items_id']['selections'][$this->getType()])) {
             (new Appliance_Item_Relation())->cleanDBonItemDelete($this->getType(), $this->getID());
         }
 
@@ -1240,7 +1265,7 @@ class CommonDBTM extends CommonGLPI
         // Both assignment families declare their owning subjects locally. A
         // non-Computer purge must run licence validity/history hooks as well.
         foreach ([Item_SoftwareVersion::class, Item_SoftwareLicense::class] as $assignment) {
-            $subjects = \itsmng\Database\EntityRegistry::discriminatedReferences($assignment::getTable())['items_id']['selections'];
+            $subjects = EntityRegistry::discriminatedReferences($assignment::getTable())['items_id']['selections'];
             if (isset($subjects[$this->getType()])) {
                 $this->deleteChildrenAndRelationsFromDb([$assignment]);
             }
@@ -1357,13 +1382,13 @@ class CommonDBTM extends CommonGLPI
     {
         if ($identifier <= 0 || (array_key_exists('id', $input) && filter_var($input['id'], FILTER_VALIDATE_INT) !== $identifier)
             || array_key_exists('_oldID', $input) || array_key_exists('clone', $input)) {
-            throw new \InvalidArgumentException('Assigned-ID creation requires a positive matching ID and no clone parameters.');
+            throw new InvalidArgumentException('Assigned-ID creation requires a positive matching ID and no clone parameters.');
         }
         if ($this->assignedIdentifier !== null) {
-            throw new \LogicException('Assigned-ID creation is already active on this model.');
+            throw new LogicException('Assigned-ID creation is already active on this model.');
         }
         if ($this->getFromDB($identifier)) {
-            throw new \RuntimeException('Assigned-ID collision: ' . $this->getTable() . '.' . $identifier);
+            throw new RuntimeException('Assigned-ID collision: ' . $this->getTable() . '.' . $identifier);
         }
         $this->assignedIdentifier = $identifier;
         try {
@@ -1383,7 +1408,7 @@ class CommonDBTM extends CommonGLPI
         }
 
         $this->captureLifecycleWriter($DB);
-        $priorState = \itsmng\Database\LifecycleModelJournal::state($this);
+        $priorState = LifecycleModelJournal::state($this);
 
         // This means we are not adding a cloned object
         if ($this->assignedIdentifier === null && !isset($input['clone'])) {
@@ -1445,7 +1470,7 @@ class CommonDBTM extends CommonGLPI
         }
 
         //Process business rules for assets
-        $this->assetBusinessRules(\RuleAsset::ONADD);
+        $this->assetBusinessRules(RuleAsset::ONADD);
 
         if ($this->input && is_array($this->input)) {
             $this->input = $this->normalizeLifecycleInput($this->input);
@@ -1453,8 +1478,8 @@ class CommonDBTM extends CommonGLPI
 
         if ($this->input && is_array($this->input)) {
             $this->fields = [];
-            $table_fields = \itsmng\Database\MappedStorage::supports($this->getTable())
-                ? array_fill_keys(\itsmng\Database\EntityRegistry::columnNames($this->getTable()), true)
+            $table_fields = MappedStorage::supports($this->getTable())
+                ? array_fill_keys(EntityRegistry::columnNames($this->getTable()), true)
                 : $DB->listFields($this->getTable());
 
             // fill array for add
@@ -1479,7 +1504,7 @@ class CommonDBTM extends CommonGLPI
 
             if ($this->assignedIdentifier !== null && (filter_var($this->fields['id'] ?? null, FILTER_VALIDATE_INT) !== $this->assignedIdentifier
                 || array_key_exists('_oldID', $this->input) || array_key_exists('clone', $this->input))) {
-                throw new \RuntimeException('An add hook or business rule changed the assigned identity.');
+                throw new RuntimeException('An add hook or business rule changed the assigned identity.');
             }
             if ($this->checkUnicity(true, $options)) {
                 return $this->executePreparedAdd(
@@ -1625,12 +1650,12 @@ class CommonDBTM extends CommonGLPI
         }
         $new_item = new static();
         try {
-            $input = \itsmng\Database\CloneInput::merge(
+            $input = CloneInput::merge(
                 static::getTable(),
                 Toolbox::addslashes_deep($this->fields),
                 $override_input
             );
-        } catch (\InvalidArgumentException) {
+        } catch (InvalidArgumentException) {
             return false;
         }
         $input = $new_item->prepareInputForClone($input);
@@ -1919,7 +1944,7 @@ class CommonDBTM extends CommonGLPI
         }
 
         $storedFields = $this->fields;
-        \itsmng\Database\LifecycleModelJournal::capture($DB->getDoctrineConnection(), $this);
+        LifecycleModelJournal::capture($DB->getDoctrineConnection(), $this);
 
         // Store input in the object to be available in all sub-method / hook
         $this->input = $input;
@@ -1955,7 +1980,7 @@ class CommonDBTM extends CommonGLPI
         }
 
         //Process business rules for assets
-        $this->assetBusinessRules(\RuleAsset::ONUPDATE);
+        $this->assetBusinessRules(RuleAsset::ONUPDATE);
 
         if ($this->input && is_array($this->input)) {
             $this->input = $this->normalizeLifecycleInput($this->input);
@@ -1972,7 +1997,7 @@ class CommonDBTM extends CommonGLPI
                 $this->updates   = [];
                 $this->oldvalues = [];
 
-                $booleanFields = \itsmng\Database\EntityRegistry::booleanFields($this->getTable());
+                $booleanFields = EntityRegistry::booleanFields($this->getTable());
                 foreach (array_keys($this->input) as $key) {
                     if (array_key_exists($key, $this->fields)) {
                         // Prevent history for date statement (for date for example)
@@ -2086,10 +2111,10 @@ class CommonDBTM extends CommonGLPI
         global $DB;
 
         if ($this->requiresOwnershipForwarding()) {
-            return \itsmng\Database\OwnershipUpdateUnit::run($DB, $this, $storedFields, function () use ($DB, $history, $storedFields): bool {
-                \itsmng\Database\OwnershipUpdateUnit::assertTransactionalStorage($DB, $this->getTable());
+            return OwnershipUpdateUnit::run($DB, $this, $storedFields, function () use ($DB, $history, $storedFields): bool {
+                OwnershipUpdateUnit::assertTransactionalStorage($DB, $this->getTable());
                 foreach (array_merge(static::$forward_entity_to, self::$plugins_forward_entity[$this->getType()] ?? []) as $type) {
-                    \itsmng\Database\OwnershipUpdateUnit::assertTransactionalStorage($DB, $type::getTable());
+                    OwnershipUpdateUnit::assertTransactionalStorage($DB, $type::getTable());
                 }
                 return $this->completeLifecycleUpdate($history, $storedFields);
             });
@@ -2213,7 +2238,7 @@ class CommonDBTM extends CommonGLPI
                     if (!$item->getFromDB($id)) {
                         return false;
                     }
-                    \itsmng\Database\LifecycleModelJournal::capture($GLOBALS['DB']->getDoctrineConnection(), $item);
+                    LifecycleModelJournal::capture($GLOBALS['DB']->getDoctrineConnection(), $item);
                     // No history for such update, but refusal is still required.
                     $result = $item->update($input, 0);
                     if ($result !== true && $result !== 1) {
@@ -2291,8 +2316,8 @@ class CommonDBTM extends CommonGLPI
     protected function normalizeLifecycleInput(array $input): array|false
     {
         try {
-            return \itsmng\Database\BooleanValue::normalizeLegacyInput($this->getTable(), $input);
-        } catch (\InvalidArgumentException $error) {
+            return BooleanValue::normalizeLegacyInput($this->getTable(), $input);
+        } catch (InvalidArgumentException $error) {
             Session::addMessageAfterRedirect($error->getMessage(), false, ERROR);
             return false;
         }
@@ -2308,15 +2333,15 @@ class CommonDBTM extends CommonGLPI
     {
         $writes = array_intersect_key($this->fields, array_fill_keys($this->updates, true));
         try {
-            $writes = \itsmng\Database\BooleanValue::normalizeLegacyInput($this->getTable(), $writes);
-        } catch (\InvalidArgumentException $error) {
+            $writes = BooleanValue::normalizeLegacyInput($this->getTable(), $writes);
+        } catch (InvalidArgumentException $error) {
             Session::addMessageAfterRedirect($error->getMessage(), false, ERROR);
             return false;
         }
         foreach ($writes as $column => $value) {
             $this->fields[$column] = $value;
         }
-        foreach (\itsmng\Database\EntityRegistry::booleanFields($this->getTable()) as $column => $nullable) {
+        foreach (EntityRegistry::booleanFields($this->getTable()) as $column => $nullable) {
             if (!array_key_exists($column, $writes) && array_key_exists($column, $storedFields)) {
                 $this->fields[$column] = $storedFields[$column];
             }
@@ -2380,9 +2405,9 @@ class CommonDBTM extends CommonGLPI
         if ($DB->isSlave()) {
             return false;
         }
-        \itsmng\Database\LifecycleModelJournal::capture($DB->getDoctrineConnection(), $this);
-        if (!\itsmng\Database\MappedStorage::supports($this->getTable())) {
-            return $this->deleteLifecycle($input, $force, $history) === \itsmng\Database\DeletionOutcome::Deleted;
+        LifecycleModelJournal::capture($DB->getDoctrineConnection(), $this);
+        if (!MappedStorage::supports($this->getTable())) {
+            return $this->deleteLifecycle($input, $force, $history) === DeletionOutcome::Deleted;
         }
         $state = get_object_vars($this);
         $session = $_SESSION;
@@ -2404,44 +2429,44 @@ class CommonDBTM extends CommonGLPI
             }
         };
         $connection = $DB->getDoctrineConnection();
-        $result = \itsmng\Database\DeletionUnit::run($connection, function () use ($DB, $connection, $input, $force, $history): \itsmng\Database\DeletionOutcome {
-            $manager = \itsmng\Database\Orm::create($DB);
+        $result = DeletionUnit::run($connection, function () use ($DB, $connection, $input, $force, $history): DeletionOutcome {
+            $manager = Orm::create($DB);
             try {
-                $valid = (new \itsmng\Database\Repository\DeletionRepository($manager))->validate($this, $input);
+                $valid = (new DeletionRepository($manager))->validate($this, $input);
             } finally {
                 $manager->clear();
             }
             if ($DB !== ($GLOBALS['DB'] ?? null) || $DB->getDoctrineConnection() !== $connection) {
-                throw new \itsmng\Database\TransactionOwnershipMismatch('The deletion callback replaced its supplied writer.');
+                throw new TransactionOwnershipMismatch('The deletion callback replaced its supplied writer.');
             }
             if (!$valid) {
-                return \itsmng\Database\DeletionOutcome::Cancelled;
+                return DeletionOutcome::Cancelled;
             }
             $outcome = $this->deleteLifecycle($input, $force, $history, true);
             if ($DB !== ($GLOBALS['DB'] ?? null) || $DB->getDoctrineConnection() !== $connection) {
-                throw new \itsmng\Database\TransactionOwnershipMismatch('The deletion callback replaced its supplied writer.');
+                throw new TransactionOwnershipMismatch('The deletion callback replaced its supplied writer.');
             }
             return $outcome;
         }, $restore);
         // SMTP/chat delivery occurs only after this unit physically commits.
         $result->deliverNotifications();
-        return $result->outcome === \itsmng\Database\DeletionOutcome::Deleted;
+        return $result->outcome === DeletionOutcome::Deleted;
     }
 
     /** Structured account detachment distinguishes committed work from cancellation. */
-    public function deletionDecision(): \itsmng\Database\DeletionDecision
+    public function deletionDecision(): DeletionDecision
     {
         return $this->pre_deleteItem()
-            ? \itsmng\Database\DeletionDecision::Proceed
-            : \itsmng\Database\DeletionDecision::Cancelled;
+            ? DeletionDecision::Proceed
+            : DeletionDecision::Cancelled;
     }
 
-    private function deleteLifecycle(array $input, $force, $history, bool $loaded = false): \itsmng\Database\DeletionOutcome
+    private function deleteLifecycle(array $input, $force, $history, bool $loaded = false): DeletionOutcome
     {
         global $DB;
 
         if ($DB->isSlave()) {
-            return \itsmng\Database\DeletionOutcome::Cancelled;
+            return DeletionOutcome::Cancelled;
         }
 
         $writer = $DB;
@@ -2449,7 +2474,7 @@ class CommonDBTM extends CommonGLPI
         $deleteScope = $loaded ? $DB->getDoctrineConnection()->captureManagedTransactionScope() : null;
 
         if (!$loaded && !$this->getFromDB($input[static::getIndexName()])) {
-            return \itsmng\Database\DeletionOutcome::Cancelled;
+            return DeletionOutcome::Cancelled;
         }
 
         // Force purge for templates / may not to be deleted / not dynamic lockable items
@@ -2492,7 +2517,7 @@ class CommonDBTM extends CommonGLPI
         $sourceUnchanged = function () use ($physicalIdentity, $publicIdentity, $suppliedIdentities, $writer, $deleteConnection, $deleteScope): bool {
             $deleteScope?->assertActive();
             if ($writer !== ($GLOBALS['DB'] ?? null) || $writer->getDoctrineConnection() !== $deleteConnection) {
-                throw new \itsmng\Database\TransactionOwnershipMismatch('The deletion callback replaced its supplied writer.');
+                throw new TransactionOwnershipMismatch('The deletion callback replaced its supplied writer.');
             }
             if (!is_array($this->input)
                 || !isset($this->fields['id'], $this->fields[$this->getIndexName()], $this->input[$this->getIndexName()])
@@ -2519,19 +2544,19 @@ class CommonDBTM extends CommonGLPI
 
         if (!is_array($this->input)) {
             // $input clear by a hook to cancel delete
-            return \itsmng\Database\DeletionOutcome::Cancelled;
+            return DeletionOutcome::Cancelled;
         }
 
         // Hooks may rewrite a replacement, but cannot introduce an invalid
         // owning target after the initial preflight and before cleanup.
-        if (\itsmng\Database\MappedStorage::supports($this->getTable())) {
+        if (MappedStorage::supports($this->getTable())) {
             if (!$sourceUnchanged()) {
-                return \itsmng\Database\DeletionOutcome::Cancelled;
+                return DeletionOutcome::Cancelled;
             }
-            $manager = \itsmng\Database\Orm::create($DB);
+            $manager = Orm::create($DB);
             try {
-                if (!(new \itsmng\Database\Repository\DeletionRepository($manager))->validateReplacement($this, $this->input)) {
-                    return \itsmng\Database\DeletionOutcome::Cancelled;
+                if (!(new DeletionRepository($manager))->validateReplacement($this, $this->input)) {
+                    return DeletionOutcome::Cancelled;
                 }
             } finally {
                 $manager->clear();
@@ -2539,26 +2564,26 @@ class CommonDBTM extends CommonGLPI
         }
 
         $decision = $this->deletionDecision();
-        if (\itsmng\Database\MappedStorage::supports($this->getTable()) && !$sourceUnchanged()) {
-            return \itsmng\Database\DeletionOutcome::Cancelled;
+        if (MappedStorage::supports($this->getTable()) && !$sourceUnchanged()) {
+            return DeletionOutcome::Cancelled;
         }
-        if ($decision === \itsmng\Database\DeletionDecision::ScopedDetachment) {
-            return \itsmng\Database\DeletionOutcome::ScopedDetachment;
+        if ($decision === DeletionDecision::ScopedDetachment) {
+            return DeletionOutcome::ScopedDetachment;
         }
-        if ($decision === \itsmng\Database\DeletionDecision::Proceed) {
+        if ($decision === DeletionDecision::Proceed) {
             if ($this->deleteFromDB($force)) {
                 if (!$sourceUnchanged()) {
-                    return \itsmng\Database\DeletionOutcome::Cancelled;
+                    return DeletionOutcome::Cancelled;
                 }
                 if ($force) {
                     $this->addMessageOnPurgeAction();
                     $this->post_purgeItem();
                     if (!$sourceUnchanged()) {
-                        return \itsmng\Database\DeletionOutcome::Cancelled;
+                        return DeletionOutcome::Cancelled;
                     }
                     Plugin::doHook("item_purge", $this);
                     if (!$sourceUnchanged()) {
-                        return \itsmng\Database\DeletionOutcome::Cancelled;
+                        return DeletionOutcome::Cancelled;
                     }
                     Impact::clean($this);
                 } else {
@@ -2588,24 +2613,24 @@ class CommonDBTM extends CommonGLPI
                     }
                     $this->post_deleteItem();
                     if (!$sourceUnchanged()) {
-                        return \itsmng\Database\DeletionOutcome::Cancelled;
+                        return DeletionOutcome::Cancelled;
                     }
                     Plugin::doHook("item_delete", $this);
                     if (!$sourceUnchanged()) {
-                        return \itsmng\Database\DeletionOutcome::Cancelled;
+                        return DeletionOutcome::Cancelled;
                     }
                 }
                 if (!$sourceUnchanged()) {
-                    return \itsmng\Database\DeletionOutcome::Cancelled;
+                    return DeletionOutcome::Cancelled;
                 }
                 if ($this->notificationqueueonaction) {
                     QueuedNotification::forceSendFor($this->getType(), $this->fields['id']);
                 }
 
-                return \itsmng\Database\DeletionOutcome::Deleted;
+                return DeletionOutcome::Deleted;
             }
         }
-        return \itsmng\Database\DeletionOutcome::Cancelled;
+        return DeletionOutcome::Cancelled;
     }
 
 
@@ -2745,7 +2770,7 @@ class CommonDBTM extends CommonGLPI
         }
 
         $storedFields = $this->fields;
-        \itsmng\Database\LifecycleModelJournal::capture($GLOBALS['DB']->getDoctrineConnection(), $this);
+        LifecycleModelJournal::capture($GLOBALS['DB']->getDoctrineConnection(), $this);
 
         if (isset($input['restore'])) {
             $input['_restore'] = $input['restore'];
@@ -3026,7 +3051,7 @@ class CommonDBTM extends CommonGLPI
 
         $entities = getAncestorsOf('glpi_entities', $this->fields['entities_id']);
         $entities[] = $this->fields['entities_id'];
-        $lifecycle = new \itsmng\Database\Repository\RelationshipLifecycleRepository(\itsmng\Database\Orm::create($DB));
+        $lifecycle = new RelationshipLifecycleRepository(Orm::create($DB));
         if ($lifecycle->hasOutsideEntities($this->getTable(), (int)$ID, (int)$this->getID(), $this->getType(), $entities)
             || $lifecycle->hasDeclaredOutsideEntities($this->getTable(), Plugin::getDatabaseRelations(), (int)$this->getID(), $this->getType(), $entities)) {
             return false;
@@ -3752,7 +3777,7 @@ class CommonDBTM extends CommonGLPI
     **/
     public function checkEntity($recursive = false)
     {
-        if (\itsmng\Database\EntityRegistry::hasPolicy($this->getTable(), 'entities_id', \itsmng\Database\Mapping\ReferenceKind::GlobalScope)
+        if (EntityRegistry::hasPolicy($this->getTable(), 'entities_id', ReferenceKind::GlobalScope)
             && array_key_exists('entities_id', $this->fields) && $this->fields['entities_id'] === null) {
             // Global entity scope still requires the model's ordinary global rights.
             return true;
@@ -4308,7 +4333,7 @@ class CommonDBTM extends CommonGLPI
     **/
     public function getRawName()
     {
-        \Toolbox::deprecated('Use CommonDBTM::getFriendlyName()');
+        Toolbox::deprecated('Use CommonDBTM::getFriendlyName()');
 
         return $this->getFriendlyName();
     }
@@ -4490,7 +4515,7 @@ class CommonDBTM extends CommonGLPI
                 $missingFields[] = 'name';
             }
             if (count($missingFields) > 0) {
-                throw new \Exception(
+                throw new Exception(
                     vsprintf(
                         'Invalid search option in "%1$s": missing "%2$s" field(s). %3$s',
                         [
@@ -4596,7 +4621,7 @@ class CommonDBTM extends CommonGLPI
 
         foreach ($classname::$method_name($itemtype) as $opt) {
             if (!isset($opt['id'])) {
-                throw new \Exception(get_called_class() . ': invalid search option! ' . print_r($opt, true));
+                throw new Exception(get_called_class() . ': invalid search option! ' . print_r($opt, true));
             }
             $optid = $opt['id'];
             unset($opt['id']);
@@ -5302,8 +5327,8 @@ class CommonDBTM extends CommonGLPI
         $ok = false;
         if (is_array($crit) && (count($crit) > 0)) {
             try {
-                $ids = \itsmng\Database\MappedReads::identifiers($DB, $this->getTable(), $this->getIndexName(), $crit);
-            } catch (\itsmng\Database\UnsupportedCriteria $unsupported) {
+                $ids = MappedReads::identifiers($DB, $this->getTable(), $this->getIndexName(), $crit);
+            } catch (UnsupportedCriteria $unsupported) {
                 // Legacy request options and plugin tables still use their existing query.
                 $crit['FIELDS'] = [$this::getTable() => static::getIndexName()];
                 $ids = array_column(iterator_to_array($DB->request($this->getTable(), $crit)), $this->getIndexName());
@@ -5324,8 +5349,8 @@ class CommonDBTM extends CommonGLPI
         global $DB;
 
         try {
-            return \itsmng\Database\MappedReads::identifiers($DB, $this->getTable(), $this->getIndexName(), $criteria);
-        } catch (\itsmng\Database\UnsupportedCriteria $unsupported) {
+            return MappedReads::identifiers($DB, $this->getTable(), $this->getIndexName(), $criteria);
+        } catch (UnsupportedCriteria $unsupported) {
             return array_column(iterator_to_array($DB->request([
                 'SELECT' => $this->getIndexName(), 'FROM' => $this->getTable(), 'WHERE' => $criteria,
             ])), $this->getIndexName());

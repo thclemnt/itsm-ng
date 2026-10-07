@@ -9,9 +9,36 @@ class PluginRecursionOwner extends CommonTreeDropdown
 class PluginRecursionLink extends CommonDBTM
 {
     public static array $relations = [];
+    public static array $updates = [];
+    public static bool $refuseUpdate = false;
+
+    public function prepareInputForUpdate($input)
+    {
+        self::$updates[] = $input;
+        return self::$refuseUpdate ? false : parent::prepareInputForUpdate($input);
+    }
 }
 
 function plugin_recursion_getDatabaseRelations(): array
 {
     return PluginRecursionLink::$relations;
+}
+
+class PluginRecursionDropdown extends CommonDropdown
+{
+    public static int $additions = 0;
+
+    public function post_addItem()
+    {
+        ++self::$additions;
+        parent::post_addItem();
+    }
+}
+
+class PluginRecursionPublicLink extends PluginRecursionLink
+{
+    public static function getIndexName()
+    {
+        return 'public_id';
+    }
 }
