@@ -534,15 +534,17 @@ class Migration extends \GLPITestCase
         $this->calling($this->db)->fieldExists = false;
         $this->queries = [];
 
-        $this->when(
-            function () {
-                $this->migration->addField('my_table', 'my_field', 'bool', ['value' => 2]);
-                $this->migration->executeMigration();
-            }
-        )->error()
-           ->withType(E_USER_ERROR)
-           ->withMessage('default_value must be 0 or 1')
-           ->exists();
+        foreach ([
+            fn () => $this->migration->addField('my_table', 'my_field', 'bool', ['value' => 2]),
+            fn () => $this->migration->changeField('my_table', 'old_field', 'my_field', 'bool', ['value' => 2]),
+        ] as $invalidField) {
+            $this->exception($invalidField)
+                ->isInstanceOf(\InvalidArgumentException::class)
+                ->hasMessage('default_value must be 0 or 1');
+        }
+        $this->array($this->queries)->isEmpty();
+        $this->output(fn () => $this->migration->executeMigration())->isIdenticalTo('Task completed.');
+        $this->array($this->queries)->isEmpty();
     }
 
     public function testFormatIntegerBadDefault()
@@ -552,15 +554,17 @@ class Migration extends \GLPITestCase
         $this->calling($this->db)->fieldExists = false;
         $this->queries = [];
 
-        $this->when(
-            function () {
-                $this->migration->addField('my_table', 'my_field', 'integer', ['value' => 'foo']);
-                $this->migration->executeMigration();
-            }
-        )->error()
-           ->withType(E_USER_ERROR)
-           ->withMessage('default_value must be numeric')
-           ->exists();
+        foreach ([
+            fn () => $this->migration->addField('my_table', 'my_field', 'integer', ['value' => 'foo']),
+            fn () => $this->migration->changeField('my_table', 'old_field', 'my_field', 'integer', ['value' => 'foo']),
+        ] as $invalidField) {
+            $this->exception($invalidField)
+                ->isInstanceOf(\InvalidArgumentException::class)
+                ->hasMessage('default_value must be numeric');
+        }
+        $this->array($this->queries)->isEmpty();
+        $this->output(fn () => $this->migration->executeMigration())->isIdenticalTo('Task completed.');
+        $this->array($this->queries)->isEmpty();
     }
 
     public function testAddRight()
