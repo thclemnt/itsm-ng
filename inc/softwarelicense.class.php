@@ -92,11 +92,17 @@ class SoftwareLicense extends CommonTreeDropdown
     {
         global $DB;
 
-        if (!$this->admitSoftwareLifecycle() || !array_key_exists(static::getIndexName(), $input)
-            || !$this->getFromDB($input[static::getIndexName()])) {
+        $database = $DB;
+        if (!array_key_exists(static::getIndexName(), $input)
+            || !\itsmng\Domain\SoftwareMutation::loadForMutation(
+                $database,
+                $this,
+                $input[static::getIndexName()],
+                fn () => $this->admitSoftwareLifecycle()
+            )) {
             return false;
         }
-        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateLicense(
+        return (new \itsmng\Domain\SoftwareAssignmentService($database))->mutateLicense(
             $this,
             \itsmng\Database\LifecycleModelJournal::state($this),
             fn () => parent::delete($input, $force, $history),

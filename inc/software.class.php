@@ -92,13 +92,13 @@ class Software extends CommonDBTM
         global $DB;
 
         $database = $DB;
-        if (!$this->admitSoftwareLifecycle() || !array_key_exists(static::getIndexName(), $input)) {
-            return false;
-        }
-        $assertOwner = $this->softwareWriterContinuity($database);
-        $loaded = $this->getFromDB($input[static::getIndexName()]);
-        $assertOwner();
-        if (!$loaded) {
+        if (!array_key_exists(static::getIndexName(), $input)
+            || !\itsmng\Domain\SoftwareMutation::loadForMutation(
+                $database,
+                $this,
+                $input[static::getIndexName()],
+                fn () => $this->admitSoftwareLifecycle()
+            )) {
             return false;
         }
         return (new \itsmng\Domain\SoftwareAssignmentService($database))->mutateSoftware(
@@ -107,28 +107,6 @@ class Software extends CommonDBTM
             fn () => parent::delete($input, $force, $history),
             'delete'
         );
-    }
-
-    /** Capture this mutation's supplied owner before an overridable preload. */
-    private function softwareWriterContinuity(DBAdapter $database): \Closure
-    {
-        if (($GLOBALS['DB'] ?? null) !== $database) {
-            throw new \itsmng\Database\TransactionOwnershipMismatch('Software mutation changed its supplied writer.');
-        }
-        $connection = $database->getDoctrineConnection();
-        \itsmng\Database\TransactionOwnership::assertManaged($connection);
-        $level = $connection->getTransactionNestingLevel();
-        $scope = $level > 0 ? $connection->captureManagedTransactionScope() : null;
-        return static function () use ($database, $connection, $scope, $level): void {
-            if (($GLOBALS['DB'] ?? null) !== $database || $database->getDoctrineConnection() !== $connection) {
-                throw new \itsmng\Database\TransactionOwnershipMismatch('Software mutation changed its supplied writer.');
-            }
-            \itsmng\Database\TransactionOwnership::assertManaged($connection);
-            if ($connection->getTransactionNestingLevel() !== $level) {
-                throw new \itsmng\Database\TransactionOwnershipMismatch('Software preload or callback changed its managed nesting.');
-            }
-            $scope?->assertActive();
-        };
     }
 
     // From CommonDBTM
@@ -1031,9 +1009,7 @@ class Software extends CommonDBTM
         if ($database->isSlave()) {
             return false;
         }
-        $assertOwner = $this->softwareWriterContinuity($database);
-        $loaded = $this->getFromDB($ID);
-        $assertOwner();
+        $loaded = \itsmng\Domain\SoftwareMutation::loadForMutation($database, $this, $ID);
         if (!$loaded || (int)$this->getID() !== $ID || $this->isTemplate()) {
             return false;
         }
@@ -1048,7 +1024,7 @@ class Software extends CommonDBTM
             $this,
             \itsmng\Database\LifecycleModelJournal::state($this),
             function () use ($database, $ID, $input): bool {
-                $assertOwner = $this->softwareWriterContinuity($database);
+                $assertOwner = \itsmng\Domain\SoftwareMutation::writerContinuity($database);
                 $manager = \itsmng\Database\Orm::create($database);
                 try {
                     $repository = new \itsmng\Database\Repository\SoftwareAssignmentRepository($manager);

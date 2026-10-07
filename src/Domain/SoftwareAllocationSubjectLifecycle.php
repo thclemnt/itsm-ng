@@ -53,11 +53,12 @@ trait SoftwareAllocationSubjectLifecycle
     {
         global $DB;
 
-        if ($DB->isSlave() || !array_key_exists(static::getIndexName(), $input)
-            || !$this->getFromDB($input[static::getIndexName()])) {
+        $database = $DB;
+        if (!array_key_exists(static::getIndexName(), $input)
+            || !SoftwareMutation::loadForMutation($database, $this, $input[static::getIndexName()])) {
             return false;
         }
-        return (new SoftwareAssignmentService($DB))->mutateSubject(
+        return (new SoftwareAssignmentService($database))->mutateSubject(
             $this,
             LifecycleModelJournal::state($this),
             fn () => parent::delete($input, $force, $history),

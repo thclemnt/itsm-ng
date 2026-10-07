@@ -13,6 +13,53 @@ use itsmng\Database\OwnedMutationFrame;
 /** One prepared software command, including its required public lifecycle work. */
 final class SoftwareMutation
 {
+    /** A public preload cannot replace the writer inherited by the ensuing mutation. */
+    public static function loadForMutation(\DBAdapter $database, \CommonDBTM $model, mixed $id, ?callable $admission = null): bool
+    {
+        if ($database->isSlave()) {
+            return false;
+        }
+        $assertOwner = self::writerContinuity($database);
+        $loaded = false;
+        $failure = null;
+        try {
+            $loaded = ($admission === null || $admission()) && $model->getFromDB($id);
+        } catch (\Throwable $error) {
+            $failure = $error;
+        }
+        try {
+            $assertOwner();
+        } catch (\Throwable $cleanup) {
+            $failure = $failure === null ? $cleanup : new MutationCleanupFailure($failure, $cleanup, true);
+        }
+        if ($failure !== null) {
+            throw $failure;
+        }
+        return $loaded;
+    }
+
+    /** Capture this mutation's supplied owner before an overridable preload. */
+    public static function writerContinuity(\DBAdapter $database): \Closure
+    {
+        if (($GLOBALS['DB'] ?? null) !== $database) {
+            throw new \itsmng\Database\TransactionOwnershipMismatch('Software mutation changed its supplied writer.');
+        }
+        $connection = $database->getDoctrineConnection();
+        \itsmng\Database\TransactionOwnership::assertManaged($connection);
+        $level = $connection->getTransactionNestingLevel();
+        $scope = $level > 0 ? $connection->captureManagedTransactionScope() : null;
+        return static function () use ($database, $connection, $scope, $level): void {
+            if (($GLOBALS['DB'] ?? null) !== $database || $database->getDoctrineConnection() !== $connection) {
+                throw new \itsmng\Database\TransactionOwnershipMismatch('Software mutation changed its supplied writer.');
+            }
+            \itsmng\Database\TransactionOwnership::assertManaged($connection);
+            if ($connection->getTransactionNestingLevel() !== $level) {
+                throw new \itsmng\Database\TransactionOwnershipMismatch('Software preload or callback changed its managed nesting.');
+            }
+            $scope?->assertActive();
+        };
+    }
+
     public static function run(\DBAdapter $database, \CommonDBTM $model, array $checkpoint, callable $operation): mixed
     {
         if ($database !== ($GLOBALS['DB'] ?? null) || $database->isSlave()) {
