@@ -32,6 +32,8 @@
  */
 
 use Glpi\Toolbox\URL;
+use itsmng\Database\EntityScopeReadOperation;
+use itsmng\Database\LinkCountReadOperation;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -76,14 +78,14 @@ class Link extends CommonDBTM
         if (self::canView()) {
             $nb = 0;
             if ($_SESSION['glpishow_count_on_tabs']) {
-                $entity_criteria = getEntitiesRestrictCriteria(
+                $scope = (new EntityScopeReadOperation())->restriction(
                     Link::getTable(),
                     '',
                     self::getEntityRestrictForItem($item),
                     true
                 );
 
-                $nb = (new \itsmng\Database\Repository\LinkRepository(\itsmng\Database\Orm::create($DB)))->countForItem($item->getType(), $entity_criteria);
+                $nb = (new LinkCountReadOperation($DB->getDoctrineConnection()))->countForItem($item->getType(), $scope);
             }
             return self::createTabEntry(self::getTypeName(Session::getPluralNumber()), $nb);
         }

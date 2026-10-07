@@ -35,12 +35,36 @@
 
 namespace tests\units;
 
+use Computer;
 use DbTestCase;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\ParameterType;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Query\QueryBuilder;
+use Doctrine\DBAL\Result;
+use Doctrine\DBAL\Types\BooleanType;
+use Doctrine\DBAL\Types\IntegerType;
+use Doctrine\DBAL\Types\StringType;
+use Doctrine\DBAL\Types\Type;
+use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use Doctrine\ORM\Events;
+use itsmng\Database\Entity\Link as LinkRecord;
+use itsmng\Database\EntityRestriction;
+use itsmng\Database\EntityScopeReadOperation;
+use itsmng\Database\LinkCountReadOperation;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\LinkRepository;
+use Link as LinkModel;
+use mock\DBmysql as AdapterProbe;
+use Session;
 
 class Link extends DbTestCase
 {
     public function testDisplayLinksRespectItemTypeAndEntityScope(): void
     {
+        global $DB;
         $this->login();
         $this->setEntity('_test_root_entity', true);
         $parent = (int)getItemByTypeName('Entity', '_test_root_entity', true);
@@ -76,6 +100,162 @@ class Link extends DbTestCase
         $rendered = \Link::getAllLinksFor($computer, $rows[0]);
         $this->array($rendered)->hasSize(1);
         $this->string($rendered[0])->contains('https://example.test/' . $computer->getID())->notContains("target='_blank'");
+        $connection = $DB->getDoctrineConnection();
+        $manager = Orm::create($DB);
+        $repository = new LinkRepository($manager);
+        $criteria = getEntitiesRestrictCriteria('glpi_links', '', $child, true);
+        $expected = $repository->countForItem('Computer', $criteria);
+        $this->integer($expected)->isGreaterThanOrEqualTo(3);
+        $probe = new LinkCountConnectionProbe($connection);
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new AdapterProbe();
+        $this->calling($adapter)->getDoctrineConnection = $probe;
+        $this->calling($adapter)->getProvider = $DB->getProvider();
+        $originalAdapter = $DB;
+        $originalSession = $_SESSION;
+        try {
+            $_SESSION['glpishow_count_on_tabs'] = true;
+            $DB = $adapter;
+            $this->string((new LinkModel())->getTabNameForItem($computer))
+                ->isIdenticalTo(LinkModel::createTabEntry(LinkModel::getTypeName(Session::getPluralNumber()), $expected));
+            $counts = array_filter($probe->builders, static fn (QueryBuilder $query): bool =>
+                str_contains(str_replace(['`', '"'], '', $query->getSQL()), 'FROM glpi_links r'));
+            $this->array($counts)->hasSize(1);
+            $DB = $originalAdapter;
+
+            $scope = (new EntityScopeReadOperation())->restriction('glpi_links', '', $child, true);
+            $this->array($scope->wrappedCriteria())->isIdenticalTo($criteria);
+            $reader = new LinkCountReadOperation($probe);
+            $integer = Type::getType('integer');
+            $boolean = Type::getType('boolean');
+            $string = Type::getType('string');
+            try {
+                $this->integer($reader->countForItem('Computer', $scope))->isIdenticalTo($expected);
+                $this->object($probe->getNativeConnection())->isIdenticalTo($connection->getNativeConnection());
+                $connection->update('glpi_links', ['is_recursive' => false], ['id' => $links[0]], ['is_recursive' => 'boolean', 'id' => 'bigint']);
+                $this->integer($reader->countForItem('Computer', $scope))->isIdenticalTo($expected - 1);
+                $this->integer($repository->countForItem('Computer', $criteria))->isIdenticalTo($expected - 1);
+                $connection->update('glpi_links', ['is_recursive' => true], ['id' => $links[0]], ['is_recursive' => 'boolean', 'id' => 'bigint']);
+                foreach ([0, [0], []] as $entities) {
+                    $root = (new EntityScopeReadOperation())->restriction('glpi_links', '', $entities, true);
+                    $this->integer($reader->countForItem('Computer', $root))
+                        ->isIdenticalTo($repository->countForItem('Computer', $root->wrappedCriteria()));
+                    if ($entities === []) {
+                        $this->integer($reader->countForItem('Computer', $root))->isIdenticalTo(0);
+                    }
+                }
+                // Externally supplied predicates retain the ordinary repository path.
+                $custom = new EntityRestriction(['id' => $links[0]], 'glpi_links', 'id', false, null);
+                $before = count($probe->builders);
+                $this->integer($reader->countForItem('Computer', $custom))->isIdenticalTo(1);
+                $this->integer(count($probe->builders))->isIdenticalTo($before);
+                Type::overrideType('string', new class () extends StringType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return "CASE WHEN " . $sqlExpr . " = '' THEN 'not-an-item-type' ELSE 'not-an-item-type' END";
+                    }
+                });
+                $probe->queries = [];
+                $this->integer($reader->countForItem('Computer', $scope))->isIdenticalTo($expected);
+                $this->integer($repository->countForItem('Computer', $criteria))->isIdenticalTo($expected);
+                $this->object($probe->queries[0]['types'][0])->isIdenticalTo(ParameterType::STRING);
+                Type::overrideType('string', $string);
+                Type::overrideType('integer', new class () extends IntegerType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return '(' . $sqlExpr . ' - 1000000)';
+                    }
+                });
+                $this->integer($reader->countForItem('Computer', $scope))->isIdenticalTo(0);
+                $this->integer($repository->countForItem('Computer', $criteria))->isIdenticalTo(0);
+                Type::overrideType('integer', $integer);
+                Type::overrideType('boolean', new class () extends BooleanType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return 'CASE WHEN ' . $sqlExpr . ' = TRUE THEN FALSE ELSE TRUE END';
+                    }
+                });
+                $this->integer($reader->countForItem('Computer', $scope))
+                    ->isIdenticalTo($repository->countForItem('Computer', $criteria));
+            } finally {
+                Type::overrideType('integer', $integer);
+                Type::overrideType('boolean', $boolean);
+                Type::overrideType('string', $string);
+                $reader->close();
+            }
+            $lateRoute = new class () extends Computer {
+                public static int $typeCalls = 0;
+                public static $callback;
+                public static function getType()
+                {
+                    if (++self::$typeCalls === 2) {
+                        (self::$callback)();
+                    }
+                    return 'Computer';
+                }
+            };
+            $lateRoute->fields = $computer->fields;
+            $lateRoute::$callback = static function () use ($originalAdapter): void {
+                $GLOBALS['DB'] = $originalAdapter;
+            };
+            $DB = $adapter;
+            $probe->builders = [];
+            try {
+                $this->string((new LinkModel())->getTabNameForItem($lateRoute))
+                    ->isIdenticalTo(LinkModel::createTabEntry(LinkModel::getTypeName(Session::getPluralNumber()), $expected));
+                $this->object($DB)->isIdenticalTo($originalAdapter);
+                $this->array(array_filter($probe->builders, static fn (QueryBuilder $query): bool =>
+                    str_contains(str_replace(['`', '"'], '', $query->getSQL()), 'FROM glpi_links r')))->hasSize(1);
+            } finally {
+                $lateRoute::$callback = null;
+                $DB = $originalAdapter;
+            }
+            $DB = $adapter;
+            $probe->builders = [];
+            $_SESSION['glpishow_count_on_tabs'] = false;
+            $this->string((new LinkModel())->getTabNameForItem($computer))
+                ->isIdenticalTo(LinkModel::createTabEntry(LinkModel::getTypeName(Session::getPluralNumber()), 0));
+            $_SESSION['glpishow_count_on_tabs'] = true;
+            $_SESSION['glpiactiveprofile']['link'] = 0;
+            $this->string((new LinkModel())->getTabNameForItem($computer))->isEmpty();
+            $this->array($probe->builders)->isEmpty();
+            $_SESSION = $originalSession;
+            $DB = $originalAdapter;
+            $events = new EventManager();
+            $extended = new class ($connection, $events) extends LinkCountConnectionProbe {
+                public function __construct(Connection $selected, private EventManager $events)
+                {
+                    parent::__construct($selected);
+                }
+                public function getEventManager(): EventManager
+                {
+                    return $this->events;
+                }
+            };
+            $local = new LinkCountReadOperation($extended);
+            $listener = new class () {
+                public int $calls = 0;
+                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
+                {
+                    if ($event->getClassMetadata()->name === LinkRecord::class) {
+                        ++$this->calls;
+                    }
+                }
+            };
+            $events->addEventListener([Events::loadClassMetadata], $listener);
+            try {
+                $this->integer($local->countForItem('Computer', $scope))->isIdenticalTo($expected);
+                $this->integer($listener->calls)->isIdenticalTo(1);
+                $this->array($extended->builders)->isEmpty();
+            } finally {
+                $local->close();
+            }
+        } finally {
+            $DB = $originalAdapter;
+            $_SESSION = $originalSession;
+            $manager->clear();
+        }
+
     }
 
     public function testDisplayLinkProjectionDoesNotHydrateOrDetach(): void
@@ -279,5 +459,46 @@ TEXT
         } else {
             $this->array($generated)->isEqualTo($expected);
         }
+    }
+}
+
+
+/** Records real selected-connection queries without opening a second transaction. */
+class LinkCountConnectionProbe extends Connection
+{
+    public array $builders = [];
+    public array $queries = [];
+
+    public function __construct(private Connection $selected)
+    {
+        parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
+    }
+
+    public function getDatabasePlatform(): AbstractPlatform
+    {
+        return $this->selected->getDatabasePlatform();
+    }
+
+    public function getNativeConnection(): mixed
+    {
+        return $this->selected->getNativeConnection();
+    }
+
+    public function isTransactionActive(): bool
+    {
+        return $this->selected->isTransactionActive();
+    }
+
+    public function createQueryBuilder(): QueryBuilder
+    {
+        $query = parent::createQueryBuilder();
+        $this->builders[] = $query;
+        return $query;
+    }
+
+    public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
+    {
+        $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
+        return $this->selected->executeQuery($sql, $params, $types, $qcp);
     }
 }

@@ -4,10 +4,13 @@
 
 namespace itsmng\Database\Repository;
 
+use Doctrine\DBAL\ParameterType;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
 use itsmng\Database\Entity;
+use itsmng\Database\EntityRestriction;
 use itsmng\Database\RecordCriteria;
 
 /** External-link definitions, scopes and the local inventory values used by their tags. */
@@ -39,6 +42,49 @@ final class LinkRepository
     public function countForItem(string $type, array $scope): int
     {
         return (int)$this->visible($type, $scope)->select('COUNT(r.id)')->getQuery()->getSingleScalarResult();
+    }
+
+    /** Fixed count for a typed scope; arbitrary legacy criteria retain visible(). */
+    public function nativeCountForItem(string $type, EntityRestriction $scope): int
+    {
+        $link = $this->em->getClassMetadata(Entity\Link::class);
+        $binding = $this->em->getClassMetadata(Entity\LinkItemtype::class);
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $id = 'r.' . $quote->getColumnName('id', $link, $platform);
+        $query = $connection->createQueryBuilder()
+            ->select('COUNT(' . $id . ')')
+            ->from($quote->getTableName($link, $platform), 'r')
+            ->where('EXISTS (SELECT binding.' . $quote->getColumnName('id', $binding, $platform)
+                . ' FROM ' . $quote->getTableName($binding, $platform) . ' binding WHERE binding.'
+                . $quote->getJoinColumnName($binding->associationMappings['links']->joinColumns[0], $binding, $platform)
+                . ' = ' . $id . ' AND binding.' . $quote->getColumnName('itemtype', $binding, $platform) . ' = ?)')
+            // The existing untyped DQL parameter infers a raw STRING binding.
+            ->setParameter(0, $type, ParameterType::STRING);
+        if ($scope->entities !== null) {
+            $position = 1;
+            $values = [];
+            foreach ($scope->entities as $entity) {
+                $values[] = Type::getType(Types::INTEGER)->convertToDatabaseValueSQL('?', $platform);
+                $query->setParameter($position++, $entity, Types::INTEGER);
+            }
+            $column = 'r.' . $quote->getJoinColumnName($link->associationMappings['entities']->joinColumns[0], $link, $platform);
+            $predicate = $values ? $column . ($scope->entityList ? ' IN (' . implode(', ', $values) . ')' : ' = ' . $values[0]) : '1 = 0';
+            if ($scope->ancestors) {
+                $recursive = 'r.' . $quote->getColumnName('is_recursive', $link, $platform)
+                    . ' = ' . Type::getType(Types::BOOLEAN)->convertToDatabaseValueSQL('?', $platform);
+                $query->setParameter($position++, true, Types::BOOLEAN);
+                $values = [];
+                foreach ($scope->ancestors as $ancestor) {
+                    $values[] = Type::getType(Types::INTEGER)->convertToDatabaseValueSQL('?', $platform);
+                    $query->setParameter($position++, $ancestor, Types::INTEGER);
+                }
+                $predicate = '(' . $predicate . ' OR (' . $recursive . ' AND ' . $column . ' IN (' . implode(', ', $values) . ')))';
+            }
+            $query->andWhere($predicate);
+        }
+        return (int)$query->executeQuery()->fetchOne();
     }
 
     public function itemtypes(int $link): array
