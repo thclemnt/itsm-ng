@@ -29,6 +29,11 @@ final class FileCollector implements TranslationCollectorInterface
         $this->files[$domain][$locale][] = new TranslationFile($type, $filename, $locale, $domain);
     }
 
+    public function hasFiles(string $domain, string $locale): bool
+    {
+        return isset($this->files[$domain][$locale]) || isset($this->files[$domain][Translator::ANY_LOCALE]);
+    }
+
     public function collect(string $textDomain, string $locale): TextDomain
     {
         return (new FileListCollector($this->files, $this->loaders))->collect($textDomain, $locale);

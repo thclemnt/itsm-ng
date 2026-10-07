@@ -272,6 +272,13 @@ class Session extends \DbTestCase
             // A plugin domain may be registered after core translation has begun.
             \Session::loadLanguage('en_GB', false);
             $this->string(__('Login'))->isIdenticalTo('Login');
+            // Before registration, v2 used raw strict identity for the default rule.
+            foreach ([null, '', '1', 1, 1.0, 1.9, 2, false, true] as $count) {
+                $expected = $count === 1 ? 'Unregistered' : 'Unregistered entries';
+                $this->string(_n('Unregistered', 'Unregistered entries', $count, $domain))->isIdenticalTo($expected);
+                $this->string(_nx('menu', 'Unregistered', 'Unregistered entries', $count, $domain))->isIdenticalTo($expected);
+            }
+            $this->string(__('Late message', $domain))->isIdenticalTo('Late message');
             \Plugin::loadLang($domain, 'en_GB', 'en_GB');
             $this->string(__('Late message', $domain))->isIdenticalTo('Late plugin translation');
             $this->string(__('Entry', $domain))->isIdenticalTo('First entry');
@@ -281,6 +288,9 @@ class Session extends \DbTestCase
                 // This fixture uses n > 1; v2 first cast to int, then took abs.
                 $expected = abs((int)$count) > 1 ? 'Many entries' : 'First entry';
                 $this->string(_n('Entry', 'Entries', $count, $domain))->isIdenticalTo($expected);
+                $missing = abs((int)$count) > 1 ? 'Missing entries' : 'Missing entry';
+                $this->string(_n('Missing entry', 'Missing entries', $count, $domain))->isIdenticalTo($missing);
+                $this->string(_nx('menu', 'Missing entry', 'Missing entries', $count, $domain))->isIdenticalTo($missing);
             }
             $this->string(\Rule::getTypeName())->isIdenticalTo('Rules');
             $this->string(\Rule::getTypeName(null))->isIdenticalTo('Rules');
@@ -313,6 +323,12 @@ class Session extends \DbTestCase
             $this->string($warm->translatePlural('Entry', 'Entries', 2, $domain))->isIdenticalTo('Many entries');
             $this->array($warm->translate('Entry', $domain))->isIdenticalTo(['First entry', 'Many entries']);
             $this->string($warm->translate('Missing', $domain))->isIdenticalTo('Missing');
+            $cacheOnly = new \itsmng\Translation\Translator('en_GB', $cache);
+            $this->string($cacheOnly->translatePlural('Entry', 'Entries', '1', $domain))->isIdenticalTo('First entry');
+            $this->string($cacheOnly->translatePlural('Entry', 'Entries', '1', $domain, ''))->isIdenticalTo('Entries');
+            $this->string($cacheOnly->translatePlural('Missing entry', 'Missing entries', 0, $domain))->isIdenticalTo('Missing entry');
+            $this->string($cacheOnly->translatePlural('Unregistered', 'Unregistered entries', '1', $domain . '_absent'))->isIdenticalTo('Unregistered entries');
+            $this->boolean($cache->has('itsmng-i18n3-' . $domain . '_absent-en_GB'))->isFalse();
         } finally {
             $TRANSLATE = $originalTranslator;
             if (is_file($file)) {

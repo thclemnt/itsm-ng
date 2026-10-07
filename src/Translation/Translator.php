@@ -18,7 +18,7 @@ final class Translator implements TranslationCollectorInterface
     private array $messages = [];
     private LaminasTranslator $translator;
 
-    public function __construct(string $locale, ?CacheInterface $cache = null)
+    public function __construct(string $locale, private readonly ?CacheInterface $cache = null)
     {
         $this->files = new FileCollector();
         $this->collector = $cache === null ? $this->files : new PSR16CachingCollector($cache, $this->files, 'itsmng-i18n3');
@@ -47,9 +47,23 @@ final class Translator implements TranslationCollectorInterface
         return $this->translator->getLocale();
     }
 
+    private function hasCatalogue(string $domain, string $locale): bool
+    {
+        if (isset($this->messages[$domain][$locale]) || $this->files->hasFiles($domain, $locale)) {
+            return true;
+        }
+        // V2 retried unregistered domains instead of memoizing an empty catalogue.
+        // A real cached catalogue remains usable even before local registration.
+        return $this->collector instanceof PSR16CachingCollector
+            && $this->cache->has($this->collector->cacheKey($domain, $locale));
+    }
+
     public function translate(string $message, string $textDomain = 'default', ?string $locale = null): string|array
     {
         $locale = $locale === '' ? null : $locale;
+        if (!$this->hasCatalogue($textDomain, $locale ?? $this->getLocale())) {
+            return $message;
+        }
         $translated = $this->translator->translate($message, $textDomain, $locale);
         // The legacy __() helper intentionally selects the first entry when a
         // singular call names a plural message; i18n3 otherwise drops that array.
@@ -60,8 +74,11 @@ final class Translator implements TranslationCollectorInterface
 
     public function translatePlural(string $singular, string $plural, mixed $number, string $textDomain = 'default', ?string $locale = null): string
     {
+        if (!$this->hasCatalogue($textDomain, $locale ?? $this->getLocale())) {
+            return $number === 1 ? $singular : $plural;
+        }
         // Laminas v2 evaluated registered catalogues with abs((int) $number).
         // Cast explicitly so null and fractional counts retain that contract.
-        return $this->translator->translatePlural($singular, $plural, (int)$number, $textDomain, $locale === '' ? null : $locale);
+        return $this->translator->translatePlural($singular, $plural, (int)$number, $textDomain, $locale);
     }
 }
