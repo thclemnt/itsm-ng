@@ -4,10 +4,23 @@
 
 namespace itsmng\Database\Repository;
 
+use Auth;
+use DateTime;
+use DateTimeImmutable;
 use Doctrine\DBAL\LockMode;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
-use itsmng\Database\Entity;
+use Doctrine\ORM\NonUniqueResultException;
+use InvalidArgumentException;
+use itsmng\Database\Entity\Entity;
+use itsmng\Database\Entity\Group;
+use itsmng\Database\Entity\GroupMembership;
+use itsmng\Database\Entity\OidcConfig;
+use itsmng\Database\Entity\OidcMapping;
+use itsmng\Database\Entity\OidcUser;
+use itsmng\Database\Entity\User;
+use LogicException;
 
 /** Local OIDC configuration and profile persistence; no identity-provider traffic. */
 final class OidcRepository
@@ -21,7 +34,7 @@ final class OidcRepository
     public function configuration(): array
     {
         $records = new RecordRepository($this->em);
-        return $records->find('glpi_oidc_config', 'id', 0) ?? $records->toRow(new Entity\OidcConfig());
+        return $records->find('glpi_oidc_config', 'id', 0) ?? $records->toRow(new OidcConfig());
     }
 
     public function mapping(): array
@@ -55,12 +68,19 @@ final class OidcRepository
 
     public function linkableUser(string $name, bool $allowLocal): ?int
     {
-        $query = $this->em->createQueryBuilder()->select('u.id')->from(Entity\User::class, 'u')
-            ->where('u.name = :name')->setParameter('name', $name)->orderBy('u.id')->setMaxResults(1);
+        $query = $this->em->createQueryBuilder()
+            ->select('u.id')
+            ->from(User::class, 'u')
+            ->where('u.name = :name')
+            ->setParameter('name', $name)
+            ->orderBy('u.id')
+            ->setMaxResults(1);
         if (!$allowLocal) {
-            $query->andWhere('u.authtype = :type')->setParameter('type', \Auth::EXTERNAL, Types::INTEGER);
+            $query->andWhere('u.authtype = :type')
+                ->setParameter('type', Auth::EXTERNAL, Types::INTEGER);
         }
-        $row = $query->getQuery()->getOneOrNullResult();
+        $row = $query->getQuery()
+            ->getOneOrNullResult();
         return $row === null ? null : (int)$row['id'];
     }
 
@@ -69,10 +89,14 @@ final class OidcRepository
         if ($user <= 0) {
             return false;
         }
-        return $this->em->createQueryBuilder()->select('o.id')->from(Entity\OidcUser::class, 'o')
+        return $this->em->createQueryBuilder()
+            ->select('o.id')
+            ->from(OidcUser::class, 'o')
             ->where('IDENTITY(o.users) = :user AND o.update = :pending')
-            ->setParameter('user', $user, Types::INTEGER)->setParameter('pending', false, Types::BOOLEAN)
-            ->getQuery()->getOneOrNullResult() !== null;
+            ->setParameter('user', $user, Types::INTEGER)
+            ->setParameter('pending', false, Types::BOOLEAN)
+            ->getQuery()
+            ->getOneOrNullResult() !== null;
     }
 
     /** Fixed private read; profile synchronization and its transaction remain separate. */
@@ -81,59 +105,74 @@ final class OidcRepository
         if ($user <= 0) {
             return false;
         }
-        $metadata = $this->em->getClassMetadata(Entity\OidcUser::class);
+        $metadata = $this->em->getClassMetadata(OidcUser::class);
         $connection = $this->em->getConnection();
         $platform = $connection->getDatabasePlatform();
         $quote = $this->em->getConfiguration()->getQuoteStrategy();
         $reference = $metadata->associationMappings['users'];
         if (!$reference->isToOneOwningSide() || count($reference->joinColumns) !== 1) {
-            throw new \LogicException('OIDC refresh requires a single owning user reference.');
+            throw new LogicException('OIDC refresh requires a single owning user reference.');
         }
-        $idType = \Doctrine\DBAL\Types\Type::getType($metadata->getTypeOfField('id'));
-        $userType = \Doctrine\DBAL\Types\Type::getType(Types::INTEGER);
-        $pendingType = \Doctrine\DBAL\Types\Type::getType(Types::BOOLEAN);
-        $rows = $connection->createQueryBuilder()->select(
-            $idType->convertToPHPValueSQL('o.' . $quote->getColumnName('id', $metadata, $platform), $platform) . ' AS id'
-        )->from($quote->getTableName($metadata, $platform), 'o')
+        $idType = Type::getType($metadata->getTypeOfField('id'));
+        $userType = Type::getType(Types::INTEGER);
+        $pendingType = Type::getType(Types::BOOLEAN);
+        $rows = $connection->createQueryBuilder()
+            ->select(
+                $idType->convertToPHPValueSQL(
+                    'o.' . $quote->getColumnName('id', $metadata, $platform),
+                    $platform
+                ) . ' AS id'
+            )
+            ->from($quote->getTableName($metadata, $platform), 'o')
             ->where('o.' . $quote->getJoinColumnName($reference->joinColumns[0], $metadata, $platform)
                 . ' = ' . $userType->convertToDatabaseValueSQL(':user', $platform))
             ->andWhere('o.' . $quote->getColumnName('update', $metadata, $platform)
                 . ' = ' . $pendingType->convertToDatabaseValueSQL(':pending', $platform))
-            ->setParameter('user', $user, Types::INTEGER)->setParameter('pending', false, Types::BOOLEAN)
-            ->executeQuery()->fetchAllAssociative();
+            ->setParameter('user', $user, Types::INTEGER)
+            ->setParameter('pending', false, Types::BOOLEAN)
+            ->executeQuery()
+            ->fetchAllAssociative();
         foreach ($rows as $row) {
             // getOneOrNullResult uses object hydration even for this scalar row;
             // its mapped PHP conversion is observable to custom DBAL types.
             $idType->convertToPHPValue($row['id'], $platform);
         }
         if (count($rows) > 1) {
-            throw new \Doctrine\ORM\NonUniqueResultException();
+            throw new NonUniqueResultException();
         }
         return $rows !== [];
     }
 
     public function requestRefresh(): int
     {
-        return $this->em->createQueryBuilder()->update(Entity\OidcUser::class, 'o')->set('o.update', ':pending')
-            ->setParameter('pending', false, Types::BOOLEAN)->getQuery()->execute();
+        return $this->em->createQueryBuilder()
+            ->update(OidcUser::class, 'o')
+            ->set('o.update', ':pending')
+            ->setParameter('pending', false, Types::BOOLEAN)
+            ->getQuery()
+            ->execute();
     }
 
     public function deleteUserState(int $user): void
     {
-        $this->em->createQueryBuilder()->delete(Entity\OidcUser::class, 'o')->where('IDENTITY(o.users) = :user')
-            ->setParameter('user', $user, Types::INTEGER)->getQuery()->execute();
+        $this->em->createQueryBuilder()
+            ->delete(OidcUser::class, 'o')
+            ->where('IDENTITY(o.users) = :user')
+            ->setParameter('user', $user, Types::INTEGER)
+            ->getQuery()
+            ->execute();
     }
 
     /** Return a mapped email for the existing UserEmail lifecycle to validate and save. */
-    public function synchronizeProfile(int $id, array $claims, \DateTimeImmutable $at): ?string
+    public function synchronizeProfile(int $id, array $claims, DateTimeImmutable $at): ?string
     {
         return $this->em->wrapInTransaction(function () use ($id, $claims, $at): ?string {
             // Serialize OIDC group creation through its singleton mapping row, then
             // serialize per-user state changes. This also protects initial inserts.
-            $mapping = $this->em->find(Entity\OidcMapping::class, 0, LockMode::PESSIMISTIC_WRITE);
-            $user = $id > 0 ? $this->em->find(Entity\User::class, $id, LockMode::PESSIMISTIC_WRITE) : null;
+            $mapping = $this->em->find(OidcMapping::class, 0, LockMode::PESSIMISTIC_WRITE);
+            $user = $id > 0 ? $this->em->find(User::class, $id, LockMode::PESSIMISTIC_WRITE) : null;
             if ($user === null) {
-                throw new \InvalidArgumentException('OIDC profile requires an existing user');
+                throw new InvalidArgumentException('OIDC profile requires an existing user');
             }
             $email = null;
             if ($mapping !== null) {
@@ -143,22 +182,23 @@ final class OidcRepository
                         $user->$field = $value;
                     }
                 }
-                $user->date_mod = \DateTime::createFromImmutable($at);
+                $user->date_mod = DateTime::createFromImmutable($at);
                 $email = $this->claim($claims, $mapping->email);
                 $groups = $mapping->group ? ($claims[$mapping->group] ?? []) : [];
                 if (!is_array($groups) || array_filter($groups, static fn ($name) => !is_string($name))) {
-                    throw new \InvalidArgumentException('OIDC groups must be a list of names');
+                    throw new InvalidArgumentException('OIDC groups must be a list of names');
                 }
                 $seenGroups = [];
                 foreach (array_unique($groups) as $name) {
                     if ($name === '') {
                         continue;
                     }
-                    $group = $this->em->getRepository(Entity\Group::class)->findOneBy(['name' => $name], ['id' => 'ASC']);
+                    $group = $this->em->getRepository(Group::class)
+                        ->findOneBy(['name' => $name], ['id' => 'ASC']);
                     if ($group === null) {
-                        $group = new Entity\Group();
+                        $group = new Group();
                         $group->name = $group->completename = $name;
-                        $group->entities = $this->em->getReference(Entity\Entity::class, 0);
+                        $group->entities = $this->em->getReference(Entity::class, 0);
                         $this->em->persist($group);
                         $this->em->flush();
                     }
@@ -167,17 +207,19 @@ final class OidcRepository
                         continue;
                     }
                     $seenGroups[$group->id] = true;
-                    if ($this->em->getRepository(Entity\GroupMembership::class)->findOneBy(['users' => $user, 'groups' => $group]) === null) {
-                        $membership = new Entity\GroupMembership();
+                    if ($this->em->getRepository(GroupMembership::class)
+                        ->findOneBy(['users' => $user, 'groups' => $group]) === null) {
+                        $membership = new GroupMembership();
                         $membership->users = $user;
                         $membership->groups = $group;
                         $this->em->persist($membership);
                     }
                 }
             }
-            $state = $this->em->getRepository(Entity\OidcUser::class)->findOneBy(['users' => $user]);
+            $state = $this->em->getRepository(OidcUser::class)
+                ->findOneBy(['users' => $user]);
             if ($state === null) {
-                $state = new Entity\OidcUser();
+                $state = new OidcUser();
                 $state->users = $user;
                 $this->em->persist($state);
             }
@@ -193,7 +235,7 @@ final class OidcRepository
             return null;
         }
         if (!is_scalar($claims[$key])) {
-            throw new \InvalidArgumentException('OIDC mapped profile claims must be scalar values');
+            throw new InvalidArgumentException('OIDC mapped profile claims must be scalar values');
         }
         return (string)$claims[$key];
     }

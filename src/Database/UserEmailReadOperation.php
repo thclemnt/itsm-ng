@@ -4,6 +4,9 @@
 
 namespace itsmng\Database;
 
+use Doctrine\ORM\NoResultException;
+use itsmng\Database\Repository\UserEmailRepository;
+
 /** A preferred-address read owns its route; email mutations retain their locks. */
 final class UserEmailReadOperation
 {
@@ -13,12 +16,12 @@ final class UserEmailReadOperation
     {
         try {
             $metadata = $this->metadata('glpi_useremails');
-            $repository = new Repository\UserEmailRepository($this->manager);
+            $repository = new UserEmailRepository($this->manager);
             if ($this->ownedMapping && $this->defaultIdentifiers($metadata) !== null && $metadata->isInheritanceTypeNone()) {
                 return $repository->nativePreferred($user);
             }
             return $repository->preferred($user);
-        } catch (\Doctrine\ORM\NoResultException) {
+        } catch (NoResultException) {
             // Preserve getOneOrNullResult, including mapped conversion failures.
             return null;
         }

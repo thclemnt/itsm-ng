@@ -4,7 +4,9 @@
 
 namespace itsmng\Database;
 
+use Doctrine\ORM\EntityRepository;
 use itsmng\Database\Repository\DropdownChoiceRepository;
+use ReflectionClass;
 
 /** Own only the built-in scalar choice query, never arbitrary repository overrides. */
 final class DropdownReadOperation implements ReadQueryOwner
@@ -15,7 +17,7 @@ final class DropdownReadOperation implements ReadQueryOwner
     {
         $metadata = $this->metadata($table);
         $repository = $metadata->customRepositoryClassName ?? DropdownChoiceRepository::class;
-        $reflection = new \ReflectionClass($repository);
+        $reflection = new ReflectionClass($repository);
         $origin = $reflection->getFileName();
         $directory = realpath(__DIR__ . '/Repository');
         $trusted = $origin !== false && $directory !== false
@@ -25,7 +27,7 @@ final class DropdownReadOperation implements ReadQueryOwner
         // Establish all invoked virtual implementations before constructing a
         // repository with the private manager. Domain-specific overrides stay local.
         foreach (['__construct', 'getEntityManager', 'getClassMetadata', 'createQueryBuilder', 'choices', 'ownedChoices', 'choiceQuery', 'choiceCriteria', 'presentChoice'] as $method) {
-            $expected = in_array($method, ['__construct', 'getEntityManager', 'getClassMetadata', 'createQueryBuilder'], true) ? \Doctrine\ORM\EntityRepository::class : DropdownChoiceRepository::class;
+            $expected = in_array($method, ['__construct', 'getEntityManager', 'getClassMetadata', 'createQueryBuilder'], true) ? EntityRepository::class : DropdownChoiceRepository::class;
             $trusted = $trusted && $reflection->getMethod($method)->getDeclaringClass()->getName() === $expected;
         }
         $trusted = $trusted && $this->scalar($metadata)

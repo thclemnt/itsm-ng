@@ -4,6 +4,7 @@
 
 namespace itsmng\Database;
 
+use InvalidArgumentException;
 use itsmng\Database\Repository\ITILActorRepository;
 
 /** One loadActors invocation owns its three built-in relationship reads. */
@@ -14,7 +15,7 @@ final class ITILActorReadOperation
     public function actors(string $actorClass, int $item): array
     {
         if (!ITILActorRepository::supports($actorClass)) {
-            throw new \InvalidArgumentException('Unsupported ITIL actor relation');
+            throw new InvalidArgumentException('Unsupported ITIL actor relation');
         }
         $metadata = $this->metadata($actorClass::getTable());
         $repository = new ITILActorRepository($this->manager);

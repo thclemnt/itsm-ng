@@ -4,6 +4,13 @@
 
 namespace itsmng\Database;
 
+use DBpgsql;
+use Doctrine\DBAL\Driver\Statement;
+use Doctrine\DBAL\ParameterType;
+use InvalidArgumentException;
+use itsmng\Database\Driver\Postgres\OwnedStatement;
+use LogicException;
+
 /** Compatibility facade for legacy mysqli bind_param callers. Values remain bound. */
 final class PostgresStatement
 {
@@ -12,9 +19,9 @@ final class PostgresStatement
     private array $values = [];
     private string $types = '';
     private mixed $result = false;
-    private ?\Doctrine\DBAL\Driver\Statement $statement;
+    private ?Statement $statement;
 
-    public function __construct(private \DBpgsql $db, private string $sql)
+    public function __construct(private DBpgsql $db, private string $sql)
     {
         $this->statement = $db->getDoctrineConnection()->prepareLegacyStatement($sql);
     }
@@ -22,7 +29,7 @@ final class PostgresStatement
     public function bind_param(string $types, mixed &...$values): bool
     {
         if (strlen($types) !== count($values) || preg_match('/[^idsb]/', $types)) {
-            throw new \InvalidArgumentException('Parameter types and values must match.');
+            throw new InvalidArgumentException('Parameter types and values must match.');
         }
         $this->values = &$values;
         $this->types = $types;
@@ -43,17 +50,17 @@ final class PostgresStatement
             }
         }
         if ($this->statement === null) {
-            throw new \LogicException('Prepared statement is closed.');
+            throw new LogicException('Prepared statement is closed.');
         }
         $types = [];
         foreach ($values as $index => $value) {
             if ($value !== null && ($this->types[$index] ?? 's') !== 'b' && is_string($value) && str_contains($value, "\0")) {
-                throw new \InvalidArgumentException('PostgreSQL text parameters cannot contain NUL bytes.');
+                throw new InvalidArgumentException('PostgreSQL text parameters cannot contain NUL bytes.');
             }
             $types[$index] = match ($this->types[$index] ?? 's') {
-                'i' => \Doctrine\DBAL\ParameterType::INTEGER,
-                'b' => is_resource($value) ? \Doctrine\DBAL\ParameterType::LARGE_OBJECT : \Doctrine\DBAL\ParameterType::BINARY,
-                default => \Doctrine\DBAL\ParameterType::STRING,
+                'i' => ParameterType::INTEGER,
+                'b' => is_resource($value) ? ParameterType::LARGE_OBJECT : ParameterType::BINARY,
+                default => ParameterType::STRING,
             };
         }
         $result = $this->db->executePrepared($this->statement, $this->sql, $values, $types);
@@ -77,7 +84,7 @@ final class PostgresStatement
             $this->db->freeResult($this->result);
             $this->result = false;
         }
-        if ($this->statement instanceof Driver\Postgres\OwnedStatement) {
+        if ($this->statement instanceof OwnedStatement) {
             $this->statement->close();
         }
         $this->statement = null;

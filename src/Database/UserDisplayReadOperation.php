@@ -4,6 +4,8 @@
 
 namespace itsmng\Database;
 
+use itsmng\Database\Repository\UserRepository;
+
 /** One fresh domain read owns its mapping and selected connection. */
 final class UserDisplayReadOperation
 {
@@ -12,7 +14,7 @@ final class UserDisplayReadOperation
     public function displayData(int $user): ?array
     {
         $metadata = $this->metadata('glpi_users');
-        $repository = new Repository\UserRepository($this->manager);
+        $repository = new UserRepository($this->manager);
         if ($this->ownedMapping && $this->defaultIdentifiers($metadata) !== null && $metadata->isInheritanceTypeNone()) {
             return $repository->nativeDisplayData($user);
         }

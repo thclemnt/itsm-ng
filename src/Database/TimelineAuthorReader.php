@@ -4,17 +4,22 @@
 
 namespace itsmng\Database;
 
+use DBAdapter;
+use Doctrine\DBAL\Connection;
+use Toolbox;
+use User;
+
 /** One timeline render owns metadata, never author rows or managed entities. */
 final class TimelineAuthorReader
 {
     private ?RecordReadOperation $records = null;
-    private ?\Doctrine\DBAL\Connection $connection = null;
-    private ?\DBAdapter $database = null;
+    private ?Connection $connection = null;
+    private ?DBAdapter $database = null;
     private mixed $cache = null;
 
-    public function load(\User $model, $id, \DBAdapter $database): bool
+    public function load(User $model, $id, DBAdapter $database): bool
     {
-        if ($model::class !== \User::class) {
+        if ($model::class !== User::class) {
             return $model->getTimelineAuthorFromDB($id);
         }
         if ($id === null || strlen($id) == 0) {
@@ -31,7 +36,7 @@ final class TimelineAuthorReader
             $this->database = $database;
             $this->cache = $cache;
         }
-        $row = $this->records->scalarRow('glpi_users', (int)\Toolbox::cleanInteger($id));
+        $row = $this->records->scalarRow('glpi_users', (int)Toolbox::cleanInteger($id));
         if ($row === null) {
             return false;
         }

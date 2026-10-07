@@ -4,6 +4,9 @@
 
 namespace itsmng\Database;
 
+use Doctrine\ORM\NoResultException;
+use itsmng\Database\Repository\OidcRepository;
+
 /** One bootstrap check owns its selected connection and never caches auth state. */
 final class OidcRefreshReadOperation
 {
@@ -16,12 +19,12 @@ final class OidcRefreshReadOperation
         }
         try {
             $metadata = $this->metadata('glpi_oidc_users');
-            $repository = new Repository\OidcRepository($this->manager);
+            $repository = new OidcRepository($this->manager);
             if ($this->ownedMapping && $this->defaultIdentifiers($metadata) !== null && $metadata->isInheritanceTypeNone()) {
                 return $repository->nativeNeedsRefresh($user);
             }
             return $repository->needsRefresh($user);
-        } catch (\Doctrine\ORM\NoResultException) {
+        } catch (NoResultException) {
             // getOneOrNullResult treats this query/metadata/conversion exception as absence.
             return false;
         }

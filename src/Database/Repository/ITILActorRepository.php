@@ -4,11 +4,17 @@
 
 namespace itsmng\Database\Repository;
 
+use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
-use itsmng\Database\Entity;
+use InvalidArgumentException;
+use itsmng\Database\Entity\Group;
+use itsmng\Database\Entity\Supplier;
+use itsmng\Database\Entity\User;
+use itsmng\Database\Entity\UserEmail;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\ReferenceValues;
+use LogicException;
 
 /** Actor relationship rows without hydrating the associated ITIL object or recipient. */
 final class ITILActorRepository
@@ -25,26 +31,41 @@ final class ITILActorRepository
 
     public function groupName(int $id): ?string
     {
-        $row = $this->em->createQueryBuilder()->select('g.name')->from(Entity\Group::class, 'g')
-            ->where('g.id = :id')->setParameter('id', $id, Types::BIGINT)
-            ->getQuery()->getOneOrNullResult();
+        $row = $this->em->createQueryBuilder()
+            ->select('g.name')
+            ->from(Group::class, 'g')
+            ->where('g.id = :id')
+            ->setParameter('id', $id, Types::BIGINT)
+            ->getQuery()
+            ->getOneOrNullResult();
         return $row['name'] ?? null;
     }
 
     public function supplierDisplayData(int $id): ?array
     {
-        return $this->em->createQueryBuilder()->select('s.name, s.email')->from(Entity\Supplier::class, 's')
-            ->where('s.id = :id')->setParameter('id', $id, Types::BIGINT)
-            ->getQuery()->getOneOrNullResult();
+        return $this->em->createQueryBuilder()
+            ->select('s.name, s.email')
+            ->from(Supplier::class, 's')
+            ->where('s.id = :id')
+            ->setParameter('id', $id, Types::BIGINT)
+            ->getQuery()
+            ->getOneOrNullResult();
     }
 
     /** Preserve the user existence gate before selecting their preferred address. */
     public function userDefaultEmail(int $id): ?string
     {
-        $row = $this->em->createQueryBuilder()->select('u.id AS user_id, e.email AS email')->from(Entity\User::class, 'u')
-            ->leftJoin(Entity\UserEmail::class, 'e', 'WITH', 'IDENTITY(e.users) = u.id')->where('u.id = :id')->setParameter('id', $id, Types::BIGINT)
-            ->orderBy('e.is_default', 'DESC')->addOrderBy('e.id')->setMaxResults(1)
-            ->getQuery()->getOneOrNullResult();
+        $row = $this->em->createQueryBuilder()
+            ->select('u.id AS user_id, e.email AS email')
+            ->from(User::class, 'u')
+            ->leftJoin(UserEmail::class, 'e', 'WITH', 'IDENTITY(e.users) = u.id')
+            ->where('u.id = :id')
+            ->setParameter('id', $id, Types::BIGINT)
+            ->orderBy('e.is_default', 'DESC')
+            ->addOrderBy('e.id')
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
         return $row === null ? null : (string)($row['email'] ?? '');
     }
 
@@ -77,34 +98,36 @@ final class ITILActorRepository
     private function readRows(string $actorClass, int $item, bool $native): array
     {
         if (!self::supports($actorClass)) {
-            throw new \InvalidArgumentException('Unsupported ITIL actor relation');
+            throw new InvalidArgumentException('Unsupported ITIL actor relation');
         }
         $record = EntityRegistry::tables()[$actorClass::getTable()]
-            ?? throw new \LogicException('ITIL actor relation has no mapped entity');
+            ?? throw new LogicException('ITIL actor relation has no mapped entity');
         $metadata = $this->em->getClassMetadata($record);
         $parents = [];
         foreach ($metadata->associationMappings as $property => $mapping) {
             if (!$mapping->isToOneOwningSide() || count($mapping->joinColumns) !== 1) {
-                throw new \LogicException('ITIL actor relation requires single-column owning references');
+                throw new LogicException('ITIL actor relation requires single-column owning references');
             }
             if ($mapping->joinColumns[0]->name === $actorClass::getItilObjectForeignKey()) {
                 $parents[] = $property;
             }
         }
         if (count($parents) !== 1) {
-            throw new \LogicException('ITIL actor relation requires exactly one mapped parent reference');
+            throw new LogicException('ITIL actor relation requires exactly one mapped parent reference');
         }
         $parent = $parents[0];
         $connection = $this->em->getConnection();
         $platform = $connection->getDatabasePlatform();
         $quote = $this->em->getConfiguration()->getQuoteStrategy();
-        $query = $native ? $connection->createQueryBuilder()->from($quote->getTableName($metadata, $platform), 'a')
+        $query = $native
+            ? $connection->createQueryBuilder()->from($quote->getTableName($metadata, $platform), 'a')
             : $this->em->createQueryBuilder()->from($record, 'a');
         $parentExpression = $native
             ? 'a.' . $quote->getJoinColumnName($metadata->associationMappings[$parent]->joinColumns[0], $metadata, $platform)
             : 'IDENTITY(a.' . $parent . ')';
-        $parameter = $native ? \Doctrine\DBAL\Types\Type::getType(Types::BIGINT)->convertToDatabaseValueSQL(':item', $platform) : ':item';
-        $query->where($parentExpression . ' = ' . $parameter)->setParameter('item', $item, Types::BIGINT)
+        $parameter = $native ? Type::getType(Types::BIGINT)->convertToDatabaseValueSQL(':item', $platform) : ':item';
+        $query->where($parentExpression . ' = ' . $parameter)
+            ->setParameter('item', $item, Types::BIGINT)
             ->orderBy($native ? 'a.' . $quote->getColumnName('id', $metadata, $platform) : 'a.id');
         $columns = [];
         // Keep the complete relationship-row contract, including generated compatibility keys.
@@ -112,7 +135,7 @@ final class ITILActorRepository
             $expression = 'a.' . $property;
             if ($native) {
                 $expression = 'a.' . $quote->getColumnName($property, $metadata, $platform);
-                $expression = \Doctrine\DBAL\Types\Type::getType($mapping->type)->convertToPHPValueSQL($expression, $platform);
+                $expression = Type::getType($mapping->type)->convertToPHPValueSQL($expression, $platform);
             }
             $query->addSelect($expression . ' AS value' . count($columns));
             $columns[] = [$mapping->columnName, $mapping->type];
@@ -125,7 +148,8 @@ final class ITILActorRepository
         }
         $rows = [];
         if ($native) {
-            $resultRows = $query->executeQuery()->fetchAllAssociative();
+            $resultRows = $query->executeQuery()
+                ->fetchAllAssociative();
         } else {
             $compiled = $query->getQuery();
             $resultRows = $compiled->getScalarResult();

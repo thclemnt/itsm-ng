@@ -4,22 +4,31 @@
 
 namespace itsmng\Database;
 
+use CommonDBTM;
+use DBAdapter;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use RuntimeException;
+use Throwable;
+
 /** Parent persistence and required scope forwarding own one database frame. */
 final class OwnershipUpdateUnit
 {
-    public static function assertTransactionalStorage(\DBAdapter $database, string $table): void
+    public static function assertTransactionalStorage(DBAdapter $database, string $table): void
     {
         $connection = $database->getDoctrineConnection();
-        if (!$connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\AbstractMySQLPlatform) {
+        if (!$connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
             return;
         }
-        $engine = $connection->fetchOne('SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$table]);
+        $engine = $connection->fetchOne(
+            'SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+            [$table]
+        );
         if (!is_string($engine) || strcasecmp($engine, 'InnoDB') !== 0) {
-            throw new \RuntimeException('Ownership update requires InnoDB storage for ' . $table);
+            throw new RuntimeException('Ownership update requires InnoDB storage for ' . $table);
         }
     }
 
-    public static function run(\DBAdapter $database, \CommonDBTM $model, array $storedFields, callable $operation): bool
+    public static function run(DBAdapter $database, CommonDBTM $model, array $storedFields, callable $operation): bool
     {
         $database->assertManagedTransaction();
         $connection = $database->getDoctrineConnection();
@@ -48,27 +57,27 @@ final class OwnershipUpdateUnit
                 $frame->rollBack();
                 $rolledBack = true;
             }
-        } catch (\Throwable $primary) {
+        } catch (Throwable $primary) {
             $failure = $primary;
             if ($frame !== null && !$rollbackAttempted) {
                 try {
                     $frame->rollBack();
                     $rolledBack = true;
-                } catch (\Throwable $cleanup) {
+                } catch (Throwable $cleanup) {
                     $failure = new MutationRollbackFailure($primary, $cleanup);
                 }
             }
         } finally {
             try {
                 $notifications = $delivery->finish($accepted);
-            } catch (\Throwable $cleanup) {
+            } catch (Throwable $cleanup) {
                 $failure = self::preserveFailure($failure, $cleanup);
             }
             // Only a completed rollback of our exact frame authorizes a rewind.
             if (!$accepted && $rolledBack) {
                 try {
                     $journal->restore();
-                } catch (\Throwable $cleanup) {
+                } catch (Throwable $cleanup) {
                     $failure = self::preserveFailure($failure, $cleanup);
                 }
                 try {
@@ -79,7 +88,7 @@ final class OwnershipUpdateUnit
                             $_SESSION['MESSAGE_AFTER_REDIRECT'][$type][] = $message;
                         }
                     }
-                } catch (\Throwable $cleanup) {
+                } catch (Throwable $cleanup) {
                     $failure = self::preserveFailure($failure, $cleanup);
                 }
             }
@@ -92,7 +101,7 @@ final class OwnershipUpdateUnit
         return $accepted;
     }
 
-    private static function preserveFailure(?\Throwable $primary, \Throwable $cleanup): \Throwable
+    private static function preserveFailure(?Throwable $primary, Throwable $cleanup): Throwable
     {
         return $primary === null ? $cleanup : new MutationCleanupFailure(
             $primary,

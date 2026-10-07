@@ -4,12 +4,19 @@
 
 namespace itsmng\Database;
 
+use Composer\InstalledVersions;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Types\Type as DbalType;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Query;
+use itsmng\Database\Type\FixedStringType;
+use LogicException;
+use Psr\SimpleCache\CacheInterface;
+use ReflectionClass;
+use ReflectionMethod;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
 
 /** @internal Private implementation shared only by final read operation owners. */
 trait PrivateReadOwnership
@@ -26,8 +33,8 @@ trait PrivateReadOwnership
     {
         $this->manager = Orm::forConnection($connection);
         $configuration = $this->manager->getConfiguration();
-        $platformFile = (new \ReflectionClass($connection->getDatabasePlatform()))->getFileName();
-        $dbalPath = \Composer\InstalledVersions::getInstallPath('doctrine/dbal');
+        $platformFile = (new ReflectionClass($connection->getDatabasePlatform()))->getFileName();
+        $dbalPath = InstalledVersions::getInstallPath('doctrine/dbal');
         $this->ownedMapping = $platformFile !== false && $dbalPath !== null
             && ($platformFile = realpath($platformFile)) !== false
             && ($dbalPath = realpath($dbalPath)) !== false
@@ -38,7 +45,7 @@ trait PrivateReadOwnership
             && !method_exists($connection, 'getEventManager');
         $this->pool = $this->ownedMapping ? ($GLOBALS['GLPI_CACHE'] ?? null) : null;
         $this->identifiers = $this->ownedMapping ? EntityRegistry::scalarIdentifiers() : [];
-        if ($this->pool instanceof \Psr\SimpleCache\CacheInterface && ($fingerprint = MappingFingerprint::current()) !== null) {
+        if ($this->pool instanceof CacheInterface && ($fingerprint = MappingFingerprint::current()) !== null) {
             $this->context = hash('sha256', $fingerprint . "\0" . $connection->getDatabasePlatform()::class
                 . "\0" . $configuration->getMetadataDriverImpl()::class . "\0" . $configuration->getProxyDir());
             $this->queryCache = new SerializedMetadataCache($this->pool, 'orm_record_query_' . $this->context);
@@ -55,7 +62,7 @@ trait PrivateReadOwnership
         $this->persistentMetadataLoaded = $this->persistentMetadataLoaded || $persistent;
         $cache = $persistent
             ? new SerializedMetadataCache($this->pool, 'orm_record_metadata_' . $this->context)
-            : new \Symfony\Component\Cache\Adapter\ArrayAdapter(storeSerialized: true);
+            : new ArrayAdapter(storeSerialized: true);
         $this->manager->getConfiguration()->setMetadataCache($cache);
         $this->manager->getMetadataFactory()->setCache($cache);
         return $this->manager->getClassMetadata($class);
@@ -100,7 +107,7 @@ trait PrivateReadOwnership
     public function prepareQuery(Query $query, ClassMetadata $metadata): void
     {
         if ($query->getEntityManager() !== $this->manager) {
-            throw new \LogicException('A compiled read plan belongs to its private operation.');
+            throw new LogicException('A compiled read plan belongs to its private operation.');
         }
         if ($this->queryCache === null || $this->defaultIdentifiers($metadata) === null) {
             return;
@@ -120,11 +127,11 @@ trait PrivateReadOwnership
         // association parameters that need not occur among the root scalar fields.
         foreach (array_unique($types) as $name) {
             $type = DbalType::getType($name);
-            if ($name === Type\FixedStringType::NAME && $type::class === Type\FixedStringType::class) {
+            if ($name === FixedStringType::NAME && $type::class === FixedStringType::class) {
                 continue;
             }
             foreach (['convertToPHPValueSQL', 'convertToDatabaseValueSQL'] as $method) {
-                if ((new \ReflectionMethod($type, $method))->getDeclaringClass()->getName() !== DbalType::class) {
+                if ((new ReflectionMethod($type, $method))->getDeclaringClass()->getName() !== DbalType::class) {
                     return;
                 }
             }
