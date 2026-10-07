@@ -34,6 +34,7 @@
 use itsmng\Database\DeletionUnit;
 use itsmng\Database\DropdownReadOperation;
 use itsmng\Database\EntityRegistry;
+use itsmng\Database\EntityRestriction;
 use itsmng\Database\EntityScopeReadOperation;
 use itsmng\Database\Expressions;
 use itsmng\Database\LegacyValues;
@@ -680,6 +681,18 @@ final class DbUtils
         $complete_request = false
     ) {
 
+        return $this->getEntityRestriction($table, $field, $value, $is_recursive, $complete_request)->criteria;
+    }
+
+    /** The array API and typed readers share this single permission calculation. */
+    public function getEntityRestriction(
+        $table = '',
+        $field = '',
+        $value = '',
+        $is_recursive = false,
+        $complete_request = false
+    ): EntityRestriction {
+
         // !='0' needed because consider as empty
         if (
             !$complete_request
@@ -689,7 +702,7 @@ final class DbUtils
             && isset($_SESSION['glpishowallentities'])
             && $_SESSION['glpishowallentities']
         ) {
-            return [];
+            return new EntityRestriction([], $table, $field ?: 'entities_id', true, null);
         }
 
         if (empty($field)) {
@@ -699,6 +712,7 @@ final class DbUtils
                 $field = "entities_id";
             }
         }
+        $scopeField = $field;
         $globalScope = EntityRegistry::hasPolicy($table, $field, ReferenceKind::GlobalScope);
         if (!empty($table)) {
             $field = "$table.$field";
@@ -723,8 +737,8 @@ final class DbUtils
             }
         }
 
+        $ancestors = [];
         if ($is_recursive && (!is_array($value) || $value)) {
-            $ancestors = [];
             if (is_array($value)) {
                 $ancestors = $this->getAncestorsOf("glpi_entities", $value);
                 $ancestors = array_diff($ancestors, $value);
@@ -751,7 +765,8 @@ final class DbUtils
                 }
             }
         }
-        return $globalScope ? ['OR' => [$crit, [$field => null]]] : $crit;
+        $criteria = $globalScope ? ['OR' => [$crit, [$field => null]]] : $crit;
+        return EntityRestriction::fromSelection($criteria, $table, $scopeField, $value, $ancestors, $globalScope);
     }
 
     /**

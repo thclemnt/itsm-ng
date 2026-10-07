@@ -5,7 +5,10 @@
 namespace itsmng\Database;
 
 use DBAdapter;
+use DbUtils;
 use Doctrine\DBAL\Connection;
+
+use function getEntitiesRestrictCriteria;
 
 /** One dropdown owns mapping state; every restriction still reads current tree rows. */
 final class EntityScopeReadOperation
@@ -16,7 +19,12 @@ final class EntityScopeReadOperation
 
     public function criteria($table = '', $field = '', $value = '', $recursive = false, $complete = false): array
     {
-        return \getEntitiesRestrictCriteria($table, $field, $value, $recursive, $complete, $this);
+        return getEntitiesRestrictCriteria($table, $field, $value, $recursive, $complete, $this);
+    }
+
+    public function restriction($table = '', $field = '', $value = '', $recursive = false, $complete = false): EntityRestriction
+    {
+        return (new DbUtils($this))->getEntityRestriction($table, $field, $value, $recursive, $complete);
     }
 
     public function rows(DBAdapter $database, string $table, array $fields, array $criteria): array

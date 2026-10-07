@@ -34,11 +34,18 @@ if (!defined('GLPI_ROOT')) {
  * along with GLPI. If not, see <http://www.gnu.org/licenses/>.
  * ---------------------------------------------------------------------
  **/
+use Glpi\Features\Clonable;
 use itsmng\Database\ApplianceOwnerReadOperation;
+use itsmng\Database\DropdownChoiceContext;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\EntityScopeReadOperation;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ApplianceAssetRepository;
+use itsmng\Database\RowIterator;
 
 class Appliance_Item extends CommonDBRelation
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     public static $itemtype_1 = 'Appliance';
     public static $items_id_1 = 'appliances_id';
@@ -157,7 +164,7 @@ class Appliance_Item extends CommonDBRelation
 
             $dropdownChoiceTokens = [];
             foreach (array_keys(array_unique($options)) as $kind) {
-                $dropdownChoiceTokens[$kind] = \itsmng\Database\DropdownChoiceContext::token($kind, ['entity_restrict' => array_values($entity_restrict)]);
+                $dropdownChoiceTokens[$kind] = DropdownChoiceContext::token($kind, ['entity_restrict' => array_values($entity_restrict)]);
             }
             $dropdownChoiceTokens = json_encode($dropdownChoiceTokens, JSON_THROW_ON_ERROR);
 
@@ -406,7 +413,7 @@ class Appliance_Item extends CommonDBRelation
     {
         global $DB;
         $input = $this->validateLifecycleEndpoints($input);
-        if ($input !== false && (new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB)))
+        if ($input !== false && (new ApplianceAssetRepository(Orm::create($DB)))
             ->hasAsset((int)$input['appliances_id'], $input['itemtype'], (int)$input['items_id'])) {
             return false;
         }
@@ -420,7 +427,7 @@ class Appliance_Item extends CommonDBRelation
 
     public static function getSQLCriteriaToSearchForItem($itemtype, $items_id)
     {
-        $selection = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'][$itemtype] ?? null;
+        $selection = EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'][$itemtype] ?? null;
         $conditions = [];
         if ($itemtype === static::$itemtype_1) {
             $conditions[] = [static::$items_id_1 => $items_id];
@@ -434,8 +441,8 @@ class Appliance_Item extends CommonDBRelation
     public static function getItemsAssociationRequest($itemtype, $items_id)
     {
         global $DB;
-        return new \itsmng\Database\RowIterator(
-            (new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB)))->assetRelationships($itemtype, (int)$items_id)
+        return new RowIterator(
+            (new ApplianceAssetRepository(Orm::create($DB)))->assetRelationships($itemtype, (int)$items_id)
         );
     }
 
@@ -515,7 +522,7 @@ class Appliance_Item extends CommonDBRelation
     public static function countForMainItem(CommonDBTM $item, $extra_types_where = [])
     {
         global $DB;
-        $repository = new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB));
+        $repository = new ApplianceAssetRepository(Orm::create($DB));
         $types = Appliance::getTypes();
         $count = 0;
         foreach ($repository->assetKinds((int)$item->getID(), $extra_types_where) as $row) {
@@ -534,17 +541,17 @@ class Appliance_Item extends CommonDBRelation
         $subject = getItemForItemtype($itemtype);
         $rows = [];
         if ($subject && $subject->canView()) {
-            $rows = (new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB)))
+            $rows = (new ApplianceAssetRepository(Orm::create($DB)))
                 ->assets((int)$items_id, $itemtype, self::subjectCriteria($subject), $subject::getNameField());
         }
-        return new \itsmng\Database\RowIterator($rows);
+        return new RowIterator($rows);
     }
 
     public static function getDistinctTypes($items_id, $extra_where = [])
     {
         global $DB;
-        return new \itsmng\Database\RowIterator(
-            (new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB)))->assetKinds((int)$items_id, $extra_where)
+        return new RowIterator(
+            (new ApplianceAssetRepository(Orm::create($DB)))->assetKinds((int)$items_id, $extra_where)
         );
     }
 
@@ -554,8 +561,8 @@ class Appliance_Item extends CommonDBRelation
     {
         global $DB;
         $criteria = Session::isCron() ? [] : getEntitiesRestrictCriteria(Appliance::getTable(), '', '', 'auto');
-        return new \itsmng\Database\RowIterator(
-            (new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB)))
+        return new RowIterator(
+            (new ApplianceAssetRepository(Orm::create($DB)))
                 ->owners($item->getType(), (int)$item->getID(), $criteria)
         );
     }
@@ -563,9 +570,10 @@ class Appliance_Item extends CommonDBRelation
     public static function countForItem(CommonDBTM $item)
     {
         global $DB;
-        $criteria = Session::isCron() ? [] : getEntitiesRestrictCriteria(Appliance::getTable(), '', '', 'auto');
+        $scope = Session::isCron() ? null : (new EntityScopeReadOperation())->restriction(Appliance::getTable(), '', '', 'auto');
+        $criteria = $scope?->wrappedCriteria() ?? [];
         return (new ApplianceOwnerReadOperation($DB->getDoctrineConnection()))
-            ->ownerCount($item->getType(), (int)$item->getID(), $criteria);
+            ->ownerCount($item->getType(), (int)$item->getID(), $criteria, $scope);
     }
 
     public function getForbiddenStandardMassiveAction()

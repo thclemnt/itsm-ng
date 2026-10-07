@@ -11,29 +11,24 @@ final class ApplianceOwnerReadOperation
 {
     use PrivateReadOwnership;
 
-    public function ownerCount(string $kind, int $asset, array $criteria): int
+    public function ownerCount(string $kind, int $asset, array $criteria, ?EntityRestriction $scope = null): int
     {
         $repository = new ApplianceAssetRepository($this->manager);
         if (!$this->ownedMapping) {
             return $repository->ownerCount($kind, $asset, $criteria);
         }
         $entities = null;
-        if ($criteria !== []) {
-            // Only direct membership is native; recursive and custom predicates
-            // retain the existing authoritative RecordCriteria implementation.
-            if (array_keys($criteria) !== ['glpi_appliances.entities_id']) {
+        $ancestors = [];
+        if ($scope !== null) {
+            if (!$scope->hasEntityMembership || $scope->table !== 'glpi_appliances' || $scope->field !== 'entities_id'
+                || $criteria !== $scope->wrappedCriteria()) {
                 return $repository->ownerCount($kind, $asset, $criteria);
             }
-            $value = $criteria['glpi_appliances.entities_id'];
-            $entities = is_array($value) ? array_values($value) : [$value];
-            if (!$entities) {
-                return $repository->ownerCount($kind, $asset, $criteria);
-            }
-            foreach ($entities as $entity) {
-                if (!is_int($entity) && !(is_string($entity) && ctype_digit($entity))) {
-                    return $repository->ownerCount($kind, $asset, $criteria);
-                }
-            }
+            $entities = $scope->entities;
+            $ancestors = $scope->ancestors;
+        } elseif ($criteria !== []) {
+            // Externally supplied legacy criteria retain their complete ORM semantics.
+            return $repository->ownerCount($kind, $asset, $criteria);
         }
         foreach (['glpi_appliances', 'glpi_appliances_items'] as $table) {
             $metadata = $this->metadata($table);
@@ -41,6 +36,6 @@ final class ApplianceOwnerReadOperation
                 return $repository->ownerCount($kind, $asset, $criteria);
             }
         }
-        return $repository->nativeOwnerCount($kind, $asset, $entities);
+        return $repository->nativeOwnerCount($kind, $asset, $entities, $ancestors, $scope?->entityList ?? true);
     }
 }

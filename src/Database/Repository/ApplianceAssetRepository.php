@@ -4,10 +4,13 @@
 
 namespace itsmng\Database\Repository;
 
+use Appliance as LegacyAppliance;
+use Appliance_Item as LegacyApplianceItem;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
+use InvalidArgumentException;
 use itsmng\Database\Entity\Appliance;
 use itsmng\Database\Entity\ApplianceItem;
 use itsmng\Database\Entity\ApplianceItemRelation;
@@ -74,14 +77,14 @@ final class ApplianceAssetRepository
     }
 
     /** Fixed private reverse count; direct entity membership retains each binding. */
-    public function nativeOwnerCount(string $kind, int $asset, ?array $entities): int
+    public function nativeOwnerCount(string $kind, int $asset, ?array $entities, array $ancestors = [], bool $entityList = true): int
     {
         if ($asset <= 0) {
             return 0;
         }
         try {
             $subject = ApplianceItem::referenceAssociation($kind);
-        } catch (\InvalidArgumentException) {
+        } catch (InvalidArgumentException) {
             return 0;
         }
         $owner = $this->em->getClassMetadata(Appliance::class);
@@ -104,7 +107,22 @@ final class ApplianceAssetRepository
                 $query->setParameter($index + 1, (int)$entity, Types::INTEGER);
             }
             $entity = 'r.' . $quote->getJoinColumnName($owner->associationMappings['entities']->joinColumns[0], $owner, $platform);
-            $query->andWhere($entity . ' IN (' . implode(', ', $parameters) . ')');
+            $scope = $parameters
+                ? $entity . ($entityList ? ' IN (' . implode(', ', $parameters) . ')' : ' = ' . $parameters[0])
+                : '1 = 0';
+            if ($ancestors) {
+                $position = count($entities) + 1;
+                $recursive = 'r.' . $quote->getColumnName('is_recursive', $owner, $platform)
+                    . ' = ' . Type::getType(Types::BOOLEAN)->convertToDatabaseValueSQL('?', $platform);
+                $query->setParameter($position++, true, Types::BOOLEAN);
+                $parameters = [];
+                foreach ($ancestors as $ancestor) {
+                    $parameters[] = Type::getType(Types::INTEGER)->convertToDatabaseValueSQL('?', $platform);
+                    $query->setParameter($position++, (int)$ancestor, Types::INTEGER);
+                }
+                $scope = '(' . $scope . ' OR (' . $recursive . ' AND ' . $entity . ' IN (' . implode(', ', $parameters) . ')))';
+            }
+            $query->andWhere($scope);
         }
         return (int)$query->executeQuery()->fetchOne();
     }
@@ -118,12 +136,12 @@ final class ApplianceAssetRepository
 
     public function assetRelationships(string $kind, int $id): array
     {
-        return $this->relationships(ApplianceItem::class, 'appliances', \Appliance::class, $kind, $id);
+        return $this->relationships(ApplianceItem::class, 'appliances', LegacyAppliance::class, $kind, $id);
     }
 
     public function relationRelationships(string $kind, int $id): array
     {
-        return $this->relationships(ApplianceItemRelation::class, 'appliances_items', \Appliance_Item::class, $kind, $id);
+        return $this->relationships(ApplianceItemRelation::class, 'appliances_items', LegacyApplianceItem::class, $kind, $id);
     }
 
     private function relationships(string $link, string $owner, string $ownerKind, string $kind, int $id): array
@@ -136,7 +154,7 @@ final class ApplianceAssetRepository
         } else {
             try {
                 $association = $link::referenceAssociation($kind);
-            } catch (\InvalidArgumentException) {
+            } catch (InvalidArgumentException) {
                 return [];
             }
         }
@@ -160,7 +178,7 @@ final class ApplianceAssetRepository
         }
         try {
             $association = ApplianceItem::referenceAssociation($kind);
-        } catch (\InvalidArgumentException) {
+        } catch (InvalidArgumentException) {
             return null;
         }
         $query = $this->em->createQueryBuilder()->from(Appliance::class, 'r')->join(ApplianceItem::class, 'l', 'WITH', 'l.appliances = r')
@@ -191,7 +209,7 @@ final class ApplianceAssetRepository
         }
         try {
             $association = $link::referenceAssociation($kind);
-        } catch (\InvalidArgumentException) {
+        } catch (InvalidArgumentException) {
             return null;
         }
         $target = $this->em->getClassMetadata($link)->getAssociationTargetClass($association);

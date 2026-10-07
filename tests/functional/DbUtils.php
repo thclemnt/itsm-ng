@@ -33,7 +33,26 @@
 
 namespace tests\units;
 
+use DBmysqlIterator;
 use DbTestCase;
+use DbUtils as DbUtilsModel;
+use Doctrine\DBAL\Types\Types;
+use Entity;
+use itsmng\Database\Entity\Computer;
+use itsmng\Database\Entity\Entity as EntityRecord;
+use itsmng\Database\Entity\Infocom;
+use itsmng\Database\Entity\Monitor;
+use itsmng\Database\Entity\Printer;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\AutoNameRepository;
+use Location;
+use Software;
+use Toolbox;
+use User;
+use UserCategory;
+use UserTitle;
+
+use function autoName;
 
 /* Test for inc/dbutils.class.php */
 
@@ -57,19 +76,19 @@ class DbUtils extends DbTestCase
     {
         global $DB;
         $this->login();
-        $_SESSION['glpinames_format'] = \User::FIRSTNAME_BEFORE;
+        $_SESSION['glpinames_format'] = User::FIRSTNAME_BEFORE;
         $_SESSION['glpiis_ids_visible'] = 0;
-        $user = new \User();
+        $user = new User();
         $login = 'display-' . bin2hex(random_bytes(6));
         $id = (int)$user->add(['name' => $login, 'firstname' => 'Ada', 'realname' => 'Lovelace']);
         $this->integer($id)->isGreaterThan(0);
-        $utils = new \DbUtils();
+        $utils = new DbUtilsModel();
         $this->string($utils->getUserName($id))->isEqualTo('Ada Lovelace');
         $this->string($utils->getUserName($id, 1))->contains('Ada Lovelace')
-            ->contains(\User::getFormURLWithID($id));
+            ->contains(User::getFormURLWithID($id));
         $details = $utils->getUserName($id, 2);
         $this->string($details['name'])->isEqualTo('Ada Lovelace');
-        $this->string($details['link'])->isEqualTo(\User::getFormURLWithID($id));
+        $this->string($details['link'])->isEqualTo(User::getFormURLWithID($id));
         $this->string($details['comment'])->contains($login);
 
         // These writes are still inside the fixture transaction on the supplied connection.
@@ -92,17 +111,17 @@ class DbUtils extends DbTestCase
     {
         global $DB;
         $this->login();
-        $_SESSION['glpinames_format'] = \User::FIRSTNAME_BEFORE;
+        $_SESSION['glpinames_format'] = User::FIRSTNAME_BEFORE;
         $_SESSION['glpiis_ids_visible'] = 0;
         $suffix = bin2hex(random_bytes(6));
-        $location = (int)(new \Location())->add(['name' => 'Office-' . $suffix, 'entities_id' => 0]);
-        $title = (int)(new \UserTitle())->add(['name' => 'Title-' . $suffix]);
-        $category = (int)(new \UserCategory())->add(['name' => 'Category-' . $suffix]);
+        $location = (int)(new Location())->add(['name' => 'Office-' . $suffix, 'entities_id' => 0]);
+        $title = (int)(new UserTitle())->add(['name' => 'Title-' . $suffix]);
+        $category = (int)(new UserCategory())->add(['name' => 'Category-' . $suffix]);
         foreach ([$location, $title, $category] as $reference) {
             $this->integer($reference)->isGreaterThan(0);
         }
         $login = 'tooltip-' . $suffix;
-        $user = new \User();
+        $user = new User();
         $id = (int)$user->add([
             'name' => $login, 'firstname' => 'Grace', 'realname' => 'Hopper',
             'phone' => '0123456', 'mobile' => '0789012',
@@ -111,9 +130,9 @@ class DbUtils extends DbTestCase
         ]);
         $this->integer($id)->isGreaterThan(0);
         $this->boolean($DB->update('glpi_users', ['picture' => 'display.png'], ['id' => $id]))->isTrue();
-        $utils = new \DbUtils();
+        $utils = new DbUtilsModel();
         $details = $utils->getUserName($id, 2);
-        foreach ([$login, '0123456', '0789012', 'Office-' . $suffix, 'Title-' . $suffix, 'Category-' . $suffix, 'display@example.test', \User::getThumbnailURLForPicture('display.png')] as $value) {
+        foreach ([$login, '0123456', '0789012', 'Office-' . $suffix, 'Title-' . $suffix, 'Category-' . $suffix, 'display@example.test', User::getThumbnailURLForPicture('display.png')] as $value) {
             $this->string($details['comment'])->contains($value);
         }
         $this->string($details['name'])->isEqualTo('Grace Hopper');
@@ -121,7 +140,7 @@ class DbUtils extends DbTestCase
         $restricted = $utils->getUserName($id, 2);
         $this->string($restricted['comment'])->notContains($login)->contains('display@example.test');
         $this->string($restricted['name'])->isEqualTo('Grace Hopper');
-        $this->string($restricted['link'])->isEqualTo(\User::getFormURLWithID($id));
+        $this->string($restricted['link'])->isEqualTo(User::getFormURLWithID($id));
     }
 
     protected function dataTableKey()
@@ -635,7 +654,7 @@ class DbUtils extends DbTestCase
 
         $this->string($this->testedInstance->getEntitiesRestrictRequest('AND', 'glpi_computers'))->isEmpty();
 
-        $it = new \DBmysqlIterator(null);
+        $it = new DBmysqlIterator(null);
 
         $it->execute('glpi_computers', $this->testedInstance->getEntitiesRestrictCriteria('glpi_computers'));
         $this->string($it->getSql())->isIdenticalTo($expectedSql('SELECT * FROM `glpi_computers`'));
@@ -709,6 +728,20 @@ class DbUtils extends DbTestCase
 
         // Child + parent
         $this->setEntity('_test_child_2', false);
+
+        $restriction = $this->testedInstance->getEntityRestriction('glpi_computers', '', '', true);
+        $this->array($restriction->criteria)->isIdenticalTo($this->testedInstance->getEntitiesRestrictCriteria('glpi_computers', '', '', true));
+        $this->array($restriction->wrappedCriteria())->isIdenticalTo(getEntitiesRestrictCriteria('glpi_computers', '', '', true));
+        $this->boolean($restriction->hasEntityMembership)->isTrue();
+        $this->array($restriction->entities)->isIdenticalTo([3]);
+        $this->array($restriction->ancestors)->isIdenticalTo([0, 1]);
+        $this->boolean($this->testedInstance->getEntityRestriction('glpi_computers', '', 'NULL')->hasEntityMembership)->isFalse();
+        $empty = $this->testedInstance->getEntityRestriction('glpi_computers', '', [], true);
+        $this->boolean($empty->hasEntityMembership)->isTrue();
+        $this->array($empty->entities)->isEmpty();
+        $this->array($empty->ancestors)->isEmpty();
+        $this->array($empty->wrappedCriteria())->isIdenticalTo(getEntitiesRestrictCriteria('glpi_computers', '', [], true));
+
 
         $this->string($this->testedInstance->getEntitiesRestrictRequest('WHERE', 'glpi_computers', '', '', true))
            ->isIdenticalTo($expectedSql("WHERE ( `glpi_computers`.`entities_id` IN ('3')  OR (`glpi_computers`.`is_recursive`='1' AND `glpi_computers`.`entities_id` IN (0, 1)) ) "));
@@ -802,7 +835,7 @@ class DbUtils extends DbTestCase
 
         if ($cache === true) {
             $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
-            $this->boolean(\Toolbox::useCache())->isTrue();
+            $this->boolean(Toolbox::useCache())->isTrue();
             $GLPI_CACHE->set($ckey_ent0, [$ent2 => $ent2]);
             $this->boolean($GLPI_CACHE->has($ckey_ent0))->isTrue();
             $this->array($GLPI_CACHE->get($ckey_ent0))->isIdenticalTo([$ent2 => $ent2]);
@@ -819,7 +852,7 @@ class DbUtils extends DbTestCase
 
         if ($cache === true) {
             $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
-            $this->boolean(\Toolbox::useCache())->isTrue();
+            $this->boolean(Toolbox::useCache())->isTrue();
             $GLPI_CACHE->set($ckey_ent1, [$ent2 => $ent2]);
             $this->boolean($GLPI_CACHE->has($ckey_ent1))->isTrue();
             $this->array($GLPI_CACHE->get($ckey_ent1))->isIdenticalTo([$ent2 => $ent2]);
@@ -836,7 +869,7 @@ class DbUtils extends DbTestCase
 
         if ($cache === true) {
             $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
-            $this->boolean(\Toolbox::useCache())->isTrue();
+            $this->boolean(Toolbox::useCache())->isTrue();
             $GLPI_CACHE->set($ckey_ent2, [$ent2 => $ent2]);
             $this->boolean($GLPI_CACHE->has($ckey_ent2))->isTrue();
             $this->array($GLPI_CACHE->get($ckey_ent2))->isIdenticalTo([$ent2 => $ent2]);
@@ -853,7 +886,7 @@ class DbUtils extends DbTestCase
         // Public creation in this caller frame must not publish tentative edges.
         $new_id = getItemByTypeName('Entity', 'Sub child entity', true);
         if (!$new_id) {
-            $entity = new \Entity();
+            $entity = new Entity();
             $new_id = (int)$entity->add([
                'name'         => 'Sub child entity',
                'entities_id'  => $ent1
@@ -869,7 +902,7 @@ class DbUtils extends DbTestCase
 
         if ($cache === true) {
             $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
-            $this->boolean(\Toolbox::useCache())->isTrue();
+            $this->boolean(Toolbox::useCache())->isTrue();
             $GLPI_CACHE->set($ckey_new_id, [$ent2 => $ent2]);
             $this->boolean($GLPI_CACHE->has($ckey_new_id))->isTrue();
             $this->array($GLPI_CACHE->get($ckey_new_id))->isIdenticalTo([$ent2 => $ent2]);
@@ -884,7 +917,7 @@ class DbUtils extends DbTestCase
         //test with another new sub entity
         $new_id2 = getItemByTypeName('Entity', 'Sub child entity 2', true);
         if (!$new_id2) {
-            $entity = new \Entity();
+            $entity = new Entity();
             $new_id2 = (int)$entity->add([
                'name'         => 'Sub child entity 2',
                'entities_id'  => $ent2
@@ -900,7 +933,7 @@ class DbUtils extends DbTestCase
 
         if ($cache === true) {
             $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
-            $this->boolean(\Toolbox::useCache())->isTrue();
+            $this->boolean(Toolbox::useCache())->isTrue();
             $GLPI_CACHE->set($ckey_new_id2, [$ent2 => $ent2]);
             $this->boolean($GLPI_CACHE->has($ckey_new_id2))->isTrue();
             $this->array($GLPI_CACHE->get($ckey_new_id2))->isIdenticalTo([$ent2 => $ent2]);
@@ -918,7 +951,7 @@ class DbUtils extends DbTestCase
 
         if ($cache === true) {
             $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
-            $this->boolean(\Toolbox::useCache())->isTrue();
+            $this->boolean(Toolbox::useCache())->isTrue();
             $GLPI_CACHE->set($ckey_new_all, [$ent2 => $ent2]);
             $this->boolean($GLPI_CACHE->has($ckey_new_all))->isTrue();
             $this->array($GLPI_CACHE->get($ckey_new_all))->isIdenticalTo([$ent2 => $ent2]);
@@ -963,9 +996,9 @@ class DbUtils extends DbTestCase
         $this->runGetAncestorsOf();
 
         // A mapped tree without cache columns ends at a nullable physical parent.
-        $parent = $this->createItem(\Software::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $parent = $this->createItem(Software::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
         $parentId = (int)$parent->getID();
-        $child = $this->createItem(\Software::class, ['name' => $this->getUniqueString(), 'entities_id' => 0, 'softwares_id' => $parentId, 'is_update' => 1]);
+        $child = $this->createItem(Software::class, ['name' => $this->getUniqueString(), 'entities_id' => 0, 'softwares_id' => $parentId, 'is_update' => 1]);
         $this->variable($DB->getDoctrineConnection()->fetchOne('SELECT softwares_id FROM glpi_softwares WHERE id = ?', [$parentId]))->isNull();
         $this->array(getAncestorsOf('glpi_softwares', $parentId))->isEmpty();
         $this->array(getAncestorsOf('glpi_softwares', (int)$child->getID()))->isIdenticalTo([$parentId => $parentId]);
@@ -1021,7 +1054,7 @@ class DbUtils extends DbTestCase
 
         if ($cache === true) {
             $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
-            $this->boolean(\Toolbox::useCache())->isTrue();
+            $this->boolean(Toolbox::useCache())->isTrue();
             $GLPI_CACHE->set($ckey_ent0, [$ent2 => $ent2]);
             $this->boolean($GLPI_CACHE->has($ckey_ent0))->isTrue();
             $this->array($GLPI_CACHE->get($ckey_ent0))->isIdenticalTo([$ent2 => $ent2]);
@@ -1038,7 +1071,7 @@ class DbUtils extends DbTestCase
 
         if ($cache === true) {
             $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
-            $this->boolean(\Toolbox::useCache())->isTrue();
+            $this->boolean(Toolbox::useCache())->isTrue();
             $GLPI_CACHE->set($ckey_ent1, [$ent2 => $ent2]);
             $this->boolean($GLPI_CACHE->has($ckey_ent1))->isTrue();
             $this->array($GLPI_CACHE->get($ckey_ent1))->isIdenticalTo([$ent2 => $ent2]);
@@ -1055,7 +1088,7 @@ class DbUtils extends DbTestCase
 
         if ($cache === true) {
             $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
-            $this->boolean(\Toolbox::useCache())->isTrue();
+            $this->boolean(Toolbox::useCache())->isTrue();
             $GLPI_CACHE->set($ckey_ent2, [$ent0 => $ent0]);
             $this->boolean($GLPI_CACHE->has($ckey_ent2))->isTrue();
             $this->array($GLPI_CACHE->get($ckey_ent2))->isIdenticalTo([$ent0 => $ent0]);
@@ -1072,7 +1105,7 @@ class DbUtils extends DbTestCase
         // Public creation in this caller frame must not publish tentative edges.
         $new_id = getItemByTypeName('Entity', 'Sub child entity', true);
         if (!$new_id) {
-            $entity = new \Entity();
+            $entity = new Entity();
             $new_id = (int)$entity->add([
                'name'         => 'Sub child entity',
                'entities_id'  => $ent1
@@ -1087,7 +1120,7 @@ class DbUtils extends DbTestCase
 
         if ($cache === true) {
             $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
-            $this->boolean(\Toolbox::useCache())->isTrue();
+            $this->boolean(Toolbox::useCache())->isTrue();
             $GLPI_CACHE->set($ckey_ent1, [$ent2 => $ent2]);
             $this->boolean($GLPI_CACHE->has($ckey_ent1))->isTrue();
             $this->array($GLPI_CACHE->get($ckey_ent1))->isIdenticalTo([$ent2 => $ent2]);
@@ -1102,7 +1135,7 @@ class DbUtils extends DbTestCase
         //test with another new sub entity
         $new_id2 = getItemByTypeName('Entity', 'Sub child entity 2', true);
         if (!$new_id2) {
-            $entity = new \Entity();
+            $entity = new Entity();
             $new_id2 = (int)$entity->add([
                'name'         => 'Sub child entity 2',
                'entities_id'  => $ent1
@@ -1117,7 +1150,7 @@ class DbUtils extends DbTestCase
 
         if ($cache === true) {
             $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
-            $this->boolean(\Toolbox::useCache())->isTrue();
+            $this->boolean(Toolbox::useCache())->isTrue();
             $GLPI_CACHE->set($ckey_ent1, [$ent2 => $ent2]);
             $this->boolean($GLPI_CACHE->has($ckey_ent1))->isTrue();
             $this->array($GLPI_CACHE->get($ckey_ent1))->isIdenticalTo([$ent2 => $ent2]);
@@ -1396,15 +1429,15 @@ class DbUtils extends DbTestCase
     public function testAutoNameNumericPrefix(string $value, string $expected): void
     {
         global $DB;
-        $em = \itsmng\Database\Orm::create($DB);
-        $record = new \itsmng\Database\Entity\Computer();
-        $record->entities = $em->getReference(\itsmng\Database\Entity\Entity::class, 0);
+        $em = Orm::create($DB);
+        $record = new Computer();
+        $record->entities = $em->getReference(EntityRecord::class, 0);
         $record->name = 'Number conversion ' . $this->getUniqueString();
         $record->serial = $value;
         $em->persist($record);
         $em->flush();
         $query = $em->createQuery('SELECT AUTO_NAME_NUMBER(c.serial) FROM ' . $record::class . ' c WHERE c.id = :id')
-            ->setParameter('id', $record->id, \Doctrine\DBAL\Types\Types::BIGINT);
+            ->setParameter('id', $record->id, Types::BIGINT);
         $this->string((string)$query->getSingleScalarResult())->isIdenticalTo($expected);
 
         // Exercise public generation, not only the custom numeric function.
@@ -1416,13 +1449,13 @@ class DbUtils extends DbTestCase
         // placeholder mappings and PostgreSQL's overloaded SUBSTRING resolution.
         $substring = $em->createQuery('SELECT AUTO_NAME_NUMBER(c.name, :position, :width) FROM '
             . $record::class . ' c WHERE c.id = :id')
-            ->setParameter('position', \Toolbox::strlen($prefix) + 1, \Doctrine\DBAL\Types\Types::INTEGER)
-            ->setParameter('width', 24, \Doctrine\DBAL\Types\Types::INTEGER)
-            ->setParameter('id', $record->id, \Doctrine\DBAL\Types\Types::BIGINT);
+            ->setParameter('position', Toolbox::strlen($prefix) + 1, Types::INTEGER)
+            ->setParameter('width', 24, Types::INTEGER)
+            ->setParameter('id', $record->id, Types::BIGINT);
         $this->string((string)$substring->getSingleScalarResult())->isIdenticalTo($expected);
-        if (\Toolbox::strlen($value) === 4) {
+        if (Toolbox::strlen($value) === 4) {
             $next = str_pad((string)($expected + 1), 4, '0', STR_PAD_LEFT);
-            $this->string((new \DbUtils())->autoName('&lt;' . $prefix . '####&gt;', 'name', true, 'Computer'))
+            $this->string((new DbUtilsModel())->autoName('&lt;' . $prefix . '####&gt;', 'name', true, 'Computer'))
                 ->isIdenticalTo($prefix . $next);
         }
         $record->serial = null;
@@ -1434,16 +1467,16 @@ class DbUtils extends DbTestCase
     {
         global $DB, $CFG_GLPI;
         $savedConfiguration = $CFG_GLPI['use_autoname_by_entity'];
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
         $otherEntity = (int)getItemByTypeName('Entity', '_test_child_1', true);
-        $utils = new \DbUtils();
+        $utils = new DbUtilsModel();
         // Quotes, multibyte characters, wildcard literals and the explicit LIKE
         // escape must all retain their character positions and literal meaning.
         $prefix = "É_case_\\'%!" . $this->getUniqueString() . '-';
         $asset = static function (string $class, ?string $name, int $scope, bool $deleted = false, bool $template = false) use ($em): object {
             $record = new $class();
-            $record->entities = $em->getReference(\itsmng\Database\Entity\Entity::class, $scope);
+            $record->entities = $em->getReference(EntityRecord::class, $scope);
             $record->name = $name;
             $record->is_deleted = $deleted;
             $record->is_template = $template;
@@ -1452,16 +1485,16 @@ class DbUtils extends DbTestCase
         };
         try {
             $CFG_GLPI['use_autoname_by_entity'] = 1;
-            $computer = $asset(\itsmng\Database\Entity\Computer::class, $prefix . '0007', $entity);
-            $otherComputer = $asset(\itsmng\Database\Entity\Computer::class, $prefix . '0099', $otherEntity);
-            $asset(\itsmng\Database\Entity\Computer::class, $prefix . '0999', $entity, true);
-            $asset(\itsmng\Database\Entity\Computer::class, $prefix . '9999', $entity, false, true);
-            $asset(\itsmng\Database\Entity\Computer::class, null, $entity);
-            $asset(\itsmng\Database\Entity\Computer::class, str_replace('_', 'x', $prefix) . '0888', $entity);
-            $asset(\itsmng\Database\Entity\Computer::class, str_replace('%', 'x', $prefix) . '0777', $entity);
+            $computer = $asset(Computer::class, $prefix . '0007', $entity);
+            $otherComputer = $asset(Computer::class, $prefix . '0099', $otherEntity);
+            $asset(Computer::class, $prefix . '0999', $entity, true);
+            $asset(Computer::class, $prefix . '9999', $entity, false, true);
+            $asset(Computer::class, null, $entity);
+            $asset(Computer::class, str_replace('_', 'x', $prefix) . '0888', $entity);
+            $asset(Computer::class, str_replace('%', 'x', $prefix) . '0777', $entity);
             // An ASCII case change retains native case-insensitive matching.
-            $asset(\itsmng\Database\Entity\Monitor::class, str_replace('a', 'A', $prefix) . '0011', $entity);
-            $asset(\itsmng\Database\Entity\Printer::class, $prefix . '0012', $entity);
+            $asset(Monitor::class, str_replace('a', 'A', $prefix) . '0011', $entity);
+            $asset(Printer::class, $prefix . '0012', $entity);
             $em->flush();
             $mask = '&lt;' . $prefix . '####&gt;';
             $this->string($utils->autoName($mask, 'name', true, 'Computer', $entity))->isIdenticalTo($prefix . '0008');
@@ -1470,22 +1503,22 @@ class DbUtils extends DbTestCase
             $this->string($utils->autoName($mask, 'name', true, 'Computer', -1))->isIdenticalTo($prefix . '0100');
             $this->string($utils->autoName('&lt;\\g' . $prefix . '####&gt;', 'name', true, 'Computer', $entity))
                 ->isIdenticalTo($prefix . '0013');
-            $this->string(\autoName($mask, 'name', true, 'Computer', $entity))->isIdenticalTo($prefix . '0008');
+            $this->string(autoName($mask, 'name', true, 'Computer', $entity))->isIdenticalTo($prefix . '0008');
             $CFG_GLPI['use_autoname_by_entity'] = 0;
             $this->string($utils->autoName($mask, 'name', true, 'Computer', $entity))->isIdenticalTo($prefix . '0100');
             $CFG_GLPI['use_autoname_by_entity'] = 1;
 
             // Run the explicitly unmapped plugin DBAL reader against this real
             // physical asset fixture; no plugin DDL belongs in DbTestCase.
-            $numbers = new \itsmng\Database\Repository\AutoNameRepository($em);
+            $numbers = new AutoNameRepository($em);
             $pattern = strtr($prefix, ['!' => '!!', '%' => '!%', '_' => '!_']) . '____';
-            $this->string($numbers->pluginAssetMaximum('glpi_computers', 'name', $pattern, \Toolbox::strlen($prefix) + 1, 4, $entity))
+            $this->string($numbers->pluginAssetMaximum('glpi_computers', 'name', $pattern, Toolbox::strlen($prefix) + 1, 4, $entity))
                 ->isIdenticalTo('7');
-            $this->string($numbers->pluginAssetMaximum('glpi_computers', 'name', $pattern, \Toolbox::strlen($prefix) + 1, 4, null))
+            $this->string($numbers->pluginAssetMaximum('glpi_computers', 'name', $pattern, Toolbox::strlen($prefix) + 1, 4, null))
                 ->isIdenticalTo('99');
 
-            $financial = new \itsmng\Database\Entity\Infocom();
-            $financial->entities = $em->getReference(\itsmng\Database\Entity\Entity::class, $otherEntity);
+            $financial = new Infocom();
+            $financial->entities = $em->getReference(EntityRecord::class, $otherEntity);
             $financial->itemtype = 'Computer';
             $financial->items_id = $otherComputer->id;
             $financial->immo_number = $prefix . '0042';
