@@ -40,6 +40,152 @@ use Generator;
 
 class Dropdown extends DbTestCase
 {
+    public function testChoiceRowsProjectTypesTranslationsAndStablePages(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $manager = new class ($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+            public array $hydrationModes = [];
+            public function newHydrator(string|int $hydrationMode): \Doctrine\ORM\Internal\Hydration\AbstractHydrator
+            {
+                $this->hydrationModes[] = $hydrationMode;
+                return parent::newHydrator($hydrationMode);
+            }
+        };
+        $oracle = \itsmng\Database\Orm::create($DB);
+        $depth = $connection->getTransactionNestingLevel();
+        try {
+            $ids = [];
+            foreach (range(0, 2) as $index) {
+                $budget = $this->createItem(\Budget::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+                $id = $ids[] = (int)$budget->getID();
+                $connection->update('glpi_budgets', [
+                    'name' => $index === 0 ? null : "O'Reilly\\budget", 'comment' => null,
+                    'begin_date' => '2026-02-03', 'end_date' => null, 'is_deleted' => false,
+                    'locations_id' => $index === 2 ? (int)getItemByTypeName('Location', '_location01', true) : null,
+                ], ['id' => $id], ['is_deleted' => \Doctrine\DBAL\Types\Types::BOOLEAN]);
+            }
+            $connection->insert('glpi_dropdowntranslations', ['itemtype' => 'Budget', 'items_id' => $ids[1],
+                'language' => 'en_GB', 'field' => 'name', 'value' => "Translated O'Reilly\\budget"]);
+            $translations = ['translatedName' => ['field' => 'name', 'output' => 'transname']];
+            $expected = [];
+            foreach ($ids as $index => $id) {
+                $record = $oracle->find(\itsmng\Database\Entity\Budget::class, $id);
+                $expected[] = (new \itsmng\Database\Repository\RecordRepository($oracle))->toRow($record)
+                    + ['transname' => $index === 1 ? "Translated O'Reilly\\budget" : null];
+            }
+            $repository = $manager->getRepository(\itsmng\Database\Entity\Budget::class);
+            $rows = $repository->choices(['id' => $ids], ['name'], $translations, 'Budget', 'en_GB', 0, 0);
+            $this->array($rows)->isIdenticalTo($expected);
+            $this->array($manager->hydrationModes)->isIdenticalTo(
+                [\Doctrine\ORM\Query::HYDRATE_ARRAY],
+                'Dropdown choices must project typed rows without hydrating complete entities'
+            );
+            $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+            $this->array($repository->choices(['id' => $ids], ['name'], $translations, 'Budget', 'en_GB', 1, 1))
+                ->isIdenticalTo([$expected[1]]);
+            $this->array($repository->choices(['id' => $ids], ['name'], $translations, 'Budget', 'en_GB', 1, 3))->isEmpty();
+            $this->array(array_column($repository->choices(['id' => $ids], ['name'], [], 'Budget', 'en_GB', 0, -1), 'id'))
+                ->isIdenticalTo($ids);
+            $this->array(array_column($repository->choices(['id' => $ids], ['translatedName.value'], $translations, 'Budget', 'en_GB', 0, 0), 'id'))
+                ->isIdenticalTo([$ids[0], $ids[2], $ids[1]]);
+
+            // Domain query/criteria overrides still select one profile despite several rights.
+            $profile = $this->createItem(\Profile::class, ['name' => $this->getUniqueString()]);
+            $profileId = (int)$profile->getID();
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_profilerights WHERE profiles_id = ?', [$profileId]))
+                ->isGreaterThan(1);
+            $profileRepository = $manager->getRepository(\itsmng\Database\Entity\Profile::class);
+            $manager->hydrationModes = [];
+            $this->array(array_column($profileRepository->choices(['id' => $profileId], ['name'], [], 'Profile', 'en_GB', 0, 0), 'id'))
+                ->isIdenticalTo([$profileId]);
+            $this->array($manager->hydrationModes)->isIdenticalTo([\Doctrine\ORM\Query::HYDRATE_ARRAY]);
+            $this->array($profileRepository->choices(['id' => $profileId, 'glpi_profilerights.rights' => -1], ['name'], [], 'Profile', 'en_GB', 0, 0))
+                ->isEmpty();
+        } finally {
+            $manager->clear();
+            $oracle->clear();
+            $this->object($manager->getConnection())->isIdenticalTo($connection);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+        }
+    }
+
+    public function testChoiceRowsRetainManagedRecordsHooksAndPresenters(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $manager = new class ($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+            public array $hydrationModes = [];
+            public function newHydrator(string|int $hydrationMode): \Doctrine\ORM\Internal\Hydration\AbstractHydrator
+            {
+                $this->hydrationModes[] = $hydrationMode;
+                return parent::newHydrator($hydrationMode);
+            }
+        };
+        $id = (int)getItemByTypeName('Budget', '_budget01', true);
+        $listener = new class () {
+            public int $loaded = 0;
+            public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
+            {
+                if ($event->getObject() instanceof \itsmng\Database\Entity\Budget) {
+                    ++$this->loaded;
+                    $event->getObject()->name = 'Post-load presentation';
+                }
+            }
+        };
+        try {
+            $repository = $manager->getRepository(\itsmng\Database\Entity\Budget::class);
+            $managed = $manager->find(\itsmng\Database\Entity\Budget::class, $id);
+            $managed->name = 'Pending managed value';
+            $manager->hydrationModes = [];
+            $this->string($repository->choices(['id' => $id], [], [], 'Budget', 'en_GB', 0, 0)[0]['name'])
+                ->isIdenticalTo('Pending managed value');
+            $this->array($manager->hydrationModes)->isIdenticalTo([\Doctrine\ORM\Query::HYDRATE_OBJECT]);
+            $this->boolean($manager->contains($managed))->isFalse();
+            $manager->clear();
+            $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+            $this->string($repository->choices(['id' => $id], [], [], 'Budget', 'en_GB', 0, 0)[0]['name'])
+                ->isIdenticalTo('Post-load presentation');
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+            $manager->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+            $manager->clear();
+            $manager->hydrationModes = [];
+            $collision = $repository->choices(['id' => $id], [], [
+                'translatedName' => ['field' => 'name', 'output' => 'value0'],
+            ], 'Budget', 'en_GB', 0, 0);
+            $this->array($collision[0])->hasKey('value0');
+            $this->array($manager->hydrationModes)->isIdenticalTo([\Doctrine\ORM\Query::HYDRATE_OBJECT]);
+            $manager->clear();
+
+            // A custom presenter may observe the managed record before choices detaches it.
+            $custom = new class ($manager, $manager->getClassMetadata(\itsmng\Database\Entity\Budget::class)) extends \itsmng\Database\Repository\DropdownChoiceRepository {
+                public bool $presentedManaged = false;
+                protected function choiceQuery(): \Doctrine\ORM\QueryBuilder
+                {
+                    return parent::choiceQuery()->andWhere('r.is_deleted = false');
+                }
+                protected function presentChoice(array $row): array
+                {
+                    $this->presentedManaged = $this->getEntityManager()->getUnitOfWork()->size() > 0;
+                    $row['name'] .= ' custom';
+                    return $row;
+                }
+            };
+            $manager->hydrationModes = [];
+            $this->string($custom->choices(['id' => $id], [], [], 'Budget', 'en_GB', 0, 0)[0]['name'])->endWith(' custom');
+            $this->boolean($custom->presentedManaged)->isTrue();
+            $this->array($manager->hydrationModes)->isIdenticalTo([\Doctrine\ORM\Query::HYDRATE_OBJECT]);
+            $manager->clear();
+            $contact = getItemByTypeName('Contact', '_contact01_name');
+            $this->string($manager->getRepository(\itsmng\Database\Entity\Contact::class)
+                ->choices(['id' => (int)$contact->getID()], [], [], 'Contact', 'en_GB', 0, 0)[0]['name'])
+                ->isIdenticalTo(($contact->fields['name'] ?? '') . ' ' . ($contact->fields['firstname'] ?? ''));
+        } finally {
+            $manager->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+            $manager->clear();
+        }
+    }
+
     public function testReadonlyArrayDropdownRetainsOnlyHiddenSelection(): void
     {
         foreach ([false, true] as $multiple) {

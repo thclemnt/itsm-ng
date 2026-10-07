@@ -8,6 +8,7 @@ use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
 use itsmng\Database\EntityRegistry;
+use itsmng\Database\MappedRowProjection;
 
 /** ORM record access with the legacy model's scalar row contract at its boundary. */
 final class RecordRepository
@@ -62,52 +63,11 @@ final class RecordRepository
         $query = $this->em->createQueryBuilder()->from($recordClass, 'r')
             ->where('r.' . $identifier . ' = :id')
             ->setParameter('id', $id, $metadata->getTypeOfField($identifier));
-        $columns = $this->selectScalarColumns($query, $metadata);
+        $projection = new MappedRowProjection($this->em, $metadata);
+        $projection->select($query);
         // Scalar-only array hydration applies DBAL types without loading entities.
         $values = $query->getQuery()->getOneOrNullResult(\Doctrine\ORM\Query::HYDRATE_ARRAY);
-        return $values === null ? null : $this->scalarValuesToRow($values, $columns);
-    }
-
-    private function selectScalarColumns(\Doctrine\ORM\QueryBuilder $query, \Doctrine\ORM\Mapping\ClassMetadata $metadata): array
-    {
-        $columns = [];
-        foreach ($metadata->fieldMappings as $property => $mapping) {
-            $query->addSelect('r.' . $property . ' AS value' . count($columns));
-            $columns[] = [$mapping->columnName, $mapping->type, false];
-        }
-        foreach ($metadata->associationMappings as $property => $mapping) {
-            if (!$mapping->isToOneOwningSide()) {
-                continue;
-            }
-            if (count($mapping->joinColumns) !== 1) {
-                throw new \LogicException('Scalar record reads require single-column owning references');
-            }
-            $target = $this->em->getClassMetadata($mapping->targetEntity);
-            $targetId = $target->getSingleIdentifierFieldName();
-            if (!$target->hasField($targetId) || $target->getColumnName($targetId) !== $mapping->joinColumns[0]->referencedColumnName) {
-                throw new \LogicException('Scalar record references must target a scalar identifier');
-            }
-            $query->addSelect('IDENTITY(r.' . $property . ') AS value' . count($columns));
-            $columns[] = [$mapping->joinColumns[0]->name, $target->getTypeOfField($targetId), true];
-        }
-        return $columns;
-    }
-
-    private function scalarValuesToRow(array $values, array $columns): array
-    {
-        $row = [];
-        foreach ($columns as $index => [$column, $type, $reference]) {
-            $value = $values['value' . $index];
-            if ($reference) {
-                // IDENTITY is an untyped DQL function; use the referenced ID's type.
-                $value = \Doctrine\DBAL\Types\Type::getType($type)->convertToPHPValue(
-                    $value,
-                    $this->em->getConnection()->getDatabasePlatform()
-                );
-            }
-            $row[$column] = self::legacyScalarValue($value, $type);
-        }
-        return $row;
+        return $values === null ? null : $projection->toRow($values);
     }
 
     /** Select complete mapped records with bound criteria and database-side limits. */
@@ -130,10 +90,10 @@ final class RecordRepository
             && !$metadata->hasLifecycleCallbacks(Events::postLoad)
             && empty($metadata->entityListeners[Events::postLoad])
             && !$this->em->getEventManager()->hasListeners(Events::postLoad)) {
-            $query->resetDQLPart('select');
-            $columns = $this->selectScalarColumns($query, $metadata);
+            $projection = new MappedRowProjection($this->em, $metadata);
+            $projection->select($query);
             foreach ($query->getQuery()->toIterable([], \Doctrine\ORM\Query::HYDRATE_ARRAY) as $values) {
-                $rows[] = $this->scalarValuesToRow($values, $columns);
+                $rows[] = $projection->toRow($values);
             }
             return $rows;
         }
