@@ -67,8 +67,8 @@ class NotificationChatConfig extends CommonDBTM
             );
         }
 
-        // Close cURL session handle
-        curl_close($ch);
+        // Release the cURL handle
+        unset($ch);
 
         return $result;
     }
@@ -129,7 +129,7 @@ class NotificationChatConfig extends CommonDBTM
             );
         }
 
-        // Close cURL session handle
-        curl_close($ch);
+        // Release the cURL handle
+        unset($ch);
     }
 }

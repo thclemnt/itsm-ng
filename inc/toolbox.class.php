@@ -911,7 +911,7 @@ class Toolbox
         if ($mime === null && preg_match('/\.(...)$/', $file)) {
             $finfo = finfo_open(FILEINFO_MIME_TYPE);
             $mime = finfo_file($finfo, $file);
-            finfo_close($finfo);
+            unset($finfo);
         }
 
         // don't download picture files, see them inline
@@ -1832,7 +1832,7 @@ class Toolbox
         curl_setopt_array($ch, $opts);
         $content = curl_exec($ch);
         $curl_error = curl_error($ch) ?: null;
-        curl_close($ch);
+        unset($ch);
 
         if ($curl_error !== null) {
             if (empty($CFG_GLPI["proxy_name"])) {

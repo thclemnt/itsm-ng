@@ -43,6 +43,28 @@ use Ticket;
 
 class Toolbox extends \GLPITestCase
 {
+    public function testCallCurlReadsLocalFile(): void
+    {
+        global $CFG_GLPI;
+        $configuration = $CFG_GLPI;
+        $file = tempnam(sys_get_temp_dir(), 'itsm-curl-');
+        $this->string($file);
+        try {
+            $CFG_GLPI['proxy_name'] = '';
+            $contents = "Local response\0with binary data\n";
+            file_put_contents($file, $contents);
+            $message = null;
+            $error = null;
+            $this->string(\Toolbox::callCurl('file://' . $file, [], $message, $error))
+                ->isIdenticalTo($contents);
+            $this->variable($message)->isNull();
+            $this->variable($error)->isNull();
+        } finally {
+            $CFG_GLPI = $configuration;
+            unlink($file);
+        }
+    }
+
     public function testGetRandomString()
     {
         for ($len = 20; $len < 50; $len += 5) {
