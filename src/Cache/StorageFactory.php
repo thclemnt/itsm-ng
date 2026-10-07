@@ -7,6 +7,10 @@ namespace itsmng\Cache;
 use Laminas\Cache\ConfigProvider;
 use Laminas\Cache\Exception\InvalidArgumentException;
 use Laminas\Cache\Service\StorageAdapterFactoryInterface;
+use Laminas\Cache\Storage\Adapter\Apcu\ConfigProvider as ApcuConfigProvider;
+use Laminas\Cache\Storage\Adapter\Filesystem\ConfigProvider as FilesystemConfigProvider;
+use Laminas\Cache\Storage\Adapter\Memory\ConfigProvider as MemoryConfigProvider;
+use Laminas\Cache\Storage\Adapter\Redis\ConfigProvider as RedisConfigProvider;
 use Laminas\Cache\Storage\AdapterPluginManager;
 use Laminas\Cache\Storage\StorageInterface;
 use Laminas\ServiceManager\ServiceManager;
@@ -18,10 +22,10 @@ final class StorageFactory
     {
         $services = new ServiceManager((new ConfigProvider())()['dependencies']);
         foreach ([
-            new \Laminas\Cache\Storage\Adapter\Apcu\ConfigProvider(),
-            new \Laminas\Cache\Storage\Adapter\Filesystem\ConfigProvider(),
-            new \Laminas\Cache\Storage\Adapter\Memory\ConfigProvider(),
-            new \Laminas\Cache\Storage\Adapter\Redis\ConfigProvider(),
+            new ApcuConfigProvider(),
+            new FilesystemConfigProvider(),
+            new MemoryConfigProvider(),
+            new RedisConfigProvider(),
         ] as $provider) {
             $services->configure($provider()['dependencies']);
         }
