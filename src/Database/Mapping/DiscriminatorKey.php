@@ -57,7 +57,18 @@ final readonly class DiscriminatorKey
                 $table->addColumn('`' . $join->name . '`', 'bigint', ['notnull' => !$join->nullable]);
             }
             $index = $table->getName() . '_' . $join->name;
-            if (!$table->hasIndex($index)) {
+            // Legacy PostgreSQL names can say computers_id while indexing the
+            // compatibility items_id column. Preserve that useful index and own
+            // the typed lookup under a distinct, deterministic name.
+            if ($table->hasIndex($index)
+                && $table->getIndex($index)->getUnquotedColumns() !== [$join->name]) {
+                $index = strlen($index) <= 57 ? $index . '_typed' : 'subject_' . sha1($index);
+            }
+            if ($table->hasIndex($index)) {
+                if ($table->getIndex($index)->getUnquotedColumns() !== [$join->name]) {
+                    throw new \LogicException('Conflicting current subject index declaration: ' . $index);
+                }
+            } else {
                 $table->addIndex([$join->name], $index);
             }
             $discriminator = $metadata->getFieldMapping($binding->discriminator);

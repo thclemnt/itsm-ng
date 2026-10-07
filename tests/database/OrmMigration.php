@@ -84,7 +84,7 @@ class OrmMigration extends \GLPITestCase
         $this->array(History::pendingVersions($connection))->isEmpty();
         $this->boolean(History::isInstalling($connection))->isFalse();
         $this->boolean(Ledger::state($connection, Baseline::PHASE)['installation_complete'])->isTrue();
-        $this->array(History::versions())->isIdenticalTo(['2.2.0', \itsmng\Database\Migration\SensorSubjects::VERSION]);
+        $this->array(History::versions())->isIdenticalTo(['2.2.0', \itsmng\Database\Migration\SensorSubjects::VERSION, \itsmng\Database\Migration\PhysicalReferenceIndexes::VERSION]);
         $this->string($connection->fetchOne('SELECT value FROM glpi_configs WHERE context = ? AND name = ?', ['core', 'itsmdbversion']))->isIdenticalTo(ITSM_SCHEMA_VERSION);
         // Readiness must bootstrap its own adapter in a fresh process, without
         // relying on this test runner's already-loaded database functions.
@@ -187,6 +187,42 @@ class OrmMigration extends \GLPITestCase
         Ledger::save($connection, $phase, $retained);
         $forward->verify($connection);
 
+        // The next release adds physical support only; interrupted PostgreSQL
+        // CREATEs and already-supported MySQL FKs converge without touching rows.
+        $indexes = new \itsmng\Database\Migration\PhysicalReferenceIndexes();
+        $beforeRows = $this->rowBags($connection);
+        $beforeIndexes = \itsmng\Database\PhysicalIndexSchema::catalog($connection, array_keys($indexes::declarations()));
+        $plan = $indexes->plan($connection);
+        if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
+            $this->integer(count($plan['sql']))->isIdenticalTo(68);
+            $this->exception(static fn () => $indexes->apply($connection, static fn () => throw new \RuntimeException('Interrupted physical index creation')))
+                ->isInstanceOf(\RuntimeException::class)->hasMessage('Interrupted physical index creation');
+            $this->integer(count($indexes->plan($connection)['sql']))->isIdenticalTo(67);
+        } else {
+            $this->array($plan['sql'])->isEmpty('Existing InnoDB supporting indexes already provide physical coverage');
+        }
+        $indexes->apply($connection);
+        $indexes->verify($connection);
+        $this->array($indexes->plan($connection)['sql'])->isEmpty();
+        $indexes->apply($connection, static fn () => throw new \LogicException('Completed physical index DDL replayed'));
+        $this->array($this->rowBags($connection))->isIdenticalTo($beforeRows);
+        $afterIndexes = \itsmng\Database\PhysicalIndexSchema::catalog($connection, array_keys($indexes::declarations()));
+        foreach ($beforeIndexes as $table => $physical) {
+            foreach ($physical as $name => $definition) {
+                $this->array($afterIndexes[$table][$name])->isIdenticalTo($definition, 'Every pre-existing physical index is retained');
+            }
+        }
+        $this->array((new SchemaCheck())->differences($connection))->isEmpty();
+        if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
+            $name = 'glpi_items_devicesensors_computers_id_typed';
+            $connection->executeStatement('DROP INDEX ' . $connection->getDatabasePlatform()->quoteIdentifier($name));
+            $this->array((new SchemaCheck())->differences($connection))
+                ->contains('Missing physical index coverage: glpi_items_devicesensors.' . $name);
+            $this->exception(static fn () => $indexes->verify($connection))->isInstanceOf(\RuntimeException::class);
+            $indexes->apply($connection);
+            $indexes->verify($connection);
+            $this->array((new SchemaCheck())->differences($connection))->isEmpty();
+        }
     }
 
     public function testPublicUpgradeRefusesOldProvenanceAndPreservesPopulatedData(): void
@@ -266,6 +302,8 @@ class OrmMigration extends \GLPITestCase
             $this->variable($sensorRows[2]['computers_id'])->isNull();
             $this->variable($sensorRows[2]['peripherals_id'])->isNull();
             $this->boolean(Ledger::state($connection, \itsmng\Database\Migration\SensorSubjects::VERSION)['complete'])->isTrue();
+            $this->boolean(Ledger::state($connection, \itsmng\Database\Migration\PhysicalReferenceIndexes::VERSION)['complete'])->isTrue();
+            $this->array((new \itsmng\Database\Migration\PhysicalReferenceIndexes())->plan($connection)['sql'])->isEmpty();
             $this->array(Ledger::state($connection, \itsmng\Database\Migration\SensorSubjects\Definition::PHASE)['policy'])->hasKeys(['projection', 'check']);
             $this->assertCurrentSubjectNativeVerification($connection);
             $this->assertTerminalSensorVerification($connection);

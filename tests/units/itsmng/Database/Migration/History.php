@@ -108,7 +108,7 @@ class History extends \atoum\atoum\test
         $release = new \itsmng\Database\Migration\SensorSubjects();
         $this->string($release->version())->isNotIdenticalTo(Version220::VERSION);
         $this->string($release->version())->isNotIdenticalTo($definition::PHASE);
-        $this->array(Releases::versions())->isIdenticalTo([Version220::VERSION, $release->version()]);
+        $this->array(Releases::versions())->isIdenticalTo([Version220::VERSION, $release->version(), \itsmng\Database\Migration\PhysicalReferenceIndexes::VERSION]);
         foreach ([new \Doctrine\DBAL\Platforms\MySQLPlatform(), new PostgreSQLPlatform()] as $platform) {
             $table = new \Doctrine\DBAL\Schema\Table('glpi_items_devicesensors');
             $table->addColumn('itemtype', 'string');
@@ -150,6 +150,28 @@ class History extends \atoum\atoum\test
         $this->array($calls->getArrayCopy())->isEmpty();
     }
 
+    public function testPhysicalReferenceReleaseHasFrozenFiniteDeclarations(): void
+    {
+        $release = new \itsmng\Database\Migration\PhysicalReferenceIndexes();
+        $required = $release::declarations();
+        $this->integer(array_sum(array_map('count', $required)))->isIdenticalTo(68);
+        foreach ([new \Doctrine\DBAL\Platforms\MySQLPlatform(), new PostgreSQLPlatform()] as $platform) {
+            foreach ($required as $table => $indexes) {
+                foreach ($indexes as $index) {
+                    $this->integer(count($index->getColumns()))->isIdenticalTo(1);
+                    $this->boolean($index->isUnique())->isFalse();
+                    $this->string($platform->getCreateIndexSQL($index, $platform->quoteIdentifier($table)))->startWith('CREATE INDEX ');
+                }
+            }
+        }
+        $manager = new EntityManager(DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']), Orm::configuration(new PostgreSQLPlatform()));
+        $metadata = $manager->getClassMetadata(\itsmng\Database\Entity\ItemDeviceSensor::class);
+        $metadata->associationMappings['computer']->joinColumns[0]->name = 'future_computer';
+        $this->array(array_map(static fn ($index): array => $index->getColumns(), $release::declarations()['glpi_items_devicesensors']))
+            ->isIdenticalTo([['computers_id'], ['locations_id'], ['states_id']]);
+        $this->boolean($manager->getConnection()->isConnected())->isFalse();
+    }
+
     private function release(string $version, \ArrayObject $calls): \itsmng\Database\Migration\ReleaseMigration
     {
         return new class ($version, $calls) implements \itsmng\Database\Migration\ReleaseMigration {
@@ -179,13 +201,14 @@ class History extends \atoum\atoum\test
     public function testExperimentalCheckpointsDoNotPublishAnOrmRelease(): void
     {
         $connection = new ReleaseJournalFixtureConnection();
-        $this->array(Releases::pendingVersions($connection))->isIdenticalTo(['2.2.0', \itsmng\Database\Migration\SensorSubjects::VERSION]);
+        $this->array(Releases::pendingVersions($connection))->isIdenticalTo(['2.2.0', \itsmng\Database\Migration\SensorSubjects::VERSION, \itsmng\Database\Migration\PhysicalReferenceIndexes::VERSION]);
         $connection->states = array_fill_keys(Version220::PHASES, ['complete' => true]);
         $original = $connection->states;
-        $this->array(Releases::pendingVersions($connection))->isIdenticalTo(['2.2.0', \itsmng\Database\Migration\SensorSubjects::VERSION]);
+        $this->array(Releases::pendingVersions($connection))->isIdenticalTo(['2.2.0', \itsmng\Database\Migration\SensorSubjects::VERSION, \itsmng\Database\Migration\PhysicalReferenceIndexes::VERSION]);
         $this->array($connection->states)->isIdenticalTo($original);
         $connection->states[Version220::VERSION] = ['complete' => true];
         $connection->states[\itsmng\Database\Migration\SensorSubjects::VERSION] = ['complete' => true];
+        $connection->states[\itsmng\Database\Migration\PhysicalReferenceIndexes::VERSION] = ['complete' => true];
         $this->array(Releases::pendingVersions($connection))->isEmpty();
         $connection->states[Baseline::PHASE] = ['complete' => false, 'origin' => 'installed', 'next' => 1];
         $this->array(Releases::pendingVersions($connection))->isIdenticalTo(['2.2.0']);

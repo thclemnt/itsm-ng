@@ -42,6 +42,120 @@ class CurrentSchema extends \atoum\atoum\test
         return new EntityManager(new DisconnectedSchemaConnection($platform), $configuration);
     }
 
+    public function testSubjectIndexesRetainLegacyCoverageWithoutNameCollisions(): void
+    {
+        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+            $manager = $this->manager($platform);
+            $schema = (new BaselineSchema($manager))->build($platform);
+            foreach (['batteries', 'harddrives', 'memories', 'motherboards', 'powersupplies', 'processors', 'sensors'] as $family) {
+                $name = 'glpi_items_device' . $family;
+                $table = $schema->getTable($name);
+                $legacy = $platform instanceof PostgreSQLPlatform ? $name . '_computers_id' : 'computers_id';
+                $typed = $name . '_computers_id' . ($platform instanceof PostgreSQLPlatform ? '_typed' : '');
+                $this->array($table->getIndex($legacy)->getUnquotedColumns())->isIdenticalTo(['items_id']);
+                $this->array($table->getIndex($typed)->getUnquotedColumns())->isIdenticalTo(['computers_id']);
+                $this->boolean($table->getIndex($typed)->isUnique())->isFalse();
+            }
+            $this->boolean($manager->getConnection()->isConnected())->isFalse();
+        }
+    }
+
+    public function testPhysicalCatalogVisibilityMatchesSupportedServerCapabilities(): void
+    {
+        foreach ([
+            [new MariaDBPlatform(), '5.5.5-10.2.22-MariaDB', '(1) AS visible'],
+            [new MariaDBPlatform(), '10.5.29-MariaDB', '(1) AS visible'],
+            [new MariaDBPlatform(), '10.6.0-MariaDB', "(IGNORED = 'NO') AS visible"],
+            [new MySQLPlatform(), '8.0.16', "(IS_VISIBLE = 'YES') AS visible"],
+        ] as [$platform, $version, $fragment]) {
+            $connection = new \mock\Doctrine\DBAL\Connection([], (new DisconnectedSchemaConnection($platform))->getDriver());
+            $this->calling($connection)->getDatabasePlatform = $platform;
+            $this->calling($connection)->getServerVersion = $version;
+            $queries = [];
+            $this->calling($connection)->fetchAllAssociative = static function (string $sql, array $parameters, array $types) use (&$queries): array {
+                $queries[] = [$sql, $parameters, $types];
+                return [];
+            };
+            $this->array(\itsmng\Database\PhysicalIndexSchema::catalog($connection, ['glpi_items_devicesensors']))->isEmpty();
+            $this->integer(count($queries))->isIdenticalTo(1);
+            $this->string($queries[0][0])->contains($fragment);
+            $this->array($queries[0][1])->isIdenticalTo([['glpi_items_devicesensors']]);
+            $this->array($queries[0][2])->isIdenticalTo([\Doctrine\DBAL\ArrayParameterType::STRING]);
+        }
+    }
+
+    public function testPhysicalCoverageCannotIntroduceUndeclaredUniqueness(): void
+    {
+        $platform = new PostgreSQLPlatform();
+        $connection = new \mock\Doctrine\DBAL\Connection([], (new DisconnectedSchemaConnection($platform))->getDriver());
+        $this->calling($connection)->getDatabasePlatform = $platform;
+        $schema = new Schema();
+        $table = $schema->createTable('physical_fixture');
+        $table->addColumn('computers_id', 'bigint');
+        $table->addIndex(['computers_id'], 'expected');
+        foreach (['expected', 'renamed_unique'] as $name) {
+            $this->calling($connection)->fetchAllAssociative = [[
+                'table_name' => 'physical_fixture', 'index_name' => $name, 'column_name' => 'computers_id',
+                'is_unique' => true, 'is_primary' => false, 'is_valid' => true, 'is_ready' => true,
+                'access_method' => 'btree', 'predicate' => null, 'expressions' => null,
+                'default_operator_class' => true, 'column_collation' => true, 'nulls_not_distinct' => false,
+            ]];
+            $this->array(\itsmng\Database\PhysicalIndexSchema::differences($connection, $schema))
+                ->isIdenticalTo(['Missing physical index coverage: physical_fixture.expected']);
+        }
+        $table->addUniqueIndex(['computers_id'], 'declared_unique');
+        $this->array(\itsmng\Database\PhysicalIndexSchema::differences($connection, $schema))
+            ->isEmpty('A separately declared unique constraint also supports the same FK lookup');
+    }
+
+    public function testPhysicalIndexCoverageUsesColumnAndNativeSemantics(): void
+    {
+        $required = new \Doctrine\DBAL\Schema\Index('expected', ['"computers_id"']);
+        $physical = ['columns' => ['computers_id', 'is_deleted'], 'lengths' => [null, null],
+            'unique' => false, 'primary' => false, 'method' => 'btree', 'usable' => true,
+            'predicate' => null, 'expressions' => null, 'standard_equality' => true, 'nulls_not_distinct' => false];
+        $coverage = \itsmng\Database\PhysicalIndexSchema::covers(...);
+        $this->boolean($coverage($required, $physical))->isTrue('A real wider leading-column index covers lookup');
+        foreach ([
+            ['columns' => ['items_id', 'computers_id']],
+            ['columns' => ['is_deleted', 'computers_id']],
+            ['predicate' => 'computers_id IS NOT NULL'],
+            ['expressions' => '(computers_id + 0)'],
+            ['method' => 'hash'], ['method' => 'fulltext'], ['usable' => false], ['standard_equality' => false],
+            ['lengths' => [10, null]],
+        ] as $damage) {
+            $this->boolean($coverage($required, array_replace($physical, $damage)))->isFalse();
+        }
+        $unique = new \Doctrine\DBAL\Schema\Index('unique', ['computers_id'], true);
+        $this->boolean($coverage($unique, $physical))->isFalse();
+        $this->boolean($coverage($unique, array_replace($physical, ['unique' => true])))->isFalse('Wider uniqueness is weaker');
+        $one = array_replace($physical, ['columns' => ['computers_id'], 'lengths' => [null], 'unique' => true]);
+        $this->boolean($coverage($unique, $one))->isTrue();
+        $declared = new Table('physical_fixture');
+        $declared->addColumn('computers_id', 'bigint');
+        $declared->addIndex(['computers_id'], 'expected');
+        $changed = clone $declared;
+        $changed->dropIndex('expected');
+        $changed->addUniqueIndex(['computers_id'], 'expected');
+        $diff = (new \Doctrine\DBAL\Schema\Comparator(new PostgreSQLPlatform()))->compareTables($declared, $changed);
+        $this->integer(count($diff->getModifiedIndexes()))->isIdenticalTo(1, 'A named UNIQUE replacement still changes permitted rows');
+        $this->boolean($diff->getModifiedIndexes()[0]->isUnique())->isTrue();
+        $this->boolean($coverage($unique, array_replace($one, ['nulls_not_distinct' => true])))->isFalse();
+        $primary = new \Doctrine\DBAL\Schema\Index('primary', ['computers_id'], true, true);
+        $this->boolean($coverage($primary, $one))->isFalse();
+        $this->boolean($coverage($primary, array_replace($one, ['primary' => true])))->isTrue();
+        $prefix = new \Doctrine\DBAL\Schema\Index('prefix', ['name'], false, false, [], ['lengths' => [50]]);
+        $text = array_replace($physical, ['columns' => ['name'], 'lengths' => [100]]);
+        $this->boolean($coverage($prefix, $text))->isTrue();
+        $this->boolean($coverage($prefix, array_replace($text, ['lengths' => [20]])))->isFalse();
+        $fulltext = new \Doctrine\DBAL\Schema\Index('fulltext', ['name'], false, false, ['fulltext']);
+        $text = array_replace($text, ['lengths' => [null], 'method' => 'fulltext']);
+        $this->boolean($coverage($fulltext, $text))->isTrue();
+        $this->boolean($coverage($fulltext, array_replace($text, ['method' => 'btree'])))->isFalse();
+        $this->array(\itsmng\Database\PhysicalIndexSchema::missing(['fixture' => [$required]], ['fixture' => ['expected' => array_replace($physical, ['columns' => ['items_id']])]]))
+            ->isIdenticalTo(['fixture' => [$required]], 'An expected name on wrong columns cannot substitute for coverage');
+    }
+
     public function testImportStorageAdmissionIncludesUnreferencedAuditTables(): void
     {
         foreach ([new MySQLPlatform(), new MariaDBPlatform(), new PostgreSQLPlatform()] as $platform) {

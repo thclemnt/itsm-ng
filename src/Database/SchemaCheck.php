@@ -67,13 +67,15 @@ final class SchemaCheck
             foreach ($diff->getChangedColumns() as $column) {
                 $differences[] = 'Changed column: ' . $name . '.' . $column->getOldColumn()->getName();
             }
-            // Equivalent indexes may have provider-generated names. A rename
-            // alone is harmless; missing indexes and changed definitions are not.
-            foreach ($diff->getDroppedIndexes() as $index) {
-                $differences[] = 'Missing index: ' . $name . '.' . $index->getName();
-            }
+            // Native index coverage is compared below. Table introspection adds
+            // synthetic FK indexes that are not evidence of physical storage.
+            // Changing an existing declaration's uniqueness alters legal rows;
+            // lookup coverage by a stronger index does not authorize that change.
             foreach ($diff->getModifiedIndexes() as $index) {
-                $differences[] = 'Changed index: ' . $name . '.' . $index->getName();
+                $declared = $table->hasIndex($index->getName()) ? $table->getIndex($index->getName()) : $table->getPrimaryKey();
+                if ($declared !== null && ($declared->isUnique() !== $index->isUnique() || $declared->isPrimary() !== $index->isPrimary())) {
+                    $differences[] = 'Changed index: ' . $name . '.' . $index->getName();
+                }
             }
             foreach ($diff->getDroppedForeignKeys() as $key) {
                 $differences[] = 'Missing or changed foreign key: ' . $name . '.' . $key->getName();
@@ -83,6 +85,6 @@ final class SchemaCheck
             }
         }
         return new SchemaInspection($actual, [...$differences, ...BooleanDomainSchema::differences($connection, $expected), ...NativeTimestampSchema::differences($connection, $expected),
-            ...NativeSubjectSchema::differences($connection, $subjectPolicies)]);
+            ...NativeSubjectSchema::differences($connection, $subjectPolicies), ...PhysicalIndexSchema::differences($connection, $expected)]);
     }
 }
