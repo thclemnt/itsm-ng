@@ -4,6 +4,7 @@
 
 namespace itsmng\Database\Repository;
 
+use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
 use itsmng\Database\EntityRegistry;
@@ -15,9 +16,19 @@ final class RecordRepository
     {
     }
 
-    public function find(string $table, string $column, int $id): ?array
+    public function find(string $table, string $column, int $id, LockMode $lockMode = LockMode::NONE): ?array
     {
         $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
+        if ($lockMode === LockMode::PESSIMISTIC_WRITE) {
+            $query = $this->em->createQueryBuilder()->select('r')->from($metadata->name, 'r');
+            $query->where((new \itsmng\Database\RecordCriteria($query, $metadata, false))->where([$column => $id]));
+            $record = $query->getQuery()->setHint(\Doctrine\ORM\Query::HINT_REFRESH, true)
+                ->setLockMode($lockMode)->getOneOrNullResult();
+            return $record === null ? null : $this->toRow($record);
+        }
+        if ($lockMode !== LockMode::NONE) {
+            throw new \InvalidArgumentException('Mapped model loads support ordinary or current write-lock reads.');
+        }
         if (count($metadata->identifier) === 1
             && !$metadata->hasLifecycleCallbacks(Events::postLoad)
             && empty($metadata->entityListeners[Events::postLoad])

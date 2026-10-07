@@ -41,6 +41,199 @@ use TicketTask;
 
 class CommonDBTM extends DbTestCase
 {
+    public function testReplacementDeletionUsesCurrentSourceAndTargetScopes(): void
+    {
+        global $DB;
+        $original = $DB;
+        $originalConnection = $original->getDoctrineConnection();
+        $originalScope = $originalConnection->captureManagedTransactionScope();
+        $originalLevel = $originalConnection->getTransactionNestingLevel();
+        $session = $_SESSION;
+        $mysql = $original->getProvider() !== 'pgsql';
+        $otherEntity = (int)getItemByTypeName('Entity', '_test_child_1', true);
+        $this->integer($otherEntity)->isGreaterThan(0);
+        $reader = $writer = $frame = null;
+        $fixtures = [];
+        $failure = null;
+        $cleanup = static function (callable $operation) use (&$failure): void {
+            try {
+                $operation();
+            } catch (\Throwable $error) {
+                $failure = $failure === null ? $error : new \itsmng\Database\MutationCleanupFailure($failure, $error);
+            }
+        };
+        try {
+            $parameters = $originalConnection->getParams();
+            $reader = $mysql ? \itsmng\Database\MySQLConnection::create($parameters)
+                : \itsmng\Database\PostgresConnection::create($parameters);
+            $writer = $mysql ? \itsmng\Database\MySQLConnection::create($parameters)
+                : \itsmng\Database\PostgresConnection::create($parameters);
+            foreach ([$reader, $writer] as $connection) {
+                if ($mysql) {
+                    $connection->executeStatement('SET SESSION innodb_lock_wait_timeout = 5');
+                } else {
+                    $connection->executeStatement("SET SESSION lock_timeout = '5s'");
+                    $connection->executeStatement("SET SESSION statement_timeout = '20s'");
+                }
+            }
+            $reader->setTransactionIsolation($mysql ? \Doctrine\DBAL\TransactionIsolationLevel::REPEATABLE_READ
+                : \Doctrine\DBAL\TransactionIsolationLevel::READ_COMMITTED);
+            $routed = clone $original;
+            (new \ReflectionProperty(\DBAdapter::class, 'doctrine'))->setValue($routed, $reader);
+            foreach (['source', 'target'] as $changed) {
+                $token = 'delete-current-' . $this->getUniqueString();
+                $fixture = \itsmng\Database\OwnedMutationFrame::run($writer, static function () use ($writer, $token): array {
+                    $manager = new \Doctrine\ORM\EntityManager($writer, \itsmng\Database\Orm::configuration($writer->getDatabasePlatform()));
+                    try {
+                        $records = [];
+                        foreach (['source', 'target'] as $name) {
+                            $record = new \itsmng\Database\Entity\DomainType();
+                            $record->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, 0);
+                            $record->name = $token . '-' . $name;
+                            $manager->persist($record);
+                            $records[$name] = $record;
+                        }
+                        $manager->flush();
+                        return ['name' => $token, 'source' => $records['source']->id, 'target' => $records['target']->id];
+                    } finally {
+                        $manager->clear();
+                    }
+                });
+                $fixtures[] = $fixture;
+                $frame = \itsmng\Database\OwnedMutationFrame::begin($reader);
+                $snapshot = $reader->fetchAllAssociative(
+                    'SELECT id, entities_id FROM glpi_domaintypes WHERE id IN (?, ?) ORDER BY id',
+                    [$fixture['source'], $fixture['target']]
+                );
+                $this->array(array_map('intval', array_column($snapshot, 'entities_id')))->isIdenticalTo([0, 0]);
+                \itsmng\Database\OwnedMutationFrame::run($writer, static function () use ($writer, $fixture, $changed, $otherEntity): void {
+                    $writer->update(
+                        'glpi_domaintypes',
+                        ['entities_id' => $otherEntity],
+                        ['id' => $fixture[$changed], 'name' => $fixture['name'] . '-' . $changed]
+                    );
+                });
+                $observer = (object)['loads' => [], 'probing' => false, 'probed' => false, 'cloneEntity' => null,
+                    'otherEntity' => null, 'source' => $fixture['source'], 'target' => $fixture['target']];
+                $model = new class ($observer) extends \DomainType {
+                    public function __construct(private object $observer)
+                    {
+                    }
+                    public static function getTable($classname = null)
+                    {
+                        return 'glpi_domaintypes';
+                    }
+                    public static function getType()
+                    {
+                        return 'DomainType';
+                    }
+                    public function post_getFromDB()
+                    {
+                        parent::post_getFromDB();
+                        if ($this->observer->probing) {
+                            return;
+                        }
+                        $this->observer->loads[] = ['id' => (int)$this->fields['id'], 'entity' => (int)$this->fields['entities_id']];
+                        // Valid derived fields must survive the authority check.
+                        $this->fields['fixture_derived'] = $this->fields['name'] . ' derived';
+                        if (!$this->observer->probed && (int)$this->fields['id'] === $this->observer->source) {
+                            $this->observer->probed = $this->observer->probing = true;
+                            $fields = $this->fields;
+                            try {
+                                $clone = clone $this;
+                                $clone->getFromDB($this->observer->source);
+                                $this->observer->cloneEntity = (int)$clone->fields['entities_id'];
+                                $this->getFromDB($this->observer->target);
+                                $this->observer->otherEntity = (int)$this->fields['entities_id'];
+                            } finally {
+                                $this->fields = $fields;
+                                $this->observer->probing = false;
+                            }
+                        }
+                    }
+                };
+                $DB = $routed;
+                try {
+                    $this->boolean($model->delete(['id' => $fixture['source'], '_replace_by' => $fixture['target'],
+                        '_no_message' => 1, '_no_history' => 1], true, false))
+                        ->isFalse('Concurrent ' . $changed . ' entity change must refuse the public replacement deletion');
+                } finally {
+                    $DB = $original;
+                }
+                $frame->assertActive();
+                $this->integer($reader->getTransactionNestingLevel())->isIdenticalTo(1);
+                $this->array($observer->loads)->isIdenticalTo([
+                    ['id' => $fixture['source'], 'entity' => $changed === 'source' ? $otherEntity : 0],
+                    ['id' => $fixture['target'], 'entity' => $changed === 'target' ? $otherEntity : 0],
+                ], 'Each public post-load boundary sees its current owning scope once');
+                $this->integer($observer->cloneEntity)->isIdenticalTo(
+                    $mysql ? 0 : ($changed === 'source' ? $otherEntity : 0),
+                    'A clone cannot inherit the original model current-read authority'
+                );
+                $this->integer($observer->otherEntity)->isIdenticalTo(
+                    $mysql ? 0 : ($changed === 'target' ? $otherEntity : 0),
+                    'A nested different identifier remains an ordinary read'
+                );
+                $this->array($_SESSION)->isIdenticalTo($session);
+                $rows = $reader->fetchAllAssociative(
+                    'SELECT id, entities_id FROM glpi_domaintypes WHERE id IN (?, ?) ORDER BY id FOR UPDATE',
+                    [$fixture['source'], $fixture['target']]
+                );
+                $this->array(array_map('intval', array_column($rows, 'id')))->isIdenticalTo([$fixture['source'], $fixture['target']]);
+                $this->array(array_map('intval', array_column($rows, 'entities_id')))->isIdenticalTo(
+                    $changed === 'source' ? [$otherEntity, 0] : [0, $otherEntity]
+                );
+                // The explicit policy is operation-scoped, even after refusal.
+                $DB = $routed;
+                try {
+                    $this->boolean($model->getFromDB($fixture[$changed]))->isTrue();
+                    $this->integer((int)$model->fields['entities_id'])->isIdenticalTo($mysql ? 0 : $otherEntity);
+                } finally {
+                    $DB = $original;
+                }
+                $frame->rollBack();
+                $frame = null;
+                $this->integer((int)$writer->fetchOne('SELECT entities_id FROM glpi_domaintypes WHERE id = ?', [$fixture[$changed]]))
+                    ->isIdenticalTo($otherEntity, 'Caller rollback preserves the independently committed scope change');
+                $originalScope->assertActive();
+                $this->integer($originalConnection->getTransactionNestingLevel())->isIdenticalTo($originalLevel);
+            }
+        } catch (\Throwable $error) {
+            $failure = $error;
+        } finally {
+            $DB = $original;
+            if ($frame !== null) {
+                $cleanup(static fn () => $frame->rollBack());
+            }
+            if ($reader !== null) {
+                $cleanup(static fn () => $reader->close());
+            }
+            if ($writer !== null) {
+                foreach ($fixtures as $fixture) {
+                    $cleanup(static fn () => \itsmng\Database\OwnedMutationFrame::run($writer, static function () use ($writer, $fixture): void {
+                        foreach (['source', 'target'] as $name) {
+                            if ($writer->fetchOne('SELECT name FROM glpi_domaintypes WHERE id = ?', [$fixture[$name]]) !== $fixture['name'] . '-' . $name) {
+                                throw new \LogicException('Refusing cleanup of a missing or unowned domain type');
+                            }
+                        }
+                        foreach (['source', 'target'] as $name) {
+                            if ($writer->delete('glpi_domaintypes', ['id' => $fixture[$name], 'name' => $fixture['name'] . '-' . $name]) !== 1) {
+                                throw new \LogicException('Owned domain type fixture cleanup failed');
+                            }
+                        }
+                    }));
+                }
+                $cleanup(static fn () => $writer->close());
+            }
+        }
+        if ($failure !== null) {
+            throw $failure;
+        }
+        $this->object($DB)->isIdenticalTo($original);
+        $originalScope->assertActive();
+        $this->integer($originalConnection->getTransactionNestingLevel())->isIdenticalTo($originalLevel);
+    }
+
     public function testMappedIdentifierReadsCompleteFreshRowsWithoutHydration(): void
     {
         global $DB;
@@ -236,6 +429,257 @@ class CommonDBTM extends DbTestCase
             $DB = $database;
             $_SESSION = $session;
         }
+    }
+
+    public function testCurrentModelLoadRestoresPolicyAndRefusesUnprovenAuthority(): void
+    {
+        global $DB;
+        $this->login();
+        $source = $this->createItem(\DomainType::class, ['name' => 'current-model-' . $this->getUniqueString(), 'entities_id' => 0]);
+        $target = $this->createItem(\DomainType::class, ['name' => 'current-model-target-' . $this->getUniqueString(), 'entities_id' => 0]);
+        $connection = $DB->getDoctrineConnection();
+        $scope = $connection->captureManagedTransactionScope();
+        $level = $connection->getTransactionNestingLevel();
+        $policy = new \ReflectionProperty(\CommonDBTM::class, 'currentRead');
+        // A public adapter can route factory construction while retaining the
+        // original connection at operation boundaries. Reject before any query.
+        $original = $DB;
+        $alternate = $DB->getProvider() === 'pgsql'
+            ? \itsmng\Database\PostgresConnection::create(['driver' => 'pdo_pgsql', 'serverVersion' => '14.0'])
+            : \itsmng\Database\MySQLConnection::create(['driver' => 'pdo_mysql', 'serverVersion' => '8.0.0']);
+        $routed = new class ($connection, $alternate) extends \DB {
+            public function __construct(private \Doctrine\DBAL\Connection $current, private \Doctrine\DBAL\Connection $alternate)
+            {
+            }
+            public function getDoctrineConnection(): \Doctrine\DBAL\Connection
+            {
+                $caller = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2)[1]['class'] ?? null;
+                return $caller === \itsmng\Database\Orm::class ? $this->alternate : $this->current;
+            }
+        };
+        $observer = (object)['posts' => 0];
+        $model = new class ($observer) extends \DomainType {
+            public function __construct(private object $observer)
+            {
+            }
+            public static function getTable($classname = null)
+            {
+                return 'glpi_domaintypes';
+            }
+            public function post_getFromDB()
+            {
+                ++$this->observer->posts;
+            }
+        };
+        $error = null;
+        try {
+            $DB = $routed;
+            try {
+                $model->getFromDBForUpdate($source->getID(), $connection);
+            } catch (\Throwable $failure) {
+                $error = $failure;
+            }
+        } finally {
+            $DB = $original;
+        }
+        try {
+            $this->object($error)->isInstanceOf(\itsmng\Database\TransactionOwnershipMismatch::class);
+            $this->integer($observer->posts)->isIdenticalTo(0);
+            $this->boolean($alternate->isConnected())->isFalse('Reject a different manager before it opens a native connection');
+            $this->variable($policy->getValue($model))->isNull();
+            $scope->assertActive();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $alternate->close();
+        }
+        $marker = new \RuntimeException('Original public load failure');
+        foreach (['false', 'throw', 'bypass', 'scope', 'recursive', 'throw-replace'] as $mode) {
+            $observed = (object)['calls' => 0, 'posts' => 0, 'mode' => $mode, 'marker' => $marker,
+                'connection' => $connection, 'replacement' => null];
+            $model = new class ($observed) extends \DomainType {
+                public function __construct(private object $observed)
+                {
+                }
+                public static function getTable($classname = null)
+                {
+                    return 'glpi_domaintypes';
+                }
+                public static function getType()
+                {
+                    return 'DomainType';
+                }
+                public function getFromDB($id)
+                {
+                    ++$this->observed->calls;
+                    if ($this->observed->mode === 'false') {
+                        return false;
+                    }
+                    if ($this->observed->mode === 'throw-replace') {
+                        $this->observed->connection->rollBack();
+                        $this->observed->replacement = \itsmng\Database\OwnedMutationFrame::begin($this->observed->connection);
+                        throw $this->observed->marker;
+                    }
+                    if ($this->observed->mode === 'throw') {
+                        throw $this->observed->marker;
+                    }
+                    if ($this->observed->mode === 'bypass') {
+                        $this->post_getFromDB();
+                        return true;
+                    }
+                    return parent::getFromDB($id);
+                }
+                public function post_getFromDB()
+                {
+                    ++$this->observed->posts;
+                    parent::post_getFromDB();
+                    if ($this->observed->mode === 'scope') {
+                        $this->fields['entities_id'] = PHP_INT_MAX;
+                    } elseif ($this->observed->mode === 'recursive') {
+                        $this->fields['is_recursive'] = 1;
+                    }
+                }
+            };
+            $model->fields = $source->fields;
+            $error = null;
+            $owned = null;
+            $primary = null;
+            try {
+                if (in_array($mode, ['scope', 'recursive'], true)) {
+                    $this->boolean($model->delete(['id' => $source->getID(), '_replace_by' => $target->getID(),
+                        '_no_message' => 1, '_no_history' => 1], true, false))
+                        ->isFalse('A delegated post-load hook cannot substitute mapped ' . $mode . ' authority');
+                } else {
+                    if ($mode === 'throw-replace') {
+                        $owned = \itsmng\Database\OwnedMutationFrame::begin($connection);
+                    }
+                    try {
+                        $result = $model->getFromDBForUpdate($source->getID(), $connection);
+                    } catch (\Throwable $failure) {
+                        $error = $failure;
+                    }
+                    if ($mode === 'false') {
+                        $this->boolean($result)->isFalse();
+                        $this->variable($error)->isNull();
+                    } elseif ($mode === 'throw') {
+                        $this->object($error)->isIdenticalTo($marker);
+                    } elseif ($mode === 'bypass') {
+                        $this->object($error)->isInstanceOf(\itsmng\Database\CurrentReadUnavailable::class);
+                    } else {
+                        $this->object($error)->isInstanceOf(\itsmng\Database\MutationCleanupFailure::class);
+                        $this->object($error->primary)->isIdenticalTo($marker);
+                        $this->object($error->cleanup)->isInstanceOf(\itsmng\Database\TransactionOwnershipMismatch::class);
+                        $this->boolean($error->rollbackUnproven)->isTrue();
+                        $observed->replacement->assertActive();
+                        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level + 1);
+                    }
+                }
+                $this->variable($policy->getValue($model))->isNull($mode . ': private read policy restored');
+                $this->integer($observed->calls)->isIdenticalTo(1, $mode . ': public override invoked once');
+                $this->integer($observed->posts)->isIdenticalTo(in_array($mode, ['bypass', 'scope', 'recursive'], true) ? 1 : 0);
+            } catch (\Throwable $failure) {
+                $primary = $failure;
+                throw $failure;
+            } finally {
+                try {
+                    if ($observed->replacement !== null) {
+                        $observed->replacement->rollBack();
+                    } elseif ($owned !== null) {
+                        $owned->rollBack();
+                    }
+                } catch (\Throwable $cleanup) {
+                    throw $primary === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($primary, $cleanup);
+                }
+            }
+            $scope->assertActive();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+            $this->boolean($source->getFromDB($source->getID()))->isTrue();
+            $this->integer((int)$source->fields['entities_id'])->isIdenticalTo(0);
+            $this->integer((int)$source->fields['is_recursive'])->isIdenticalTo(0);
+        }
+        $computer = $this->createItem(\Computer::class, ['name' => 'current-disk-owner-' . $this->getUniqueString(), 'entities_id' => 0]);
+        $dynamic = $this->createItem(\Item_Disk::class, ['name' => 'current-dynamic-' . $this->getUniqueString(),
+            'entities_id' => 0, 'itemtype' => 'Computer', 'items_id' => $computer->getID(), 'is_dynamic' => 1]);
+        $this->boolean($dynamic->useDeletedToLockIfDynamic())->isTrue();
+        foreach (['is_dynamic' => 0, 'is_deleted' => 1, 'itemtype' => 'Monitor'] as $column => $value) {
+            $posts = (object)['count' => 0];
+            $model = new class ($posts, $column, $value) extends \Item_Disk {
+                public function __construct(private object $posts, private string $column, private mixed $value)
+                {
+                }
+                public static function getTable($classname = null)
+                {
+                    return 'glpi_items_disks';
+                }
+                public static function getType()
+                {
+                    return 'Item_Disk';
+                }
+                public function post_getFromDB()
+                {
+                    ++$this->posts->count;
+                    parent::post_getFromDB();
+                    $this->fields[$this->column] = $this->value;
+                }
+            };
+            $this->boolean($model->delete(['id' => $dynamic->getID(), '_no_message' => 1, '_no_history' => 1], false, false))
+                ->isFalse('A post-load callback cannot substitute current disk ' . $column . ' authority');
+            $this->integer($posts->count)->isIdenticalTo(1);
+            $this->boolean($dynamic->getFromDB($dynamic->getID()))->isTrue();
+            $this->integer((int)$dynamic->fields['is_dynamic'])->isIdenticalTo(1);
+            $this->integer((int)$dynamic->fields['is_deleted'])->isIdenticalTo(0);
+            $this->string($dynamic->fields['itemtype'])->isIdenticalTo('Computer');
+            $scope->assertActive();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        }
+        $posts = (object)['count' => 0];
+        $template = new class ($posts) extends \Computer {
+            public function __construct(private object $posts)
+            {
+            }
+            public static function getTable($classname = null)
+            {
+                return 'glpi_computers';
+            }
+            public static function getType()
+            {
+                return 'Computer';
+            }
+            public function post_getFromDB()
+            {
+                ++$this->posts->count;
+                parent::post_getFromDB();
+                $this->fields['is_template'] = 1;
+            }
+        };
+        $this->boolean($template->delete(['id' => $computer->getID(), '_no_message' => 1, '_no_history' => 1], false, false))
+            ->isFalse('A post-load callback cannot turn a current computer into a forced-purge template');
+        $this->integer($posts->count)->isIdenticalTo(1);
+        $this->boolean($computer->getFromDB($computer->getID()))->isTrue();
+        $this->integer((int)$computer->fields['is_template'])->isIdenticalTo(0);
+        $this->integer((int)$computer->fields['is_deleted'])->isIdenticalTo(0);
+        $scope->assertActive();
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        $semanticBoolean = new class () extends \DomainType {
+            public static function getTable($classname = null)
+            {
+                return 'glpi_domaintypes';
+            }
+            public static function getType()
+            {
+                return 'DomainType';
+            }
+            public function post_getFromDB()
+            {
+                parent::post_getFromDB();
+                $this->fields['is_recursive'] = false;
+                $this->fields['fixture_derived'] = 'Valid public boolean representation';
+            }
+        };
+        $this->boolean($semanticBoolean->delete(['id' => $source->getID(), '_replace_by' => $target->getID(),
+            '_no_message' => 1, '_no_history' => 1], true, false))
+            ->isTrue('Native false and canonical zero preserve the same current authority and derived hook fields');
+        $scope->assertActive();
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
     }
 
     public function testSingleItemActivationReadsFreshPresenceAndRetainsEmptyHooks(): void
@@ -577,6 +1021,39 @@ class CommonDBTM extends DbTestCase
               'networkports_id' => $port3,
               'networkports_id_list' => [$port2, $port4],
         ]))->isFalse();
+
+        // A replacement key belongs to the public index, while self-replacement
+        // compares the actual locked row. Exercise a deliberate cross collision
+        // using only these new ports and absent, bounded physical fixture IDs.
+        $connection = $GLOBALS['DB']->getDoctrineConnection();
+        $this->integer((int)$connection->fetchOne(
+            'SELECT COUNT(*) FROM glpi_networkportlocals WHERE id IN (?, ?)',
+            [$port2, $port2 + 1]
+        ))->isIdenticalTo(0, 'Custom-index fixtures must never adopt existing rows');
+        $manager = \itsmng\Database\Orm::create($GLOBALS['DB']);
+        try {
+            $metadata = $manager->getClassMetadata(\itsmng\Database\Entity\NetworkPortLocal::class);
+            $metadata->setIdGeneratorType(\Doctrine\ORM\Mapping\ClassMetadata::GENERATOR_TYPE_NONE);
+            $metadata->setIdGenerator(new \Doctrine\ORM\Id\AssignedGenerator());
+            foreach ([[$port2, $port1], [$port2 + 1, $port2]] as [$physical, $logical]) {
+                $record = new \itsmng\Database\Entity\NetworkPortLocal();
+                $record->id = $physical;
+                $record->networkports_id = $manager->getReference(\itsmng\Database\Entity\NetworkPort::class, $logical);
+                $manager->persist($record);
+            }
+            $manager->flush();
+            $source = new \NetworkPortLocal();
+            $this->boolean($source->getFromDB($port1))->isTrue();
+            $this->integer((int)$source->fields['id'])->isIdenticalTo($port2);
+            $this->integer((int)$source->getID())->isIdenticalTo($port1);
+            $repository = new \itsmng\Database\Repository\DeletionRepository($manager);
+            $this->boolean($repository->validateReplacement($source, ['_replace_by' => $port2]))
+                ->isTrue('A distinct public key may equal the source physical identity');
+            $this->boolean($repository->validateReplacement($source, ['_replace_by' => $port1]))
+                ->isFalse('Self-replacement remains forbidden when public and physical identities differ');
+        } finally {
+            $manager->clear();
+        }
 
     }
 

@@ -47,6 +47,9 @@ class CommonDBTM extends CommonGLPI
     /** Explicit imports share the add lifecycle without interpreting an ID as a clone. */
     private ?int $assignedIdentifier = null;
 
+    /** Current-read policy belongs to one exact model and selected mapped row. */
+    private ?array $currentRead = null;
+
     /**
      * Data fields of the Item.
      *
@@ -266,6 +269,54 @@ class CommonDBTM extends CommonGLPI
         return sprintf('%s.%s', $tablename, $field);
     }
 
+    /** Load one selected mapped row with a current write lock in the supplied caller frame. */
+    final public function getFromDBForUpdate($ID, \Doctrine\DBAL\Connection $connection): bool
+    {
+        global $DB;
+
+        if ((!is_int($ID) && !is_string($ID)) || filter_var($ID, FILTER_VALIDATE_INT) === false) {
+            return false;
+        }
+        \itsmng\Database\TransactionOwnership::assertManaged($connection);
+        $writer = $DB;
+        if ($writer->getDoctrineConnection() !== $connection
+            || !isset(\itsmng\Database\EntityRegistry::tables()[$this->getTable()])) {
+            throw new \itsmng\Database\CurrentReadUnavailable('Current model loads require their supplied mapped writer.');
+        }
+        $scope = $connection->captureManagedTransactionScope();
+        $level = $connection->getTransactionNestingLevel();
+        $previous = $this->currentRead;
+        $this->currentRead = ['owner' => spl_object_id($this), 'table' => $this->getTable(),
+            'index' => $this->getIndexName(), 'id' => (int)$ID, 'connection' => $connection, 'consumed' => false];
+        $result = false;
+        $consumed = false;
+        $failure = null;
+        try {
+            $result = (bool)$this->getFromDB($ID);
+            $consumed = $this->currentRead['consumed'];
+        } catch (\Throwable $error) {
+            $failure = $error;
+        } finally {
+            $this->currentRead = $previous;
+        }
+        try {
+            $scope->assertActive();
+            if ($connection->getTransactionNestingLevel() !== $level || $writer !== ($GLOBALS['DB'] ?? null)
+                || $writer->getDoctrineConnection() !== $connection) {
+                throw new \itsmng\Database\TransactionOwnershipMismatch('The current model load replaced its supplied writer or frame.');
+            }
+        } catch (\Throwable $cleanup) {
+            $failure = $failure === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($failure, $cleanup, true);
+        }
+        if ($failure !== null) {
+            throw $failure;
+        }
+        if ($result && !$consumed) {
+            throw new \itsmng\Database\CurrentReadUnavailable('A custom mutation load must delegate its selected row to the mapped current-read boundary.');
+        }
+        return $result;
+    }
+
     /**
      * Retrieve an item from the database
      *
@@ -284,18 +335,35 @@ class CommonDBTM extends CommonGLPI
         }
 
         if (isset(\itsmng\Database\EntityRegistry::tables()[$this->getTable()])) {
+            $lock = \Doctrine\DBAL\LockMode::NONE;
+            if ($this->currentRead !== null && $this->currentRead['owner'] === spl_object_id($this)
+                && $this->currentRead['table'] === $this->getTable() && $this->currentRead['index'] === $this->getIndexName()
+                && $this->currentRead['id'] === (int)Toolbox::cleanInteger($ID)) {
+                if ($DB->getDoctrineConnection() !== $this->currentRead['connection']) {
+                    throw new \itsmng\Database\TransactionOwnershipMismatch('The selected model read changed its supplied connection.');
+                }
+                $lock = \Doctrine\DBAL\LockMode::PESSIMISTIC_WRITE;
+            }
             $manager = \itsmng\Database\Orm::create($DB);
             try {
+                if ($lock === \Doctrine\DBAL\LockMode::PESSIMISTIC_WRITE
+                    && $manager->getConnection() !== $this->currentRead['connection']) {
+                    throw new \itsmng\Database\TransactionOwnershipMismatch('The selected model manager changed its supplied connection.');
+                }
                 $row = (new \itsmng\Database\Repository\RecordRepository($manager))->find(
                     $this->getTable(),
                     $this->getIndexName(),
-                    (int)Toolbox::cleanInteger($ID)
+                    (int)Toolbox::cleanInteger($ID),
+                    $lock
                 );
             } finally {
                 $manager->clear();
             }
             if ($row === null) {
                 return false;
+            }
+            if ($lock === \Doctrine\DBAL\LockMode::PESSIMISTIC_WRITE) {
+                $this->currentRead['consumed'] = true;
             }
             $this->fields = $row;
             $this->post_getFromDB();

@@ -40,6 +40,41 @@ use Profile_User;
 
 class Entity extends DbTestCase
 {
+    public function testReplacementDeletionPreservesCurrentInheritedReferenceSemantics(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $connection = $DB->getDoctrineConnection();
+            $scope = $connection->captureManagedTransactionScope();
+            $level = $connection->getTransactionNestingLevel();
+            foreach ([[], ['authldaps_id' => -2], ['calendars_id' => 0], ['entities_id_software' => -10]] as $settings) {
+                $source = $this->createItem(\Entity::class, ['name' => 'current-entity-source-' . $this->getUniqueString(),
+                    'entities_id' => 0] + $settings);
+                $target = $this->createItem(\Entity::class, ['name' => 'current-entity-target-' . $this->getUniqueString(),
+                    'entities_id' => 0] + $settings);
+                $sourceId = (int)$source->getID();
+                $targetId = (int)$target->getID();
+                $before = $target->fields;
+                $this->integer((int)$source->fields['authldaps_id'])->isIdenticalTo(isset($settings['authldaps_id']) ? -2 : 0);
+                $this->integer((int)$source->fields['calendars_id'])->isIdenticalTo(isset($settings['calendars_id']) ? 0 : -2);
+                $this->integer((int)$source->fields['entities_id_software'])->isIdenticalTo(isset($settings['entities_id_software']) ? -10 : -2);
+                $this->boolean($source->delete(['id' => $sourceId, '_replace_by' => $targetId,
+                    '_no_message' => 1, '_no_history' => 1], true, false))
+                    ->isTrue('Canonical null references and valid inherited/empty sentinels describe the same current owner');
+                $this->boolean($source->getFromDB($sourceId))->isFalse();
+                $this->boolean($target->getFromDB($targetId))->isTrue();
+                $this->array($target->fields)->isIdenticalTo($before, 'Replacement configuration is preserved');
+                $scope->assertActive();
+                $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+            }
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
     protected $cached_methods = [
        'testChangeEntityParentCached'
     ];

@@ -26,8 +26,8 @@ final class DeletionRepository
         if ((!is_int($identifier) && !is_string($identifier)) || filter_var($identifier, FILTER_VALIDATE_INT) === false) {
             return false;
         }
-        $locked = $this->lock($metadata, $model->getIndexName(), (int)$identifier);
-        if ($locked === null || !$model->getFromDB($identifier)
+        $locked = $this->loadCurrent($model, $metadata, (int)$identifier);
+        if ($locked === null
             || (int)$model->fields['id'] !== (int)$locked->id || (int)$model->getID() !== (int)$identifier) {
             return false;
         }
@@ -44,12 +44,12 @@ final class DeletionRepository
         if ((!is_int($replacement) && !is_string($replacement)) || filter_var($replacement, FILTER_VALIDATE_INT) === false || (int)$replacement < 0) {
             return false;
         }
-        $target = $this->lock($metadata, $model->getIndexName(), (int)$replacement);
-        if ($target === null || (int)$target->id === (int)$model->fields['id']) {
+        if ((int)$replacement === (int)$model->getID()) {
             return false;
         }
         $replacementModel = clone $model;
-        if (!$replacementModel->getFromDB($replacement)
+        $target = $this->loadCurrent($replacementModel, $metadata, (int)$replacement);
+        if ($target === null || (int)$target->id === (int)$model->fields['id']
             || ($replacementModel->maybeDeleted() && !empty($replacementModel->fields['is_deleted']))
             || $replacementModel->isTemplate()) {
             return false;
@@ -117,6 +117,102 @@ final class DeletionRepository
             }
         }
         return false;
+    }
+
+    /** Invoke the public model boundary once, then reconcile its authority with the current owner. */
+    private function loadCurrent(\CommonDBTM $model, ClassMetadata $metadata, int $id): ?object
+    {
+        $connection = $this->em->getConnection();
+        $writer = $GLOBALS['DB'];
+        if ($writer->getDoctrineConnection() !== $connection) {
+            throw new \itsmng\Database\TransactionOwnershipMismatch('The deletion model must use its supplied writer.');
+        }
+        $scope = $connection->captureManagedTransactionScope();
+        $level = $connection->getTransactionNestingLevel();
+        if (!$model->getFromDBForUpdate($id, $connection)) {
+            return null;
+        }
+        // A post-load callback can write through this same transaction. Refresh
+        // the owning record before accepting the model's entity/state/relations.
+        $record = $this->lock($metadata, $model->getIndexName(), $id);
+        $scope->assertActive();
+        if ($writer !== ($GLOBALS['DB'] ?? null) || $writer->getDoctrineConnection() !== $connection
+            || $connection->getTransactionNestingLevel() !== $level) {
+            throw new \itsmng\Database\TransactionOwnershipMismatch('The deletion load replaced its supplied writer or frame.');
+        }
+        if ($record === null || !$this->matchesAuthority($model, $metadata, $record)) {
+            return null;
+        }
+        return $record;
+    }
+
+    private function matchesAuthority(\CommonDBTM $model, ClassMetadata $metadata, object $record): bool
+    {
+        $row = \itsmng\Database\ReferenceValues::normalizeLegacy(
+            $model->getTable(),
+            (new RecordRepository($this->em))->toRow($record)
+        );
+        try {
+            // Models may expose inherited/empty selection sentinels and native
+            // booleans. Compare their declared semantics without altering hooks'
+            // complete loaded fields or collapsing nullable flags into false.
+            $values = \itsmng\Database\ReferenceValues::normalizeLegacy($model->getTable(), $model->fields);
+            $values = \itsmng\Database\BooleanValue::normalizeLegacyInput($model->getTable(), $values);
+        } catch (\InvalidArgumentException | \ValueError | \TypeError) {
+            return false;
+        }
+        $columns = [...$metadata->getIdentifierColumnNames(), $model->getIndexName()];
+        // Mapped flags may change lifecycle decisions. Their real declarations
+        // remain authoritative while callbacks can retain decorative/derived fields.
+        foreach ($metadata->fieldMappings as $mapping) {
+            if ($mapping->type === \Doctrine\DBAL\Types\Types::BOOLEAN) {
+                $columns[] = $mapping->columnName;
+            }
+        }
+        if ($model instanceof \CommonDBChild || $model instanceof \CommonDBRelation) {
+            // This existing model contract also covers unconverted scalar
+            // recipients such as Item_Disk, without inventing a column registry.
+            array_push($columns, ...\itsmng\Database\ConnexityInput::endpointFields($model));
+        }
+        foreach ($metadata->associationMappings as $mapping) {
+            if ($mapping->isToOneOwningSide()) {
+                foreach ($mapping->joinColumns as $join) {
+                    $columns[] = $join->name;
+                }
+            }
+        }
+        foreach ([...array_keys($metadata->fieldMappings), ...array_keys($metadata->associationMappings)] as $property) {
+            $reflection = new \ReflectionProperty($metadata->name, $property);
+            foreach ($reflection->getAttributes(\itsmng\Database\Mapping\DiscriminatedBy::class) as $attribute) {
+                $policy = $attribute->newInstance();
+                $columns[] = $metadata->hasField($policy->discriminator)
+                    ? $metadata->getColumnName($policy->discriminator) : $policy->discriminator;
+                $columns[] = $policy->legacyColumn;
+            }
+            foreach ($reflection->getAttributes(\itsmng\Database\Mapping\PolymorphicReference::class) as $attribute) {
+                $policy = $attribute->newInstance();
+                $columns[] = $metadata->getColumnName($property);
+                $columns[] = $metadata->hasField($policy->discriminator)
+                    ? $metadata->getColumnName($policy->discriminator) : $policy->discriminator;
+            }
+            foreach ($reflection->getAttributes(ReferencePolicy::class) as $attribute) {
+                $mode = $attribute->newInstance()->modeProperty;
+                if ($mode !== null) {
+                    $columns[] = $metadata->getColumnName($mode);
+                }
+            }
+        }
+        foreach (array_unique($columns) as $column) {
+            if (!array_key_exists($column, $row)) {
+                continue;
+            }
+            if (!array_key_exists($column, $values)
+                || ($row[$column] === null ? $values[$column] !== null
+                    : (!is_scalar($values[$column]) || (string)$values[$column] !== (string)$row[$column]))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private function lock(ClassMetadata $metadata, string $column, int $id): ?object
