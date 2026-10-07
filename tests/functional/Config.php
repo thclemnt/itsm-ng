@@ -42,6 +42,136 @@ use Session;
 
 class Config extends DbTestCase
 {
+    public function testOidcRefreshReadUsesCurrentTypedStateWithoutLoadingUserGraph(): void
+    {
+        global $DB;
+        $this->login();
+        $connection = $DB->getDoctrineConnection();
+        $user = $this->createItem(\User::class, ['name' => $this->getUniqueString()]);
+        $id = (int)$user->getID();
+        $manager = \itsmng\Database\Orm::forConnection($connection);
+        $ordinary = new \itsmng\Database\Repository\OidcRepository($manager);
+        $probe = new ConfigOidcScalarReadProbe($connection);
+        $reader = new \itsmng\Database\OidcRefreshReadOperation($probe);
+        $bigint = \Doctrine\DBAL\Types\Type::getType('bigint');
+        $integer = \Doctrine\DBAL\Types\Type::getType('integer');
+        $boolean = \Doctrine\DBAL\Types\Type::getType('boolean');
+        try {
+            foreach ([0, -1] as $missing) {
+                $this->boolean($reader->needsRefresh($missing))->isIdenticalTo($ordinary->needsRefresh($missing));
+            }
+            $this->integer($probe->builders)->isIdenticalTo(0);
+            $this->boolean($reader->needsRefresh($id))->isFalse();
+            $this->boolean($ordinary->needsRefresh($id))->isFalse();
+            $this->integer($probe->builders)->isIdenticalTo(1);
+            $this->array($probe->queries[0]['params'])->isIdenticalTo(['user' => $id, 'pending' => false]);
+            $this->array($probe->queries[0]['types'])->isIdenticalTo(['user' => 'integer', 'pending' => 'boolean']);
+            $connection->insert('glpi_oidc_users', ['user_id' => $id, 'update' => false], ['user_id' => 'bigint', 'update' => 'boolean']);
+            $this->boolean($reader->needsRefresh($id))->isTrue();
+            $this->boolean($reader->needsRefresh($id))->isIdenticalTo($ordinary->needsRefresh($id));
+            $connection->update('glpi_oidc_users', ['update' => true], ['user_id' => $id], ['update' => 'boolean', 'user_id' => 'bigint']);
+            $this->boolean($reader->needsRefresh($id))->isFalse();
+            $this->boolean($reader->needsRefresh($id))->isIdenticalTo($ordinary->needsRefresh($id));
+            $connection->update('glpi_oidc_users', ['update' => false], ['user_id' => $id], ['update' => 'boolean', 'user_id' => 'bigint']);
+            $observed = new class () extends \Doctrine\DBAL\Types\BigIntType {
+                public int $conversions = 0;
+                public int $sql = 0;
+                public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                {
+                    ++$this->sql;
+                    return '(' . $sqlExpr . ' + 0)';
+                }
+                public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): int|string|null
+                {
+                    ++$this->conversions;
+                    return parent::convertToPHPValue($value, $platform);
+                }
+            };
+            \Doctrine\DBAL\Types\Type::overrideType('bigint', $observed);
+            $this->boolean($reader->needsRefresh($id))->isTrue();
+            $this->integer($observed->conversions)->isIdenticalTo(1);
+            $this->boolean($ordinary->needsRefresh($id))->isTrue();
+            $this->integer($observed->conversions)->isIdenticalTo(2);
+            $this->integer($observed->sql)->isIdenticalTo(2);
+            \Doctrine\DBAL\Types\Type::overrideType('bigint', new class () extends \Doctrine\DBAL\Types\BigIntType {
+                public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): int|string|null
+                {
+                    throw new \LogicException('OIDC scalar PHP conversion remains observable');
+                }
+            });
+            $this->exception(static fn () => $reader->needsRefresh($id))->isInstanceOf(\LogicException::class)
+                ->hasMessage('OIDC scalar PHP conversion remains observable');
+            $this->exception(static fn () => $ordinary->needsRefresh($id))->isInstanceOf(\LogicException::class)
+                ->hasMessage('OIDC scalar PHP conversion remains observable');
+            \Doctrine\DBAL\Types\Type::overrideType('bigint', new class () extends \Doctrine\DBAL\Types\BigIntType {
+                public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): int|string|null
+                {
+                    throw new \Doctrine\ORM\NoResultException();
+                }
+            });
+            $this->boolean($reader->needsRefresh($id))->isFalse();
+            $this->boolean($ordinary->needsRefresh($id))->isFalse();
+            \Doctrine\DBAL\Types\Type::overrideType('bigint', $bigint);
+            \Doctrine\DBAL\Types\Type::overrideType('integer', new class () extends \Doctrine\DBAL\Types\IntegerType {
+                public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                {
+                    return '(' . $sqlExpr . ' * 0 - 1)';
+                }
+            });
+            $this->boolean($reader->needsRefresh($id))->isFalse();
+            $this->boolean($ordinary->needsRefresh($id))->isFalse();
+            \Doctrine\DBAL\Types\Type::overrideType('integer', $integer);
+            \Doctrine\DBAL\Types\Type::overrideType('boolean', new class () extends \Doctrine\DBAL\Types\BooleanType {
+                public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                {
+                    return '(NOT ' . $sqlExpr . ')';
+                }
+            });
+            $this->boolean($reader->needsRefresh($id))->isFalse();
+            $this->boolean($ordinary->needsRefresh($id))->isFalse();
+            \Doctrine\DBAL\Types\Type::overrideType('boolean', $boolean);
+            $extension = new class ($connection) extends ConfigOidcScalarReadProbe {
+                private ?\Doctrine\Common\EventManager $events = null;
+                public function getEventManager(): \Doctrine\Common\EventManager
+                {
+                    return $this->events ??= new \Doctrine\Common\EventManager();
+                }
+            };
+            $local = new \itsmng\Database\OidcRefreshReadOperation($extension);
+            $listener = new class () {
+                public int $loads = 0;
+                public bool $absent = false;
+                public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+                {
+                    ++$this->loads;
+                    if ($this->absent) {
+                        throw new \Doctrine\ORM\NoResultException();
+                    }
+                }
+            };
+            $extension->getEventManager()->addEventListener([\Doctrine\ORM\Events::loadClassMetadata], $listener);
+            $this->boolean($local->needsRefresh($id))->isTrue();
+            $this->integer($listener->loads)->isGreaterThan(0);
+            $this->integer($extension->builders)->isIdenticalTo(0);
+            $local->close();
+            $listener->absent = true;
+            $absent = new \itsmng\Database\OidcRefreshReadOperation($extension);
+            $ordinaryManager = \itsmng\Database\Orm::forConnection($extension);
+            $this->boolean($absent->needsRefresh($id))->isFalse();
+            $this->boolean((new \itsmng\Database\Repository\OidcRepository($ordinaryManager))->needsRefresh($id))->isFalse();
+            $absent->close();
+            $ordinaryManager->clear();
+            $connection->delete('glpi_oidc_users', ['user_id' => $id]);
+            $this->boolean($reader->needsRefresh($id))->isFalse();
+        } finally {
+            \Doctrine\DBAL\Types\Type::overrideType('bigint', $bigint);
+            \Doctrine\DBAL\Types\Type::overrideType('integer', $integer);
+            \Doctrine\DBAL\Types\Type::overrideType('boolean', $boolean);
+            $reader->close();
+            $manager->clear();
+        }
+    }
+
     public function testLegacyConfigurationInspectsFreshPhysicalTablesOnSelectedConnection(): void
     {
         global $DB, $CFG_GLPI;
@@ -1807,4 +1937,33 @@ class ConfigReadPostgreSQLPlatform extends \Doctrine\DBAL\Platforms\PostgreSQLPl
 
 class ConfigReadMySQLPlatform extends \Doctrine\DBAL\Platforms\MySQLPlatform
 {
+}
+
+/** Observe the actual selected connection without opening another transaction or socket. */
+class ConfigOidcScalarReadProbe extends \Doctrine\DBAL\Connection
+{
+    public int $builders = 0;
+    public array $queries = [];
+
+    public function __construct(private readonly \Doctrine\DBAL\Connection $selected)
+    {
+        parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
+    }
+
+    public function getDatabasePlatform(): \Doctrine\DBAL\Platforms\AbstractPlatform
+    {
+        return $this->selected->getDatabasePlatform();
+    }
+
+    public function createQueryBuilder(): \Doctrine\DBAL\Query\QueryBuilder
+    {
+        ++$this->builders;
+        return parent::createQueryBuilder();
+    }
+
+    public function executeQuery(string $sql, array $params = [], array $types = [], ?\Doctrine\DBAL\Cache\QueryCacheProfile $qcp = null): \Doctrine\DBAL\Result
+    {
+        $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
+        return $this->selected->executeQuery($sql, $params, $types, $qcp);
+    }
 }

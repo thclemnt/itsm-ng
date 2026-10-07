@@ -75,6 +75,43 @@ final class OidcRepository
             ->getQuery()->getOneOrNullResult() !== null;
     }
 
+    /** Fixed private read; profile synchronization and its transaction remain separate. */
+    public function nativeNeedsRefresh(int $user): bool
+    {
+        if ($user <= 0) {
+            return false;
+        }
+        $metadata = $this->em->getClassMetadata(Entity\OidcUser::class);
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $reference = $metadata->associationMappings['users'];
+        if (!$reference->isToOneOwningSide() || count($reference->joinColumns) !== 1) {
+            throw new \LogicException('OIDC refresh requires a single owning user reference.');
+        }
+        $idType = \Doctrine\DBAL\Types\Type::getType($metadata->getTypeOfField('id'));
+        $userType = \Doctrine\DBAL\Types\Type::getType(Types::INTEGER);
+        $pendingType = \Doctrine\DBAL\Types\Type::getType(Types::BOOLEAN);
+        $rows = $connection->createQueryBuilder()->select(
+            $idType->convertToPHPValueSQL('o.' . $quote->getColumnName('id', $metadata, $platform), $platform) . ' AS id'
+        )->from($quote->getTableName($metadata, $platform), 'o')
+            ->where('o.' . $quote->getJoinColumnName($reference->joinColumns[0], $metadata, $platform)
+                . ' = ' . $userType->convertToDatabaseValueSQL(':user', $platform))
+            ->andWhere('o.' . $quote->getColumnName('update', $metadata, $platform)
+                . ' = ' . $pendingType->convertToDatabaseValueSQL(':pending', $platform))
+            ->setParameter('user', $user, Types::INTEGER)->setParameter('pending', false, Types::BOOLEAN)
+            ->executeQuery()->fetchAllAssociative();
+        foreach ($rows as $row) {
+            // getOneOrNullResult uses object hydration even for this scalar row;
+            // its mapped PHP conversion is observable to custom DBAL types.
+            $idType->convertToPHPValue($row['id'], $platform);
+        }
+        if (count($rows) > 1) {
+            throw new \Doctrine\ORM\NonUniqueResultException();
+        }
+        return $rows !== [];
+    }
+
     public function requestRefresh(): int
     {
         return $this->em->createQueryBuilder()->update(Entity\OidcUser::class, 'o')->set('o.update', ':pending')

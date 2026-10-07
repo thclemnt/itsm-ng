@@ -339,7 +339,7 @@ if (!file_exists(GLPI_CONFIG_DIR . "/config_db.php")) {
     //set Status session var
     SpecialStatus::oldStatusOrder();
 
-    if (isset($_SESSION['glpiID']) && (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::create($DB)))->needsRefresh((int)$_SESSION['glpiID'])) {
+    if (isset($_SESSION['glpiID']) && (new \itsmng\Database\OidcRefreshReadOperation($DB->getDoctrineConnection()))->needsRefresh((int)$_SESSION['glpiID'])) {
         Oidc::auth();
     }
 }
