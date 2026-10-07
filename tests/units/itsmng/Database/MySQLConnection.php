@@ -72,19 +72,20 @@ class MySQLConnection extends \atoum\atoum\test
 
     public function testExplicitTlsMaterialAndVerificationReachPdo(): void
     {
-        $this->boolean(defined('PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT'))->isTrue('The supported runtime must provide PDO MySQL TLS verification');
+        $tlsPrefix = class_exists(\Pdo\Mysql::class, false) ? 'Pdo\\Mysql::ATTR_SSL_' : 'PDO::MYSQL_ATTR_SSL_';
+        $this->boolean(defined($tlsPrefix . 'VERIFY_SERVER_CERT'))->isTrue('The supported runtime must provide PDO MySQL TLS verification');
         $tls = $this->parameters() + ['ssl' => true, 'ssl_verify_server_cert' => true, 'ssl_key' => '/configured/key.pem',
             'ssl_cert' => '/configured/cert.pem', 'ssl_ca' => '/configured/ca.pem', 'ssl_capath' => '/configured/cas', 'ssl_cipher' => 'fixture-cipher'];
         $translated = Policy::parameters($tls);
-        foreach (['ssl_key' => PDO::MYSQL_ATTR_SSL_KEY, 'ssl_cert' => PDO::MYSQL_ATTR_SSL_CERT,
-            'ssl_ca' => PDO::MYSQL_ATTR_SSL_CA, 'ssl_capath' => PDO::MYSQL_ATTR_SSL_CAPATH, 'ssl_cipher' => PDO::MYSQL_ATTR_SSL_CIPHER] as $field => $option) {
+        foreach (['ssl_key' => constant($tlsPrefix . 'KEY'), 'ssl_cert' => constant($tlsPrefix . 'CERT'),
+            'ssl_ca' => constant($tlsPrefix . 'CA'), 'ssl_capath' => constant($tlsPrefix . 'CAPATH'), 'ssl_cipher' => constant($tlsPrefix . 'CIPHER')] as $field => $option) {
             $this->string($translated['driverOptions'][$option])->isIdenticalTo($tls[$field]);
         }
-        $this->boolean($translated['driverOptions'][PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT])->isTrue();
+        $this->boolean($translated['driverOptions'][constant($tlsPrefix . 'VERIFY_SERVER_CERT')])->isTrue();
         $this->array(Policy::parameters($translated))->isIdenticalTo($translated);
         $unverified = Policy::parameters(array_replace($tls, ['ssl_verify_server_cert' => false]));
-        $this->boolean($unverified['driverOptions'][PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT])->isFalse();
-        $this->exception(static fn () => Policy::parameters($tls + ['driverOptions' => [PDO::MYSQL_ATTR_SSL_CA => '/different/ca.pem']]))
+        $this->boolean($unverified['driverOptions'][constant($tlsPrefix . 'VERIFY_SERVER_CERT')])->isFalse();
+        $this->exception(static fn () => Policy::parameters($tls + ['driverOptions' => [constant($tlsPrefix . 'CA') => '/different/ca.pem']]))
             ->isInstanceOf(\InvalidArgumentException::class);
         $this->boolean(Policy::create($tls)->isConnected())->isFalse('TLS mapping and ownership remain lazy without accessing configured files');
     }

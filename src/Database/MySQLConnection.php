@@ -50,12 +50,13 @@ final class MySQLConnection implements Middleware
             \PDO::ATTR_PERSISTENT => false,
         ];
         $allowed = [...array_keys($required), \PDO::ATTR_TIMEOUT];
+        $tlsPrefix = class_exists(\Pdo\Mysql::class, false) ? 'Pdo\\Mysql::ATTR_SSL_' : 'PDO::MYSQL_ATTR_SSL_';
         $tls = [
-            'ssl_key' => 'PDO::MYSQL_ATTR_SSL_KEY',
-            'ssl_cert' => 'PDO::MYSQL_ATTR_SSL_CERT',
-            'ssl_ca' => 'PDO::MYSQL_ATTR_SSL_CA',
-            'ssl_capath' => 'PDO::MYSQL_ATTR_SSL_CAPATH',
-            'ssl_cipher' => 'PDO::MYSQL_ATTR_SSL_CIPHER',
+            'ssl_key' => $tlsPrefix . 'KEY',
+            'ssl_cert' => $tlsPrefix . 'CERT',
+            'ssl_ca' => $tlsPrefix . 'CA',
+            'ssl_capath' => $tlsPrefix . 'CAPATH',
+            'ssl_cipher' => $tlsPrefix . 'CIPHER',
         ];
         foreach ($parameters as $name => $value) {
             if (str_starts_with((string)$name, 'ssl_') && $name !== 'ssl_verify_server_cert' && !array_key_exists($name, $tls)) {
@@ -80,7 +81,7 @@ final class MySQLConnection implements Middleware
                 $required[constant($constant)] = $value;
             }
         }
-        $verifyConstant = 'PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT';
+        $verifyConstant = $tlsPrefix . 'VERIFY_SERVER_CERT';
         if (defined($verifyConstant)) {
             $allowed[] = constant($verifyConstant);
         }
