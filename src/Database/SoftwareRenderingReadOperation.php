@@ -20,8 +20,13 @@ final class SoftwareRenderingReadOperation
         $versions = array_column($installations, 'verid');
         $native = $this->ownedMapping;
         if ($native) {
-            foreach (['glpi_items_softwarelicenses', 'glpi_softwarelicenses', 'glpi_softwares',
-                'glpi_softwareversions', 'glpi_softwarecategories'] as $table) {
+            foreach ([
+                'glpi_items_softwarelicenses',
+                'glpi_softwarelicenses',
+                'glpi_softwares',
+                'glpi_softwareversions',
+                'glpi_softwarecategories',
+            ] as $table) {
                 $metadata = $this->metadata($table);
                 if ($this->defaultIdentifiers($metadata) === null || !$metadata->isInheritanceTypeNone()) {
                     $native = false;

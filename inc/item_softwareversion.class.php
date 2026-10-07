@@ -31,13 +31,26 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\ConnexityInput;
+use itsmng\Database\Entity\ItemSoftwareVersion;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\LifecycleModelJournal;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\SoftwareInstallationRepository;
+use itsmng\Database\Repository\SoftwareRepository;
+use itsmng\Database\SoftwareRenderingReadOperation;
+use itsmng\Domain\SoftwareAssignmentService;
+use itsmng\Domain\SoftwareLifecycleAdmission;
+use itsmng\Domain\SoftwareMutation;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
 class Item_SoftwareVersion extends CommonDBRelation
 {
-    use \itsmng\Domain\SoftwareLifecycleAdmission;
+    use SoftwareLifecycleAdmission;
 
     // From CommonDBRelation
     public static $itemtype_1 = 'itemtype';
@@ -86,9 +99,9 @@ class Item_SoftwareVersion extends CommonDBRelation
             return false;
         }
         try {
-            \itsmng\Database\Entity\ItemSoftwareVersion::referenceAssociation($kind);
+            ItemSoftwareVersion::referenceAssociation($kind);
             return true;
-        } catch (\InvalidArgumentException) {
+        } catch (InvalidArgumentException) {
             return false;
         }
     }
@@ -100,7 +113,7 @@ class Item_SoftwareVersion extends CommonDBRelation
 
         $checkpoint = $priorState;
         $checkpoint['input'] = $this->input;
-        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateInstallation(
+        return (new SoftwareAssignmentService($DB))->mutateInstallation(
             $this,
             $checkpoint,
             fn () => parent::executePreparedAdd($operation, $priorState),
@@ -113,11 +126,11 @@ class Item_SoftwareVersion extends CommonDBRelation
     {
         global $DB;
 
-        $checkpoint = \itsmng\Database\LifecycleModelJournal::state($this);
+        $checkpoint = LifecycleModelJournal::state($this);
         $checkpoint['fields'] = $storedFields;
         $checkpoint['updates'] = [];
         $checkpoint['oldvalues'] = [];
-        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateInstallation(
+        return (new SoftwareAssignmentService($DB))->mutateInstallation(
             $this,
             $checkpoint,
             fn () => parent::executePreparedUpdate($operation, $storedFields),
@@ -134,11 +147,11 @@ class Item_SoftwareVersion extends CommonDBRelation
     {
         global $DB;
 
-        $checkpoint = \itsmng\Database\LifecycleModelJournal::state($this);
+        $checkpoint = LifecycleModelJournal::state($this);
         $checkpoint['fields'] = $storedFields;
         $checkpoint['updates'] = [];
         $checkpoint['oldvalues'] = [];
-        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateInstallation(
+        return (new SoftwareAssignmentService($DB))->mutateInstallation(
             $this,
             $checkpoint,
             fn () => parent::executePreparedRestore($operation, $storedFields),
@@ -152,7 +165,7 @@ class Item_SoftwareVersion extends CommonDBRelation
 
         $database = $DB;
         if (!array_key_exists(static::getIndexName(), $input)
-            || !\itsmng\Domain\SoftwareMutation::loadForMutation(
+            || !SoftwareMutation::loadForMutation(
                 $database,
                 $this,
                 $input[static::getIndexName()],
@@ -160,9 +173,9 @@ class Item_SoftwareVersion extends CommonDBRelation
             )) {
             return false;
         }
-        return (new \itsmng\Domain\SoftwareAssignmentService($database))->mutateInstallation(
+        return (new SoftwareAssignmentService($database))->mutateInstallation(
             $this,
-            \itsmng\Database\LifecycleModelJournal::state($this),
+            LifecycleModelJournal::state($this),
             fn () => parent::delete($input, $force, $history),
             'delete'
         );
@@ -260,7 +273,7 @@ class Item_SoftwareVersion extends CommonDBRelation
      */
     private function prepareInstallationContext(array $input, bool $updating, ?array $preparedInput = null): array|false
     {
-        $endpoint = \itsmng\Database\ConnexityInput::endpoints($this)['items_id'] ?? null;
+        $endpoint = ConnexityInput::endpoints($this)['items_id'] ?? null;
         $kind = array_key_exists('itemtype', $input) ? $input['itemtype'] : ($updating ? ($this->fields['itemtype'] ?? null) : null);
         if (!is_string($kind) || !isset($endpoint['selections'][$kind])) {
             return false;
@@ -486,7 +499,7 @@ class Item_SoftwareVersion extends CommonDBRelation
 
         $item = new $itemtype();
         if ($item->getFromDB($items_id)) {
-            (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))
+            (new SoftwareRepository(Orm::create($DB)))
                 ->updateAssetFlags(
                     $itemtype,
                     (int)$items_id,
@@ -510,13 +523,13 @@ class Item_SoftwareVersion extends CommonDBRelation
     {
         global $DB;
 
-        $repository = new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB));
+        $repository = new SoftwareInstallationRepository(Orm::create($DB));
         $target_types = $repository->itemTypes(false, (int)$softwareversions_id, false);
 
         $count = 0;
         foreach ($target_types as $itemtype) {
             $itemtable = $itemtype::getTable();
-            if (isset(\itsmng\Database\EntityRegistry::tables()[$itemtable])) {
+            if (isset(EntityRegistry::tables()[$itemtable])) {
                 $count += $repository->count(false, (int)$softwareversions_id, false, $itemtype, $itemtable, getEntitiesRestrictCriteria($itemtable, '', $entity));
                 continue;
             }
@@ -565,13 +578,13 @@ class Item_SoftwareVersion extends CommonDBRelation
     {
         global $DB;
 
-        $repository = new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB));
+        $repository = new SoftwareInstallationRepository(Orm::create($DB));
         $target_types = $repository->itemTypes(false, (int)$softwares_id, true);
 
         $count = 0;
         foreach ($target_types as $itemtype) {
             $itemtable = $itemtype::getTable();
-            if (isset(\itsmng\Database\EntityRegistry::tables()[$itemtable])) {
+            if (isset(EntityRegistry::tables()[$itemtable])) {
                 $count += $repository->count(false, (int)$softwares_id, true, $itemtype, $itemtable, getEntitiesRestrictCriteria($itemtable, '', '', true));
                 continue;
             }
@@ -834,8 +847,8 @@ class Item_SoftwareVersion extends CommonDBRelation
         $linkUser = User::canView();
 
         $allData = iterator_to_array($iterator);
-        $licenses = (new \itsmng\Database\Repository\SoftwareInstallationRepository(
-            \itsmng\Database\Orm::create($DB)
+        $licenses = (new SoftwareInstallationRepository(
+            Orm::create($DB)
         ))->licensesForInstallations(array_map(static fn (array $row): array => [
             'itemtype' => $row['item_type'],
             'items_id' => (int)$row['iID'],
@@ -1020,7 +1033,7 @@ class Item_SoftwareVersion extends CommonDBRelation
 
         $tot = 0;
 
-        $entities = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+        $entities = (new RecordRepository(Orm::create($DB)))
             ->matching('glpi_entities', getEntitiesRestrictCriteria('glpi_entities'), ['completename']);
 
         foreach ($entities as $data) {
@@ -1072,7 +1085,7 @@ class Item_SoftwareVersion extends CommonDBRelation
         global $DB;
 
         $category = (int)Session::getSavedOption(__CLASS__, 'criterion', -1);
-        $rows = (new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB)))
+        $rows = (new SoftwareInstallationRepository(Orm::create($DB)))
             ->forSubject(
                 $item->getType(),
                 (int)$item->getID(),
@@ -1236,7 +1249,7 @@ class Item_SoftwareVersion extends CommonDBRelation
         $licenseIds = null;
         $displayData = null;
         if ($datas && empty($GLOBALS['PLUGIN_HOOKS']['item_can'])) {
-            $reader = new \itsmng\Database\SoftwareRenderingReadOperation($DB->getDoctrineConnection());
+            $reader = new SoftwareRenderingReadOperation($DB->getDoctrineConnection());
             try {
                 $rendering = $reader->rendering($itemtype, (int)$items_id, $datas);
                 $licenseIds = $rendering['licenses'];
@@ -1386,7 +1399,7 @@ class Item_SoftwareVersion extends CommonDBRelation
                     [
                        'AND' => [
                           'glpi_softwarelicenses.softwareversions_id_use' => 0,
-                          'glpi_softwarelicenses.softwareversions_id_buy' => new \QueryExpression(DBmysql::quoteName('glpi_softwareversions.id')),
+                          'glpi_softwarelicenses.softwareversions_id_buy' => new QueryExpression(DBmysql::quoteName('glpi_softwareversions.id')),
                        ]
                     ]
                  ]
@@ -1746,12 +1759,12 @@ class Item_SoftwareVersion extends CommonDBRelation
         global $DB;
 
         Toolbox::deprecated('Use clone');
-        $rows = (new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB)))
+        $rows = (new SoftwareInstallationRepository(Orm::create($DB)))
             ->assignmentsForClone(false, $itemtype, (int)$oldid);
         foreach ($rows as $data) {
             $csv = new self();
             unset($data['id']);
-            $data = \itsmng\Database\Entity\ItemSoftwareVersion::withReference($data, $itemtype, (int)$newid);
+            $data = ItemSoftwareVersion::withReference($data, $itemtype, (int)$newid);
             $data['_no_history'] = true;
 
             $csv->add($data);
