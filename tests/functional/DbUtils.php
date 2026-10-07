@@ -961,6 +961,17 @@ class DbUtils extends DbTestCase
         )->isIdenticalTo(0);
         // Repeated private reads still must not publish a durable cache.
         $this->runGetAncestorsOf();
+
+        // A mapped tree without cache columns ends at a nullable physical parent.
+        $parent = $this->createItem(\Software::class, ['name' => $this->getUniqueString()]);
+        $parentId = (int)$parent->getID();
+        $child = $this->createItem(\Software::class, ['name' => $this->getUniqueString(), 'softwares_id' => $parentId, 'is_update' => 1]);
+        $this->variable($DB->getDoctrineConnection()->fetchOne('SELECT softwares_id FROM glpi_softwares WHERE id = ?', [$parentId]))->isNull();
+        $this->array(getAncestorsOf('glpi_softwares', $parentId))->isEmpty();
+        $this->array(getAncestorsOf('glpi_softwares', (int)$child->getID()))->isIdenticalTo([$parentId => $parentId]);
+        foreach ([null, 0, '0', '', -1] as $empty) {
+            $this->array(getAncestorsOf('glpi_softwares', $empty))->isEmpty();
+        }
     }
 
     /**

@@ -974,7 +974,7 @@ final class DbUtils
 
                     if (count($iterator) > 0) {
                         $result = $iterator[0];
-                        $IDf = $result[$parentIDfield];
+                        $IDf = $result[$parentIDfield] ?? 0;
                     } else {
                         $IDf = 0;
                     }
