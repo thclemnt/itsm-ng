@@ -50,15 +50,25 @@ class Dropdown extends DbTestCase
         $id = (int)$child->getID();
         $expected = getEntitiesRestrictCriteria('glpi_suppliers', '', [$id], true);
         $counter = new \ReflectionProperty(\itsmng\Database\Orm::class, 'unitsOfWork');
-        $before = $counter->getValue();
-        $operation = new \itsmng\Database\EntityScopeReadOperation();
-        $this->array($operation->criteria('glpi_suppliers', '', [$id], true))->isIdenticalTo($expected);
-        $this->array($operation->criteria('glpi_suppliers', '', [$id], true))->isIdenticalTo($expected);
-        $this->integer($counter->getValue() - $before)->isIdenticalTo(1, 'One scalar operation owns one manager across current permission reads');
-        $connection->update('glpi_entities', ['entities_id' => 0], ['id' => $id]);
-        $fresh = getEntitiesRestrictCriteria('glpi_suppliers', '', [$id], true);
-        $this->array($fresh)->isNotIdenticalTo($expected);
-        $this->array($operation->criteria('glpi_suppliers', '', [$id], true))->isIdenticalTo($fresh);
+        $previous = $GLOBALS['GLPI_CACHE'] ?? null;
+        $memory = new DropdownOwnedPlanCache(storeSerialized: false);
+        $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache($memory);
+        try {
+            $before = $counter->getValue();
+            $operation = new \itsmng\Database\EntityScopeReadOperation();
+            $this->array($operation->criteria('glpi_suppliers', '', [$id], true))->isIdenticalTo($expected);
+            $writes = $memory->planWrites;
+            $this->integer($writes)->isGreaterThan(0);
+            $this->array($operation->criteria('glpi_suppliers', '', [$id], true))->isIdenticalTo($expected);
+            $this->integer($memory->planWrites)->isIdenticalTo($writes, 'Repeated current criteria reuse plans, not rows');
+            $this->integer($counter->getValue() - $before)->isIdenticalTo(1, 'One scalar operation owns one manager across current permission reads');
+            $connection->update('glpi_entities', ['entities_id' => 0], ['id' => $id]);
+            $fresh = getEntitiesRestrictCriteria('glpi_suppliers', '', [$id], true);
+            $this->array($fresh)->isNotIdenticalTo($expected);
+            $this->array($operation->criteria('glpi_suppliers', '', [$id], true))->isIdenticalTo($fresh);
+        } finally {
+            $GLOBALS['GLPI_CACHE'] = $previous;
+        }
     }
 
     public function testOwnedEntityScopeResolvesOneCurrentRoutePerRead(): void
@@ -196,6 +206,39 @@ class Dropdown extends DbTestCase
             $this->array(array_column($repository->choices(['id' => $ids], ['translatedName.value'], $translations, 'Budget', 'en_GB', 0, 0), 'id'))
                 ->isIdenticalTo([$ids[0], $ids[2], $ids[1]]);
 
+            $previousCache = $GLOBALS['GLPI_CACHE'] ?? null;
+            $memory = new DropdownOwnedPlanCache(storeSerialized: false);
+            $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache($memory);
+            try {
+                $owned = new \itsmng\Database\DropdownReadOperation($connection);
+                $this->array($owned->choices('glpi_budgets', ['id' => $ids], ['name'], $translations, 'Budget', 'en_GB', 0, 0))
+                    ->isIdenticalTo($expected);
+                $this->integer($memory->planWrites)->isIdenticalTo(1);
+                $owned->close();
+                $warm = new \itsmng\Database\DropdownReadOperation($connection);
+                $this->array($warm->choices('glpi_budgets', ['id' => $ids], ['name'], $translations, 'Budget', 'en_GB', 0, 0))
+                    ->isIdenticalTo($expected);
+                $this->integer($memory->planWrites)->isIdenticalTo(1, 'A new private reader uses the actual compiled query');
+                $privateManager = (new \ReflectionProperty($warm, 'manager'))->getValue($warm);
+                $loaded = array_keys($privateManager->getMetadataFactory()->getLoadedMetadata());
+                sort($loaded);
+                $this->array($loaded)->isIdenticalTo([
+                    \itsmng\Database\Entity\Budget::class,
+                    \itsmng\Database\Entity\DropdownTranslation::class,
+                ], 'Warm scalar choices do not load Entity/Location target metadata');
+                $connection->update('glpi_budgets', ['name' => 'Changed live choice'], ['id' => $ids[2]]);
+                $connection->update('glpi_dropdowntranslations', ['value' => 'Changed live translation'], ['itemtype' => 'Budget', 'items_id' => $ids[1], 'field' => 'name', 'language' => 'en_GB']);
+                $fresh = $warm->choices('glpi_budgets', ['id' => $ids], ['name'], $translations, 'Budget', 'en_GB', 0, 0);
+                $this->array(array_column($fresh, 'id'))->isIdenticalTo([$ids[0], $ids[2], $ids[1]]);
+                $this->string($fresh[1]['name'])->isIdenticalTo('Changed live choice');
+                $this->string($fresh[2]['transname'])->isIdenticalTo('Changed live translation');
+                $this->integer($memory->planWrites)->isIdenticalTo(1);
+                $this->array($warm->choices('glpi_budgets', ['id' => $ids], ['name'], $translations, 'Budget', 'en_GB', 1, 1))->isIdenticalTo([$fresh[1]]);
+                $warm->close();
+            } finally {
+                $GLOBALS['GLPI_CACHE'] = $previousCache;
+            }
+
             // Domain query/criteria overrides still select one profile despite several rights.
             $profile = $this->createItem(\Profile::class, ['name' => $this->getUniqueString()]);
             $profileId = (int)$profile->getID();
@@ -208,6 +251,18 @@ class Dropdown extends DbTestCase
             $this->array($manager->hydrationModes)->isIdenticalTo([\Doctrine\ORM\Query::HYDRATE_ARRAY]);
             $this->array($profileRepository->choices(['id' => $profileId, 'glpi_profilerights.rights' => -1], ['name'], [], 'Profile', 'en_GB', 0, 0))
                 ->isEmpty();
+            $previousCache = $GLOBALS['GLPI_CACHE'] ?? null;
+            $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache($memory);
+            $writes = $memory->planWrites;
+            try {
+                $ownedProfile = new \itsmng\Database\DropdownReadOperation($connection);
+                $this->array(array_column($ownedProfile->choices('glpi_profiles', ['id' => $profileId], ['name'], [], 'Profile', 'en_GB', 0, 0), 'id'))
+                    ->isIdenticalTo([$profileId]);
+                $this->array($ownedProfile->choices('glpi_profiles', ['id' => $profileId, 'glpi_profilerights.rights' => -1], ['name'], [], 'Profile', 'en_GB', 0, 0))->isEmpty();
+                $this->integer($memory->planWrites)->isIdenticalTo($writes, 'Domain query and criteria overrides stay local');
+            } finally {
+                $GLOBALS['GLPI_CACHE'] = $previousCache;
+            }
         } finally {
             $manager->clear();
             $oracle->clear();
@@ -266,6 +321,12 @@ class Dropdown extends DbTestCase
             // A custom presenter may observe the managed record before choices detaches it.
             $custom = new class ($manager, $manager->getClassMetadata(\itsmng\Database\Entity\Budget::class)) extends \itsmng\Database\Repository\DropdownChoiceRepository {
                 public bool $presentedManaged = false;
+                public bool $dispatchedOriginalSignature = false;
+                public function choices(array $criteria, array $order, array $translations, string $kind, string $language, int $limit, int $offset): array
+                {
+                    $this->dispatchedOriginalSignature = true;
+                    return parent::choices($criteria, $order, $translations, $kind, $language, $limit, $offset);
+                }
                 protected function choiceQuery(): \Doctrine\ORM\QueryBuilder
                 {
                     return parent::choiceQuery()->andWhere('r.is_deleted = false');
@@ -280,6 +341,7 @@ class Dropdown extends DbTestCase
             $manager->hydrationModes = [];
             $this->string($custom->choices(['id' => $id], [], [], 'Budget', 'en_GB', 0, 0)[0]['name'])->endWith(' custom');
             $this->boolean($custom->presentedManaged)->isTrue();
+            $this->boolean($custom->dispatchedOriginalSignature)->isTrue();
             $this->array($manager->hydrationModes)->isIdenticalTo([\Doctrine\ORM\Query::HYDRATE_OBJECT]);
             $manager->clear();
             $contact = getItemByTypeName('Contact', '_contact01_name');
@@ -289,6 +351,76 @@ class Dropdown extends DbTestCase
         } finally {
             $manager->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $listener);
             $manager->clear();
+        }
+    }
+
+    public function testOwnedChoicesKeepUnknownRepositoryConstructionLocal(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $id = (int)getItemByTypeName('Budget', '_budget01', true);
+        $expected = $connection->fetchOne('SELECT name FROM glpi_budgets WHERE id = ?', [$id]);
+        \itsmng\Database\EntityRegistry::tables();
+        $registry = new \ReflectionProperty(\itsmng\Database\EntityRegistry::class, 'model');
+        $original = $registry->getValue();
+        $previous = $GLOBALS['GLPI_CACHE'] ?? null;
+        $memory = new DropdownOwnedPlanCache(storeSerialized: false);
+        try {
+            $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache($memory);
+            $model = $original;
+            $model['tables']['glpi_budgets'] = DropdownUnknownBudget::class;
+            $registry->setValue(null, $model);
+            DropdownUnknownRepository::$constructedLocally = false;
+            DropdownUnknownRepository::$called = false;
+            $reader = new \itsmng\Database\DropdownReadOperation($connection);
+            $rows = $reader->choices('glpi_budgets', ['id' => $id], ['name'], [], 'Budget', 'en_GB', 0, 0);
+            $this->string($rows[0]['name'])->isIdenticalTo($expected . ' original override');
+            $this->boolean(DropdownUnknownRepository::$constructedLocally)->isTrue();
+            $this->boolean(DropdownUnknownRepository::$called)->isTrue();
+            $this->integer($memory->planWrites)->isIdenticalTo(0);
+            $registry->setValue(null, $original);
+            $reader = new \itsmng\Database\DropdownReadOperation($connection);
+            $this->string($reader->choices('glpi_budgets', ['id' => $id], ['name'], [], 'Budget', 'en_GB', 0, 0)[0]['name'])->isIdenticalTo($expected);
+            $this->integer($memory->planWrites)->isIdenticalTo(1);
+        } finally {
+            $registry->setValue(null, $original);
+            $GLOBALS['GLPI_CACHE'] = $previous;
+            DropdownUnknownRepository::$constructedLocally = false;
+            DropdownUnknownRepository::$called = false;
+        }
+    }
+
+    public function testOwnedChoiceJoinedSqlTypeRemainsLive(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $profile = $this->createItem(\Profile::class, ['name' => $this->getUniqueString()]);
+        $id = (int)$connection->fetchOne('SELECT id FROM glpi_profilerights WHERE profiles_id = ? ORDER BY id', [(int)$profile->getID()]);
+        $connection->insert('glpi_dropdowntranslations', ['itemtype' => 'ProfileRight', 'items_id' => $id, 'language' => 'en_GB', 'field' => 'name', 'value' => 'live lower']);
+        $previous = $GLOBALS['GLPI_CACHE'] ?? null;
+        $memory = new DropdownOwnedPlanCache(storeSerialized: false);
+        $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache($memory);
+        $registry = \Doctrine\DBAL\Types\Type::getTypeRegistry();
+        $original = $registry->get(\Doctrine\DBAL\Types\Types::TEXT);
+        $translations = ['translatedName' => ['field' => 'name', 'output' => 'transname']];
+        try {
+            $oracle = \itsmng\Database\Orm::create($DB);
+            $root = $oracle->getClassMetadata(\itsmng\Database\Entity\ProfileRight::class);
+            $this->array(array_column($root->fieldMappings, 'type'))->notContains(\Doctrine\DBAL\Types\Types::TEXT);
+            $reader = new \itsmng\Database\DropdownReadOperation($connection);
+            $this->string($reader->choices('glpi_profilerights', ['id' => $id], ['name'], $translations, 'ProfileRight', 'en_GB', 0, 0)[0]['transname'])->isIdenticalTo('live lower');
+            $this->integer($memory->planWrites)->isIdenticalTo(1);
+            \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::TEXT, DropdownUpperTextType::class);
+            $reader = new \itsmng\Database\DropdownReadOperation($connection);
+            $this->string($reader->choices('glpi_profilerights', ['id' => $id], ['name'], $translations, 'ProfileRight', 'en_GB', 0, 0)[0]['transname'])->isIdenticalTo('LIVE LOWER');
+            $this->integer($memory->planWrites)->isIdenticalTo(1, 'Joined-field SQL conversion bypasses the warm default plan');
+            $registry->override(\Doctrine\DBAL\Types\Types::TEXT, $original);
+            $reader = new \itsmng\Database\DropdownReadOperation($connection);
+            $this->string($reader->choices('glpi_profilerights', ['id' => $id], ['name'], $translations, 'ProfileRight', 'en_GB', 0, 0)[0]['transname'])->isIdenticalTo('live lower');
+            $this->integer($memory->planWrites)->isIdenticalTo(1);
+        } finally {
+            $registry->override(\Doctrine\DBAL\Types\Types::TEXT, $original);
+            $GLOBALS['GLPI_CACHE'] = $previous;
         }
     }
 
@@ -1956,5 +2088,62 @@ class ScopeCallbackSupplier extends \Supplier
             (self::$beforeAuthority)();
         }
         return true;
+    }
+}
+
+
+final class DropdownOwnedPlanCache extends \Symfony\Component\Cache\Adapter\ArrayAdapter
+{
+    public int $planWrites = 0;
+
+    public function save(\Psr\Cache\CacheItemInterface $item)
+    {
+        if (is_string($item->get()) && str_contains($item->get(), 'Doctrine\\ORM\\Query\\ParserResult')) {
+            ++$this->planWrites;
+        }
+        return parent::save($item);
+    }
+}
+
+final class DropdownUpperTextType extends \Doctrine\DBAL\Types\TextType
+{
+    public function convertToPHPValueSQL($sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+    {
+        return 'UPPER(' . $sqlExpr . ')';
+    }
+}
+
+
+#[\Doctrine\ORM\Mapping\Entity(repositoryClass: DropdownUnknownRepository::class)]
+#[\Doctrine\ORM\Mapping\Table(name: 'glpi_budgets')]
+final class DropdownUnknownBudget
+{
+    #[\Doctrine\ORM\Mapping\Id]
+    #[\Doctrine\ORM\Mapping\Column(type: 'bigint')]
+    public ?int $id = null;
+    #[\Doctrine\ORM\Mapping\Column(type: 'string', nullable: true)]
+    public ?string $name = null;
+}
+
+final class DropdownUnknownRepository extends \itsmng\Database\Repository\DropdownChoiceRepository
+{
+    public static bool $constructedLocally = false;
+    public static bool $called = false;
+
+    public function __construct(\Doctrine\ORM\EntityManagerInterface $em, \Doctrine\ORM\Mapping\ClassMetadata $class)
+    {
+        self::$constructedLocally = $em->getConfiguration()->getMetadataCache() instanceof \Symfony\Component\Cache\Adapter\ArrayAdapter
+            && $em->getConfiguration()->getQueryCache() === null;
+        parent::__construct($em, $class);
+    }
+
+    public function choices(array $criteria, array $order, array $translations, string $kind, string $language, int $limit, int $offset): array
+    {
+        self::$called = true;
+        $rows = parent::choices($criteria, $order, $translations, $kind, $language, $limit, $offset);
+        foreach ($rows as &$row) {
+            $row['name'] .= ' original override';
+        }
+        return $rows;
     }
 }

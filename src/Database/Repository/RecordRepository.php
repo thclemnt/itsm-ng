@@ -53,7 +53,7 @@ final class RecordRepository
     }
 
     /** Complete legacy row without creating managed records or association proxies. */
-    public function scalarRow(string $recordClass, int $id, ?\Psr\Cache\CacheItemPoolInterface $queryCache = null, ?array $defaultIdentifiers = null, ?\itsmng\Database\RecordReadOperation $operation = null): ?array
+    public function scalarRow(string $recordClass, int $id, ?\Psr\Cache\CacheItemPoolInterface $queryCache = null, ?array $defaultIdentifiers = null, ?\itsmng\Database\ReadQueryOwner $operation = null): ?array
     {
         $metadata = $this->em->getClassMetadata($recordClass);
         $identifier = $metadata->getSingleIdentifierFieldName();
@@ -76,7 +76,7 @@ final class RecordRepository
     }
 
     /** Select complete mapped records with bound criteria and database-side limits. */
-    public function matching(string $table, array $criteria = [], array|string $order = [], ?int $limit = null, int $offset = 0, bool $legacyValues = true, ?array $defaultIdentifiers = null, ?\itsmng\Database\RecordReadOperation $operation = null): array
+    public function matching(string $table, array $criteria = [], array|string $order = [], ?int $limit = null, int $offset = 0, bool $legacyValues = true, ?array $defaultIdentifiers = null, ?\itsmng\Database\ReadQueryOwner $operation = null): array
     {
         $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
         $query = $this->em->createQueryBuilder()->select('r')->from($metadata->name, 'r');
@@ -111,7 +111,7 @@ final class RecordRepository
         return $rows;
     }
 
-    public function countMatching(string $table, array $criteria, bool $legacyValues = true, ?\itsmng\Database\RecordReadOperation $operation = null): int
+    public function countMatching(string $table, array $criteria, bool $legacyValues = true, ?\itsmng\Database\ReadQueryOwner $operation = null): int
     {
         $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
         $query = $this->em->createQueryBuilder()->select('COUNT(r.id)')->from($metadata->name, 'r');

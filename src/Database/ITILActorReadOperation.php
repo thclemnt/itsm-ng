@@ -4,25 +4,20 @@
 
 namespace itsmng\Database;
 
-use Doctrine\DBAL\Connection;
 use itsmng\Database\Repository\ITILActorRepository;
 
 /** One loadActors invocation owns its three built-in relationship reads. */
-final class ITILActorReadOperation
+final class ITILActorReadOperation implements ReadQueryOwner
 {
-    private readonly RecordReadOperation $records;
-
-    public function __construct(Connection $connection)
-    {
-        $this->records = new RecordReadOperation($connection);
-    }
+    use PrivateReadOwnership;
 
     public function actors(string $actorClass, int $item): array
     {
         if (!ITILActorRepository::supports($actorClass)) {
             throw new \InvalidArgumentException('Unsupported ITIL actor relation');
         }
-        $rows = $this->records->actorRows($actorClass, $item);
+        $this->metadata($actorClass::getTable());
+        $rows = (new ITILActorRepository($this->manager))->rows($actorClass, $item, $this);
         $actors = [];
         foreach ($rows as $row) {
             $actors[$row['type']][] = $row;
@@ -30,8 +25,4 @@ final class ITILActorReadOperation
         return $actors;
     }
 
-    public function close(): void
-    {
-        $this->records->close();
-    }
 }

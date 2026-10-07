@@ -3156,8 +3156,8 @@ class Dropdown
             }
         }
         if (isset(\itsmng\Database\EntityRegistry::tables()[$table])) {
-            $manager = \itsmng\Database\Orm::create($database);
-            return $manager->getRepository(\itsmng\Database\EntityRegistry::tables()[$table])->choices(
+            return (new \itsmng\Database\DropdownReadOperation($database->getDoctrineConnection()))->choices(
+                $table,
                 $criteria,
                 $order,
                 $translations,

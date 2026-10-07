@@ -16,8 +16,19 @@ use itsmng\Database\MappedRowProjection;
 /** Typed, paginated choices; domain repositories own additional access and labels. */
 class DropdownChoiceRepository extends EntityRepository
 {
-    /** Translation roles are local to this request, bound to its exact kind/field/language. */
     public function choices(array $criteria, array $order, array $translations, string $kind, string $language, int $limit, int $offset): array
+    {
+        return $this->readChoices($criteria, $order, $translations, $kind, $language, $limit, $offset);
+    }
+
+    /** Internal scalar entry; the operation admits repository implementations first. */
+    public function ownedChoices(array $criteria, array $order, array $translations, string $kind, string $language, int $limit, int $offset, ?array $defaultIdentifiers, \itsmng\Database\ReadQueryOwner $operation): array
+    {
+        return $this->readChoices($criteria, $order, $translations, $kind, $language, $limit, $offset, $defaultIdentifiers, $operation);
+    }
+
+    /** Translation roles are local to this request, bound to its exact kind/field/language. */
+    private function readChoices(array $criteria, array $order, array $translations, string $kind, string $language, int $limit, int $offset, ?array $defaultIdentifiers = null, ?\itsmng\Database\ReadQueryOwner $operation = null): array
     {
         $query = $this->choiceQuery();
         $compiler = $this->choiceCriteria($query);
@@ -36,7 +47,7 @@ class DropdownChoiceRepository extends EntityRepository
             && $query->getRootEntities() === [$metadata->name]
             && array_map('strval', $query->getDQLPart('select')) === ['r']
             && !array_filter($translations, static fn (array $translation): bool => preg_match('/^value[0-9]+$/i', $translation['output']) === 1)) {
-            $projection = new MappedRowProjection($this->getEntityManager(), $metadata);
+            $projection = new MappedRowProjection($this->getEntityManager(), $metadata, $defaultIdentifiers);
             $projection->select($query);
         }
         foreach ($translations as $qualifier => $translation) {
@@ -64,7 +75,11 @@ class DropdownChoiceRepository extends EntityRepository
         }
         $rows = [];
         $records = new RecordRepository($this->getEntityManager());
-        foreach ($query->getQuery()->toIterable([], $projection === null ? Query::HYDRATE_OBJECT : Query::HYDRATE_ARRAY) as $result) {
+        $compiled = $query->getQuery();
+        if ($projection !== null) {
+            $operation?->prepareQuery($compiled, $metadata);
+        }
+        foreach ($compiled->toIterable([], $projection === null ? Query::HYDRATE_OBJECT : Query::HYDRATE_ARRAY) as $result) {
             $record = $projection === null ? ($translations ? $result[0] : $result) : null;
             $row = $projection === null ? $records->toRow($record) : $projection->toRow($result);
             foreach ($translations as $translation) {

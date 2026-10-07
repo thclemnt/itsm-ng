@@ -63,7 +63,7 @@ final class ITILActorRepository
         return $actors;
     }
 
-    public function rows(string $actorClass, int $item, ?\itsmng\Database\RecordReadOperation $operation = null): array
+    public function rows(string $actorClass, int $item, ?\itsmng\Database\ReadQueryOwner $operation = null): array
     {
         if (!self::supports($actorClass)) {
             throw new \InvalidArgumentException('Unsupported ITIL actor relation');

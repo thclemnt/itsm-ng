@@ -842,7 +842,7 @@ final class DbUtils
             if ($this->treeReads !== null) {
                 return $this->treeReads->rows($DB, $table, $fields, $criteria);
             }
-            return (new \itsmng\Database\Repository\TreeRepository(\itsmng\Database\Orm::create($DB)))->rows($table, $fields, $criteria);
+            return (new \itsmng\Database\TreeReadOperation($DB->getDoctrineConnection()))->rows($table, $fields, $criteria);
         }
         return array_values(iterator_to_array($DB->request(['SELECT' => $fields, 'FROM' => $table, 'WHERE' => $criteria])));
     }

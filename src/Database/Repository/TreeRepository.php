@@ -18,7 +18,7 @@ final class TreeRepository
     {
     }
 
-    public function rows(string $table, array $fields, array $criteria, array|string $order = []): array
+    public function rows(string $table, array $fields, array $criteria, array|string $order = [], ?\itsmng\Database\ReadQueryOwner $operation = null): array
     {
         $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
         $query = $this->em->createQueryBuilder()->from($metadata->name, 'r');
@@ -33,7 +33,9 @@ final class TreeRepository
         }
         $query->where($compiler->where($criteria));
         $compiler->order($order);
-        return $query->getQuery()->getScalarResult();
+        $compiled = $query->getQuery();
+        $operation?->prepareQuery($compiled, $metadata);
+        return $compiled->getScalarResult();
     }
 
     /** Raw values only. These fields must not trigger recursive lifecycle hooks. */

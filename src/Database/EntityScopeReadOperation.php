@@ -4,13 +4,13 @@
 
 namespace itsmng\Database;
 
-use Doctrine\ORM\EntityManager;
-use itsmng\Database\Repository\TreeRepository;
+use Doctrine\DBAL\Connection;
 
 /** One dropdown owns mapping state; every restriction still reads current tree rows. */
 final class EntityScopeReadOperation
 {
-    private ?EntityManager $manager = null;
+    private ?TreeReadOperation $reader = null;
+    private ?Connection $connection = null;
     private ?\DBAdapter $database = null;
 
     public function criteria($table = '', $field = '', $value = '', $recursive = false, $complete = false): array
@@ -23,17 +23,18 @@ final class EntityScopeReadOperation
         // Permission construction may follow a virtual model/display callback.
         // Re-resolve its selected route before every query; retain no tree rows.
         $connection = $database->getDoctrineConnection();
-        if ($this->manager === null || $this->database !== $database
-            || $this->manager->getConnection() !== $connection) {
-            $this->manager?->clear();
-            $this->manager = Orm::forConnection($connection);
+        if ($this->reader === null || $this->database !== $database
+            || $this->connection !== $connection) {
+            $this->reader?->close();
+            $this->reader = new TreeReadOperation($connection);
+            $this->connection = $connection;
             $this->database = $database;
         }
-        return (new TreeRepository($this->manager))->rows($table, $fields, $criteria);
+        return $this->reader->rows($table, $fields, $criteria);
     }
 
     public function __destruct()
     {
-        $this->manager?->clear();
+        $this->reader?->close();
     }
 }
