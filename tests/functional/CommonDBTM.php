@@ -234,6 +234,89 @@ class CommonDBTM extends DbTestCase
         $this->integer($originalConnection->getTransactionNestingLevel())->isIdenticalTo($originalLevel);
     }
 
+
+    public function testPrivateScalarReferencesAvoidReloadingTargetMetadata(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity(0, true);
+        $entity = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $computer = $this->createItem(\Computer::class, ['name' => 'Reference metadata before', 'entities_id' => $entity->getID()]);
+        $connection = $DB->getDoctrineConnection();
+        $cache = new \Symfony\Component\Cache\Adapter\ArrayAdapter(storeSerialized: true);
+        $configuration = static function () use ($connection): \Doctrine\ORM\Configuration {
+            $config = \itsmng\Database\Orm::configuration($connection->getDatabasePlatform());
+            $config->setMetadataCache(new \Symfony\Component\Cache\Adapter\ArrayAdapter(storeSerialized: true));
+            return $config;
+        };
+        $oracle = new \Doctrine\ORM\EntityManager($connection, $configuration());
+        $metadata = $oracle->getClassMetadata(\itsmng\Database\Entity\Computer::class);
+        // Independent current provider declarations are the reference-type oracle.
+        $declarations = [$metadata->name => $metadata];
+        foreach ($metadata->associationMappings as $mapping) {
+            if ($mapping->isToOneOwningSide()) {
+                $declarations[$mapping->targetEntity] = $oracle->getClassMetadata($mapping->targetEntity);
+            }
+        }
+        $identifiers = [];
+        foreach ($declarations as $class => $declaration) {
+            $property = $declaration->getSingleIdentifierFieldName();
+            $this->boolean($declaration->hasField($property))->isTrue();
+            $identifiers[$class] = ['property' => $property, 'column' => $declaration->getColumnName($property),
+                'type' => $declaration->getTypeOfField($property)];
+        }
+        $read = static function (?array $facts, bool $custom = false) use ($connection, $configuration, $cache, $computer): array {
+            $manager = new class ($connection, $configuration()) extends \Doctrine\ORM\EntityManager {
+                public array $metadataCalls = [];
+                public function getClassMetadata(string $className): \Doctrine\ORM\Mapping\ClassMetadata
+                {
+                    $this->metadataCalls[] = $className;
+                    return parent::getClassMetadata($className);
+                }
+            };
+            if ($custom) {
+                $manager->getEventManager()->addEventListener(\Doctrine\ORM\Events::loadClassMetadata, new class () {
+                    public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+                    {
+                        if ($event->getClassMetadata()->name === \itsmng\Database\Entity\Entity::class) {
+                            $event->getClassMetadata()->fieldMappings['id']->type = 'decimal';
+                        }
+                    }
+                });
+            }
+            try {
+                $row = (new \itsmng\Database\Repository\RecordRepository($manager))->scalarRow(
+                    \itsmng\Database\Entity\Computer::class,
+                    (int)$computer->getID(),
+                    $cache,
+                    $facts,
+                );
+                return [$row, array_keys($manager->getMetadataFactory()->getLoadedMetadata()), $manager->metadataCalls];
+            } finally {
+                $manager->clear();
+            }
+        };
+        try {
+            [$expected, $originalMetadata] = $read(null); // Warm real SQL plan; full metadata is a positive control.
+            $this->integer(count($originalMetadata))->isGreaterThan(1);
+            [$actual, $loaded, $calls] = $read($identifiers);
+            $this->array($actual)->isIdenticalTo($expected);
+            $this->array($loaded)->isIdenticalTo([\itsmng\Database\Entity\Computer::class]);
+            $this->array(array_values(array_unique($calls)))->isIdenticalTo([\itsmng\Database\Entity\Computer::class]);
+            $connection->update('glpi_computers', ['name' => 'Reference metadata after'], ['id' => $computer->getID()]);
+            $this->string($read($identifiers)[0]['name'])->isIdenticalTo('Reference metadata after');
+            [$custom, $customMetadata] = $read(null, true);
+            $this->string($custom['entities_id'])->isIdenticalTo((string)$entity->getID());
+            $this->integer(count($customMetadata))->isGreaterThan(1);
+            // The real private model entrypoint still observes current values and reference IDs.
+            $this->boolean($computer->getFromDB($computer->getID()))->isTrue();
+            $this->string($computer->fields['name'])->isIdenticalTo('Reference metadata after');
+            $this->integer($computer->fields['entities_id'])->isIdenticalTo((int)$entity->getID());
+        } finally {
+            $oracle->clear();
+        }
+    }
+
     public function testMappedIdentifierReadsCompleteFreshRowsWithoutHydration(): void
     {
         global $DB;

@@ -18,7 +18,7 @@ final class MappedRowProjection
     /** @var list<string> */
     private array $selections = [];
 
-    public function __construct(private EntityManager $em, ClassMetadata $metadata)
+    public function __construct(private EntityManager $em, ClassMetadata $metadata, ?array $defaultIdentifiers = null)
     {
         foreach ($metadata->fieldMappings as $property => $mapping) {
             $this->selections[] = 'r.' . $property . ' AS value' . count($this->columns);
@@ -31,13 +31,21 @@ final class MappedRowProjection
             if (count($mapping->joinColumns) !== 1) {
                 throw new \LogicException('Scalar record reads require single-column owning references');
             }
-            $target = $this->em->getClassMetadata($mapping->targetEntity);
-            $targetId = $target->getSingleIdentifierFieldName();
-            if (!$target->hasField($targetId) || $target->getColumnName($targetId) !== $mapping->joinColumns[0]->referencedColumnName) {
-                throw new \LogicException('Scalar record references must target a scalar identifier');
+            // Only private default reads supply this canonical declaration view.
+            // Custom/supplied managers continue to inspect their actual target metadata.
+            $identifier = $defaultIdentifiers[$mapping->targetEntity] ?? null;
+            if ($identifier !== null && $identifier['column'] === $mapping->joinColumns[0]->referencedColumnName) {
+                $type = $identifier['type'];
+            } else {
+                $target = $this->em->getClassMetadata($mapping->targetEntity);
+                $targetId = $target->getSingleIdentifierFieldName();
+                if (!$target->hasField($targetId) || $target->getColumnName($targetId) !== $mapping->joinColumns[0]->referencedColumnName) {
+                    throw new \LogicException('Scalar record references must target a scalar identifier');
+                }
+                $type = $target->getTypeOfField($targetId);
             }
             $this->selections[] = 'IDENTITY(r.' . $property . ') AS value' . count($this->columns);
-            $this->columns[] = [$mapping->joinColumns[0]->name, $target->getTypeOfField($targetId), true];
+            $this->columns[] = [$mapping->joinColumns[0]->name, $type, true];
         }
     }
 

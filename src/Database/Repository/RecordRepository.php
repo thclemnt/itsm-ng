@@ -53,7 +53,7 @@ final class RecordRepository
     }
 
     /** Complete legacy row without creating managed records or association proxies. */
-    public function scalarRow(string $recordClass, int $id, ?\Psr\Cache\CacheItemPoolInterface $queryCache = null): ?array
+    public function scalarRow(string $recordClass, int $id, ?\Psr\Cache\CacheItemPoolInterface $queryCache = null, ?array $defaultIdentifiers = null): ?array
     {
         $metadata = $this->em->getClassMetadata($recordClass);
         $identifier = $metadata->getSingleIdentifierFieldName();
@@ -63,7 +63,7 @@ final class RecordRepository
         $query = $this->em->createQueryBuilder()->from($recordClass, 'r')
             ->where('r.' . $identifier . ' = :id')
             ->setParameter('id', $id, $metadata->getTypeOfField($identifier));
-        $projection = new MappedRowProjection($this->em, $metadata);
+        $projection = new MappedRowProjection($this->em, $metadata, $defaultIdentifiers);
         $projection->select($query);
         // Scalar-only array hydration applies DBAL types without loading entities.
         $compiled = $query->getQuery();

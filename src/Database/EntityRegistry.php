@@ -33,6 +33,12 @@ final class EntityRegistry
         return self::model()['scope_owners'][$table] ?? null;
     }
 
+    /** Default core scalar IDs, derived once without retaining mutable ORM metadata. */
+    public static function scalarIdentifiers(): array
+    {
+        return self::model()['scalar_identifiers'];
+    }
+
     public static function booleanColumns(): array
     {
         return self::model()['booleans'];
@@ -130,11 +136,28 @@ final class EntityRegistry
         // Mapping inspection must also work before installation. The explicit
         // server version prevents platform discovery from opening a connection.
         $connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
-        $em = new EntityManager($connection, Orm::configuration(new MySQLPlatform()));
+        $platform = new MySQLPlatform();
+        $configuration = Orm::configuration($platform);
+        // Public configurations can customize their shared driver/local cache.
+        // This canonical projection must derive from pristine core declarations.
+        $configuration->setMetadataDriverImpl(new Mapping\AttributeDriver([__DIR__ . '/Entity'], $platform));
+        $configuration->setMetadataCache(new \Symfony\Component\Cache\Adapter\ArrayAdapter(storeSerialized: true));
+        $em = new EntityManager($connection, $configuration);
         $metadata = $em->getMetadataFactory()->getAllMetadata();
         $nativeTimestamps = NativeTimestampSchema::declarations($metadata);
         $legacyTables = $tables = $types = $booleans = $booleanFields = $relations = $references = $discriminators = $lifecycle = $readOnly = $scopeOwners = [];
+        $scalarIdentifiers = [];
         foreach ($metadata as $record) {
+            if (count($record->identifier) === 1) {
+                $identifier = $record->getSingleIdentifierFieldName();
+                if ($record->hasField($identifier)) {
+                    $scalarIdentifiers[$record->name] = [
+                        'property' => $identifier,
+                        'column' => $record->getColumnName($identifier),
+                        'type' => $record->getTypeOfField($identifier),
+                    ];
+                }
+            }
             $table = $record->getTableName();
             if (isset($tables[$table])) {
                 throw new \LogicException('Duplicate mapped core table: ' . $table);
@@ -268,6 +291,6 @@ final class EntityRegistry
         // Only immutable lookup projections survive bootstrap, not the offline unit of work.
         unset($em, $metadata, $record);
         gc_collect_cycles();
-        return ['legacy_tables' => $legacyTables, 'tables' => $tables, 'types' => $types, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners, 'native_timestamps' => $nativeTimestamps];
+        return ['legacy_tables' => $legacyTables, 'tables' => $tables, 'types' => $types, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners, 'native_timestamps' => $nativeTimestamps, 'scalar_identifiers' => $scalarIdentifiers];
     }
 }

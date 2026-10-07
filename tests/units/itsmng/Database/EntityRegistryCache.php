@@ -37,6 +37,119 @@ class EntityRegistryCache extends \atoum\atoum\test
         rmdir($this->root);
     }
 
+
+    public function testScalarIdentifiersMatchBothProvidersAndIgnorePublicCustomization(): void
+    {
+        $previousCache = $GLOBALS['GLPI_CACHE'] ?? null;
+        $model = new \ReflectionProperty(EntityRegistry::class, 'model');
+        $previousModel = $model->getValue();
+        $templates = new \ReflectionProperty(\itsmng\Database\Orm::class, 'configurations');
+        $previousTemplates = $templates->getValue();
+        $templates->setValue(null, []);
+        $model->setValue(null, null);
+        $GLOBALS['GLPI_CACHE'] = new Psr16Cache(new ArrayAdapter(storeSerialized: false));
+        try {
+            $platform = new \Doctrine\DBAL\Platforms\MySQLPlatform();
+            $public = \itsmng\Database\Orm::configuration($platform);
+            $driver = $public->getMetadataDriverImpl();
+            $connection = \Doctrine\DBAL\DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
+            $manager = new \Doctrine\ORM\EntityManager($connection, $public);
+            $manager->getEventManager()->addEventListener(\Doctrine\ORM\Events::loadClassMetadata, new class () {
+                public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+                {
+                    $metadata = $event->getClassMetadata();
+                    if ($metadata->name === \itsmng\Database\Entity\Config::class) {
+                        $metadata->fieldMappings['id']->type = 'string';
+                        $metadata->setPrimaryTable(['name' => 'public_custom_config']);
+                    }
+                }
+            });
+            $this->string($manager->getClassMetadata(\itsmng\Database\Entity\Config::class)->getTypeOfField('id'))->isIdenticalTo('string');
+            $driver->setFileExtension('.public-custom-driver');
+            $actual = EntityRegistry::scalarIdentifiers();
+            $this->string($actual[\itsmng\Database\Entity\Config::class]['type'])->isIdenticalTo('bigint');
+            $this->string(EntityRegistry::tables()['glpi_configs'])->isIdenticalTo(\itsmng\Database\Entity\Config::class);
+            $this->object(\itsmng\Database\Orm::configuration($platform)->getMetadataDriverImpl())->isIdenticalTo($driver);
+            $this->string($driver->getFileExtension())->isIdenticalTo('.public-custom-driver');
+            $this->boolean($connection->isConnected())->isFalse();
+            $manager->clear();
+            unset($manager);
+            $connection->close();
+            ksort($actual);
+            foreach ([['pdo_mysql', '8.4.0'], ['pdo_pgsql', '16.0']] as [$driverName, $version]) {
+                $connection = \Doctrine\DBAL\DriverManager::getConnection(['driver' => $driverName, 'serverVersion' => $version]);
+                $platform = $connection->getDatabasePlatform();
+                $configuration = \itsmng\Database\Orm::configuration($platform);
+                $configuration->setMetadataDriverImpl(new \itsmng\Database\Mapping\AttributeDriver([dirname((new \ReflectionClass(EntityRegistry::class))->getFileName()) . '/Entity'], $platform));
+                $configuration->setMetadataCache(new ArrayAdapter(storeSerialized: true));
+                $manager = new \Doctrine\ORM\EntityManager($connection, $configuration);
+                $expected = [];
+                foreach ($manager->getMetadataFactory()->getAllMetadata() as $metadata) {
+                    if (count($metadata->identifier) === 1 && $metadata->hasField($metadata->identifier[0])) {
+                        $property = $metadata->identifier[0];
+                        $expected[$metadata->name] = ['property' => $property,
+                            'column' => $metadata->getColumnName($property), 'type' => $metadata->getTypeOfField($property)];
+                    } else {
+                        $this->boolean(isset($actual[$metadata->name]))->isFalse();
+                    }
+                }
+                ksort($expected);
+                $this->array($actual)->isIdenticalTo($expected);
+                $this->boolean($connection->isConnected())->isFalse();
+                $manager->clear();
+                unset($manager, $metadata);
+                $connection->close();
+                gc_collect_cycles();
+            }
+        } finally {
+            $GLOBALS['GLPI_CACHE'] = $previousCache;
+            $model->setValue(null, $previousModel);
+            $templates->setValue(null, $previousTemplates);
+        }
+    }
+
+    public function testScalarReferenceFactsRetainIdentifierValidationFallbacks(): void
+    {
+        $connection = \Doctrine\DBAL\DriverManager::getConnection(['driver' => 'pdo_pgsql', 'serverVersion' => '16.0']);
+        $configuration = \itsmng\Database\Orm::configuration($connection->getDatabasePlatform());
+        $configuration->setMetadataCache(new ArrayAdapter(storeSerialized: true));
+        $manager = new \Doctrine\ORM\EntityManager($connection, $configuration);
+        try {
+            $source = $manager->getClassMetadata(\itsmng\Database\Entity\Computer::class);
+            $target = $manager->getClassMetadata(\itsmng\Database\Entity\Entity::class);
+            $facts = EntityRegistry::scalarIdentifiers();
+            // A mismatched reference column must inspect real metadata and reject it.
+            $mismatch = clone $source;
+            $property = array_key_first($mismatch->associationMappings);
+            $this->string($mismatch->associationMappings[$property]->targetEntity)->isIdenticalTo($target->name);
+            $mismatch->associationMappings[$property] = clone $mismatch->associationMappings[$property];
+            $mismatch->associationMappings[$property]->joinColumns[0] = clone $mismatch->associationMappings[$property]->joinColumns[0];
+            $mismatch->associationMappings[$property]->joinColumns[0]->referencedColumnName = 'name';
+            $this->exception(static fn () => new \itsmng\Database\MappedRowProjection($manager, $mismatch, $facts))->isInstanceOf(\LogicException::class);
+            // No scalar fact is supplied for a composite or association identifier.
+            unset($facts[$target->name]);
+            $originalTarget = $target;
+            $target = clone $target;
+            $manager->getMetadataFactory()->setMetadataFor($target->name, $target);
+            $target->identifier = ['id', 'name'];
+            $target->isIdentifierComposite = true;
+            $this->exception(static fn () => new \itsmng\Database\MappedRowProjection($manager, $source, $facts))->isInstanceOf(\Doctrine\ORM\Mapping\MappingException::class);
+            $association = array_key_first($target->associationMappings);
+            $this->string($association)->isNotEmpty();
+            $target->identifier = [$association];
+            $target->isIdentifierComposite = false;
+            $this->exception(static fn () => new \itsmng\Database\MappedRowProjection($manager, $source, $facts))->isInstanceOf(\LogicException::class);
+            $manager->getMetadataFactory()->setMetadataFor($originalTarget->name, $originalTarget);
+            $this->boolean($connection->isConnected())->isFalse();
+        } finally {
+            if (isset($originalTarget)) {
+                $manager->getMetadataFactory()->setMetadataFor($originalTarget->name, $originalTarget);
+            }
+            $manager->clear();
+            $connection->close();
+        }
+    }
+
     public function testWarmLoadUsesSerializedValuesAndConfiguredPoolClearInvalidates(): void
     {
         // A cache that itself retains objects must still receive only serialized

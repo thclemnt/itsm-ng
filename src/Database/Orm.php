@@ -105,7 +105,19 @@ final class Orm
                         }
                     }
                 }
-                return $records->scalarRow($metadata->name, $id, $cache);
+                $defaultIdentifiers = $standardPlatform ? EntityRegistry::scalarIdentifiers() : [];
+                $identifier = $metadata->getSingleIdentifierFieldName();
+                $canonical = ($defaultIdentifiers[$metadata->name] ?? null) === [
+                    'property' => $identifier,
+                    'column' => $metadata->getColumnName($identifier),
+                    'type' => $metadata->getTypeOfField($identifier),
+                ];
+                return $records->scalarRow(
+                    $metadata->name,
+                    $id,
+                    $cache,
+                    $canonical ? $defaultIdentifiers : null,
+                );
             }
             // Entity callbacks may observe the manager. Their later metadata loads
             // and custom queries must not write either private persistent cache.
