@@ -86,7 +86,12 @@ final class SchemaCheck
                 $differences[] = 'Unexpected or changed foreign key: ' . $name . '.' . $key->getName();
             }
         }
-        return new SchemaInspection($actual, [...$differences, ...BooleanDomainSchema::differences($connection, $expected), ...NativeTimestampSchema::differences($connection, $expected),
-            ...NativeSubjectSchema::differences($connection, $subjectPolicies), ...PhysicalIndexSchema::differences($connection, $expected)]);
+        return new SchemaInspection($actual, [
+            ...$differences,
+            ...BooleanDomainSchema::differences($connection, $expected),
+            ...NativeTimestampSchema::differences($connection, $expected),
+            ...NativeSubjectSchema::differences($connection, $subjectPolicies),
+            ...PhysicalIndexSchema::differences($connection, $expected),
+        ]);
     }
 }

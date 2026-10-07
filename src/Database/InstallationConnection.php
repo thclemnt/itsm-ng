@@ -5,6 +5,8 @@
 namespace itsmng\Database;
 
 use Doctrine\DBAL\Connection;
+use InvalidArgumentException;
+use SensitiveParameter;
 
 /** Database provisioning and catalogue access happen before an ORM schema exists. */
 final class InstallationConnection
@@ -15,7 +17,7 @@ final class InstallationConnection
     }
 
     /** Parameter extraction does not create an unused server connection. */
-    private static function mysqlParameters(string $endpoint, string $user, #[\SensitiveParameter] string $password): array
+    private static function mysqlParameters(string $endpoint, string $user, #[SensitiveParameter] string $password): array
     {
         if (preg_match('/^\[([^\]]+)\](?::(.+))?$/D', $endpoint, $parts)) {
             $host = $parts[1];
@@ -34,7 +36,7 @@ final class InstallationConnection
     public static function ensureMysqlDatabase(Connection $server, string $name): bool
     {
         if ($name === '') {
-            throw new \InvalidArgumentException('Database name cannot be empty');
+            throw new InvalidArgumentException('Database name cannot be empty');
         }
         $manager = $server->createSchemaManager();
         if (!in_array($name, $manager->listDatabases(), true)) {
@@ -47,7 +49,7 @@ final class InstallationConnection
     public static function mysqlDatabase(string $endpoint, string $user, string $password, string $name): Connection
     {
         if ($name === '') {
-            throw new \InvalidArgumentException('Database name cannot be empty');
+            throw new InvalidArgumentException('Database name cannot be empty');
         }
         $parameters = self::mysqlParameters($endpoint, $user, $password);
         $parameters['dbname'] = $name;

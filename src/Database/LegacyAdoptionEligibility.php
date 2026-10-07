@@ -5,13 +5,14 @@
 namespace itsmng\Database;
 
 use Doctrine\DBAL\Connection;
+use itsmng\Database\Migration\Ledger;
 use itsmng\Database\Migration\V220\Baseline;
 use itsmng\Database\Migration\V220\DomainDocuments;
 use itsmng\Database\Migration\V220\DomainsPluginAdoption;
 use itsmng\Database\Migration\V220\DomainsPluginSnapshot;
-use itsmng\Database\Migration\Ledger;
 use itsmng\Database\Migration\V220\References;
 use itsmng\Database\Migration\V220\Seeds;
+use RuntimeException;
 
 /** Read-only provenance admission before canonical adoption can change old data. */
 final class LegacyAdoptionEligibility
@@ -37,30 +38,36 @@ final class LegacyAdoptionEligibility
     {
         $manager = $connection->createSchemaManager();
         if (!$manager->tablesExist(['glpi_configs'])) {
-            throw new \RuntimeException(self::diagnostic('Missing table: glpi_configs'));
+            throw new RuntimeException(self::diagnostic('Missing table: glpi_configs'));
         }
         $columns = $manager->listTableColumns('glpi_configs');
         foreach (['context', 'name', 'value'] as $column) {
             if (!isset($columns[$column])) {
-                throw new \RuntimeException(self::diagnostic('Missing column: glpi_configs.' . $column));
+                throw new RuntimeException(self::diagnostic('Missing column: glpi_configs.' . $column));
             }
         }
         $quote = $connection->getDatabasePlatform()->quoteIdentifier(...);
         $aliases = ['version', 'dbversion', 'itsmversion', 'itsmdbversion'];
-        $rows = $connection->fetchAllAssociative('SELECT ' . $quote('context') . ', ' . $quote('name') . ', ' . $quote('value') . ' FROM ' . $quote('glpi_configs') . ' WHERE ' . $quote('context') . ' = ? AND ' . $quote('name') . ' IN (?, ?, ?, ?) ORDER BY ' . $quote('name'), ['core', ...$aliases]);
+        $rows = $connection->fetchAllAssociative(
+            'SELECT ' . $quote('context') . ', ' . $quote('name') . ', ' . $quote('value')
+            . ' FROM ' . $quote('glpi_configs')
+            . ' WHERE ' . $quote('context') . ' = ? AND ' . $quote('name')
+            . ' IN (?, ?, ?, ?) ORDER BY ' . $quote('name'),
+            ['core', ...$aliases]
+        );
         $release = [];
         foreach ($rows as $row) {
             // Native MySQL collation may select spelling variants. Historical
             // publication used exact keys; do not imitate collation in PHP or
             // silently normalize a different source identity into that proof.
             if ($row['context'] !== 'core' || !in_array($row['name'], $aliases, true)) {
-                throw new \RuntimeException(self::diagnostic('Noncanonical historical publication key: ' . self::label($row['context']) . '.' . self::label($row['name']) . '. Reconcile the original configuration identity before retrying; no spelling or value is rewritten.'));
+                throw new RuntimeException(self::diagnostic('Noncanonical historical publication key: ' . self::label($row['context']) . '.' . self::label($row['name']) . '. Reconcile the original configuration identity before retrying; no spelling or value is rewritten.'));
             }
             if (array_key_exists($row['name'], $release)) {
                 // Table/column admission has not proved the unique index yet.
                 // Equal values still do not establish a single publication row;
                 // neither order nor an arbitrary duplicate wins provenance.
-                throw new \RuntimeException(self::diagnostic('Ambiguous historical publication: duplicate core.' . $row['name'] . ' alias. Reconcile the original configuration rows before retrying; no value is chosen or removed.'));
+                throw new RuntimeException(self::diagnostic('Ambiguous historical publication: duplicate core.' . $row['name'] . ' alias. Reconcile the original configuration rows before retrying; no value is chosen or removed.'));
             }
             $release[$row['name']] = $row['value'];
         }
@@ -85,7 +92,7 @@ final class LegacyAdoptionEligibility
                 $comparableTarget = preg_replace('/-dev$/D', '', $target);
             }
             if (is_string($installed) && preg_match('/^\d+(?:\.\d+)+(?:[-.][a-zA-Z0-9]+)*$/D', $installed) && version_compare($installed, $comparableTarget, '>')) {
-                throw new \RuntimeException('The installed ' . $field . ' (' . $release[$field] . ') is newer than these application files (' . $target . '). Use the matching application release; this updater cannot downgrade it.');
+                throw new RuntimeException('The installed ' . $field . ' (' . $release[$field] . ') is newer than these application files (' . $target . '). Use the matching application release; this updater cannot downgrade it.');
             }
         }
         $baseline = self::receipt($states, Baseline::PHASE);
@@ -111,19 +118,19 @@ final class LegacyAdoptionEligibility
         }
         foreach (['itsmdbversion', 'dbversion'] as $field) {
             if (($release[$field] ?? null) !== self::HISTORICAL_FORMAT) {
-                throw new \RuntimeException(self::diagnostic('Completed stable historical format is not proved: ' . $field . '=' . self::label($release[$field] ?? null)));
+                throw new RuntimeException(self::diagnostic('Completed stable historical format is not proved: ' . $field . '=' . self::label($release[$field] ?? null)));
             }
         }
         $applications = [];
         foreach (['itsmversion', 'version'] as $field) {
             if (!is_string($release[$field] ?? null) || !preg_match('/^(\d+\.\d+\.\d+)(?:-dev)?$/D', $release[$field], $parts)
                 || version_compare($parts[1], self::HISTORICAL_FORMAT, '<')) {
-                throw new \RuntimeException(self::diagnostic('Completed ITSM historical application release is not proved: ' . $field . '=' . self::label($release[$field] ?? null)));
+                throw new RuntimeException(self::diagnostic('Completed ITSM historical application release is not proved: ' . $field . '=' . self::label($release[$field] ?? null)));
             }
             $applications[$field] = $parts[1];
         }
         if ($applications['itsmversion'] !== $applications['version']) {
-            throw new \RuntimeException(self::diagnostic('Contradictory ITSM historical application aliases: itsmversion=' . self::label($release['itsmversion']) . ', version=' . self::label($release['version'])));
+            throw new RuntimeException(self::diagnostic('Contradictory ITSM historical application aliases: itsmversion=' . self::label($release['itsmversion']) . ', version=' . self::label($release['version'])));
         }
         return 'historical-release';
     }
@@ -141,7 +148,7 @@ final class LegacyAdoptionEligibility
         }
         $seed = self::receipt($states, Seeds::PHASE);
         if (($baseline['complete'] ?? false) !== true || ($seed['complete'] ?? false) !== true || ($seed['origin'] ?? null) !== 'installed') {
-            throw new \RuntimeException('Resume the unfinished installation with db:install using this configuration before applying upgrades. Its existing baseline and seed journal will resume without replacing application data.');
+            throw new RuntimeException('Resume the unfinished installation with db:install using this configuration before applying upgrades. Its existing baseline and seed journal will resume without replacing application data.');
         }
         return true;
     }
@@ -150,7 +157,7 @@ final class LegacyAdoptionEligibility
     {
         $state = $states[$version] ?? null;
         if ($state !== null && !is_array($state)) {
-            throw new \RuntimeException('Unrecognized canonical journal: ' . $version . '. Preserve its original state and reconcile it with the actual schema/source before retrying.');
+            throw new RuntimeException('Unrecognized canonical journal: ' . $version . '. Preserve its original state and reconcile it with the actual schema/source before retrying.');
         }
         return $state;
     }
