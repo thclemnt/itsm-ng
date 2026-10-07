@@ -9,12 +9,12 @@ class PluginRecursionOwner extends CommonTreeDropdown
 class PluginRecursionLink extends CommonDBTM
 {
     public static array $relations = [];
-    public static array $updates = [];
+    public static array $lifecycleUpdates = [];
     public static bool $refuseUpdate = false;
 
     public function prepareInputForUpdate($input)
     {
-        self::$updates[] = $input;
+        self::$lifecycleUpdates[] = $input;
         return self::$refuseUpdate ? false : parent::prepareInputForUpdate($input);
     }
 }

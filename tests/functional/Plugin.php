@@ -125,24 +125,24 @@ class Plugin extends DbTestCase
             $this->boolean($manufacturer->getFromDB($manufacturer->getID()))->isTrue('A child veto preserves the core parent');
             $this->integer((int)$connection->fetchOne('SELECT targets_id FROM ' . $connection->quoteIdentifier($linkTable) . ' WHERE id = 101'))->isIdenticalTo((int)$manufacturer->getID());
             \PluginRecursionLink::$refuseUpdate = false;
-            \PluginRecursionLink::$updates = [];
+            \PluginRecursionLink::$lifecycleUpdates = [];
             $this->boolean($manufacturer->delete(['id' => $manufacturer->getID(), '_replace_by' => $replacement->getID()], true, false))->isTrue();
-            $this->array(\PluginRecursionLink::$updates)->hasSize(1);
-            $this->integer((int)\PluginRecursionLink::$updates[0]['id'])->isIdenticalTo(101);
+            $this->array(\PluginRecursionLink::$lifecycleUpdates)->hasSize(1);
+            $this->integer((int)\PluginRecursionLink::$lifecycleUpdates[0]['id'])->isIdenticalTo(101);
             $this->integer((int)$connection->fetchOne('SELECT targets_id FROM ' . $connection->quoteIdentifier($linkTable) . ' WHERE id = 101'))->isIdenticalTo((int)$replacement->getID());
-            \PluginRecursionLink::$updates = [];
+            \PluginRecursionLink::$lifecycleUpdates = [];
             $this->boolean($replacement->delete(['id' => $replacement->getID()], true, false))->isTrue();
-            $this->array(\PluginRecursionLink::$updates)->hasSize(2);
+            $this->array(\PluginRecursionLink::$lifecycleUpdates)->hasSize(2);
             $this->array(array_map('intval', $connection->fetchFirstColumn('SELECT targets_id FROM ' . $connection->quoteIdentifier($linkTable) . ' ORDER BY id')))->isIdenticalTo([0, 0]);
             $connection->insert($dropdownTable, ['id' => 100, 'name' => 'plugin parent', 'entities_id' => $entity]);
             $connection->insert($dropdownTable, ['id' => 101, 'name' => 'replacement', 'entities_id' => $entity]);
             $connection->update($linkTable, ['items_id' => 100, 'itemtype' => \PluginRecursionDropdown::class], ['id' => 101]);
             $connection->update($linkTable, ['items_id' => 100, 'itemtype' => \Manufacturer::class], ['id' => 102]);
             \PluginRecursionLink::$relations = [$dropdownTable => [$linkTable => ['items_id', 'itemtype']]];
-            \PluginRecursionLink::$updates = [];
+            \PluginRecursionLink::$lifecycleUpdates = [];
             $parent = new \PluginRecursionDropdown();
             $this->boolean($parent->delete(['id' => 100, '_replace_by' => 101], true, false))->isTrue();
-            $this->array(\PluginRecursionLink::$updates)->hasSize(1);
+            $this->array(\PluginRecursionLink::$lifecycleUpdates)->hasSize(1);
             $this->array(array_map('intval', $connection->fetchFirstColumn('SELECT items_id FROM ' . $connection->quoteIdentifier($linkTable) . ' ORDER BY id')))->isIdenticalTo([101, 100]);
             $this->boolean($parent->getFromDB(101))->isTrue('The replacement survives the public purge');
         });
@@ -159,9 +159,9 @@ class Plugin extends DbTestCase
             \PluginRecursionLink::$relations = [\Manufacturer::getTable() => [$linkTable => 'targets_id']];
             $this->boolean($parent->isUsed())->isTrue();
             $this->boolean($parent->delete(['id' => $parent->getID(), '_replace_by' => $replacement->getID()], true, false))->isTrue();
-            $this->array(\PluginRecursionLink::$updates)->hasSize(1);
-            $this->integer((int)\PluginRecursionLink::$updates[0]['public_id'])->isIdenticalTo(900);
-            $this->boolean(\PluginRecursionLink::$updates[0]['_disablenotif'])->isTrue();
+            $this->array(\PluginRecursionLink::$lifecycleUpdates)->hasSize(1);
+            $this->integer((int)\PluginRecursionLink::$lifecycleUpdates[0]['public_id'])->isIdenticalTo(900);
+            $this->boolean(\PluginRecursionLink::$lifecycleUpdates[0]['_disablenotif'])->isTrue();
             $this->integer((int)$connection->fetchOne('SELECT targets_id FROM ' . $connection->quoteIdentifier($linkTable) . ' WHERE id = 100'))
                 ->isIdenticalTo((int)$replacement->getID());
             $this->integer((int)$connection->fetchOne('SELECT targets_id FROM ' . $connection->quoteIdentifier($linkTable) . ' WHERE id = 900'))
@@ -180,7 +180,7 @@ class Plugin extends DbTestCase
         $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
         $active = $plugins->getValue();
         $declarations = \PluginRecursionLink::$relations;
-        $updates = \PluginRecursionLink::$updates;
+        $updates = \PluginRecursionLink::$lifecycleUpdates;
         $refuse = \PluginRecursionLink::$refuseUpdate;
         $additions = \PluginRecursionDropdown::$additions;
         $caller = $original->getDoctrineConnection();
@@ -231,7 +231,7 @@ class Plugin extends DbTestCase
                 $this->boolean(\Plugin::registerClass($class))->isTrue();
             }
             \PluginRecursionLink::$relations = [];
-            \PluginRecursionLink::$updates = [];
+            \PluginRecursionLink::$lifecycleUpdates = [];
             \PluginRecursionLink::$refuseUpdate = false;
             \PluginRecursionDropdown::$additions = 0;
             $this->login();
@@ -246,7 +246,7 @@ class Plugin extends DbTestCase
             $_SESSION = $session;
             $plugins->setValue(null, $active);
             \PluginRecursionLink::$relations = $declarations;
-            \PluginRecursionLink::$updates = $updates;
+            \PluginRecursionLink::$lifecycleUpdates = $updates;
             \PluginRecursionLink::$refuseUpdate = $refuse;
             \PluginRecursionDropdown::$additions = $additions;
             try {
