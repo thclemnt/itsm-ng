@@ -6,6 +6,7 @@ namespace itsmng\Database;
 
 use Doctrine\ORM\EntityRepository;
 use itsmng\Database\Repository\DropdownChoiceRepository;
+use itsmng\Database\Repository\DropdownTranslationRepository;
 use ReflectionClass;
 
 /** Own only the built-in scalar choice query, never arbitrary repository overrides. */
@@ -27,12 +28,12 @@ final class DropdownReadOperation implements ReadQueryOwner
                     && empty($metadata->fieldMappings[$field]->enumType);
             }
             if ($scalarColumns) {
-                return (new Repository\DropdownTranslationRepository($this->manager))->nativeLabel($table, $id, $columns);
+                return (new DropdownTranslationRepository($this->manager))->nativeLabel($table, $id, $columns);
             }
         }
         $fallback = $this->fallbackManager();
         try {
-            return (new Repository\DropdownTranslationRepository($fallback))->dropdownRow($table, $id, $type, $language, $translations, $columns);
+            return (new DropdownTranslationRepository($fallback))->dropdownRow($table, $id, $type, $language, $translations, $columns);
         } finally {
             $fallback->clear();
         }

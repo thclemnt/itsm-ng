@@ -31,6 +31,23 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\DeletionUnit;
+use itsmng\Database\DropdownReadOperation;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\EntityScopeReadOperation;
+use itsmng\Database\Expressions;
+use itsmng\Database\LegacyValues;
+use itsmng\Database\MappedReads;
+use itsmng\Database\MappedStorage;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\AutoNameRepository;
+use itsmng\Database\Repository\TreeRepository;
+use itsmng\Database\RowIterator;
+use itsmng\Database\TreeReadOperation;
+use itsmng\Database\UnsupportedCriteria;
+use itsmng\Database\UserDisplayReadOperation;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -43,7 +60,7 @@ if (!defined('GLPI_ROOT')) {
  */
 final class DbUtils
 {
-    public function __construct(private readonly ?\itsmng\Database\EntityScopeReadOperation $treeReads = null)
+    public function __construct(private readonly ?EntityScopeReadOperation $treeReads = null)
     {
     }
 
@@ -372,8 +389,8 @@ final class DbUtils
         }
         if (count($table) === 1 && array_is_list($table) && is_string($table[0]) && is_array($condition)) {
             try {
-                return \itsmng\Database\MappedReads::countMatching($DB, $table[0], $condition);
-            } catch (\itsmng\Database\UnsupportedCriteria $unsupported) {
+                return MappedReads::countMatching($DB, $table[0], $condition);
+            } catch (UnsupportedCriteria $unsupported) {
                 // Joins, aggregate options and unmapped plugin tables need dedicated queries.
             }
         }
@@ -578,7 +595,7 @@ final class DbUtils
                 $field = "entities_id";
             }
         }
-        $globalScope = \itsmng\Database\EntityRegistry::hasPolicy($table, $field, \itsmng\Database\Mapping\ReferenceKind::GlobalScope);
+        $globalScope = EntityRegistry::hasPolicy($table, $field, ReferenceKind::GlobalScope);
         if (empty($table)) {
             $field = $DB->quoteName($field);
         } else {
@@ -682,7 +699,7 @@ final class DbUtils
                 $field = "entities_id";
             }
         }
-        $globalScope = \itsmng\Database\EntityRegistry::hasPolicy($table, $field, \itsmng\Database\Mapping\ReferenceKind::GlobalScope);
+        $globalScope = EntityRegistry::hasPolicy($table, $field, ReferenceKind::GlobalScope);
         if (!empty($table)) {
             $field = "$table.$field";
         }
@@ -750,7 +767,7 @@ final class DbUtils
         global $DB, $GLPI_CACHE;
 
         $connection = $DB->getDoctrineConnection();
-        $privateTree = $connection->isTransactionActive() || \itsmng\Database\DeletionUnit::isActive($connection);
+        $privateTree = $connection->isTransactionActive() || DeletionUnit::isActive($connection);
 
         $ckey = 'sons_cache_' . $table . '_' . $IDf;
         $sons = false;
@@ -829,8 +846,8 @@ final class DbUtils
     {
         global $DB;
 
-        return \itsmng\Database\MappedStorage::supports($table)
-            ? in_array($column, \itsmng\Database\EntityRegistry::columnNames($table), true)
+        return MappedStorage::supports($table)
+            ? in_array($column, EntityRegistry::columnNames($table), true)
             : $DB->fieldExists($table, $column);
     }
 
@@ -838,11 +855,11 @@ final class DbUtils
     {
         global $DB;
 
-        if (\itsmng\Database\MappedStorage::supports($table)) {
+        if (MappedStorage::supports($table)) {
             if ($this->treeReads !== null) {
                 return $this->treeReads->rows($DB, $table, $fields, $criteria);
             }
-            return (new \itsmng\Database\TreeReadOperation($DB->getDoctrineConnection()))->rows($table, $fields, $criteria);
+            return (new TreeReadOperation($DB->getDoctrineConnection()))->rows($table, $fields, $criteria);
         }
         return array_values(iterator_to_array($DB->request(['SELECT' => $fields, 'FROM' => $table, 'WHERE' => $criteria])));
     }
@@ -851,9 +868,9 @@ final class DbUtils
     {
         global $DB;
 
-        if (\itsmng\Database\MappedStorage::supports($table)) {
-            (new \itsmng\Database\Repository\TreeRepository(\itsmng\Database\Orm::create($DB)))
-                ->updateDerived($table, [$id], [$field => \itsmng\Database\LegacyValues::decode($value)]);
+        if (MappedStorage::supports($table)) {
+            (new TreeRepository(Orm::create($DB)))
+                ->updateDerived($table, [$id], [$field => LegacyValues::decode($value)]);
         } else {
             $DB->update($table, [$field => $value], ['id' => $id]);
         }
@@ -864,8 +881,8 @@ final class DbUtils
     {
         global $DB;
 
-        if (isset(\itsmng\Database\EntityRegistry::tables()[$table])) {
-            return \itsmng\Database\MappedReads::identifiers($DB, $table, 'id', [$parentColumn => $parents], $order);
+        if (isset(EntityRegistry::tables()[$table])) {
+            return MappedReads::identifiers($DB, $table, 'id', [$parentColumn => $parents], $order);
         }
         return array_map('intval', array_column(iterator_to_array($DB->request([
             'SELECT' => 'id', 'FROM' => $table, 'WHERE' => [$parentColumn => $parents], 'ORDER' => $order,
@@ -885,7 +902,7 @@ final class DbUtils
         global $DB, $GLPI_CACHE;
 
         $connection = $DB->getDoctrineConnection();
-        $privateTree = $connection->isTransactionActive() || \itsmng\Database\DeletionUnit::isActive($connection);
+        $privateTree = $connection->isTransactionActive() || DeletionUnit::isActive($connection);
 
         $ckey = 'ancestors_cache_';
         if (is_array($items_id)) {
@@ -1036,8 +1053,8 @@ final class DbUtils
         $name    = "";
         $comment = "";
 
-        $SELECTNAME    = new \QueryExpression("'' AS " . $DB->quoteName('transname'));
-        $SELECTCOMMENT = new \QueryExpression("'' AS " . $DB->quoteName('transcomment'));
+        $SELECTNAME    = new QueryExpression("'' AS " . $DB->quoteName('transname'));
+        $SELECTCOMMENT = new QueryExpression("'' AS " . $DB->quoteName('transcomment'));
         $JOIN          = [];
         $JOINS         = [];
         if ($translate) {
@@ -1137,7 +1154,7 @@ final class DbUtils
         $name    = "";
         $comment = "";
 
-        if (isset(\itsmng\Database\EntityRegistry::tables()[$table])) {
+        if (isset(EntityRegistry::tables()[$table])) {
             $type = $this->getItemTypeForTable($table);
             $translations = [];
             foreach (['completename', 'comment'] as $field) {
@@ -1149,12 +1166,12 @@ final class DbUtils
             if ($table === Location::getTable()) {
                 $columns = array_merge($columns, ['address', 'town', 'country']);
             }
-            $result = (new \itsmng\Database\DropdownReadOperation($DB->getDoctrineConnection()))
+            $result = (new DropdownReadOperation($DB->getDoctrineConnection()))
                 ->label($table, (int)$ID, $type, $_SESSION['glpilanguage'] ?? '', $translations, $columns);
-            $iterator = new \itsmng\Database\RowIterator($result === null ? [] : [$result]);
+            $iterator = new RowIterator($result === null ? [] : [$result]);
         } else {
-            $SELECTNAME    = new \QueryExpression("'' AS " . $DB->quoteName('transname'));
-            $SELECTCOMMENT = new \QueryExpression("'' AS " . $DB->quoteName('transcomment'));
+            $SELECTNAME    = new QueryExpression("'' AS " . $DB->quoteName('transname'));
+            $SELECTCOMMENT = new QueryExpression("'' AS " . $DB->quoteName('transcomment'));
             $JOIN          = [];
             $JOINS         = [];
             if ($translate) {
@@ -1600,7 +1617,7 @@ final class DbUtils
         }
 
         if ($ID) {
-            $data = (new \itsmng\Database\UserDisplayReadOperation($DB->getDoctrineConnection()))
+            $data = (new UserDisplayReadOperation($DB->getDoctrineConnection()))
                 ->displayData((int)$ID);
 
             if ($link == 2) {
@@ -1752,7 +1769,7 @@ final class DbUtils
                 // Bind the pattern with an explicit escape: %, _ and ! in the
                 // template are literals; only # contributes a wildcard.
                 $like = strtr($autoNum, ['!' => '!!', '%' => '!%', '_' => '!_', '#' => '_']);
-                $numbers = new \itsmng\Database\Repository\AutoNameRepository(\itsmng\Database\Orm::create($DB));
+                $numbers = new AutoNameRepository(Orm::create($DB));
                 $entity = $CFG_GLPI['use_autoname_by_entity'] && $entities_id >= 0 ? (int)$entities_id : null;
                 if ($itemtype === 'Infocom') {
                     $maximum = $numbers->financialMaximum($field, $like, $pos, $len);
@@ -1760,13 +1777,13 @@ final class DbUtils
                     $maximum = $numbers->globalAssetMaximum($field, $like, $pos, $len, $entity);
                 } else {
                     $table = $this->getTableForItemType($itemtype);
-                    $class = \itsmng\Database\EntityRegistry::tables()[$table] ?? null;
+                    $class = EntityRegistry::tables()[$table] ?? null;
                     if ($class !== null) {
                         $maximum = $numbers->assetMaximum($class, $field, $like, $pos, $len, $entity);
                     } elseif (isPluginItemType($itemtype)) {
                         $maximum = $numbers->pluginAssetMaximum($table, $field, $like, $pos, $len, $entity);
                     } else {
-                        throw new \InvalidArgumentException('Automatic numbering requires a mapped item type.');
+                        throw new InvalidArgumentException('Automatic numbering requires a mapped item type.');
                     }
                 }
                 // Retain the public increment/formatting behavior, including the
@@ -1834,7 +1851,7 @@ final class DbUtils
 
         if (is_string($end) && preg_match($date_pattern, $end) === 1) {
             $end_expr = new QueryExpression(
-                (new \itsmng\Database\Expressions($DB->getDoctrineConnection()->getDatabasePlatform()))->dateAdd($DB->quoteValue($end), 1, 'DAY')
+                (new Expressions($DB->getDoctrineConnection()->getDatabasePlatform()))->dateAdd($DB->quoteValue($end), 1, 'DAY')
             );
             $criteria[] = [$field => ['<=', $end_expr]];
         } elseif ($end !== null && $end !== '') {

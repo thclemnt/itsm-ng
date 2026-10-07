@@ -31,6 +31,13 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\DropdownChoiceContext;
+use itsmng\Database\DropdownReadOperation;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\EntityScopeReadOperation;
+use itsmng\Database\RowIterator;
+use itsmng\Database\UnmappedDropdownChoices;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -186,7 +193,7 @@ class Dropdown
               'specific_tags'        => $params['specific_tags'],
         ];
 
-        $p['_idor_token'] = \itsmng\Database\DropdownChoiceContext::token($itemtype, $p);
+        $p['_idor_token'] = DropdownChoiceContext::token($itemtype, $p);
 
         $output = "<span class='no-wrap input-group'>";
         $output .= Html::jsAjaxDropdown(
@@ -350,7 +357,7 @@ class Dropdown
         $comment = "";
 
         if ($id) {
-            if (isset(\itsmng\Database\EntityRegistry::tables()[$table])) {
+            if (isset(EntityRegistry::tables()[$table])) {
                 $type = getItemTypeForTable($table);
                 $translations = [];
                 foreach (['name', 'comment'] as $field) {
@@ -360,14 +367,14 @@ class Dropdown
                 }
                 $columns = array_values(array_intersect(
                     $item->getDropdownNameFields((bool)$tooltip),
-                    \itsmng\Database\EntityRegistry::columnNames($table)
+                    EntityRegistry::columnNames($table)
                 ));
-                $data = (new \itsmng\Database\DropdownReadOperation($DB->getDoctrineConnection()))
+                $data = (new DropdownReadOperation($DB->getDoctrineConnection()))
                     ->label($table, (int)$id, $type, $_SESSION['glpilanguage'] ?? '', $translations, $columns);
-                $iterator = new \itsmng\Database\RowIterator($data === null ? [] : [$data]);
+                $iterator = new RowIterator($data === null ? [] : [$data]);
             } else {
-                $SELECTNAME    = new \QueryExpression("'' AS " . $DB->quoteName('transname'));
-                $SELECTCOMMENT = new \QueryExpression("'' AS " . $DB->quoteName('transcomment'));
+                $SELECTNAME    = new QueryExpression("'' AS " . $DB->quoteName('transname'));
+                $SELECTCOMMENT = new QueryExpression("'' AS " . $DB->quoteName('transcomment'));
                 $JOIN          = [];
                 $JOINS         = [];
                 if ($translate) {
@@ -2407,7 +2414,7 @@ class Dropdown
     {
         global $DB, $CFG_GLPI;
 
-        $scopeReads = new \itsmng\Database\EntityScopeReadOperation();
+        $scopeReads = new EntityScopeReadOperation();
 
         // Trusted PHP callers already own their component authorization. The
         // public AJAX boundary validates the issued kind and complete context.
@@ -3125,9 +3132,9 @@ class Dropdown
     /** An association's property owns its label target, including subject projections. */
     private static function choiceDisplayValue(string $table, string $column, array $row): mixed
     {
-        if (isset(\itsmng\Database\EntityRegistry::tables()[$table])) {
-            $target = \itsmng\Database\EntityRegistry::relations()[$table][$column] ?? null;
-            $selection = \itsmng\Database\EntityRegistry::discriminatedReferences($table)[$column] ?? null;
+        if (isset(EntityRegistry::tables()[$table])) {
+            $target = EntityRegistry::relations()[$table][$column] ?? null;
+            $selection = EntityRegistry::discriminatedReferences($table)[$column] ?? null;
             if ($selection !== null) {
                 $target = $selection['selections'][$row[$selection['discriminator']]]['target'] ?? null;
             }
@@ -3138,9 +3145,9 @@ class Dropdown
     }
 
     /** Mapped choices cannot silently fall back to a plugin's SQL contract. */
-    private static function choiceRows(DBAdapter $database, CommonDBTM $model, array $criteria, array $order, array $translations, string $kind, int $limit, int $offset, ?\itsmng\Database\EntityScopeReadOperation $scopeReads = null): iterable
+    private static function choiceRows(DBAdapter $database, CommonDBTM $model, array $criteria, array $order, array $translations, string $kind, int $limit, int $offset, ?EntityScopeReadOperation $scopeReads = null): iterable
     {
-        $scopeReads ??= new \itsmng\Database\EntityScopeReadOperation();
+        $scopeReads ??= new EntityScopeReadOperation();
         $table = $model->getTable();
         if ($model->isEntityAssign() && !$model->maybePrivate()) {
             $scope = Session::getActiveEntityScope();
@@ -3155,8 +3162,8 @@ class Dropdown
                 ) : false;
             }
         }
-        if (isset(\itsmng\Database\EntityRegistry::tables()[$table])) {
-            return (new \itsmng\Database\DropdownReadOperation($database->getDoctrineConnection()))->choices(
+        if (isset(EntityRegistry::tables()[$table])) {
+            return (new DropdownReadOperation($database->getDoctrineConnection()))->choices(
                 $table,
                 $criteria,
                 $order,
@@ -3167,7 +3174,7 @@ class Dropdown
                 $offset
             );
         }
-        return \itsmng\Database\UnmappedDropdownChoices::read(
+        return UnmappedDropdownChoices::read(
             $database,
             $table,
             $criteria,

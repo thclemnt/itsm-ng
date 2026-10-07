@@ -4,8 +4,11 @@
 
 namespace itsmng\Database\Repository;
 
+use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\NonUniqueResultException;
+use Doctrine\ORM\NoResultException;
 use itsmng\Database\Entity\DropdownTranslation;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\RecordCriteria;
@@ -24,9 +27,15 @@ final class DropdownTranslationRepository
 
     public function available(string $language): array
     {
-        return $this->em->createQueryBuilder()->select('DISTINCT t.itemtype, t.field')->from(DropdownTranslation::class, 't')
-            ->where('t.language = :language')->setParameter('language', $language, Types::STRING)
-            ->orderBy('t.itemtype')->addOrderBy('t.field')->getQuery()->getScalarResult();
+        return $this->em->createQueryBuilder()
+            ->select('DISTINCT t.itemtype, t.field')
+            ->from(DropdownTranslation::class, 't')
+            ->where('t.language = :language')
+            ->setParameter('language', $language, Types::STRING)
+            ->orderBy('t.itemtype')
+            ->addOrderBy('t.field')
+            ->getQuery()
+            ->getScalarResult();
     }
 
     /** Snapshot only identifiers before recursive translation hooks update descendants. */
@@ -39,9 +48,15 @@ final class DropdownTranslationRepository
     public function dropdownId(string $table, string $field, string $value): ?int
     {
         $class = EntityRegistry::tables()[$table];
-        $query = $this->em->createQueryBuilder()->select('r.id')->from($class, 'r');
+        $query = $this->em->createQueryBuilder()
+            ->select('r.id')
+            ->from($class, 'r');
         $compiler = new RecordCriteria($query, $this->em->getClassMetadata($class), false);
-        $ids = $query->where($compiler->where([$field => $value]))->orderBy('r.id')->setMaxResults(1)->getQuery()->getSingleColumnResult();
+        $ids = $query->where($compiler->where([$field => $value]))
+            ->orderBy('r.id')
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getSingleColumnResult();
         return $ids ? (int)$ids[0] : null;
     }
 
@@ -62,27 +77,32 @@ final class DropdownTranslationRepository
         $select = [];
         try {
             foreach ($fields as $alias => $field) {
-                $types[$alias] = \Doctrine\DBAL\Types\Type::getType($metadata->getTypeOfField($field));
+                $types[$alias] = Type::getType($metadata->getTypeOfField($field));
                 $select[] = $types[$alias]->convertToPHPValueSQL('r.' . $quote->getColumnName($field, $metadata, $platform), $platform)
-                    . ' AS ' . $platform->quoteSingleIdentifier($alias);
+                . ' AS ' . $platform->quoteSingleIdentifier($alias);
             }
-            $idType = \Doctrine\DBAL\Types\Type::getType(Types::INTEGER);
-            $rows = $connection->createQueryBuilder()->select(...$select)
+            $idType = Type::getType(Types::INTEGER);
+            $rows = $connection->createQueryBuilder()
+                ->select(...$select)
                 ->from($quote->getTableName($metadata, $platform), 'r')
-                ->where('r.' . $quote->getColumnName('id', $metadata, $platform)
-                    . ' = ' . $idType->convertToDatabaseValueSQL('?', $platform))
-                ->setParameter(0, $id, Types::INTEGER)->executeQuery()->fetchAllAssociative();
+                ->where(
+                    'r.' . $quote->getColumnName('id', $metadata, $platform)
+                    . ' = ' . $idType->convertToDatabaseValueSQL('?', $platform)
+                )
+                ->setParameter(0, $id, Types::INTEGER)
+                ->executeQuery()
+                ->fetchAllAssociative();
             foreach ($rows as &$row) {
                 foreach ($types as $alias => $fieldType) {
                     $row[$alias] = $fieldType->convertToPHPValue($row[$alias], $platform);
                 }
             }
             unset($row);
-        } catch (\Doctrine\ORM\NoResultException) {
+        } catch (NoResultException) {
             return null;
         }
         if (count($rows) > 1) {
-            throw new \Doctrine\ORM\NonUniqueResultException();
+            throw new NonUniqueResultException();
         }
         if (!$rows) {
             return null;
@@ -100,14 +120,17 @@ final class DropdownTranslationRepository
         $translations = array_values($translations);
         $columns = $columns === null ? null : array_values($columns);
         $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
-        $query = $this->em->createQueryBuilder()->from($metadata->name, 'r')
-            ->where('r.id = :id')->setParameter('id', $id, Types::INTEGER);
+        $query = $this->em->createQueryBuilder()
+            ->from($metadata->name, 'r')
+            ->where('r.id = :id')
+            ->setParameter('id', $id, Types::INTEGER);
         if ($columns === null) {
             $query->select('r');
         } else {
             // Keep one result for this root, as object hydration did even when
             // historical translation rows duplicated a joined key.
-            $query->select('r.id AS dropdownRecordId')->indexBy('r', 'r.id');
+            $query->select('r.id AS dropdownRecordId')
+                ->indexBy('r', 'r.id');
             $compiler = new RecordCriteria($query, $metadata, false);
             foreach ($columns as $index => $column) {
                 $query->addSelect($compiler->column($column) . ' AS column' . $index);
@@ -115,12 +138,19 @@ final class DropdownTranslationRepository
         }
         foreach ($translations as $index => $field) {
             $alias = 'translation' . $index;
-            $query->leftJoin(DropdownTranslation::class, $alias, 'WITH', $alias . '.items_id = r.id AND '
-                . $alias . '.itemtype = :type AND ' . $alias . '.language = :language AND ' . $alias . '.field = :field' . $index)
-                ->addSelect($alias . '.value AS translated' . $index)->setParameter('field' . $index, $field, Types::STRING);
+            $query->leftJoin(
+                DropdownTranslation::class,
+                $alias,
+                'WITH',
+                $alias . '.items_id = r.id AND '
+                . $alias . '.itemtype = :type AND ' . $alias . '.language = :language AND ' . $alias . '.field = :field' . $index
+            )
+                ->addSelect($alias . '.value AS translated' . $index)
+                ->setParameter('field' . $index, $field, Types::STRING);
         }
         if ($translations) {
-            $query->setParameter('type', $type, Types::STRING)->setParameter('language', $language, Types::STRING);
+            $query->setParameter('type', $type, Types::STRING)
+                ->setParameter('language', $language, Types::STRING);
         }
         $result = $query->getQuery()->getOneOrNullResult();
         if ($result === null) {
