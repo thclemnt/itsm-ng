@@ -34,6 +34,8 @@ if (!defined('GLPI_ROOT')) {
  * along with GLPI. If not, see <http://www.gnu.org/licenses/>.
  * ---------------------------------------------------------------------
  **/
+use itsmng\Database\ApplianceOwnerReadOperation;
+
 class Appliance_Item extends CommonDBRelation
 {
     use Glpi\Features\Clonable;
@@ -562,7 +564,7 @@ class Appliance_Item extends CommonDBRelation
     {
         global $DB;
         $criteria = Session::isCron() ? [] : getEntitiesRestrictCriteria(Appliance::getTable(), '', '', 'auto');
-        return (new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB)))
+        return (new ApplianceOwnerReadOperation($DB->getDoctrineConnection()))
             ->ownerCount($item->getType(), (int)$item->getID(), $criteria);
     }
 

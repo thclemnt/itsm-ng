@@ -98,6 +98,62 @@ class Appliance_Item extends DbTestCase
         $this->boolean($appliance->getFromDB($appliance_2))->isTrue();
         $this->integer(\Appliance_Item::countForMainItem($appliance))->isIdenticalTo(2);
 
+        $connection = $DB->getDoctrineConnection();
+        $manager = \itsmng\Database\Orm::forConnection($connection);
+        $repository = new \itsmng\Database\Repository\ApplianceAssetRepository($manager);
+        $computer = getItemByTypeName('Computer', '_test_pc01');
+        $expected = $repository->ownerCount('Computer', (int)$computer->getID(), []);
+        $this->integer($expected)->isGreaterThanOrEqualTo(2);
+        $probe = new ApplianceOwnerCountProbe($connection);
+        $originalAdapter = $DB;
+        $originalSession = $_SESSION;
+        $this->mockGenerator->orphanize('__construct');
+        $adapter = new \mock\DBmysql();
+        $this->calling($adapter)->getDoctrineConnection = $probe;
+        $this->calling($adapter)->getProvider = $originalAdapter->getProvider();
+        try {
+            $_SESSION['glpishowallentities'] = true;
+            $DB = $adapter;
+            $this->integer(\Appliance_Item::countForItem($computer))->isIdenticalTo($expected);
+            $this->array($probe->queries)->hasSize(1);
+            $this->integer($probe->builders)->isIdenticalTo(1);
+        } finally {
+            $DB = $originalAdapter;
+            $_SESSION = $originalSession;
+        }
+        $reader = new \itsmng\Database\ApplianceOwnerReadOperation($probe);
+        try {
+            foreach ([[], ['glpi_appliances.entities_id' => 0], ['glpi_appliances.entities_id' => [0, '1']],
+                ['glpi_appliances.entities_id' => []], ['OR' => ['glpi_appliances.entities_id' => 0, 'glpi_appliances.is_recursive' => true]]] as $criteria) {
+                if ($criteria === ['glpi_appliances.entities_id' => []]) {
+                    $this->exception(static fn () => $reader->ownerCount('Computer', (int)$computer->getID(), $criteria))->isInstanceOf(\RuntimeException::class);
+                    continue;
+                }
+                $before = $probe->builders;
+                $this->integer($reader->ownerCount('Computer', (int)$computer->getID(), $criteria))
+                    ->isIdenticalTo($repository->ownerCount('Computer', (int)$computer->getID(), $criteria));
+                $this->integer($probe->builders - $before)->isIdenticalTo(isset($criteria['OR']) ? 0 : 1);
+            }
+            $this->integer($reader->ownerCount('Computer', 0, []))->isIdenticalTo(0);
+            $this->integer($reader->ownerCount('UnknownApplianceAsset', (int)$computer->getID(), []))->isIdenticalTo(0);
+            $originalType = \Doctrine\DBAL\Types\Type::getType(\Doctrine\DBAL\Types\Types::BIGINT);
+            try {
+                \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::BIGINT, new class () extends \Doctrine\DBAL\Types\BigIntType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                    {
+                        return 'CASE WHEN ' . $sqlExpr . ' = -1 THEN -1 ELSE -1 END';
+                    }
+                });
+                $this->integer($reader->ownerCount('Computer', (int)$computer->getID(), []))->isIdenticalTo(0);
+                $this->integer($repository->ownerCount('Computer', (int)$computer->getID(), []))->isIdenticalTo(0);
+            } finally {
+                \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::BIGINT, $originalType);
+            }
+        } finally {
+            $reader->close();
+            $manager->close();
+        }
+
         $this->boolean($appliance->getFromDB($appliance_1))->isTrue();
         $this->boolean($appliance->delete(['id' => $appliance_1], true))->isTrue();
 
@@ -109,5 +165,34 @@ class Appliance_Item extends DbTestCase
            'WHERE'  => ['appliances_id' => [$appliance_1, $appliance_2]]
         ]);
         $this->integer(count($iterator))->isIdenticalTo(0);
+    }
+}
+
+/** Observe the selected transaction without a second socket. */
+class ApplianceOwnerCountProbe extends \Doctrine\DBAL\Connection
+{
+    public int $builders = 0;
+    public array $queries = [];
+
+    public function __construct(private readonly \Doctrine\DBAL\Connection $selected)
+    {
+        parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
+    }
+
+    public function getDatabasePlatform(): \Doctrine\DBAL\Platforms\AbstractPlatform
+    {
+        return $this->selected->getDatabasePlatform();
+    }
+
+    public function createQueryBuilder(): \Doctrine\DBAL\Query\QueryBuilder
+    {
+        ++$this->builders;
+        return parent::createQueryBuilder();
+    }
+
+    public function executeQuery(string $sql, array $params = [], array $types = [], ?\Doctrine\DBAL\Cache\QueryCacheProfile $qcp = null): \Doctrine\DBAL\Result
+    {
+        $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
+        return $this->selected->executeQuery($sql, $params, $types, $qcp);
     }
 }

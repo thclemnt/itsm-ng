@@ -4,6 +4,7 @@
 
 namespace itsmng\Database\Repository;
 
+use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
@@ -70,6 +71,42 @@ final class ApplianceAssetRepository
     {
         $query = $this->ownerQuery($kind, $asset, $criteria);
         return $query === null ? 0 : (int)$query->select('COUNT(l.id)')->getQuery()->getSingleScalarResult();
+    }
+
+    /** Fixed private reverse count; direct entity membership retains each binding. */
+    public function nativeOwnerCount(string $kind, int $asset, ?array $entities): int
+    {
+        if ($asset <= 0) {
+            return 0;
+        }
+        try {
+            $subject = ApplianceItem::referenceAssociation($kind);
+        } catch (\InvalidArgumentException) {
+            return 0;
+        }
+        $owner = $this->em->getClassMetadata(Appliance::class);
+        $link = $this->em->getClassMetadata(ApplianceItem::class);
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $linkColumn = static fn (string $field): string => 'l.' . $quote->getJoinColumnName($link->associationMappings[$field]->joinColumns[0], $link, $platform);
+        $query = $connection->createQueryBuilder()
+            ->select('COUNT(l.' . $quote->getColumnName('id', $link, $platform) . ')')
+            ->from($quote->getTableName($owner, $platform), 'r')
+            ->innerJoin('r', $quote->getTableName($link, $platform), 'l', $linkColumn('appliances') . ' = r.' . $quote->getColumnName('id', $owner, $platform))
+            ->where($linkColumn($subject) . ' = ' . Type::getType(Types::BIGINT)->convertToDatabaseValueSQL('?', $platform))
+            ->setParameter(0, $asset, Types::BIGINT);
+        if ($entities !== null) {
+            $parameters = [];
+            foreach ($entities as $index => $entity) {
+                // RecordCriteria binds each association-list element as INTEGER.
+                $parameters[] = Type::getType(Types::INTEGER)->convertToDatabaseValueSQL('?', $platform);
+                $query->setParameter($index + 1, (int)$entity, Types::INTEGER);
+            }
+            $entity = 'r.' . $quote->getJoinColumnName($owner->associationMappings['entities']->joinColumns[0], $owner, $platform);
+            $query->andWhere($entity . ' IN (' . implode(', ', $parameters) . ')');
+        }
+        return (int)$query->executeQuery()->fetchOne();
     }
 
     public function hasAsset(int $appliance, string $kind, int $asset): bool
