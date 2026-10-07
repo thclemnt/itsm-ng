@@ -36,6 +36,11 @@ if (!defined('GLPI_ROOT')) {
 }
 
 use Glpi\Toolbox\URL;
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DomainRepository;
+use itsmng\Database\Repository\InfocomRepository;
+use itsmng\Reporting\Criteria;
 
 /**
  * Supplier class (suppliers)
@@ -68,6 +73,39 @@ class Supplier extends CommonDBTM
         );
     }
 
+
+    public function prepareInputForUpdate($input)
+    {
+        if (!array_key_exists('entities_id', $input) && !array_key_exists('is_recursive', $input)) {
+            return $input;
+        }
+        try {
+            $this->validateCommercialDomainScope($input);
+        } catch (InvalidArgumentException $error) {
+            Session::addMessageAfterRedirect($error->getMessage(), false, ERROR);
+            return false;
+        }
+        return $input;
+    }
+
+    /** Refuse an invalid move before the coordinator changes related records. */
+    public function validateEntityTransfer(int $destination): void
+    {
+        $this->validateCommercialDomainScope(['entities_id' => $destination]);
+    }
+
+    private function validateCommercialDomainScope(array $input): void
+    {
+        global $DB;
+
+        $em = Orm::create($DB);
+        try {
+            (new DomainRepository($em))
+                ->assertSupplierScopeAssignment($input, (int)$this->getID());
+        } finally {
+            $em->close();
+        }
+    }
 
     public function cleanDBonPurge()
     {
@@ -536,14 +574,14 @@ class Supplier extends CommonDBTM
             }
 
             if ($item->canView()) {
-                [$linktype, $linkfield] = \itsmng\Database\Repository\InfocomRepository::linkFor($itemtype);
-                if (\itsmng\Database\Repository\InfocomRepository::supports($itemtype)) {
-                    $em = \itsmng\Database\Orm::create($DB);
+                [$linktype, $linkfield] = InfocomRepository::linkFor($itemtype);
+                if (InfocomRepository::supports($itemtype)) {
+                    $em = Orm::create($DB);
                     try {
-                        $projection = (new \itsmng\Database\Repository\InfocomRepository($em))->forSupplier(
+                        $projection = (new InfocomRepository($em))->forSupplier(
                             $itemtype,
                             (int)$instID,
-                            \itsmng\Reporting\Criteria::entities(),
+                            Criteria::entities(),
                             (int)$_SESSION['glpilist_limit']
                         );
                         $nb = $projection['count'];
@@ -657,7 +695,7 @@ class Supplier extends CommonDBTM
 
         return array_map(
             static fn (int $id): array => ['id' => $id],
-            \itsmng\Database\MappedReads::identifiers($DB, self::getTable(), 'id', ['email' => $email])
+            MappedReads::identifiers($DB, self::getTable(), 'id', ['email' => $email])
         );
     }
 

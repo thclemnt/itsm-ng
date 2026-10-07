@@ -61,6 +61,179 @@ class Supplier extends DbTestCase
         $this->boolean($obj->delete(['id' => $id]))->isTrue();
     }
 
+    public function testScopeChangesRetainCommercialDomainOwnership(): void
+    {
+        global $DB;
+
+        [$supplier, $domain, $source, $child, $sibling] = $this->commercialDomainFixture();
+        $connection = $DB->getDoctrineConnection();
+        $scope = $DB->captureManagedTransactionScope();
+        $level = $connection->getTransactionNestingLevel();
+        $beforeSupplier = $connection->fetchAssociative('SELECT * FROM glpi_suppliers WHERE id = ?', [$supplier->getID()]);
+        $beforeDomain = $connection->fetchAssociative('SELECT * FROM glpi_domains WHERE id = ?', [$domain->getID()]);
+        foreach ([['is_recursive' => 0], ['entities_id' => $sibling], ['is_recursive' => 0, 'entities_id' => $sibling]] as $change) {
+            $this->boolean($supplier->update(['id' => $supplier->getID()] + $change))
+                ->isFalse('Supplier scope changes must preserve existing commercial Domain ownership');
+            $this->array($connection->fetchAssociative('SELECT * FROM glpi_suppliers WHERE id = ?', [$supplier->getID()]))
+                ->isIdenticalTo($beforeSupplier);
+            $this->array($connection->fetchAssociative('SELECT * FROM glpi_domains WHERE id = ?', [$domain->getID()]))
+                ->isIdenticalTo($beforeDomain);
+            $scope->assertActive();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        }
+        // Decorative changes and an unchanged scope remain ordinary valid updates.
+        $this->boolean($supplier->update(['id' => $supplier->getID(), 'phonenumber' => '0123456789', 'is_recursive' => 1]))->isTrue();
+        // Moving the supplier to its sole Domain's owner permits local ownership.
+        $this->boolean($supplier->update(['id' => $supplier->getID(), 'entities_id' => $child, 'is_recursive' => 0]))->isTrue();
+        $this->boolean($domain->update(['id' => $domain->getID(), 'comment' => 'Still a valid assignment']))->isTrue();
+        $scope->assertActive();
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+    }
+
+    public function testTransferRefusesToStrandCommercialDomains(): void
+    {
+        global $DB;
+
+        [$supplier, $domain, $source, $child, $sibling] = $this->commercialDomainFixture();
+        $contact = $this->createItem(\Contact::class, [
+            'name' => 'Supplier transfer contact ' . $this->getUniqueString(),
+            'entities_id' => $source,
+        ]);
+        $binding = $this->createItem(\Contact_Supplier::class, [
+            'contacts_id' => $contact->getID(), 'suppliers_id' => $supplier->getID(),
+        ]);
+        $connection = $DB->getDoctrineConnection();
+        $scope = $DB->captureManagedTransactionScope();
+        $level = $connection->getTransactionNestingLevel();
+        $rows = [
+            'glpi_suppliers' => $supplier->getID(), 'glpi_domains' => $domain->getID(),
+            'glpi_contacts' => $contact->getID(), 'glpi_contacts_suppliers' => $binding->getID(),
+        ];
+        $snapshot = [];
+        foreach ($rows as $table => $id) {
+            $snapshot[$table] = $connection->fetchAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table) . ' WHERE id = ?', [$id]);
+        }
+        $error = null;
+        try {
+            (new \Transfer())->moveItems(['Supplier' => [$supplier->getID()]], $sibling, []);
+        } catch (\RuntimeException $caught) {
+            // The test logger throws after Transfer has rolled back its owned frame.
+            $error = $caught;
+        }
+        $this->boolean($error instanceof \RuntimeException)->isTrue('Supplier Transfer must reject an out-of-scope commercial Domain');
+        $this->string($error->getMessage())->contains('Domain commercial supplier must belong to its owner entity or a recursive ancestor.');
+        foreach ($rows as $table => $id) {
+            $this->array($connection->fetchAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table) . ' WHERE id = ?', [$id]))
+                ->isIdenticalTo($snapshot[$table]);
+        }
+        $scope->assertActive();
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        // A supplier without incoming Domains can still follow the normal transfer path.
+        $unlinked = $this->createItem(\Supplier::class, [
+            'name' => 'Independent supplier ' . $this->getUniqueString(), 'entities_id' => $source,
+        ]);
+        $this->boolean((new \Transfer())->moveItems(['Supplier' => [$unlinked->getID()]], $sibling, []))->isTrue();
+        $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_suppliers WHERE id = ?', [$unlinked->getID()]))->isIdenticalTo($sibling);
+        $scope->assertActive();
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+    }
+
+    public function testOrmSupplierScopeSharesDomainOwnership(): void
+    {
+        global $DB;
+
+        [$supplier, $domain, $source, $child, $sibling] = $this->commercialDomainFixture();
+        $connection = $DB->getDoctrineConnection();
+        $scope = $DB->captureManagedTransactionScope();
+        $level = $connection->getTransactionNestingLevel();
+        foreach (['is_recursive', 'entities'] as $field) {
+            $manager = \itsmng\Database\Orm::create($DB);
+            try {
+                $record = $manager->find(\itsmng\Database\Entity\Supplier::class, $supplier->getID());
+                $record->$field = $field === 'is_recursive' ? false
+                    : $manager->getReference(\itsmng\Database\Entity\Entity::class, $sibling);
+                $error = null;
+                try {
+                    $manager->flush();
+                } catch (\InvalidArgumentException $caught) {
+                    $error = $caught;
+                }
+                $this->boolean($error instanceof \InvalidArgumentException)->isTrue('The owning ORM mutation must enforce commercial Domain ownership');
+                $this->string($error->getMessage())->contains('Domain commercial supplier must belong');
+            } finally {
+                $manager->close();
+            }
+            $scope->assertActive();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+            $this->integer((int)$connection->fetchOne('SELECT is_recursive FROM glpi_suppliers WHERE id = ?', [$supplier->getID()]))->isIdenticalTo(1);
+            $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_suppliers WHERE id = ?', [$supplier->getID()]))->isIdenticalTo($source);
+        }
+        // Another public model can persist a Domain after this manager read the
+        // Supplier and its then-empty incoming set, on the same physical writer.
+        $lateSupplier = $this->createItem(\Supplier::class, [
+            'name' => 'Late commercial supplier ' . $this->getUniqueString(), 'entities_id' => $source, 'is_recursive' => 1,
+        ]);
+        $manager = \itsmng\Database\Orm::create($DB);
+        try {
+            $record = $manager->find(\itsmng\Database\Entity\Supplier::class, $lateSupplier->getID());
+            $this->array($manager->getRepository(\itsmng\Database\Entity\Domain::class)->findBy(['suppliers' => $record]))->isEmpty();
+            $lateDomain = $this->createItem(\Domain::class, [
+                'name' => 'Late commercial domain ' . $this->getUniqueString(), 'entities_id' => $child,
+                'suppliers_id' => $lateSupplier->getID(),
+            ]);
+            $record->is_recursive = false;
+            $error = null;
+            try {
+                $manager->flush();
+            } catch (\InvalidArgumentException $caught) {
+                $error = $caught;
+            }
+            $this->boolean($error instanceof \InvalidArgumentException)->isTrue('Supplier validation must include Domains added by another model on its writer');
+        } finally {
+            $manager->close();
+        }
+        $this->integer((int)$connection->fetchOne('SELECT is_recursive FROM glpi_suppliers WHERE id = ?', [$lateSupplier->getID()]))->isIdenticalTo(1);
+        $this->integer((int)$connection->fetchOne('SELECT suppliers_id FROM glpi_domains WHERE id = ?', [$lateDomain->getID()]))->isIdenticalTo((int)$lateSupplier->getID());
+        $scope->assertActive();
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        // A coherent same-flush Domain reassignment must override persisted ownership.
+        $replacement = $this->createItem(\Supplier::class, [
+            'name' => 'Replacement local supplier ' . $this->getUniqueString(), 'entities_id' => $child,
+        ]);
+        $manager = \itsmng\Database\Orm::create($DB);
+        try {
+            $record = $manager->find(\itsmng\Database\Entity\Supplier::class, $supplier->getID());
+            $manager->getRepository(\itsmng\Database\Entity\Domain::class)->findBy(['suppliers' => $record]);
+            $managedDomain = $manager->find(\itsmng\Database\Entity\Domain::class, $domain->getID());
+            $managedDomain->suppliers = $manager->getReference(\itsmng\Database\Entity\Supplier::class, $replacement->getID());
+            $record->is_recursive = false;
+            $manager->flush();
+        } finally {
+            $manager->close();
+        }
+        $this->integer((int)$connection->fetchOne('SELECT suppliers_id FROM glpi_domains WHERE id = ?', [$domain->getID()]))->isIdenticalTo((int)$replacement->getID());
+        $this->integer((int)$connection->fetchOne('SELECT is_recursive FROM glpi_suppliers WHERE id = ?', [$supplier->getID()]))->isIdenticalTo(0);
+        $scope->assertActive();
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+    }
+
+    private function commercialDomainFixture(): array
+    {
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
+        $sibling = (int)getItemByTypeName('Entity', '_test_child_2', true);
+        $supplier = $this->createItem(\Supplier::class, [
+            'name' => 'Commercial supplier ' . $this->getUniqueString(), 'entities_id' => $source, 'is_recursive' => 1,
+        ]);
+        $domain = $this->createItem(\Domain::class, [
+            'name' => 'Commercial domain ' . $this->getUniqueString(), 'entities_id' => $child,
+            'suppliers_id' => $supplier->getID(),
+        ]);
+        return [$supplier, $domain, $source, $child, $sibling];
+    }
+
     public function testGetLinksSanitizesOutput()
     {
         $obj = new \Supplier();

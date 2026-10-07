@@ -4,14 +4,26 @@
 
 namespace itsmng\Database\Entity;
 
+use Doctrine\ORM\Event\PreUpdateEventArgs;
 use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Repository\DomainRepository;
 
 #[ORM\Entity]
+#[ORM\HasLifecycleCallbacks]
 #[ORM\Table(name: 'glpi_suppliers')]
 class Supplier
 {
+    #[ORM\PreUpdate]
+    public function validateCommercialDomainOwnership(PreUpdateEventArgs $event): void
+    {
+        if ($event->hasChangedField('entities') || $event->hasChangedField('is_recursive')) {
+            (new DomainRepository($event->getObjectManager()))
+                ->assertSupplierDomains($this);
+        }
+    }
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
