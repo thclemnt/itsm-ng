@@ -1189,8 +1189,6 @@ class Project extends CommonDBTM implements ExtraVisibilityCriteria
      */
     public static function showShort($id, $options = [])
     {
-        global $DB;
-
         $p['output_type']            = Search::HTML_OUTPUT;
         $p['row_num']                = 0;
         $p['type_for_massiveaction'] = 0;

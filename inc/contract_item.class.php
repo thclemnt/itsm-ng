@@ -325,8 +325,6 @@ class Contract_Item extends CommonDBRelation
     **/
     public static function showForItem(CommonDBTM $item, $withtemplate = 0)
     {
-        global $DB;
-
         $itemtype = $item->getType();
         $ID       = $item->fields['id'];
 

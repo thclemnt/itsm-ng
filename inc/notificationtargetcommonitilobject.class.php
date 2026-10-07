@@ -360,8 +360,6 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
      */
     public function addSupplier($sendprivate = false)
     {
-        global $DB;
-
         if (
             !$sendprivate
             && $this->obj->countSuppliers(CommonITILActor::ASSIGN)

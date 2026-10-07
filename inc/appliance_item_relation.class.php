@@ -246,8 +246,6 @@ class Appliance_Item_Relation extends CommonDBRelation
      */
     public static function getForApplianceItem(int $appliances_items_id = 0)
     {
-        global $DB;
-
         $rows = [];
         foreach (self::getTypes() as $kind) {
             foreach (self::getTypeItems($appliances_items_id, $kind) as $row) {

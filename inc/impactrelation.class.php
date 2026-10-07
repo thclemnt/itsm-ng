@@ -48,8 +48,6 @@ class ImpactRelation extends CommonDBRelation
 
     public function prepareInputForAdd($input)
     {
-        global $DB;
-
         // Check that mandatory values are set
         $required = [
            "itemtype_source",

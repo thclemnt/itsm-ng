@@ -45,7 +45,6 @@ use Planning;
 use PlanningRecall;
 use CommonDBVisible;
 use Group_User;
-use QueryExpression;
 use PlanningEventCategory;
 use Html;
 use DateTime;

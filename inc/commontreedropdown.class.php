@@ -541,8 +541,6 @@ abstract class CommonTreeDropdown extends CommonDropdown
      */
     public function showChildren()
     {
-        global $DB;
-
         $ID            = $this->getID();
         $this->check($ID, READ);
         $fields = array_filter(

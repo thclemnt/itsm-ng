@@ -58,7 +58,6 @@ use NetworkEquipment;
 use NetworkPort;
 use Notepad;
 use Problem;
-use QueryExpression;
 use SavedSearch;
 use Search;
 use Session;
