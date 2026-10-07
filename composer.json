@@ -55,7 +55,7 @@
         "sabre/vobject": "^4.5",
         "scssphp/scssphp": "^1.11",
         "sebastian/diff": "^5.0",
-        "simplepie/simplepie": "dev-master#51a716faca595fcc4518046ee9c1c5e2136b9267",
+        "simplepie/simplepie": "dev-master",
         "symfony/cache": "^6.4",
         "symfony/console": "^6.0",
         "tecnickcom/tcpdf": "^6.8",
