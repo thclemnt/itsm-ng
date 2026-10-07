@@ -15,7 +15,7 @@ Here is the list of the different libraries and modules and their versions usefu
 * Apache, Nginx, etc
 * MariaDB >= 10.2.22 or MySQL >= 8.0.16 (enforced CHECK constraints and native inspection)
 * PostgreSQL 14+ is an experimental target.
-* PHP 8.2 or newer
+* PHP 8.2.27 or newer
 * Required PHP extensions :
   * ctype
   * curl

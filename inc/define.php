@@ -33,7 +33,7 @@
 
 // Last version of GLPI only for plugin compatibility
 define('GLPI_VERSION', '9.5.13');
-define('ITSM_MIN_PHP', '8.2.0');
+define('ITSM_MIN_PHP', '8.2.27');
 define('ITSM_VERSION', '2.2.0');
 if (str_ends_with(ITSM_VERSION, '-dev')) {
     define('ITSM_PREVER', substr(ITSM_VERSION, 0, -4));
