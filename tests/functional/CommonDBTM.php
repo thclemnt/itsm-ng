@@ -101,8 +101,12 @@ class CommonDBTM extends DbTestCase
             $this->integer($row['is_active'])->isIdenticalTo(0);
             $this->variable($row['firstname'])->isNull();
             $this->string($row['last_login'])->isIdenticalTo('2020-02-03 04:05:06');
-            $this->array(json_decode($row['access_custom_shortcuts'], true, 512, JSON_THROW_ON_ERROR))
-                ->isIdenticalTo(json_decode($json, true, 512, JSON_THROW_ON_ERROR));
+            $actualShortcuts = json_decode($row['access_custom_shortcuts'], true, 512, JSON_THROW_ON_ERROR);
+            $expectedShortcuts = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+            // Native JSON objects may reorder members; nested arrays retain their order.
+            ksort($actualShortcuts);
+            ksort($expectedShortcuts);
+            $this->array($actualShortcuts)->isIdenticalTo($expectedShortcuts);
             $this->string($records->find('glpi_computers', 'id', (int)$computer->getID())['ticket_tco'])->isIdenticalTo('12.3456');
             $this->string($records->find('glpi_entities', 'id', (int)$entity->getID())['ldap_mode'])
                 ->isIdenticalTo($DB->getDoctrineConnection()->fetchOne('SELECT ldap_mode FROM glpi_entities WHERE id = ?', [$entity->getID()]));
