@@ -22,6 +22,22 @@ use itsmng\Database\CurrentSchema as Projection;
 use itsmng\Database\Entity\Config;
 use itsmng\Database\Entity\CronTask;
 use itsmng\Database\Entity\CronTaskLog;
+use itsmng\Database\Entity\DeviceBatteryModel;
+use itsmng\Database\Entity\DeviceCaseModel;
+use itsmng\Database\Entity\DeviceControlModel;
+use itsmng\Database\Entity\DeviceDriveModel;
+use itsmng\Database\Entity\DeviceFirmwareModel;
+use itsmng\Database\Entity\DeviceGenericModel;
+use itsmng\Database\Entity\DeviceGraphicCardModel;
+use itsmng\Database\Entity\DeviceHardDriveModel;
+use itsmng\Database\Entity\DeviceMemoryModel;
+use itsmng\Database\Entity\DeviceMotherBoardModel;
+use itsmng\Database\Entity\DeviceNetworkCardModel;
+use itsmng\Database\Entity\DevicePciModel;
+use itsmng\Database\Entity\DevicePowerSupplyModel;
+use itsmng\Database\Entity\DeviceProcessorModel;
+use itsmng\Database\Entity\DeviceSensorModel;
+use itsmng\Database\Entity\DeviceSoundCardModel;
 use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\SchemaOwner;
 use itsmng\Database\Migration\V220\Baseline;
@@ -215,6 +231,22 @@ class CurrentSchema extends \atoum\atoum\test
             ['glpi_enclosuremodels', 14, 5, [], []],
             ['glpi_pdumodels', 15, 4, [], []],
             ['glpi_rackmodels', 6, 3, [], []],
+            ['glpi_devicebatterymodels', 4, 3, [], []],
+            ['glpi_devicecasemodels', 4, 3, [], []],
+            ['glpi_devicecontrolmodels', 4, 3, [], []],
+            ['glpi_devicedrivemodels', 4, 3, [], []],
+            ['glpi_devicefirmwaremodels', 4, 3, [], []],
+            ['glpi_devicegenericmodels', 4, 3, [], []],
+            ['glpi_devicegraphiccardmodels', 4, 3, [], []],
+            ['glpi_deviceharddrivemodels', 4, 3, [], []],
+            ['glpi_devicememorymodels', 4, 3, [], []],
+            ['glpi_devicemotherboardmodels', 4, 3, [], []],
+            ['glpi_devicenetworkcardmodels', 4, 3, [], []],
+            ['glpi_devicepcimodels', 4, 3, [], []],
+            ['glpi_devicepowersupplymodels', 4, 3, [], []],
+            ['glpi_deviceprocessormodels', 4, 3, [], []],
+            ['glpi_devicesensormodels', 4, 3, [], []],
+            ['glpi_devicesoundcardmodels', 4, 3, [], []],
             ['glpi_monitortypes', 5, 4, [], []],
             ['glpi_networkequipmenttypes', 5, 4, [], []],
             ['glpi_peripheraltypes', 5, 4, [], []],
@@ -270,6 +302,8 @@ class CurrentSchema extends \atoum\atoum\test
                 $this->variable($actual->getLength())->isIdenticalTo($column->getLength());
                 $this->boolean($actual->getAutoincrement())->isIdenticalTo($column->getAutoincrement());
                 $this->variable($actual->getColumnDefinition())->isIdenticalTo($column->getColumnDefinition());
+                $this->variable($actual->getCharset())->isIdenticalTo($column->getCharset());
+                $this->variable($actual->getCollation())->isIdenticalTo($column->getCollation());
             }
             // These physical names are lowercase on both providers; compare
             // identifiers and prefix lengths, not DBAL's original quote markers.
@@ -340,13 +374,29 @@ class CurrentSchema extends \atoum\atoum\test
                 \itsmng\Database\Entity\EnclosureModel::class,
                 \itsmng\Database\Entity\PDUModel::class,
                 \itsmng\Database\Entity\RackModel::class,
+                DeviceBatteryModel::class,
+                DeviceCaseModel::class,
+                DeviceControlModel::class,
+                DeviceDriveModel::class,
+                DeviceFirmwareModel::class,
+                DeviceGenericModel::class,
+                DeviceGraphicCardModel::class,
+                DeviceHardDriveModel::class,
+                DeviceMemoryModel::class,
+                DeviceMotherBoardModel::class,
+                DeviceNetworkCardModel::class,
+                DevicePciModel::class,
+                DevicePowerSupplyModel::class,
+                DeviceProcessorModel::class,
+                DeviceSensorModel::class,
+                DeviceSoundCardModel::class,
             ] as $class) {
                 $metadata = $manager->getClassMetadata($class);
                 $table = $metadata->getTableName();
                 $metadata->fieldMappings['name']->length = 173;
                 $metadata->fieldMappings['name']->nullable = false;
                 $metadata->fieldMappings['name']->options['default'] = 'Current model';
-                $oldIndex = array_key_first(array_filter($metadata->table['indexes'], static fn ($index) => $index['columns'] === ['product_number']));
+                $oldIndex = array_key_first(array_filter($metadata->table['indexes'] ?? [], static fn ($index) => $index['columns'] === ['product_number']));
                 $this->variable($oldIndex)->isNotNull();
                 unset($metadata->table['indexes'][$oldIndex]);
                 $metadata->table['uniqueConstraints'][$table . '_current_model_name'] = ['columns' => ['name', 'product_number']];
