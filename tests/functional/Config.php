@@ -1852,7 +1852,7 @@ final class ConfigRecordPlanCache extends \Symfony\Component\Cache\Adapter\Array
     public int $planWrites = 0;
     public array $planKeys = [];
 
-    public function save(\Psr\Cache\CacheItemInterface $item)
+    public function save(\Psr\Cache\CacheItemInterface $item): bool
     {
         if (is_string($item->get()) && str_contains($item->get(), 'Doctrine\\ORM\\Query\\ParserResult')) {
             ++$this->planWrites;

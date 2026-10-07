@@ -2211,7 +2211,7 @@ final class DropdownOwnedPlanCache extends \Symfony\Component\Cache\Adapter\Arra
 {
     public int $planWrites = 0;
 
-    public function save(\Psr\Cache\CacheItemInterface $item)
+    public function save(\Psr\Cache\CacheItemInterface $item): bool
     {
         if (is_string($item->get()) && str_contains($item->get(), 'Doctrine\\ORM\\Query\\ParserResult')) {
             ++$this->planWrites;
