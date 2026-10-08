@@ -1164,7 +1164,7 @@ class CommonDBTM extends DbTestCase
                 Type::overrideType(Types::STRING, new class () extends StringType {
                     public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                     {
-                        return "CONCAT('missing-', " . $sqlExpr . ')';
+                        return $platform->getConcatExpression("'missing-'", $sqlExpr);
                     }
                 });
                 $this->boolean($presence->forItem('Computer', $id))->isFalse();
