@@ -270,7 +270,18 @@ class Contract extends DbTestCase
                 $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth + 1);
                 $connection->rollBack();
                 $replacement = OwnedMutationFrame::begin($connection);
-                $witness = $this->createItem(\Contract::class, ['name' => 'Replacement frame witness', 'entities_id' => 0]);
+                // The replacement capability owns this direct ORM fixture.
+                $manager = Orm::forConnection($connection);
+                try {
+                    $witness = new ContractRecord();
+                    $witness->name = 'Replacement frame witness';
+                    $witness->entities = $manager->getReference(Entity::class, 0);
+                    $manager->persist($witness);
+                    $manager->flush();
+                    $this->integer($witness->id)->isGreaterThan(0);
+                } finally {
+                    $manager->clear();
+                }
                 $_SESSION['contract_frame_marker'] = 'rollback-reopen';
                 $queue->input = false;
             };
@@ -288,7 +299,8 @@ class Contract extends DbTestCase
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth + 1);
             $this->string($_SESSION['contract_frame_marker'])->isIdenticalTo('rollback-reopen');
             $stored = new \Contract();
-            $this->boolean($stored->getFromDB($witness->getID()))->isTrue();
+            $this->boolean($stored->getFromDB($witness->id))->isTrue();
+            $this->checkInput($stored, $witness->id, ['name' => 'Replacement frame witness', 'entities_id' => 0]);
             $this->integer($this->alertQueueCount($template))->isIdenticalTo(0);
             $this->boolean((bool)\Alert::alertExists('Contract', $contract->getID(), \Alert::END))->isFalse();
         });
@@ -413,60 +425,66 @@ class Contract extends DbTestCase
     public function testAlertPublisherRejectsForeignWriterBeforeNonVetoedPersistence(): void
     {
         foreach ([QueuedNotification::class, Alert::class] as $phase) {
-            $this->withAlertNotification(function (ContractModel $contract, array $payload, int $template, Connection $connection, OwnedMutationFrame $caller) use ($phase): void {
-                global $DB, $PLUGIN_HOOKS;
-                $writer = $DB;
-                // The real foreign DBAL driver refuses every native connection.
-                // A missed producer boundary therefore cannot contact another database.
-                $foreign = new DisconnectedSchemaConnection($connection->getDatabasePlatform());
-                $routed = clone $writer;
-                (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($routed, $foreign);
-                $depth = $connection->getTransactionNestingLevel();
-                $stored = $contract->fields;
-                $snapshot = static function () use ($writer): array {
-                    $rows = [];
-                    foreach (['glpi_contracts', 'glpi_alerts', 'glpi_queuednotifications', 'glpi_logs'] as $table) {
-                        $rows[$table] = iterator_to_array($writer->request(['FROM' => $table, 'ORDER' => 'id']));
+            // Each trial owns its notification fixtures as well as its dispatch.
+            $fixture = OwnedMutationFrame::begin($GLOBALS['DB']->getDoctrineConnection());
+            try {
+                $this->withAlertNotification(function (ContractModel $contract, array $payload, int $template, Connection $connection, OwnedMutationFrame $caller) use ($phase): void {
+                    global $DB, $PLUGIN_HOOKS;
+                    $writer = $DB;
+                    // The real foreign DBAL driver refuses every native connection.
+                    // A missed producer boundary therefore cannot contact another database.
+                    $foreign = new DisconnectedSchemaConnection($connection->getDatabasePlatform());
+                    $routed = clone $writer;
+                    (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($routed, $foreign);
+                    $depth = $connection->getTransactionNestingLevel();
+                    $stored = $contract->fields;
+                    $snapshot = static function () use ($writer): array {
+                        $rows = [];
+                        foreach (['glpi_contracts', 'glpi_alerts', 'glpi_queuednotifications', 'glpi_logs'] as $table) {
+                            $rows[$table] = iterator_to_array($writer->request(['FROM' => $table, 'ORDER' => 'id']));
+                        }
+                        return $rows;
+                    };
+                    $before = $snapshot();
+                    $calls = 0;
+                    $PLUGIN_HOOKS['pre_item_add']['contractframe'][$phase] = function ($item) use ($phase, $template, $contract, $routed, &$calls): void {
+                        $selected = $phase === QueuedNotification::class
+                            ? (int)$item->input['notificationtemplates_id'] === $template
+                            : $item->input['itemtype'] === 'Contract' && (int)$item->input['items_id'] === (int)$contract->getID();
+                        if (!$selected) {
+                            return;
+                        }
+                        ++$calls;
+                        $this->boolean($contract->update(['id' => $contract->getID(), 'comment' => 'Owned change before foreign route']))->isTrue();
+                        $GLOBALS['DB'] = $routed;
+                        // Keep the valid public add input intact: this is not a veto.
+                    };
+                    $error = null;
+                    try {
+                        (new ContractAlertPublisher($writer))->publish('end', Alert::END, 0, $payload);
+                    } catch (Throwable $failure) {
+                        $error = $failure;
+                    } finally {
+                        $DB = $writer;
+                        unset($PLUGIN_HOOKS['pre_item_add']['contractframe'][$phase]);
                     }
-                    return $rows;
-                };
-                $before = $snapshot();
-                $calls = 0;
-                $PLUGIN_HOOKS['pre_item_add']['contractframe'][$phase] = function ($item) use ($phase, $template, $contract, $routed, &$calls): void {
-                    $selected = $phase === QueuedNotification::class
-                        ? (int)$item->input['notificationtemplates_id'] === $template
-                        : $item->input['itemtype'] === 'Contract' && (int)$item->input['items_id'] === (int)$contract->getID();
-                    if (!$selected) {
-                        return;
-                    }
-                    ++$calls;
-                    $this->boolean($contract->update(['id' => $contract->getID(), 'comment' => 'Owned change before foreign route']))->isTrue();
-                    $GLOBALS['DB'] = $routed;
-                    // Keep the valid public add input intact: this is not a veto.
-                };
-                $error = null;
-                try {
-                    (new ContractAlertPublisher($writer))->publish('end', Alert::END, 0, $payload);
-                } catch (Throwable $failure) {
-                    $error = $failure;
-                } finally {
-                    $DB = $writer;
-                    unset($PLUGIN_HOOKS['pre_item_add']['contractframe'][$phase]);
-                }
-                $this->object($error)->isInstanceOf(TransactionOwnershipMismatch::class);
-                $this->integer($calls)->isIdenticalTo(1);
-                $this->boolean($foreign->isConnected())->isFalse();
-                $caller->assertActive();
-                $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
-                $this->boolean($snapshot() === $before)->isTrue();
-                $this->array($contract->fields)->isIdenticalTo($stored);
-                // A subsequent ordinary dispatch proves the scoped guard was removed.
-                $this->variable((new ContractAlertPublisher($writer))->publish('end', Alert::END, 0, $payload))
-                    ->isIdenticalTo(ContractAlertOutcome::Published);
-                $this->integer($this->alertQueueCount($template))->isIdenticalTo(1);
-                $this->boolean((bool)Alert::alertExists('Contract', $contract->getID(), Alert::END))->isTrue();
-                $caller->assertActive();
-            });
+                    $this->object($error)->isInstanceOf(TransactionOwnershipMismatch::class);
+                    $this->integer($calls)->isIdenticalTo(1);
+                    $this->boolean($foreign->isConnected())->isFalse();
+                    $caller->assertActive();
+                    $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+                    $this->boolean($snapshot() === $before)->isTrue();
+                    $this->array($contract->fields)->isIdenticalTo($stored);
+                    // A subsequent ordinary dispatch proves the scoped guard was removed.
+                    $this->variable((new ContractAlertPublisher($writer))->publish('end', Alert::END, 0, $payload))
+                        ->isIdenticalTo(ContractAlertOutcome::Published);
+                    $this->integer($this->alertQueueCount($template))->isIdenticalTo(1);
+                    $this->boolean((bool)Alert::alertExists('Contract', $contract->getID(), Alert::END))->isTrue();
+                    $caller->assertActive();
+                });
+            } finally {
+                $fixture->rollBack();
+            }
         }
     }
 
@@ -558,92 +576,98 @@ class Contract extends DbTestCase
     public function testAlertPublisherJournalsGuardGetterMutationsAndRemovesFailedGuard(): void
     {
         foreach (['foreign', 'throw'] as $mode) {
-            $this->withAlertNotification(function (ContractModel $contract, array $payload, int $template, Connection $connection, OwnedMutationFrame $caller) use ($mode): void {
-                global $DB;
-                $writer = $DB;
-                $foreign = new DisconnectedSchemaConnection($connection->getDatabasePlatform());
-                $routed = clone $writer;
-                (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($routed, $foreign);
-                $probe = (object)['armed' => true, 'calls' => 0];
-                $primary = new RuntimeException('Guard getter refused after owned model change');
-                $route = function () use ($probe, $contract, $connection, $routed, $mode, $primary): Connection {
-                    $guardCheck = false;
-                    foreach (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 5) as $frame) {
-                        if (($frame['class'] ?? null) === OwnershipUpdateUnit::class
-                            && in_array($frame['function'] ?? null, ['registerWriterGuard', 'withWriterGuard'], true)) {
-                            $guardCheck = true;
+            // Each trial owns its notification fixtures as well as its dispatch.
+            $fixture = OwnedMutationFrame::begin($GLOBALS['DB']->getDoctrineConnection());
+            try {
+                $this->withAlertNotification(function (ContractModel $contract, array $payload, int $template, Connection $connection, OwnedMutationFrame $caller) use ($mode): void {
+                    global $DB;
+                    $writer = $DB;
+                    $foreign = new DisconnectedSchemaConnection($connection->getDatabasePlatform());
+                    $routed = clone $writer;
+                    (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($routed, $foreign);
+                    $probe = (object)['armed' => true, 'calls' => 0];
+                    $primary = new RuntimeException('Guard getter refused after owned model change');
+                    $route = function () use ($probe, $contract, $connection, $routed, $mode, $primary): Connection {
+                        $guardCheck = false;
+                        foreach (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 5) as $frame) {
+                            if (($frame['class'] ?? null) === OwnershipUpdateUnit::class
+                                && in_array($frame['function'] ?? null, ['registerWriterGuard', 'withWriterGuard'], true)) {
+                                $guardCheck = true;
+                            }
                         }
-                    }
-                    if ($probe->armed && $guardCheck) {
-                        $probe->armed = false;
-                        ++$probe->calls;
-                        $this->boolean($contract->update(['id' => $contract->getID(), 'comment' => 'Guard getter model change']))->isTrue();
-                        if ($mode === 'throw') {
-                            throw $primary;
+                        if ($probe->armed && $guardCheck) {
+                            $probe->armed = false;
+                            ++$probe->calls;
+                            $this->boolean($contract->update(['id' => $contract->getID(), 'comment' => 'Guard getter model change']))->isTrue();
+                            if ($mode === 'throw') {
+                                throw $primary;
+                            }
+                            $GLOBALS['DB'] = $routed;
+                            // The getter invokes an inherited producer, not raw plugin SQL.
+                            (new Alert())->add(['itemtype' => 'Contract', 'items_id' => $contract->getID(), 'type' => Alert::END]);
                         }
-                        $GLOBALS['DB'] = $routed;
-                        // The getter invokes an inherited producer, not raw plugin SQL.
-                        (new Alert())->add(['itemtype' => 'Contract', 'items_id' => $contract->getID(), 'type' => Alert::END]);
-                    }
-                    return $connection;
-                };
-                $owner = $writer->getProvider() === 'pgsql'
-                    ? new class ($route) extends DBpgsql {
+                        return $connection;
+                    };
+                    $owner = $writer->getProvider() === 'pgsql'
+                        ? new class ($route) extends DBpgsql {
+                            public function __construct(private Closure $route)
+                            {
+                                $this->connected = true;
+                            }
+
+                            public function getDoctrineConnection(): PostgresConnection
+                            {
+                                return ($this->route)();
+                            }
+                        }
+                    : new class ($route) extends DBmysql {
                         public function __construct(private Closure $route)
                         {
-                            $this->connected = true;
                         }
 
-                        public function getDoctrineConnection(): PostgresConnection
+                        public function getDoctrineConnection(): Connection
                         {
                             return ($this->route)();
                         }
+                    };
+                    $snapshot = static function () use ($connection): array {
+                        $rows = [];
+                        foreach (['glpi_contracts', 'glpi_alerts', 'glpi_queuednotifications', 'glpi_logs'] as $table) {
+                            $rows[$table] = $connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table) . ' ORDER BY id');
+                        }
+                        return $rows;
+                    };
+                    $before = $snapshot();
+                    $stored = $contract->fields;
+                    $depth = $connection->getTransactionNestingLevel();
+                    $error = null;
+                    try {
+                        $DB = $owner;
+                        (new ContractAlertPublisher($owner))->publish('end', Alert::END, 0, $payload);
+                    } catch (Throwable $failure) {
+                        $error = $failure;
+                    } finally {
+                        $DB = $writer;
                     }
-                : new class ($route) extends DBmysql {
-                    public function __construct(private Closure $route)
-                    {
+                    if ($mode === 'throw') {
+                        $this->variable($error)->isIdenticalTo($primary);
+                    } else {
+                        $this->object($error)->isInstanceOf(TransactionOwnershipMismatch::class);
                     }
-
-                    public function getDoctrineConnection(): Connection
-                    {
-                        return ($this->route)();
-                    }
-                };
-                $snapshot = static function () use ($connection): array {
-                    $rows = [];
-                    foreach (['glpi_contracts', 'glpi_alerts', 'glpi_queuednotifications', 'glpi_logs'] as $table) {
-                        $rows[$table] = $connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table) . ' ORDER BY id');
-                    }
-                    return $rows;
-                };
-                $before = $snapshot();
-                $stored = $contract->fields;
-                $depth = $connection->getTransactionNestingLevel();
-                $error = null;
-                try {
-                    $DB = $owner;
-                    (new ContractAlertPublisher($owner))->publish('end', Alert::END, 0, $payload);
-                } catch (Throwable $failure) {
-                    $error = $failure;
-                } finally {
-                    $DB = $writer;
-                }
-                if ($mode === 'throw') {
-                    $this->variable($error)->isIdenticalTo($primary);
-                } else {
-                    $this->object($error)->isInstanceOf(TransactionOwnershipMismatch::class);
-                }
-                $this->integer($probe->calls)->isIdenticalTo(1);
-                $this->boolean($foreign->isConnected())->isFalse();
-                $this->boolean($snapshot() === $before)->isTrue();
-                $this->array($contract->fields)->isIdenticalTo($stored);
-                $caller->assertActive();
-                $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
-                $this->variable((new ContractAlertPublisher($writer))->publish('end', Alert::END, 0, $payload))
-                    ->isIdenticalTo(ContractAlertOutcome::Published);
-                $this->integer($this->alertQueueCount($template))->isIdenticalTo(1);
-                $caller->assertActive();
-            });
+                    $this->integer($probe->calls)->isIdenticalTo(1);
+                    $this->boolean($foreign->isConnected())->isFalse();
+                    $this->boolean($snapshot() === $before)->isTrue();
+                    $this->array($contract->fields)->isIdenticalTo($stored);
+                    $caller->assertActive();
+                    $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+                    $this->variable((new ContractAlertPublisher($writer))->publish('end', Alert::END, 0, $payload))
+                        ->isIdenticalTo(ContractAlertOutcome::Published);
+                    $this->integer($this->alertQueueCount($template))->isIdenticalTo(1);
+                    $caller->assertActive();
+                });
+            } finally {
+                $fixture->rollBack();
+            }
         }
     }
 
