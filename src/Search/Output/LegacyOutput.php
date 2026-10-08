@@ -756,45 +756,16 @@ final class LegacyOutput
                     }
                     break;
                 case "glpi_profiles.name":
-                    if ($itemtype == 'User' && $orig_id == 20) {
-                        $out = "";
-                        $count_display = 0;
-                        $added = [];
-                        for ($k = 0; $k < $data[$ID]['count']; $k++) {
-                            if (strlen(trim((string) ($data[$ID][$k]['name'] ?? ''))) > 0 && !in_array($data[$ID][$k]['name'] . "-" . $data[$ID][$k]['entities_id'], $added)) {
-                                $text = sprintf(__('%1$s - %2$s'), $data[$ID][$k]['name'], Dropdown::getDropdownName('glpi_entities', $data[$ID][$k]['entities_id']));
-                                $comp = '';
-                                if ($data[$ID][$k]['is_recursive']) {
-                                    $comp = __('R');
-                                    if ($data[$ID][$k]['is_dynamic']) {
-                                        $comp = sprintf(__('%1$s%2$s'), $comp, ", ");
-                                    }
-                                }
-                                if ($data[$ID][$k]['is_dynamic']) {
-                                    $comp = sprintf(__('%1$s%2$s'), $comp, __('D'));
-                                }
-                                if (!empty($comp)) {
-                                    $text = sprintf(__('%1$s %2$s'), $text, "(" . $comp . ")");
-                                }
-                                if ($count_display) {
-                                    $out .= Search::LBBR;
-                                }
-                                $count_display++;
-                                $out .= $text;
-                                $added[] = $data[$ID][$k]['name'] . "-" . $data[$ID][$k]['entities_id'];
-                            }
-                        }
-                        return $out;
-                    }
-                    break;
                 case "glpi_entities.completename":
-                    if ($itemtype == 'User') {
+                    if ($itemtype == 'User' && ($table == 'glpi_entities' || $orig_id == 20)) {
+                        $relatedTable = $table == 'glpi_profiles' ? 'glpi_entities' : 'glpi_profiles';
+                        $relatedKey = $table == 'glpi_profiles' ? 'entities_id' : 'profiles_id';
                         $out = "";
-                        $added = [];
                         $count_display = 0;
+                        $added = [];
                         for ($k = 0; $k < $data[$ID]['count']; $k++) {
-                            if (isset($data[$ID][$k]['name']) && strlen(trim((string) ($data[$ID][$k]['name'] ?? ''))) > 0 && !in_array($data[$ID][$k]['name'] . "-" . $data[$ID][$k]['profiles_id'], $added)) {
-                                $text = sprintf(__('%1$s - %2$s'), $data[$ID][$k]['name'], Dropdown::getDropdownName('glpi_profiles', $data[$ID][$k]['profiles_id']));
+                            if (strlen(trim((string) ($data[$ID][$k]['name'] ?? ''))) > 0 && !in_array($data[$ID][$k]['name'] . "-" . $data[$ID][$k][$relatedKey], $added)) {
+                                $text = sprintf(__('%1$s - %2$s'), $data[$ID][$k]['name'], Dropdown::getDropdownName($relatedTable, $data[$ID][$k][$relatedKey]));
                                 $comp = '';
                                 if ($data[$ID][$k]['is_recursive']) {
                                     $comp = __('R');
@@ -813,7 +784,7 @@ final class LegacyOutput
                                 }
                                 $count_display++;
                                 $out .= $text;
-                                $added[] = $data[$ID][$k]['name'] . "-" . $data[$ID][$k]['profiles_id'];
+                                $added[] = $data[$ID][$k]['name'] . "-" . $data[$ID][$k][$relatedKey];
                             }
                         }
                         return $out;

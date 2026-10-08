@@ -41,6 +41,7 @@ use Change_Item;
 use CommonDBTM;
 use CommonITILActor;
 use Computer;
+use Config;
 use DbTestCase;
 use Doctrine\DBAL\Types\BigIntType;
 use Doctrine\DBAL\Types\BooleanType;
@@ -48,14 +49,21 @@ use Doctrine\DBAL\Types\DecimalType;
 use Doctrine\DBAL\Types\FloatType;
 use Doctrine\DBAL\Types\IntegerType;
 use Doctrine\DBAL\Types\SmallIntType;
+use Dropdown;
+use Entity;
 use Item_Disk;
 use NetworkEquipment;
+use Plugin;
+use Profile;
+use Profile_User;
 use QueryExpression;
+use ReflectionProperty;
 use ReservationItem;
 use Search as LegacySearch;
 use Session;
 use Software;
 use Ticket;
+use User;
 use itsmng\Search\Output\LegacyOutput;
 use itsmng\Search\Provider\CriteriaBuilder;
 use itsmng\Search\Provider\FieldReference;
@@ -114,6 +122,156 @@ class Search extends DbTestCase
         $this->checkSearchResult($data);
 
         return $data;
+    }
+
+    public function testConfigSearchKeepsEveryActivePluginContextInBothPlans(): void
+    {
+        global $DB, $CFG_GLPI;
+        $this->login();
+        $this->boolean(Config::canView())->isTrue();
+        $session = $_SESSION;
+        $configuration = $CFG_GLPI;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $marker = 'Search context ' . $this->getUniqueString();
+        $contexts = ['core', 'search_context_first', 'search_context_second', 'search_context_inactive'];
+        $ids = [];
+        try {
+            foreach ($contexts as $context) {
+                $this->boolean($DB->insert('glpi_configs', [
+                    'context' => $context, 'name' => $marker, 'value' => $marker . ' ' . $context,
+                ]))->isTrue();
+                $ids[$context] = (int)$DB->getDoctrineConnection()->fetchOne(
+                    'SELECT id FROM glpi_configs WHERE context = ? AND name = ?',
+                    [$context, $marker]
+                );
+                $this->integer($ids[$context])->isGreaterThan(0);
+            }
+            // The active list is the existing Plugin owner, not a replacement search policy.
+            foreach ([[], ['search_context_first'], ['search_context_first', 'search_context_second'],
+                [3 => 'search_context_first', 8 => 'search_context_second']] as $enabled) {
+                $plugins->setValue(null, $enabled);
+                $expected = [$ids['core']];
+                foreach ($enabled as $context) {
+                    $expected[] = $ids[$context];
+                }
+                sort($expected);
+                foreach ([false, true] as $legacy) {
+                    $CFG_GLPI['disable_two_phase_search'] = $legacy;
+                    $data = $this->doSearch('Config', [
+                        'start' => 0, 'list_limit' => 20,
+                        'criteria' => [['field' => 1, 'searchtype' => 'contains', 'value' => $marker]],
+                    ], [1]);
+                    $this->boolean(!empty($data['sql']['two_phase']))->isIdenticalTo(!$legacy);
+                    $actual = array_map('intval', array_keys($data['data']['items']));
+                    sort($actual);
+                    $this->array($actual)->isIdenticalTo($expected);
+                    $this->integer((int)$data['data']['totalcount'])->isIdenticalTo(count($expected));
+                    foreach ($ids as $context => $id) {
+                        $config = new Config();
+                        $this->boolean($config->getFromDB($id))->isTrue();
+                        $this->boolean($config->canViewItem())->isIdenticalTo(in_array($id, $expected, true));
+                    }
+                }
+            }
+        } finally {
+            $plugins->setValue(null, $active);
+            $CFG_GLPI = $configuration;
+            $_SESSION = $session;
+        }
+    }
+
+    public function testUserAssignmentSearchDisplaysBothDirectionsAndKeepsEntityCriteria(): void
+    {
+        global $DB, $CFG_GLPI;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $session = $_SESSION;
+        $cut = $CFG_GLPI['cut'];
+        $root = (int)Session::getActiveEntity();
+        $prefix = 'Search assignments ' . $this->getUniqueString();
+        try {
+            $user = $this->createItem(User::class, ['name' => $prefix . ' visible', 'entities_id' => $root]);
+            $hidden = $this->createItem(User::class, ['name' => $prefix . ' outside', 'entities_id' => $root]);
+            $this->boolean($DB->delete('glpi_profiles_users', ['users_id' => [(int)$user->getID(), (int)$hidden->getID()]]))->isTrue();
+            $profiles = [];
+            for ($i = 0; $i < 2; ++$i) {
+                $profiles[] = $this->createItem(Profile::class, ['name' => $prefix . ' role ' . $i]);
+            }
+            $entities = [];
+            $expected = [20 => [], 80 => []];
+            foreach (['', ' (R)', ' (D)', ' (R, D)'] as $flags => $suffix) {
+                $entity = $this->createItem(Entity::class, ['name' => $prefix . ' entity ' . $flags, 'entities_id' => $root]);
+                $entities[] = (int)$entity->getID();
+                $profile = $profiles[$flags % 2];
+                $this->createItem(Profile_User::class, [
+                    'users_id' => $user->getID(), 'profiles_id' => $profile->getID(),
+                    'entities_id' => $entity->getID(), 'is_recursive' => $flags & 1, 'is_dynamic' => ($flags >> 1) & 1,
+                ]);
+                $profileName = Dropdown::getDropdownName('glpi_profiles', $profile->getID());
+                $entityName = Dropdown::getDropdownName('glpi_entities', $entity->getID());
+                $suffix = str_replace(['R', 'D'], [__('R'), __('D')], $suffix);
+                $expected[20][] = sprintf(__('%1$s - %2$s'), $profileName, $entityName) . $suffix;
+                $expected[80][] = sprintf(__('%1$s - %2$s'), $entityName, $profileName) . $suffix;
+            }
+            $this->createItem(Profile_User::class, [
+                'users_id' => $hidden->getID(), 'profiles_id' => $profiles[0]->getID(),
+                'entities_id' => $entities[3], 'is_recursive' => 0,
+            ]);
+            $this->setEntity($root, true); // Refresh the real active-entity snapshot after owned child creation.
+            $params = ['start' => 0, 'criteria' => [
+                ['field' => 1, 'searchtype' => 'contains', 'value' => $user->fields['name']],
+            ]];
+            $data = $this->doSearch('User', $params, [20, 80]);
+            $this->array(array_map('intval', array_keys($data['data']['items'])))->isIdenticalTo([(int)$user->getID()]);
+            $row = $data['data']['rows'][0];
+            foreach ([20, 80] as $option) {
+                $display = LegacyOutput::giveItem('User', $option, $row);
+                $this->string($row['User_' . $option]['displayname'])->isIdenticalTo($display);
+                $lines = explode(LegacySearch::LBBR, $display);
+                sort($lines);
+                sort($expected[$option]);
+                $this->array($lines)->isIdenticalTo($expected[$option]);
+                // Duplicate packed assignments and empty names must not add output lines.
+                $duplicates = $row;
+                $field = 'User_' . $option;
+                $duplicates[$field][$duplicates[$field]['count']++] = $row[$field][0];
+                $duplicates[$field][$duplicates[$field]['count']++] = ['name' => null];
+                $this->string(LegacyOutput::giveItem('User', $option, $duplicates))->isIdenticalTo($display);
+                $CFG_GLPI['cut'] = PHP_INT_MAX;
+                $column = 0;
+                $html = LegacySearch::showItem(LegacySearch::HTML_OUTPUT, $display, $column, 1);
+                $this->string($html)->contains(str_replace(LegacySearch::LBBR, '<br>', $display));
+                $column = 0;
+                $_SESSION['glpicsv_delimiter'] = ';';
+                $csv = LegacySearch::showItem(LegacySearch::CSV_OUTPUT, $display, $column, 1);
+                $this->string($csv)->startsWith('"')->endsWith('";');
+                foreach ($profiles as $profile) {
+                    $this->string($csv)->contains($profile->fields['name']);
+                }
+            }
+            $this->setEntity($entities[0], false);
+            $this->boolean(Session::haveAccessToEntity($entities[0]))->isTrue();
+            $this->boolean(Session::haveAccessToEntity($entities[3]))->isFalse();
+            // CLI deliberately bypasses canViewAllEntities; test the real entity
+            // criterion here without claiming an HTTP session-ACL result.
+            $params['criteria'][0] = ['field' => 1, 'searchtype' => 'contains', 'value' => $prefix];
+            $params['criteria'][] = ['link' => 'AND', 'field' => 80, 'searchtype' => 'equals', 'value' => $entities[0]];
+            $restricted = $this->doSearch('User', $params, [20, 80]);
+            $this->array(array_map('intval', array_keys($restricted['data']['items'])))->isIdenticalTo([(int)$user->getID()]);
+            foreach ($profiles as $profile) {
+                // A Profile's own name is not a User assignment label.
+                $profileData = $this->doSearch('Profile', ['criteria' => [
+                    ['field' => 1, 'searchtype' => 'contains', 'value' => $profile->fields['name']],
+                ]], [1]);
+                $this->integer((int)$profileData['data']['count'])->isIdenticalTo(1);
+                $display = LegacyOutput::giveItem('Profile', 1, $profileData['data']['rows'][0]);
+                $this->string($display)->contains($profile->fields['name'])->notContains(' - ');
+            }
+        } finally {
+            $CFG_GLPI['cut'] = $cut;
+            $_SESSION = $session;
+        }
     }
 
     public function testTicketStatusCataloguePresentation(): void

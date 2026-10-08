@@ -675,7 +675,7 @@ final class CriteriaBuilder
                 }
                 break;
             case 'Config':
-                $availableContexts = ['core'] + Plugin::getPlugins();
+                $availableContexts = array_merge(['core'], Plugin::getPlugins());
                 $availableContexts = implode("', '", $availableContexts);
                 $condition = "`context` IN ('{$availableContexts}')";
                 break;
