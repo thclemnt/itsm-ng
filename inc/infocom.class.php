@@ -33,6 +33,7 @@
 
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\Entity\Infocom as InfocomEntity;
+use itsmng\Database\InfocomPresenceReadOperation;
 use itsmng\Database\MappedReads;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\InfocomRepository;
@@ -284,8 +285,8 @@ class Infocom extends CommonDBChild
             || (EntityRegistry::tables()[$this->getTable()] ?? null) !== InfocomEntity::class) {
             return $this->getFromDBforDevice($itemtype, $ID);
         }
-        $activated = (new InfocomRepository(Orm::create($DB)))
-            ->isActivatedFor($itemtype, (int)$ID);
+        $activated = InfocomPresenceReadOperation::forDatabase($DB)
+            ->forItem($itemtype, (int)$ID);
         if (!$activated) {
             // item_empty hooks see defaults before the captured link is assigned.
             $this->getEmpty();

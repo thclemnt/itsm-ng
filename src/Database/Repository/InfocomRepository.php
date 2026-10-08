@@ -6,6 +6,9 @@ namespace itsmng\Database\Repository;
 
 use Alert;
 use DateTimeImmutable;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Query\QueryBuilder;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Infocom;
@@ -30,6 +33,23 @@ final class InfocomRepository
             ->where('i.itemtype = :type AND i.items_id = :id')
             ->setParameter('type', $itemtype, Types::STRING)->setParameter('id', $id, Types::BIGINT)
             ->setMaxResults(1)->getQuery()->getScalarResult() !== [];
+    }
+
+    /** @internal Presence retains the mapped scalar SQL conversion, not its PHP conversion. */
+    public static function projectedPresence(Connection $connection, array $mapping, string $itemtype, int $id): bool
+    {
+        $platform = $connection->getDatabasePlatform();
+        $quote = static fn (array $name): string => $name[1] ? $platform->quoteSingleIdentifier($name[0]) : $name[0];
+        return (new QueryBuilder($connection))
+            ->select(Type::getType($mapping['id'][2])->convertToPHPValueSQL('i.' . $quote($mapping['id']), $platform))
+            ->from($quote($mapping['table']), 'i')
+            ->where('i.' . $quote($mapping['itemtype']) . ' = ' . Type::getType(Types::STRING)->convertToDatabaseValueSQL('?', $platform))
+            ->andWhere('i.' . $quote($mapping['items_id']) . ' = ' . Type::getType(Types::BIGINT)->convertToDatabaseValueSQL('?', $platform))
+            ->setParameter(0, $itemtype, Types::STRING)
+            ->setParameter(1, $id, Types::BIGINT)
+            ->setMaxResults(1)
+            ->executeQuery()
+            ->fetchAssociative() !== false;
     }
 
     /** Inclusive day cutoff and exact prior end-of-warranty events within one entity. */

@@ -73,6 +73,12 @@ final class EntityRegistry
         return self::model()['virtual_machine_count'] ?? null;
     }
 
+    /** Physical fields for an exact item's financial activation presence. */
+    public static function infocomPresenceMapping(): ?array
+    {
+        return self::model()['infocom_presence'] ?? null;
+    }
+
     /** Cache fields and owning self-parent names for private tree point reads. */
     public static function treePointMapping(string $table): ?array
     {
@@ -293,6 +299,24 @@ final class EntityRegistry
             'deleted' => [$deleted->columnName, isset($deleted->quoted), $deleted->type]];
     }
 
+    private static function infocomPresenceProjection(EntityManager $manager): ?array
+    {
+        $metadata = $manager->getClassMetadata(Entity\Infocom::class);
+        if ($metadata->identifier !== ['id'] || !$metadata->isInheritanceTypeNone()
+            || !empty($metadata->table['schema'])) {
+            return null;
+        }
+        $projection = ['table' => [$metadata->table['name'], isset($metadata->table['quoted'])]];
+        foreach (['id', 'itemtype', 'items_id'] as $field) {
+            if (!$metadata->hasField($field)) {
+                return null;
+            }
+            $mapping = $metadata->fieldMappings[$field];
+            $projection[$field] = [$mapping->columnName, isset($mapping->quoted), $mapping->type];
+        }
+        return $projection;
+    }
+
     private static function buildModel(): array
     {
         // Mapping inspection must also work before installation. The explicit
@@ -489,10 +513,11 @@ final class EntityRegistry
         $virtualMachineCount = self::virtualMachineCountProjection($em);
         $promotionSource = self::promotionSourceProjection($em);
         $computerItem = self::computerItemProjection($em);
+        $infocomPresence = self::infocomPresenceProjection($em);
         $connection->close();
         // Only immutable lookup projections survive bootstrap, not the offline unit of work.
         unset($em, $metadata, $record);
         gc_collect_cycles();
-        return ['legacy_tables' => $legacyTables, 'tables' => $tables, 'types' => $types, 'enums' => $enums, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners, 'native_timestamps' => $nativeTimestamps, 'scalar_identifiers' => $scalarIdentifiers, 'component_counts' => $componentCounts, 'reservation_user' => $reservationUser, 'tree_points' => $treePoints, 'promotion_source' => $promotionSource, 'computer_item' => $computerItem, 'virtual_machine_count' => $virtualMachineCount];
+        return ['legacy_tables' => $legacyTables, 'tables' => $tables, 'types' => $types, 'enums' => $enums, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners, 'native_timestamps' => $nativeTimestamps, 'scalar_identifiers' => $scalarIdentifiers, 'component_counts' => $componentCounts, 'reservation_user' => $reservationUser, 'tree_points' => $treePoints, 'promotion_source' => $promotionSource, 'computer_item' => $computerItem, 'virtual_machine_count' => $virtualMachineCount, 'infocom_presence' => $infocomPresence];
     }
 }

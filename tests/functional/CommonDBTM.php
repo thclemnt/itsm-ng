@@ -45,11 +45,15 @@ use Computer;
 use DBAdapter;
 use DBmysql as LegacyDBmysql;
 use DbTestCase;
+use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Query\QueryBuilder;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Types\BigIntType;
 use Doctrine\DBAL\Types\IntegerType;
+use Doctrine\DBAL\Types\StringType;
 use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Configuration;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use Doctrine\ORM\Event\PostLoadEventArgs;
@@ -58,6 +62,7 @@ use Doctrine\ORM\Id\AssignedGenerator;
 use Doctrine\ORM\Internal\Hydration\AbstractHydrator;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Query;
+use Doctrine\ORM\Query\Filter\SQLFilter;
 use DomainType;
 use Doctrine\DBAL\TransactionIsolationLevel;
 use Doctrine\ORM\EntityManager;
@@ -88,6 +93,7 @@ use itsmng\Database\Entity\Infocom as InfocomEntity;
 use itsmng\Database\Entity\NetworkPort;
 use itsmng\Database\Entity\NetworkPortLocal;
 use itsmng\Database\Entity\Ticket as TicketEntity;
+use itsmng\Database\InfocomPresenceReadOperation;
 use itsmng\Database\MappedStorage;
 use itsmng\Database\MutationCleanupFailure;
 use itsmng\Database\MySQLConnection;
@@ -109,6 +115,7 @@ use Software;
 use Throwable;
 use TicketTask;
 use mock\DBmysql;
+use tests\fixtures\ScalarReadProbe;
 
 /* Test for inc/commondbtm.class.php */
 
@@ -1118,6 +1125,182 @@ class CommonDBTM extends DbTestCase
             $this->array($emptyModels)->isEmpty();
 
             $connection = $DB->getDoctrineConnection();
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $before = $factories->getValue();
+            $this->boolean((new Infocom())->isActivatedForDevice('Computer', $id))->isTrue();
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+            $presence = new InfocomPresenceReadOperation($connection);
+            $original = new InfocomRepository(Orm::forConnection($connection));
+            $bigint = Type::getType(Types::BIGINT);
+            $string = Type::getType(Types::STRING);
+            try {
+                $selected = new class () extends BigIntType {
+                    public string $expression = 'NULL';
+                    public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return $this->expression;
+                    }
+                    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): int|string|null
+                    {
+                        throw new LogicException('Presence must retain scalar hydration without PHP value conversion.');
+                    }
+                };
+                Type::overrideType(Types::BIGINT, $selected);
+                foreach (['NULL', '0'] as $value) {
+                    $selected->expression = $value;
+                    $this->boolean($presence->forItem('Computer', $id))->isTrue();
+                    $this->boolean($original->isActivatedFor('Computer', $id))->isTrue();
+                    $this->boolean($presence->forItem('Peripheral', $id))->isFalse();
+                }
+                Type::overrideType(Types::BIGINT, new class () extends BigIntType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return '(' . $sqlExpr . ' * 0 - 1)';
+                    }
+                });
+                $this->boolean($presence->forItem('Computer', $id))->isFalse();
+                $this->boolean($original->isActivatedFor('Computer', $id))->isFalse();
+                Type::overrideType(Types::BIGINT, $bigint);
+                Type::overrideType(Types::STRING, new class () extends StringType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return "CONCAT('missing-', " . $sqlExpr . ')';
+                    }
+                });
+                $this->boolean($presence->forItem('Computer', $id))->isFalse();
+                $this->boolean($original->isActivatedFor('Computer', $id))->isFalse();
+                Type::overrideType(Types::STRING, $string);
+                Type::overrideType(Types::BIGINT, new class () extends BigIntType {
+                    public function convertToDatabaseValue(mixed $value, AbstractPlatform $platform): mixed
+                    {
+                        return -1;
+                    }
+                });
+                $this->boolean($presence->forItem('Computer', $id))->isFalse();
+                $this->boolean($original->isActivatedFor('Computer', $id))->isFalse();
+                Type::overrideType(Types::BIGINT, $bigint);
+                Type::overrideType(Types::STRING, new class () extends StringType {
+                    public function convertToDatabaseValue(mixed $value, AbstractPlatform $platform): mixed
+                    {
+                        return 'missing-' . $value;
+                    }
+                });
+                $this->boolean($presence->forItem('Computer', $id))->isFalse();
+                $this->boolean($original->isActivatedFor('Computer', $id))->isFalse();
+            } finally {
+                Type::overrideType(Types::BIGINT, $bigint);
+                Type::overrideType(Types::STRING, $string);
+            }
+
+            $probe = new class ($connection) extends ScalarReadProbe {
+                public ?EventManager $events = null;
+                public $onPlatform = null;
+                public function getEventManager(): EventManager
+                {
+                    return $this->events ??= new EventManager();
+                }
+                public function getDatabasePlatform(): AbstractPlatform
+                {
+                    if ($this->onPlatform !== null) {
+                        ($this->onPlatform)();
+                    }
+                    return parent::getDatabasePlatform();
+                }
+                public function createQueryBuilder(): QueryBuilder
+                {
+                    throw new LogicException('Presence must not introduce a connection builder callback.');
+                }
+            };
+            $this->boolean(InfocomRepository::projectedPresence(
+                $probe,
+                EntityRegistry::infocomPresenceMapping(),
+                'Computer',
+                $id
+            ))->isTrue();
+            $this->array($probe->queries)->hasSize(1);
+            $this->array($probe->queries[0]['types'])->isIdenticalTo([Types::STRING, Types::BIGINT]);
+            $customPresence = new InfocomPresenceReadOperation($probe);
+            $listener = new class () {
+                public int $loads = 0;
+                public int $clears = 0;
+                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
+                {
+                    if ($event->getClassMetadata()->name === InfocomEntity::class) {
+                        ++$this->loads;
+                        $manager = $event->getEntityManager();
+                        $manager->getConfiguration()->addFilter('deny_presence', InfocomPresenceFilter::class);
+                        $manager->getFilters()->enable('deny_presence');
+                    }
+                }
+                public function onClear(): void
+                {
+                    ++$this->clears;
+                }
+            };
+            $events = $probe->getEventManager();
+            $events->addEventListener([Events::loadClassMetadata, Events::onClear], $listener);
+            try {
+                $this->boolean($customPresence->forItem('Computer', $id))->isFalse();
+                $this->integer($listener->loads)->isGreaterThan(0);
+                unset($customPresence);
+                $this->integer($listener->clears)->isIdenticalTo(0);
+            } finally {
+                $events->removeEventListener([Events::loadClassMetadata, Events::onClear], $listener);
+            }
+            $this->mockGenerator->orphanize('__construct');
+            $captured = new DBmysql();
+            $routes = 0;
+            $this->calling($captured)->getDoctrineConnection = static function () use ($probe, &$routes): Connection {
+                ++$routes;
+                return $probe;
+            };
+            $this->calling($captured)->getProvider = $savedDb->getProvider();
+            $type = new class ($savedDb) {
+                public string $value = 'Peripheral';
+                public function __construct(private DBAdapter $original)
+                {
+                }
+                public function __toString(): string
+                {
+                    $GLOBALS['DB'] = $this->original;
+                    return $this->value;
+                }
+            };
+            $probe->onPlatform = static function () use ($type): void {
+                $type->value = 'Computer';
+            };
+            try {
+                $DB = $captured;
+                $queries = count($probe->queries);
+                $this->boolean((new Infocom())->isActivatedForDevice($type, $id))->isTrue();
+                $this->object($DB)->isIdenticalTo($savedDb);
+                $this->integer($routes)->isIdenticalTo(1);
+                $this->integer(count($probe->queries) - $queries)->isIdenticalTo(1);
+                $queries = count($probe->queries);
+                $changeWriter = false;
+                $this->calling($captured)->getDoctrineConnection = static function () use ($connection, $savedDb, &$changeWriter): Connection {
+                    if ($changeWriter) {
+                        $GLOBALS['DB'] = $savedDb;
+                    }
+                    return $connection;
+                };
+                $DB = $captured;
+                OwnershipUpdateUnit::withWriterGuard($captured, $connection, function () use ($captured, $id, &$changeWriter): void {
+                    $changeWriter = true;
+                    try {
+                        $this->exception(static fn () => (new Infocom())->isActivatedForDevice('Computer', $id))
+                            ->isInstanceOf(TransactionOwnershipMismatch::class);
+                    } finally {
+                        $changeWriter = false;
+                        $GLOBALS['DB'] = $captured;
+                    }
+                });
+                $this->integer(count($probe->queries))->isIdenticalTo($queries);
+            } finally {
+                $DB = $savedDb;
+                $probe->onPlatform = null;
+            }
+
             $manager = Orm::create($DB);
             $repository = new InfocomRepository($manager);
             $loads = new class () {
@@ -2715,5 +2898,14 @@ class CommonDBTM extends DbTestCase
 
         $output = $itemtype::getById($nonExistingId);
         $this->boolean($output)->isFalse();
+    }
+}
+
+
+class InfocomPresenceFilter extends SQLFilter
+{
+    public function addFilterConstraint(ClassMetadata $targetEntity, string $targetTableAlias): string
+    {
+        return $targetEntity->name === InfocomEntity::class ? '1 = 0' : '';
     }
 }
