@@ -1,5 +1,8 @@
 #!/bin/bash -e
 
+# Doctrine and domain units use the isolated Composer bootstrap.
+composer test:units:isolated
+
 ATOUM_ADDITIONNAL_OPTIONS=""
 if [[ "$CODE_COVERAGE" = true ]]; then
   export COVERAGE_DIR="coverage-unit"
