@@ -424,6 +424,8 @@ class Item_DeviceGeneric extends DbTestCase
             $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
             $_SESSION['glpiactiveprofile']['computer'] = $rights;
 
+            // Custom model dispatch still counts through the canonical physical connection.
+            $this->integer(countElementsInTable(Item_DeviceMemory::getTable(), $criteria))->isIdenticalTo($legacy);
             $events = [];
             $custom = new class () extends Computer {
                 public static array $events = [];
@@ -456,18 +458,18 @@ class Item_DeviceGeneric extends DbTestCase
             $before = $factories->getValue();
             $this->string($tab->getTabNameForItem($custom))->isIdenticalTo(Item_Devices::createTabEntry(_n('Component', 'Components', Session::getPluralNumber()), 4));
             $this->array($events)->isIdenticalTo(['type', 'type', 'table', 'id', 'type', 'id', 'type', 'table', 'id', 'type']);
-            $this->integer($factories->getValue() - $before)->isIdenticalTo(3);
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
             $events = [];
             $before = $factories->getValue();
             $this->string($tab->getTabNameForItem($asset))->isIdenticalTo(Item_Devices::createTabEntry(_n('Component', 'Components', Session::getPluralNumber()), 4));
             $this->array($events)->isIdenticalTo(['table', 'table']);
-            $this->integer($factories->getValue() - $before)->isIdenticalTo(3);
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
             $GLPI_CACHE->set('item_device_affinities', ['' => $affinities, 'Computer' => [Item_DeviceMemory::class, Item_DeviceMemory::class]]);
             $events = [];
             $before = $factories->getValue();
             $this->string($tab->getTabNameForItem($custom))->isIdenticalTo(Item_Devices::createTabEntry(_n('Component', 'Components', Session::getPluralNumber()), 4));
             $this->array($events)->isIdenticalTo(['type', 'type', 'id', 'type', 'id', 'type']);
-            $this->integer($factories->getValue() - $before)->isIdenticalTo(2);
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
 
             $this->mockGenerator->orphanize('__construct');
             $routed = new MockDatabase();
