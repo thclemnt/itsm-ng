@@ -137,7 +137,7 @@ class ComputerVirtualMachine extends DbTestCase
                     public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                     {
                         ++$this->calls;
-                        return 'NOT (' . $sqlExpr . ')';
+                        return '(NOT (' . $sqlExpr . '))';
                     }
                 };
                 Type::overrideType(Types::BOOLEAN, $flipped);
