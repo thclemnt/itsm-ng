@@ -33,6 +33,9 @@
 
 namespace tests\units;
 
+use Glpi\Cache\SimpleCache;
+use Html as HtmlModel;
+use Laminas\Cache\Storage\Adapter\Memory;
 use org\bovigo\vfs\vfsStream;
 
 /* Test for inc/html.class.php */
@@ -1183,6 +1186,71 @@ SCSS
         // Simple scss file hash corresponds to self md5
         $this->string(\Html::getScssFileHash(vfsStream::url('glpi/css/another.scss')))
            ->isEqualTo($files_md5['another.scss']);
+
+        global $CFG_GLPI, $GLPI_CACHE;
+        $cache = $GLPI_CACHE;
+        try {
+            $GLPI_CACHE = new SimpleCache(new Memory(), '', false);
+            $GLPI_CACHE->set('css_raw_file_css/bootstrap-itsm.scss', HtmlModel::getScssFileHash(GLPI_ROOT . '/css/bootstrap-itsm.scss'));
+            $args = ['file' => 'css/bootstrap-itsm', 'v' => 'scss-unit'];
+            $normal = HtmlModel::compileScss($args);
+            $compact = HtmlModel::compileScss($args + ['variant' => 'compact']);
+            $this->integer(preg_match('/\.m-1\s*\{\s*margin:\s*0?\.25rem\s*!important;?\s*\}/', $normal))
+                ->isIdenticalTo(1);
+            $this->integer(preg_match('/\.m-1\s*\{\s*margin:\s*0?\.125rem\s*!important;?\s*\}/', $compact))
+                ->isIdenticalTo(1);
+            $this->string(HtmlModel::compileScss($args))->isIdenticalTo($normal);
+            $this->string(HtmlModel::compileScss($args + ['variant' => 'compact']))->isIdenticalTo($compact);
+            $cacheKey = 'css_scss-unit_css/bootstrap-itsm';
+            $sentinel = '.cached-marker{display:none}';
+            $GLPI_CACHE->set($cacheKey, $sentinel);
+            $this->string(HtmlModel::compileScss($args))->isIdenticalTo($sentinel);
+            $this->string(HtmlModel::compileScss($args + ['nocache' => true]))->isIdenticalTo($normal);
+            $this->string($GLPI_CACHE->get($cacheKey))->isIdenticalTo($sentinel);
+            $this->string(HtmlModel::compileScss($args + ['reload' => true]))->isIdenticalTo($normal);
+            $this->string($GLPI_CACHE->get($cacheKey))->isIdenticalTo($normal);
+            $debug = HtmlModel::compileScss($args + ['debug' => true]);
+            $this->integer(preg_match(
+                '~sourceMappingURL=data:application/json(?:;charset=[^;,]+)?(;base64)?,([^\s*]+)~',
+                $debug,
+                $sourceMap
+            ))->isIdenticalTo(1);
+            $map = json_decode(
+                ($sourceMap[1] ?? '') === ';base64' ? base64_decode($sourceMap[2]) : rawurldecode($sourceMap[2]),
+                true,
+                flags: JSON_THROW_ON_ERROR
+            );
+            $this->integer($map['version'])->isIdenticalTo(3);
+            $this->array($map['sources'])->isNotEmpty();
+            $this->string($map['sourceRoot'])->isIdenticalTo($CFG_GLPI['root_doc'] . '/');
+            $this->integer(preg_match('/\.m-1\s*\{\s*margin:\s*0?\.25rem\s*!important;?\s*\}/', $debug))
+                ->isIdenticalTo(1);
+            $this->string(HtmlModel::compileScss($args + ['debug' => true]))->isIdenticalTo($debug);
+            $this->string(HtmlModel::compileScss($args))->isIdenticalTo($normal);
+
+            foreach ([
+                ['css/styles', '#network_container', 'body', 'font-size', '12px', '12px'],
+                ['css/itsm2', '.form-section-content', '\.form-section-content', 'padding', '1\.5rem', '0?\.75rem'],
+            ] as [$file, $selector, $rule, $property, $normalPattern, $compactPattern]) {
+                $GLPI_CACHE->set('css_raw_file_' . $file . '.scss', HtmlModel::getScssFileHash(GLPI_ROOT . '/' . $file . '.scss'));
+                $styleArgs = ['file' => $file, 'v' => 'scss-unit'];
+                foreach ([[$normalPattern, []], [$compactPattern, ['variant' => 'compact']]] as [$valuePattern, $variantArgs]) {
+                    $compileArgs = $styleArgs + $variantArgs;
+                    $stylesheet = HtmlModel::compileScss($compileArgs);
+                    $this->string($stylesheet)->contains($selector);
+                    if ($file === 'css/itsm2') {
+                        $this->integer(preg_match('~--header-height:\s*3\.5rem(?:;|\})~', $stylesheet))->isIdenticalTo(1);
+                    }
+                    $pattern = '~' . $rule . '\s*\{[^{}]*' . $property . ':\s*' . $valuePattern . '(?:;|\})~';
+                    $this->integer(preg_match($pattern, $stylesheet))->isIdenticalTo(1);
+                    $mappedStylesheet = HtmlModel::compileScss($compileArgs + ['debug' => true]);
+                    $this->string($mappedStylesheet)->contains($selector)->contains('sourceMappingURL=data:application/json');
+                    $this->integer(preg_match($pattern, $mappedStylesheet))->isIdenticalTo(1);
+                }
+            }
+        } finally {
+            $GLPI_CACHE = $cache;
+        }
     }
 
 

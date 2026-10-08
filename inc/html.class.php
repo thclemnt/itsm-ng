@@ -34,6 +34,8 @@
 use Glpi\Cache\SimpleCache;
 use Glpi\Toolbox\URL;
 use ScssPhp\ScssPhp\Compiler;
+use ScssPhp\ScssPhp\OutputStyle;
+use ScssPhp\ScssPhp\ValueConverter;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -7531,7 +7533,7 @@ JAVASCRIPT;
      *
      * @param array $args Arguments. May contain:
      *                      - v: version to append (will default to GLPI_VERSION)
-     *                      - debug: if present, will not use Crunched formatter
+     *                      - debug: if present, embed an inline source map
      *                      - file: filerepresentation  to load
      *                      - reload: force reload and recache
      *                      - nocache: do not use nor update cache
@@ -7547,17 +7549,8 @@ JAVASCRIPT;
 
         $variant = $args['variant'] ?? null;
 
-        $scss = new Compiler();
-        $scss->setFormatter('ScssPhp\ScssPhp\Formatter\Crunched');
         if (isset($args['debug'])) {
             $ckey .= '_sourcemap';
-            $scss->setSourceMap(Compiler::SOURCE_MAP_INLINE);
-            $scss->setSourceMapOptions(
-                [
-                  'sourceMapBasepath' => GLPI_ROOT . '/',
-                  'sourceRoot'        => $CFG_GLPI['root_doc'] . '/',
-                ]
-            );
         }
 
         $file = isset($args['file']) ? $args['file'] : 'css/styles';
@@ -7565,9 +7558,6 @@ JAVASCRIPT;
         $ckey .= '_' . $file;
         if ($variant !== null && $variant !== '') {
             $ckey .= '_' . $variant;
-            $scss->setVariables([
-                'itsm-compact-mode' => $variant === 'compact',
-            ]);
         }
 
         if (!Toolbox::endsWith($file, '.scss')) {
@@ -7617,12 +7607,27 @@ JAVASCRIPT;
             $GLPI_CACHE->set($fckey, $file_hash);
         }
 
-        $scss->addImportPath(GLPI_ROOT);
-
         if ($GLPI_CACHE->has($ckey) && !isset($args['reload']) && !isset($args['nocache'])) {
             $css = $GLPI_CACHE->get($ckey);
         } else {
-            $css = $scss->compile($import);
+            $scss = new Compiler();
+            $scss->setOutputStyle(OutputStyle::COMPRESSED);
+            if (isset($args['debug'])) {
+                $scss->setSourceMap(Compiler::SOURCE_MAP_INLINE);
+                $scss->setSourceMapOptions(
+                    [
+                      'sourceMapBasepath' => GLPI_ROOT . '/',
+                      'sourceRoot'        => $CFG_GLPI['root_doc'] . '/',
+                    ]
+                );
+            }
+            if ($variant !== null && $variant !== '') {
+                $scss->replaceVariables([
+                    'itsm-compact-mode' => ValueConverter::fromPhp($variant === 'compact'),
+                ]);
+            }
+            $scss->addImportPath(GLPI_ROOT);
+            $css = $scss->compileString($import)->getCss();
             if (!isset($args['nocache'])) {
                 $GLPI_CACHE->set($ckey, $css);
             }

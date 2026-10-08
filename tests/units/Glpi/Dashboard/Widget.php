@@ -34,6 +34,9 @@
 namespace tests\units\Glpi\Dashboard;
 
 use DbTestCase;
+use Glpi\Cache\SimpleCache;
+use Glpi\Dashboard\Widget as WidgetModel;
+use Laminas\Cache\Storage\Adapter\Memory;
 
 /* Test for inc/dashboard/widget.class.php */
 
@@ -103,7 +106,23 @@ class Widget extends DbTestCase
         bool $revert,
         array $expected
     ) {
-        $this->array(\Glpi\Dashboard\Widget::getGradientPalette($bg_color, $nb_series, $revert))
+        $this->array(WidgetModel::getGradientPalette($bg_color, $nb_series, $revert))
              ->isEqualTo($expected);
+
+        global $GLPI_CACHE;
+        $cache = $GLPI_CACHE;
+        try {
+            $GLPI_CACHE = new SimpleCache(new Memory(), '', false);
+            $first = WidgetModel::getCssGradientPalette($bg_color, $nb_series, '#palette-first', $revert);
+            $second = WidgetModel::getCssGradientPalette($bg_color, $nb_series, '#palette-second', $revert);
+            $this->string($first)->contains('#palette-first .ct-series-a');
+            $this->string($second)->contains('#palette-second .ct-series-a')->notContains('#palette-first');
+            $this->string(WidgetModel::getCssGradientPalette($bg_color, $nb_series, '#palette-second', $revert))
+                ->isIdenticalTo($second);
+            $this->string(WidgetModel::getCssGradientPalette($bg_color, $nb_series, '#palette-first', $revert))
+                ->isIdenticalTo($first);
+        } finally {
+            $GLPI_CACHE = $cache;
+        }
     }
 }
