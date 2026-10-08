@@ -31,10 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Toolbox\URL;
 use itsmng\Database\EntityScopeReadOperation;
 use itsmng\Database\LinkCountReadOperation;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\LinkRepository;
 
 if (!defined('GLPI_ROOT')) {
@@ -87,7 +89,10 @@ class Link extends CommonDBTM
                     true
                 );
 
-                $nb = (new LinkCountReadOperation($DB->getDoctrineConnection()))->countForItem($item->getType(), $scope);
+                $connection = $DB->getDoctrineConnection();
+                $nb = Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $item, $scope): int {
+                    return (new LinkCountReadOperation($connection, $manager))->countForItem($item->getType(), $scope);
+                });
             }
             return self::createTabEntry(self::getTypeName(Session::getPluralNumber()), $nb);
         }
@@ -343,7 +348,13 @@ class Link extends CommonDBTM
             strstr($link, "[DOMAIN]")
             && in_array($item->getType(), $CFG_GLPI['domain_types'], true)
         ) {
-            $domain = (new LinkRepository(Orm::create($DB)))->domainName($item->getType(), (int)$item->getID());
+            $database = $DB;
+            $connection = $database->getDoctrineConnection();
+            OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+            $domain = Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $item): ?string {
+                return (new LinkRepository($manager ?? Orm::forConnection($connection)))
+                    ->domainName($item->getType(), (int)$item->getID());
+            });
             if ($domain !== null) {
                 $link = str_replace('[DOMAIN]', $domain, $link);
             }
@@ -414,7 +425,14 @@ class Link extends CommonDBTM
         $ipmac = [];
         if (get_class($item) == 'NetworkEquipment') {
             if ($replace_IP) {
-                foreach ((new LinkRepository(Orm::create($DB)))->equipmentAddresses((int)$item->getID()) as $data2) {
+                $database = $DB;
+                $connection = $database->getDoctrineConnection();
+                OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+                $rows = Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $item): array {
+                    return (new LinkRepository($manager ?? Orm::forConnection($connection)))
+                        ->equipmentAddresses((int)$item->getID());
+                });
+                foreach ($rows as $data2) {
                     $ipmac['ip' . $data2['id']]['ip']  = $data2["ip"];
                     $ipmac['ip' . $data2['id']]['mac'] = ($item->isField('mac') ? $item->getField('mac') : '');
                 }
@@ -430,14 +448,28 @@ class Link extends CommonDBTM
         }
 
         if ($replace_IP) {
-            foreach ((new LinkRepository(Orm::create($DB)))->portAddresses($item->getType(), (int)$item->getID()) as $data2) {
+            $database = $DB;
+            $connection = $database->getDoctrineConnection();
+            OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+            $rows = Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $item): array {
+                return (new LinkRepository($manager ?? Orm::forConnection($connection)))
+                    ->portAddresses($item->getType(), (int)$item->getID());
+            });
+            foreach ($rows as $data2) {
                 $ipmac['ip' . $data2['id']]['ip']  = $data2["ip"];
                 $ipmac['ip' . $data2['id']]['mac'] = $data2["mac"];
             }
         }
 
         if ($replace_MAC) {
-            foreach ((new LinkRepository(Orm::create($DB)))->portMacs($item->getType(), (int)$item->getID(), (bool)$replace_IP) as $data2) {
+            $database = $DB;
+            $connection = $database->getDoctrineConnection();
+            OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+            $rows = Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $item, $replace_IP): array {
+                return (new LinkRepository($manager ?? Orm::forConnection($connection)))
+                    ->portMacs($item->getType(), (int)$item->getID(), (bool)$replace_IP);
+            });
+            foreach ($rows as $data2) {
                 $ipmac['mac' . $data2['id']]['ip']  = '';
                 $ipmac['mac' . $data2['id']]['mac'] = $data2["mac"];
             }

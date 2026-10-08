@@ -61,6 +61,11 @@ use itsmng\Database\Repository\LinkRepository;
 use Link as LinkModel;
 use mock\DBmysql as AdapterProbe;
 use Session;
+use ReflectionProperty;
+use Domain;
+use Domain_Item;
+use NetworkEquipment;
+use NetworkPort;
 
 class Link extends DbTestCase
 {
@@ -117,6 +122,19 @@ class Link extends DbTestCase
         $originalSession = $_SESSION;
         try {
             $_SESSION['glpishow_count_on_tabs'] = true;
+            // Warm both entity-scope and count metadata on the selected canonical manager.
+            $tab = new LinkModel();
+            $this->string($tab->getTabNameForItem($computer))
+                ->isIdenticalTo(LinkModel::createTabEntry(LinkModel::getTypeName(Session::getPluralNumber()), $expected));
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $beforeCount = $factories->getValue();
+            $connection->update('glpi_links', ['is_recursive' => false], ['id' => $links[0]], ['is_recursive' => Types::BOOLEAN]);
+            $this->string($tab->getTabNameForItem($computer))
+                ->isIdenticalTo(LinkModel::createTabEntry(LinkModel::getTypeName(Session::getPluralNumber()), $expected - 1));
+            $connection->update('glpi_links', ['is_recursive' => true], ['id' => $links[0]], ['is_recursive' => Types::BOOLEAN]);
+            $this->string($tab->getTabNameForItem($computer))
+                ->isIdenticalTo(LinkModel::createTabEntry(LinkModel::getTypeName(Session::getPluralNumber()), $expected));
+            $this->integer($factories->getValue() - $beforeCount)->isIdenticalTo(0, 'Fresh scoped tab counts reuse the warmed manager');
             $DB = $adapter;
             $this->string((new LinkModel())->getTabNameForItem($computer))
                 ->isIdenticalTo(LinkModel::createTabEntry(LinkModel::getTypeName(Session::getPluralNumber()), $expected));
@@ -127,7 +145,9 @@ class Link extends DbTestCase
 
             $scope = (new EntityScopeReadOperation())->restriction('glpi_links', '', $child, true);
             $this->array($scope->wrappedCriteria())->isIdenticalTo($criteria);
+            $beforeCustom = $factories->getValue();
             $reader = new LinkCountReadOperation($probe);
+            $this->integer($factories->getValue() - $beforeCustom)->isIdenticalTo(1, 'A supplied custom connection retains its independent manager');
             $integer = Type::getType('integer');
             $boolean = Type::getType('boolean');
             $string = Type::getType('string');
@@ -312,6 +332,55 @@ class Link extends DbTestCase
         }
     }
 
+    public function testTagReadsReuseManagerAndObserveCurrentSelectedConnection(): void
+    {
+        global $DB;
+        $this->login();
+        $computer = $this->createItem(Computer::class, ['name' => '_link_tag_scope']);
+        $equipment = $this->createItem(NetworkEquipment::class, ['name' => '_link_tag_scope']);
+        $domain = $this->createItem(Domain::class, ['name' => 'before.example', 'entities_id' => $computer->getEntityID()]);
+        $this->createItem(Domain_Item::class, ['domains_id' => $domain->getID(), 'itemtype' => Computer::class, 'items_id' => $computer->getID()]);
+        $port = $this->createItem(NetworkPort::class, [
+            'name' => '_link_tag_scope', 'entities_id' => $computer->getEntityID(),
+            'itemtype' => Computer::class, 'items_id' => $computer->getID(), 'mac' => '00:11:22:33:44:55',
+        ]);
+        $connection = $DB->getDoctrineConnection();
+        Orm::withReadConnection($connection, static function (): void {
+        });
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $before = $factories->getValue();
+        $this->array(LinkModel::generateLinkContents('[DOMAIN]', $computer, false))->isIdenticalTo(['before.example']);
+        $this->array(LinkModel::generateLinkContents('[MAC]', $computer, false))
+            ->isIdenticalTo(['mac' . $port->getID() => '00:11:22:33:44:55']);
+        // Empty equipment/IP branches still execute both address queries and the MAC query.
+        $this->array(LinkModel::generateLinkContents('[IP][MAC]', $equipment, false))->isIdenticalTo(['[IP][MAC]']);
+        $connection->update('glpi_domains', ['name' => 'after.example'], ['id' => $domain->getID()]);
+        $connection->update('glpi_networkports', ['mac' => '00:11:22:33:44:66'], ['id' => $port->getID()]);
+        $this->array(LinkModel::generateLinkContents('[DOMAIN]', $computer, false))->isIdenticalTo(['after.example']);
+        $this->array(LinkModel::generateLinkContents('[MAC]', $computer, false))
+            ->isIdenticalTo(['mac' . $port->getID() => '00:11:22:33:44:66']);
+        $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+
+        // A caller-supplied connection keeps independent managers and its selected physical route.
+        $probe = new LinkCountConnectionProbe($connection);
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new AdapterProbe();
+        $this->calling($adapter)->getDoctrineConnection = $probe;
+        $this->calling($adapter)->getProvider = $DB->getProvider();
+        $original = $DB;
+        try {
+            $DB = $adapter;
+            $before = $factories->getValue();
+            $this->array(LinkModel::generateLinkContents('[DOMAIN]', $computer, false))->isIdenticalTo(['after.example']);
+            $connection->update('glpi_domains', ['name' => 'selected.example'], ['id' => $domain->getID()]);
+            $this->array(LinkModel::generateLinkContents('[DOMAIN]', $computer, false))->isIdenticalTo(['selected.example']);
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(2);
+            $this->array($probe->queries)->hasSize(2);
+        } finally {
+            $DB = $original;
+        }
+    }
+
     protected function linkContentProvider(): iterable
     {
         $this->login();
@@ -341,14 +410,14 @@ class Link extends DbTestCase
 
         // Attach domains
         $domain1 = $this->createItem(
-            \Domain::class,
+            Domain::class,
             [
               'name'        => 'domain1.tld',
               'entities_id' => $_SESSION['glpiactive_entity'],
          ]
         );
         $this->createItem(
-            \Domain_Item::class,
+            Domain_Item::class,
             [
               'domains_id' => $domain1->getID(),
               'itemtype'   => \Computer::class,
@@ -356,14 +425,14 @@ class Link extends DbTestCase
          ]
         );
         $domain2 = $this->createItem(
-            \Domain::class,
+            Domain::class,
             [
               'name'        => 'domain2.tld',
               'entities_id' => $_SESSION['glpiactive_entity'],
          ]
         );
         $this->createItem(
-            \Domain_Item::class,
+            Domain_Item::class,
             [
               'domains_id' => $domain2->getID(),
               'itemtype'   => \Computer::class,
