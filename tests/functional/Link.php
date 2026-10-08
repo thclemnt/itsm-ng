@@ -336,8 +336,10 @@ class Link extends DbTestCase
     {
         global $DB;
         $this->login();
-        $computer = $this->createItem(Computer::class, ['name' => '_link_tag_scope']);
-        $equipment = $this->createItem(NetworkEquipment::class, ['name' => '_link_tag_scope']);
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)Session::getActiveEntity();
+        $computer = $this->createItem(Computer::class, ['name' => '_link_tag_scope', 'entities_id' => $entity]);
+        $equipment = $this->createItem(NetworkEquipment::class, ['name' => '_link_tag_scope', 'entities_id' => $entity]);
         $domain = $this->createItem(Domain::class, ['name' => 'before.example', 'entities_id' => $computer->getEntityID()]);
         $this->createItem(Domain_Item::class, ['domains_id' => $domain->getID(), 'itemtype' => Computer::class, 'items_id' => $computer->getID()]);
         $port = $this->createItem(NetworkPort::class, [

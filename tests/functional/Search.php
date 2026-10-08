@@ -128,7 +128,7 @@ class Search extends DbTestCase
     {
         global $DB, $CFG_GLPI;
         $this->login();
-        $this->boolean(Config::canView())->isTrue();
+        $this->boolean((bool)Config::canView())->isTrue();
         $session = $_SESSION;
         $configuration = $CFG_GLPI;
         $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
@@ -245,7 +245,7 @@ class Search extends DbTestCase
                 $column = 0;
                 $_SESSION['glpicsv_delimiter'] = ';';
                 $csv = LegacySearch::showItem(LegacySearch::CSV_OUTPUT, $display, $column, 1);
-                $this->string($csv)->startsWith('"')->endsWith('";');
+                $this->string($csv)->startWith('"')->endWith('";');
                 foreach ($profiles as $profile) {
                     $this->string($csv)->contains($profile->fields['name']);
                 }

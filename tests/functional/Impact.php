@@ -49,6 +49,7 @@ use ImpactRelation;
 use Item_Ticket;
 use Session;
 use Ticket;
+use Toolbox;
 use itsmng\Database\Entity\User;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\UserRepository;
@@ -344,7 +345,12 @@ class Impact extends \DbTestCase
         $this->mockGenerator()->orphanize('__construct');
         $item = new ImpactComputerProbe();
         $class = get_class($item);
-        $item->fields = ['id' => 42];
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)Session::getActiveEntity();
+        $source = $this->createItem(Computer::class, ['name' => '_impact_scope_source', 'entities_id' => $entity]);
+        $target = $this->createItem(Computer::class, ['name' => '_impact_scope_target', 'entities_id' => $entity]);
+        $item->fields = $target->fields;
+        $targetId = (int)$target->getID();
         $probe = new ScalarReadProbe($connection);
         $this->mockGenerator()->orphanize('__construct');
         $adapter = new ImpactAdapterProbe();
@@ -354,17 +360,22 @@ class Impact extends \DbTestCase
         try {
             $_SESSION['glpishow_count_on_tabs'] = true;
             $CFG_GLPI['impact_asset_types'][$class] = true;
-            ConfigModel::setConfigurationValues('core', [ImpactModel::CONF_ENABLED => exportArrayToDB([Computer::class, $class])]);
+            $json = exportArrayToDB([Computer::class, $class]);
+            ConfigModel::setConfigurationValues('core', [ImpactModel::CONF_ENABLED => Toolbox::addslashes_deep($json)]);
+            $stored = ConfigModel::getConfigurationValues('core', [ImpactModel::CONF_ENABLED]);
+            $this->string($stored[ImpactModel::CONF_ENABLED])->isIdenticalTo($json);
+            $this->array(importArrayFromDB($stored[ImpactModel::CONF_ENABLED]))->isIdenticalTo([Computer::class, $class]);
+            $this->array(ImpactModel::getEnabledItemtypes())->isIdenticalTo([Computer::class, $class]);
             $connection->insert('glpi_impactrelations', [
-                'itemtype_source' => Computer::class, 'items_id_source' => 41,
-                'itemtype_impacted' => $class, 'items_id_impacted' => 42,
+                'itemtype_source' => Computer::class, 'items_id_source' => $source->getID(),
+                'itemtype_impacted' => $class, 'items_id_impacted' => $targetId,
             ]);
             $atId = [];
-            $this->calling($item)->getID = static function () use (&$atId, $factories, $probe, $connection): int {
+            $this->calling($item)->getID = static function () use (&$atId, $factories, $probe, $connection, $targetId): int {
                 $atId = [$factories->getValue(), count($probe->queries)];
                 // A callback changes the next operation's admission; this count keeps its initial snapshot.
                 $connection->update('glpi_configs', ['value' => exportArrayToDB([])], ['context' => 'core', 'name' => ImpactModel::CONF_ENABLED]);
-                return 42;
+                return $targetId;
             };
             $DB = $adapter;
             $before = $factories->getValue();
@@ -384,7 +395,7 @@ class Impact extends \DbTestCase
             $_SESSION['glpishow_count_on_tabs'] = $oldCount;
             $CFG_GLPI['impact_asset_types'] = $allowed;
             if (array_key_exists(ImpactModel::CONF_ENABLED, $original)) {
-                ConfigModel::setConfigurationValues('core', $original);
+                ConfigModel::setConfigurationValues('core', array_map(static fn ($value) => Toolbox::addslashes_deep($value), $original));
             } else {
                 ConfigModel::deleteConfigurationValues('core', [ImpactModel::CONF_ENABLED]);
             }
