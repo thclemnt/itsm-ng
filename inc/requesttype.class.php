@@ -31,7 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\ITILClassificationRepository;
 
 if (!defined('GLPI_ROOT')) {
@@ -245,8 +247,13 @@ class RequestType extends CommonDropdown
     {
         global $DB;
 
-        return (new ITILClassificationRepository(Orm::create($DB)))
-            ->defaultRequestType((string)$source);
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        return Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $source): int {
+            return (new ITILClassificationRepository($manager ?? Orm::forConnection($connection)))
+                ->defaultRequestType((string)$source);
+        });
     }
 
 

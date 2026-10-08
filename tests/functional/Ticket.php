@@ -72,6 +72,7 @@ use LogicException;
 use Plugin;
 use Problem;
 use ReflectionProperty;
+use RequestType;
 use Session;
 use Supplier;
 use Supplier_Ticket;
@@ -119,6 +120,74 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Ticket extends DbTestCase
 {
+    public function testRequestDefaultsReuseManagerAndKeepCurrentSourceAndRoute(): void
+    {
+        global $DB;
+        $this->login();
+        $helpdesk = $this->createItem(RequestType::class, [
+            'name' => '_request_helpdesk', 'is_active' => 1, 'is_helpdesk_default' => 1,
+        ]);
+        $followup = $this->createItem(RequestType::class, [
+            'name' => '_request_followup', 'is_active' => 1, 'is_followup_default' => 1,
+        ]);
+        $helpdeskId = (int)$helpdesk->getID();
+        $followupId = (int)$followup->getID();
+        $connection = $DB->getDoctrineConnection();
+        Orm::withReadConnection($connection, static function (): void {
+        });
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $before = $factories->getValue();
+        $this->integer(RequestType::getDefault('helpdesk'))->isIdenticalTo($helpdeskId);
+        $this->integer(RequestType::getDefault('followup'))->isIdenticalTo($followupId);
+        $empty = new ITILFollowup();
+        $empty->post_getEmpty();
+        $this->integer($empty->fields['requesttypes_id'])->isIdenticalTo($followupId);
+        $connection->update('glpi_requesttypes', ['is_helpdesk_default' => false], ['id' => $helpdeskId], ['is_helpdesk_default' => Types::BOOLEAN]);
+        $connection->update('glpi_requesttypes', ['is_helpdesk_default' => true], ['id' => $followupId], ['is_helpdesk_default' => Types::BOOLEAN]);
+        $this->integer(RequestType::getDefault('helpdesk'))->isIdenticalTo($followupId);
+        $this->integer(RequestType::getDefault('followup'))->isIdenticalTo($followupId);
+        $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+
+        // Ticket creation without an explicit source uses the same current helpdesk default.
+        $ticket = $this->createItem(LegacyTicket::class, ['name' => '_request_default_ticket', 'content' => '_request_default_ticket']);
+        $this->integer((int)$ticket->fields['requesttypes_id'])->isIdenticalTo($followupId);
+
+        $probe = new ScalarReadProbe($connection);
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new TimelineCountAdapter();
+        $this->calling($adapter)->getDoctrineConnection = $probe;
+        $this->calling($adapter)->getProvider = $DB->getProvider();
+        $source = new class ($factories, $probe) {
+            public int $factoriesAtCast = 0;
+            public int $queriesAtCast = -1;
+
+            public function __construct(private ReflectionProperty $factories, private ScalarReadProbe $probe)
+            {
+            }
+
+            public function __toString(): string
+            {
+                $this->factoriesAtCast = $this->factories->getValue();
+                $this->queriesAtCast = count($this->probe->queries);
+                return 'helpdesk';
+            }
+        };
+        $original = $DB;
+        try {
+            $DB = $adapter;
+            $before = $factories->getValue();
+            $this->integer(RequestType::getDefault($source))->isIdenticalTo($followupId);
+            $this->integer($source->factoriesAtCast - $before)->isIdenticalTo(1, 'Custom manager exists before source conversion');
+            $this->integer($source->queriesAtCast)->isIdenticalTo(0, 'Source conversion precedes the selected-route SQL');
+            $this->array($probe->queries)->hasSize(1);
+            $this->integer(RequestType::getDefault('followup'))->isIdenticalTo($followupId);
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(2, 'Supplied connections retain independent managers');
+            $this->array($probe->queries)->hasSize(2);
+        } finally {
+            $DB = $original;
+        }
+    }
+
     public function testActorDisplayReadsKeepPreferredEmailAndMissingUserBoundary(): void
     {
         global $DB, $CFG_GLPI;
