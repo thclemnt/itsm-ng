@@ -54,9 +54,7 @@ final class SoftwareRenderingReadOperation
         $licenses = $native
             ? $repository->nativeEffectiveLicenseIdsForVersions($kind, $owner, $versions)
             : $repository->effectiveLicenseIdsForVersions($kind, $owner, $versions);
-        $display = $native
-            ? $repository->nativeDisplayDataForInstallations($installations)
-            : $repository->displayDataForInstallations($installations);
+        $display = $repository->displayDataForInstallations($installations, native: $native);
         return ['licenses' => $licenses, 'display' => $display];
     }
 }
