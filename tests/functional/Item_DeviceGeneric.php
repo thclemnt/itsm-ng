@@ -37,11 +37,7 @@ use Computer;
 use DbTestCase;
 use DeviceMemory;
 use Doctrine\Common\EventManager;
-use Doctrine\DBAL\Cache\QueryCacheProfile;
-use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Query\QueryBuilder;
-use Doctrine\DBAL\Result;
 use Doctrine\DBAL\Types\BigIntType;
 use Doctrine\DBAL\Types\BooleanType;
 use Doctrine\DBAL\Types\IntegerType;
@@ -62,6 +58,9 @@ use LogicException;
 use mock\DBmysql as MockDatabase;
 use ReflectionProperty;
 use Session;
+use tests\fixtures\ScalarReadProbe;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Item_DeviceGeneric extends DbTestCase
 {
@@ -220,7 +219,7 @@ class Item_DeviceGeneric extends DbTestCase
             $expected = Item_Devices::createTabEntry(_n('Component', 'Components', Session::getPluralNumber()), $legacy);
             $before = $factories->getValue();
             $connection = $DB->getDoctrineConnection();
-            $probe = new ComponentCountQueryProbe($connection);
+            $probe = new ScalarReadProbe($connection);
             $this->mockGenerator->orphanize('__construct');
             $countAdapter = new MockDatabase();
             $this->calling($countAdapter)->getDoctrineConnection = $probe;
@@ -301,7 +300,7 @@ class Item_DeviceGeneric extends DbTestCase
             $integer = Type::getType('integer');
             try {
                 $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
-                $callback = new class ($connection) extends ComponentCountQueryProbe {
+                $callback = new class ($connection) extends ScalarReadProbe {
                     public bool $armed = false;
                     public int $calls = 0;
                     public function getDatabasePlatform(): AbstractPlatform
@@ -382,7 +381,7 @@ class Item_DeviceGeneric extends DbTestCase
                 $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(1);
                 $this->integer($repository->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(1);
                 Type::overrideType('boolean', $boolean);
-                $extension = new class ($connection) extends ComponentCountQueryProbe {
+                $extension = new class ($connection) extends ScalarReadProbe {
                     private ?EventManager $events = null;
                     public function getEventManager(): EventManager
                     {
@@ -634,33 +633,5 @@ class Item_DeviceGeneric extends DbTestCase
             $_POST = [];
             error_reporting($previous_error_reporting);
         }
-    }
-}
-
-class ComponentCountQueryProbe extends Connection
-{
-    public int $builders = 0;
-    public array $queries = [];
-
-    public function __construct(private readonly Connection $selected)
-    {
-        parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
-    }
-
-    public function getDatabasePlatform(): AbstractPlatform
-    {
-        return $this->selected->getDatabasePlatform();
-    }
-
-    public function createQueryBuilder(): QueryBuilder
-    {
-        ++$this->builders;
-        return parent::createQueryBuilder();
-    }
-
-    public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
-    {
-        $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
-        return $this->selected->executeQuery($sql, $params, $types, $qcp);
     }
 }

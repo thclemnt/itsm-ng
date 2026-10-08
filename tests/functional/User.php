@@ -47,15 +47,11 @@ use DBAdapter;
 use DbTestCase;
 use DbUtils;
 use Doctrine\Common\EventManager;
-use Doctrine\DBAL\Cache\QueryCacheProfile;
 use Doctrine\DBAL\Configuration;
-use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\DBAL\Exception\LockWaitTimeoutException;
 use Doctrine\DBAL\Logging\Middleware;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Query\QueryBuilder;
-use Doctrine\DBAL\Result;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint\Deferrability;
 use Doctrine\DBAL\TransactionIsolationLevel;
 use Doctrine\DBAL\Types\BigIntType;
@@ -112,6 +108,9 @@ use Symfony\Component\Cache\Psr16Cache;
 use Throwable;
 use User as UserModel;
 use UserEmail;
+use tests\fixtures\ScalarReadProbe;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/user.class.php */
 
@@ -470,7 +469,7 @@ class User extends DbTestCase
             0,
             'Repeated email lookups share the selected canonical manager'
         );
-        $probe = new UserScalarReadProbe($connection);
+        $probe = new ScalarReadProbe($connection);
         $originalAdapter = $DB;
         $scope = $connection->captureManagedTransactionScope();
         $depth = $connection->getTransactionNestingLevel();
@@ -552,7 +551,7 @@ class User extends DbTestCase
             $this->exception(fn () => $reader->preferred($id))->isInstanceOf(LogicException::class);
             $this->exception(fn () => $ordinary->preferred($id))->isInstanceOf(LogicException::class);
             Type::overrideType('bigint', $bigint);
-            $extension = new class ($connection) extends UserScalarReadProbe {
+            $extension = new class ($connection) extends ScalarReadProbe {
                 private ?EventManager $events = null;
                 public function getEventManager(): EventManager
                 {
@@ -619,7 +618,7 @@ class User extends DbTestCase
             return $ids;
         };
         $baselineIds = $sortedIds([$defaultProfileId, $profileId]);
-        $probe = new UserScalarReadProbe($connection);
+        $probe = new ScalarReadProbe($connection);
         $expectedScope = [];
         foreach ($grants->scopes($id, $profileId) as $grant) {
             $expectedScope[$grant['entities_id']] = $grant['entities_id'];
@@ -775,7 +774,7 @@ class User extends DbTestCase
             $this->array($expectedRight)->isNotEmpty();
             $this->array($scopes->scopes($id, right: $right, mask: 1))->isIdenticalTo($expectedRight);
             Type::overrideType('string', $string);
-            $extension = new class ($connection) extends UserScalarReadProbe {
+            $extension = new class ($connection) extends ScalarReadProbe {
                 private ?EventManager $events = null;
                 public function getEventManager(): EventManager
                 {
@@ -1149,7 +1148,7 @@ class User extends DbTestCase
             $this->boolean($warmRender->load($model, $id, $DB))->isTrue();
             $this->array(array_keys($getManager($warmRender)->getMetadataFactory()->getLoadedMetadata()))
                 ->isIdenticalTo([UserRecord::class]);
-            $extension = new class ($connection) extends UserScalarReadProbe {
+            $extension = new class ($connection) extends ScalarReadProbe {
                 private ?EventManager $events = null;
                 public function getEventManager(): EventManager
                 {
@@ -2700,34 +2699,5 @@ class User extends DbTestCase
         ];
         $this->integer(countElementsInTable(UserModel::getTable(), $user_crit))->isEqualTo($expected_lock_count);
         $DB->update(UserModel::getTable(), ['is_active' => 1], $user_crit); // reset users
-    }
-}
-
-/** Observe the actual selected connection without opening another transaction or socket. */
-class UserScalarReadProbe extends Connection
-{
-    public int $builders = 0;
-    public array $queries = [];
-
-    public function __construct(private readonly Connection $selected)
-    {
-        parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
-    }
-
-    public function getDatabasePlatform(): AbstractPlatform
-    {
-        return $this->selected->getDatabasePlatform();
-    }
-
-    public function createQueryBuilder(): QueryBuilder
-    {
-        ++$this->builders;
-        return parent::createQueryBuilder();
-    }
-
-    public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
-    {
-        $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
-        return $this->selected->executeQuery($sql, $params, $types, $qcp);
     }
 }

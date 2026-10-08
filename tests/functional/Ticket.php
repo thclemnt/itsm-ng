@@ -111,6 +111,9 @@ use User;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\PromotionSourceReadOperation;
 use itsmng\Database\Repository\ITILOriginRepository;
+use tests\fixtures\ScalarReadProbe;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/ticket.class.php */
 
@@ -383,7 +386,7 @@ class Ticket extends DbTestCase
                 $this->integer((int)$baseline['items_id'])->isIdenticalTo((int)$ticket->getID());
                 $this->array($reader->forTicket((int)$ticket->getID()))->isIdenticalTo($baseline);
                 $this->variable($reader->forTicket(-1))->isNull();
-                $factoryProbe = new class ($connection) extends TicketScalarReadProbe {
+                $factoryProbe = new class ($connection) extends ScalarReadProbe {
                     public function createQueryBuilder(): QueryBuilder
                     {
                         throw new LogicException('Connection builder factory must not be invoked');
@@ -832,7 +835,7 @@ class Ticket extends DbTestCase
         $parentModel->fields['id'] = $parent->id;
         $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
         try {
-            $probe = new TicketScalarReadProbe($em->getConnection());
+            $probe = new ScalarReadProbe($em->getConnection());
             $direct = new ITILActorReadOperation($probe);
             $this->array($direct->actors($legacy, $parent->id))->isIdenticalTo($grouped);
             $this->array($probe->queries)->hasSize(1);
@@ -2867,7 +2870,7 @@ class Ticket extends DbTestCase
                 $this->integer($item->getTimelineItemCount())->isEqualTo(9);
                 $this->integer($item->getTimelineItemCount())->isEqualTo(count($item->getTimelineItems()));
                 $originalAdapter = $DB;
-                $probe = new TicketScalarReadProbe($DB->getDoctrineConnection());
+                $probe = new ScalarReadProbe($DB->getDoctrineConnection());
                 $this->mockGenerator()->orphanize('__construct');
                 $adapter = new TimelineCountAdapter();
                 $this->calling($adapter)->getDoctrineConnection = $probe;
@@ -3040,7 +3043,7 @@ class Ticket extends DbTestCase
 
                 if ($type === 'Ticket') {
                     $expectedRouteCount = $item->getTimelineItemCount();
-                    $otherProbe = new TicketScalarReadProbe($originalAdapter->getDoctrineConnection());
+                    $otherProbe = new ScalarReadProbe($originalAdapter->getDoctrineConnection());
                     $otherAdapter = new TimelineCountAdapter();
                     $this->calling($otherAdapter)->getDoctrineConnection = $otherProbe;
                     $callbackItem = new class () extends LegacyTicket {
@@ -6086,34 +6089,6 @@ HTML
 }
 
 
-/** Observe the actual selected connection without opening another transaction or socket. */
-class TicketScalarReadProbe extends Connection
-{
-    public int $builders = 0;
-    public array $queries = [];
-
-    public function __construct(private readonly Connection $selected)
-    {
-        parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
-    }
-
-    public function getDatabasePlatform(): AbstractPlatform
-    {
-        return $this->selected->getDatabasePlatform();
-    }
-
-    public function createQueryBuilder(): QueryBuilder
-    {
-        ++$this->builders;
-        return parent::createQueryBuilder();
-    }
-
-    public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
-    {
-        $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
-        return $this->selected->executeQuery($sql, $params, $types, $qcp);
-    }
-}
 
 
 /** Observe document SQL while retaining the base connection's compiler methods. */
@@ -6157,7 +6132,7 @@ class TimelineDocumentReadProbe extends Connection
 
 
 /** A supplied mutable EventManager keeps every timeline count on the ordinary path. */
-class TimelineLocalCountProbe extends TicketScalarReadProbe
+class TimelineLocalCountProbe extends ScalarReadProbe
 {
     private EventManager $events;
 
