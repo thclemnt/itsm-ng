@@ -149,10 +149,12 @@ class EntityRegistryCache extends test
         try {
             Orm::withConnection($application, function (EntityManager $manager) use ($application, &$canonical): void {
                 $canonical = $manager;
+                $this->object($manager->getConfiguration()->getQueryCache())->isInstanceOf(ArrayAdapter::class);
                 $reference = $manager->getReference(Config::class, 1);
                 $this->boolean($manager->contains($reference))->isTrue();
                 Orm::withConnection($application, function (EntityManager $nested) use ($manager): void {
                     $this->object($nested)->isNotIdenticalTo($manager);
+                    $this->variable($nested->getConfiguration()->getQueryCache())->isNull();
                 });
                 $this->boolean($manager->contains($reference))->isTrue('Nested completion cannot clear its parent unit of work');
             });
@@ -162,17 +164,20 @@ class EntityRegistryCache extends test
                 Orm::withConnection($otherRoute, function (EntityManager $other) use ($manager): void {
                     $this->object($other)->isNotIdenticalTo($manager);
                     $this->object($other->getConnection())->isNotIdenticalTo($manager->getConnection());
+                    $this->object($other->getConfiguration()->getQueryCache())->isNotIdenticalTo($manager->getConfiguration()->getQueryCache());
                 });
                 $manager->close();
             });
             Orm::withConnection($application, function (EntityManager $manager) use (&$canonical): void {
                 $this->object($manager)->isNotIdenticalTo($canonical);
+                $this->object($manager->getConfiguration()->getQueryCache())->isNotIdenticalTo($canonical->getConfiguration()->getQueryCache());
                 $this->boolean($manager->isOpen())->isTrue();
                 $canonical = $manager;
             });
             $application->close();
             Orm::withConnection($application, function (EntityManager $manager) use ($canonical): void {
                 $this->object($manager)->isNotIdenticalTo($canonical);
+                $this->object($manager->getConfiguration()->getQueryCache())->isNotIdenticalTo($canonical->getConfiguration()->getQueryCache());
             });
             Orm::withConnection($application, function (EntityManager $manager): void {
                 $metadata = $manager->getClassMetadata(Config::class);
@@ -204,6 +209,7 @@ class EntityRegistryCache extends test
             $plainSql = Orm::withConnection($application, $select);
             try {
                 DbalType::getTypeRegistry()->override('string', $converter);
+                $this->variable(Orm::withConnection($application, static fn (EntityManager $manager) => $manager->getConfiguration()->getQueryCache()))->isNull();
                 $upperSql = Orm::withConnection($application, $select);
                 $this->string($upperSql)->contains('UPPER(')->isNotIdenticalTo($plainSql);
                 $converter->upper = false;
@@ -239,6 +245,7 @@ class EntityRegistryCache extends test
                 DbalType::getTypeRegistry()->override('string', new StringType());
                 Orm::withConnection($application, function (EntityManager $manager) use ($priorManager): void {
                     $this->object($manager)->isNotIdenticalTo($priorManager);
+                    $this->object($manager->getConfiguration()->getQueryCache())->isNotIdenticalTo($priorManager->getConfiguration()->getQueryCache());
                 });
             } finally {
                 DbalType::getTypeRegistry()->override('string', $originalString);
@@ -252,6 +259,7 @@ class EntityRegistryCache extends test
             })->isInstanceOf(LogicException::class);
             Orm::withConnection($application, function (EntityManager $manager) use ($rejected): void {
                 $this->object($manager)->isNotIdenticalTo($rejected);
+                $this->object($manager->getConfiguration()->getQueryCache())->isNotIdenticalTo($rejected->getConfiguration()->getQueryCache());
             });
             $failedCleanup = null;
             $this->exception(function () use ($application, &$failedCleanup): void {
@@ -267,6 +275,7 @@ class EntityRegistryCache extends test
             })->isInstanceOf(LogicException::class);
             Orm::withConnection($application, function (EntityManager $manager) use ($failedCleanup): void {
                 $this->object($manager)->isNotIdenticalTo($failedCleanup);
+                $this->object($manager->getConfiguration()->getQueryCache())->isNotIdenticalTo($failedCleanup->getConfiguration()->getQueryCache());
                 $this->integer($manager->getUnitOfWork()->size())->isIdenticalTo(0);
             });
             $this->boolean($application->isConnected())->isFalse();
@@ -276,6 +285,47 @@ class EntityRegistryCache extends test
             $otherRoute->close();
         }
 
+    }
+
+    public function testPrivateQueryCacheReusesParsingWithFreshValuesAndLimits(): void
+    {
+        $application = DriverManager::getConnection([
+            'driver' => 'pdo_mysql', 'serverVersion' => '8.4.0', 'wrapperClass' => MySQLManagedConnection::class,
+        ]);
+        $parses = 0;
+        $cache = null;
+        try {
+            Orm::withConnection($application, static function (EntityManager $manager) use (&$parses, &$cache): void {
+                $cache = $manager->getConfiguration()->getQueryCache();
+                // A stable function factory observes actual ORM parser work, not Query::parse entry counts.
+                $manager->getConfiguration()->addCustomNumericFunction('CACHE_PROBE', static function (string $name) use (&$parses): BitCount {
+                    ++$parses;
+                    return new BitCount($name);
+                });
+            });
+            foreach (['first', 'second'] as $index => $value) {
+                Orm::withConnection($application, function (EntityManager $manager) use ($index, $value, $cache): void {
+                    $this->object($manager->getConfiguration()->getQueryCache())->isIdenticalTo($cache);
+                    $query = $manager->createQuery('SELECT CACHE_PROBE(c.id) AS bits FROM ' . Config::class . ' c WHERE c.name = :name')
+                        ->setParameter('name', $value, 'string')->setMaxResults($index + 1);
+                    $this->string($query->getSQL())->contains('BIT_COUNT(')->contains('LIMIT ' . ($index + 1));
+                    $this->string($query->getParameter('name')->getValue())->isIdenticalTo($value);
+                    $this->variable($manager->getConfiguration()->getResultCache())->isNull();
+                });
+                $this->integer($parses)->isIdenticalTo(1);
+            }
+            // DQL parameter types participate in the parser cache key.
+            Orm::withConnection($application, function (EntityManager $manager): void {
+                $query = $manager->createQuery('SELECT CACHE_PROBE(c.id) AS bits FROM ' . Config::class . ' c WHERE c.name = :name')
+                    ->setParameter('name', 17, 'integer');
+                $this->string($query->getSQL())->contains('BIT_COUNT(');
+                $this->integer($query->getParameter('name')->getValue())->isIdenticalTo(17);
+            });
+            $this->integer($parses)->isIdenticalTo(2);
+            $this->boolean($application->isConnected())->isFalse();
+        } finally {
+            $application->close();
+        }
     }
 
     public function testScalarIdentifiersMatchBothProvidersAndIgnorePublicCustomization(): void

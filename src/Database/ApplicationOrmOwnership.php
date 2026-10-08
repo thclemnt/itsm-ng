@@ -6,6 +6,7 @@ namespace itsmng\Database;
 
 use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\EntityManager;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Throwable;
 
 /** Canonical connection lifetime, with a separate unit of work for reentrant operations. */
@@ -32,6 +33,7 @@ trait ApplicationOrmOwnership
         }
         if ($this->applicationEntityManager === null || !$this->applicationEntityManager->isOpen()) {
             $this->applicationEntityManager = Orm::forConnection($this);
+            $this->applicationEntityManager->getConfiguration()->setQueryCache(new ArrayAdapter(storeSerialized: true));
             // Configuration may register the application's two native types.
             $this->applicationTypes = Type::getTypeRegistry()->getMap();
         }
