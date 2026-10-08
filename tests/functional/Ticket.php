@@ -34,10 +34,7 @@
 namespace tests\units;
 
 use CommonITILObject;
-use itsmng\Database\Orm;
-use itsmng\Database\Repository\RecordRepository;
-use itsmng\Database\TimelineCountReadOperation;
-use itsmng\Database\TimelineSelection;
+use DbTestCase;
 use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
@@ -46,8 +43,17 @@ use Doctrine\DBAL\Types\BooleanType;
 use Doctrine\DBAL\Types\IntegerType;
 use Doctrine\DBAL\Types\StringType;
 use Doctrine\DBAL\Types\Type;
+use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use ITILSolution;
+use itsmng\Database\Entity\ITILSolution as SolutionRecord;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\TimelineCountReadOperation;
+use itsmng\Database\TimelineSelection;
 use mock\DBmysql as TimelineCountAdapter;
-use DbTestCase;
+use Psr\Cache\CacheItemInterface;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Symfony\Component\Cache\Psr16Cache;
 use TicketValidation;
 use User;
 
@@ -2652,6 +2658,104 @@ class Ticket extends DbTestCase
                     $DB = $originalAdapter;
                 }
 
+
+                if ($type === 'Ticket') {
+                    $previousCache = $GLOBALS['GLPI_CACHE'];
+                    $metadataCache = new class () extends ArrayAdapter {
+                        public int $metadataWrites = 0;
+                        public int $metadataHits = 0;
+
+                        public function save(CacheItemInterface $item): bool
+                        {
+                            if (is_string($item->get()) && str_contains($item->get(), 'Doctrine\\ORM\\Mapping\\ClassMetadata')) {
+                                ++$this->metadataWrites;
+                            }
+                            return parent::save($item);
+                        }
+
+                        public function getItems(array $keys = []): iterable
+                        {
+                            foreach (parent::getItems($keys) as $key => $item) {
+                                if ($item->isHit() && is_string($item->get()) && str_contains($item->get(), 'Doctrine\\ORM\\Mapping\\ClassMetadata')) {
+                                    ++$this->metadataHits;
+                                }
+                                yield $key => $item;
+                            }
+                        }
+                    };
+                    $constructorCache = clone $metadataCache;
+                    $read = null;
+                    try {
+                        $GLOBALS['GLPI_CACHE'] = new Psr16Cache($constructorCache);
+                        $read = new TimelineCountReadOperation($probe);
+                        // The selected table callback runs after construction. Its
+                        // cache choice must be observed by the first actual read.
+                        $GLOBALS['GLPI_CACHE'] = new Psr16Cache($metadataCache);
+                        $solutionSelection = new TimelineSelection(
+                            ['solutions' => ['itemtype' => $type, 'items_id' => $item->getID()]],
+                            false,
+                            null,
+                            false,
+                            null
+                        );
+                        $this->integer($read->solutions(ITILSolution::getTable(), $solutionSelection))->isIdenticalTo(1);
+                        $this->integer($constructorCache->metadataWrites)->isIdenticalTo(0);
+                        $this->integer($metadataCache->metadataWrites)->isGreaterThan(0);
+                        $writes = $metadataCache->metadataWrites;
+                        $read->close();
+                        $read = new TimelineCountReadOperation($probe);
+                        $this->integer($read->solutions(ITILSolution::getTable(), $solutionSelection))->isIdenticalTo(1);
+                        $this->integer($metadataCache->metadataWrites)->isIdenticalTo($writes);
+                        $this->integer($metadataCache->metadataHits)->isGreaterThan(0);
+                        $read->close();
+
+                        // Exercise the complete public sequence, including
+                        // Document privacy targets and validation metadata.
+                        $this->integer($item->getTimelineItemCount())->isIdenticalTo(9);
+                        $this->integer($metadataCache->metadataWrites)->isGreaterThan($writes);
+                        $writes = $metadataCache->metadataWrites;
+                        $fullHits = $metadataCache->metadataHits;
+                        $this->integer($item->getTimelineItemCount())->isIdenticalTo(9);
+                        $this->integer($metadataCache->metadataWrites)->isIdenticalTo($writes);
+                        $this->integer($metadataCache->metadataHits)->isGreaterThan($fullHits);
+
+                        // A local fallback before the first canonical read must
+                        // permanently retire deferred private-cache admission.
+                        $hits = $metadataCache->metadataHits;
+                        $read = new TimelineCountReadOperation($probe);
+                        $configurationSelection = new TimelineSelection(['solutions' => ['context' => 'core']], false, null, false, null);
+                        $this->integer($read->solutions('glpi_configs', $configurationSelection))->isGreaterThan(0);
+                        $this->integer($read->solutions(ITILSolution::getTable(), $solutionSelection))->isIdenticalTo(1);
+                        $this->integer($metadataCache->metadataHits)->isIdenticalTo($hits);
+                        $this->integer($metadataCache->metadataWrites)->isIdenticalTo($writes);
+                        $read->close();
+
+                        // Register a real metadata mutation after construction:
+                        // a connection-owned EventManager must never inherit the
+                        // warmed canonical mapping or skip its listener.
+                        $localConnection = new TimelineLocalCountProbe($originalAdapter->getDoctrineConnection());
+                        $read = new TimelineCountReadOperation($localConnection);
+                        $listener = new class () {
+                            public int $loads = 0;
+
+                            public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
+                            {
+                                if ($event->getClassMetadata()->name === SolutionRecord::class) {
+                                    ++$this->loads;
+                                    $event->getClassMetadata()->fieldMappings['itemtype']->columnName = 'content';
+                                }
+                            }
+                        };
+                        $localConnection->getEventManager()->addEventListener(['loadClassMetadata'], $listener);
+                        $this->integer($read->solutions(ITILSolution::getTable(), $solutionSelection))->isIdenticalTo(0);
+                        $this->integer($listener->loads)->isIdenticalTo(1);
+                        $this->integer($metadataCache->metadataHits)->isIdenticalTo($hits);
+                        $this->integer($metadataCache->metadataWrites)->isIdenticalTo($writes);
+                    } finally {
+                        $read?->close();
+                        $GLOBALS['GLPI_CACHE'] = $previousCache;
+                    }
+                }
 
                 // A selected non-task table or non-parent column retains the generic count contract.
                 $countManager = Orm::forConnection($originalAdapter->getDoctrineConnection());

@@ -22,17 +22,25 @@ use Symfony\Component\Cache\Adapter\ArrayAdapter;
 trait PrivateReadOwnership
 {
     private EntityManager $manager;
+    private readonly Connection $connection;
     private ?SerializedMetadataCache $queryCache = null;
     private array $identifiers = [];
     private bool $ownedMapping;
     private bool $persistentMetadataLoaded = false;
+    private bool $readCachesInitialized = false;
     private mixed $pool;
     private ?string $context = null;
 
-    public function __construct(private readonly Connection $connection)
+    public function __construct(Connection $connection)
     {
+        $this->initializeReadManager($connection);
+        $this->initializeReadCaches();
+    }
+
+    private function initializeReadManager(Connection $connection): void
+    {
+        $this->connection = $connection;
         $this->manager = Orm::forConnection($connection);
-        $configuration = $this->manager->getConfiguration();
         $platformFile = (new ReflectionClass($connection->getDatabasePlatform()))->getFileName();
         $dbalPath = InstalledVersions::getInstallPath('doctrine/dbal');
         $this->ownedMapping = $platformFile !== false && $dbalPath !== null
@@ -43,6 +51,16 @@ trait PrivateReadOwnership
             // before its first listener is registered. Its mappings and target
             // identifier facts must therefore remain local from the outset.
             && !method_exists($connection, 'getEventManager');
+    }
+
+    private function initializeReadCaches(): void
+    {
+        if ($this->readCachesInitialized) {
+            return;
+        }
+        $this->readCachesInitialized = true;
+        $connection = $this->connection;
+        $configuration = $this->manager->getConfiguration();
         $this->pool = $this->ownedMapping ? ($GLOBALS['GLPI_CACHE'] ?? null) : null;
         $this->identifiers = $this->ownedMapping ? EntityRegistry::scalarIdentifiers() : [];
         if ($this->pool instanceof CacheInterface && ($fingerprint = MappingFingerprint::current()) !== null) {
@@ -75,6 +93,7 @@ trait PrivateReadOwnership
         }
         // This manager has only local metadata. Retire private cache eligibility
         // before callbacks can observe it, including on later operation reads.
+        $this->readCachesInitialized = true;
         $this->context = null;
         $this->queryCache = null;
         $this->identifiers = [];
