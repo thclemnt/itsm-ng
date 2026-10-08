@@ -212,7 +212,8 @@ class Search extends DbTestCase
                 $entityName = Dropdown::getDropdownName('glpi_entities', $entity->getID());
                 $suffix = str_replace(['R', 'D'], [__('R'), __('D')], $suffix);
                 $expected[20][] = sprintf(__('%1$s - %2$s'), $profileName, $entityName) . $suffix;
-                $expected[80][] = sprintf(__('%1$s - %2$s'), $entityName, $profileName) . $suffix;
+                // This direction uses the packed raw entity name; the reverse uses Dropdown's display name.
+                $expected[80][] = sprintf(__('%1$s - %2$s'), $entity->fields['completename'], $profileName) . $suffix;
             }
             $this->createItem(Profile_User::class, [
                 'users_id' => $hidden->getID(), 'profiles_id' => $profiles[0]->getID(),
