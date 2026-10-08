@@ -52,6 +52,7 @@ use State;
 use Toolbox;
 use User;
 use itsmng\Database\Entity\Computer as ComputerEntity;
+use itsmng\Database\MappedStorage;
 use itsmng\Database\MutationRollbackFailure;
 use itsmng\Database\MySQLConnection;
 use itsmng\Database\Orm;
@@ -788,8 +789,9 @@ class Computer extends DbTestCase
             // Only the extension callbacks vary; the database effect is the oracle.
             foreach ([
                 'table_update', 'table_add', 'table_argument_update', 'table_argument_add',
-                'history_table_update', 'getter_update', 'orm_getter_update', 'orm_connection_update',
+                'history_table_update', 'getter_update', 'persistence_getter_update', 'persistence_connection_update',
             ] as $producerMode) {
+                $this->assert($producerMode);
                 $source = $this->createItem(Monitor::class, [
                     'name' => '_unglobalize_callback_' . $producerMode,
                     'entities_id' => $entity,
@@ -839,7 +841,7 @@ class Computer extends DbTestCase
                     }
                 };
                 $owner = $database;
-                if (in_array($producerMode, ['getter_update', 'orm_getter_update', 'orm_connection_update'], true)) {
+                if (in_array($producerMode, ['getter_update', 'persistence_getter_update', 'persistence_connection_update'], true)) {
                     $owner = new class ($connection, $probe, $routed, $alternate, $producerMode) extends DBmysql {
                         public function __construct(
                             private Connection $selected,
@@ -852,11 +854,12 @@ class Computer extends DbTestCase
 
                         public function getDoctrineConnection(): Connection
                         {
+                            // Target the producer's own resolution after the lifecycle checks.
                             if ($this->probe->armed && ($this->mode === 'getter_update'
-                                || (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2)[1]['class'] ?? null) === Orm::class)) {
+                                || (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2)[1]['class'] ?? null) === MappedStorage::class)) {
                                 $this->probe->armed = false;
                                 ++$this->probe->calls;
-                                if ($this->mode === 'orm_connection_update') {
+                                if ($this->mode === 'persistence_connection_update') {
                                     return $this->alternate;
                                 }
                                 $GLOBALS['DB'] = $this->routed;
@@ -908,6 +911,7 @@ class Computer extends DbTestCase
                 $caller->assertActive();
                 $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
             }
+            $this->stopCase();
             foreach (['fallback_global', 'fallback_connection'] as $fallbackMode) {
                 $source = $this->createItem(Monitor::class, [
                     'name' => '_unglobalize_' . $fallbackMode,
