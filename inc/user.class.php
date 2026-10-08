@@ -36,6 +36,7 @@ if (!defined('GLPI_ROOT')) {
 }
 
 use Doctrine\DBAL\Exception;
+use Doctrine\ORM\EntityManager;
 use Glpi\Exception\ForgetPasswordException;
 use Glpi\Exception\PasswordTooWeakException;
 use itsmng\Database\CurrentReadUnavailable;
@@ -44,6 +45,7 @@ use itsmng\Database\Entity\User as UserRecord;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\LegacyValues;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\ReferenceValues;
 use itsmng\Database\Repository\ITILUserRepository;
 use itsmng\Database\Repository\LdapRepository;
@@ -3849,7 +3851,11 @@ class User extends CommonDBTM
             case "delegate":
             case "groups":
                 $groups = $right === 'delegate' ? self::getDelegateGroupsForUser($entity_restrict) : ($_SESSION['glpigroups'] ?? []);
-                $users = (new UserSelectionRepository(Orm::create($DB)))->groupMembers($groups, (int)Session::getLoginUserID());
+                $database = $DB;
+                $connection = $database->getDoctrineConnection();
+                OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+                $users = Orm::withReadConnection($connection, static fn (?EntityManager $manager): array =>
+                    (new UserSelectionRepository($manager ?? Orm::forConnection($connection)))->groupMembers($groups, (int)Session::getLoginUserID()));
                 if (Session::getCurrentInterface() === 'central') {
                     $users[Session::getLoginUserID()] = Session::getLoginUserID();
                 }
@@ -3989,18 +3995,23 @@ class User extends CommonDBTM
         // Binding removes SQL-string escaping; literal backslashes still need
         // escaping for the LIKE pattern itself before the text-search wildcards.
         $pattern = $hasSearch && $decoded !== null ? Search::makeTextSearchValue(str_replace('\\', '\\\\', $decoded)) : null;
-        return (new UserSelectionRepository(Orm::create($DB)))->search(
-            $WHERE,
-            (bool)$count,
-            $used,
-            $pattern,
-            (bool)$inactive_deleted,
-            (int)($_SESSION['glpinames_format'] ?? self::REALNAME_BEFORE) === self::FIRSTNAME_BEFORE,
-            (int)$start,
-            (int)$limit,
-            $hasSearch,
-            $namesOnly
-        );
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        return Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $WHERE, $count, $used, $pattern, $inactive_deleted, $start, $limit, $hasSearch, $namesOnly): RowIterator {
+            return (new UserSelectionRepository($manager ?? Orm::forConnection($connection)))->search(
+                $WHERE,
+                (bool)$count,
+                $used,
+                $pattern,
+                (bool)$inactive_deleted,
+                (int)($_SESSION['glpinames_format'] ?? self::REALNAME_BEFORE) === self::FIRSTNAME_BEFORE,
+                (int)$start,
+                (int)$limit,
+                $hasSearch,
+                $namesOnly
+            );
+        });
     }
 
     /**

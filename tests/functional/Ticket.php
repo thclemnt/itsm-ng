@@ -91,6 +91,7 @@ use itsmng\Database\Entity\User as UserEntity;
 use itsmng\Database\ITILActorReadOperation;
 use itsmng\Database\ITILDocumentAccess;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\DocumentRepository;
 use itsmng\Database\Repository\ITILActorRepository;
 use itsmng\Database\Repository\RecordRepository;
@@ -99,6 +100,7 @@ use itsmng\Database\Repository\UserRepository;
 use itsmng\Database\Repository\UserSelectionRepository;
 use itsmng\Database\TimelineCountReadOperation;
 use itsmng\Database\TimelineSelection;
+use itsmng\Database\TransactionOwnershipMismatch;
 use itsmng\Database\UserDisplayReadOperation;
 use mock\DBmysql as TimelineCountAdapter;
 use Psr\Cache\CacheItemInterface;
@@ -5278,6 +5280,7 @@ class Ticket extends DbTestCase
 
     public function testCanDelegateeCreateTicket()
     {
+        global $DB;
         $normal_id   = getItemByTypeName('User', 'normal', true);
         $tech_id     = getItemByTypeName('User', 'tech', true);
         $postonly_id = getItemByTypeName('User', 'post-only', true);
@@ -5314,6 +5317,57 @@ class Ticket extends DbTestCase
         $this->boolean(\Ticket::canDelegateeCreateTicket($normal_id))->isTrue();
         $this->boolean(\Ticket::canDelegateeCreateTicket($tech_id))->isFalse();
         $this->boolean(\Ticket::canDelegateeCreateTicket($tuser_id))->isFalse();
+
+        // Warm the two selector operations without enclosing permission-helper callbacks.
+        $groupRows = iterator_to_array(User::getSqlSearchResult(false, 'groups'));
+        $this->array(array_map('intval', array_column($groupRows, 'id')))->contains((int)$normal_id);
+        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeManagers = $managers->getValue();
+        $this->array(iterator_to_array(User::getSqlSearchResult(false, 'groups')))->isIdenticalTo($groupRows);
+        $this->integer($managers->getValue() - $beforeManagers)->isIdenticalTo(
+            0,
+            'Group membership and user selection reuse the canonical manager'
+        );
+        $originalAdapter = $DB;
+        $connection = $DB->getDoctrineConnection();
+        $scope = $connection->captureManagedTransactionScope();
+        $expected = iterator_to_array(User::getSqlSearchResult(false, 'id'));
+        $probe = new TimelineDocumentReadProbe($connection);
+        $this->mockGenerator->orphanize('__construct');
+        $adapter = new TimelineCountAdapter();
+        $selected = $probe;
+        $getters = 0;
+        $this->calling($adapter)->getDoctrineConnection = static function () use (&$selected, &$getters): Connection {
+            ++$getters;
+            return $selected;
+        };
+        $this->calling($adapter)->getProvider = $originalAdapter->getProvider();
+        try {
+            $DB = $adapter;
+            $beforeManagers = $managers->getValue();
+            $this->array(iterator_to_array(User::getSqlSearchResult(false, 'id')))->isIdenticalTo($expected);
+            $this->integer($getters)->isIdenticalTo(1);
+            $this->integer($managers->getValue() - $beforeManagers)->isIdenticalTo(1);
+            $this->array($probe->queries)->hasSize(1);
+            // The same adapter changing its physical selection must fail before executing SQL.
+            $selected = $connection;
+            OwnershipUpdateUnit::withWriterGuard($adapter, $connection, function () use (&$selected, $probe, $connection): void {
+                $selected = $probe;
+                try {
+                    $this->exception(static fn () => User::getSqlSearchResult(false, 'id'))
+                        ->isInstanceOf(TransactionOwnershipMismatch::class);
+                    $this->array($probe->queries)->hasSize(1);
+                } finally {
+                    $selected = $connection;
+                }
+            });
+        } finally {
+            $DB = $originalAdapter;
+            $scope->assertActive();
+        }
+        // A DBAL change after the warm read must affect permission selection immediately.
+        $connection->delete('glpi_groups_users', ['groups_id' => $groups_id, 'users_id' => $normal_id]);
+        $this->boolean(LegacyTicket::canDelegateeCreateTicket($normal_id))->isFalse();
     }
 
     public function testCanAddFollowupsDefaults()
