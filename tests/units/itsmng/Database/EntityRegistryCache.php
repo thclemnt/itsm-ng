@@ -111,7 +111,7 @@ class EntityRegistryCache extends \atoum\atoum\test
             unset($manager);
             $connection->close();
             ksort($actual);
-            foreach ([['pdo_mysql', '8.4.0'], ['pdo_pgsql', '16.0']] as [$driverName, $version]) {
+            foreach ([['pdo_mysql', '8.4.0'], ['pdo_mysql', '10.11.18-MariaDB'], ['pdo_pgsql', '16.0']] as [$driverName, $version]) {
                 $connection = \Doctrine\DBAL\DriverManager::getConnection(['driver' => $driverName, 'serverVersion' => $version]);
                 $platform = $connection->getDatabasePlatform();
                 $configuration = \itsmng\Database\Orm::configuration($platform);
@@ -119,7 +119,22 @@ class EntityRegistryCache extends \atoum\atoum\test
                 $configuration->setMetadataCache(new ArrayAdapter(storeSerialized: true));
                 $manager = new \Doctrine\ORM\EntityManager($connection, $configuration);
                 $expected = [];
+                $quote = $configuration->getQuoteStrategy();
+                $quoteName = static fn (array $name): string => $name[1] ? $platform->quoteSingleIdentifier($name[0]) : $name[0];
                 foreach ($manager->getMetadataFactory()->getAllMetadata() as $metadata) {
+                    $projection = EntityRegistry::componentCountMapping($metadata->getTableName());
+                    if ($projection !== null) {
+                        $this->string($quoteName($projection['table']))->isIdenticalTo($quote->getTableName($metadata, $platform));
+                        foreach ($projection['fields'] as $property => $name) {
+                            $this->string($quoteName($name))->isIdenticalTo($quote->getColumnName($property, $metadata, $platform));
+                        }
+                        $reference = EntityRegistry::discriminatedReferences($metadata->getTableName())['items_id'] ?? null;
+                        foreach (array_keys($reference['selections'] ?? []) as $kind) {
+                            $property = $metadata->name::referenceAssociation($kind);
+                            $join = $metadata->associationMappings[$property]->joinColumns[0];
+                            $this->string($quoteName($projection['subjects'][$property]))->isIdenticalTo($quote->getJoinColumnName($join, $metadata, $platform));
+                        }
+                    }
                     if (count($metadata->identifier) === 1 && $metadata->hasField($metadata->identifier[0])) {
                         $property = $metadata->identifier[0];
                         $expected[$metadata->name] = ['property' => $property,

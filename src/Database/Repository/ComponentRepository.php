@@ -44,26 +44,42 @@ final class ComponentRepository
     }
 
     /** One private family count; retain the same scalar result and bound conversions as DQL. */
-    public function nativeCountForAsset(string $table, string $type, int $id): int
+    public function nativeCountForAsset(string $table, string $type, int $id, ?array $mapping = null): int
     {
         $class = EntityRegistry::tables()[$table];
         $reference = EntityRegistry::discriminatedReferences($table)['items_id'] ?? null;
         if ($reference !== null && !isset($reference['selections'][$type])) {
             return 0;
         }
-        $metadata = $this->em->getClassMetadata($class);
+        $metadata = $mapping === null ? $this->em->getClassMetadata($class) : null;
         $connection = $this->em->getConnection();
         $platform = $connection->getDatabasePlatform();
-        $quote = $this->em->getConfiguration()->getQuoteStrategy();
-        $column = static fn (string $field): string => 'r.' . $quote->getColumnName($field, $metadata, $platform);
-        if ($reference === null) {
-            $subject = $column('items_id');
-        } else {
-            $association = $metadata->associationMappings[$class::referenceAssociation($type)];
-            if (!$association->isToOneOwningSide() || count($association->joinColumns) !== 1) {
-                throw new LogicException('Component counts require a single owning subject reference.');
+        if ($mapping !== null) {
+            $identifier = static fn (array $name): string => $name[1] ? $platform->quoteSingleIdentifier($name[0]) : $name[0];
+            $column = static fn (string $field): string => 'r.' . $identifier($mapping['fields'][$field]);
+            $from = static fn (): string => $identifier($mapping['table']);
+            if ($reference === null) {
+                $subject = $column('items_id');
+            } else {
+                $join = $mapping['subjects'][$class::referenceAssociation($type)] ?? null;
+                if ($join === null) {
+                    throw new LogicException('Component counts require a single owning subject reference.');
+                }
+                $subject = 'r.' . $identifier($join);
             }
-            $subject = 'r.' . $quote->getJoinColumnName($association->joinColumns[0], $metadata, $platform);
+        } else {
+            $quote = $this->em->getConfiguration()->getQuoteStrategy();
+            $column = static fn (string $field): string => 'r.' . $quote->getColumnName($field, $metadata, $platform);
+            $from = static fn (): string => $quote->getTableName($metadata, $platform);
+            if ($reference === null) {
+                $subject = $column('items_id');
+            } else {
+                $association = $metadata->associationMappings[$class::referenceAssociation($type)];
+                if (!$association->isToOneOwningSide() || count($association->joinColumns) !== 1) {
+                    throw new LogicException('Component counts require a single owning subject reference.');
+                }
+                $subject = 'r.' . $quote->getJoinColumnName($association->joinColumns[0], $metadata, $platform);
+            }
         }
         $asset = Type::getType(Types::BIGINT);
         $kind = Type::getType(Types::STRING);
@@ -71,7 +87,7 @@ final class ComponentRepository
         // COUNT's path and scalar hydration do not apply mapped SQL/PHP output converters.
         return (int)$connection->createQueryBuilder()
             ->select('COUNT(' . $column('id') . ')')
-            ->from($quote->getTableName($metadata, $platform), 'r')
+            ->from($from(), 'r')
             ->where($subject . ' = ' . $asset->convertToDatabaseValueSQL('?', $platform))
             ->andWhere($column('itemtype') . ' = ' . $kind->convertToDatabaseValueSQL('?', $platform))
             ->andWhere($column('is_deleted') . ' = ' . $deleted->convertToDatabaseValueSQL('?', $platform))

@@ -43,6 +43,12 @@ final class EntityRegistry
         return self::model()['scalar_identifiers'];
     }
 
+    /** Small physical projection for the private component count, derived from mapped properties. */
+    public static function componentCountMapping(string $table): ?array
+    {
+        return self::model()['component_counts'][$table] ?? null;
+    }
+
     public static function booleanColumns(): array
     {
         return self::model()['booleans'];
@@ -158,7 +164,7 @@ final class EntityRegistry
         $metadata = $em->getMetadataFactory()->getAllMetadata();
         $nativeTimestamps = NativeTimestampSchema::declarations($metadata);
         $legacyTables = $tables = $types = $enums = $booleans = $booleanFields = $relations = $references = $discriminators = $lifecycle = $readOnly = $scopeOwners = [];
-        $scalarIdentifiers = [];
+        $scalarIdentifiers = $componentCounts = [];
         foreach ($metadata as $record) {
             if (count($record->identifier) === 1) {
                 $identifier = $record->getSingleIdentifierFieldName();
@@ -175,6 +181,17 @@ final class EntityRegistry
                 throw new LogicException('Duplicate mapped core table: ' . $table);
             }
             $tables[$table] = $record->name;
+            if ($record->identifier === ['id'] && $record->isInheritanceTypeNone()
+                && !array_diff(['id', 'items_id', 'itemtype', 'is_deleted'], array_keys($record->fieldMappings))
+                && empty($record->table['schema'])) {
+                $countMapping = ['table' => [$record->table['name'], isset($record->table['quoted'])],
+                    'fields' => [], 'subjects' => []];
+                foreach (['id', 'items_id', 'itemtype', 'is_deleted'] as $property) {
+                    $field = $record->fieldMappings[$property];
+                    $countMapping['fields'][$property] = [$field->columnName, isset($field->quoted)];
+                }
+                $componentCounts[$table] = $countMapping;
+            }
             foreach ($record->fieldMappings as $mapping) {
                 $types[$table][$mapping->columnName] = $mapping->type;
                 if ($mapping->enumType !== null) {
@@ -217,6 +234,10 @@ final class EntityRegistry
                     $logicalDiscriminator = null;
                     foreach ($propertyMetadata->getAttributes(Mapping\DiscriminatedBy::class) as $attribute) {
                         $binding = $attribute->newInstance();
+                        if (isset($componentCounts[$table]) && $binding->legacyColumn === 'items_id'
+                            && $binding->discriminator === 'itemtype' && count($association->joinColumns) === 1) {
+                            $componentCounts[$table]['subjects'][$property] = [$join->name, isset($join->quoted)];
+                        }
                         $logicalColumn = $binding->legacyColumn;
                         if (!$record->hasField($binding->discriminator) || !$record->hasField($record->getFieldName($binding->legacyColumn))) {
                             throw new LogicException('Discriminated reference requires mapped legacy fields');
@@ -306,6 +327,6 @@ final class EntityRegistry
         // Only immutable lookup projections survive bootstrap, not the offline unit of work.
         unset($em, $metadata, $record);
         gc_collect_cycles();
-        return ['legacy_tables' => $legacyTables, 'tables' => $tables, 'types' => $types, 'enums' => $enums, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners, 'native_timestamps' => $nativeTimestamps, 'scalar_identifiers' => $scalarIdentifiers];
+        return ['legacy_tables' => $legacyTables, 'tables' => $tables, 'types' => $types, 'enums' => $enums, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners, 'native_timestamps' => $nativeTimestamps, 'scalar_identifiers' => $scalarIdentifiers, 'component_counts' => $componentCounts];
     }
 }

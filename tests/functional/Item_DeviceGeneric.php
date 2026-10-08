@@ -34,6 +34,11 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Types\BigIntType;
+use Doctrine\DBAL\Types\Type;
+use itsmng\Database\ComponentCountReadOperation;
+use ReflectionProperty;
 
 class Item_DeviceGeneric extends DbTestCase
 {
@@ -233,6 +238,14 @@ class Item_DeviceGeneric extends DbTestCase
                 }
             }
             $this->integer($manager->getUnitOfWork()->size())->isIdenticalTo(0);
+            $canonical = new ComponentCountReadOperation($connection);
+            try {
+                $this->integer($canonical->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
+                $privateManager = (new ReflectionProperty($canonical, 'manager'))->getValue($canonical);
+                $this->integer(count($privateManager->getMetadataFactory()->getLoadedMetadata()))->isIdenticalTo(0);
+            } finally {
+                $canonical->close();
+            }
             $native = new \itsmng\Database\ComponentCountReadOperation($probe);
             $bigint = \Doctrine\DBAL\Types\Type::getType('bigint');
             $string = \Doctrine\DBAL\Types\Type::getType('string');
@@ -240,6 +253,36 @@ class Item_DeviceGeneric extends DbTestCase
             $integer = \Doctrine\DBAL\Types\Type::getType('integer');
             try {
                 $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
+                $callback = new class ($connection) extends ComponentCountQueryProbe {
+                    public bool $armed = false;
+                    public int $calls = 0;
+                    public function getDatabasePlatform(): AbstractPlatform
+                    {
+                        if ($this->armed && ++$this->calls === 2) {
+                            Type::overrideType('bigint', new class () extends BigIntType {
+                                public function convertToDatabaseValueSQL(string $expression, AbstractPlatform $platform): string
+                                {
+                                    return '(' . $expression . ' * 0 - 1)';
+                                }
+                            });
+                        }
+                        return parent::getDatabasePlatform();
+                    }
+                };
+                $callbackCache = $GLPI_CACHE;
+                $GLPI_CACHE = null;
+                try {
+                    $callbackRead = new ComponentCountReadOperation($callback);
+                } finally {
+                    $GLPI_CACHE = $callbackCache;
+                }
+                $callback->armed = true;
+                try {
+                    $this->integer($callbackRead->countForAsset(['glpi_items_devicememories'], 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
+                } finally {
+                    $callbackRead->close();
+                    Type::overrideType('bigint', $bigint);
+                }
                 $this->integer($native->countForAsset([$tables[0], $tables[0]], 'Computer', (int)$asset->getID()))
                     ->isIdenticalTo($repository->countForAsset([$tables[0], $tables[0]], 'Computer', (int)$asset->getID()));
                 $this->integer($native->countForAsset([], 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
