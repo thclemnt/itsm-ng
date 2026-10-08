@@ -36,14 +36,17 @@ namespace tests\units;
 use Alert;
 use Closure;
 use Contract as ContractModel;
+use ContractCost as ContractCostModel;
 use DBAdapter;
 use DBmysql;
 use DBpgsql;
 use DbTestCase;
 use Doctrine\DBAL\Connection;
 use itsmng\Database\Entity\Contract as ContractRecord;
+use itsmng\Database\Entity\ContractCost as ContractCostRecord;
 use itsmng\Database\Entity\Entity;
 use itsmng\Database\Entity\NotificationTemplate as TemplateRecord;
+use itsmng\Database\MutationCleanupFailure;
 use itsmng\Database\MutationRollbackFailure;
 use itsmng\Database\MySQLConnection;
 use itsmng\Database\Orm;
@@ -53,6 +56,7 @@ use itsmng\Database\PostgresConnection;
 use itsmng\Database\TransactionOwnershipMismatch;
 use itsmng\Domain\ContractAlertOutcome;
 use itsmng\Domain\ContractAlertPublisher;
+use Plugin;
 use QueuedNotification;
 use ReflectionProperty;
 use RuntimeException;
@@ -121,6 +125,204 @@ class Contract extends DbTestCase
                     ['contracts_id' => $cloned]
                 )
             )->isIdenticalTo(1, 'Missing relation with ' . $rel_class);
+        }
+        $this->assertEntityForwardingPreservesSelectedWriter();
+    }
+
+    /** The generic forwarding unit must guard its actual parent/child producers. */
+    private function assertEntityForwardingPreservesSelectedWriter(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $original = $DB;
+        $session = $_SESSION;
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $activePlugins = $plugins->getValue();
+        $originalConnection = $original->getDoctrineConnection();
+        $originalScope = $originalConnection->captureManagedTransactionScope();
+        $originalDepth = $originalConnection->getTransactionNestingLevel();
+        $source = $foreign = $sourceFrame = $foreignFrame = null;
+        $fixture = null;
+        $committedBefore = null;
+        $failure = null;
+        $cleanup = static function (callable $operation) use (&$failure): void {
+            try {
+                $operation();
+            } catch (Throwable $error) {
+                $failure = $failure === null ? $error : new MutationCleanupFailure($failure, $error);
+            }
+        };
+        try {
+            // This regression starts without another command's opt-in guard.
+            $guards = new ReflectionProperty(OwnershipUpdateUnit::class, 'writerGuards');
+            $this->array($guards->getValue())->isEmpty();
+            $parameters = $originalConnection->getParams();
+            $source = $original->getProvider() === 'pgsql'
+                ? PostgresConnection::create($parameters) : MySQLConnection::create($parameters);
+            $foreign = $original->getProvider() === 'pgsql'
+                ? PostgresConnection::create($parameters) : MySQLConnection::create($parameters);
+            foreach ([$source, $foreign] as $connection) {
+                if ($original->getProvider() === 'pgsql') {
+                    $connection->executeStatement("SET SESSION lock_timeout = '5s'");
+                    $connection->executeStatement("SET SESSION statement_timeout = '20s'");
+                } else {
+                    $connection->executeStatement('SET SESSION innodb_lock_wait_timeout = 5');
+                }
+            }
+            $snapshot = static function (Connection $reader): array {
+                $rows = [];
+                foreach (['glpi_contracts', 'glpi_contractcosts', 'glpi_logs', 'glpi_alerts', 'glpi_queuednotifications'] as $table) {
+                    $rows[$table] = $reader->fetchAllAssociative('SELECT * FROM ' . $reader->quoteIdentifier($table) . ' ORDER BY id');
+                }
+                return $rows;
+            };
+            $committedBefore = $snapshot($source);
+            // Both routes must see the same real parent/child without waiting on
+            // an uncommitted foreign key. Only these named fixture rows commit.
+            $name = 'forwarding-writer-' . $this->getUniqueString();
+            $fixture = OwnedMutationFrame::run($source, static function () use ($source, $name): array {
+                $manager = Orm::forConnection($source);
+                try {
+                    $parent = new ContractRecord();
+                    $parent->name = $name;
+                    $parent->entities = $manager->getReference(Entity::class, 0);
+                    $child = new ContractCostRecord();
+                    $child->name = $name;
+                    $child->contracts = $parent;
+                    $child->entities = $parent->entities;
+                    $manager->persist($parent);
+                    $manager->persist($child);
+                    $manager->flush();
+                    return ['parent' => $parent->id, 'child' => $child->id, 'name' => $name];
+                } finally {
+                    $manager->clear();
+                }
+            });
+            $sourceFrame = OwnedMutationFrame::begin($source);
+            $foreignFrame = OwnedMutationFrame::begin($foreign);
+            $writer = clone $original;
+            $routed = clone $original;
+            (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($writer, $source);
+            (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($routed, $foreign);
+            $DB = $writer;
+            $contract = new ContractModel();
+            $this->boolean($contract->getFromDB($fixture['parent']))->isTrue();
+            $stored = $contract->fields;
+            $before = $snapshot($source);
+            $foreignBefore = $snapshot($foreign);
+            $prepared = $switched = $children = 0;
+            $plugins->setValue(null, [...$activePlugins, 'forwarding_writer_fixture']);
+            $PLUGIN_HOOKS['pre_item_update']['forwarding_writer_fixture'][ContractModel::class] =
+                static function (ContractModel $item) use ($fixture, &$prepared): void {
+                    if ((int)$item->getID() === $fixture['parent']) {
+                        ++$prepared;
+                        $item->input['comment'] = 'Ordinary prepared input';
+                    }
+                };
+            $PLUGIN_HOOKS['item_update']['forwarding_writer_fixture'][ContractModel::class] =
+                static function (ContractModel $item) use ($fixture, $routed, &$switched): void {
+                    if ((int)$item->getID() === $fixture['parent']) {
+                        ++$switched;
+                        // No veto, identity rewrite, raw SQL or restoring hook:
+                        // the real subsequent forwarding producer sees this route.
+                        $GLOBALS['DB'] = $routed;
+                    }
+                };
+            $PLUGIN_HOOKS['item_update']['forwarding_writer_fixture'][ContractCostModel::class] =
+                static function (ContractCostModel $item) use ($fixture, &$children): void {
+                    if ((int)$item->getID() === $fixture['child']) {
+                        ++$children;
+                    }
+                };
+            $error = null;
+            try {
+                $contract->update(['id' => $fixture['parent'], 'is_recursive' => 1]);
+            } catch (Throwable $caught) {
+                $error = $caught;
+            } finally {
+                $DB = $writer;
+            }
+            // On the unguarded source, the real foreign child changes first.
+            $this->boolean($snapshot($foreign) === $foreignBefore)->isTrue('Required forwarding must not write through the independent physical route');
+            $this->object($error)->isInstanceOf(TransactionOwnershipMismatch::class);
+            $this->integer($prepared)->isIdenticalTo(1);
+            $this->integer($switched)->isIdenticalTo(1);
+            $this->integer($children)->isIdenticalTo(0);
+            $this->boolean($snapshot($source) === $before)->isTrue();
+            $this->array($contract->fields)->isIdenticalTo($stored);
+            $sourceFrame->assertActive();
+            $foreignFrame->assertActive();
+            $this->integer($source->getTransactionNestingLevel())->isIdenticalTo(1);
+            $this->integer($foreign->getTransactionNestingLevel())->isIdenticalTo(1);
+            $this->array($guards->getValue())->isEmpty();
+
+            // A real child veto still rolls back the already-written parent.
+            unset($PLUGIN_HOOKS['item_update']['forwarding_writer_fixture'][ContractModel::class]);
+            $PLUGIN_HOOKS['pre_item_update']['forwarding_writer_fixture'][ContractCostModel::class] =
+                static function (ContractCostModel $item) use ($fixture): void {
+                    if ((int)$item->getID() === $fixture['child']) {
+                        $item->input = false;
+                    }
+                };
+            $this->boolean($contract->update(['id' => $fixture['parent'], 'is_recursive' => 1]))->isFalse();
+            $this->boolean($snapshot($source) === $before)->isTrue();
+            $this->array($contract->fields)->isIdenticalTo($stored);
+            unset($PLUGIN_HOOKS['pre_item_update']['forwarding_writer_fixture'][ContractCostModel::class]);
+            $this->boolean($contract->update(['id' => $fixture['parent'], 'is_recursive' => 1]))->isTrue();
+            $this->string($source->fetchOne('SELECT comment FROM glpi_contracts WHERE id = ?', [$fixture['parent']]))
+                ->isIdenticalTo('Ordinary prepared input');
+            $child = new ContractCostModel();
+            $this->boolean($child->getFromDB($fixture['child']))->isTrue();
+            $this->boolean((bool)$child->fields['is_recursive'])->isTrue();
+            $this->integer($children)->isIdenticalTo(1);
+            // Legitimate existing guards and descendant units remain composable.
+            $this->boolean(OwnershipUpdateUnit::withWriterGuard(
+                $writer,
+                $source,
+                static fn (): bool => $contract->update(['id' => $fixture['parent'], 'is_recursive' => 0])
+            ))
+                ->isTrue();
+            $this->boolean($child->getFromDB($fixture['child']))->isTrue();
+            $this->boolean((bool)$child->fields['is_recursive'])->isFalse();
+            $this->integer($children)->isIdenticalTo(2);
+            $this->array($guards->getValue())->isEmpty();
+            $sourceFrame->assertActive();
+            $foreignFrame->assertActive();
+            $originalScope->assertActive();
+            $this->integer($originalConnection->getTransactionNestingLevel())->isIdenticalTo($originalDepth);
+        } catch (Throwable $error) {
+            $failure = $error;
+        } finally {
+            $DB = $original;
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $activePlugins);
+            $_SESSION = $session;
+            if ($foreignFrame !== null) {
+                $cleanup(static fn () => $foreignFrame->rollBack());
+            }
+            if ($sourceFrame !== null) {
+                $cleanup(static fn () => $sourceFrame->rollBack());
+            }
+            if ($fixture !== null) {
+                $cleanup(static fn () => OwnedMutationFrame::run($source, static function () use ($source, $fixture): void {
+                    $source->delete('glpi_contractcosts', ['id' => $fixture['child'], 'name' => $fixture['name']]);
+                    $source->delete('glpi_contracts', ['id' => $fixture['parent'], 'name' => $fixture['name']]);
+                }));
+            }
+            if ($committedBefore !== null) {
+                $cleanup(function () use ($source, $snapshot, $committedBefore): void {
+                    $this->boolean($snapshot($source) === $committedBefore)->isTrue('Committed fixture cleanup preserves all five observed row bags');
+                });
+            }
+            if ($foreign !== null) {
+                $cleanup(static fn () => $foreign->close());
+            }
+            if ($source !== null) {
+                $cleanup(static fn () => $source->close());
+            }
+        }
+        if ($failure !== null) {
+            throw $failure;
         }
     }
 

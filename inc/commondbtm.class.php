@@ -2196,7 +2196,7 @@ class CommonDBTM extends CommonGLPI
                     OwnershipUpdateUnit::assertTransactionalStorage($DB, $type::getTable());
                 }
                 return $this->completeLifecycleUpdate($history, $storedFields);
-            });
+            }, guardWriter: true);
         }
         return $this->completeLifecycleUpdate($history, $storedFields);
     }
