@@ -145,9 +145,43 @@ if [[ " ${TESTS_TO_RUN[*]} " == *" e2e "* ]]; then
   export TEST_DB_NAME PLAYWRIGHT_VAR_DIR
 fi
 
-# Backup configuration files
+# Restore only this invocation's backup, including after partial setup failure.
 BACKUP_DIR=$(mktemp -d -t glpi-tests-backup-XXXXXXXXXX)
-find "$APPLICATION_ROOT/tests/config" -mindepth 1 ! -iname ".gitignore" -exec mv {} $BACKUP_DIR \;
+BACKUP_COMPLETE=false
+CONTAINERS_STARTED=false
+cleanup() {
+  local result=$? cleanup_status=0 path
+  trap - EXIT
+  trap '' INT TERM
+  set +e
+  if [[ "$BACKUP_COMPLETE" == true ]]; then
+    # Preserve the established cleanup of generated, non-hidden config files.
+    rm -f -- "$APPLICATION_ROOT/tests/config/"* || cleanup_status=1
+  fi
+  for path in "$BACKUP_DIR/"* "$BACKUP_DIR/".[!.]* "$BACKUP_DIR/"..?*; do
+    [[ -e "$path" || -L "$path" ]] || continue
+    # Never nest a saved directory inside a conflicting generated directory.
+    mv -fT -- "$path" "$APPLICATION_ROOT/tests/config/${path##*/}" || cleanup_status=1
+  done
+  rmdir -- "$BACKUP_DIR" || cleanup_status=1
+  if [[ "$CONTAINERS_STARTED" == true ]]; then
+    "$APPLICATION_ROOT/.github/actions/teardown_containers-cleanup.sh" || cleanup_status=1
+  fi
+  if [[ "$cleanup_status" -ne 0 ]]; then
+    echo "Test harness cleanup failed; any unrestored configuration remains in $BACKUP_DIR" >&2
+    [[ "$result" -ne 0 ]] || result=1
+  fi
+  exit "$result"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+for path in "$APPLICATION_ROOT/tests/config/"* "$APPLICATION_ROOT/tests/config/".[!.]* "$APPLICATION_ROOT/tests/config/"..?*; do
+  [[ -e "$path" || -L "$path" ]] || continue
+  [[ "${path##*/}" =~ ^\.[gG][iI][tT][iI][gG][nN][oO][rR][eE]$ ]] && continue
+  mv -- "$path" "$BACKUP_DIR/"
+done
+BACKUP_COMPLETE=true
 
 # Export variables to env (required for compose) and start containers
 export COMPOSE_FILE="$APPLICATION_ROOT/.github/actions/docker-compose-app.yml"
@@ -164,7 +198,8 @@ export TEST_DB_TYPE
 export DB_IMAGE
 export PHP_IMAGE
 cd $WORKING_DIR # Ensure compose will look for .env in current directory
-$APPLICATION_ROOT/.github/actions/init_containers-start.sh
+CONTAINERS_STARTED=true
+"$APPLICATION_ROOT/.github/actions/init_containers-start.sh"
 $APPLICATION_ROOT/.github/actions/init_show-versions.sh
 
 # Install dependencies if required
@@ -220,12 +255,5 @@ do
     echo -e "\e[1;30;42m Tests \"$TEST_SUITE\" passed \e[0m\n"
   fi
 done
-
-# Restore configuration files
-rm -f $APPLICATION_ROOT/tests/config/*
-find "$BACKUP_DIR" -mindepth 1 -exec mv -f {} $APPLICATION_ROOT/tests/config \;
-
-# Stop containers
-$APPLICATION_ROOT/.github/actions/teardown_containers-cleanup.sh
 
 exit $LAST_EXIT_CODE
