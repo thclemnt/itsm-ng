@@ -21,6 +21,9 @@ use Doctrine\Persistence\Mapping\Driver\MappingDriver;
 use itsmng\Database\BaselineSchema;
 use itsmng\Database\CurrentSchema as Projection;
 use itsmng\Database\Entity\Config;
+use itsmng\Database\Entity\DomainRecordType;
+use itsmng\Database\Entity\DomainRelation;
+use itsmng\Database\Entity\DomainType;
 use itsmng\Database\Entity\CronTask;
 use itsmng\Database\Entity\CronTaskLog;
 use itsmng\Database\Entity\DeviceBatteryModel;
@@ -51,6 +54,7 @@ use itsmng\Database\Mapping\SchemaOwner;
 use itsmng\Database\Migration\V220\Baseline;
 use itsmng\Database\Migration\V220\IdentifierColumns;
 use itsmng\Database\Orm as ApplicationOrm;
+use ReflectionClass;
 use tests\fixtures\DisconnectedSchemaConnection;
 
 require_once dirname(__DIR__, 3) . '/fixtures/DisconnectedSchemaConnection.php';
@@ -228,6 +232,9 @@ class CurrentSchema extends \atoum\atoum\test
         return [
             ['glpi_crontasks', 16, 5, [], []],
             ['glpi_configs', 4, 2, [], []],
+            ['glpi_domaintypes', 5, 3, [], ['`entities_id`' => 'glpi_entities']],
+            ['glpi_domainrelations', 5, 3, [], ['`entities_id`' => 'glpi_entities']],
+            ['glpi_domainrecordtypes', 5, 3, [], ['`entities_id`' => 'glpi_entities']],
             ['glpi_computertypes', 5, 4, [], []],
             ['glpi_computermodels', 14, 5, [], []],
             ['glpi_monitormodels', 14, 5, [], []],
@@ -294,7 +301,7 @@ class CurrentSchema extends \atoum\atoum\test
                     [$column],
                     ['id'],
                     ['onDelete' => 'RESTRICT', 'onUpdate' => 'RESTRICT'],
-                    \itsmng\Database\ForeignKeys::name($table, $column)
+                    \itsmng\Database\ForeignKeys::name($table, trim($column, '`'))
                 );
             }
             $current = (new BaselineSchema($manager))->build($platform)->getTable($table);
@@ -559,6 +566,48 @@ class CurrentSchema extends \atoum\atoum\test
                 $this->boolean($fresh->getTable($table)->getColumn('name')->getNotnull())->isFalse();
                 $this->boolean($fresh->getTable($table)->hasIndex($index))->isTrue();
                 $this->boolean($fresh->getTable($table)->hasIndex($table . '_current_label'))->isFalse();
+            }
+            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
+            $this->boolean($manager->getConnection()->isConnected())->isFalse();
+        }
+    }
+
+    public function testDomainDropdownDeclarationsOwnSchemaWithoutChangingHistory(): void
+    {
+        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+            $manager = $this->manager($platform);
+            $frozen = (new Baseline())->build($platform)->toSql($platform);
+            $current = (new BaselineSchema($manager))->build($platform);
+            foreach ([DomainType::class, DomainRelation::class, DomainRecordType::class] as $class) {
+                $metadata = $manager->getClassMetadata($class);
+                $table = $metadata->getTableName();
+                $this->string(Type::lookupName($current->getTable($table)->getColumn('is_recursive')->getType()))
+                    ->isIdenticalTo($platform instanceof PostgreSQLPlatform ? Types::BOOLEAN : Types::SMALLINT);
+                $this->boolean($metadata->fieldMappings['is_recursive']->type === Types::BOOLEAN)->isTrue();
+                // Changes belong to properties and indexes, not the historical overlay.
+                $metadata->fieldMappings['name']->length = 173;
+                $metadata->fieldMappings['name']->nullable = false;
+                $metadata->fieldMappings['name']->options['default'] = 'Current domain label';
+                $metadata->associationMappings['entities']->joinColumns[0]->nullable = true;
+                $metadata->associationMappings['entities']->joinColumns[0]->options['default'] = null;
+                $index = $platform instanceof PostgreSQLPlatform ? $table . '_name' : 'name';
+                unset($metadata->table['indexes'][$index], $metadata->fieldMappings['comment']);
+            }
+            $changed = (new BaselineSchema($manager))->build($platform);
+            $withoutKeys = (new BaselineSchema($manager))->build($platform, false);
+            foreach ([DomainType::class, DomainRelation::class, DomainRecordType::class] as $class) {
+                $table = $manager->getClassMetadata($class)->getTableName();
+                $declaration = $changed->getTable($table);
+                $this->integer($declaration->getColumn('name')->getLength())->isIdenticalTo(173);
+                $this->integer(count((new ReflectionClass($class))->getAttributes(SchemaOwner::class)))->isIdenticalTo(1);
+                $this->boolean($declaration->getColumn('name')->getNotnull())->isTrue();
+                $this->string($declaration->getColumn('name')->getDefault())->isIdenticalTo('Current domain label');
+                $this->boolean($declaration->getColumn('entities_id')->getNotnull())->isFalse();
+                $this->variable($declaration->getColumn('entities_id')->getDefault())->isNull();
+                $this->boolean($declaration->hasColumn('comment'))->isFalse();
+                $this->boolean($declaration->hasIndex($platform instanceof PostgreSQLPlatform ? $table . '_name' : 'name'))->isFalse();
+                $this->integer(count($declaration->getForeignKeys()))->isIdenticalTo(1);
+                $this->array($withoutKeys->getTable($table)->getForeignKeys())->isEmpty();
             }
             $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
             $this->boolean($manager->getConnection()->isConnected())->isFalse();
