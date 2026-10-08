@@ -389,7 +389,8 @@ final class DbUtils
                 $condition = [];
             }
         }
-        if (count($table) === 1 && array_is_list($table) && is_string($table[0]) && is_array($condition)) {
+        if (count($table) === 1 && array_is_list($table) && is_string($table[0]) && is_array($condition)
+            && !DBmysqlIterator::hasQueryOptions($condition)) {
             try {
                 return MappedReads::countMatching($DB, $table[0], $condition);
             } catch (UnsupportedCriteria $unsupported) {

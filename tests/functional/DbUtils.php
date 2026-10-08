@@ -469,6 +469,36 @@ class DbUtils extends DbTestCase
         $this->integer(countElementsInTable('glpi_configs', ['context' => 'core', 'name' => 'version']))->isIdenticalTo(1);
         $this->integer(countElementsInTable('glpi_configs', ['context' => 'core']))->isGreaterThan(100);
         $this->integer(countElementsInTable('glpi_configs', ['context' => 'fakecontext']))->isIdenticalTo(0);
+
+        global $DB;
+        $this->login();
+        $name = $this->getUniqueString();
+        $software = $this->createItem(Software::class, ['name' => $name, 'entities_id' => 0]);
+        $predicate = ['name' => $name];
+        $this->integer($this->testedInstance->countElementsInTable('glpi_softwares', $predicate))->isIdenticalTo(1);
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $before = $factories->getValue();
+        $request = [
+            'INNER JOIN' => [
+                'glpi_entities' => ['FKEY' => ['glpi_softwares' => 'entities_id', 'glpi_entities' => 'id']],
+            ],
+            'WHERE' => ['glpi_softwares.id' => (int)$software->getID()],
+        ];
+        $this->integer($this->testedInstance->countElementsInTable('glpi_softwares', $request))->isIdenticalTo(1);
+        $this->integer($this->testedInstance->countElementsInTable('glpi_softwares', $predicate))->isIdenticalTo(1);
+        // A complete SQL request must not invalidate the warmed mapped-reader manager.
+        $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+        $request['WHERE']['glpi_softwares.id'] = -1;
+        $this->integer(countElementsInTable('glpi_softwares', $request))->isIdenticalTo(0);
+        $this->integer(countElementsInTable('glpi_softwares', ['WHERE' => $predicate]))->isIdenticalTo(1);
+        $this->integer(countElementsInTable('glpi_softwares', [
+            'SELECT' => 'id', 'DISTINCT' => true, 'WHERE' => $predicate,
+        ]))->isIdenticalTo(1);
+        $this->boolean($DB->update('glpi_softwares', ['name' => $name . '-updated'], ['id' => $software->getID()]))->isTrue();
+        $this->integer(countElementsInTable('glpi_softwares', ['WHERE' => $predicate]))->isIdenticalTo(0);
+        $this->integer(countElementsInTable('glpi_softwares', $predicate))->isIdenticalTo(0);
+        $this->integer(countElementsInTable('glpi_softwares', ['name' => $name . '-updated']))->isIdenticalTo(1);
+        $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
     }
 
 

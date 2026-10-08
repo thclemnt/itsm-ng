@@ -40,6 +40,20 @@ if (!defined('GLPI_ROOT')) {
 **/
 class DBmysqlIterator implements Iterator, Countable
 {
+    /** Top-level request options consumed by buildQuery, distinct from row predicates. */
+    private const QUERY_OPTIONS = [
+        'SELECT' => 'fields', 'FIELDS' => 'fields', 'DISTINCT' => 'distinct',
+        'COUNT' => 'count', 'ORDER' => 'order', 'ORDERBY' => 'order',
+        'LIMIT' => 'limit', 'START' => 'start', 'WHERE' => 'where',
+        'HAVING' => 'having', 'GROUP' => 'group', 'GROUPBY' => 'group',
+        'JOIN' => 'join', 'LEFT JOIN' => 'join', 'RIGHT JOIN' => 'join', 'INNER JOIN' => 'join',
+    ];
+
+    public static function hasQueryOptions(array $criteria): bool
+    {
+        return (bool)array_intersect_key($criteria, self::QUERY_OPTIONS);
+    }
+
     /**
      * DBmysql object
      * @var DBmysql
@@ -154,61 +168,55 @@ class DBmysqlIterator implements Iterator, Countable
             $having   = '';
             if (is_array($crit) && count($crit)) {
                 foreach ($crit as $key => $val) {
-                    switch ((string)$key) {
-                        case 'SELECT':
-                        case 'FIELDS':
+                    switch (self::QUERY_OPTIONS[$key] ?? null) {
+                        case 'fields':
                             $field = $val;
                             unset($crit[$key]);
                             break;
 
-                        case 'DISTINCT':
+                        case 'distinct':
                             if ($val) {
                                 $distinct = true;
                             }
                             unset($crit[$key]);
                             break;
 
-                        case 'COUNT':
+                        case 'count':
                             $count = $val;
                             unset($crit[$key]);
                             break;
 
-                        case 'ORDER':
-                        case 'ORDERBY':
+                        case 'order':
                             $orderby = $val;
                             unset($crit[$key]);
                             break;
 
-                        case 'LIMIT':
+                        case 'limit':
                             $limit = $val;
                             unset($crit[$key]);
                             break;
 
-                        case 'START':
+                        case 'start':
                             $start = $val;
                             unset($crit[$key]);
                             break;
 
-                        case 'WHERE':
+                        case 'where':
                             $where = $val;
                             unset($crit[$key]);
                             break;
 
-                        case 'HAVING':
+                        case 'having':
                             $having = $val;
                             unset($crit[$key]);
                             break;
 
-                        case 'GROUP':
-                        case 'GROUPBY':
+                        case 'group':
                             $groupby = $val;
                             unset($crit[$key]);
                             break;
 
-                        case 'JOIN':
-                        case 'LEFT JOIN':
-                        case 'RIGHT JOIN':
-                        case 'INNER JOIN':
+                        case 'join':
                             $join[$key] = $val;
                             unset($crit[$key]);
                             break;
