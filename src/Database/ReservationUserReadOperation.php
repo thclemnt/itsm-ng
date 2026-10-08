@@ -4,12 +4,10 @@
 
 namespace itsmng\Database;
 
-use Composer\InstalledVersions;
 use DBAdapter;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Repository\ReservationRepository;
-use ReflectionClass;
 use ReflectionMethod;
 
 /** One display partition owns its captured route; no rows survive the call. */
@@ -35,12 +33,7 @@ final class ReservationUserReadOperation
             return;
         }
         $platform = $connection->getDatabasePlatform();
-        $platformFile = (new ReflectionClass($platform))->getFileName();
-        $dbalPath = InstalledVersions::getInstallPath('doctrine/dbal');
-        $this->project = $platformFile !== false && $dbalPath !== null
-            && ($platformFile = realpath($platformFile)) !== false
-            && ($dbalPath = realpath($dbalPath)) !== false
-            && str_starts_with($platformFile, $dbalPath . '/src/Platforms/');
+        $this->project = Orm::ownsReadMapping($connection);
         if ($this->project) {
             // Keep the previous eager Type registration before argument callbacks.
             Orm::configuration($platform);
