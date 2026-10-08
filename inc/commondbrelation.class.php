@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\ComputerItemReadOperation;
 use itsmng\Database\ConnexityInput;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\Orm;
@@ -2021,6 +2022,13 @@ abstract class CommonDBRelation extends CommonDBConnexity
             && !array_diff(array_keys($params), ['SELECT', 'DISTINCT', 'FROM', 'WHERE', 'ORDER'])
             && $params['FROM'] === static::getTable() && $params['SELECT'] === 'itemtype'
             && ($params['DISTINCT'] ?? false) === true && is_array($params['WHERE'])) {
+            if (static::class === Computer_Item::class && is_int($items_id)
+                && $params['WHERE'] === [static::$items_id_1 => $items_id] && ($params['ORDER'] ?? null) === 'itemtype') {
+                return new RowIterator(
+                    ComputerItemReadOperation::forDatabase($DB)
+                        ->distinctTypes(static::getTable(), array_key_first($params['WHERE']), $items_id)
+                );
+            }
             return new RowIterator(
                 (new RecordRepository(Orm::create($DB)))
                     ->distinctValues(static::getTable(), 'itemtype', $params['WHERE'], $params['ORDER'] ?? [])

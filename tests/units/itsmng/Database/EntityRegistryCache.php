@@ -45,6 +45,8 @@ use itsmng\Database\Query\BitCount;
 use itsmng\Database\Query\EpochSeconds;
 use itsmng\Database\SerializedMetadataCache;
 use stdClass;
+use itsmng\Database\Entity\ComputerItem;
+use itsmng\Database\Entity\ITILFollowup;
 
 /** Mapping/cache behavior without an application bootstrap or database connection. */
 class EntityRegistryCache extends test
@@ -290,6 +292,19 @@ class EntityRegistryCache extends test
                 $quote = $configuration->getQuoteStrategy();
                 $quoteName = static fn (array $name): string => $name[1] ? $platform->quoteSingleIdentifier($name[0]) : $name[0];
                 foreach ($manager->getMetadataFactory()->getAllMetadata() as $metadata) {
+                    if ($metadata->name === ITILFollowup::class) {
+                        $promotion = EntityRegistry::promotionSourceMapping();
+                        $this->array($promotion);
+                        $this->string($quoteName($promotion['table']))->isIdenticalTo($quote->getTableName($metadata, $platform));
+                        foreach (['id', 'itemtype'] as $property) {
+                            $this->string($quoteName($promotion['fields'][$property]))->isIdenticalTo($quote->getColumnName($property, $metadata, $platform));
+                            $this->string($promotion['fields'][$property][2])->isIdenticalTo($metadata->getTypeOfField($property));
+                        }
+                        foreach (['ticket', 'promotedTicket'] as $property) {
+                            $join = $metadata->associationMappings[$property]->joinColumns[0];
+                            $this->string($quoteName($promotion['references'][$property]))->isIdenticalTo($quote->getJoinColumnName($join, $metadata, $platform));
+                        }
+                    }
                     $projection = EntityRegistry::componentCountMapping($metadata->getTableName());
                     if ($projection !== null) {
                         $this->string($quoteName($projection['table']))->isIdenticalTo($quote->getTableName($metadata, $platform));
@@ -311,6 +326,16 @@ class EntityRegistryCache extends test
                         $this->boolean(isset($actual[$metadata->name]))->isFalse();
                     }
                 }
+                $link = $manager->getClassMetadata(ComputerItem::class);
+                $projection = EntityRegistry::computerItemMapping();
+                $this->array($projection);
+                $this->string($quoteName($projection['table']))->isIdenticalTo($quote->getTableName($link, $platform));
+                foreach (['id', 'itemtype', 'items_id'] as $property) {
+                    $this->string($quoteName($projection['fields'][$property]))->isIdenticalTo($quote->getColumnName($property, $link, $platform));
+                    $this->string($projection['fields'][$property][2])->isIdenticalTo($link->getTypeOfField($property));
+                }
+                $join = $link->associationMappings['computers']->joinColumns[0];
+                $this->string($quoteName($projection['computer']))->isIdenticalTo($quote->getJoinColumnName($join, $link, $platform));
                 $entity = $manager->getClassMetadata(Entity::class);
                 $types = $enums = [];
                 foreach ($entity->fieldMappings as $mapping) {
@@ -636,7 +661,7 @@ class EntityRegistryCache extends test
         $previousModel = $model->getValue();
         $pool = new ArrayAdapter(storeSerialized: false);
         $GLOBALS['GLPI_CACHE'] = new Psr16Cache($pool);
-        $snapshot = static fn (): array => [EntityRegistry::tables(), EntityRegistry::legacyTables(), EntityRegistry::relations(), EntityRegistry::lifecycleRelations(), EntityRegistry::nativeTimestamps(), EntityRegistry::booleanColumns(), EntityRegistry::references('glpi_tickets'), EntityRegistry::fieldTypes('glpi_entities'), EntityRegistry::fieldEnums('glpi_entities')];
+        $snapshot = static fn (): array => [EntityRegistry::tables(), EntityRegistry::legacyTables(), EntityRegistry::relations(), EntityRegistry::lifecycleRelations(), EntityRegistry::nativeTimestamps(), EntityRegistry::booleanColumns(), EntityRegistry::references('glpi_tickets'), EntityRegistry::fieldTypes('glpi_entities'), EntityRegistry::fieldEnums('glpi_entities'), EntityRegistry::promotionSourceMapping(), EntityRegistry::computerItemMapping()];
         try {
             $model->setValue(null, null);
             $cold = serialize($snapshot());

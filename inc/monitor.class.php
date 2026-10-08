@@ -31,8 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
-use itsmng\Database\Orm;
-use itsmng\Database\Repository\AssetRepository;
+use itsmng\Database\ComputerItemReadOperation;
 use itsmng\Domain\SoftwareAllocationSubjectLifecycle;
 
 if (!defined('GLPI_ROOT')) {
@@ -343,11 +342,11 @@ class Monitor extends CommonDBTM
     {
         global $DB;
 
-        $em = Orm::create($DB);
+        $read = ComputerItemReadOperation::forDatabase($DB);
         try {
-            return (new AssetRepository($em))->linkedItems($this->getType(), (int)$this->getID());
+            return $read->linkedItems($this->getType(), (int)$this->getID());
         } finally {
-            $em->clear();
+            $read->close();
         }
     }
 

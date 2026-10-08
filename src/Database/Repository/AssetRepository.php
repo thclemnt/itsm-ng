@@ -4,6 +4,9 @@
 
 namespace itsmng\Database\Repository;
 
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Query\QueryBuilder as DBALQueryBuilder;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
@@ -44,6 +47,64 @@ final class AssetRepository
             $items[$target][$targetId] = $targetId;
         }
         return $items;
+    }
+
+    /** Compile the same fixed identity read from immutable owning metadata facts. */
+    public static function projectedLinkedItems(Connection $connection, array $mapping, string $itemtype, int $id): array
+    {
+        $platform = $connection->getDatabasePlatform();
+        $name = static fn (array $field): string => $field[1] ? $platform->quoteSingleIdentifier($field[0]) : $field[0];
+        $field = static fn (string $property): string => 'link.' . $name($mapping['fields'][$property]);
+        $computer = 'link.' . $name($mapping['computer']);
+        $table = $name($mapping['table']);
+        $params = [$id];
+        $types = [Types::INTEGER];
+        if ($itemtype === 'Computer') {
+            $kind = Type::getType($mapping['fields']['itemtype'][2])->convertToPHPValueSQL($field('itemtype'), $platform);
+            $target = Type::getType($mapping['fields']['items_id'][2])->convertToPHPValueSQL($field('items_id'), $platform);
+            $select = [$kind . ' AS itemtype', $target . ' AS item_id'];
+            $where = $computer . ' = ' . Type::getType(Types::INTEGER)->convertToDatabaseValueSQL('?', $platform);
+        } else {
+            // IDENTITY is a raw join column, not a selected mapped scalar conversion.
+            $select = [$computer . ' AS item_id'];
+            $where = $field('itemtype') . ' = ' . Type::getType(Types::STRING)->convertToDatabaseValueSQL('?', $platform)
+                . ' AND ' . $field('items_id') . ' = ' . Type::getType(Types::INTEGER)->convertToDatabaseValueSQL('?', $platform);
+            $params = [$itemtype, $id];
+            $types = [Types::STRING, Types::INTEGER];
+        }
+        $rows = (new DBALQueryBuilder($connection))
+            ->select(...$select)
+            ->from($table, 'link')
+            ->where($where)
+            ->orderBy($field('id'), 'ASC')
+            ->setParameters($params, $types)
+            ->executeQuery()->fetchAllAssociative();
+        $items = [];
+        // ScalarHydrator intentionally leaves aliased scalar values in native form.
+        foreach ($rows as $row) {
+            $target = $itemtype === 'Computer' ? $row['itemtype'] : 'Computer';
+            $targetId = (int)$row['item_id'];
+            $items[$target][$targetId] = $targetId;
+        }
+        return $items;
+    }
+
+    /** Fixed default Computer_Item type enumeration; richer criteria remain RecordCriteria-owned. */
+    public static function projectedComputerItemTypes(Connection $connection, array $mapping, int $id): array
+    {
+        $platform = $connection->getDatabasePlatform();
+        $name = static fn (array $field): string => $field[1] ? $platform->quoteSingleIdentifier($field[0]) : $field[0];
+        $kind = 'link.' . $name($mapping['fields']['itemtype']);
+        $selected = Type::getType($mapping['fields']['itemtype'][2])->convertToPHPValueSQL($kind, $platform);
+        $parameter = Type::getType(Types::INTEGER)->convertToDatabaseValueSQL('?', $platform);
+        return (new DBALQueryBuilder($connection))
+            ->select($selected . ' AS itemtype')
+            ->distinct()
+            ->from($name($mapping['table']), 'link')
+            ->where('link.' . $name($mapping['computer']) . ' = ' . $parameter)
+            ->orderBy($kind, 'ASC')
+            ->setParameter(0, $id, Types::INTEGER)
+            ->executeQuery()->fetchAllAssociative();
     }
 
     /** Link and serial fields for already selected connections; callers retain item rights. */

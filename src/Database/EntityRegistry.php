@@ -55,6 +55,18 @@ final class EntityRegistry
         return self::model()['reservation_user'] ?? null;
     }
 
+    /** Fixed historical link fields, derived from the owning followup metadata. */
+    public static function promotionSourceMapping(): ?array
+    {
+        return self::model()['promotion_source'] ?? null;
+    }
+
+    /** Physical facts for fixed computer connection reads, without mutable metadata. */
+    public static function computerItemMapping(): ?array
+    {
+        return self::model()['computer_item'] ?? null;
+    }
+
     /** Cache fields and owning self-parent names for private tree point reads. */
     public static function treePointMapping(string $table): ?array
     {
@@ -197,6 +209,59 @@ final class EntityRegistry
             }
             $projection[$alias] = $part;
         }
+        return $projection;
+    }
+
+    private static function promotionSourceProjection(EntityManager $manager): ?array
+    {
+        $metadata = $manager->getClassMetadata(Entity\ITILFollowup::class);
+        if ($metadata->identifier !== ['id'] || !$metadata->isInheritanceTypeNone() || !empty($metadata->table['schema'])) {
+            return null;
+        }
+        $projection = ['table' => [$metadata->table['name'], isset($metadata->table['quoted'])], 'fields' => [], 'references' => []];
+        foreach (['id', 'itemtype'] as $property) {
+            if (!$metadata->hasField($property)) {
+                return null;
+            }
+            $field = $metadata->fieldMappings[$property];
+            if ($field->enumType !== null) {
+                return null;
+            }
+            $projection['fields'][$property] = [$field->columnName, isset($field->quoted), $field->type];
+        }
+        foreach (['ticket', 'promotedTicket'] as $property) {
+            $reference = $metadata->associationMappings[$property] ?? null;
+            if ($reference === null || !$reference->isToOneOwningSide() || count($reference->joinColumns) !== 1) {
+                return null;
+            }
+            $join = $reference->joinColumns[0];
+            $projection['references'][$property] = [$join->name, isset($join->quoted)];
+        }
+        return $projection;
+    }
+
+    private static function computerItemProjection(EntityManager $manager): ?array
+    {
+        $metadata = $manager->getClassMetadata(Entity\ComputerItem::class);
+        $association = $metadata->associationMappings['computers'] ?? null;
+        if (!$metadata->isInheritanceTypeNone() || $metadata->identifier !== ['id']
+            || !empty($metadata->table['schema']) || $association === null
+            || !$association->isToOneOwningSide() || count($association->joinColumns) !== 1) {
+            return null;
+        }
+        $projection = ['table' => [$metadata->table['name'], isset($metadata->table['quoted'])], 'fields' => []];
+        foreach (['id', 'itemtype', 'items_id'] as $property) {
+            if (!$metadata->hasField($property)) {
+                return null;
+            }
+            $field = $metadata->fieldMappings[$property];
+            if ($field->enumType !== null) {
+                return null;
+            }
+            $projection['fields'][$property] = [$field->columnName, isset($field->quoted), $field->type];
+        }
+        $join = $association->joinColumns[0];
+        $projection['computer'] = [$join->name, isset($join->quoted)];
         return $projection;
     }
 
@@ -393,10 +458,12 @@ final class EntityRegistry
         }
         unset($children);
         $reservationUser = self::reservationUserProjection($em);
+        $promotionSource = self::promotionSourceProjection($em);
+        $computerItem = self::computerItemProjection($em);
         $connection->close();
         // Only immutable lookup projections survive bootstrap, not the offline unit of work.
         unset($em, $metadata, $record);
         gc_collect_cycles();
-        return ['legacy_tables' => $legacyTables, 'tables' => $tables, 'types' => $types, 'enums' => $enums, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners, 'native_timestamps' => $nativeTimestamps, 'scalar_identifiers' => $scalarIdentifiers, 'component_counts' => $componentCounts, 'reservation_user' => $reservationUser, 'tree_points' => $treePoints];
+        return ['legacy_tables' => $legacyTables, 'tables' => $tables, 'types' => $types, 'enums' => $enums, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners, 'native_timestamps' => $nativeTimestamps, 'scalar_identifiers' => $scalarIdentifiers, 'component_counts' => $componentCounts, 'reservation_user' => $reservationUser, 'tree_points' => $treePoints, 'promotion_source' => $promotionSource, 'computer_item' => $computerItem];
     }
 }

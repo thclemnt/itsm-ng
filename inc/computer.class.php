@@ -31,9 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\ComputerItemReadOperation;
 use itsmng\Database\MappedReads;
-use itsmng\Database\Orm;
-use itsmng\Database\Repository\AssetRepository;
 use itsmng\Domain\SoftwareAllocationSubjectLifecycle;
 
 if (!defined('GLPI_ROOT')) {
@@ -472,11 +471,11 @@ class Computer extends CommonDBTM
     {
         global $DB;
 
-        $em = Orm::create($DB);
+        $read = ComputerItemReadOperation::forDatabase($DB);
         try {
-            return (new AssetRepository($em))->linkedItems(Computer::class, (int)$this->getID());
+            return $read->linkedItems(Computer::class, (int)$this->getID());
         } finally {
-            $em->clear();
+            $read->close();
         }
     }
 

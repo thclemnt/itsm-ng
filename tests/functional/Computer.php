@@ -71,6 +71,26 @@ use Printer;
 use QueuedNotification;
 use ReflectionProperty;
 use Throwable;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Query\QueryBuilder;
+use Doctrine\DBAL\Result;
+use Doctrine\DBAL\Types\BigIntType;
+use Doctrine\DBAL\Types\IntegerType;
+use Doctrine\DBAL\Types\StringType;
+use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\ORM\Query\Filter\SQLFilter;
+use itsmng\Database\ComputerItemReadOperation;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Entity\ComputerItem as ComputerItemRecord;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\UnsupportedCriteria;
+use LogicException;
+use mock\DBmysql as ComputerItemAdapterProbe;
 
 /* Test for inc/computer.class.php */
 
@@ -143,6 +163,217 @@ class Computer extends DbTestCase
             $this->integer($loads->count)->isIdenticalTo(1);
             $this->object($em->getConnection())->isIdenticalTo($connection);
             $level = $connection->getTransactionNestingLevel();
+
+            $host = $ids[0];
+            $hostModel = $computers[$host];
+            $expectedLinks = $repository->linkedItems('Computer', $host);
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $before = $factories->getValue();
+            $this->array($hostModel->getLinkedItems())->isIdenticalTo($expectedLinks);
+            // The linked-item projection creates no manager.
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+            $before = $factories->getValue();
+            $this->array(iterator_to_array(Computer_Item::getDistinctTypes($host)))->isIdenticalTo([['itemtype' => 'Monitor']]);
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+            $reader = new ComputerItemReadOperation($connection);
+            $this->array($reader->linkedItems('Computer', $host))->isIdenticalTo($expectedLinks);
+            $factoryProbe = new class ($connection, new EventManager()) extends ComputerItemConnectionProbe {
+                public function createQueryBuilder(): QueryBuilder
+                {
+                    throw new LogicException('Connection builder factory must not be invoked');
+                }
+            };
+            $mapping = EntityRegistry::computerItemMapping();
+            $this->array(AssetRepository::projectedLinkedItems($factoryProbe, $mapping, 'Computer', $host))
+                ->isIdenticalTo($expectedLinks);
+            $this->array(AssetRepository::projectedComputerItemTypes($factoryProbe, $mapping, $host))
+                ->isIdenticalTo([['itemtype' => 'Monitor']]);
+            $this->integer($factoryProbe->queries)->isIdenticalTo(2);
+            // Deleted connections remain visible to lifecycle identity readers.
+            $expectedReverse = ['Computer' => array_combine(array_keys($computers), array_keys($computers))];
+            $this->array($monitor->getLinkedItems())->isIdenticalTo($expectedReverse);
+            foreach ([Phone::class, Printer::class, Peripheral::class] as $kind) {
+                $device = $this->createItem($kind, ['name' => $this->getUniqueString(), 'entities_id' => $entity, 'is_global' => true]);
+                $this->createItem(Computer_Item::class, ['computers_id' => $host, 'itemtype' => $kind, 'items_id' => $device->getID()]);
+                $before = $factories->getValue();
+                $this->array($device->getLinkedItems())->isIdenticalTo(['Computer' => [$host => $host]]);
+                $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+            }
+            $expectedLinks = $repository->linkedItems('Computer', $host);
+            $this->array($reader->linkedItems('Computer', $host))->isIdenticalTo($expectedLinks);
+            $this->array(array_keys($expectedLinks))->isIdenticalTo(['Monitor', 'Phone', 'Printer', 'Peripheral']);
+            $record = new RecordRepository($em);
+            $this->array(iterator_to_array(Computer_Item::getDistinctTypes($host)))->isIdenticalTo(
+                $record->distinctValues('glpi_computers_items', 'itemtype', ['computers_id' => $host], 'itemtype')
+            );
+            // Additional criteria and legacy string IDs retain the generic compiler.
+            foreach ([[$host, ['itemtype' => 'Monitor']], [(string)$host, []]] as [$selection, $extra]) {
+                $before = $factories->getValue();
+                $actualTypes = iterator_to_array(Computer_Item::getDistinctTypes($selection, $extra));
+                $this->integer($factories->getValue() - $before)->isIdenticalTo(1);
+                $this->array($actualTypes)->isIdenticalTo($record->distinctValues('glpi_computers_items', 'itemtype', ['computers_id' => $selection] + $extra, 'itemtype'));
+            }
+            $this->boolean($DB->insert('glpi_computers_items', ['computers_id' => $host, 'itemtype' => 'Monitor',
+                'items_id' => $monitor->getID(), 'is_deleted' => true, 'is_dynamic' => false]))->isTrue();
+            $duplicate = $DB->insertId();
+            try {
+                $this->array($reader->linkedItems('Computer', $host))->isIdenticalTo($expectedLinks);
+                $this->boolean($DB->update('glpi_computers_items', ['items_id' => PHP_INT_MAX], ['id' => $duplicate]))->isTrue();
+                $this->array($reader->linkedItems('Computer', $host))->isIdenticalTo($repository->linkedItems('Computer', $host));
+                $this->array($reader->linkedItems('Computer', $host)['Monitor'])->hasSize(2);
+            } finally {
+                $DB->delete('glpi_computers_items', ['id' => $duplicate]);
+            }
+            foreach ([0, -1] as $missing) {
+                $this->array($reader->linkedItems('Computer', $missing))->isEmpty();
+                $this->array(iterator_to_array(Computer_Item::getDistinctTypes($missing)))->isEmpty();
+            }
+            $string = Type::getType(Types::STRING);
+            $bigint = Type::getType(Types::BIGINT);
+            $integer = Type::getType(Types::INTEGER);
+            try {
+                Type::overrideType(Types::STRING, new class () extends StringType {
+                    public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return 'LOWER(' . $sqlExpr . ')';
+                    }
+                    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
+                    {
+                        throw new LogicException('Aliased scalar results do not run PHP conversion.');
+                    }
+                });
+                Type::overrideType(Types::BIGINT, new class () extends BigIntType {
+                    public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return '(' . $sqlExpr . ' + 1000000)';
+                    }
+                    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): int|string|null
+                    {
+                        throw new LogicException('Aliased scalar results do not run PHP conversion.');
+                    }
+                });
+                $this->array($reader->linkedItems('Computer', $host))->isIdenticalTo($repository->linkedItems('Computer', $host));
+                $this->array($reader->linkedItems('Computer', $host)['monitor'])->hasKey((int)$monitor->getID() + 1000000);
+                // Reverse IDENTITY bypasses the mapped BIGINT SQL converter.
+                $this->array($reader->linkedItems('Monitor', (int)$monitor->getID()))->isIdenticalTo($expectedReverse);
+                $input = new class () extends StringType {
+                    public int $calls = 0;
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        ++$this->calls;
+                        return $sqlExpr;
+                    }
+                    public function convertToDatabaseValue(mixed $value, AbstractPlatform $platform): mixed
+                    {
+                        return '__missing_connection_type__';
+                    }
+                };
+                Type::overrideType(Types::STRING, $input);
+                $this->array($reader->linkedItems('Monitor', (int)$monitor->getID()))->isEmpty();
+                $this->array($repository->linkedItems('Monitor', (int)$monitor->getID()))->isEmpty();
+                $this->integer($input->calls)->isIdenticalTo(2);
+                Type::overrideType(Types::STRING, $string);
+                Type::overrideType(Types::BIGINT, $bigint);
+                Type::overrideType(Types::INTEGER, new class () extends IntegerType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return '(' . $sqlExpr . ' + 1000000)';
+                    }
+                });
+                $this->array($reader->linkedItems('Computer', $host))->isEmpty();
+                $this->array($repository->linkedItems('Computer', $host))->isEmpty();
+                $this->array(iterator_to_array(Computer_Item::getDistinctTypes($host)))->isEmpty();
+                $this->array($record->distinctValues('glpi_computers_items', 'itemtype', ['computers_id' => $host], 'itemtype'))->isEmpty();
+            } finally {
+                Type::overrideType(Types::STRING, $string);
+                Type::overrideType(Types::BIGINT, $bigint);
+                Type::overrideType(Types::INTEGER, $integer);
+            }
+            $events = new EventManager();
+            $extended = new ComputerItemConnectionProbe($connection, $events);
+            $local = new ComputerItemReadOperation($extended);
+            $listener = new class () {
+                public int $loads = 0;
+                public int $clears = 0;
+                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
+                {
+                    if ($event->getClassMetadata()->name === ComputerItemRecord::class) {
+                        ++$this->loads;
+                        $manager = $event->getEntityManager();
+                        $manager->getConfiguration()->addFilter('deny_links', ComputerItemFilter::class);
+                        $manager->getFilters()->enable('deny_links');
+                    }
+                }
+                public function onClear(): void
+                {
+                    ++$this->clears;
+                }
+            };
+            $events->addEventListener([Events::loadClassMetadata, Events::onClear], $listener);
+            $database = $DB;
+            try {
+                $this->array($local->linkedItems('Computer', $host))->isEmpty();
+                $this->integer($listener->loads)->isIdenticalTo(1);
+                $local->close();
+                unset($local);
+                $this->integer($listener->clears)->isIdenticalTo(1);
+                $distinct = new ComputerItemReadOperation($extended);
+                $this->array($distinct->distinctTypes('glpi_computers_items', 'computers_id', $host))->isEmpty();
+                $this->integer($listener->loads)->isIdenticalTo(2);
+                unset($distinct);
+                $this->integer($listener->clears)->isIdenticalTo(1);
+                $events->removeEventListener([Events::loadClassMetadata], $listener);
+                $this->mockGenerator->orphanize('__construct');
+                $adapter = new ComputerItemAdapterProbe();
+                $routes = 0;
+                $this->calling($adapter)->getDoctrineConnection = static function () use ($extended, &$routes): Connection {
+                    ++$routes;
+                    return $extended;
+                };
+                $late = new class ($database) extends ComputerModel {
+                    public bool $fail = false;
+                    public function __construct(private DBAdapter $selected)
+                    {
+                    }
+                    public function getID()
+                    {
+                        $GLOBALS['DB'] = $this->selected;
+                        if ($this->fail) {
+                            throw new LogicException('Identifier callback failure');
+                        }
+                        return parent::getID();
+                    }
+                };
+                $late->fields = $hostModel->fields;
+                $DB = $adapter;
+                $queries = $extended->queries;
+                $this->array($late->getLinkedItems())->isIdenticalTo($expectedLinks);
+                $this->object($DB)->isIdenticalTo($database);
+                $this->integer($routes)->isIdenticalTo(1);
+                $this->integer($extended->queries - $queries)->isIdenticalTo(1);
+                $this->integer($listener->clears)->isIdenticalTo(2);
+                $DB = $adapter;
+                $late->fail = true;
+                $this->exception(static fn () => $late->getLinkedItems())->isInstanceOf(LogicException::class)->hasMessage('Identifier callback failure');
+                $this->integer($routes)->isIdenticalTo(2);
+                $this->integer($listener->clears)->isIdenticalTo(3);
+                // The original final table lookup occurs after manager/platform callbacks.
+                $extended->platformHook = static function (): void {
+                    Computer_Item::forceTable('glpi_computervirtualmachines');
+                };
+                $DB = $adapter;
+                try {
+                    $this->exception(static fn () => Computer_Item::getDistinctTypes($host))->isInstanceOf(UnsupportedCriteria::class);
+                    $this->integer($routes)->isIdenticalTo(3);
+                    $this->integer($listener->clears)->isIdenticalTo(3);
+                } finally {
+                    Computer_Item::forceTable('glpi_computers_items');
+                    $extended->platformHook = null;
+                }
+            } finally {
+                $DB = $database;
+                $events->removeEventListener([Events::loadClassMetadata, Events::onClear], $listener);
+            }
 
             $_SESSION['glpiactiveprofile']['monitor'] = READ;
             $_SESSION['glpiactiveprofile']['computer'] = READ;
@@ -1735,5 +1966,47 @@ class Computer extends DbTestCase
            ]
         ]);
         $this->integer(count($softwares))->isidenticalTo(1);
+    }
+}
+
+
+/** Routes SQL to the fixture connection while exposing late metadata callbacks. */
+class ComputerItemConnectionProbe extends Connection
+{
+    public int $queries = 0;
+    public ?Closure $platformHook = null;
+
+    public function __construct(private Connection $selected, private EventManager $events)
+    {
+        parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
+    }
+
+    public function getEventManager(): EventManager
+    {
+        return $this->events;
+    }
+
+    public function getDatabasePlatform(): AbstractPlatform
+    {
+        if ($this->platformHook !== null) {
+            $hook = $this->platformHook;
+            $this->platformHook = null;
+            $hook();
+        }
+        return $this->selected->getDatabasePlatform();
+    }
+
+    public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
+    {
+        ++$this->queries;
+        return $this->selected->executeQuery($sql, $params, $types, $qcp);
+    }
+}
+
+class ComputerItemFilter extends SQLFilter
+{
+    public function addFilterConstraint(ClassMetadata $targetEntity, string $targetTableAlias): string
+    {
+        return $targetEntity->name === ComputerItemRecord::class ? '1 = 0' : '';
     }
 }

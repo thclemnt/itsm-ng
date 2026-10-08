@@ -35,9 +35,9 @@ use Doctrine\ORM\EntityManager;
 use itsmng\Database\ITILActorReadOperation;
 use itsmng\Database\ITILDocumentAccess;
 use itsmng\Database\Orm;
+use itsmng\Database\PromotionSourceReadOperation;
 use itsmng\Database\Repository\DocumentRepository;
 use itsmng\Database\Repository\ITILActorRepository;
-use itsmng\Database\Repository\ITILOriginRepository;
 use itsmng\Database\Repository\ITILStatisticsOptionsRepository;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\TimelineRepository;
@@ -8451,8 +8451,8 @@ abstract class CommonITILObject extends CommonDBTM
         echo "<div class='b_right'>";
 
         if ($objType == 'Ticket') {
-            $result = (new ITILOriginRepository(Orm::create($DB)))
-                ->promotionSource((int)$this->getID());
+            $result = PromotionSourceReadOperation::forDatabase($DB)
+                ->forTicket((int)$this->getID());
             if ($result) {
                 echo Html::link(
                     '',
