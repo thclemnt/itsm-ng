@@ -31,7 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\ImpactRepository;
 use itsmng\Database\Repository\UserRepository;
 
@@ -86,7 +88,9 @@ class Impact extends CommonGLPI
             );
         }
 
-        $is_enabled_asset = self::isEnabled($class);
+        // One operation uses the same configured itemtypes for admission and counting.
+        $enabled = self::getEnabledItemtypes();
+        $is_enabled_asset = in_array($class, $enabled);
         $is_itil_object = is_a($item, "CommonITILObject", true);
 
         // Check if itemtype is valid
@@ -105,8 +109,13 @@ class Impact extends CommonGLPI
             $total = 0;
         } elseif ($is_enabled_asset) {
             // If on an asset, get the number of its direct dependencies
-            $total = (new ImpactRepository(Orm::create($DB)))
-                ->relationCount(get_class($item), (int)$item->getID(), self::getEnabledItemtypes());
+            $database = $DB;
+            $connection = $database->getDoctrineConnection();
+            OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+            $total = Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $item, $enabled): int {
+                return (new ImpactRepository($manager ?? Orm::forConnection($connection)))
+                    ->relationCount(get_class($item), (int)$item->getID(), $enabled);
+            });
         }
 
         return self::createTabEntry(__("Impact analysis"), $total);

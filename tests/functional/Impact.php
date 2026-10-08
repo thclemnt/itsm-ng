@@ -37,6 +37,11 @@ use CommonDBTM;
 use Computer;
 use Config as ConfigModel;
 use Doctrine\ORM\Event\PostLoadEventArgs;
+use ReflectionProperty;
+use InvalidArgumentException;
+use mock\DBmysql as ImpactAdapterProbe;
+use mock\Computer as ImpactComputerProbe;
+use tests\fixtures\ScalarReadProbe;
 use Impact as ImpactModel;
 use ImpactCompound;
 use ImpactItem;
@@ -47,6 +52,8 @@ use Ticket;
 use itsmng\Database\Entity\User;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\UserRepository;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Impact extends \DbTestCase
 {
@@ -283,23 +290,105 @@ class Impact extends \DbTestCase
 
     public function testGetTabNameForItem_enabledAsset()
     {
+        global $DB;
         $old_session = $_SESSION['glpishow_count_on_tabs'];
-        $_SESSION['glpishow_count_on_tabs'] = true;
+        $original = ConfigModel::getConfigurationValues('core', [ImpactModel::CONF_ENABLED]);
+        $connection = $DB->getDoctrineConnection();
+        try {
+            $_SESSION['glpishow_count_on_tabs'] = true;
+            ConfigModel::setConfigurationValues('core', [ImpactModel::CONF_ENABLED => exportArrayToDB([Computer::class])]);
+            $impact = new ImpactModel();
+            $computer1 = getItemByTypeName('Computer', '_test_pc01');
+            $computer2 = getItemByTypeName('Computer', '_test_pc02');
+            $computer3 = getItemByTypeName('Computer', '_test_pc03');
+            $this->addDbEdge($computer1, $computer2);
+            $edge = $this->addDbEdge($computer2, $computer3);
+            $this->string($impact->getTabNameForItem($computer2))
+                ->isIdenticalTo(ImpactModel::createTabEntry('Impact analysis', 2));
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $before = $factories->getValue();
+            $this->string($impact->getTabNameForItem($computer2))
+                ->isIdenticalTo(ImpactModel::createTabEntry('Impact analysis', 2));
+            $connection->delete('glpi_impactrelations', ['id' => $edge]);
+            $this->string($impact->getTabNameForItem($computer2))
+                ->isIdenticalTo(ImpactModel::createTabEntry('Impact analysis', 1));
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
 
-        $impact = new \Impact();
+            $connection->update('glpi_configs', ['value' => exportArrayToDB([])], ['context' => 'core', 'name' => ImpactModel::CONF_ENABLED]);
+            $this->exception(static function () use ($impact, $computer2): void {
+                $impact->getTabNameForItem($computer2);
+            })->isInstanceOf(InvalidArgumentException::class);
+            $connection->update('glpi_configs', ['value' => exportArrayToDB([Computer::class])], ['context' => 'core', 'name' => ImpactModel::CONF_ENABLED]);
+            $this->string($impact->getTabNameForItem($computer2))
+                ->isIdenticalTo(ImpactModel::createTabEntry('Impact analysis', 1));
+            $this->string($impact->getTabNameForItem(new Computer()))->isIdenticalTo('Impact analysis');
+        } finally {
+            $_SESSION['glpishow_count_on_tabs'] = $old_session;
+            if (array_key_exists(ImpactModel::CONF_ENABLED, $original)) {
+                ConfigModel::setConfigurationValues('core', $original);
+            } else {
+                ConfigModel::deleteConfigurationValues('core', [ImpactModel::CONF_ENABLED]);
+            }
+        }
+    }
 
-        // Get computers
-        $computer1 = getItemByTypeName('Computer', '_test_pc01');
-        $computer2 = getItemByTypeName('Computer', '_test_pc02');
-        $computer3 = getItemByTypeName('Computer', '_test_pc03');
-
-        // Create an impact graph
-        $this->addDbEdge($computer1, $computer2);
-        $this->addDbEdge($computer2, $computer3);
-        $tab_name = $impact->getTabNameForItem($computer2);
-        $_SESSION['glpishow_count_on_tabs'] = $old_session;
-
-        $this->string($tab_name)->isEqualTo("Impact analysis <sup class='tab_nb'>2</sup>");
+    public function testImpactTabUsesOneConfigurationSnapshotOnSelectedCustomRoute(): void
+    {
+        global $DB, $CFG_GLPI;
+        $this->login();
+        $originalAdapter = $DB;
+        $oldCount = $_SESSION['glpishow_count_on_tabs'];
+        $allowed = $CFG_GLPI['impact_asset_types'];
+        $original = ConfigModel::getConfigurationValues('core', [ImpactModel::CONF_ENABLED]);
+        $connection = $DB->getDoctrineConnection();
+        $this->mockGenerator()->orphanize('__construct');
+        $item = new ImpactComputerProbe();
+        $class = get_class($item);
+        $item->fields = ['id' => 42];
+        $probe = new ScalarReadProbe($connection);
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new ImpactAdapterProbe();
+        $this->calling($adapter)->getDoctrineConnection = $probe;
+        $this->calling($adapter)->getProvider = $DB->getProvider();
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        try {
+            $_SESSION['glpishow_count_on_tabs'] = true;
+            $CFG_GLPI['impact_asset_types'][$class] = true;
+            ConfigModel::setConfigurationValues('core', [ImpactModel::CONF_ENABLED => exportArrayToDB([Computer::class, $class])]);
+            $connection->insert('glpi_impactrelations', [
+                'itemtype_source' => Computer::class, 'items_id_source' => 41,
+                'itemtype_impacted' => $class, 'items_id_impacted' => 42,
+            ]);
+            $atId = [];
+            $this->calling($item)->getID = static function () use (&$atId, $factories, $probe, $connection): int {
+                $atId = [$factories->getValue(), count($probe->queries)];
+                // A callback changes the next operation's admission; this count keeps its initial snapshot.
+                $connection->update('glpi_configs', ['value' => exportArrayToDB([])], ['context' => 'core', 'name' => ImpactModel::CONF_ENABLED]);
+                return 42;
+            };
+            $DB = $adapter;
+            $before = $factories->getValue();
+            $impact = new ImpactModel();
+            $this->string($impact->getTabNameForItem($item))
+                ->isIdenticalTo(ImpactModel::createTabEntry('Impact analysis', 1));
+            $this->array($atId)->isIdenticalTo([$before + 2, 1], 'Selected Config and count managers precede getID; only Config SQL has run');
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(2);
+            $this->array($probe->queries)->hasSize(2, 'One configuration query and one count use the supplied route');
+            $this->exception(static function () use ($impact, $item): void {
+                $impact->getTabNameForItem($item);
+            })->isInstanceOf(InvalidArgumentException::class);
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(3, 'The next custom read owns a new independent manager');
+            $this->array($probe->queries)->hasSize(3);
+        } finally {
+            $DB = $originalAdapter;
+            $_SESSION['glpishow_count_on_tabs'] = $oldCount;
+            $CFG_GLPI['impact_asset_types'] = $allowed;
+            if (array_key_exists(ImpactModel::CONF_ENABLED, $original)) {
+                ConfigModel::setConfigurationValues('core', $original);
+            } else {
+                ConfigModel::deleteConfigurationValues('core', [ImpactModel::CONF_ENABLED]);
+            }
+        }
     }
 
     public function testGetTabNameForItem_ITILObject()
