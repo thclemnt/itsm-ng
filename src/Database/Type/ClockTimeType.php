@@ -42,9 +42,4 @@ final class ClockTimeType extends Type
         }
         return $value;
     }
-
-    public function requiresSQLCommentHint(AbstractPlatform $platform): bool
-    {
-        return true;
-    }
 }
