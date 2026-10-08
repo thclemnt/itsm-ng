@@ -17,15 +17,24 @@ final class MailAuthenticationRepository
 
     public function activeCount(): int
     {
-        return (int)$this->em->createQueryBuilder()->select('COUNT(m.id)')->from(AuthMail::class, 'm')
-            ->where('m.is_active = :yes')->setParameter('yes', true, Types::BOOLEAN)->getQuery()->getSingleScalarResult();
+        return (int)$this->em->createQueryBuilder()
+            ->select('COUNT(m.id)')
+            ->from(AuthMail::class, 'm')
+            ->where('m.is_active = :yes')
+            ->setParameter('yes', true, Types::BOOLEAN)
+            ->getQuery()
+            ->getSingleScalarResult();
     }
 
     public function servers(bool $activeOnly = false): array
     {
-        $query = $this->em->createQueryBuilder()->select('m')->from(AuthMail::class, 'm');
+        $query = $this->em->createQueryBuilder()
+            ->select('m')
+            ->from(AuthMail::class, 'm');
         if ($activeOnly) {
-            $query->where('m.is_active = :yes')->setParameter('yes', true, Types::BOOLEAN)->orderBy('m.name');
+            $query->where('m.is_active = :yes')
+                ->setParameter('yes', true, Types::BOOLEAN)
+                ->orderBy('m.name');
         }
         $records = new RecordRepository($this->em);
         $rows = [];

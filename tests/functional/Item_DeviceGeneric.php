@@ -33,19 +33,42 @@
 
 namespace tests\units;
 
+use Computer;
 use DbTestCase;
+use DeviceMemory;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Query\QueryBuilder;
+use Doctrine\DBAL\Result;
 use Doctrine\DBAL\Types\BigIntType;
+use Doctrine\DBAL\Types\BooleanType;
+use Doctrine\DBAL\Types\IntegerType;
+use Doctrine\DBAL\Types\StringType;
 use Doctrine\DBAL\Types\Type;
-use itsmng\Database\ComponentCountReadOperation;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Events;
+use Doctrine\ORM\Query;
+use Item_DeviceGeneric as GenericDeviceLink;
+use Item_DeviceMemory;
+use Item_Devices;
+use LogicException;
 use ReflectionProperty;
+use Session;
+use itsmng\Database\ComponentCountReadOperation;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\ForeignKeys;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ComponentRepository;
+use mock\DBmysql as MockDatabase;
 
 class Item_DeviceGeneric extends DbTestCase
 {
     public function componentFamilies(): array
     {
         $families = [];
-        foreach (\itsmng\Database\ForeignKeys::relations() as $table => $relations) {
+        foreach (ForeignKeys::relations() as $table => $relations) {
             if (!str_starts_with($table, 'glpi_items_device')) {
                 continue;
             }
@@ -117,9 +140,9 @@ class Item_DeviceGeneric extends DbTestCase
             $this->array(array_column($link->getTableGroupRows($device, 'Computer'), 'id'))->isIdenticalTo([$assignedId, (int)$foreign->getID()]);
             $_SESSION['glpishowallentities'] = false;
 
-            $em = \itsmng\Database\Orm::create($DB);
+            $em = Orm::create($DB);
             try {
-                $repository = new \itsmng\Database\Repository\ComponentRepository($em);
+                $repository = new ComponentRepository($em);
                 $this->integer($repository->countForAsset([$link->getTable()], 'Computer', $assetId))->isIdenticalTo(1);
                 $this->integer($repository->countForAsset([$link->getTable(), $link->getTable()], 'Computer', $assetId))->isIdenticalTo(2);
                 $this->integer($repository->countForAsset([$link->getTable()], 'Computer', (int)$other->getID()))->isIdenticalTo(1);
@@ -128,7 +151,7 @@ class Item_DeviceGeneric extends DbTestCase
             } finally {
                 $em->clear();
             }
-            $typedStock = isset(\itsmng\Database\EntityRegistry::discriminatedReferences($link->getTable())['items_id']['empty_value']);
+            $typedStock = isset(EntityRegistry::discriminatedReferences($link->getTable())['items_id']['empty_value']);
             $this->boolean($link->getFromDB($assignedId))->isTrue();
             $this->variable($link->fields['itemtype'])->isIdenticalTo($typedStock ? null : '');
             $this->integer((int)$link->fields['items_id'])->isIdenticalTo(0);
@@ -163,22 +186,22 @@ class Item_DeviceGeneric extends DbTestCase
             $this->login();
             $this->setEntity(0, true);
             $_SESSION['glpishow_count_on_tabs'] = 1;
-            $asset = $this->createItem(\Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
-            $other = $this->createItem(\Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
-            $device = $this->createItem(\DeviceMemory::class, ['designation' => $this->getUniqueString(), 'entities_id' => 0]);
+            $asset = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $other = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $device = $this->createItem(DeviceMemory::class, ['designation' => $this->getUniqueString(), 'entities_id' => 0]);
             $common = ['devicememories_id' => (int)$device->getID(), 'entities_id' => 0];
-            $this->createItem(\Item_DeviceMemory::class, $common + ['itemtype' => 'Computer', 'items_id' => (int)$asset->getID()]);
-            $this->createItem(\Item_DeviceMemory::class, $common + ['itemtype' => 'Computer', 'items_id' => (int)$asset->getID()]);
-            $this->createItem(\Item_DeviceMemory::class, $common + ['itemtype' => 'Computer', 'items_id' => (int)$asset->getID(), 'is_deleted' => true]);
-            $this->createItem(\Item_DeviceMemory::class, $common + ['itemtype' => 'Computer', 'items_id' => (int)$other->getID()]);
-            $this->createItem(\Item_DeviceMemory::class, $common + ['itemtype' => '', 'items_id' => 0]);
+            $this->createItem(Item_DeviceMemory::class, $common + ['itemtype' => 'Computer', 'items_id' => (int)$asset->getID()]);
+            $this->createItem(Item_DeviceMemory::class, $common + ['itemtype' => 'Computer', 'items_id' => (int)$asset->getID()]);
+            $this->createItem(Item_DeviceMemory::class, $common + ['itemtype' => 'Computer', 'items_id' => (int)$asset->getID(), 'is_deleted' => true]);
+            $this->createItem(Item_DeviceMemory::class, $common + ['itemtype' => 'Computer', 'items_id' => (int)$other->getID()]);
+            $this->createItem(Item_DeviceMemory::class, $common + ['itemtype' => '', 'items_id' => 0]);
             $affinities = array_keys($this->componentFamilies());
             $this->array($affinities)->hasSize(17);
             $GLPI_CACHE->set('item_device_affinities', ['' => $affinities, 'Computer' => $affinities]);
             $tables = array_map(static fn (string $class): string => $class::getTable(), $affinities);
             $criteria = ['items_id' => $asset->getID(), 'itemtype' => 'Computer', 'is_deleted' => 0];
             // Observe actual factory invocations without changing production factory behavior.
-            $factories = new \ReflectionProperty(\itsmng\Database\Orm::class, 'unitsOfWork');
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
             $before = $factories->getValue();
             $legacy = 0;
             foreach ($tables as $table) {
@@ -192,13 +215,13 @@ class Item_DeviceGeneric extends DbTestCase
             $this->integer(count($active))->isIdenticalTo($legacy);
 
             $this->integer($factories->getValue() - $before)->isIdenticalTo(17);
-            $tab = new \Item_Devices();
-            $expected = \Item_Devices::createTabEntry(_n('Component', 'Components', \Session::getPluralNumber()), $legacy);
+            $tab = new Item_Devices();
+            $expected = Item_Devices::createTabEntry(_n('Component', 'Components', Session::getPluralNumber()), $legacy);
             $before = $factories->getValue();
             $connection = $DB->getDoctrineConnection();
             $probe = new ComponentCountQueryProbe($connection);
             $this->mockGenerator->orphanize('__construct');
-            $countAdapter = new \mock\DBmysql();
+            $countAdapter = new MockDatabase();
             $this->calling($countAdapter)->getDoctrineConnection = $probe;
             try {
                 $DB = $countAdapter;
@@ -216,21 +239,21 @@ class Item_DeviceGeneric extends DbTestCase
 
             // Each original COUNT remains a real ORM query on the supplied connection.
             $connection = $DB->getDoctrineConnection();
-            $manager = new class ($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+            $manager = new class ($connection, Orm::configuration($connection->getDatabasePlatform())) extends EntityManager {
                 public array $queries = [];
-                public function createQuery(string $dql = ''): \Doctrine\ORM\Query
+                public function createQuery(string $dql = ''): Query
                 {
                     $this->queries[] = $dql;
                     return parent::createQuery($dql);
                 }
             };
-            $repository = new \itsmng\Database\Repository\ComponentRepository($manager);
+            $repository = new ComponentRepository($manager);
             $this->integer($repository->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
             $this->array($manager->queries)->hasSize(17);
             foreach ($manager->queries as $index => $query) {
                 $this->string($query)->startWith('SELECT COUNT(r.id) FROM ')->notContains(' JOIN ');
-                $reference = \itsmng\Database\EntityRegistry::discriminatedReferences($tables[$index])['items_id'] ?? null;
-                $class = \itsmng\Database\EntityRegistry::tables()[$tables[$index]];
+                $reference = EntityRegistry::discriminatedReferences($tables[$index])['items_id'] ?? null;
+                $class = EntityRegistry::tables()[$tables[$index]];
                 $subject = $reference === null ? 'r.items_id' : 'IDENTITY(r.' . $class::referenceAssociation('Computer') . ')';
                 $this->string($query)->contains($subject . ' = :asset')->contains('r.itemtype = :kind')->contains('r.is_deleted = :deleted');
                 if ($reference !== null) {
@@ -246,11 +269,11 @@ class Item_DeviceGeneric extends DbTestCase
             } finally {
                 $canonical->close();
             }
-            $native = new \itsmng\Database\ComponentCountReadOperation($probe);
-            $bigint = \Doctrine\DBAL\Types\Type::getType('bigint');
-            $string = \Doctrine\DBAL\Types\Type::getType('string');
-            $boolean = \Doctrine\DBAL\Types\Type::getType('boolean');
-            $integer = \Doctrine\DBAL\Types\Type::getType('integer');
+            $native = new ComponentCountReadOperation($probe);
+            $bigint = Type::getType('bigint');
+            $string = Type::getType('string');
+            $boolean = Type::getType('boolean');
+            $integer = Type::getType('integer');
             try {
                 $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
                 $callback = new class ($connection) extends ComponentCountQueryProbe {
@@ -292,56 +315,56 @@ class Item_DeviceGeneric extends DbTestCase
                 $connection->update('glpi_items_devicememories', ['is_deleted' => true], ['id' => $activeId], ['is_deleted' => 'boolean', 'id' => 'bigint']);
                 $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(1);
                 $connection->update('glpi_items_devicememories', ['is_deleted' => false], ['id' => $activeId], ['is_deleted' => 'boolean', 'id' => 'bigint']);
-                \Doctrine\DBAL\Types\Type::overrideType('bigint', new class () extends \Doctrine\DBAL\Types\BigIntType {
-                    public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                Type::overrideType('bigint', new class () extends BigIntType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                     {
                         return '(' . $sqlExpr . ' * 0 - 1)';
                     }
                 });
                 $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
                 $this->integer($repository->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
-                \Doctrine\DBAL\Types\Type::overrideType('bigint', new class () extends \Doctrine\DBAL\Types\BigIntType {
-                    public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                Type::overrideType('bigint', new class () extends BigIntType {
+                    public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                     {
-                        throw new \LogicException('COUNT must use the raw identifier expression');
+                        throw new LogicException('COUNT must use the raw identifier expression');
                     }
                 });
-                \Doctrine\DBAL\Types\Type::overrideType('integer', new class () extends \Doctrine\DBAL\Types\IntegerType {
-                    public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): ?int
+                Type::overrideType('integer', new class () extends IntegerType {
+                    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): ?int
                     {
-                        throw new \LogicException('Single scalar COUNT must not apply PHP conversion');
+                        throw new LogicException('Single scalar COUNT must not apply PHP conversion');
                     }
                 });
                 $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
                 $this->integer($repository->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
-                \Doctrine\DBAL\Types\Type::overrideType('bigint', $bigint);
-                \Doctrine\DBAL\Types\Type::overrideType('integer', $integer);
-                \Doctrine\DBAL\Types\Type::overrideType('string', new class () extends \Doctrine\DBAL\Types\StringType {
-                    public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                Type::overrideType('bigint', $bigint);
+                Type::overrideType('integer', $integer);
+                Type::overrideType('string', new class () extends StringType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                     {
                         return "CASE WHEN " . $sqlExpr . " = '' THEN 'no-component-kind' ELSE 'no-component-kind' END";
                     }
                 });
                 $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
                 $this->integer($repository->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
-                \Doctrine\DBAL\Types\Type::overrideType('string', $string);
-                \Doctrine\DBAL\Types\Type::overrideType('boolean', new class () extends \Doctrine\DBAL\Types\BooleanType {
-                    public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                Type::overrideType('string', $string);
+                Type::overrideType('boolean', new class () extends BooleanType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                     {
                         return '(NOT ' . $sqlExpr . ')';
                     }
                 });
                 $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(1);
                 $this->integer($repository->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(1);
-                \Doctrine\DBAL\Types\Type::overrideType('boolean', $boolean);
+                Type::overrideType('boolean', $boolean);
                 $extension = new class ($connection) extends ComponentCountQueryProbe {
-                    private ?\Doctrine\Common\EventManager $events = null;
-                    public function getEventManager(): \Doctrine\Common\EventManager
+                    private ?EventManager $events = null;
+                    public function getEventManager(): EventManager
                     {
-                        return $this->events ??= new \Doctrine\Common\EventManager();
+                        return $this->events ??= new EventManager();
                     }
                 };
-                $local = new \itsmng\Database\ComponentCountReadOperation($extension);
+                $local = new ComponentCountReadOperation($extension);
                 $listener = new class () {
                     public int $loads = 0;
                     public function loadClassMetadata(): void
@@ -349,24 +372,24 @@ class Item_DeviceGeneric extends DbTestCase
                         ++$this->loads;
                     }
                 };
-                $extension->getEventManager()->addEventListener([\Doctrine\ORM\Events::loadClassMetadata], $listener);
+                $extension->getEventManager()->addEventListener([Events::loadClassMetadata], $listener);
                 $this->integer($local->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
                 $this->integer($listener->loads)->isGreaterThan(0);
                 $this->integer($extension->builders)->isIdenticalTo(0);
                 $local->close();
             } finally {
-                \Doctrine\DBAL\Types\Type::overrideType('bigint', $bigint);
-                \Doctrine\DBAL\Types\Type::overrideType('string', $string);
-                \Doctrine\DBAL\Types\Type::overrideType('boolean', $boolean);
-                \Doctrine\DBAL\Types\Type::overrideType('integer', $integer);
+                Type::overrideType('bigint', $bigint);
+                Type::overrideType('string', $string);
+                Type::overrideType('boolean', $boolean);
+                Type::overrideType('integer', $integer);
                 $native->close();
             }
 
-            $GLPI_CACHE->set('item_device_affinities', ['' => $affinities, 'Computer' => [\Item_DeviceMemory::class, \Item_DeviceMemory::class]]);
-            $this->string($tab->getTabNameForItem($asset))->isIdenticalTo(\Item_Devices::createTabEntry(_n('Component', 'Components', \Session::getPluralNumber()), 4));
+            $GLPI_CACHE->set('item_device_affinities', ['' => $affinities, 'Computer' => [Item_DeviceMemory::class, Item_DeviceMemory::class]]);
+            $this->string($tab->getTabNameForItem($asset))->isIdenticalTo(Item_Devices::createTabEntry(_n('Component', 'Components', Session::getPluralNumber()), 4));
             $_SESSION['glpishow_count_on_tabs'] = 0;
             $before = $factories->getValue();
-            $this->string($tab->getTabNameForItem($asset))->isIdenticalTo(\Item_Devices::createTabEntry(_n('Component', 'Components', \Session::getPluralNumber())));
+            $this->string($tab->getTabNameForItem($asset))->isIdenticalTo(Item_Devices::createTabEntry(_n('Component', 'Components', Session::getPluralNumber())));
             $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
             $_SESSION['glpishow_count_on_tabs'] = 1;
             $rights = $_SESSION['glpiactiveprofile']['computer'];
@@ -377,7 +400,7 @@ class Item_DeviceGeneric extends DbTestCase
             $_SESSION['glpiactiveprofile']['computer'] = $rights;
 
             $events = [];
-            $custom = new class () extends \Computer {
+            $custom = new class () extends Computer {
                 public static array $events = [];
                 public static function getType()
                 {
@@ -390,12 +413,12 @@ class Item_DeviceGeneric extends DbTestCase
                     return parent::getID();
                 }
             };
-            $customLink = new class () extends \Item_DeviceMemory {
+            $customLink = new class () extends Item_DeviceMemory {
                 public static array $events = [];
                 public static function getTable($classname = null)
                 {
                     self::$events[] = 'table';
-                    return \Item_DeviceMemory::getTable();
+                    return Item_DeviceMemory::getTable();
                 }
             };
             $custom::$events = & $events;
@@ -404,25 +427,25 @@ class Item_DeviceGeneric extends DbTestCase
             // Mutable table aliases must not admit extension classes into the core batch.
             $CFG_GLPI['glpitablesitemtype'][$custom::class] = 'glpi_computers';
             $CFG_GLPI['glpitablesitemtype'][$customLink::class] = 'glpi_items_devicememories';
-            $GLPI_CACHE->set('item_device_affinities', ['' => $affinities, 'Computer' => [$customLink::class, \Item_DeviceGeneric::class, $customLink::class]]);
+            $GLPI_CACHE->set('item_device_affinities', ['' => $affinities, 'Computer' => [$customLink::class, GenericDeviceLink::class, $customLink::class]]);
             $before = $factories->getValue();
-            $this->string($tab->getTabNameForItem($custom))->isIdenticalTo(\Item_Devices::createTabEntry(_n('Component', 'Components', \Session::getPluralNumber()), 4));
+            $this->string($tab->getTabNameForItem($custom))->isIdenticalTo(Item_Devices::createTabEntry(_n('Component', 'Components', Session::getPluralNumber()), 4));
             $this->array($events)->isIdenticalTo(['type', 'type', 'table', 'id', 'type', 'id', 'type', 'table', 'id', 'type']);
             $this->integer($factories->getValue() - $before)->isIdenticalTo(3);
             $events = [];
             $before = $factories->getValue();
-            $this->string($tab->getTabNameForItem($asset))->isIdenticalTo(\Item_Devices::createTabEntry(_n('Component', 'Components', \Session::getPluralNumber()), 4));
+            $this->string($tab->getTabNameForItem($asset))->isIdenticalTo(Item_Devices::createTabEntry(_n('Component', 'Components', Session::getPluralNumber()), 4));
             $this->array($events)->isIdenticalTo(['table', 'table']);
             $this->integer($factories->getValue() - $before)->isIdenticalTo(3);
-            $GLPI_CACHE->set('item_device_affinities', ['' => $affinities, 'Computer' => [\Item_DeviceMemory::class, \Item_DeviceMemory::class]]);
+            $GLPI_CACHE->set('item_device_affinities', ['' => $affinities, 'Computer' => [Item_DeviceMemory::class, Item_DeviceMemory::class]]);
             $events = [];
             $before = $factories->getValue();
-            $this->string($tab->getTabNameForItem($custom))->isIdenticalTo(\Item_Devices::createTabEntry(_n('Component', 'Components', \Session::getPluralNumber()), 4));
+            $this->string($tab->getTabNameForItem($custom))->isIdenticalTo(Item_Devices::createTabEntry(_n('Component', 'Components', Session::getPluralNumber()), 4));
             $this->array($events)->isIdenticalTo(['type', 'type', 'id', 'type', 'id', 'type']);
             $this->integer($factories->getValue() - $before)->isIdenticalTo(2);
 
             $this->mockGenerator->orphanize('__construct');
-            $routed = new \mock\DBmysql();
+            $routed = new MockDatabase();
             $routes = 0;
             $this->calling($routed)->getDoctrineConnection = static function () use ($connection, &$routes) {
                 ++$routes;
@@ -518,11 +541,11 @@ class Item_DeviceGeneric extends DbTestCase
 
             $entity_id = (int)$source_computer->getEntityID();
             $this->integer((int)$target_computer->getEntityID())->isIdenticalTo($entity_id);
-            $this->boolean(\Session::haveAccessToEntity($entity_id))->isTrue();
+            $this->boolean(Session::haveAccessToEntity($entity_id))->isTrue();
             $this->boolean($source_computer->can($source_computer->getID(), UPDATE))->isTrue();
             $this->boolean($target_computer->can($target_computer->getID(), UPDATE))->isTrue();
 
-            $device = new \DeviceMemory();
+            $device = new DeviceMemory();
             $device_id = $device->add([
                 'designation'  => 'memory-' . $this->getUniqueString(),
                 'size_default' => 2048,
@@ -532,7 +555,7 @@ class Item_DeviceGeneric extends DbTestCase
             $this->boolean($device->getFromDB($device_id))->isTrue();
             $this->boolean($device->can($device_id, UPDATE))->isTrue();
 
-            $link = new \Item_DeviceMemory();
+            $link = new Item_DeviceMemory();
             $initial_link_id = $link->add([
                 'itemtype'          => 'Computer',
                 'items_id'          => $source_computer->getID(),
@@ -543,9 +566,9 @@ class Item_DeviceGeneric extends DbTestCase
             $this->boolean($link->can($initial_link_id, UPDATE))->isTrue();
             $this->boolean($link->can($initial_link_id, DELETE))->isTrue();
 
-            $link_selection_key = \Item_DeviceMemory::getForeignKeyField();
+            $link_selection_key = Item_DeviceMemory::getForeignKeyField();
             $_POST = ['devices_id' => $device_id];
-            \Item_Devices::addDevicesFromPOST([
+            Item_Devices::addDevicesFromPOST([
                 'devicetype'          => 'DeviceMemory',
                 'itemtype'            => 'Computer',
                 'items_id'            => $target_computer->getID(),
@@ -567,7 +590,7 @@ class Item_DeviceGeneric extends DbTestCase
                 'items_id'                                      => $target_computer->getID(),
                 'value_DeviceMemory_' . $initial_link_id . '_size' => 8192,
             ];
-            \Item_Devices::updateAll($_POST);
+            Item_Devices::updateAll($_POST);
             $_POST = [];
 
             $links_after_update = $link->find([
@@ -587,28 +610,28 @@ class Item_DeviceGeneric extends DbTestCase
     }
 }
 
-class ComponentCountQueryProbe extends \Doctrine\DBAL\Connection
+class ComponentCountQueryProbe extends Connection
 {
     public int $builders = 0;
     public array $queries = [];
 
-    public function __construct(private readonly \Doctrine\DBAL\Connection $selected)
+    public function __construct(private readonly Connection $selected)
     {
         parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
     }
 
-    public function getDatabasePlatform(): \Doctrine\DBAL\Platforms\AbstractPlatform
+    public function getDatabasePlatform(): AbstractPlatform
     {
         return $this->selected->getDatabasePlatform();
     }
 
-    public function createQueryBuilder(): \Doctrine\DBAL\Query\QueryBuilder
+    public function createQueryBuilder(): QueryBuilder
     {
         ++$this->builders;
         return parent::createQueryBuilder();
     }
 
-    public function executeQuery(string $sql, array $params = [], array $types = [], ?\Doctrine\DBAL\Cache\QueryCacheProfile $qcp = null): \Doctrine\DBAL\Result
+    public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
     {
         $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
         return $this->selected->executeQuery($sql, $params, $types, $qcp);

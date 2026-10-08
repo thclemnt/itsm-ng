@@ -4,6 +4,10 @@
 
 namespace itsmng\Domain\Authentication;
 
+use InvalidArgumentException;
+use itsmng\Database\BooleanValue;
+use User;
+
 /** Existing local-account completion, produced only after actual credential verification. */
 final readonly class AuthenticationCompletion
 {
@@ -14,7 +18,7 @@ final readonly class AuthenticationCompletion
         public VerifiedLoginProvider $provider = VerifiedLoginProvider::LocalPassword
     ) {
         if ($user <= 0) {
-            throw new \InvalidArgumentException('Authentication completion requires a persisted account.');
+            throw new InvalidArgumentException('Authentication completion requires a persisted account.');
         }
     }
 
@@ -36,10 +40,10 @@ final readonly class AuthenticationCompletion
             return false;
         }
         // Type and nullability still come from the authoritative User property.
-        $expected = \itsmng\Database\BooleanValue::normalizeLegacyInput(\User::getTable(), [
+        $expected = BooleanValue::normalizeLegacyInput(User::getTable(), [
             'is_active' => $this->rules->assignments['is_active'],
         ]);
-        $actual = \itsmng\Database\BooleanValue::normalizeLegacyInput(\User::getTable(), [
+        $actual = BooleanValue::normalizeLegacyInput(User::getTable(), [
             'is_active' => $values['is_active'],
         ]);
         return $expected['is_active'] === $actual['is_active'];
