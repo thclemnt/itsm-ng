@@ -13,6 +13,7 @@ use itsmng\Database\Repository\DocumentRepository;
 use itsmng\Database\Repository\ITILTaskRepository;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\TimelineRepository;
+use ReflectionMethod;
 
 /** One selected connection owns canonical scalar metadata and local extension fallbacks. */
 final class TimelineCountReadOperation
@@ -105,7 +106,12 @@ final class TimelineCountReadOperation
                     && $association->joinColumns[0]->name === array_key_first($criteria)
                     && in_array($association->targetEntity, [Entity\Ticket::class, Entity\Change::class], true)
                     && $this->canonicalMetadata($association->targetEntity) !== null) {
-                    return (new TimelineRepository($this->manager))->countValidations($table, $criteria);
+                    $repository = new TimelineRepository($this->manager);
+                    if ((new ReflectionMethod($this->connection, 'getDatabasePlatform'))->getDeclaringClass()->getName() === Connection::class
+                        && !isset(EntityRegistry::references($table)[array_key_first($criteria)])) {
+                        return $repository->nativeValidationCount($metadata, $association->fieldName, reset($criteria));
+                    }
+                    return $repository->countValidations($table, $criteria);
                 }
             }
         }

@@ -57,8 +57,10 @@ use Doctrine\DBAL\Types\StringType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\NoResultException;
+use Doctrine\ORM\Query;
 use Document;
 use Document_Item;
 use Dropdown;
@@ -92,6 +94,7 @@ use itsmng\Database\Orm;
 use itsmng\Database\Repository\DocumentRepository;
 use itsmng\Database\Repository\ITILActorRepository;
 use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\TimelineRepository;
 use itsmng\Database\Repository\UserRepository;
 use itsmng\Database\Repository\UserSelectionRepository;
 use itsmng\Database\TimelineCountReadOperation;
@@ -3140,6 +3143,97 @@ class Ticket extends DbTestCase
                     'users_id_validate' => Session::getLoginUserID(),
                     'comment_submission' => 'Timeline count validation',
                 ]))->isGreaterThan(0);
+                $connection = $DB->getDoctrineConnection();
+                $reader = new TimelineCountReadOperation($connection);
+                $managerProperty = new ReflectionProperty(TimelineCountReadOperation::class, 'manager');
+                $originalManager = $managerProperty->getValue($reader);
+                $countManager = new class ($connection, Orm::configuration($connection->getDatabasePlatform())) extends EntityManager {
+                    public int $dql = 0;
+                    public function createQuery(string $dql = ''): Query
+                    {
+                        ++$this->dql;
+                        return parent::createQuery($dql);
+                    }
+                };
+                $managerProperty->setValue($reader, $countManager);
+                $criteria = [$item->getForeignKeyField() => (int)$item->getID()];
+                $referenceManager = Orm::forConnection($connection);
+                $reference = new TimelineRepository($referenceManager);
+                try {
+                    $this->integer($reader->validations($validation->getTable(), $criteria))->isIdenticalTo(1);
+                    // Existing public reader is callable on original source: its DQL budget is one.
+                    $this->integer($countManager->dql)->isIdenticalTo(0);
+                    foreach ([null, 'null', 'NULL', '', false, 0, -1, (string)$item->getID()] as $selection) {
+                        $where = [$item->getForeignKeyField() => $selection];
+                        $this->integer($reader->validations($validation->getTable(), $where))
+                            ->isIdenticalTo($reference->countValidations($validation->getTable(), $where));
+                    }
+                    // Nonplain criteria retain the original compiler, not a partial SQL translator.
+                    $where = [$item->getForeignKeyField() => ['=', (int)$item->getID()]];
+                    $this->integer($reader->validations($validation->getTable(), $where))->isIdenticalTo(1);
+                    $integer = Type::getType('integer');
+                    $bigint = Type::getType('bigint');
+                    try {
+                        Type::overrideType('bigint', new class () extends BigIntType {
+                            public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                            {
+                                throw new LogicException('COUNT operands are raw mapped paths, not selected scalar converters.');
+                            }
+                        });
+                        $this->integer($reader->validations($validation->getTable(), $criteria))
+                            ->isIdenticalTo($reference->countValidations($validation->getTable(), $criteria));
+                        $converter = new class () extends IntegerType {
+                            public int $calls = 0;
+                            public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                            {
+                                ++$this->calls;
+                                return '(' . $sqlExpr . ' + 1000000)';
+                            }
+                            public function convertToPHPValue(mixed $value, AbstractPlatform $platform): ?int
+                            {
+                                throw new LogicException('The scalar aggregate keeps its native value before the final int cast.');
+                            }
+                        };
+                        Type::overrideType('integer', $converter);
+                        $this->integer($reader->validations($validation->getTable(), $criteria))->isIdenticalTo(0);
+                        $this->integer($reference->countValidations($validation->getTable(), $criteria))->isIdenticalTo(0);
+                        $this->integer($converter->calls)->isIdenticalTo(2);
+                    } finally {
+                        Type::overrideType('integer', $integer);
+                        Type::overrideType('bigint', $bigint);
+                    }
+                } finally {
+                    $reader->close();
+                    $originalManager->clear();
+                    $referenceManager->clear();
+                }
+                $this->boolean($DB->update($validation->getTable(), [
+                    'submission_date' => '2020-01-01 12:00:00', 'validation_date' => '2020-01-02 12:00:00',
+                ], ['id' => $validation->getID()]))->isTrue();
+                $local = new TimelineLocalCountProbe($connection);
+                $reader = new TimelineCountReadOperation($local);
+                $listener = new class ($validation->getTable()) {
+                    public int $loads = 0;
+                    public function __construct(private string $table)
+                    {
+                    }
+                    public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
+                    {
+                        if ($event->getClassMetadata()->getTableName() === $this->table) {
+                            ++$this->loads;
+                            $event->getClassMetadata()->fieldMappings['validation_date']->columnName = 'submission_date';
+                        }
+                    }
+                };
+                $local->getEventManager()->addEventListener(['loadClassMetadata'], $listener);
+                try {
+                    $this->integer($reader->validations($validation->getTable(), $criteria))->isIdenticalTo(1);
+                    $this->integer($listener->loads)->isIdenticalTo(1);
+                    $this->integer($local->builders)->isIdenticalTo(0);
+                } finally {
+                    $reader->close();
+                    $local->getEventManager()->removeEventListener(['loadClassMetadata'], $listener);
+                }
                 foreach ([
                     ['2020-01-01 12:00:00', null, 2],
                     ['2020-01-01 12:00:00', '2020-01-02 12:00:00', 3],
