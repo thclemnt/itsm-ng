@@ -4,11 +4,14 @@
 
 namespace itsmng\Database\Repository;
 
+use DateTimeImmutable;
+use DateTimeInterface;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\QueryBuilder;
 use InvalidArgumentException;
+use Planning;
 use itsmng\Database\Entity;
 use itsmng\Database\Mapping\ITILStatisticsRelation;
 use itsmng\Database\Mapping\ITILStatisticsRole;
@@ -86,7 +89,7 @@ final class ITILTaskRepository
         $query->where((new RecordCriteria($query, $this->em->getClassMetadata($parent)))->where($scope))
             ->andWhere('r.status IN (:statuses)')->setParameter('statuses', $statuses ?: [-1]);
         if ($todo) {
-            $query->andWhere('t.state = :todo')->setParameter('todo', \Planning::TODO, Types::INTEGER);
+            $query->andWhere('t.state = :todo')->setParameter('todo', Planning::TODO, Types::INTEGER);
         }
         if ($groups !== null) {
             $query->andWhere('IDENTITY(t.groups_tech) IN (:groups)')->setParameter('groups', $groups);
@@ -107,7 +110,7 @@ final class ITILTaskRepository
         return $this->rows($query);
     }
 
-    public function planningTasks(string $type, \DateTimeImmutable $begin, \DateTimeImmutable $end, bool $unplanned, int $user, array $groups, array $profileScope, bool $displayDone, array $closedStatuses): array
+    public function planningTasks(string $type, DateTimeImmutable $begin, DateTimeImmutable $end, bool $unplanned, int $user, array $groups, array $profileScope, bool $displayDone, array $closedStatuses): array
     {
         [$task, , $relation] = $this->definition($type);
         $query = $this->em->createQueryBuilder()->select('t')->from($task, 't')->join('t.' . $relation, 'parent')
@@ -137,8 +140,8 @@ final class ITILTaskRepository
         $query->andWhere('(' . implode(' OR ', $actors) . ')');
         if (!$displayDone) {
             $query->andWhere('(t.state = :todo OR (t.state = :info AND t.end > :now)) AND parent.status NOT IN (:closed)')
-                ->setParameter('todo', \Planning::TODO, Types::INTEGER)->setParameter('info', \Planning::INFO, Types::INTEGER)
-                ->setParameter('now', new \DateTimeImmutable(), Types::DATETIMETZ_IMMUTABLE)->setParameter('closed', $closedStatuses ?: [-1]);
+                ->setParameter('todo', Planning::TODO, Types::INTEGER)->setParameter('info', Planning::INFO, Types::INTEGER)
+                ->setParameter('now', new DateTimeImmutable(), Types::DATETIMETZ_IMMUTABLE)->setParameter('closed', $closedStatuses ?: [-1]);
         }
         return $this->rows($query->orderBy('t.begin')->addOrderBy('t.id'));
     }
@@ -153,7 +156,7 @@ final class ITILTaskRepository
             if (is_array($result)) {
                 foreach (['notp_date', 'notp_edate'] as $field) {
                     $date = $result[$field];
-                    $row[$field] = $date === null ? null : ($date instanceof \DateTimeInterface ? $date : new \DateTimeImmutable($date))->format('Y-m-d H:i:s');
+                    $row[$field] = $date === null ? null : ($date instanceof DateTimeInterface ? $date : new DateTimeImmutable($date))->format('Y-m-d H:i:s');
                 }
             }
             $rows[] = $row;

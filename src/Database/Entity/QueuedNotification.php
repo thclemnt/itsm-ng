@@ -4,7 +4,12 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTime;
+use DateTimeImmutable;
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
@@ -26,7 +31,7 @@ class QueuedNotification
     #[ORM\ManyToOne(targetEntity: NotificationTemplate::class)]
     #[ORM\JoinColumn(name: 'notificationtemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?NotificationTemplate $notificationtemplates = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
@@ -41,16 +46,16 @@ class QueuedNotification
     public int $sent_try = 0;
 
     #[ORM\Column(name: '`create_time`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $create_time = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $create_time = null;
 
     #[ORM\Column(name: '`send_time`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $send_time = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $send_time = null;
 
     #[ORM\Column(name: '`sent_time`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTime $sent_time = null;
+    #[NativeTimestamp]
+    public ?DateTime $sent_time = null;
 
     #[ORM\Column(name: '`name`', type: 'text', nullable: true)]
     public ?string $name = null;
@@ -98,14 +103,14 @@ class QueuedNotification
     }
 
     /** Repeated acknowledgements retain the first presentation time and delivery counters. */
-    public function acknowledgeBrowserMessage(int $user, \DateTimeImmutable $presentedAt): bool
+    public function acknowledgeBrowserMessage(int $user, DateTimeImmutable $presentedAt): bool
     {
         if (!$this->isPendingBrowserMessageFor($user)) {
             return false;
         }
         // Native TIMESTAMP retains its mutable datetimetz mapping. Keep the
         // caller's immutable clock while assigning the mapped PHP value type.
-        $this->sent_time = \DateTime::createFromImmutable($presentedAt);
+        $this->sent_time = DateTime::createFromImmutable($presentedAt);
         $this->is_deleted = true;
         return true;
     }

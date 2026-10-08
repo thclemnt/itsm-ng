@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\PlanningRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -229,8 +232,8 @@ class PlanningRecall extends CommonDBChild
             unset($_SESSION['glpiplanningreminder_isavailable']);
         }
 
-        (new \itsmng\Database\Repository\PlanningRepository(\itsmng\Database\Orm::create($DB)))
-            ->rescheduleRecalls((string)$itemtype, (int)$items_id, new \DateTimeImmutable($begin));
+        (new PlanningRepository(Orm::create($DB)))
+            ->rescheduleRecalls((string)$itemtype, (int)$items_id, new DateTimeImmutable($begin));
         return true;
     }
 
@@ -386,8 +389,8 @@ class PlanningRecall extends CommonDBChild
         }
 
         $cron_status = 0;
-        $recalls = (new \itsmng\Database\Repository\PlanningRepository(\itsmng\Database\Orm::create($DB)))
-            ->dueRecalls(new \DateTimeImmutable());
+        $recalls = (new PlanningRepository(Orm::create($DB)))
+            ->dueRecalls(new DateTimeImmutable());
 
         $pr = new self();
         foreach ($recalls as $data) {

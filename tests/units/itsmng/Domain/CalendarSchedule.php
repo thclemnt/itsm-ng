@@ -4,10 +4,14 @@
 
 namespace tests\units\itsmng\Domain;
 
+use DateTime;
+use DateTimeImmutable;
+use LogicException;
+use atoum\atoum\test;
 use itsmng\Database\Entity\Holiday;
 use itsmng\Domain\CalendarSchedule as Schedule;
 
-class CalendarSchedule extends \atoum\atoum\test
+class CalendarSchedule extends test
 {
     public function testSegmentBoundsKeepNullableAndEndOfDaySemantics(): void
     {
@@ -20,7 +24,7 @@ class CalendarSchedule extends \atoum\atoum\test
         $empty = new Schedule($segments);
         $this->boolean($empty->hasAWorkingDay())->isFalse();
         $this->exception(static fn () => $empty->nextWorkingOccurrence(strtotime('2026-10-05 08:00:00')))
-            ->isInstanceOf(\LogicException::class);
+            ->isInstanceOf(LogicException::class);
         $segments[] = ['day' => 1, 'begin' => '12:00:00', 'end' => '24:00:00'];
         $schedule = new Schedule($segments);
         $this->integer($schedule->activeSeconds(1, '00:00:00', '24:00:00'))->isIdenticalTo(43200);
@@ -39,8 +43,8 @@ class CalendarSchedule extends \atoum\atoum\test
             ['day' => 2, 'begin' => '10:00:00', 'end' => '18:00:00'],
         ];
         $holiday = new Holiday();
-        $holiday->begin_date = new \DateTime('2026-10-05');
-        $holiday->end_date = new \DateTime('2026-10-05');
+        $holiday->begin_date = new DateTime('2026-10-05');
+        $holiday->end_date = new DateTime('2026-10-05');
         $schedule = new Schedule($segments, [$holiday]);
         $holiday->end_date->modify('+1 day');
         $this->integer($schedule->nextWorkingOccurrence(strtotime('2026-10-05 15:00:00')))
@@ -59,8 +63,8 @@ class CalendarSchedule extends \atoum\atoum\test
             $segments[] = ['day' => $day, 'begin' => '09:00:00', 'end' => '19:00:00'];
         }
         $holiday = new Holiday();
-        $holiday->begin_date = new \DateTimeImmutable('2020-12-31');
-        $holiday->end_date = new \DateTimeImmutable('2021-01-02');
+        $holiday->begin_date = new DateTimeImmutable('2020-12-31');
+        $holiday->end_date = new DateTimeImmutable('2021-01-02');
         $holiday->is_perpetual = true;
         $schedule = new Schedule($segments, [$holiday]);
         $this->integer($schedule->nextWorkingOccurrence(strtotime('2026-01-01 11:00:00')))

@@ -33,7 +33,11 @@
 
 namespace tests\units;
 
+use Change;
+use CommonITILActor;
 use CommonITILObject;
+use CommonITILTask;
+use DateTime;
 use DbTestCase;
 use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Cache\QueryCacheProfile;
@@ -42,6 +46,7 @@ use Doctrine\DBAL\Driver;
 use Doctrine\DBAL\Driver\Connection as DriverConnection;
 use Doctrine\DBAL\Driver\Middleware\AbstractDriverMiddleware;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Query\QueryBuilder;
 use Doctrine\DBAL\Result;
 use Doctrine\DBAL\ServerVersionProvider;
@@ -50,17 +55,48 @@ use Doctrine\DBAL\Types\BooleanType;
 use Doctrine\DBAL\Types\IntegerType;
 use Doctrine\DBAL\Types\StringType;
 use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use Doctrine\ORM\Events;
+use Doctrine\ORM\NoResultException;
+use Document;
+use Document_Item;
+use Dropdown;
+use Group;
+use Group_Ticket;
+use ITILFollowup;
 use ITILSolution;
 use LogicException;
+use Plugin;
+use Problem;
+use ReflectionProperty;
+use Session;
+use Supplier;
+use Supplier_Ticket;
+use Ticket as LegacyTicket;
+use TicketSatisfaction;
+use Ticket_User;
+use UserEmail;
 use itsmng\Database\Entity\DocumentItem;
+use itsmng\Database\Entity\Entity;
 use itsmng\Database\Entity\ITILSolution as SolutionRecord;
+use itsmng\Database\Entity\Profile;
+use itsmng\Database\Entity\ProfileUser;
+use itsmng\Database\Entity\SupplierTicket;
+use itsmng\Database\Entity\Ticket as TicketEntity;
+use itsmng\Database\Entity\TicketUser;
+use itsmng\Database\Entity\User as UserEntity;
+use itsmng\Database\ITILActorReadOperation;
 use itsmng\Database\ITILDocumentAccess;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\DocumentRepository;
+use itsmng\Database\Repository\ITILActorRepository;
 use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\UserRepository;
+use itsmng\Database\Repository\UserSelectionRepository;
 use itsmng\Database\TimelineCountReadOperation;
 use itsmng\Database\TimelineSelection;
+use itsmng\Database\UserDisplayReadOperation;
 use mock\DBmysql as TimelineCountAdapter;
 use Psr\Cache\CacheItemInterface;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
@@ -77,16 +113,16 @@ class Ticket extends DbTestCase
         global $DB, $CFG_GLPI;
         $this->login();
         $mailing = $CFG_GLPI['notifications_mailing'];
-        $manager = \itsmng\Database\Orm::create($DB);
+        $manager = Orm::create($DB);
         try {
-            $user = $this->createItem(\User::class, ['name' => 'Actor address ' . $this->getUniqueString()]);
+            $user = $this->createItem(User::class, ['name' => 'Actor address ' . $this->getUniqueString()]);
             $id = (int)$user->getID();
-            $first = $this->createItem(\UserEmail::class, ['users_id' => $id, 'email' => 'first@example.com']);
-            $second = $this->createItem(\UserEmail::class, ['users_id' => $id, 'email' => 'second@example.com']);
-            $group = $this->createItem(\Group::class, ['name' => 'Actor group ' . $this->getUniqueString(), 'entities_id' => 0]);
-            $supplier = $this->createItem(\Supplier::class, ['name' => 'Actor supplier ' . $this->getUniqueString(),
+            $first = $this->createItem(UserEmail::class, ['users_id' => $id, 'email' => 'first@example.com']);
+            $second = $this->createItem(UserEmail::class, ['users_id' => $id, 'email' => 'second@example.com']);
+            $group = $this->createItem(Group::class, ['name' => 'Actor group ' . $this->getUniqueString(), 'entities_id' => 0]);
+            $supplier = $this->createItem(Supplier::class, ['name' => 'Actor supplier ' . $this->getUniqueString(),
                 'entities_id' => 0, 'email' => 'supplier@example.com']);
-            $repository = new \itsmng\Database\Repository\ITILActorRepository($manager);
+            $repository = new ITILActorRepository($manager);
             $loads = new class () {
                 public int $count = 0;
                 public function postLoad(): void
@@ -94,7 +130,7 @@ class Ticket extends DbTestCase
                     ++$this->count;
                 }
             };
-            $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+            $manager->getEventManager()->addEventListener([Events::postLoad], $loads);
             $connection = $DB->getDoctrineConnection();
             $level = $connection->getTransactionNestingLevel();
             $this->string($repository->groupName((int)$group->getID()))->isIdenticalTo($group->getName());
@@ -113,21 +149,21 @@ class Ticket extends DbTestCase
             $this->string($repository->userDefaultEmail($id))->isIdenticalTo('');
             $this->string($user->getDefaultEmail())->isIdenticalTo('');
             $this->variable($repository->userDefaultEmail(PHP_INT_MAX))->isNull();
-            $withoutEmail = $this->createItem(\User::class, ['name' => 'No address ' . $this->getUniqueString()]);
+            $withoutEmail = $this->createItem(User::class, ['name' => 'No address ' . $this->getUniqueString()]);
             $this->string($repository->userDefaultEmail((int)$withoutEmail->getID()))->isIdenticalTo('');
             $this->integer($loads->count)->isIdenticalTo(0);
             $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
-            $this->object($manager->find(\itsmng\Database\Entity\User::class, $id))->isInstanceOf(\itsmng\Database\Entity\User::class);
+            $this->object($manager->find(UserEntity::class, $id))->isInstanceOf(UserEntity::class);
             $this->integer($loads->count)->isGreaterThan(0);
             $manager->clear();
 
             $CFG_GLPI['notifications_mailing'] = true;
-            $ticket = new \Ticket();
+            $ticket = new LegacyTicket();
             foreach ([PHP_INT_MAX, null, '', 0] as $missing) {
                 ob_start();
                 try {
                     $link = $ticket->generateFollowupLink(['id' => 1, 'users_id' => $missing,
-                        'use_notification' => 1, 'alternative_email' => ''], \User::class);
+                        'use_notification' => 1, 'alternative_email' => ''], User::class);
                 } finally {
                     ob_end_clean();
                 }
@@ -136,9 +172,9 @@ class Ticket extends DbTestCase
             ob_start();
             try {
                 $missingLink = $ticket->generateFollowupLink(['id' => 1, 'users_id' => PHP_INT_MAX,
-                    'use_notification' => 1, 'alternative_email' => '0'], \User::class);
+                    'use_notification' => 1, 'alternative_email' => '0'], User::class);
                 $emptyLink = $ticket->generateFollowupLink(['id' => 1, 'users_id' => $withoutEmail->getID(),
-                    'use_notification' => 1, 'alternative_email' => '0'], \User::class);
+                    'use_notification' => 1, 'alternative_email' => '0'], User::class);
             } finally {
                 ob_end_clean();
             }
@@ -160,24 +196,24 @@ class Ticket extends DbTestCase
         $session = $_SESSION;
         try {
             $_SESSION['glpiset_default_tech'] = false;
-            $user = $this->createItem(\User::class, ['name' => 'Panel user ' . $this->getUniqueString()]);
-            $this->createItem(\UserEmail::class, ['users_id' => $user->getID(), 'email' => 'panel@example.com']);
-            $group = $this->createItem(\Group::class, ['name' => 'Panel group ' . $this->getUniqueString(), 'entities_id' => 0]);
-            $supplier = $this->createItem(\Supplier::class, ['name' => 'Panel supplier ' . $this->getUniqueString(),
+            $user = $this->createItem(User::class, ['name' => 'Panel user ' . $this->getUniqueString()]);
+            $this->createItem(UserEmail::class, ['users_id' => $user->getID(), 'email' => 'panel@example.com']);
+            $group = $this->createItem(Group::class, ['name' => 'Panel group ' . $this->getUniqueString(), 'entities_id' => 0]);
+            $supplier = $this->createItem(Supplier::class, ['name' => 'Panel supplier ' . $this->getUniqueString(),
                 'entities_id' => 0, 'email' => 'before@example.com']);
-            $ticket = $this->createItem(\Ticket::class, ['name' => 'Panel ticket ' . $this->getUniqueString(),
+            $ticket = $this->createItem(LegacyTicket::class, ['name' => 'Panel ticket ' . $this->getUniqueString(),
                 'content' => 'Actor callback fixture', 'entities_id' => 0]);
-            $this->createItem(\Ticket_User::class, ['tickets_id' => $ticket->getID(), 'users_id' => $user->getID(),
-                'type' => \CommonITILActor::ASSIGN, 'use_notification' => 1, 'alternative_email' => 'PANEL@example.com']);
-            $this->createItem(\Group_Ticket::class, ['tickets_id' => $ticket->getID(), 'groups_id' => $group->getID(),
-                'type' => \CommonITILActor::ASSIGN]);
-            $this->createItem(\Supplier_Ticket::class, ['tickets_id' => $ticket->getID(), 'suppliers_id' => $supplier->getID(),
-                'type' => \CommonITILActor::ASSIGN, 'use_notification' => 1, 'alternative_email' => '']);
-            $panel = new class () extends \Ticket {
+            $this->createItem(Ticket_User::class, ['tickets_id' => $ticket->getID(), 'users_id' => $user->getID(),
+                'type' => CommonITILActor::ASSIGN, 'use_notification' => 1, 'alternative_email' => 'PANEL@example.com']);
+            $this->createItem(Group_Ticket::class, ['tickets_id' => $ticket->getID(), 'groups_id' => $group->getID(),
+                'type' => CommonITILActor::ASSIGN]);
+            $this->createItem(Supplier_Ticket::class, ['tickets_id' => $ticket->getID(), 'suppliers_id' => $supplier->getID(),
+                'type' => CommonITILActor::ASSIGN, 'use_notification' => 1, 'alternative_email' => '']);
+            $panel = new class () extends LegacyTicket {
                 public $afterActor;
                 public function panel(): array
                 {
-                    return $this->getActorsForAction(\CommonITILActor::ASSIGN);
+                    return $this->getActorsForAction(CommonITILActor::ASSIGN);
                 }
                 public function getSuppliers($type)
                 {
@@ -192,15 +228,15 @@ class Ticket extends DbTestCase
                 }
             };
             $panel->fields = $ticket->fields;
-            $panel->userlinkclass = \Ticket_User::class;
-            $panel->grouplinkclass = \Group_Ticket::class;
-            $panel->supplierlinkclass = \Supplier_Ticket::class;
+            $panel->userlinkclass = Ticket_User::class;
+            $panel->grouplinkclass = Group_Ticket::class;
+            $panel->supplierlinkclass = Supplier_Ticket::class;
             $panel->loadActors();
             $CFG_GLPI['notifications_mailing'] = true;
             $calls = [];
             $panel->afterActor = function (string $type) use (&$calls, $DB, $group, $supplier): void {
                 $calls[] = $type;
-                if ($type === \User::class) {
+                if ($type === User::class) {
                     $this->boolean($DB->update('glpi_groups', ['name' => 'After user'], ['id' => $group->getID()]))->isTrue();
                     $this->boolean($DB->update('glpi_suppliers', ['name' => 'After user', 'email' => 'after-user@example.com'], ['id' => $supplier->getID()]))->isTrue();
                 } elseif (count($calls) === 2) {
@@ -218,11 +254,11 @@ class Ticket extends DbTestCase
             $this->array(array_column($rows, 'type'))->isIdenticalTo(['user', 'group', 'supplier', 'supplier']);
             $this->array(array_column($rows, 'id'))->isEqualTo([$user->getID(), $group->getID(), $supplier->getID(), $supplier->getID()]);
             $this->array(array_column($rows, 'name'))->isIdenticalTo([getUserName($user->getID()), 'After user', 'After user', 'After supplier']);
-            $this->string($rows[0]['subtitle'])->isIdenticalTo(__('Email followup') . ': ' . \Dropdown::getYesNo(1));
+            $this->string($rows[0]['subtitle'])->isIdenticalTo(__('Email followup') . ': ' . Dropdown::getYesNo(1));
             $this->string($rows[0]['followupTitle'])->contains('PANEL@example.com');
             $this->string($rows[2]['followupTitle'])->contains('after-user@example.com');
             $this->string($rows[3]['followupTitle'])->contains('after-supplier@example.com');
-            $this->array($calls)->isIdenticalTo([\User::class, \Supplier::class, \Supplier::class]);
+            $this->array($calls)->isIdenticalTo([User::class, Supplier::class, Supplier::class]);
             $panel->afterActor = static function (): void {
             };
             foreach (['', null, '0'] as $name) {
@@ -253,16 +289,16 @@ class Ticket extends DbTestCase
         $this->login();
         $database = $DB;
         $hooks = $PLUGIN_HOOKS;
-        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
         $active = $plugins->getValue();
         try {
-            $user = $this->createItem(\User::class, ['name' => 'timeline-hook-' . $this->getUniqueString(),
+            $user = $this->createItem(User::class, ['name' => 'timeline-hook-' . $this->getUniqueString(),
                 'comment' => 'Complete author comment', 'phone' => '0123456789']);
-            $ticket = $this->createItem(\Ticket::class, ['name' => 'Timeline author callback',
+            $ticket = $this->createItem(LegacyTicket::class, ['name' => 'Timeline author callback',
                 'content' => 'Original content', 'entities_id' => $_SESSION['glpiactive_entity']]);
             $followups = [];
             foreach (['First', 'Second'] as $label) {
-                $followup = $this->createItem(\ITILFollowup::class, ['itemtype' => 'Ticket',
+                $followup = $this->createItem(ITILFollowup::class, ['itemtype' => 'Ticket',
                     'items_id' => $ticket->getID(), 'content' => $label . ' author callback followup', 'is_private' => 0]);
                 $this->boolean($DB->update('glpi_itilfollowups', ['users_id' => $user->getID()], ['id' => $followup->getID()]))->isTrue();
                 $followups[] = (int)$followup->getID();
@@ -275,7 +311,7 @@ class Ticket extends DbTestCase
             $PLUGIN_HOOKS['pre_show_item'] = ['timeline_author_fixture' =>
                 static function (array $context) use ($database, $routed, $followups, $user, &$beforeCalls, &$expected): void {
                     global $DB;
-                    if ($context['item'] instanceof \ITILFollowup && in_array((int)$context['item']->getID(), $followups, true)) {
+                    if ($context['item'] instanceof ITILFollowup && in_array((int)$context['item']->getID(), $followups, true)) {
                         ++$beforeCalls;
                         if ($beforeCalls === 2) {
                             $DB = $routed;
@@ -285,8 +321,8 @@ class Ticket extends DbTestCase
                         $expected[] = $user->fields;
                     }
                 }];
-            $PLUGIN_HOOKS['item_can'] = ['timeline_author_fixture' => [\User::class =>
-                static function (\User $model) use ($user, &$calls): void {
+            $PLUGIN_HOOKS['item_can'] = ['timeline_author_fixture' => [User::class =>
+                static function (User $model) use ($user, &$calls): void {
                     if ($model->getID() == $user->getID()) {
                         $calls[] = $model->fields;
                         $model->fields['name'] = 'Plugin author label';
@@ -306,7 +342,7 @@ class Ticket extends DbTestCase
 
     public function timelineAccessibilityProvider(): array
     {
-        return [[\Ticket::class], [\Change::class], [\Problem::class]];
+        return [[LegacyTicket::class], [Change::class], [Problem::class]];
     }
 
     /** @dataProvider timelineAccessibilityProvider */
@@ -317,10 +353,10 @@ class Ticket extends DbTestCase
         $session = $_SESSION;
         $item = $this->createItem($type, ['name' => 'Timeline preferences ' . $this->getUniqueString(),
             'content' => 'Preference projection', 'entities_id' => $_SESSION['glpiactive_entity']]);
-        $user = $this->createItem(\User::class, ['name' => 'timeline-font-' . $this->getUniqueString()]);
+        $user = $this->createItem(User::class, ['name' => 'timeline-font-' . $this->getUniqueString()]);
         $id = (int)$user->getID();
-        $manager = \itsmng\Database\Orm::create($DB);
-        $repository = new \itsmng\Database\Repository\UserRepository($manager);
+        $manager = Orm::create($DB);
+        $repository = new UserRepository($manager);
         $loads = new class () {
             public int $count = 0;
             public function postLoad(): void
@@ -328,8 +364,8 @@ class Ticket extends DbTestCase
                 ++$this->count;
             }
         };
-        $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
-        $reader = new \itsmng\Database\UserDisplayReadOperation($manager->getConnection());
+        $manager->getEventManager()->addEventListener([Events::postLoad], $loads);
+        $reader = new UserDisplayReadOperation($manager->getConnection());
         $defaultFont = '"Bitstream Vera Sans", arial, Tahoma, "Sans serif"';
         try {
             $_SESSION['glpiID'] = $id;
@@ -359,14 +395,14 @@ class Ticket extends DbTestCase
                     }
                 }
             }
-            $stringType = \Doctrine\DBAL\Types\Type::getType(\Doctrine\DBAL\Types\Types::STRING);
+            $stringType = Type::getType(Types::STRING);
             try {
-                \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::STRING, new class () extends \Doctrine\DBAL\Types\StringType {
-                    public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                Type::overrideType(Types::STRING, new class () extends StringType {
+                    public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                     {
                         return 'UPPER(' . $sqlExpr . ')';
                     }
-                    public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+                    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
                     {
                         return $value === null ? 'converted null' : 'converted ' . $value;
                     }
@@ -377,26 +413,26 @@ class Ticket extends DbTestCase
                     $this->array($repository->timelinePreferences($id))->isIdenticalTo($expected);
                     $this->array($reader->timelinePreferences($id))->isIdenticalTo($expected);
                 }
-                \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::STRING, new class () extends \Doctrine\DBAL\Types\StringType {
-                    public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+                Type::overrideType(Types::STRING, new class () extends StringType {
+                    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
                     {
-                        throw new \Doctrine\ORM\NoResultException();
+                        throw new NoResultException();
                     }
                 });
                 $this->array($repository->timelinePreferences($id))->isEmpty();
                 $this->array($reader->timelinePreferences($id))->isEmpty();
             } finally {
-                \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::STRING, $stringType);
+                Type::overrideType(Types::STRING, $stringType);
             }
-            $bigintType = \Doctrine\DBAL\Types\Type::getType(\Doctrine\DBAL\Types\Types::BIGINT);
-            $booleanType = \Doctrine\DBAL\Types\Type::getType(\Doctrine\DBAL\Types\Types::BOOLEAN);
+            $bigintType = Type::getType(Types::BIGINT);
+            $booleanType = Type::getType(Types::BOOLEAN);
             try {
-                \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::BOOLEAN, new class () extends \Doctrine\DBAL\Types\BooleanType {
-                    public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                Type::overrideType(Types::BOOLEAN, new class () extends BooleanType {
+                    public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                     {
                         return 'NOT (' . $sqlExpr . ')';
                     }
-                    public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): ?bool
+                    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): ?bool
                     {
                         return !parent::convertToPHPValue($value, $platform);
                     }
@@ -404,8 +440,8 @@ class Ticket extends DbTestCase
                 $expected = $repository->timelinePreferences($id);
                 $this->boolean($expected['access_shortcuts'])->isTrue();
                 $this->array($reader->timelinePreferences($id))->isIdenticalTo($expected);
-                \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::BIGINT, new class () extends \Doctrine\DBAL\Types\BigIntType {
-                    public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                Type::overrideType(Types::BIGINT, new class () extends BigIntType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                     {
                         return '(' . $sqlExpr . ' * 0 - 1)';
                     }
@@ -413,14 +449,14 @@ class Ticket extends DbTestCase
                 $this->array($repository->timelinePreferences($id))->isEmpty();
                 $this->array($reader->timelinePreferences($id))->isEmpty();
             } finally {
-                \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::BIGINT, $bigintType);
-                \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::BOOLEAN, $booleanType);
+                Type::overrideType(Types::BIGINT, $bigintType);
+                Type::overrideType(Types::BOOLEAN, $booleanType);
             }
             $this->integer($loads->count)->isIdenticalTo(0);
             $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
             // The virtual callback remains a fresh-read boundary, even when it
             // changes the current account preference before rendering the filter.
-            $custom = new class ($id) extends \Ticket {
+            $custom = new class ($id) extends LegacyTicket {
                 public int $filterCalls = 0;
                 public function __construct(private int $preferenceUser)
                 {
@@ -432,7 +468,7 @@ class Ticket extends DbTestCase
                 }
                 public static function getTable($classname = null)
                 {
-                    return \Ticket::getTable();
+                    return LegacyTicket::getTable();
                 }
                 public function showTimelineHeader()
                 {
@@ -454,7 +490,7 @@ class Ticket extends DbTestCase
                 ->contains("<h2 style='font-family: Before callback;'>")
                 ->contains("<h3 style='font-family: After callback;'>");
             $this->integer($custom->filterCalls)->isIdenticalTo(1);
-            if ($type === \Ticket::class) {
+            if ($type === LegacyTicket::class) {
                 $custom->fields = $item->fields;
                 $this->boolean($DB->update('glpi_users', ['access_font' => 'Before callback'], ['id' => $id]))->isTrue();
                 $this->output(fn () => $custom->showTimeline(743))
@@ -488,11 +524,11 @@ class Ticket extends DbTestCase
         $child = (int)$_SESSION['glpiactive_entity'];
         $parent = (int)getItemByTypeName('Entity', '_test_root_entity', true);
         $sibling = (int)getItemByTypeName('Entity', '_test_child_2', true);
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
             $profiles = [];
             foreach (['helpdesk', 'central'] as $interface) {
-                $profile = new \itsmng\Database\Entity\Profile();
+                $profile = new Profile();
                 $profile->name = 'Observer choices ' . $interface . $this->getUniqueString();
                 $profile->interface = $interface;
                 $em->persist($profile);
@@ -511,22 +547,22 @@ class Ticket extends DbTestCase
                 'expired' => [$child, false, 'helpdesk'],
                 'no_profile' => [null, false, 'helpdesk'],
             ] as $name => [$entity, $recursive, $interface]) {
-                $user = new \itsmng\Database\Entity\User();
+                $user = new UserEntity();
                 $user->name = 'observer-' . $name . '-' . $this->getUniqueString();
                 $user->realname = '!! Observer ' . $name;
                 $user->firstname = 'Display';
-                $user->entities = $em->getReference(\itsmng\Database\Entity\Entity::class, $child);
+                $user->entities = $em->getReference(Entity::class, $child);
                 $user->is_active = $name !== 'inactive';
                 $user->is_deleted = $name === 'deleted';
-                $user->begin_date = $name === 'future' ? new \DateTime('+1 day') : null;
-                $user->end_date = $name === 'expired' ? new \DateTime('2001-01-01') : null;
+                $user->begin_date = $name === 'future' ? new DateTime('+1 day') : null;
+                $user->end_date = $name === 'expired' ? new DateTime('2001-01-01') : null;
                 $em->persist($user);
                 $users[$name] = $user;
                 if ($entity !== null) {
-                    $grant = new \itsmng\Database\Entity\ProfileUser();
+                    $grant = new ProfileUser();
                     $grant->users = $user;
                     $grant->profiles = $profiles[$interface];
-                    $grant->entities = $em->getReference(\itsmng\Database\Entity\Entity::class, $entity);
+                    $grant->entities = $em->getReference(Entity::class, $entity);
                     $grant->is_recursive = $recursive;
                     $em->persist($grant);
                 }
@@ -538,7 +574,7 @@ class Ticket extends DbTestCase
                 '_users_id_observer' => [1 => $ids['local']]];
             ob_start();
             try {
-                \Ticket::showFormHelpdeskObserver($options);
+                LegacyTicket::showFormHelpdeskObserver($options);
                 $html = ob_get_contents();
             } finally {
                 ob_end_clean();
@@ -548,10 +584,10 @@ class Ticket extends DbTestCase
                     ->isIdenticalTo(in_array($name, ['local', 'recursive', 'central'], true));
             }
             $this->string($html)->contains("value='" . $ids['local'] . "' selected");
-            $this->output(fn () => \Ticket::showFormHelpdeskObserver(array_replace($options, ['_right' => 'interface'])))
+            $this->output(fn () => LegacyTicket::showFormHelpdeskObserver(array_replace($options, ['_right' => 'interface'])))
                 ->contains("value='" . $ids['central'] . "'")
                 ->notContains("value='" . $ids['local'] . "'");
-            $this->output(fn () => \Ticket::showFormHelpdeskObserver(array_replace($options, ['entities_id' => $sibling])))
+            $this->output(fn () => LegacyTicket::showFormHelpdeskObserver(array_replace($options, ['entities_id' => $sibling])))
                 ->notContains("value='" . $ids['sibling'] . "'")
                 ->notContains("value='" . $ids['local'] . "'");
             $loads = new class () {
@@ -561,8 +597,8 @@ class Ticket extends DbTestCase
                     ++$this->count;
                 }
             };
-            $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
-            $repository = new \itsmng\Database\Repository\UserSelectionRepository($em);
+            $em->getEventManager()->addEventListener([Events::postLoad], $loads);
+            $repository = new UserSelectionRepository($em);
             $rows = iterator_to_array($repository->search(['glpi_users.id' => array_values($ids)], false, [], null, false, false, 0, 2, false, true));
             $this->array($rows)->hasSize(2);
             foreach ($rows as $row) {
@@ -595,14 +631,14 @@ class Ticket extends DbTestCase
     {
         global $DB;
         $this->login();
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         $namespace = 'itsmng\\Database\\Entity\\';
         $parentClass = $namespace . $parentName;
         $actorClass = $namespace . $actorName;
         $relationClass = $namespace . $relationName;
         $parent = new $parentClass();
         $parent->name = 'Actor projection ' . $this->getUniqueString();
-        $parent->entities = $em->getReference(\itsmng\Database\Entity\Entity::class, 0);
+        $parent->entities = $em->getReference(Entity::class, 0);
         $actor = new $actorClass();
         $actor->name = 'Projection recipient ' . $this->getUniqueString();
         $actor->entities = $parent->entities;
@@ -611,12 +647,12 @@ class Ticket extends DbTestCase
         $assign = new $relationClass();
         $assign->$parentField = $parent;
         $assign->$actorField = $actor;
-        $assign->type = \CommonITILActor::ASSIGN;
+        $assign->type = CommonITILActor::ASSIGN;
         $em->persist($assign);
         $observer = new $relationClass();
         $observer->$parentField = $parent;
         $observer->$actorField = $actorName === 'Group' ? $actor : null;
-        $observer->type = \CommonITILActor::OBSERVER;
+        $observer->type = CommonITILActor::OBSERVER;
         if ($actorName !== 'Group') {
             $observer->alternative_email = 'projection@example.invalid';
             $observer->use_notification = false;
@@ -626,8 +662,8 @@ class Ticket extends DbTestCase
 
         $model = new $legacy();
         $expected = array_values($model->find([$legacy::getItilObjectForeignKey() => $parent->id], 'id'));
-        $reader = \itsmng\Database\Orm::create($DB);
-        $repository = new \itsmng\Database\Repository\ITILActorRepository($reader);
+        $reader = Orm::create($DB);
+        $repository = new ITILActorRepository($reader);
         $rows = $repository->rows($legacy, $parent->id);
         $this->array($rows)->isIdenticalTo($expected);
         $this->array($reader->getUnitOfWork()->getIdentityMap())->isEmpty();
@@ -640,20 +676,20 @@ class Ticket extends DbTestCase
         $this->array($model->getActors($parent->id))->isIdenticalTo($grouped);
         $parentModel = new $parentName();
         $parentModel->fields['id'] = $parent->id;
-        $managers = new \ReflectionProperty(\itsmng\Database\Orm::class, 'unitsOfWork');
+        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
         try {
             $probe = new TicketScalarReadProbe($em->getConnection());
-            $direct = new \itsmng\Database\ITILActorReadOperation($probe);
+            $direct = new ITILActorReadOperation($probe);
             $this->array($direct->actors($legacy, $parent->id))->isIdenticalTo($grouped);
             $this->array($probe->queries)->hasSize(1);
             $this->integer($probe->builders)->isIdenticalTo(1);
             $this->array($probe->queries[0]['params'])->isIdenticalTo(['item' => $parent->id]);
-            $this->array($probe->queries[0]['types'])->isIdenticalTo(['item' => \Doctrine\DBAL\Types\Types::BIGINT]);
-            if ($legacy === \Ticket_User::class) {
-                $originalBigint = \Doctrine\DBAL\Types\Type::getType('bigint');
+            $this->array($probe->queries[0]['types'])->isIdenticalTo(['item' => Types::BIGINT]);
+            if ($legacy === Ticket_User::class) {
+                $originalBigint = Type::getType('bigint');
                 try {
-                    \Doctrine\DBAL\Types\Type::overrideType('bigint', new class () extends \Doctrine\DBAL\Types\BigIntType {
-                        public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                    Type::overrideType('bigint', new class () extends BigIntType {
+                        public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                         {
                             return '(' . $sqlExpr . ' * 0 - 1)';
                         }
@@ -661,7 +697,7 @@ class Ticket extends DbTestCase
                     $this->array($direct->actors($legacy, $parent->id))->isEmpty();
                     $this->array($repository->actors($legacy, $parent->id))->isEmpty();
                 } finally {
-                    \Doctrine\DBAL\Types\Type::overrideType('bigint', $originalBigint);
+                    Type::overrideType('bigint', $originalBigint);
                 }
             }
             $direct->close();
@@ -671,7 +707,7 @@ class Ticket extends DbTestCase
             $getter = match ($actorName) {
                 'Group' => 'getGroups', 'User' => 'getUsers', 'Supplier' => 'getSuppliers'
             };
-            foreach ([\CommonITILActor::ASSIGN, \CommonITILActor::OBSERVER, \CommonITILActor::REQUESTER] as $type) {
+            foreach ([CommonITILActor::ASSIGN, CommonITILActor::OBSERVER, CommonITILActor::REQUESTER] as $type) {
                 $this->array($parentModel->$getter($type))->isIdenticalTo($grouped[$type] ?? []);
                 foreach (array_diff(['getGroups', 'getUsers', 'getSuppliers'], [$getter]) as $emptyGetter) {
                     $this->array($parentModel->$emptyGetter($type))->isEmpty();
@@ -685,16 +721,16 @@ class Ticket extends DbTestCase
                 $this->string($rows[1]['actor_email_key'])->isIdenticalTo('projection@example.invalid');
             }
             // A later operation observes writes; no actor rows or managers survive in a cache.
-            $observer->type = \CommonITILActor::REQUESTER;
+            $observer->type = CommonITILActor::REQUESTER;
             $em->flush();
-            $this->array($model->getActors($parent->id))->hasKey(\CommonITILActor::REQUESTER);
+            $this->array($model->getActors($parent->id))->hasKey(CommonITILActor::REQUESTER);
             $parentModel->loadActors();
-            $this->array($parentModel->$getter(\CommonITILActor::REQUESTER))->hasSize(1);
+            $this->array($parentModel->$getter(CommonITILActor::REQUESTER))->hasSize(1);
             $em->remove($observer);
             $em->flush();
-            $this->array($model->getActors($parent->id))->notHasKey(\CommonITILActor::REQUESTER);
+            $this->array($model->getActors($parent->id))->notHasKey(CommonITILActor::REQUESTER);
             $parentModel->loadActors();
-            $this->array($parentModel->$getter(\CommonITILActor::REQUESTER))->isEmpty();
+            $this->array($parentModel->$getter(CommonITILActor::REQUESTER))->isEmpty();
         } finally {
             $em->clear();
             $reader->clear();
@@ -703,14 +739,14 @@ class Ticket extends DbTestCase
 
     public function testCustomActorFinderKeepsDispatch(): void
     {
-        $relation = new class () extends \Ticket_User {
+        $relation = new class () extends Ticket_User {
             public function find($condition = [], $order = [], $limit = null)
             {
-                return [['id' => 17, 'type' => \CommonITILActor::OBSERVER, 'custom' => $condition['tickets_id']]];
+                return [['id' => 17, 'type' => CommonITILActor::OBSERVER, 'custom' => $condition['tickets_id']]];
             }
         };
         $this->array($relation->getActors(42))->isIdenticalTo([
-            \CommonITILActor::OBSERVER => [['id' => 17, 'type' => \CommonITILActor::OBSERVER, 'custom' => 42]],
+            CommonITILActor::OBSERVER => [['id' => 17, 'type' => CommonITILActor::OBSERVER, 'custom' => 42]],
         ]);
     }
 
@@ -718,25 +754,25 @@ class Ticket extends DbTestCase
     {
         global $DB;
         $this->login();
-        $em = \itsmng\Database\Orm::create($DB);
-        $first = new \itsmng\Database\Entity\Ticket();
+        $em = Orm::create($DB);
+        $first = new TicketEntity();
         $first->name = $this->getUniqueString();
-        $first->entities = $em->getReference(\itsmng\Database\Entity\Entity::class, 0);
-        $second = new \itsmng\Database\Entity\Ticket();
+        $first->entities = $em->getReference(Entity::class, 0);
+        $second = new TicketEntity();
         $second->name = $this->getUniqueString();
         $second->entities = $first->entities;
-        $supplier = new \itsmng\Database\Entity\SupplierTicket();
+        $supplier = new SupplierTicket();
         $supplier->tickets = $second;
         $supplier->alternative_email = 'operation@example.invalid';
-        $supplier->type = \CommonITILActor::OBSERVER;
+        $supplier->type = CommonITILActor::OBSERVER;
         foreach ([$first, $second, $supplier] as $record) {
             $em->persist($record);
         }
         $em->flush();
 
-        $ticket = new \Ticket();
+        $ticket = new LegacyTicket();
         $ticket->fields['id'] = $first->id;
-        $custom = new class () extends \Ticket_User {
+        $custom = new class () extends Ticket_User {
             public static $read;
             public function getActors($items_id)
             {
@@ -744,30 +780,30 @@ class Ticket extends DbTestCase
             }
         };
         $ticket->userlinkclass = $custom::class;
-        $managers = new \ReflectionProperty(\itsmng\Database\Orm::class, 'unitsOfWork');
+        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
         $before = $managers->getValue();
         $calls = [];
         $custom::$read = function ($id) use ($DB, $ticket, $first, $second, $supplier, $managers, $before, &$calls): array {
             $calls[] = $id;
             $this->integer((int)$id)->isIdenticalTo($first->id);
             $this->integer($managers->getValue() - $before)->isIdenticalTo(1);
-            $this->array($ticket->getGroups(\CommonITILActor::REQUESTER))->isEmpty();
-            $this->boolean($DB->update('glpi_suppliers_tickets', ['type' => \CommonITILActor::ASSIGN], ['id' => $supplier->id]))->isTrue();
+            $this->array($ticket->getGroups(CommonITILActor::REQUESTER))->isEmpty();
+            $this->boolean($DB->update('glpi_suppliers_tickets', ['type' => CommonITILActor::ASSIGN], ['id' => $supplier->id]))->isTrue();
             $ticket->fields['id'] = $second->id;
-            return [\CommonITILActor::REQUESTER => [['custom' => $id]]];
+            return [CommonITILActor::REQUESTER => [['custom' => $id]]];
         };
         try {
             $ticket->loadActors();
             $this->integer($managers->getValue() - $before)->isIdenticalTo(2);
             $this->array($calls)->isIdenticalTo([$first->id]);
-            $this->array($ticket->getUsers(\CommonITILActor::REQUESTER))->isIdenticalTo([['custom' => $first->id]]);
-            $rows = $ticket->getSuppliers(\CommonITILActor::ASSIGN);
+            $this->array($ticket->getUsers(CommonITILActor::REQUESTER))->isIdenticalTo([['custom' => $first->id]]);
+            $rows = $ticket->getSuppliers(CommonITILActor::ASSIGN);
             $this->array($rows)->hasSize(1);
             $this->integer($rows[0]['id'])->isIdenticalTo($supplier->id);
-            $this->array($ticket->getSuppliers(\CommonITILActor::OBSERVER))->isEmpty();
+            $this->array($ticket->getSuppliers(CommonITILActor::OBSERVER))->isEmpty();
             // The aggregate's local reader must not clear a caller's live manager.
             $this->boolean($em->contains($supplier))->isTrue();
-            $this->integer($supplier->type)->isIdenticalTo(\CommonITILActor::OBSERVER);
+            $this->integer($supplier->type)->isIdenticalTo(CommonITILActor::OBSERVER);
         } finally {
             $custom::$read = null;
             $em->clear();
@@ -786,42 +822,42 @@ class Ticket extends DbTestCase
         $this->login();
         $this->setEntity('_test_root_entity', false);
         $session = $_SESSION;
-        $manager = \itsmng\Database\Orm::create($DB);
-        $records = new \itsmng\Database\Repository\RecordRepository($manager);
+        $manager = Orm::create($DB);
+        $records = new RecordRepository($manager);
         $depth = $manager->getConnection()->getTransactionNestingLevel();
         try {
-            $parent = new \itsmng\Database\Entity\Ticket();
-            $parent->entities = $manager->find(\itsmng\Database\Entity\Entity::class, $_SESSION['glpiactive_entity']);
+            $parent = new TicketEntity();
+            $parent->entities = $manager->find(Entity::class, $_SESSION['glpiactive_entity']);
             $parent->name = 'Anonymous actor ' . bin2hex(random_bytes(8));
-            $parent->status = \Ticket::ASSIGNED;
-            $parent->recipient = $manager->find(\itsmng\Database\Entity\User::class, getItemByTypeName('User', 'normal', true));
-            $this->object($parent->entities)->isInstanceOf(\itsmng\Database\Entity\Entity::class);
-            $this->object($parent->recipient)->isInstanceOf(\itsmng\Database\Entity\User::class);
-            $this->integer($parent->recipient->id)->isNotEqualTo(\Session::getLoginUserID());
-            $assignment = new \itsmng\Database\Entity\TicketUser();
+            $parent->status = LegacyTicket::ASSIGNED;
+            $parent->recipient = $manager->find(UserEntity::class, getItemByTypeName('User', 'normal', true));
+            $this->object($parent->entities)->isInstanceOf(Entity::class);
+            $this->object($parent->recipient)->isInstanceOf(UserEntity::class);
+            $this->integer($parent->recipient->id)->isNotEqualTo(Session::getLoginUserID());
+            $assignment = new TicketUser();
             $assignment->tickets = $parent;
-            $assignment->actor = $manager->find(\itsmng\Database\Entity\User::class, \Session::getLoginUserID());
-            $assignment->type = \CommonITILActor::ASSIGN;
+            $assignment->actor = $manager->find(UserEntity::class, Session::getLoginUserID());
+            $assignment->type = CommonITILActor::ASSIGN;
             $manager->persist($parent);
             $manager->persist($assignment);
             $manager->flush();
 
-            $_SESSION['glpiactiveprofile']['ticket'] = \Ticket::OWN | \Ticket::READASSIGN;
+            $_SESSION['glpiactiveprofile']['ticket'] = LegacyTicket::OWN | LegacyTicket::READASSIGN;
             $_SESSION['glpiactiveprofile']['user'] = 0;
-            $this->boolean((bool)\Session::haveRight('ticket', UPDATE))->isFalse();
-            $this->boolean((new \Ticket())->can($parent->id, UPDATE))->isTrue();
-            $this->boolean((bool)\User::canView())->isFalse();
+            $this->boolean((bool)Session::haveRight('ticket', UPDATE))->isFalse();
+            $this->boolean((new LegacyTicket())->can($parent->id, UPDATE))->isTrue();
+            $this->boolean((bool)User::canView())->isFalse();
             $input = ['tickets_id' => $parent->id, 'users_id' => $recipient,
-                'type' => \CommonITILActor::OBSERVER, 'alternative_email' => 'anonymous-' . $parent->id . '@example.invalid',
+                'type' => CommonITILActor::OBSERVER, 'alternative_email' => 'anonymous-' . $parent->id . '@example.invalid',
                 '_disablenotif' => true];
-            $relation = new \Ticket_User();
+            $relation = new Ticket_User();
             $this->boolean($relation->can(-1, CREATE, $input))->isTrue();
             $id = (int)$relation->add($input);
             $this->integer($id)->isGreaterThan(0);
             $row = $records->find('glpi_tickets_users', 'id', $id);
             $this->variable($row['users_id'])->isNull();
             $this->string($row['alternative_email'])->isIdenticalTo($input['alternative_email']);
-            $this->boolean((new \Ticket_User())->can($id, READ))->isTrue();
+            $this->boolean((new Ticket_User())->can($id, READ))->isTrue();
 
             $before = $records->countMatching('glpi_tickets_users', ['tickets_id' => $parent->id]);
             $missing = (int)$manager->createQuery('SELECT MAX(u.id) FROM itsmng\\Database\\Entity\\User u')->getSingleScalarResult() + 100;
@@ -831,14 +867,14 @@ class Ticket extends DbTestCase
                 if ($invalid !== $missing) {
                     unset($proposal['alternative_email']);
                 }
-                $this->boolean((new \Ticket_User())->can(-1, CREATE, $proposal))->isFalse();
+                $this->boolean((new Ticket_User())->can(-1, CREATE, $proposal))->isFalse();
             }
-            $_SESSION['glpiactiveprofile']['ticket'] = \Ticket::READASSIGN;
-            $this->boolean((new \Ticket_User())->can(-1, CREATE, $input))->isFalse();
-            $_SESSION['glpiactiveprofile']['ticket'] = \Ticket::OWN | \Ticket::READASSIGN;
+            $_SESSION['glpiactiveprofile']['ticket'] = LegacyTicket::READASSIGN;
+            $this->boolean((new Ticket_User())->can(-1, CREATE, $input))->isFalse();
+            $_SESSION['glpiactiveprofile']['ticket'] = LegacyTicket::OWN | LegacyTicket::READASSIGN;
             $this->setEntity(0, false);
-            $this->boolean((new \Ticket())->can($parent->id, UPDATE))->isFalse();
-            $this->boolean((new \Ticket_User())->can(-1, CREATE, $input))->isFalse();
+            $this->boolean((new LegacyTicket())->can($parent->id, UPDATE))->isFalse();
+            $this->boolean((new Ticket_User())->can(-1, CREATE, $input))->isFalse();
             $this->integer($records->countMatching('glpi_tickets_users', ['tickets_id' => $parent->id]))->isEqualTo($before);
             $this->integer($manager->getConnection()->getTransactionNestingLevel())->isEqualTo($depth);
         } finally {
@@ -2590,7 +2626,7 @@ class Ticket extends DbTestCase
         }
     }
 
-    private function checkTimelineDocumentCount(\CommonITILObject $item, int $expected, bool $bypassRights = false): void
+    private function checkTimelineDocumentCount(CommonITILObject $item, int $expected, bool $bypassRights = false): void
     {
         global $DB;
         $manager = Orm::create($DB);
@@ -2635,7 +2671,7 @@ class Ticket extends DbTestCase
         global $DB;
         $this->login();
         $profile = $_SESSION['glpiactiveprofile'];
-        $author = \Session::getLoginUserID();
+        $author = Session::getLoginUserID();
         $other = getItemByTypeName('User', 'normal', true);
         try {
             foreach (['Ticket', 'Change', 'Problem'] as $type) {
@@ -2648,7 +2684,7 @@ class Ticket extends DbTestCase
                 $this->boolean($private_tasks)->isTrue();
                 $task_ids_by_role = $followup_ids_by_role = [];
                 foreach (['public' => [0, $other], 'author' => [1, $author], 'other' => [1, $other], 'anonymous' => [1, null]] as $role => [$private, $user]) {
-                    $followup = new \ITILFollowup();
+                    $followup = new ITILFollowup();
                     $this->integer((int)$followup->add([
                         'itemtype' => $type, 'items_id' => $item->getID(),
                         'content' => 'Followup visibility', 'is_private' => $private,
@@ -2663,7 +2699,7 @@ class Ticket extends DbTestCase
                     $task_ids_by_role[$role] = $task->getID();
                     $followup_ids_by_role[$role] = $followup->getID();
                 }
-                $solution = new \ITILSolution();
+                $solution = new ITILSolution();
                 $this->integer((int)$solution->add([
                     'itemtype' => $type, 'items_id' => $item->getID(), 'content' => 'Solution count',
                 ]))->isGreaterThan(0);
@@ -2813,8 +2849,8 @@ class Ticket extends DbTestCase
                     $countManager->clear();
                 }
 
-                $_SESSION['glpiactiveprofile']['followup'] &= ~\ITILFollowup::SEEPRIVATE;
-                $_SESSION['glpiactiveprofile']['task'] &= ~\CommonITILTask::SEEPRIVATE;
+                $_SESSION['glpiactiveprofile']['followup'] &= ~ITILFollowup::SEEPRIVATE;
+                $_SESSION['glpiactiveprofile']['task'] &= ~CommonITILTask::SEEPRIVATE;
                 foreach (['central', 'helpdesk'] as $interface) {
                     $_SESSION['glpiactiveprofile']['interface'] = $interface;
                     $timeline = $item->getTimelineItems();
@@ -2846,13 +2882,13 @@ class Ticket extends DbTestCase
                     $otherProbe = new TicketScalarReadProbe($originalAdapter->getDoctrineConnection());
                     $otherAdapter = new TimelineCountAdapter();
                     $this->calling($otherAdapter)->getDoctrineConnection = $otherProbe;
-                    $callbackItem = new class () extends \Ticket {
+                    $callbackItem = new class () extends LegacyTicket {
                         public static bool $captured = false;
                         public static mixed $replacement;
 
                         public static function getForeignKeyField()
                         {
-                            return \Ticket::getForeignKeyField();
+                            return LegacyTicket::getForeignKeyField();
                         }
 
                         public static function getType()
@@ -2967,11 +3003,11 @@ class Ticket extends DbTestCase
         foreach (['Ticket', 'Change', 'Problem'] as $type) {
             $item = new $type();
             $this->integer((int)$item->add(['name' => 'Timeline event keys', 'content' => 'Count only']))->isGreaterThan(0);
-            $document = new \Document();
+            $document = new Document();
             $this->integer((int)$document->add(['name' => 'Timeline count attachment']))->isGreaterThan(0);
             $bindings = [];
-            foreach ([\CommonITILObject::TIMELINE_LEFT, \CommonITILObject::TIMELINE_RIGHT] as $position) {
-                $binding = new \Document_Item();
+            foreach ([CommonITILObject::TIMELINE_LEFT, CommonITILObject::TIMELINE_RIGHT] as $position) {
+                $binding = new Document_Item();
                 $this->integer((int)$binding->add([
                     'itemtype' => $type, 'items_id' => $item->getID(),
                     'documents_id' => $document->getID(), 'timeline_position' => $position,
@@ -3085,7 +3121,7 @@ class Ticket extends DbTestCase
             $this->boolean($DB->update('glpi_documents_items', ['date' => null, 'date_creation' => null], ['id' => $bindings]))->isTrue();
             $this->checkTimelineDocumentCount($item, 1);
             $this->integer($item->getTimelineItemCount())->isEqualTo(1)->isEqualTo(count($item->getTimelineItems()));
-            $this->boolean($DB->update('glpi_documents_items', ['timeline_position' => \CommonITILObject::NO_TIMELINE], ['id' => $bindings[1]]))->isTrue();
+            $this->boolean($DB->update('glpi_documents_items', ['timeline_position' => CommonITILObject::NO_TIMELINE], ['id' => $bindings[1]]))->isTrue();
             $this->checkTimelineDocumentCount($item, 1);
             $this->integer($item->getTimelineItemCount())->isEqualTo(1)->isEqualTo(count($item->getTimelineItems()));
 
@@ -3094,7 +3130,7 @@ class Ticket extends DbTestCase
                 $validation = new $validation_class();
                 $this->integer((int)$validation->add([
                     $item->getForeignKeyField() => $item->getID(),
-                    'users_id_validate' => \Session::getLoginUserID(),
+                    'users_id_validate' => Session::getLoginUserID(),
                     'comment_submission' => 'Timeline count validation',
                 ]))->isGreaterThan(0);
                 foreach ([
@@ -3130,14 +3166,14 @@ class Ticket extends DbTestCase
     public function testSatisfactionTabReadsOnlyClosedTickets(): void
     {
         $this->login();
-        $ticket = $this->createItem(\Ticket::class, ['name' => $this->getUniqueString(),
+        $ticket = $this->createItem(LegacyTicket::class, ['name' => $this->getUniqueString(),
             'content' => 'Satisfaction tab guard', '_disablenotif' => true]);
-        $satisfaction = new \TicketSatisfaction();
+        $satisfaction = new TicketSatisfaction();
         $this->integer((int)$satisfaction->add([
             'tickets_id' => $ticket->getID(), 'type' => 1, 'date_begin' => $_SESSION['glpi_currenttime'],
         ]))->isGreaterThan(0);
         $this->boolean($satisfaction->getFromDB($ticket->getID()))->isTrue();
-        $factories = new \ReflectionProperty(\itsmng\Database\Orm::class, 'unitsOfWork');
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
         $ticket->fields['status'] = $_SESSION['INCOMING'];
         $before = $factories->getValue();
         $open = $ticket->getTabNameForItem($ticket);
@@ -3170,48 +3206,48 @@ class Ticket extends DbTestCase
         $profile = $_SESSION['glpiactiveprofile'];
         $show_count = $_SESSION['glpishow_count_on_tabs'];
         try {
-            $ticket = new \Ticket();
+            $ticket = new LegacyTicket();
             $this->integer((int)$ticket->add(['name' => 'Timeline private attachments', 'content' => 'Count only']))->isGreaterThan(0);
-            foreach ([\Session::getLoginUserID(), getItemByTypeName('User', 'normal', true)] as $author) {
-                $followup = new \ITILFollowup();
+            foreach ([Session::getLoginUserID(), getItemByTypeName('User', 'normal', true)] as $author) {
+                $followup = new ITILFollowup();
                 $this->integer((int)$followup->add([
                     'itemtype' => 'Ticket', 'items_id' => $ticket->getID(), 'content' => 'Private attachment', 'is_private' => 1,
                 ]))->isGreaterThan(0);
                 $this->boolean($DB->update($followup->getTable(), ['users_id' => $author], ['id' => $followup->getID()]))->isTrue();
-                $document = new \Document();
+                $document = new Document();
                 $this->integer((int)$document->add(['name' => 'Private followup attachment']))->isGreaterThan(0);
-                $binding = new \Document_Item();
+                $binding = new Document_Item();
                 $this->integer((int)$binding->add([
                     'itemtype' => 'ITILFollowup', 'items_id' => $followup->getID(),
-                    'documents_id' => $document->getID(), 'timeline_position' => \CommonITILObject::TIMELINE_LEFT,
+                    'documents_id' => $document->getID(), 'timeline_position' => CommonITILObject::TIMELINE_LEFT,
                 ]))->isGreaterThan(0);
             }
-            $document = new \Document();
+            $document = new Document();
             $this->integer((int)$document->add(['name' => 'Direct attachment']))->isGreaterThan(0);
-            $binding = new \Document_Item();
+            $binding = new Document_Item();
             $this->integer((int)$binding->add([
                 'itemtype' => 'Ticket', 'items_id' => $ticket->getID(), 'documents_id' => $document->getID(),
             ]))->isGreaterThan(0);
             $this->checkTimelineDocumentCount($ticket, 3);
             $this->integer($ticket->getTimelineItemCount())->isEqualTo(5)->isEqualTo(count($ticket->getTimelineItems()));
-            $custom = new class () extends \Ticket {
+            $custom = new class () extends LegacyTicket {
                 public static function getType()
                 {
                     return 'Ticket';
                 }
                 public static function getTable($classname = null)
                 {
-                    return \Ticket::getTable();
+                    return LegacyTicket::getTable();
                 }
                 public function getAssociatedDocumentsCriteria($bypass_rights = false): array
                 {
-                    return [\Document_Item::getTableField('id') => 0];
+                    return [Document_Item::getTableField('id') => 0];
                 }
             };
             $custom->fields = $ticket->fields;
             $this->integer($custom->getTimelineItemCount())->isEqualTo(2)->isEqualTo(count($custom->getTimelineItems()));
 
-            $_SESSION['glpiactiveprofile']['followup'] &= ~\ITILFollowup::SEEPRIVATE;
+            $_SESSION['glpiactiveprofile']['followup'] &= ~ITILFollowup::SEEPRIVATE;
             $this->checkTimelineDocumentCount($ticket, 2);
             $this->checkTimelineDocumentCount($ticket, 3, true);
             $this->integer($ticket->getTimelineItemCount())->isEqualTo(3)->isEqualTo(count($ticket->getTimelineItems()));
@@ -3222,7 +3258,7 @@ class Ticket extends DbTestCase
             foreach (['followup', 'task', 'ticket', 'change', 'problem', 'document'] as $right) {
                 $_SESSION['glpiactiveprofile'][$right] = 0;
             }
-            $_SESSION['glpiactiveprofile']['ticket'] = \Ticket::READDOCUMENT;
+            $_SESSION['glpiactiveprofile']['ticket'] = LegacyTicket::READDOCUMENT;
             $this->checkTimelineDocumentCount($ticket, 1);
             $this->integer($ticket->getTimelineItemCount())->isEqualTo(1)->isEqualTo(count($ticket->getTimelineItems()));
         } finally {
@@ -3236,28 +3272,28 @@ class Ticket extends DbTestCase
         global $DB;
         $this->login();
         $connection = $DB->getDoctrineConnection();
-        $postgres = $connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+        $postgres = $connection->getDatabasePlatform() instanceof PostgreSQLPlatform;
         $timezone = $connection->fetchOne($postgres ? 'SHOW TIME ZONE' : 'SELECT @@session.time_zone');
         try {
             $connection->executeStatement($postgres ? "SET TIME ZONE 'UTC'" : "SET time_zone = '+00:00'");
-            $ticket = new \Ticket();
+            $ticket = new LegacyTicket();
             $this->integer((int)$ticket->add(['name' => 'Timeline DST fold', 'content' => 'Count calendar keys']))->isGreaterThan(0);
-            $document = new \Document();
+            $document = new Document();
             $this->integer((int)$document->add(['name' => 'Fold attachment']))->isGreaterThan(0);
             foreach ([
-                [\CommonITILObject::TIMELINE_LEFT, '2026-10-25 00:30:00'],
-                [\CommonITILObject::TIMELINE_RIGHT, '2026-10-25 01:30:00'],
+                [CommonITILObject::TIMELINE_LEFT, '2026-10-25 00:30:00'],
+                [CommonITILObject::TIMELINE_RIGHT, '2026-10-25 01:30:00'],
             ] as [$position, $date]) {
-                $binding = new \Document_Item();
+                $binding = new Document_Item();
                 $this->integer((int)$binding->add([
                     'itemtype' => 'Ticket', 'items_id' => $ticket->getID(),
                     'documents_id' => $document->getID(), 'timeline_position' => $position,
                 ]))->isGreaterThan(0);
                 $this->boolean($DB->update($binding->getTable(), ['date' => $date], ['id' => $binding->getID()]))->isTrue();
             }
-            $validation = new \TicketValidation();
+            $validation = new TicketValidation();
             $this->integer((int)$validation->add([
-                'tickets_id' => $ticket->getID(), 'users_id_validate' => \Session::getLoginUserID(),
+                'tickets_id' => $ticket->getID(), 'users_id_validate' => Session::getLoginUserID(),
                 'comment_submission' => 'Fold validation',
             ]))->isGreaterThan(0);
             $this->boolean($DB->update($validation->getTable(), [
@@ -3277,7 +3313,7 @@ class Ticket extends DbTestCase
 
     public function testTimelineCountKeepsCustomTimeline()
     {
-        $ticket = new class () extends \Ticket {
+        $ticket = new class () extends LegacyTicket {
             public function getTimelineItems()
             {
                 return ['plugin-event' => ['type' => 'custom']];
@@ -3706,10 +3742,10 @@ class Ticket extends DbTestCase
                 }
             }
             $this->boolean($ticket->update($input))->isTrue();
-            $reloaded = new \Ticket();
+            $reloaded = new LegacyTicket();
             $this->boolean($reloaded->getFromDB($input['id']))->isTrue();
-            $native = \itsmng\Database\Orm::create($DB)->find(\itsmng\Database\Entity\Ticket::class, $input['id']);
-            $this->object($native)->isInstanceOf(\itsmng\Database\Entity\Ticket::class);
+            $native = Orm::create($DB)->find(TicketEntity::class, $input['id']);
+            $this->object($native)->isInstanceOf(TicketEntity::class);
             foreach ($expected as $field => $value) {
                 $this->integer($reloaded->fields[$field])->isIdenticalTo($value);
                 $this->integer($native->$field)->isIdenticalTo($value);
@@ -3718,7 +3754,7 @@ class Ticket extends DbTestCase
             $connection->rollBack();
         }
         $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
-        $restored = new \Ticket();
+        $restored = new LegacyTicket();
         $this->boolean($restored->getFromDB($input['id']))->isTrue();
         $this->array(array_intersect_key($restored->fields, $expected))->isIdenticalTo($before);
     }
@@ -4690,7 +4726,7 @@ class Ticket extends DbTestCase
            'alternative_email'  => 'test@glpi.com'
         ]);
 
-        $group = new \Group();
+        $group = new Group();
         $groupId = $group->add(['name' => 'Ticket merge group']);
         $this->integer((int)$groupId)->isGreaterThan(0);
         $ticket_group = new \Group_Ticket();
@@ -4710,7 +4746,7 @@ class Ticket extends DbTestCase
            'type'               => \Group_Ticket::ASSIGN
         ]);
 
-        $supplierId = (new \Supplier())->add(['name' => 'Ticket merge supplier', 'entities_id' => 0]);
+        $supplierId = (new Supplier())->add(['name' => 'Ticket merge supplier', 'entities_id' => 0]);
         $this->integer((int)$supplierId)->isGreaterThan(0);
         $ticket_supplier = new \Supplier_Ticket();
         $ticket_supplier->add([
@@ -4762,8 +4798,8 @@ class Ticket extends DbTestCase
         // Retain their legacy empty-key bucket separately from real user roles.
         $this->boolean($ticket->getFromDB($ticket1))->isTrue();
         $actors = $ticket->getITILActors();
-        $this->array($actors[2])->contains(\Ticket_User::REQUESTER);
-        $this->array($actors[''])->contains(\Ticket_User::REQUESTER);
+        $this->array($actors[2])->contains(Ticket_User::REQUESTER);
+        $this->array($actors[''])->contains(Ticket_User::REQUESTER);
         $this->boolean(array_key_exists(0, $actors))->isFalse();
 
         \Ticket::merge($ticket1, [$ticket2, $ticket3], $status, $mergeparams);
@@ -4808,8 +4844,8 @@ class Ticket extends DbTestCase
 
         $this->boolean($ticket->getFromDB($ticket1))->isTrue();
         $actors = $ticket->getITILActors();
-        $this->array($actors[2])->contains(\Ticket_User::REQUESTER)->contains(\Ticket_User::ASSIGN);
-        $this->array($actors[''])->contains(\Group_Ticket::REQUESTER)->contains(\Group_Ticket::ASSIGN);
+        $this->array($actors[2])->contains(Ticket_User::REQUESTER)->contains(Ticket_User::ASSIGN);
+        $this->array($actors[''])->contains(Group_Ticket::REQUESTER)->contains(Group_Ticket::ASSIGN);
     }
 
     /**
@@ -5725,28 +5761,28 @@ HTML
 
 
 /** Observe the actual selected connection without opening another transaction or socket. */
-class TicketScalarReadProbe extends \Doctrine\DBAL\Connection
+class TicketScalarReadProbe extends Connection
 {
     public int $builders = 0;
     public array $queries = [];
 
-    public function __construct(private readonly \Doctrine\DBAL\Connection $selected)
+    public function __construct(private readonly Connection $selected)
     {
         parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
     }
 
-    public function getDatabasePlatform(): \Doctrine\DBAL\Platforms\AbstractPlatform
+    public function getDatabasePlatform(): AbstractPlatform
     {
         return $this->selected->getDatabasePlatform();
     }
 
-    public function createQueryBuilder(): \Doctrine\DBAL\Query\QueryBuilder
+    public function createQueryBuilder(): QueryBuilder
     {
         ++$this->builders;
         return parent::createQueryBuilder();
     }
 
-    public function executeQuery(string $sql, array $params = [], array $types = [], ?\Doctrine\DBAL\Cache\QueryCacheProfile $qcp = null): \Doctrine\DBAL\Result
+    public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
     {
         $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
         return $this->selected->executeQuery($sql, $params, $types, $qcp);

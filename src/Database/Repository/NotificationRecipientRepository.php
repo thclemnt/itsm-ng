@@ -7,6 +7,10 @@ namespace itsmng\Database\Repository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
+use ITILFollowup;
+use InvalidArgumentException;
+use Notification;
+use Notification_NotificationTemplate;
 use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\RecordCriteria;
@@ -128,7 +132,7 @@ final class NotificationRecipientRepository
     {
         return array_map('intval', array_column($this->em->createQueryBuilder()->select('IDENTITY(r.profiles) AS id')
             ->from(Entity\ProfileRight::class, 'r')->where('r.name = :right AND BIT_AND(r.rights, :private) <> 0')
-            ->setParameter('right', 'followup')->setParameter('private', \ITILFollowup::SEEPRIVATE, Types::INTEGER)
+            ->setParameter('right', 'followup')->setParameter('private', ITILFollowup::SEEPRIVATE, Types::INTEGER)
             ->getQuery()->getScalarResult(), 'id'));
     }
 
@@ -159,8 +163,8 @@ final class NotificationRecipientRepository
             ->join('r.notifications', 'notification')
             ->join(Entity\NotificationNotificationTemplate::class, 'binding', 'WITH', 'binding.notifications = notification')
             ->where('notification.itemtype = :itemtype AND binding.mode = :mode AND r.type = :kind AND r.recipient_code = :recipient')
-            ->setParameter('itemtype', 'Ticket')->setParameter('mode', \Notification_NotificationTemplate::MODE_MAIL)
-            ->setParameter('kind', \Notification::USER_TYPE, Types::INTEGER)->setParameter('recipient', \Notification::AUTHOR, Types::INTEGER)
+            ->setParameter('itemtype', 'Ticket')->setParameter('mode', Notification_NotificationTemplate::MODE_MAIL)
+            ->setParameter('kind', Notification::USER_TYPE, Types::INTEGER)->setParameter('recipient', Notification::AUTHOR, Types::INTEGER)
             ->setMaxResults(1)->getQuery()->getScalarResult() !== [];
     }
 
@@ -170,7 +174,7 @@ final class NotificationRecipientRepository
         $criteria = (new RecordCriteria($query, $this->em->getClassMetadata(Entity\NotificationTarget::class)))
             ->withJoinedMetadata($this->em->getClassMetadata(Entity\Notification::class), 'notification');
         return $query->where($criteria->where([
-            'type' => [\Notification::SUPERVISOR_GROUP_TYPE, \Notification::GROUP_TYPE], 'groups_id' => $group, $scope,
+            'type' => [Notification::SUPERVISOR_GROUP_TYPE, Notification::GROUP_TYPE], 'groups_id' => $group, $scope,
         ]));
     }
 
@@ -249,7 +253,7 @@ final class NotificationRecipientRepository
 
     private function classFor(string $table): string
     {
-        return EntityRegistry::tables()[$table] ?? throw new \InvalidArgumentException('Unmapped recipient table');
+        return EntityRegistry::tables()[$table] ?? throw new InvalidArgumentException('Unmapped recipient table');
     }
 
     private function association(string $class, string $column): string
@@ -259,6 +263,6 @@ final class NotificationRecipientRepository
                 return $property;
             }
         }
-        throw new \InvalidArgumentException('Recipient field is not a mapped association: ' . $column);
+        throw new InvalidArgumentException('Recipient field is not a mapped association: ' . $column);
     }
 }

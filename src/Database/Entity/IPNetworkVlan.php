@@ -5,6 +5,7 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_ipnetworks_vlans')]
@@ -13,12 +14,12 @@ class IPNetworkVlan
 {
     #[ORM\ManyToOne(targetEntity: IPNetwork::class)]
     #[ORM\JoinColumn(name: 'ipnetworks_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?IPNetwork $ipnetworks = null;
 
     #[ORM\ManyToOne(targetEntity: Vlan::class)]
     #[ORM\JoinColumn(name: 'vlans_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Vlan $vlans = null;
 
     #[ORM\Id]

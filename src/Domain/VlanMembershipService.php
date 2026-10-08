@@ -4,7 +4,13 @@
 
 namespace itsmng\Domain;
 
+use DBAdapter;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Log;
+use NetworkPort_Vlan;
+use QueuedNotification;
+use RuntimeException;
+use Throwable;
 use itsmng\Database\Entity\Entity;
 use itsmng\Database\Entity\NetworkPort;
 use itsmng\Database\Entity\NetworkPortVlan;
@@ -17,7 +23,7 @@ use itsmng\Database\Repository\NetworkPortVlanRepository;
 /** Application membership commands and operation-local reads use the supplied owner. */
 final class VlanMembershipService
 {
-    public function __construct(private readonly \DBAdapter $database)
+    public function __construct(private readonly DBAdapter $database)
     {
     }
 
@@ -47,7 +53,7 @@ final class VlanMembershipService
     }
 
     /** The original public lifecycle prepares the immutable selected intent. */
-    public function mutate(\NetworkPort_Vlan $model, callable $operation, bool $removing = false): mixed
+    public function mutate(NetworkPort_Vlan $model, callable $operation, bool $removing = false): mixed
     {
         if ($this->database->isSlave() || $this->database !== ($GLOBALS['DB'] ?? null)) {
             return false;
@@ -57,7 +63,7 @@ final class VlanMembershipService
         if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
             $isolation = strtolower((string)$connection->fetchOne("SELECT current_setting('transaction_isolation')"));
             if (!in_array($isolation, ['read committed', 'read uncommitted'], true)) {
-                throw new \RuntimeException('VLAN membership requires PostgreSQL READ COMMITTED; actual isolation is ' . $isolation . '. Retry outside the caller transaction.');
+                throw new RuntimeException('VLAN membership requires PostgreSQL READ COMMITTED; actual isolation is ' . $isolation . '. Retry outside the caller transaction.');
             }
         }
         $before = $model->fields ?? [];
@@ -69,7 +75,7 @@ final class VlanMembershipService
                 foreach ([NetworkPortVlan::class, NetworkPort::class, Vlan::class, Entity::class] as $class) {
                     OwnershipUpdateUnit::assertTransactionalStorage($this->database, $manager->getClassMetadata($class)->getTableName());
                 }
-                foreach ([\Log::getTable(), \QueuedNotification::getTable()] as $table) {
+                foreach ([Log::getTable(), QueuedNotification::getTable()] as $table) {
                     OwnershipUpdateUnit::assertTransactionalStorage($this->database, $table);
                 }
                 $command = new VlanMembershipCommand(
@@ -83,13 +89,13 @@ final class VlanMembershipService
                 );
                 $result = $operation($command);
                 return $command->finish($result);
-            } catch (\Throwable $error) {
+            } catch (Throwable $error) {
                 $primary = $error;
                 throw $error;
             } finally {
                 try {
                     $manager->clear();
-                } catch (\Throwable $cleanup) {
+                } catch (Throwable $cleanup) {
                     throw $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
                 }
             }
@@ -105,13 +111,13 @@ final class VlanMembershipService
         $primary = null;
         try {
             return $operation(new NetworkPortVlanRepository($manager));
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $primary = $error;
             throw $error;
         } finally {
             try {
                 $manager->clear();
-            } catch (\Throwable $cleanup) {
+            } catch (Throwable $cleanup) {
                 throw $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
             }
         }

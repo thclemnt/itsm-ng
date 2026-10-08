@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\DropdownChoiceContext;
+
 /**
  * @since 0.85
  */
@@ -46,7 +48,7 @@ if (strpos($_SERVER['PHP_SELF'], "getDropdownValue.php")) {
 
 Session::checkLoginUser();
 $request = $_POST;
-$request['_dropdown_choice_context'] = \itsmng\Database\DropdownChoiceContext::encode($_POST);
+$request['_dropdown_choice_context'] = DropdownChoiceContext::encode($_POST);
 $token = $request['_idor_token'] ?? null;
 if (!is_string($token) || !isset($_SESSION['glpiidortokens'][$token]['_dropdown_choice_context']) || !Session::validateIDOR($request)) {
     http_response_code(403);

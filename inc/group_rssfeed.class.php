@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -61,7 +64,7 @@ class Group_RSSFeed extends CommonDBRelation
         global $DB;
 
         $groups = [];
-        $rows = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+        $rows = (new RecordRepository(Orm::create($DB)))
             ->matching(self::getTable(), ['rssfeeds_id' => $rssfeeds_id], 'id');
         foreach ($rows as $data) {
             $groups[$data['groups_id']][] = $data;

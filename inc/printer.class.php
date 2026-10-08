@@ -31,6 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\AssetRepository;
+use itsmng\Database\Repository\CartridgeRepository;
+use itsmng\Domain\SoftwareAllocationSubjectLifecycle;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -42,7 +48,7 @@ if (!defined('GLPI_ROOT')) {
 class Printer extends CommonDBTM
 {
     use Glpi\Features\Clonable;
-    use \itsmng\Domain\SoftwareAllocationSubjectLifecycle;
+    use SoftwareAllocationSubjectLifecycle;
 
     // From CommonDBTM
     public $dohistory                   = true;
@@ -194,9 +200,9 @@ class Printer extends CommonDBTM
     {
         global $DB;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            (new \itsmng\Database\Repository\CartridgeRepository($em))->detachPrinter((int)$this->getID());
+            (new CartridgeRepository($em))->detachPrinter((int)$this->getID());
         } finally {
             $em->clear();
         }
@@ -408,9 +414,9 @@ class Printer extends CommonDBTM
     {
         global $DB;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            return (new \itsmng\Database\Repository\AssetRepository($em))->linkedItems($this->getType(), (int)$this->getID());
+            return (new AssetRepository($em))->linkedItems($this->getType(), (int)$this->getID());
         } finally {
             $em->clear();
         }
@@ -754,7 +760,7 @@ class Printer extends CommonDBTM
     {
         global $DB;
 
-        $rows = \itsmng\Database\MappedReads::matching($DB, self::getTable(), [
+        $rows = MappedReads::matching($DB, self::getTable(), [
             'name' => $name,
             'is_template' => false, 'entities_id' => $entity,
         ], ['id ASC'], 1);
@@ -798,7 +804,7 @@ class Printer extends CommonDBTM
         }
 
         // Reuse an asset visible from the requested entity, including recursive ancestors.
-        $rows = \itsmng\Database\MappedReads::matching($DB, self::getTable(), [
+        $rows = MappedReads::matching($DB, self::getTable(), [
             'manufacturers_id' => $manufacturer_id,
             'name' => $name,
         ] + getEntitiesRestrictCriteria(self::getTable(), 'entities_id', $entity, true), ['id ASC'], 1);

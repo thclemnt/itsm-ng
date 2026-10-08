@@ -11,6 +11,10 @@ use Doctrine\DBAL\Driver;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\ParameterType;
 use Doctrine\DBAL\Result;
+use LogicException;
+use SensitiveParameter;
+use WeakMap;
+use WeakReference;
 use itsmng\Database\Driver\Postgres\Driver as PostgresDriver;
 use itsmng\Database\Driver\Postgres\Result as PostgresResult;
 use itsmng\Database\Driver\Postgres\OwnedStatement;
@@ -21,11 +25,11 @@ final class PostgresConnection extends Connection implements ManagedTransactionC
     use PdoTransactionOwnership;
 
     private string $timezone = 'UTC';
-    private ?\WeakReference $initialized = null;
-    private ?\WeakMap $statements = null;
+    private ?WeakReference $initialized = null;
+    private ?WeakMap $statements = null;
 
     /** A genuinely lazy factory; adapters open this owner during connect(). */
-    public static function create(#[\SensitiveParameter] array $parameters, ?Configuration $configuration = null): self
+    public static function create(#[SensitiveParameter] array $parameters, ?Configuration $configuration = null): self
     {
         $parameters['driverClass'] = PostgresDriver::class;
         $parameters['wrapperClass'] = self::class;
@@ -40,7 +44,7 @@ final class PostgresConnection extends Connection implements ManagedTransactionC
     {
         $connection = parent::connect();
         if ($this->initialized?->get() !== $connection) {
-            $this->initialized = \WeakReference::create($connection);
+            $this->initialized = WeakReference::create($connection);
             try {
                 $statement = $connection->prepare("SELECT set_config('TimeZone', ?, false)");
                 $statement->bindValue(1, $this->timezone, ParameterType::STRING);
@@ -106,7 +110,7 @@ final class PostgresConnection extends Connection implements ManagedTransactionC
     {
         try {
             $statement = new OwnedStatement($this->connect()->prepare($sql));
-            $this->statements ??= new \WeakMap();
+            $this->statements ??= new WeakMap();
             $this->statements[$statement] = true;
             return $statement;
         } catch (Driver\Exception $error) {
@@ -117,7 +121,7 @@ final class PostgresConnection extends Connection implements ManagedTransactionC
     public function executeLegacyStatement(Driver\Statement $statement, string $sql, array $values, array $types): Result|LegacyResult
     {
         if ($this->statements === null || !isset($this->statements[$statement]) || !$this->isConnected()) {
-            throw new \LogicException('Prepared statement does not belong to this active physical connection.');
+            throw new LogicException('Prepared statement does not belong to this active physical connection.');
         }
         try {
             foreach ($values as $index => $value) {
@@ -150,7 +154,7 @@ final class PostgresConnection extends Connection implements ManagedTransactionC
         }
         if (!$driverResult instanceof PostgresResult) {
             $result->free();
-            throw new \LogicException('PostgreSQL legacy results require native metadata; result middleware must preserve the typed driver result.');
+            throw new LogicException('PostgreSQL legacy results require native metadata; result middleware must preserve the typed driver result.');
         }
         return new LegacyResult($result, $driverResult->legacyRow(...));
     }

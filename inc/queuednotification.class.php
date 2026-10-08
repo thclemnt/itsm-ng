@@ -32,7 +32,9 @@
  */
 
 use itsmng\Database\LifecycleNotifications;
+use itsmng\Database\Orm;
 use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\NotificationQueueRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -167,7 +169,7 @@ class QueuedNotification extends CommonDBTM
                 'notificationtemplates_id' => $input['notificationtemplates_id'],
                 'recipient' => $input['recipient'],
             ];
-            foreach ((new \itsmng\Database\Repository\NotificationQueueRepository(\itsmng\Database\Orm::create($DB)))->duplicateIds('notification', $criteria) as $id) {
+            foreach ((new NotificationQueueRepository(Orm::create($DB)))->duplicateIds('notification', $criteria) as $id) {
                 $this->delete(['id' => $id], 1);
             }
         }
@@ -513,7 +515,7 @@ class QueuedNotification extends CommonDBTM
                 continue;
             }
 
-            $rows = (new \itsmng\Database\Repository\NotificationQueueRepository(\itsmng\Database\Orm::create($DB)))->pending('notification', (string)$mode, new \DateTimeImmutable($send_time), (int)$limit, $extra_where);
+            $rows = (new NotificationQueueRepository(Orm::create($DB)))->pending('notification', (string)$mode, new DateTimeImmutable($send_time), (int)$limit, $extra_where);
             if ($rows) {
                 $pendings[$mode] = $rows;
             }
@@ -580,8 +582,8 @@ class QueuedNotification extends CommonDBTM
 
         // Expire mails in queue
         if ($task->fields['param'] > 0) {
-            $before = (new \DateTimeImmutable())->setTimestamp(time() - (int)$task->fields['param'] * DAY_TIMESTAMP);
-            $vol = (new \itsmng\Database\Repository\NotificationQueueRepository(\itsmng\Database\Orm::create($DB)))->purgeExpired('notification', $before);
+            $before = (new DateTimeImmutable())->setTimestamp(time() - (int)$task->fields['param'] * DAY_TIMESTAMP);
+            $vol = (new NotificationQueueRepository(Orm::create($DB)))->purgeExpired('notification', $before);
         }
 
         $task->setVolume($vol);

@@ -4,6 +4,8 @@
 
 namespace itsmng\Database;
 
+use InvalidArgumentException;
+
 /**
  * Lexical bridge for the application's pre-escaped SQL API.
  * Only delimiters and MySQL string escapes are converted here. Values, comments,
@@ -23,7 +25,7 @@ final class LegacySql
                 && preg_match('/\G\$(?:[a-zA-Z_\x80-\xff][a-zA-Z0-9_\x80-\xff]*)?\$/', $sql, $match, 0, $i)) {
                 $end = strpos($sql, $match[0], $i + strlen($match[0]));
                 if ($end === false) {
-                    throw new \InvalidArgumentException('Unterminated SQL dollar-quoted literal.');
+                    throw new InvalidArgumentException('Unterminated SQL dollar-quoted literal.');
                 }
                 $out .= substr($sql, $i, $end + strlen($match[0]) - $i);
                 $i = $end + strlen($match[0]) - 1;
@@ -54,10 +56,10 @@ final class LegacySql
                     }
                 }
                 if (!$closed) {
-                    throw new \InvalidArgumentException('Unterminated SQL literal or identifier.');
+                    throw new InvalidArgumentException('Unterminated SQL literal or identifier.');
                 }
                 if (str_contains($value, "\0")) {
-                    throw new \InvalidArgumentException('PostgreSQL text cannot contain NUL bytes.');
+                    throw new InvalidArgumentException('PostgreSQL text cannot contain NUL bytes.');
                 }
                 $quote = $delimiter === "'" ? "'" : '"';
                 $out .= $quote . str_replace($quote, $quote . $quote, $value) . $quote;
@@ -69,7 +71,7 @@ final class LegacySql
             } elseif (substr($sql, $i, 2) === '/*') {
                 $end = strpos($sql, '*/', $i + 2);
                 if ($end === false) {
-                    throw new \InvalidArgumentException('Unterminated SQL comment.');
+                    throw new InvalidArgumentException('Unterminated SQL comment.');
                 }
                 $out .= substr($sql, $i, $end + 2 - $i);
                 $i = $end + 1;

@@ -4,8 +4,10 @@
 
 namespace itsmng\Domain;
 
+use RuntimeException;
+
 /** A required assignment, capacity or aggregate mutation was refused. */
-final class SoftwareAssignmentCancelled extends \RuntimeException
+final class SoftwareAssignmentCancelled extends RuntimeException
 {
     public static function requireSuccess(mixed $result, string $operation): void
     {

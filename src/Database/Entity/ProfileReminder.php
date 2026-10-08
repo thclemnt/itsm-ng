@@ -5,6 +5,7 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
@@ -14,12 +15,12 @@ class ProfileReminder
 {
     #[ORM\ManyToOne(targetEntity: Reminder::class, inversedBy: 'audienceProfiles')]
     #[ORM\JoinColumn(name: 'reminders_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Reminder $reminders = null;
 
     #[ORM\ManyToOne(targetEntity: Profile::class)]
     #[ORM\JoinColumn(name: 'profiles_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Profile $profiles = null;
 
     #[ORM\Id]

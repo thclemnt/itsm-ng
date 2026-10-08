@@ -4,10 +4,14 @@
 
 namespace itsmng\Database\Repository;
 
+use CommonDBChild;
+use DateTimeImmutable;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
+
+use function getTableForItemType;
 
 /** Financial report data; authorization scope is supplied by the report controller. */
 final class FinancialRepository
@@ -18,12 +22,12 @@ final class FinancialRepository
 
     public static function supports(string $itemtype): bool
     {
-        return isset(EntityRegistry::tables()[\getTableForItemType($itemtype)]);
+        return isset(EntityRegistry::tables()[getTableForItemType($itemtype)]);
     }
 
     public function rows(string $itemtype, string $begin, string $end, ?array $entities, bool $assets): array
     {
-        $class = EntityRegistry::tables()[\getTableForItemType($itemtype)];
+        $class = EntityRegistry::tables()[getTableForItemType($itemtype)];
         $query = $this->em->createQueryBuilder()->select('i')->from(Entity\Infocom::class, 'i')
             ->innerJoin($class, 'a', 'WITH', 'a.id = i.items_id')
             ->where('i.itemtype = :itemtype')->setParameter('itemtype', $itemtype);
@@ -36,7 +40,7 @@ final class FinancialRepository
         } elseif ($itemtype === 'SoftwareLicense') {
             $query->innerJoin('a.softwares', 's')
                 ->addSelect('a.serial AS license_serial, a.number AS license_number');
-        } elseif (is_a($itemtype, \CommonDBChild::class, true)) {
+        } elseif (is_a($itemtype, CommonDBChild::class, true)) {
             $parent = EntityRegistry::tables()[$itemtype::$itemtype::getTable()];
             $metadata = $this->em->getClassMetadata($class);
             $column = $itemtype::$items_id;
@@ -57,11 +61,11 @@ final class FinancialRepository
             $bounds = [];
             if ($begin !== '') {
                 $bounds[] = 'i.' . $field . ' >= :begin';
-                $query->setParameter('begin', new \DateTimeImmutable($begin), Types::DATE_IMMUTABLE);
+                $query->setParameter('begin', new DateTimeImmutable($begin), Types::DATE_IMMUTABLE);
             }
             if ($end !== '') {
                 $bounds[] = 'i.' . $field . ' <= :end';
-                $query->setParameter('end', new \DateTimeImmutable($end), Types::DATE_IMMUTABLE);
+                $query->setParameter('end', new DateTimeImmutable($end), Types::DATE_IMMUTABLE);
             }
             if ($bounds) {
                 $dates[] = '(' . implode(' AND ', $bounds) . ')';

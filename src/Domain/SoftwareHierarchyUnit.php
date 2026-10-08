@@ -4,7 +4,10 @@
 
 namespace itsmng\Domain;
 
+use DBAdapter;
 use Doctrine\DBAL\Connection;
+use WeakMap;
+use itsmng\Database\Entity\Entity;
 use itsmng\Database\ManagedTransactionScope;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\EntityHierarchyRepository;
@@ -14,9 +17,9 @@ use itsmng\Database\TransactionOwnership;
 final class SoftwareHierarchyUnit
 {
     /** @var \WeakMap<Connection, array{hierarchy: EntityHierarchy, scope: ManagedTransactionScope}>|null */
-    private static ?\WeakMap $active = null;
+    private static ?WeakMap $active = null;
 
-    public static function acceptsPair(\DBAdapter $database, EntityScope $subject, EntityScope $license): bool
+    public static function acceptsPair(DBAdapter $database, EntityScope $subject, EntityScope $license): bool
     {
         $reservation = self::$active[$database->getDoctrineConnection()] ?? null;
         if ($reservation === null) {
@@ -29,7 +32,7 @@ final class SoftwareHierarchyUnit
         return $subject->isCompatibleWith($license, $reservation['hierarchy']);
     }
 
-    public static function run(\DBAdapter $database, array $entities, callable $operation): mixed
+    public static function run(DBAdapter $database, array $entities, callable $operation): mixed
     {
         $connection = $database->getDoctrineConnection();
         if ($database !== ($GLOBALS['DB'] ?? null) || $database->isSlave()
@@ -37,7 +40,7 @@ final class SoftwareHierarchyUnit
             throw new SoftwareAssignmentCancelled('Hierarchy reservation requires the supplied active mutation writer.');
         }
         TransactionOwnership::assertManaged($connection);
-        self::$active ??= new \WeakMap();
+        self::$active ??= new WeakMap();
         if (isset(self::$active[$connection])) {
             $reservation = self::$active[$connection];
             $reservation['scope']->assertActive();
@@ -49,7 +52,7 @@ final class SoftwareHierarchyUnit
         }
         $scope = $connection->captureManagedTransactionScope();
         $manager = Orm::create($database);
-        SoftwareMutation::assertTransactionalStorage($database, [$manager->getClassMetadata(\itsmng\Database\Entity\Entity::class)->getTableName()]);
+        SoftwareMutation::assertTransactionalStorage($database, [$manager->getClassMetadata(Entity::class)->getTableName()]);
         $repository = new EntityHierarchyRepository($manager);
         $hierarchy = $repository->reserve($entities);
         $scope->assertActive();

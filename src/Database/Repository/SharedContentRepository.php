@@ -4,9 +4,11 @@
 
 namespace itsmng\Database\Repository;
 
+use DateTimeImmutable;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
+use InvalidArgumentException;
 use itsmng\Database\Entity;
 use itsmng\Database\SharedContentAccess;
 
@@ -17,7 +19,7 @@ final class SharedContentRepository
     {
     }
 
-    public function listing(string $kind, SharedContentAccess $access, bool $personal, bool $excludeOwned, \DateTimeImmutable $now, ?string $language = null): array
+    public function listing(string $kind, SharedContentAccess $access, bool $personal, bool $excludeOwned, DateTimeImmutable $now, ?string $language = null): array
     {
         $class = $this->contentClass($kind);
         if ($access->user <= 0) {
@@ -108,7 +110,7 @@ final class SharedContentRepository
         return $this->rows($query);
     }
 
-    public function expiredReminders(\DateTimeImmutable $before): array
+    public function expiredReminders(DateTimeImmutable $before): array
     {
         return $this->em->createQueryBuilder()->select('r.id')->from(Entity\Reminder::class, 'r')
             ->where('r.end_view_date < :before OR (r.end_view_date IS NULL AND r.is_planned = :planned AND r.end < :before)')
@@ -147,7 +149,7 @@ final class SharedContentRepository
         return match ($kind) {
             'reminder' => Entity\Reminder::class,
             'rssfeed' => Entity\RSSFeed::class,
-            default => throw new \InvalidArgumentException('Unsupported shared content kind'),
+            default => throw new InvalidArgumentException('Unsupported shared content kind'),
         };
     }
 

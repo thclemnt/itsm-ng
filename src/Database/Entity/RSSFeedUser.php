@@ -5,6 +5,7 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_rssfeeds_users')]
@@ -12,12 +13,12 @@ class RSSFeedUser
 {
     #[ORM\ManyToOne(targetEntity: RSSFeed::class, inversedBy: 'audienceUsers')]
     #[ORM\JoinColumn(name: 'rssfeeds_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?RSSFeed $rssfeeds = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?User $users = null;
 
     #[ORM\Id]

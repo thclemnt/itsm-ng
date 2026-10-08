@@ -48,8 +48,10 @@ use Doctrine\DBAL\Types\BooleanType;
 use Doctrine\DBAL\Types\IntegerType;
 use Doctrine\DBAL\Types\StringType;
 use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use Doctrine\ORM\Events;
+use Link_Itemtype;
 use itsmng\Database\Entity\Link as LinkRecord;
 use itsmng\Database\EntityRestriction;
 use itsmng\Database\EntityScopeReadOperation;
@@ -70,7 +72,7 @@ class Link extends DbTestCase
         $parent = (int)getItemByTypeName('Entity', '_test_root_entity', true);
         $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
         $sibling = (int)getItemByTypeName('Entity', '_test_child_2', true);
-        $computer = $this->createItem(\Computer::class, ['name' => '_link_projection', 'entities_id' => $child]);
+        $computer = $this->createItem(Computer::class, ['name' => '_link_projection', 'entities_id' => $child]);
         $links = [];
         foreach ([
             ['A inherited', $parent, 1, 'Computer'],
@@ -80,16 +82,16 @@ class Link extends DbTestCase
             ['Hidden sibling', $sibling, 1, 'Computer'],
             ['Wrong type', $child, 0, 'Monitor'],
         ] as [$name, $entity, $recursive, $type]) {
-            $link = $this->createItem(\Link::class, [
+            $link = $this->createItem(LinkModel::class, [
                 'name' => $name, 'entities_id' => $entity, 'is_recursive' => $recursive,
                 'link' => 'https://example.test/[ID]', 'data' => '', 'open_window' => 0,
             ]);
-            $this->createItem(\Link_Itemtype::class, ['links_id' => $link->getID(), 'itemtype' => $type]);
+            $this->createItem(Link_Itemtype::class, ['links_id' => $link->getID(), 'itemtype' => $type]);
             $links[] = (int)$link->getID();
         }
 
         $rows = array_values(array_filter(
-            \Link::getLinksDataForItem($computer),
+            LinkModel::getLinksDataForItem($computer),
             static fn (array $row): bool => in_array($row['id'], $links, true)
         ));
         $this->array(array_column($rows, 'id'))->isIdenticalTo([$links[0], $links[2], $links[1]]);
@@ -97,7 +99,7 @@ class Link extends DbTestCase
             $this->array(array_keys($row))->isIdenticalTo(['id', 'name', 'link', 'data', 'open_window']);
             $this->integer($row['open_window'])->isIdenticalTo(0);
         }
-        $rendered = \Link::getAllLinksFor($computer, $rows[0]);
+        $rendered = LinkModel::getAllLinksFor($computer, $rows[0]);
         $this->array($rendered)->hasSize(1);
         $this->string($rendered[0])->contains('https://example.test/' . $computer->getID())->notContains("target='_blank'");
         $connection = $DB->getDoctrineConnection();
@@ -262,14 +264,14 @@ class Link extends DbTestCase
     {
         global $DB;
         $this->login();
-        $link = $this->createItem(\Link::class, [
+        $link = $this->createItem(LinkModel::class, [
             'name' => '_link_before', 'link' => 'https://example.test/[ID]',
             'entities_id' => 0, 'is_recursive' => 1, 'open_window' => 0, 'data' => '',
         ]);
         $id = (int)$link->getID();
-        $this->createItem(\Link_Itemtype::class, ['links_id' => $id, 'itemtype' => 'Computer']);
-        $em = \itsmng\Database\Orm::create($DB);
-        $repository = new \itsmng\Database\Repository\LinkRepository($em);
+        $this->createItem(Link_Itemtype::class, ['links_id' => $id, 'itemtype' => 'Computer']);
+        $em = Orm::create($DB);
+        $repository = new LinkRepository($em);
         $connection = $em->getConnection();
         $this->object($connection)->isIdenticalTo($DB->getDoctrineConnection());
         $listener = new class () {
@@ -280,20 +282,20 @@ class Link extends DbTestCase
                 ++$this->loaded;
             }
         };
-        $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+        $em->getEventManager()->addEventListener([Events::postLoad], $listener);
         try {
             $expected = ['id' => $id, 'name' => '_link_before', 'link' => 'https://example.test/[ID]', 'data' => '', 'open_window' => 0];
             $this->array($repository->forItem('Computer', ['id' => $id]))->isIdenticalTo([$expected]);
             $this->integer($listener->loaded)->isIdenticalTo(0);
             $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
             // Positive control, then keep this caller-owned object managed and unchanged.
-            $managed = $em->find(\itsmng\Database\Entity\Link::class, $id);
+            $managed = $em->find(LinkRecord::class, $id);
             $this->integer($listener->loaded)->isIdenticalTo(1);
             $connection->update(
                 'glpi_links',
                 ['name' => "O'Reilly\\link", 'data' => null, 'open_window' => true],
                 ['id' => $id],
-                ['open_window' => \Doctrine\DBAL\Types\Types::BOOLEAN]
+                ['open_window' => Types::BOOLEAN]
             );
             $expected['name'] = "O'Reilly\\link";
             $expected['data'] = null;
@@ -305,7 +307,7 @@ class Link extends DbTestCase
             $this->array($repository->forItem('Monitor', ['id' => $id]))->isEmpty();
             $this->array($repository->forItem('Computer', ['id' => -1]))->isEmpty();
         } finally {
-            $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+            $em->getEventManager()->removeEventListener([Events::postLoad], $listener);
             $em->clear();
         }
     }

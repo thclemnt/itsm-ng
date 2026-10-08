@@ -5,6 +5,7 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_notificationtemplatetranslations')]
@@ -12,7 +13,7 @@ class NotificationTemplateTranslation
 {
     #[ORM\ManyToOne(targetEntity: NotificationTemplate::class, inversedBy: 'translations')]
     #[ORM\JoinColumn(name: 'notificationtemplates_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?NotificationTemplate $notificationtemplates = null;
 
     #[ORM\Id]

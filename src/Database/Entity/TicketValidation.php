@@ -4,7 +4,10 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 use itsmng\Database\Mapping\UserReferenceAction;
@@ -15,7 +18,7 @@ class TicketValidation
 {
     #[ORM\ManyToOne(targetEntity: Ticket::class)]
     #[ORM\JoinColumn(name: 'tickets_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Ticket $tickets = null;
 
     #[ORM\Id]
@@ -26,7 +29,7 @@ class TicketValidation
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
     #[ReferencePolicy(ReferenceKind::RootEntity)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Entity $entities = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
@@ -49,12 +52,12 @@ class TicketValidation
     public int $status = 2;
 
     #[ORM\Column(name: '`submission_date`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $submission_date = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $submission_date = null;
 
     #[ORM\Column(name: '`validation_date`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $validation_date = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $validation_date = null;
 
     #[ORM\Column(name: '`timeline_position`', type: 'smallint', nullable: false, options: ['default' => '0'])]
     public int $timeline_position = 0;

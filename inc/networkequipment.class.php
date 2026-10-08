@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Domain\SoftwareAllocationSubjectLifecycle;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -43,7 +45,7 @@ class NetworkEquipment extends CommonDBTM
 {
     use Glpi\Features\DCBreadcrumb;
     use Glpi\Features\Clonable;
-    use \itsmng\Domain\SoftwareAllocationSubjectLifecycle;
+    use SoftwareAllocationSubjectLifecycle;
 
     // From CommonDBTM
     public $dohistory                   = true;

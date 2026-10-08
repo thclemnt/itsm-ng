@@ -4,9 +4,14 @@
 
 namespace itsmng\Database\Repository;
 
+use DateTimeImmutable;
+use DateTimeInterface;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Query;
+use InvalidArgumentException;
+use SavedSearch as LegacySavedSearch;
 use itsmng\Database\Entity\SavedSearch;
 use itsmng\Database\Entity\SavedSearchAlert;
 use itsmng\Database\Entity\SavedSearchUser;
@@ -28,7 +33,7 @@ final class SavedSearchRepository
             ->from(SavedSearchUser::class, 'd')->join('d.savedsearches', 's')
             ->where('IDENTITY(d.users) = :viewer AND d.itemtype = :itemtype')
             ->setParameter('viewer', $viewer, Types::INTEGER)->setParameter('itemtype', $itemtype)
-            ->setMaxResults(1)->getQuery()->getOneOrNullResult(\Doctrine\ORM\Query::HYDRATE_SCALAR);
+            ->setMaxResults(1)->getQuery()->getOneOrNullResult(Query::HYDRATE_SCALAR);
         if ($row !== null) {
             $row['id'] = (int)$row['id'];
             $row['type'] = (int)$row['type'];
@@ -70,12 +75,12 @@ final class SavedSearchRepository
     }
 
     /** Atomic counters cannot use an entity read followed by a write. */
-    public function recordExecution(int $id, int $milliseconds, bool $increment = true, ?\DateTimeImmutable $at = null): void
+    public function recordExecution(int $id, int $milliseconds, bool $increment = true, ?DateTimeImmutable $at = null): void
     {
         $query = $this->em->createQueryBuilder()->update(SavedSearch::class, 'r')
             ->set('r.last_execution_time', ':time')->set('r.last_execution_date', ':at')->where('r.id = :id')
             ->setParameter('time', $milliseconds, Types::INTEGER)->setParameter('id', $id, Types::INTEGER)
-            ->setParameter('at', $at ?? new \DateTimeImmutable(), Types::DATETIMETZ_IMMUTABLE);
+            ->setParameter('at', $at ?? new DateTimeImmutable(), Types::DATETIMETZ_IMMUTABLE);
         if ($increment) {
             $query->set('r.counter', 'r.counter + 1');
         }
@@ -83,7 +88,7 @@ final class SavedSearchRepository
     }
 
     /** Selection only: NULL and boundary dates retain the existing scheduler semantics. */
-    public function stale(\DateTimeInterface $before): array
+    public function stale(DateTimeInterface $before): array
     {
         return (new RecordRepository($this->em))->matching('glpi_savedsearches', [
             'last_execution_date' => ['<', $before->format('Y-m-d H:i:s')],
@@ -108,8 +113,8 @@ final class SavedSearchRepository
 
     public function setCountMode(array $ids, int $mode): void
     {
-        if (!in_array($mode, [\SavedSearch::COUNT_AUTO, \SavedSearch::COUNT_YES, \SavedSearch::COUNT_NO], true)) {
-            throw new \InvalidArgumentException('Invalid saved-search count mode');
+        if (!in_array($mode, [LegacySavedSearch::COUNT_AUTO, LegacySavedSearch::COUNT_YES, LegacySavedSearch::COUNT_NO], true)) {
+            throw new InvalidArgumentException('Invalid saved-search count mode');
         }
         if ($ids) {
             $this->em->createQueryBuilder()->update(SavedSearch::class, 'r')->set('r.do_count', ':mode')

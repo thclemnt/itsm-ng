@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\IPNetworkRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -63,13 +67,13 @@ class IPAddress_IPNetwork extends CommonDBRelation
         $ipnetworks_id = $network->getID();
 
         // First, remove all links of the current Network
-        $ids = \itsmng\Database\MappedReads::identifiers($DB, self::getTable(), 'id', ['ipnetworks_id' => $ipnetworks_id]);
+        $ids = MappedReads::identifiers($DB, self::getTable(), 'id', ['ipnetworks_id' => $ipnetworks_id]);
         foreach ($ids as $id) {
             $linkObject->delete(['id' => $id]);
         }
 
         // Then, look each IP address contained inside current Network
-        $addresses = (new \itsmng\Database\Repository\IPNetworkRepository(\itsmng\Database\Orm::create($DB)))->containedAddresses((int)$ipnetworks_id);
+        $addresses = (new IPNetworkRepository(Orm::create($DB)))->containedAddresses((int)$ipnetworks_id);
         foreach ($addresses as $address) {
             $linkObject->add(['ipnetworks_id' => $ipnetworks_id, 'ipaddresses_id' => $address]);
         }

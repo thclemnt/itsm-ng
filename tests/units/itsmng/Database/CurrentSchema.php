@@ -4,10 +4,15 @@
 
 namespace tests\units\itsmng\Database;
 
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Platforms\MariaDBPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Schema\Column;
+use Doctrine\DBAL\Schema\Comparator;
+use Doctrine\DBAL\Schema\DefaultExpression;
+use Doctrine\DBAL\Schema\Index;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Schema\SchemaConfig;
 use Doctrine\DBAL\Schema\Table;
@@ -18,8 +23,14 @@ use Doctrine\ORM\Mapping as ORM;
 use Doctrine\ORM\Mapping\ClassMetadataFactory;
 use Doctrine\Persistence\Mapping\ClassMetadata;
 use Doctrine\Persistence\Mapping\Driver\MappingDriver;
+use InvalidArgumentException;
+use LogicException;
+use RuntimeException;
+use atoum\atoum\test;
 use itsmng\Database\BaselineSchema;
 use itsmng\Database\CurrentSchema as Projection;
+use itsmng\Database\Entity\ComputerModel;
+use itsmng\Database\Entity\ComputerType;
 use itsmng\Database\Entity\Config;
 use itsmng\Database\Entity\DomainRecordType;
 use itsmng\Database\Entity\DomainRelation;
@@ -49,17 +60,39 @@ use itsmng\Database\Entity\DeviceSensorModel;
 use itsmng\Database\Entity\DeviceSensorType;
 use itsmng\Database\Entity\DeviceSimcardType;
 use itsmng\Database\Entity\DeviceSoundCardModel;
+use itsmng\Database\Entity\EnclosureModel;
+use itsmng\Database\Entity\MonitorModel;
+use itsmng\Database\Entity\MonitorType;
+use itsmng\Database\Entity\NetworkEquipmentModel;
+use itsmng\Database\Entity\NetworkEquipmentType;
+use itsmng\Database\Entity\PDUModel;
+use itsmng\Database\Entity\PassiveDCEquipmentModel;
+use itsmng\Database\Entity\PeripheralModel;
+use itsmng\Database\Entity\PeripheralType;
+use itsmng\Database\Entity\PhoneModel;
+use itsmng\Database\Entity\PhoneType;
+use itsmng\Database\Entity\PrinterModel;
+use itsmng\Database\Entity\PrinterType;
+use itsmng\Database\Entity\RackModel;
+use itsmng\Database\ForeignKeys;
+use itsmng\Database\Mapping\AttributeDriver;
+use itsmng\Database\Mapping\BooleanStorage;
 use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\SchemaOwner;
 use itsmng\Database\Migration\V220\Baseline;
 use itsmng\Database\Migration\V220\IdentifierColumns;
+use itsmng\Database\NativeSubjectSchema;
 use itsmng\Database\Orm as ApplicationOrm;
 use ReflectionClass;
+use itsmng\Database\PhysicalIndexSchema;
+use itsmng\Database\PluginImportMutation;
+use itsmng\Database\SubjectPolicyExpression;
+use mock\Doctrine\DBAL\Connection;
 use tests\fixtures\DisconnectedSchemaConnection;
 
 require_once dirname(__DIR__, 3) . '/fixtures/DisconnectedSchemaConnection.php';
 
-class CurrentSchema extends \atoum\atoum\test
+class CurrentSchema extends test
 {
     private function manager(AbstractPlatform $platform, bool $fixture = false): EntityManager
     {
@@ -96,7 +129,7 @@ class CurrentSchema extends \atoum\atoum\test
             [new MariaDBPlatform(), '10.6.0-MariaDB', 'IGNORED AS visible', 'NO'],
             [new MySQLPlatform(), '8.0.16', 'IS_VISIBLE AS visible', 'YES'],
         ] as [$platform, $version, $fragment, $usable]) {
-            $connection = new \mock\Doctrine\DBAL\Connection([], (new DisconnectedSchemaConnection($platform))->getDriver());
+            $connection = new Connection([], (new DisconnectedSchemaConnection($platform))->getDriver());
             $this->calling($connection)->getDatabasePlatform = $platform;
             $this->calling($connection)->getServerVersion = $version;
             $queries = [];
@@ -109,21 +142,21 @@ class CurrentSchema extends \atoum\atoum\test
                     'prefix_length' => null, 'visible' => $value,
                 ], $values, array_keys($values));
             };
-            $catalog = \itsmng\Database\PhysicalIndexSchema::catalog($connection, ['glpi_items_devicesensors']);
+            $catalog = PhysicalIndexSchema::catalog($connection, ['glpi_items_devicesensors']);
             foreach ($values as $key => $value) {
                 $this->boolean($catalog['glpi_items_devicesensors']['fixture_' . $key]['usable'])->isIdenticalTo($value === $usable);
             }
             $this->integer(count($queries))->isIdenticalTo(1);
             $this->string($queries[0][0])->contains($fragment)->notContains('IS_VISIBLE =')->notContains('IGNORED =');
             $this->array($queries[0][1])->isIdenticalTo([['glpi_items_devicesensors']]);
-            $this->array($queries[0][2])->isIdenticalTo([\Doctrine\DBAL\ArrayParameterType::STRING]);
+            $this->array($queries[0][2])->isIdenticalTo([ArrayParameterType::STRING]);
         }
     }
 
     public function testPhysicalCoverageCannotIntroduceUndeclaredUniqueness(): void
     {
         $platform = new PostgreSQLPlatform();
-        $connection = new \mock\Doctrine\DBAL\Connection([], (new DisconnectedSchemaConnection($platform))->getDriver());
+        $connection = new Connection([], (new DisconnectedSchemaConnection($platform))->getDriver());
         $this->calling($connection)->getDatabasePlatform = $platform;
         $schema = new Schema();
         $table = $schema->createTable('physical_fixture');
@@ -136,21 +169,21 @@ class CurrentSchema extends \atoum\atoum\test
                 'access_method' => 'btree', 'predicate' => null, 'expressions' => null,
                 'default_operator_class' => true, 'column_collation' => true, 'nulls_not_distinct' => false,
             ]];
-            $this->array(\itsmng\Database\PhysicalIndexSchema::differences($connection, $schema))
+            $this->array(PhysicalIndexSchema::differences($connection, $schema))
                 ->isIdenticalTo(['Missing physical index coverage: physical_fixture.expected']);
         }
         $table->addUniqueIndex(['computers_id'], 'declared_unique');
-        $this->array(\itsmng\Database\PhysicalIndexSchema::differences($connection, $schema))
+        $this->array(PhysicalIndexSchema::differences($connection, $schema))
             ->isEmpty('A separately declared unique constraint also supports the same FK lookup');
     }
 
     public function testPhysicalIndexCoverageUsesColumnAndNativeSemantics(): void
     {
-        $required = new \Doctrine\DBAL\Schema\Index('expected', ['"computers_id"']);
+        $required = new Index('expected', ['"computers_id"']);
         $physical = ['columns' => ['computers_id', 'is_deleted'], 'lengths' => [null, null],
             'unique' => false, 'primary' => false, 'method' => 'btree', 'usable' => true,
             'predicate' => null, 'expressions' => null, 'standard_equality' => true, 'nulls_not_distinct' => false];
-        $coverage = \itsmng\Database\PhysicalIndexSchema::covers(...);
+        $coverage = PhysicalIndexSchema::covers(...);
         $this->boolean($coverage($required, $physical))->isTrue('A real wider leading-column index covers lookup');
         foreach ([
             ['columns' => ['items_id', 'computers_id']],
@@ -162,7 +195,7 @@ class CurrentSchema extends \atoum\atoum\test
         ] as $damage) {
             $this->boolean($coverage($required, array_replace($physical, $damage)))->isFalse();
         }
-        $unique = new \Doctrine\DBAL\Schema\Index('unique', ['computers_id'], true);
+        $unique = new Index('unique', ['computers_id'], true);
         $this->boolean($coverage($unique, $physical))->isFalse();
         $this->boolean($coverage($unique, array_replace($physical, ['unique' => true])))->isFalse('Wider uniqueness is weaker');
         $one = array_replace($physical, ['columns' => ['computers_id'], 'lengths' => [null], 'unique' => true]);
@@ -173,29 +206,29 @@ class CurrentSchema extends \atoum\atoum\test
         $changed = clone $declared;
         $changed->dropIndex('expected');
         $changed->addUniqueIndex(['computers_id'], 'expected');
-        $diff = (new \Doctrine\DBAL\Schema\Comparator(new PostgreSQLPlatform()))->compareTables($declared, $changed);
+        $diff = (new Comparator(new PostgreSQLPlatform()))->compareTables($declared, $changed);
         $this->integer(count($diff->getModifiedIndexes()))->isIdenticalTo(1, 'A named UNIQUE replacement still changes permitted rows');
         $this->boolean($diff->getModifiedIndexes()[0]->isUnique())->isTrue();
         $this->boolean($coverage($unique, array_replace($one, ['nulls_not_distinct' => true])))->isFalse();
-        $primary = new \Doctrine\DBAL\Schema\Index('primary', ['computers_id'], true, true);
+        $primary = new Index('primary', ['computers_id'], true, true);
         $this->boolean($coverage($primary, $one))->isFalse();
         $this->boolean($coverage($primary, array_replace($one, ['primary' => true])))->isTrue();
-        $prefix = new \Doctrine\DBAL\Schema\Index('prefix', ['name'], false, false, [], ['lengths' => [50]]);
+        $prefix = new Index('prefix', ['name'], false, false, [], ['lengths' => [50]]);
         $text = array_replace($physical, ['columns' => ['name'], 'lengths' => [100]]);
         $this->boolean($coverage($prefix, $text))->isTrue();
         $this->boolean($coverage($prefix, array_replace($text, ['lengths' => [20]])))->isFalse();
-        $fulltext = new \Doctrine\DBAL\Schema\Index('fulltext', ['name'], false, false, ['fulltext']);
+        $fulltext = new Index('fulltext', ['name'], false, false, ['fulltext']);
         $text = array_replace($text, ['lengths' => [null], 'method' => 'fulltext']);
         $this->boolean($coverage($fulltext, $text))->isTrue();
         $this->boolean($coverage($fulltext, array_replace($text, ['method' => 'btree'])))->isFalse();
-        $this->array(\itsmng\Database\PhysicalIndexSchema::missing(['fixture' => [$required]], ['fixture' => ['expected' => array_replace($physical, ['columns' => ['items_id']])]]))
+        $this->array(PhysicalIndexSchema::missing(['fixture' => [$required]], ['fixture' => ['expected' => array_replace($physical, ['columns' => ['items_id']])]]))
             ->isIdenticalTo(['fixture' => [$required]], 'An expected name on wrong columns cannot substitute for coverage');
     }
 
     public function testImportStorageAdmissionIncludesUnreferencedAuditTables(): void
     {
         foreach ([new MySQLPlatform(), new MariaDBPlatform(), new PostgreSQLPlatform()] as $platform) {
-            $connection = new \mock\Doctrine\DBAL\Connection([], (new DisconnectedSchemaConnection($platform))->getDriver());
+            $connection = new Connection([], (new DisconnectedSchemaConnection($platform))->getDriver());
             $this->calling($connection)->getDatabasePlatform = $platform;
             $queries = 0;
             $engine = 'InnoDB';
@@ -211,14 +244,14 @@ class CurrentSchema extends \atoum\atoum\test
             };
             foreach (['Domains', 'Appliance'] as $aggregate) {
                 $engine = 'InnoDB';
-                \itsmng\Database\PluginImportMutation::assertTransactionalCore($connection, $aggregate);
+                PluginImportMutation::assertTransactionalCore($connection, $aggregate);
                 foreach (['MyISAM', null] as $nontransactional) {
                     $engine = $nontransactional;
                     if ($platform instanceof PostgreSQLPlatform) {
-                        \itsmng\Database\PluginImportMutation::assertTransactionalCore($connection, $aggregate);
+                        PluginImportMutation::assertTransactionalCore($connection, $aggregate);
                     } else {
-                        $this->exception(static fn () => \itsmng\Database\PluginImportMutation::assertTransactionalCore($connection, $aggregate))
-                            ->isInstanceOf(\RuntimeException::class)
+                        $this->exception(static fn () => PluginImportMutation::assertTransactionalCore($connection, $aggregate))
+                            ->isInstanceOf(RuntimeException::class)
                             ->hasMessage($aggregate . ' lifecycle import requires transactional core tables: glpi_logs must use InnoDB; found ' . ($engine ?? 'no transactional engine') . '. Reconcile this table before importing; audit and hooks cannot roll back otherwise.');
                     }
                 }
@@ -301,11 +334,11 @@ class CurrentSchema extends \atoum\atoum\test
                     [$column],
                     ['id'],
                     ['onDelete' => 'RESTRICT', 'onUpdate' => 'RESTRICT'],
-                    \itsmng\Database\ForeignKeys::name($table, trim($column, '`'))
+                    ForeignKeys::name($table, trim($column, '`'))
                 );
             }
             $current = (new BaselineSchema($manager))->build($platform)->getTable($table);
-            $comparator = new \Doctrine\DBAL\Schema\Comparator($platform);
+            $comparator = new Comparator($platform);
             $this->boolean($comparator->compareTables($historical, $current)->isEmpty())->isTrue();
             $this->integer(count($current->getColumns()))->isIdenticalTo($columnCount);
             $this->integer(count($current->getIndexes()))->isIdenticalTo($indexCount);
@@ -317,7 +350,7 @@ class CurrentSchema extends \atoum\atoum\test
                 $actual = $current->getColumn($column->getName());
                 $this->string(Type::lookupName($actual->getType()))->isIdenticalTo(Type::lookupName($column->getType()));
                 $this->boolean($actual->getNotnull())->isIdenticalTo($column->getNotnull());
-                $default = static fn ($value) => $value instanceof \Doctrine\DBAL\Schema\DefaultExpression
+                $default = static fn ($value) => $value instanceof DefaultExpression
                     ? $value->toSQL($platform) : $value;
                 $this->variable($default($actual->getDefault()))->isEqualTo($default($column->getDefault()));
                 $this->variable($actual->getComment())->isIdenticalTo($column->getComment());
@@ -329,8 +362,8 @@ class CurrentSchema extends \atoum\atoum\test
             }
             // These physical names are lowercase on both providers; compare
             // identifiers and prefix lengths, not DBAL's original quote markers.
-            $columns = static fn (\Doctrine\DBAL\Schema\Index $index): array => array_map(
-                static fn (\Doctrine\DBAL\Schema\Index\IndexedColumn $column): array => [
+            $columns = static fn (Index $index): array => array_map(
+                static fn (Index\IndexedColumn $column): array => [
                     $column->getColumnName()->getIdentifier()->getValue(), $column->getLength(),
                 ],
                 $index->getIndexedColumns(),
@@ -387,15 +420,15 @@ class CurrentSchema extends \atoum\atoum\test
             $frozen = (new Baseline())->build($platform)->toSql($platform);
             $models = [];
             foreach ([
-                \itsmng\Database\Entity\MonitorModel::class,
-                \itsmng\Database\Entity\NetworkEquipmentModel::class,
-                \itsmng\Database\Entity\PeripheralModel::class,
-                \itsmng\Database\Entity\PhoneModel::class,
-                \itsmng\Database\Entity\PrinterModel::class,
-                \itsmng\Database\Entity\PassiveDCEquipmentModel::class,
-                \itsmng\Database\Entity\EnclosureModel::class,
-                \itsmng\Database\Entity\PDUModel::class,
-                \itsmng\Database\Entity\RackModel::class,
+                MonitorModel::class,
+                NetworkEquipmentModel::class,
+                PeripheralModel::class,
+                PhoneModel::class,
+                PrinterModel::class,
+                PassiveDCEquipmentModel::class,
+                EnclosureModel::class,
+                PDUModel::class,
+                RackModel::class,
                 DeviceBatteryModel::class,
                 DeviceCaseModel::class,
                 DeviceControlModel::class,
@@ -468,10 +501,10 @@ class CurrentSchema extends \atoum\atoum\test
     {
         foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
             $manager = $this->manager($platform);
-            $metadata = $manager->getClassMetadata(\itsmng\Database\Entity\ComputerModel::class);
+            $metadata = $manager->getClassMetadata(ComputerModel::class);
             $field = $metadata->fieldMappings['is_half_rack'];
             $this->string($field->type)->isIdenticalTo(Types::BOOLEAN);
-            $this->boolean((new \itsmng\Database\Entity\ComputerModel())->is_half_rack)->isFalse();
+            $this->boolean((new ComputerModel())->is_half_rack)->isFalse();
             $frozen = (new Baseline())->build($platform)->toSql($platform);
             $builder = new BaselineSchema($manager);
             $metadata->fieldMappings['name']->length = 173;
@@ -508,21 +541,21 @@ class CurrentSchema extends \atoum\atoum\test
 
     public function testBooleanStorageRejectsNonBooleanFieldsAndDefaults(): void
     {
-        $this->exception(static fn () => new \itsmng\Database\Mapping\BooleanStorage(Types::STRING))
-            ->isInstanceOf(\InvalidArgumentException::class);
-        $storage = new \itsmng\Database\Mapping\BooleanStorage(Types::SMALLINT);
+        $this->exception(static fn () => new BooleanStorage(Types::STRING))
+            ->isInstanceOf(InvalidArgumentException::class);
+        $storage = new BooleanStorage(Types::SMALLINT);
         foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
             $manager = $this->manager($platform);
-            $metadata = $manager->getClassMetadata(\itsmng\Database\Entity\ComputerModel::class);
+            $metadata = $manager->getClassMetadata(ComputerModel::class);
             $field = $metadata->fieldMappings['is_half_rack'];
             $field->type = Types::INTEGER;
             $this->exception(static fn () => (new BaselineSchema($manager))->build($platform))
-                ->isInstanceOf(\InvalidArgumentException::class)
+                ->isInstanceOf(InvalidArgumentException::class)
                 ->hasMessage('BooleanStorage requires an ORM boolean field.');
             $field->type = Types::BOOLEAN;
-            $column = new \Doctrine\DBAL\Schema\Column('is_half_rack', Type::getType(Types::BOOLEAN), ['default' => 2]);
+            $column = new Column('is_half_rack', Type::getType(Types::BOOLEAN), ['default' => 2]);
             $this->exception(static fn () => $storage->configure($column, $platform, $field))
-                ->isInstanceOf(\InvalidArgumentException::class);
+                ->isInstanceOf(InvalidArgumentException::class);
             $this->boolean($manager->getConnection()->isConnected())->isFalse();
         }
     }
@@ -534,9 +567,9 @@ class CurrentSchema extends \atoum\atoum\test
             $frozen = (new Baseline())->build($platform)->toSql($platform);
             $tables = [];
             foreach ([
-                \itsmng\Database\Entity\ComputerType::class, \itsmng\Database\Entity\MonitorType::class,
-                \itsmng\Database\Entity\NetworkEquipmentType::class, \itsmng\Database\Entity\PeripheralType::class,
-                \itsmng\Database\Entity\PhoneType::class, \itsmng\Database\Entity\PrinterType::class,
+                ComputerType::class, MonitorType::class,
+                NetworkEquipmentType::class, PeripheralType::class,
+                PhoneType::class, PrinterType::class,
             ] as $class) {
                 $metadata = $manager->getClassMetadata($class);
                 $table = $metadata->getTableName();
@@ -736,10 +769,10 @@ class CurrentSchema extends \atoum\atoum\test
 
     public function testProviderColumnOptionsRejectAmbiguousOrNonOwningProperties(): void
     {
-        $driver = new \itsmng\Database\Mapping\AttributeDriver([], new PostgreSQLPlatform());
+        $driver = new AttributeDriver([], new PostgreSQLPlatform());
         foreach ([UnmappedProviderColumn::class, InverseProviderColumn::class, CompositeProviderColumn::class] as $class) {
             $this->exception(static fn () => $driver->loadMetadataForClass($class, new ORM\ClassMetadata($class)))
-                ->isInstanceOf(\LogicException::class)
+                ->isInstanceOf(LogicException::class)
                 ->hasMessage('Provider column options require a scalar field or a single-column owning to-one association: ' . $class . '::$invalid.');
         }
     }
@@ -804,7 +837,7 @@ class CurrentSchema extends \atoum\atoum\test
 
     public function testNativeSubjectExpressionsPreserveMeaningAcrossProviderFormatting(): void
     {
-        $compare = \itsmng\Database\SubjectPolicyExpression::equivalent(...);
+        $compare = SubjectPolicyExpression::equivalent(...);
         $this->boolean($compare(
             "CASE WHEN itemtype IN ('Computer') THEN computers_id ELSE NULL END",
             "CASE itemtype WHEN 'Computer'::text THEN computers_id ELSE NULL::bigint END",
@@ -852,7 +885,7 @@ class CurrentSchema extends \atoum\atoum\test
         $policy = $builder->subjectPolicies()[$table]['items_id'];
         $projection = $native['columns'][0]['GENERATION_EXPRESSION'];
         $check = $native['checks'][0]['CHECK_CLAUSE'];
-        $compare = \itsmng\Database\SubjectPolicyExpression::equivalent(...);
+        $compare = SubjectPolicyExpression::equivalent(...);
         $this->boolean($compare($policy['projection'], $projection, false))->isTrue();
         $this->boolean($compare($policy['check'], $check, false))->isTrue();
         // This encoding is accepted only in actual MySQL-family catalogs.
@@ -881,7 +914,7 @@ class CurrentSchema extends \atoum\atoum\test
         $columns = [$table => ['items_id' => ['generated' => $native['columns'][0]['EXTRA'], 'expression' => $projection]]];
         $checks = [$table => [$policy['constraint'] => ['clause' => $check, 'enforced' => $native['checks'][0]['ENFORCED']]]];
         $policies = [$table => ['items_id' => $policy]];
-        $nativeCompare = static fn (array $c, array $k): array => \itsmng\Database\NativeSubjectSchema::compare($policies, $c, $k, false);
+        $nativeCompare = static fn (array $c, array $k): array => NativeSubjectSchema::compare($policies, $c, $k, false);
         $this->array($nativeCompare($columns, $checks))->isEmpty();
         $checks[$table][$policy['constraint']]['enforced'] = 'NO';
         $this->array($nativeCompare($columns, $checks))->isIdenticalTo([
@@ -896,7 +929,7 @@ class CurrentSchema extends \atoum\atoum\test
 
     public function testNativeSubjectCaseOrderingAndStockFallbackRequireProof(): void
     {
-        $compare = \itsmng\Database\SubjectPolicyExpression::equivalent(...);
+        $compare = SubjectPolicyExpression::equivalent(...);
         $expected = "CASE WHEN itemtype = 'User' THEN users_id WHEN itemtype = 'Group' THEN groups_id ELSE 0 END";
         $reordered = "CASE itemtype WHEN 'Group'::text THEN groups_id WHEN 'User'::text THEN users_id ELSE (0)::bigint END";
         $this->boolean($compare($expected, $reordered, true))->isTrue();
@@ -951,7 +984,7 @@ class CurrentSchema extends \atoum\atoum\test
             ]];
             $checks = [$table => [$policy['constraint'] => ['clause' => $policy['check'], 'enforced' => 'YES', 'validated' => true]]];
             $policies = [$table => ['items_id' => $policy]];
-            $compare = static fn (array $c, array $k): array => \itsmng\Database\NativeSubjectSchema::compare($policies, $c, $k, $postgres);
+            $compare = static fn (array $c, array $k): array => NativeSubjectSchema::compare($policies, $c, $k, $postgres);
             $this->array($compare($columns, $checks))->isEmpty();
             $changed = $columns;
             $changed[$table]['items_id']['expression'] = '0';
@@ -973,7 +1006,7 @@ class CurrentSchema extends \atoum\atoum\test
             // A future current policy must reject the old native declaration,
             // even if old migration receipts (not inputs here) remain complete.
             $policies[$table]['items_id']['projection'] = str_replace('computers_id', 'peripherals_id', $policy['projection']);
-            $this->array(\itsmng\Database\NativeSubjectSchema::compare($policies, $columns, $checks, $postgres))->isIdenticalTo([
+            $this->array(NativeSubjectSchema::compare($policies, $columns, $checks, $postgres))->isIdenticalTo([
                 'Changed or missing native subject projection: ' . $table . '.items_id',
             ]);
         }
@@ -990,7 +1023,7 @@ class CurrentSchema extends \atoum\atoum\test
             'itemtype' => ['deterministic' => true],
         ]];
         $check = ['clause' => $policy['check'], 'enforced' => true, 'validated' => true];
-        $compare = static fn (array $checks): array => \itsmng\Database\NativeSubjectSchema::compare([$table => ['items_id' => $policy]], $columns, $checks, true);
+        $compare = static fn (array $checks): array => NativeSubjectSchema::compare([$table => ['items_id' => $policy]], $columns, $checks, true);
         $this->array($compare([$table => [$policy['constraint'] => $check]]))->isEmpty();
         $failures = [$compare([])];
         foreach (['clause' => '1 = 1', 'enforced' => false, 'validated' => false] as $field => $value) {
@@ -1039,7 +1072,7 @@ class CurrentSchema extends \atoum\atoum\test
     {
         $builder = new BaselineSchema($this->manager(new PostgreSQLPlatform()));
         $this->exception(static fn () => $builder->build(new MariaDBPlatform()))
-            ->isInstanceOf(\InvalidArgumentException::class);
+            ->isInstanceOf(InvalidArgumentException::class);
     }
 }
 

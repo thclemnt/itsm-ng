@@ -2,7 +2,19 @@
 
 namespace tests\units;
 
+use CartridgeItem;
+use Computer;
+use Computer_Item;
 use DbTestCase;
+use Manufacturer;
+use NetworkEquipment;
+use NetworkEquipmentModel;
+use Printer;
+use PrinterModel;
+use RuleDictionnaryPrinterCollection;
+use RuntimeException;
+use Session;
+use Throwable;
 use itsmng\Database\MutationRollbackFailure;
 use itsmng\Database\Orm;
 use itsmng\Database\OwnedMutationFrame;
@@ -43,7 +55,7 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
             $calls = 0;
             $visited = [];
             $witness = null;
-            $primary = new \RuntimeException('Dictionary callback primary failure');
+            $primary = new RuntimeException('Dictionary callback primary failure');
             $callback = function (callable $change) use ($connection, $tracked, $fixture, $scenario, $primary, &$replacement, &$calls, &$witness): bool {
                 ++$calls;
                 $this->boolean($tracked->update(['id' => $tracked->getID(), 'comment' => 'Dictionary callback mutation']))->isTrue();
@@ -57,7 +69,7 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
                         $connection->rollBack();
                     }
                     $replacement = OwnedMutationFrame::begin($connection);
-                    $witness = $this->createItem(\Printer::class, ['name' => 'Dictionary replacement witness', 'entities_id' => $fixture['entity']]);
+                    $witness = $this->createItem(Printer::class, ['name' => 'Dictionary replacement witness', 'entities_id' => $fixture['entity']]);
                 }
                 if ($scenario === 'writer') {
                     $GLOBALS['DB'] = clone $GLOBALS['DB'];
@@ -66,7 +78,7 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
                     throw $primary;
                 }
                 if ($scenario === 'veto') {
-                    \Session::addMessageAfterRedirect('Dictionary callback veto', true, WARNING, false);
+                    Session::addMessageAfterRedirect('Dictionary callback veto', true, WARNING, false);
                 }
                 return $scenario !== 'veto';
             };
@@ -80,11 +92,11 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
                         [0 => $fixture['target']->getID()],
                         function (int $cartridge, int $target) use ($callback, &$visited): bool {
                             $visited[] = $cartridge;
-                            return $callback(static fn (): bool => (new \CartridgeItem())->addCompatibleType($cartridge, $target));
+                            return $callback(static fn (): bool => (new CartridgeItem())->addCompatibleType($cartridge, $target));
                         }
                     );
                 } else {
-                    $link = new \Computer_Item();
+                    $link = new Computer_Item();
                     (new PrinterDictionaryRepository(Orm::create($database)))->moveConnections(
                         $tracked->getID(),
                         $fixture['target']->getID(),
@@ -92,7 +104,7 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
                         static fn (array $row): bool => $callback(static fn (): bool => (bool)$link->delete($row + ['_no_auto_action' => true], 1))
                     );
                 }
-            } catch (\Throwable $failure) {
+            } catch (Throwable $failure) {
                 $error = $failure;
             } finally {
                 $DB = $database;
@@ -108,7 +120,7 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
                 }
                 $this->object($error->cleanup)->isInstanceOf(TransactionOwnershipMismatch::class);
                 $replacement->assertActive();
-                $this->boolean((new \Printer())->getFromDB($witness->getID()))->isTrue();
+                $this->boolean((new Printer())->getFromDB($witness->getID()))->isTrue();
                 $this->string($_SESSION['dictionary_callback_marker'])->isIdenticalTo($scenario);
                 // Unproven rollback must not rewind a model already touched by a hook.
                 $this->string($tracked->fields['comment'])->isIdenticalTo('Dictionary callback mutation');
@@ -123,7 +135,7 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
                     } elseif ($scenario === 'writer') {
                         $this->object($error)->isInstanceOf(TransactionOwnershipMismatch::class);
                     } else {
-                        $this->object($error)->isInstanceOf(\RuntimeException::class);
+                        $this->object($error)->isInstanceOf(RuntimeException::class);
                         $this->string($error->getMessage())->isIdenticalTo($operation === 'model'
                             ? 'Unable to move printer model compatibility.' : 'Unable to move printer direct connection.');
                     }
@@ -185,7 +197,7 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
         try {
             foreach (['move', 'remove'] as $operation) {
                 $fixture = $this->dictionaryFixture($operation);
-                (new \RuleDictionnaryPrinterCollection())->moveDirectConnections($fixture['source']->getID(), $fixture['target']->getID());
+                (new RuleDictionnaryPrinterCollection())->moveDirectConnections($fixture['source']->getID(), $fixture['target']->getID());
                 $caller->assertActive();
                 $read = new RecordRepository(Orm::create($DB));
                 foreach ($fixture['links'] as $link) {
@@ -209,7 +221,7 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
     {
         $name = $this->getUniqueString();
         $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
-        $class = $operation === 'model' ? \PrinterModel::class : \Printer::class;
+        $class = $operation === 'model' ? PrinterModel::class : Printer::class;
         $values = $operation === 'model' ? [] : ['entities_id' => $entity, 'is_global' => 1];
         $fixture = [
             'entity' => $entity,
@@ -219,24 +231,24 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
         $this->boolean($fixture['source']->can($fixture['source']->getID(), UPDATE))->isTrue();
         $this->boolean($fixture['target']->can($fixture['target']->getID(), UPDATE))->isTrue();
         if ($operation === 'model') {
-            $fixture['printer'] = $this->createItem(\Printer::class, ['name' => $name, 'entities_id' => $entity, 'printermodels_id' => $fixture['source']->getID()]);
+            $fixture['printer'] = $this->createItem(Printer::class, ['name' => $name, 'entities_id' => $entity, 'printermodels_id' => $fixture['source']->getID()]);
             $this->boolean($fixture['printer']->can($fixture['printer']->getID(), UPDATE))->isTrue();
             for ($i = 0; $i < 2; ++$i) {
-                $cartridge = $this->createItem(\CartridgeItem::class, ['name' => $name . ' cartridge ' . $i, 'entities_id' => $entity]);
+                $cartridge = $this->createItem(CartridgeItem::class, ['name' => $name . ' cartridge ' . $i, 'entities_id' => $entity]);
                 $this->boolean($cartridge->can($cartridge->getID(), UPDATE))->isTrue();
                 $this->boolean($cartridge->addCompatibleType($cartridge->getID(), $fixture['source']->getID()))->isTrue();
                 $fixture['cartridges'][] = $cartridge;
             }
         } else {
             for ($i = 0; $i < 2; ++$i) {
-                $computer = $this->createItem(\Computer::class, ['name' => $name . ' computer ' . $i, 'entities_id' => $entity]);
+                $computer = $this->createItem(Computer::class, ['name' => $name . ' computer ' . $i, 'entities_id' => $entity]);
                 $this->boolean($computer->can($computer->getID(), UPDATE))->isTrue();
                 $values = ['computers_id' => $computer->getID(), 'itemtype' => 'Printer'];
-                $link = $this->createItem(\Computer_Item::class, $values + ['items_id' => $fixture['source']->getID()]);
+                $link = $this->createItem(Computer_Item::class, $values + ['items_id' => $fixture['source']->getID()]);
                 $this->boolean($link->can($link->getID(), UPDATE))->isTrue();
                 $fixture['links'][] = $link;
                 if ($operation === 'remove') {
-                    $this->createItem(\Computer_Item::class, $values + ['items_id' => $fixture['target']->getID()]);
+                    $this->createItem(Computer_Item::class, $values + ['items_id' => $fixture['target']->getID()]);
                 }
             }
         }
@@ -311,21 +323,21 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
         global $DB;
 
         $this->login();
-        $em = \itsmng\Database\Orm::create($DB);
-        $repository = new \itsmng\Database\Repository\DropdownDictionaryRepository($em);
+        $em = Orm::create($DB);
+        $repository = new DropdownDictionaryRepository($em);
         $baseline = $repository->modelCount('glpi_networkequipmentmodels', 'glpi_networkequipments');
         $name = 'dictionary-count-' . $this->getUniqueString();
         $models = [];
         $manufacturers = [];
         for ($i = 0; $i < 3; ++$i) {
-            $model = $this->createItem(\NetworkEquipmentModel::class, [
+            $model = $this->createItem(NetworkEquipmentModel::class, [
                 'name' => $name,
                 'comment' => str_repeat('Shared model metadata ', 128),
             ]);
             $models[] = (int)$model->getID();
         }
         for ($i = 0; $i < 2; ++$i) {
-            $manufacturer = $this->createItem(\Manufacturer::class, ['name' => $name]);
+            $manufacturer = $this->createItem(Manufacturer::class, ['name' => $name]);
             $manufacturers[] = (int)$manufacturer->getID();
         }
         sort($models, SORT_NUMERIC);
@@ -347,7 +359,7 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
             [null, $manufacturers[0], 0, 0],
             [null, null, 0, 0],
         ] as [$model, $manufacturer, $deleted, $template]) {
-            $this->createItem(\NetworkEquipment::class, [
+            $this->createItem(NetworkEquipment::class, [
                 'name' => $name,
                 'entities_id' => 0,
                 'networkequipmentmodels_id' => $model,
@@ -384,9 +396,9 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
         global $DB;
 
         $this->login();
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         $connection = $em->getConnection();
-        $repository = new \itsmng\Database\Repository\DropdownDictionaryRepository($em);
+        $repository = new DropdownDictionaryRepository($em);
         $expected = $repository->modelCount('glpi_networkequipmentmodels', 'glpi_networkequipments');
         $depth = $connection->getTransactionNestingLevel();
         $original = $DB;

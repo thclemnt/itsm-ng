@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\UserRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -1399,7 +1402,7 @@ class CommonGLPI
             // Load display_options from user table
             $_SESSION['glpi_display_options'] = [];
             if ($uid = Session::getLoginUserID()) {
-                $options = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+                $options = (new UserRepository(Orm::create($DB)))
                     ->displayOptions((int)Toolbox::cleanInteger($uid));
                 $_SESSION['glpi_display_options'] = importArrayFromDB($options);
             }

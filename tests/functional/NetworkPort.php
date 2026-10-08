@@ -34,6 +34,18 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\ORM\Event\PostLoadEventArgs;
+use Doctrine\ORM\Events;
+use InvalidArgumentException;
+use NetworkPort as LegacyNetworkPort;
+use NetworkPortAggregate;
+use NetworkPort_Vlan;
+use itsmng\Database\Entity\NetworkPort as NetworkPortEntity;
+use itsmng\Database\Entity\NetworkPortAggregate as NetworkPortAggregateEntity;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NetworkPortAggregateRepository;
+use itsmng\Database\Repository\NetworkPortVlanRepository;
+use itsmng\Domain\VlanMembershipService;
 
 /* Test for inc/networkport.class.php */
 
@@ -416,7 +428,7 @@ class NetworkPort extends DbTestCase
         $equipment = getItemByTypeName('NetworkEquipment', '_test_networkequipment_1');
         $ports = [];
         foreach (['first', 'second', 'stale', 'parent'] as $name) {
-            $ports[] = (int)(new \NetworkPort())->add([
+            $ports[] = (int)(new LegacyNetworkPort())->add([
                 'name' => 'Scalar aggregate ' . $name . ' ' . $this->getUniqueString(),
                 'items_id' => $equipment->getID(), 'itemtype' => 'NetworkEquipment',
                 'entities_id' => $equipment->fields['entities_id'],
@@ -424,26 +436,26 @@ class NetworkPort extends DbTestCase
             $this->integer(end($ports))->isGreaterThan(0);
         }
         [$first, $second, $stale, $parent] = $ports;
-        $aggregate = new \NetworkPortAggregate();
+        $aggregate = new NetworkPortAggregate();
         $added = (int)$aggregate->add([
             'networkports_id' => $parent, 'networkports_id_list' => [$first, (string)$second, $first],
         ]);
         $this->integer($added)->isGreaterThan(0);
         $aggregateId = (int)$aggregate->fields['id'];
         $this->array(importArrayFromDB($aggregate->fields['networkports_id_list']))->isIdenticalTo([$first, $second]);
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
             $loads = new class () {
                 public int $ports = 0;
                 public int $aggregates = 0;
-                public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
+                public function postLoad(PostLoadEventArgs $event): void
                 {
-                    $this->ports += (int)($event->getObject() instanceof \itsmng\Database\Entity\NetworkPort);
-                    $this->aggregates += (int)($event->getObject() instanceof \itsmng\Database\Entity\NetworkPortAggregate);
+                    $this->ports += (int)($event->getObject() instanceof NetworkPortEntity);
+                    $this->aggregates += (int)($event->getObject() instanceof NetworkPortAggregateEntity);
                 }
             };
-            $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
-            $repository = new \itsmng\Database\Repository\NetworkPortAggregateRepository($em);
+            $em->getEventManager()->addEventListener([Events::postLoad], $loads);
+            $repository = new NetworkPortAggregateRepository($em);
             $repository->replaceOrigins($aggregateId, [$second, $first, (string)$second]);
             $this->array($repository->originIds($aggregateId))->isIdenticalTo([$second, $first]);
             $this->integer($loads->ports)->isIdenticalTo(0);
@@ -452,24 +464,24 @@ class NetworkPort extends DbTestCase
             $this->exception(fn () => $aggregate->update([
                 'id' => $added, 'networkports_id' => $parent,
                 'networkports_id_list' => [$first, PHP_INT_MAX, PHP_INT_MAX - 1, $second],
-            ]))->isInstanceOf(\InvalidArgumentException::class)
+            ]))->isInstanceOf(InvalidArgumentException::class)
                 ->hasMessage('Unknown aggregate origin: ' . PHP_INT_MAX);
             $this->boolean($aggregate->getFromDB($parent))->isTrue();
             $this->array(importArrayFromDB($aggregate->fields['networkports_id_list']))->isIdenticalTo([$second, $first]);
             foreach ([null, '', 0] as $invalid) {
                 $this->exception(fn () => $repository->replaceOrigins($aggregateId, [$first, $invalid]))
-                    ->isInstanceOf(\InvalidArgumentException::class)
+                    ->isInstanceOf(InvalidArgumentException::class)
                     ->hasMessage('Aggregate origins require positive port IDs');
                 $this->array($repository->originIds($aggregateId))->isIdenticalTo([$second, $first]);
             }
 
             // A managed port is not evidence that it still exists after another
             // operation writes through the same underlying connection.
-            $managed = $em->find(\itsmng\Database\Entity\NetworkPort::class, $stale);
-            $this->object($managed)->isInstanceOf(\itsmng\Database\Entity\NetworkPort::class);
+            $managed = $em->find(NetworkPortEntity::class, $stale);
+            $this->object($managed)->isInstanceOf(NetworkPortEntity::class);
             $this->boolean($DB->delete('glpi_networkports', ['id' => $stale]))->isTrue();
             $this->exception(fn () => $repository->replaceOrigins($aggregateId, [$first, $stale]))
-                ->isInstanceOf(\InvalidArgumentException::class)
+                ->isInstanceOf(InvalidArgumentException::class)
                 ->hasMessage('Unknown aggregate origin: ' . $stale);
             $this->boolean($em->contains($managed))->isTrue();
             $this->array($repository->originIds($aggregateId))->isIdenticalTo([$second, $first]);
@@ -552,18 +564,18 @@ class NetworkPort extends DbTestCase
             $vlan = $this->createItem('Vlan', ['name' => $this->getUniqueString(), 'entities_id' => $entity, 'is_recursive' => 0]);
             $portId = (int)$port->getID();
             $vlanId = (int)$vlan->getID();
-            $id = (new \NetworkPort_Vlan())->assignVlan($portId, $vlanId, (int)$tagged);
+            $id = (new NetworkPort_Vlan())->assignVlan($portId, $vlanId, (int)$tagged);
             $this->integer($id)->isGreaterThan(0);
-            $manager = \itsmng\Database\Orm::create($writer);
+            $manager = Orm::create($writer);
             $this->variable($manager->getConnection())->isIdenticalTo($connection);
-            $repository = new \itsmng\Database\Repository\NetworkPortVlanRepository($manager);
+            $repository = new NetworkPortVlanRepository($manager);
             $expected = ['id' => $id, 'networkports_id' => $portId, 'vlans_id' => $vlanId, 'tagged' => $tagged];
             foreach ([false, true] as $current) {
                 $this->array($repository->membership($id, current: $current))->isIdenticalTo($expected);
                 $this->array($repository->selectedPair($portId, $vlanId, current: $current))->isIdenticalTo($expected);
             }
             $this->array($repository->membershipsForPort($portId))->isIdenticalTo([$expected]);
-            $this->array((new \itsmng\Domain\VlanMembershipService($writer))->membershipsForPort($portId))->isIdenticalTo([$expected]);
+            $this->array((new VlanMembershipService($writer))->membershipsForPort($portId))->isIdenticalTo([$expected]);
             $this->array($repository->currentPort($portId))->isIdenticalTo([
                 'id' => $portId, 'entity' => $entity, 'recursive' => false,
                 'itemtype' => 'Computer', 'items_id' => (int)$computer->getID(),

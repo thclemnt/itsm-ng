@@ -31,6 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DocumentRepository;
+use itsmng\Database\Repository\ProjectAssetRepository;
+use itsmng\Database\Repository\ProjectRepository;
+use itsmng\Database\Repository\RecordRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -150,9 +156,9 @@ class NotificationTargetProject extends NotificationTarget
     {
         global $DB;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            $members = (new \itsmng\Database\Repository\ProjectRepository($em))
+            $members = (new ProjectRepository($em))
                 ->projectTeamRecipients((int)$this->obj->fields['id'], 'User');
         } finally {
             $em->clear();
@@ -174,7 +180,7 @@ class NotificationTargetProject extends NotificationTarget
     {
         global $DB;
 
-        $members = (new \itsmng\Database\Repository\ProjectRepository(\itsmng\Database\Orm::create($DB)))
+        $members = (new ProjectRepository(Orm::create($DB)))
             ->projectTeamMemberIds((int)$this->obj->fields['id'], 'Group');
 
         foreach ($members as $member) {
@@ -192,9 +198,9 @@ class NotificationTargetProject extends NotificationTarget
     {
         global $DB, $CFG_GLPI;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            $members = (new \itsmng\Database\Repository\ProjectRepository($em))
+            $members = (new ProjectRepository($em))
                 ->projectTeamRecipients((int)$this->obj->fields['id'], 'Contact');
         } finally {
             $em->clear();
@@ -219,9 +225,9 @@ class NotificationTargetProject extends NotificationTarget
     {
         global $DB, $CFG_GLPI;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            $members = (new \itsmng\Database\Repository\ProjectRepository($em))
+            $members = (new ProjectRepository($em))
                 ->projectTeamRecipients((int)$this->obj->fields['id'], 'Supplier');
         } finally {
             $em->clear();
@@ -241,7 +247,7 @@ class NotificationTargetProject extends NotificationTarget
     {
         global $CFG_GLPI, $DB;
 
-        $records = new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB));
+        $records = new RecordRepository(Orm::create($DB));
 
         //----------- Reservation infos -------------- //
         $events = $this->getAllEvents();
@@ -472,7 +478,7 @@ class NotificationTargetProject extends NotificationTarget
         }
 
         // Document
-        $documents = (new \itsmng\Database\Repository\DocumentRepository(\itsmng\Database\Orm::create($DB)))
+        $documents = (new DocumentRepository(Orm::create($DB)))
             ->documentsForItem('Project', (int)$item->fields['id']);
 
         $this->data["documents"] = [];
@@ -516,7 +522,7 @@ class NotificationTargetProject extends NotificationTarget
                        = count($this->data['documents']);
 
         // Items infos
-        $items = (new \itsmng\Database\Repository\ProjectAssetRepository(\itsmng\Database\Orm::create($DB)))
+        $items = (new ProjectAssetRepository(Orm::create($DB)))
             ->bindings((int)$item->getField('id'));
 
         $this->data['items'] = [];

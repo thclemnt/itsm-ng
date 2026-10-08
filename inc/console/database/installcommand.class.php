@@ -37,12 +37,18 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use DBAdapter;
+use DBConnection;
+use Doctrine\DBAL\Exception;
 use GLPIKey;
 use Toolbox;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
+use itsmng\Database\InstallationConnection;
+use itsmng\Database\Installer;
+use itsmng\Database\Migration\History;
 
 class InstallCommand extends AbstractConfigureCommand
 {
@@ -175,7 +181,7 @@ class InstallCommand extends AbstractConfigureCommand
         } else {
             // The console owns the configured write connection, including its
             // provider-specific transport and schema. Do not reconstruct it.
-            if (!$DB instanceof \DBAdapter || !$DB->connected || $DB->isSlave()) {
+            if (!$DB instanceof DBAdapter || !$DB->connected || $DB->isSlave()) {
                 $output->writeln('<error>Installation requires a connected configured write adapter.</error>');
                 return self::ERROR_DB_CONNECTION_FAILED;
             }
@@ -206,12 +212,12 @@ class InstallCommand extends AbstractConfigureCommand
 
         $provider = $database === null ? $input->getOption('db-type') : $database->getProvider();
         if ($provider === 'pgsql') {
-            $database ??= \DBConnection::createConnection('pgsql', $db_hostport, $db_user, $db_pass, $db_name);
+            $database ??= DBConnection::createConnection('pgsql', $db_hostport, $db_user, $db_pass, $db_name);
             if (!$database->connected) {
                 $output->writeln('<error>' . $database->error() . '</error>');
                 return self::ERROR_DB_CONNECTION_FAILED;
             }
-            if (count($database->listTables()) > 0 && !\itsmng\Database\Migration\History::isInstalling($database->getDoctrineConnection())) {
+            if (count($database->listTables()) > 0 && !History::isInstalling($database->getDoctrineConnection())) {
                 $output->writeln('<error>PostgreSQL installation requires an empty schema. Use a new database.</error>');
                 return self::ERROR_DB_ALREADY_CONTAINS_TABLES;
             }
@@ -219,17 +225,17 @@ class InstallCommand extends AbstractConfigureCommand
             if (!$glpikey->keyExists() && !$glpikey->generate(false)) {
                 return self::ERROR_CANNOT_CREATE_ENCRYPTION_KEY_FILE;
             }
-            \itsmng\Database\Installer::installPostgres($database, $default_language);
+            Installer::installPostgres($database, $default_language);
             $output->writeln('<info>' . __('Installation done.') . '</info>');
             return 0;
         }
 
         $db_instance = $database;
         if ($db_instance === null) {
-            $server = \itsmng\Database\InstallationConnection::mysqlServer($db_hostport, $db_user, $db_pass);
+            $server = InstallationConnection::mysqlServer($db_hostport, $db_user, $db_pass);
             try {
                 $server->getServerVersion();
-            } catch (\Doctrine\DBAL\Exception $error) {
+            } catch (Exception $error) {
                 $output->writeln('<error>' . $error->getMessage() . '</error>', OutputInterface::VERBOSITY_QUIET);
                 $server->close();
                 return self::ERROR_DB_CONNECTION_FAILED;
@@ -240,8 +246,8 @@ class InstallCommand extends AbstractConfigureCommand
                 OutputInterface::VERBOSITY_VERBOSE
             );
             try {
-                \itsmng\Database\InstallationConnection::ensureMysqlDatabase($server, $db_name);
-            } catch (\Doctrine\DBAL\Exception $error) {
+                InstallationConnection::ensureMysqlDatabase($server, $db_name);
+            } catch (Exception $error) {
                 $output->writeln('<error>' . $error->getMessage() . '</error>', OutputInterface::VERBOSITY_QUIET);
                 return self::ERROR_DB_CREATION_FAILED;
             } finally {
@@ -249,13 +255,13 @@ class InstallCommand extends AbstractConfigureCommand
             }
 
             // A provider change cannot reuse the previously loaded DB subclass.
-            $db_instance = \DBConnection::createConnection('mysql', $db_hostport, $db_user, $db_pass, $db_name);
+            $db_instance = DBConnection::createConnection('mysql', $db_hostport, $db_user, $db_pass, $db_name);
         }
         if (!$db_instance->connected) {
             $output->writeln('<error>' . $db_instance->error() . '</error>', OutputInterface::VERBOSITY_QUIET);
             return self::ERROR_DB_CONNECTION_FAILED;
         }
-        if (\itsmng\Database\InstallationConnection::hasApplicationTables($db_instance->getDoctrineConnection()) && !$force && !\itsmng\Database\Migration\History::isInstalling($db_instance->getDoctrineConnection())) {
+        if (InstallationConnection::hasApplicationTables($db_instance->getDoctrineConnection()) && !$force && !History::isInstalling($db_instance->getDoctrineConnection())) {
             $output->writeln(
                 '<error>' . __('Database already contains "glpi_*" tables. Use --force option to override existing database.') . '</error>'
             );

@@ -7,6 +7,7 @@ namespace itsmng\Database\Repository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
+use InvalidArgumentException;
 use itsmng\Database\Entity\Project;
 use itsmng\Database\Entity\ProjectTask;
 use itsmng\Database\Entity\ProjectTaskTicket;
@@ -130,7 +131,7 @@ final class ProjectRepository
             'User' => ['id', 'language'],
             'Contact' => ['id', 'name', 'firstname', 'email'],
             'Supplier' => ['id', 'name', 'email'],
-            default => throw new \InvalidArgumentException('Unsupported individual project notification recipient'),
+            default => throw new InvalidArgumentException('Unsupported individual project notification recipient'),
         };
         return $this->em->createQueryBuilder()
             ->select(...array_map(static fn (string $field): string => 'recipient.' . $field . ' AS ' . $field, $fields))

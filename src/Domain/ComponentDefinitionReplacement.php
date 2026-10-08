@@ -4,10 +4,18 @@
 
 namespace itsmng\Domain;
 
+use CommonDBTM;
+use CommonDevice;
+use DBAdapter;
 use Doctrine\DBAL\Connection;
+use Entity;
+use Item_Devices;
+use Session;
 use itsmng\Database\DeletionCancelled;
 use itsmng\Database\DeletionUnit;
+use itsmng\Database\EntityRegistry;
 use itsmng\Database\ManagedTransactionScope;
+use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ComponentDefinitionRepository;
 use itsmng\Database\Repository\DeletionRepository;
@@ -18,10 +26,10 @@ final class ComponentDefinitionReplacement
     private bool $active = true;
 
     private function __construct(
-        private readonly \DBAdapter $database,
+        private readonly DBAdapter $database,
         private readonly Connection $connection,
         private readonly ManagedTransactionScope $scope,
-        private readonly \CommonDevice $owner,
+        private readonly CommonDevice $owner,
         public readonly int $source,
         public readonly int $replacement,
         private readonly array $sourceRecord,
@@ -30,7 +38,7 @@ final class ComponentDefinitionReplacement
     ) {
     }
 
-    public static function forPurge(\DBAdapter $database, \CommonDevice $owner): self
+    public static function forPurge(DBAdapter $database, CommonDevice $owner): self
     {
         $database->assertManagedTransaction();
         $connection = $database->getDoctrineConnection();
@@ -38,7 +46,7 @@ final class ComponentDefinitionReplacement
             throw new DeletionCancelled('Definition replacement requires its actual owner deletion.');
         }
         $scope = $connection->captureManagedTransactionScope();
-        $actor = \Session::getLoginUserID();
+        $actor = Session::getLoginUserID();
         $sourceId = (int)$owner->getID();
         $replacementId = (int)($owner->input['_replace_by'] ?? 0);
         if ($sourceId <= 0 || $replacementId <= 0 || $sourceId === $replacementId) {
@@ -52,7 +60,7 @@ final class ComponentDefinitionReplacement
             $records = new ComponentDefinitionRepository($manager);
             $source = $records->current($owner->getTable(), $sourceId);
             $replacement = $records->current($owner->getTable(), $replacementId);
-            if (\Session::getLoginUserID() !== $actor || $database !== ($GLOBALS['DB'] ?? null)
+            if (Session::getLoginUserID() !== $actor || $database !== ($GLOBALS['DB'] ?? null)
                 || $database->getDoctrineConnection() !== $connection || (int)$owner->getID() !== $sourceId
                 || (int)($owner->input['_replace_by'] ?? 0) !== $replacementId
                 || $source === null || $replacement === null || $source['id'] === $replacement['id']
@@ -91,7 +99,7 @@ final class ComponentDefinitionReplacement
         $this->scope->assertActive();
         if (!$this->active || $this->database !== ($GLOBALS['DB'] ?? null)
             || $this->database->getDoctrineConnection() !== $this->connection
-            || \Session::getLoginUserID() !== $this->actor
+            || Session::getLoginUserID() !== $this->actor
             || (int)$this->owner->getID() !== $this->source
             || (int)($this->owner->input['_replace_by'] ?? 0) !== $this->replacement) {
             throw new DeletionCancelled('The definition replacement command changed.');
@@ -111,7 +119,7 @@ final class ComponentDefinitionReplacement
         return $row;
     }
 
-    public function bind(\Item_Devices $model, array $input, string $column): ComponentDefinitionChange
+    public function bind(Item_Devices $model, array $input, string $column): ComponentDefinitionChange
     {
         $this->assertActive();
         if (!ComponentDefinitionRepository::supportsFamily($model, $this->owner->getTable(), $column)) {
@@ -134,7 +142,7 @@ final class ComponentDefinitionReplacement
         if ($stored === null || (int)$stored[$column] !== $this->source) {
             throw new DeletionCancelled('The selected binding owner changed.');
         }
-        $declaredOwner = \itsmng\Database\EntityRegistry::entityScopeOwner($model->getTable());
+        $declaredOwner = EntityRegistry::entityScopeOwner($model->getTable());
         if ($declaredOwner !== null && ($declaredOwner['column'] !== $column || $declaredOwner['target'] !== $this->owner->getTable())) {
             throw new DeletionCancelled('This definition does not own the declared cached scope.');
         }
@@ -144,7 +152,7 @@ final class ComponentDefinitionReplacement
         $scopeOwner = $this->replacementRecord;
         if (!($kind === null || $kind === '') || (int)$stored['items_id'] !== 0) {
             $subject = is_string($kind) ? getItemForItemtype($kind) : false;
-            if (!$subject || !($subject instanceof \CommonDBTM)) {
+            if (!$subject || !($subject instanceof CommonDBTM)) {
                 throw new DeletionCancelled('The attached component subject is invalid.');
             }
             $subjectTable = $subject->getTable();
@@ -185,7 +193,7 @@ final class ComponentDefinitionReplacement
     private function definitionAvailable(array $asset): bool
     {
         if (($this->replacementRecord['entities_id'] ?? null) === null
-            && \itsmng\Database\EntityRegistry::hasPolicy($this->owner->getTable(), 'entities_id', \itsmng\Database\Mapping\ReferenceKind::GlobalScope)) {
+            && EntityRegistry::hasPolicy($this->owner->getTable(), 'entities_id', ReferenceKind::GlobalScope)) {
             return true;
         }
         $target = (int)($this->replacementRecord['entities_id'] ?? 0);
@@ -202,7 +210,7 @@ final class ComponentDefinitionReplacement
                 throw new DeletionCancelled('The current asset entity ancestry contains a cycle.');
             }
             $seen[$entity] = true;
-            $record = $this->current(\Entity::getTable(), $entity);
+            $record = $this->current(Entity::getTable(), $entity);
             if ($record === null) {
                 return false;
             }

@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\MappedReads;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -318,7 +320,7 @@ class Enclosure extends CommonDBTM
     {
         global $DB;
 
-        $rows = \itsmng\Database\MappedReads::matching($DB, Item_Enclosure::getTable(), ['enclosures_id' => $this->getID()]);
+        $rows = MappedReads::matching($DB, Item_Enclosure::getTable(), ['enclosures_id' => $this->getID()]);
 
         $filled = [];
         foreach ($rows as $row) {

@@ -4,11 +4,14 @@
 
 namespace tests\units\Glpi\Api\Deprecated;
 
-class TicketFollowup extends \GLPITestCase
+use GLPITestCase;
+use Glpi\Api\Deprecated\TicketFollowup as DeprecatedTicketFollowup;
+
+class TicketFollowup extends GLPITestCase
 {
     public function testDeleteFieldDistinguishesNullFromAbsent(): void
     {
-        $mapper = new \Glpi\Api\Deprecated\TicketFollowup();
+        $mapper = new DeprecatedTicketFollowup();
         foreach ([null, 0, false, '', 'value'] as $value) {
             $fields = ['removed' => $value, 'retained' => null];
             $mapper->deleteField($fields, 'removed');
@@ -37,7 +40,7 @@ class TicketFollowup extends \GLPITestCase
             'problems_id' => null, 'changes_id' => null,
             'sourceitems_id' => null, 'sourceof_items_id' => null,
         ];
-        $mapper = new \Glpi\Api\Deprecated\TicketFollowup();
+        $mapper = new DeprecatedTicketFollowup();
         $mapped = $mapper->mapCurrentToDeprecatedFields($current);
         $this->array($mapped)->isEqualTo($expected)->hasSize(12);
         $this->array($current)->hasKeys(['problems_id', 'changes_id', 'sourceitems_id', 'sourceof_items_id']);

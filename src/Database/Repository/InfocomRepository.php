@@ -4,11 +4,18 @@
 
 namespace itsmng\Database\Repository;
 
+use Alert;
+use DateTimeImmutable;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Infocom;
+use InvalidArgumentException;
+use Item_Devices;
 use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\RecordCriteria;
+
+use function getTableForItemType;
 
 final class InfocomRepository
 {
@@ -26,7 +33,7 @@ final class InfocomRepository
     }
 
     /** Inclusive day cutoff and exact prior end-of-warranty events within one entity. */
-    public function warrantiesExpiring(int $entity, int $days, ?\DateTimeImmutable $today = null): array
+    public function warrantiesExpiring(int $entity, int $days, ?DateTimeImmutable $today = null): array
     {
         $date = $today === null ? 'CURRENT_DATE()' : ':today';
         $query = $this->em->createQueryBuilder()->select('i')->from(Entity\Infocom::class, 'i')
@@ -35,8 +42,8 @@ final class InfocomRepository
             ->andWhere('i.warranty_duration > 0 AND i.warranty_date IS NOT NULL AND a.id IS NULL')
             ->andWhere("DATE_DIFF(DATE_ADD(i.warranty_date, i.warranty_duration, 'month'), " . $date . ') <= :days')
             ->setParameter('entity', $entity, Types::BIGINT)
-            ->setParameter('end', \Alert::END, Types::INTEGER)
-            ->setParameter('mask', 1 << \Alert::END, Types::INTEGER)
+            ->setParameter('end', Alert::END, Types::INTEGER)
+            ->setParameter('mask', 1 << Alert::END, Types::INTEGER)
             ->setParameter('days', $days, Types::INTEGER)
             ->orderBy('i.id');
         if ($today !== null) {
@@ -56,7 +63,7 @@ final class InfocomRepository
         $metadata = $this->em->getClassMetadata(Entity\Infocom::class);
         $query = $this->em->createQueryBuilder()->select('DISTINCT r.itemtype AS itemtype')->from($metadata->name, 'r');
         $query->where((new RecordCriteria($query, $metadata))->where([
-            'AND' => [['NOT' => ['itemtype' => \Infocom::getExcludedTypes()]], $criteria],
+            'AND' => [['NOT' => ['itemtype' => Infocom::getExcludedTypes()]], $criteria],
         ]))->orderBy('r.itemtype');
         return $query->getQuery()->getScalarResult();
     }
@@ -67,7 +74,7 @@ final class InfocomRepository
         return match ($itemtype) {
             'Cartridge' => ['CartridgeItem', 'cartridgeitems_id'],
             'Consumable' => ['ConsumableItem', 'consumableitems_id'],
-            default => is_a($itemtype, \Item_Devices::class, true)
+            default => is_a($itemtype, Item_Devices::class, true)
                 ? [$itemtype::$itemtype_2, $itemtype::$items_id_2]
                 : [$itemtype, 'id'],
         };
@@ -76,13 +83,13 @@ final class InfocomRepository
     public static function supports(string $itemtype): bool
     {
         [$linktype] = self::linkFor($itemtype);
-        return isset(EntityRegistry::tables()[\getTableForItemType($itemtype)], EntityRegistry::tables()[\getTableForItemType($linktype)]);
+        return isset(EntityRegistry::tables()[getTableForItemType($itemtype)], EntityRegistry::tables()[getTableForItemType($linktype)]);
     }
 
     /** Count first; the renderer replaces oversized groups with a search link. */
     public function forSupplier(string $itemtype, int $supplier, ?array $entities, int $limit): array
     {
-        $class = EntityRegistry::tables()[\getTableForItemType($itemtype)] ?? throw new \InvalidArgumentException('Unmapped financial item type');
+        $class = EntityRegistry::tables()[getTableForItemType($itemtype)] ?? throw new InvalidArgumentException('Unmapped financial item type');
         [$linktype, $linkfield] = self::linkFor($itemtype);
         $query = $this->em->createQueryBuilder()->from(Entity\Infocom::class, 'i')
             ->innerJoin($class, 'a', 'WITH', 'a.id = i.items_id')
@@ -102,7 +109,7 @@ final class InfocomRepository
             if ($association !== null) {
                 $query->innerJoin('a.' . $association, $linkAlias);
             } else {
-                $linkClass = EntityRegistry::tables()[\getTableForItemType($linktype)];
+                $linkClass = EntityRegistry::tables()[getTableForItemType($linktype)];
                 $query->innerJoin($linkClass, $linkAlias, 'WITH', 'model.id = a.' . $metadata->getFieldName($linkfield));
             }
         }

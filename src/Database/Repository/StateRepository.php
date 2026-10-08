@@ -6,7 +6,10 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
 use itsmng\Database\EntityRegistry;
+
+use function getTableForItemType;
 
 final class StateRepository
 {
@@ -16,13 +19,13 @@ final class StateRepository
 
     public static function supports(string $itemtype): bool
     {
-        return isset(EntityRegistry::tables()[\getTableForItemType($itemtype)]);
+        return isset(EntityRegistry::tables()[getTableForItemType($itemtype)]);
     }
 
     /** NULL state is exposed as the existing "no state" bucket, ID zero. */
     public function counts(string $itemtype, ?array $entities): array
     {
-        $class = EntityRegistry::tables()[\getTableForItemType($itemtype)] ?? throw new \InvalidArgumentException('Unmapped state item type');
+        $class = EntityRegistry::tables()[getTableForItemType($itemtype)] ?? throw new InvalidArgumentException('Unmapped state item type');
         $metadata = $this->em->getClassMetadata($class);
         $query = $this->em->createQueryBuilder()->select('IDENTITY(a.states) AS states_id', 'COUNT(a.id) AS cpt')
             ->from($class, 'a')->groupBy('a.states');

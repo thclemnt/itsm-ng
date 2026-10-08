@@ -34,6 +34,10 @@
 namespace tests\units;
 
 use DbTestCase;
+use SavedSearch;
+use SavedSearch_User as LegacySavedSearch_User;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\SavedSearchRepository;
 
 /* Test for inc/savedsearch_user.class.php */
 
@@ -51,8 +55,8 @@ class SavedSearch_User extends DbTestCase
         $this->boolean(
             (bool)\SavedSearch_User::getDefault($uid, 'Ticket')
         )->isFalse();
-        $this->boolean(\SavedSearch_User::getDefault(0, 'Ticket'))->isFalse();
-        $this->boolean(\SavedSearch_User::getDefault(-1, 'Ticket'))->isFalse();
+        $this->boolean(LegacySavedSearch_User::getDefault(0, 'Ticket'))->isFalse();
+        $this->boolean(LegacySavedSearch_User::getDefault(-1, 'Ticket'))->isFalse();
 
         // now add a bookmark on Ticket view
         $bk = new \SavedSearch();
@@ -94,8 +98,8 @@ class SavedSearch_User extends DbTestCase
                       'reset'            => 'reset',
                      ]);
 
-        $reader = \itsmng\Database\Orm::create($DB);
-        $defaults = new \itsmng\Database\Repository\SavedSearchRepository($reader);
+        $reader = Orm::create($DB);
+        $defaults = new SavedSearchRepository($reader);
         $projection = $defaults->defaultParameters((int)$uid, 'Ticket');
         $this->array($projection)->hasSize(4)->hasKeys(['id', 'query', 'type', 'itemtype']);
         $this->integer($projection['id'])->isIdenticalTo((int)$bk_id);
@@ -103,33 +107,33 @@ class SavedSearch_User extends DbTestCase
         $this->variable($defaults->defaultParameters(0, 'Ticket'))->isNull();
         $this->variable($defaults->defaultParameters(PHP_INT_MAX, 'Ticket'))->isNull();
         $this->variable($defaults->defaultParameters((int)$uid, 'Computer'))->isNull();
-        $this->boolean(\SavedSearch_User::getDefault($uid, 'Computer'))->isFalse();
+        $this->boolean(LegacySavedSearch_User::getDefault($uid, 'Computer'))->isFalse();
 
         // Public parameter loading still populates the complete model, including non-projected fields.
-        $bookmark = new \SavedSearch();
+        $bookmark = new SavedSearch();
         $this->array($bookmark->getParameters($bk_id))->isIdenticalTo($bk);
         $this->string($bookmark->fields['name'])->isIdenticalTo('All my tickets');
         $this->integer((int)$bookmark->fields['users_id'])->isIdenticalTo((int)$uid);
 
         // Every operation observes writes; the projection must not become a default-row cache.
         $this->boolean($bookmark->update(['id' => $bk_id, 'query' => 'itemtype=Ticket&sort=1&order=ASC']))->isTrue();
-        $fresh = \SavedSearch_User::getDefault($uid, 'Ticket');
+        $fresh = LegacySavedSearch_User::getDefault($uid, 'Ticket');
         $this->string($fresh['sort'])->isIdenticalTo('1');
         $this->string($fresh['order'])->isIdenticalTo('ASC');
         $this->string($fresh['reset'])->isIdenticalTo('reset');
 
         // Unknown stored item types still reject; URI/AllAssets keeps its original parsing contract.
         $this->boolean($bookmark->update(['id' => $bk_id, 'itemtype' => 'MissingSavedSearchItemType']))->isTrue();
-        $this->boolean(\SavedSearch_User::getDefault($uid, 'Ticket'))->isFalse();
-        $this->boolean($bookmark->update(['id' => $bk_id, 'itemtype' => 'AllAssets', 'type' => \SavedSearch::URI,
+        $this->boolean(LegacySavedSearch_User::getDefault($uid, 'Ticket'))->isFalse();
+        $this->boolean($bookmark->update(['id' => $bk_id, 'itemtype' => 'AllAssets', 'type' => SavedSearch::URI,
             'query' => 'itemtype=AllAssets&custom%5B0%5D=one&custom%5B1%5D=two']))->isTrue();
-        $this->array(\SavedSearch_User::getDefault($uid, 'Ticket'))->isIdenticalTo([
+        $this->array(LegacySavedSearch_User::getDefault($uid, 'Ticket'))->isIdenticalTo([
             'itemtype' => 'AllAssets', 'custom' => ['one', 'two'], 'savedsearches_id' => (int)$bk_id,
         ]);
         $this->boolean($bookmark->update(['id' => $bk_id, 'query' => null]))->isTrue();
-        $this->array(\SavedSearch_User::getDefault($uid, 'Ticket'))->isIdenticalTo(['savedsearches_id' => (int)$bk_id]);
+        $this->array(LegacySavedSearch_User::getDefault($uid, 'Ticket'))->isIdenticalTo(['savedsearches_id' => (int)$bk_id]);
         $this->boolean($bk_user->delete(['id' => $bk_user->fields['id']], true))->isTrue();
-        $this->boolean(\SavedSearch_User::getDefault($uid, 'Ticket'))->isFalse();
+        $this->boolean(LegacySavedSearch_User::getDefault($uid, 'Ticket'))->isFalse();
 
     }
 

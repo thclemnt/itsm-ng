@@ -9,6 +9,7 @@ use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
+use InvalidArgumentException;
 use itsmng\Database\Entity;
 use itsmng\Database\EntityRestriction;
 use itsmng\Database\RecordCriteria;
@@ -110,7 +111,7 @@ final class LinkRepository
     {
         try {
             $association = Entity\DomainItem::referenceAssociation($type);
-        } catch (\InvalidArgumentException) {
+        } catch (InvalidArgumentException) {
             return null;
         }
         $row = $this->em->createQueryBuilder()->select('d.name')->from(Entity\DomainItem::class, 'binding')->join('binding.domains', 'd')

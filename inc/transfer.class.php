@@ -31,7 +31,20 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\LifecycleModelJournal;
+use itsmng\Database\MutationCleanupFailure;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ComponentRepository;
+use itsmng\Database\Repository\SoftwareInstallationRepository;
+use itsmng\Database\Repository\SoftwareRepository;
+use itsmng\Database\Repository\TicketAssetRepository;
+use itsmng\Database\Repository\TransferBindingRepository;
+use itsmng\Database\TransactionOwnershipMismatch;
+use itsmng\Domain\SoftwareAssignmentService;
+use itsmng\Domain\SoftwareTransferSelection;
 use itsmng\Domain\TransferCancelled;
+use itsmng\Domain\TransferCoordinator;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -53,9 +66,9 @@ class Transfer extends CommonDBTM
     /// type of initial item transfered
     public $inittype              = 0;
 
-    private ?\itsmng\Domain\TransferCoordinator $transferCoordinator = null;
+    private ?TransferCoordinator $transferCoordinator = null;
     /** Actual model instances checkpointed for this operation, not a type registry. */
-    private ?\itsmng\Database\LifecycleModelJournal $transferModels = null;
+    private ?LifecycleModelJournal $transferModels = null;
     /** Successful creation facts for this operation, used to restore new model instances. */
     private array $createdTransferRecords = [];
 
@@ -143,7 +156,7 @@ class Transfer extends CommonDBTM
             $this->inittype = 0;
             $this->performMoveItems($items, (int)$to, $options);
             return true;
-        }, \itsmng\Domain\SoftwareTransferSelection::toEntity($items, (int)$to));
+        }, SoftwareTransferSelection::toEntity($items, (int)$to));
     }
 
     /** The coordinator includes simulation cleanup and every selected mutation. */
@@ -269,12 +282,12 @@ class Transfer extends CommonDBTM
 
 
     /** Recursive transfers join the current operation and propagate refusals. */
-    private function runTransfer(callable $operation, \itsmng\Domain\SoftwareTransferSelection $selection)
+    private function runTransfer(callable $operation, SoftwareTransferSelection $selection)
     {
         global $DB;
         try {
             $DB->assertManagedTransaction();
-        } catch (\itsmng\Database\TransactionOwnershipMismatch $error) {
+        } catch (TransactionOwnershipMismatch $error) {
             Session::addMessageAfterRedirect(__('Finish the current transaction before transferring items.'), false, ERROR);
             return false;
         }
@@ -289,19 +302,19 @@ class Transfer extends CommonDBTM
             $this->options, $this->to, $this->inittype,
         ];
         $session = $_SESSION;
-        $this->transferCoordinator = new \itsmng\Domain\TransferCoordinator($DB);
-        $this->transferModels = new \itsmng\Database\LifecycleModelJournal();
+        $this->transferCoordinator = new TransferCoordinator($DB);
+        $this->transferModels = new LifecycleModelJournal();
         $this->transferModels->remember($this);
         $this->createdTransferRecords = [];
         try {
             return $this->transferModels->observe($DB->getDoctrineConnection(), fn () => NotificationSetting::withoutNotifications(
-                fn () => $this->transferCoordinator->run(fn () => (new \itsmng\Domain\SoftwareAssignmentService($DB))->withTransferHierarchy(
+                fn () => $this->transferCoordinator->run(fn () => (new SoftwareAssignmentService($DB))->withTransferHierarchy(
                     $selection,
                     $operation
                 ))
             ));
         } catch (Throwable $error) {
-            if ($error instanceof \itsmng\Database\MutationCleanupFailure && $error->rollbackUnproven) {
+            if ($error instanceof MutationCleanupFailure && $error->rollbackUnproven) {
                 // A lost frame cannot justify restoring old model/session views
                 // or a routine false outcome. Actual persisted state stays open.
                 throw $error;
@@ -335,7 +348,7 @@ class Transfer extends CommonDBTM
 
     private function transferModelState(CommonDBTM $model): array
     {
-        return \itsmng\Database\LifecycleModelJournal::state($model);
+        return LifecycleModelJournal::state($model);
     }
 
 
@@ -1205,7 +1218,7 @@ class Transfer extends CommonDBTM
     **/
     public function transferItem($itemtype, $ID, $newID)
     {
-        return $this->runTransfer(fn () => $this->performTransferItem($itemtype, $ID, $newID), \itsmng\Domain\SoftwareTransferSelection::toEntity([$itemtype => [$ID, $newID]], (int)$this->to));
+        return $this->runTransfer(fn () => $this->performTransferItem($itemtype, $ID, $newID), SoftwareTransferSelection::toEntity([$itemtype => [$ID, $newID]], (int)$this->to));
     }
 
     private function performTransferItem($itemtype, $ID, $newID): bool
@@ -1641,7 +1654,7 @@ class Transfer extends CommonDBTM
                 $newsoftID = $ID;
 
             } else {
-                $repository = new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB));
+                $repository = new SoftwareRepository(Orm::create($DB));
                 $destination = $repository->softwareForTransfer(
                     (int)$this->to,
                     (string)$soft->fields['name'],
@@ -1695,7 +1708,7 @@ class Transfer extends CommonDBTM
                 $newversID = $ID;
 
             } else {
-                $repository = new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB));
+                $repository = new SoftwareRepository(Orm::create($DB));
                 $destination = $repository->versionForTransfer((int)$newsoftID, (string)$vers->fields['name']);
 
                 if ($destination !== null) {
@@ -1764,8 +1777,8 @@ class Transfer extends CommonDBTM
     {
         return $this->runTransfer(function () use ($itemtype, $ID) {
             global $DB;
-            (new \itsmng\Domain\SoftwareAssignmentService($DB))->lockTransferSubject($itemtype, (int)$ID);
-            $repository = new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB));
+            (new SoftwareAssignmentService($DB))->lockTransferSubject($itemtype, (int)$ID);
+            $repository = new SoftwareInstallationRepository(Orm::create($DB));
             foreach ($repository->installationsForTransfer($itemtype, (int)$ID, $this->noneedtobe_transfer['SoftwareVersion'] ?? [], currentRead: true) as $data) {
                 $installation = new Item_SoftwareVersion();
                 if ($this->options['keep_software']) {
@@ -1786,8 +1799,8 @@ class Transfer extends CommonDBTM
             }
             return true;
         }, $this->to < 0
-            ? \itsmng\Domain\SoftwareTransferSelection::selected([$itemtype => [$ID]])
-            : \itsmng\Domain\SoftwareTransferSelection::toEntity([$itemtype => [$ID]], (int)$this->to));
+            ? SoftwareTransferSelection::selected([$itemtype => [$ID]])
+            : SoftwareTransferSelection::toEntity([$itemtype => [$ID]], (int)$this->to));
     }
 
 
@@ -1796,7 +1809,7 @@ class Transfer extends CommonDBTM
     {
         return $this->runTransfer(function () use ($ID) {
             global $DB;
-            (new \itsmng\Domain\SoftwareAssignmentService($DB))->transferAllocation(
+            (new SoftwareAssignmentService($DB))->transferAllocation(
                 (int)$ID,
                 (int)$this->to,
                 fn ($id) => $this->checkedTransferResult($this->copySingleSoftware($id)),
@@ -1812,7 +1825,7 @@ class Transfer extends CommonDBTM
                 }
             );
             return true;
-        }, \itsmng\Domain\SoftwareTransferSelection::toEntity([Item_SoftwareLicense::class => [$ID]], (int)$this->to));
+        }, SoftwareTransferSelection::toEntity([Item_SoftwareLicense::class => [$ID]], (int)$this->to));
     }
 
 
@@ -1824,7 +1837,7 @@ class Transfer extends CommonDBTM
     public function transferSoftwareLicensesAndVersions($ID)
     {
         global $DB;
-        $repository = new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB));
+        $repository = new SoftwareRepository(Orm::create($DB));
         foreach ($repository->licensesForTransfer((int)$ID) as $license) {
             $this->requireTransfer($this->transferItem('SoftwareLicense', $license, $license));
         }
@@ -1843,7 +1856,7 @@ class Transfer extends CommonDBTM
         }
 
         $vers = new SoftwareVersion();
-        $repository = new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB));
+        $repository = new SoftwareRepository(Orm::create($DB));
         foreach ($this->already_transfer['SoftwareVersion'] as $old => $new) {
             if (!$repository->isVersionReferenced((int)$old)) {
                 $this->deleteForTransfer($vers, ['id' => $old]);
@@ -1860,7 +1873,7 @@ class Transfer extends CommonDBTM
         }
 
         $soft = new Software();
-        $repository = new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB));
+        $repository = new SoftwareRepository(Orm::create($DB));
         foreach ($this->already_transfer['Software'] as $old => $new) {
             if (!$repository->hasInventory((int)$old)) {
                 if ($this->options['clean_software'] == 1) { // delete
@@ -1886,7 +1899,7 @@ class Transfer extends CommonDBTM
     {
         global $DB;
 
-        $repository = \itsmng\Database\Repository\TransferBindingRepository::contracts(\itsmng\Database\Orm::create($DB));
+        $repository = TransferBindingRepository::contracts(Orm::create($DB));
         if (!$this->options['keep_contract']) {
             $repository->unlink($itemtype, (int)$ID);
             return;
@@ -1958,7 +1971,7 @@ class Transfer extends CommonDBTM
     {
         global $DB;
 
-        $repository = \itsmng\Database\Repository\TransferBindingRepository::documents(\itsmng\Database\Orm::create($DB));
+        $repository = TransferBindingRepository::documents(Orm::create($DB));
         if (!$this->options['keep_document']) {
             $repository->unlink($itemtype, (int)$ID);
             return;
@@ -2293,7 +2306,7 @@ class Transfer extends CommonDBTM
         $job   = new Ticket();
         $rel   = new Item_Ticket();
 
-        $rows = (new \itsmng\Database\Repository\TicketAssetRepository(\itsmng\Database\Orm::create($DB)))
+        $rows = (new TicketAssetRepository(Orm::create($DB)))
             ->transferRows((string)$itemtype, (int)$ID);
 
         if ($rows) {
@@ -3006,8 +3019,8 @@ class Transfer extends CommonDBTM
     {
         global $DB;
 
-        $componentManager = \itsmng\Database\Orm::create($DB);
-        $components = new \itsmng\Database\Repository\ComponentRepository($componentManager);
+        $componentManager = Orm::create($DB);
+        $components = new ComponentRepository($componentManager);
         try {
             // Only same case because no duplication of computers
             switch ($this->options['keep_device']) {
@@ -3015,7 +3028,7 @@ class Transfer extends CommonDBTM
                 case 0:
                     foreach (Item_Devices::getItemAffinities($itemtype) as $type) {
                         $table = getTableForItemType($type);
-                        if (isset(\itsmng\Database\EntityRegistry::tables()[$table])) {
+                        if (isset(EntityRegistry::tables()[$table])) {
                             foreach ($components->assigned($table, $type::getDeviceForeignKey(), $itemtype, (int)$ID, []) as $row) {
                                 $link = new $type();
                                 TransferCancelled::requireWrite($link->getFromDB($row['id']), 'Load component for transfer purge');
@@ -3054,7 +3067,7 @@ class Transfer extends CommonDBTM
                         ) {
                             $criteria['WHERE']['NOT'] = [$fk => $this->noneedtobe_transfer[$devicetype]];
                         }
-                        $mapped = isset(\itsmng\Database\EntityRegistry::tables()[$itemdevicetable]);
+                        $mapped = isset(EntityRegistry::tables()[$itemdevicetable]);
                         $rows = $mapped ? $components->assigned(
                             $itemdevicetable,
                             $fk,

@@ -4,18 +4,23 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ITILSubject;
+use itsmng\Database\Mapping\LegacyInput;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\RequiredSubjectConstraint;
 use itsmng\Database\Mapping\UserReferenceAction;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_itilsolutions')]
 #[ORM\HasLifecycleCallbacks]
-#[\itsmng\Database\Mapping\RequiredSubjectConstraint('subject_kind')]
-class ITILSolution implements \itsmng\Database\Mapping\LegacyInput
+#[RequiredSubjectConstraint('subject_kind')]
+class ITILSolution implements LegacyInput
 {
-    use \itsmng\Database\Mapping\ITILSubject;
+    use ITILSubject;
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
@@ -33,16 +38,16 @@ class ITILSolution implements \itsmng\Database\Mapping\LegacyInput
     public ?string $content = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date_approval`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_approval = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_approval = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]

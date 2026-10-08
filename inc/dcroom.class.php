@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\MappedReads;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -358,7 +360,7 @@ class DCRoom extends CommonDBTM
         }
         $canedit = $datacenter->canEdit($ID);
 
-        $rooms = \itsmng\Database\MappedReads::matching($DB, self::getTable(), ['datacenters_id' => $datacenter->getID()]);
+        $rooms = MappedReads::matching($DB, self::getTable(), ['datacenters_id' => $datacenter->getID()]);
 
         echo "<div class='firstbloc'>";
         Html::showSimpleForm(
@@ -441,7 +443,7 @@ class DCRoom extends CommonDBTM
     {
         global $DB;
 
-        $racks = \itsmng\Database\MappedReads::matching($DB, Rack::getTable(), ['dcrooms_id' => $this->getID(), 'is_deleted' => false]);
+        $racks = MappedReads::matching($DB, Rack::getTable(), ['dcrooms_id' => $this->getID(), 'is_deleted' => false]);
 
         $filled = [];
         foreach ($racks as $rack) {

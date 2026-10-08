@@ -34,6 +34,7 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\ORM\Event\PostLoadEventArgs;
 use SoftwareVersion as CoreSoftwareVersion;
 use itsmng\Database\Orm;
 use itsmng\Database\Entity;
@@ -79,7 +80,7 @@ class SoftwareVersion extends DbTestCase
             $manager->clear();
             $loads = new class () {
                 public int $count = 0;
-                public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
+                public function postLoad(PostLoadEventArgs $event): void
                 {
                     ++$this->count;
                 }

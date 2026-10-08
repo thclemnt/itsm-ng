@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NotificationQueueRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -156,7 +159,7 @@ class QueuedChat extends CommonDBTM
                 'entities_id' => $input['entities_id'],
                 'notificationtemplates_id' => $input['notificationtemplates_id'],
             ];
-            foreach ((new \itsmng\Database\Repository\NotificationQueueRepository(\itsmng\Database\Orm::create($DB)))->duplicateIds('chat', $criteria) as $id) {
+            foreach ((new NotificationQueueRepository(Orm::create($DB)))->duplicateIds('chat', $criteria) as $id) {
                 $this->delete(['id' => $id], 1);
             }
         }
@@ -420,7 +423,7 @@ class QueuedChat extends CommonDBTM
                 continue;
             }
 
-            $rows = (new \itsmng\Database\Repository\NotificationQueueRepository(\itsmng\Database\Orm::create($DB)))->pending('chat', (string)$mode, new \DateTimeImmutable($send_time), (int)$limit, $extra_where);
+            $rows = (new NotificationQueueRepository(Orm::create($DB)))->pending('chat', (string)$mode, new DateTimeImmutable($send_time), (int)$limit, $extra_where);
             if ($rows) {
                 $pendings[$mode] = $rows;
             }
@@ -487,8 +490,8 @@ class QueuedChat extends CommonDBTM
 
         // Expire chat in queue
         if ($task->fields['param'] > 0) {
-            $before = (new \DateTimeImmutable())->setTimestamp(time() - (int)$task->fields['param'] * DAY_TIMESTAMP);
-            $vol = (new \itsmng\Database\Repository\NotificationQueueRepository(\itsmng\Database\Orm::create($DB)))->purgeExpired('chat', $before);
+            $before = (new DateTimeImmutable())->setTimestamp(time() - (int)$task->fields['param'] * DAY_TIMESTAMP);
+            $vol = (new NotificationQueueRepository(Orm::create($DB)))->purgeExpired('chat', $before);
         }
 
         $task->setVolume($vol);

@@ -4,6 +4,7 @@
 
 namespace itsmng\Database\Repository;
 
+use DateTimeImmutable;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity\ObjectLock;
@@ -15,7 +16,7 @@ final class ObjectLockRepository
     }
 
     /** Selection only; the model still owns unlocking, audit history and notifications. */
-    public function expired(\DateTimeImmutable $before): array
+    public function expired(DateTimeImmutable $before): array
     {
         $query = $this->em->createQueryBuilder()->select('r')->from(ObjectLock::class, 'r')
             ->where('r.date_mod < :before')->setParameter('before', $before, Types::DATETIMETZ_IMMUTABLE)

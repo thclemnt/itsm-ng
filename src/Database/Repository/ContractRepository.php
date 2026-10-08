@@ -4,8 +4,12 @@
 
 namespace itsmng\Database\Repository;
 
+use Alert as LegacyAlert;
+use Contract as LegacyContract;
+use DateTimeImmutable;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\QueryBuilder;
+use InvalidArgumentException;
 use itsmng\Database\Entity\Alert;
 use itsmng\Database\Entity\Contract;
 use itsmng\Database\Entity\ContractItem;
@@ -17,7 +21,7 @@ use itsmng\Database\RecordCriteria;
 final class ContractRepository extends DropdownChoiceRepository
 {
     /** Exact legacy dashboard day buckets, evaluated together on the supplied connection. */
-    public function deadlineCounts(array $scope, ?\DateTimeImmutable $today = null): array
+    public function deadlineCounts(array $scope, ?DateTimeImmutable $today = null): array
     {
         $query = $this->createQueryBuilder('r')->where('r.is_deleted = :deleted')->setParameter('deleted', false, Types::BOOLEAN);
         $query->andWhere((new RecordCriteria($query, $this->getClassMetadata()))->where($scope));
@@ -35,10 +39,10 @@ final class ContractRepository extends DropdownChoiceRepository
     }
 
     /** Typed owning Alert branches keep other events and overlapping item identities separate. */
-    public function notificationCandidates(int $entity, int $event, int $daysBefore, ?\DateTimeImmutable $today = null): array
+    public function notificationCandidates(int $entity, int $event, int $daysBefore, ?DateTimeImmutable $today = null): array
     {
-        if (!in_array($event, [\Alert::END, \Alert::NOTICE], true)) {
-            throw new \InvalidArgumentException('Unsupported contract deadline event');
+        if (!in_array($event, [LegacyAlert::END, LegacyAlert::NOTICE], true)) {
+            throw new InvalidArgumentException('Unsupported contract deadline event');
         }
         $query = $this->createQueryBuilder('r')
             ->leftJoin(Alert::class, 'a', 'WITH', 'a.contract = r AND a.type = :event')
@@ -49,7 +53,7 @@ final class ContractRepository extends DropdownChoiceRepository
             ->setParameter('days', $daysBefore, Types::INTEGER)->orderBy('r.id');
         $date = $this->today($query, $today);
         $end = "DATE_DIFF(DATE_ADD(r.begin_date, r.duration, 'month'), " . $date . ')';
-        if ($event === \Alert::NOTICE) {
+        if ($event === LegacyAlert::NOTICE) {
             $query->andWhere('r.notice <> 0 AND ' . $end . ' > 0')
                 ->andWhere("DATE_DIFF(DATE_ADD(r.begin_date, (r.duration - r.notice), 'month'), " . $date . ') < :days');
         } else {
@@ -67,14 +71,14 @@ final class ContractRepository extends DropdownChoiceRepository
             ->where('IDENTITY(r.entities) = :entity AND r.is_deleted = :deleted AND BIT_AND(r.alert, :mask) > 0')
             ->andWhere('r.begin_date IS NOT NULL AND r.periodicity > 0')
             ->setParameter('entity', $entity, Types::BIGINT)->setParameter('deleted', false, Types::BOOLEAN)
-            ->setParameter('mask', 1 << \Alert::PERIODICITY, Types::INTEGER)
-            ->setParameter('period', \Alert::PERIODICITY, Types::INTEGER)->setParameter('notice', \Alert::NOTICE, Types::INTEGER)
+            ->setParameter('mask', 1 << LegacyAlert::PERIODICITY, Types::INTEGER)
+            ->setParameter('period', LegacyAlert::PERIODICITY, Types::INTEGER)->setParameter('notice', LegacyAlert::NOTICE, Types::INTEGER)
             ->orderBy('r.id');
         return $this->rows($query);
     }
 
     /** Every binding counts toward the contractual maximum, independent of subject visibility. */
-    public function availableForConnection(array $scope, bool $expired, array $used, bool $ignoreLimit, ?\DateTimeImmutable $today = null, ?string $language = null): array
+    public function availableForConnection(array $scope, bool $expired, array $used, bool $ignoreLimit, ?DateTimeImmutable $today = null, ?string $language = null): array
     {
         $query = $this->createQueryBuilder('r')->leftJoin('r.entities', 'e')
             ->where('r.is_deleted = :deleted AND r.is_template = :deleted')->setParameter('deleted', false, Types::BOOLEAN);
@@ -89,7 +93,7 @@ final class ContractRepository extends DropdownChoiceRepository
         }
         if (!$expired) {
             $query->andWhere("r.renewal = :automatic OR r.begin_date IS NULL OR DATE_DIFF(DATE_ADD(r.begin_date, r.duration, 'month'), " . $this->today($query, $today) . ') > 0')
-                ->setParameter('automatic', \Contract::RENEWAL_TACIT, Types::INTEGER);
+                ->setParameter('automatic', LegacyContract::RENEWAL_TACIT, Types::INTEGER);
         }
         if (!$ignoreLimit) {
             $query->andWhere('r.max_links_allowed = 0 OR r.max_links_allowed > (SELECT COUNT(binding.id) FROM ' . ContractItem::class . ' binding WHERE binding.contracts = r)');
@@ -116,7 +120,7 @@ final class ContractRepository extends DropdownChoiceRepository
         return array_map(static fn (array $row): string => !empty($row['translated']) ? $row['translated'] : ($row['name'] ?? ''), $query->getQuery()->getScalarResult());
     }
 
-    private function today(QueryBuilder $query, ?\DateTimeImmutable $today): string
+    private function today(QueryBuilder $query, ?DateTimeImmutable $today): string
     {
         if ($today === null) {
             return 'CURRENT_DATE()';

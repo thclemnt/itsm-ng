@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\ReferenceValues;
+use itsmng\Database\Repository\FieldUnicityRepository;
+use itsmng\Reporting\Criteria;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -288,7 +293,7 @@ class FieldUnicity extends CommonDropdown
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\FieldUnicityRepository(\itsmng\Database\Orm::create($DB)))
+        return (new FieldUnicityRepository(Orm::create($DB)))
             ->configuration($itemtype, (int)$entities_id, getAncestorsOf('glpi_entities', $entities_id), (bool)$check_active);
     }
 
@@ -599,7 +604,7 @@ class FieldUnicity extends CommonDropdown
     {
         global $DB;
 
-        (new \itsmng\Database\Repository\FieldUnicityRepository(\itsmng\Database\Orm::create($DB)))
+        (new FieldUnicityRepository(Orm::create($DB)))
             ->deletePluginRules($itemtype);
     }
 
@@ -626,12 +631,12 @@ class FieldUnicity extends CommonDropdown
             echo "<table class='tab_cadre_fixe' aria-label='Duplicates'>";
             echo "<tr class='tab_bg_2'><th colspan='" . $colspan . "'>" . __('Duplicates') . "</th></tr>";
 
-            $global = $unicity->fields['entities_id'] === null || \itsmng\Database\ReferenceValues::isUnrestricted($unicity->fields['entities_id']);
-            $entities = $global ? \itsmng\Reporting\Criteria::entities() : [$unicity->fields['entities_id']];
+            $global = $unicity->fields['entities_id'] === null || ReferenceValues::isUnrestricted($unicity->fields['entities_id']);
+            $entities = $global ? Criteria::entities() : [$unicity->fields['entities_id']];
             if (!$global && $unicity->fields['is_recursive']) {
                 $entities = getSonsOf('glpi_entities', $unicity->fields['entities_id']);
             }
-            $results = (new \itsmng\Database\Repository\FieldUnicityRepository(\itsmng\Database\Orm::create($DB)))
+            $results = (new FieldUnicityRepository(Orm::create($DB)))
                 ->duplicatesForItem($item, $fields, $entities === null ? null : array_values($entities));
 
             if (empty($results)) {

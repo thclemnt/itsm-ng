@@ -7,6 +7,8 @@ namespace itsmng\Database\Repository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
+use InvalidArgumentException;
+use Project as LegacyProject;
 use itsmng\Database\Entity\ItemProject;
 use itsmng\Database\Entity\Project;
 use itsmng\Database\RecordCriteria;
@@ -35,7 +37,7 @@ final class ProjectAssetRepository
     {
         try {
             $association = ItemProject::referenceAssociation($kind);
-        } catch (\InvalidArgumentException) {
+        } catch (InvalidArgumentException) {
             return false;
         }
         return (int)$this->em->createQueryBuilder()->select('COUNT(r.id)')->from(ItemProject::class, 'r')
@@ -71,7 +73,7 @@ final class ProjectAssetRepository
                 }
             }
             if ($definition === null) {
-                throw new \InvalidArgumentException('Installed project subject requires its owning device definition');
+                throw new InvalidArgumentException('Installed project subject requires its owning device definition');
             }
             // Installed components have no name column; their definition owns the display label.
             $query->leftJoin('r.' . $definition, 'd')->addSelect('d.designation AS name');
@@ -95,7 +97,7 @@ final class ProjectAssetRepository
     {
         try {
             $association = ItemProject::referenceAssociation($kind);
-        } catch (\InvalidArgumentException) {
+        } catch (InvalidArgumentException) {
             return 0;
         }
         if ($subject <= 0) {
@@ -135,12 +137,12 @@ final class ProjectAssetRepository
         }
         try {
             $association = ItemProject::referenceAssociation($kind);
-        } catch (\InvalidArgumentException) {
+        } catch (InvalidArgumentException) {
             return [];
         }
         $query = $this->em->createQueryBuilder()->select('r')->from(ItemProject::class, 'r')
             ->where('IDENTITY(r.' . $association . ') = :item')->setParameter('item', $id, Types::BIGINT);
-        if ($kind === \Project::class) {
+        if ($kind === LegacyProject::class) {
             $query->orWhere('IDENTITY(r.projects) = :item');
         }
         $rows = [];
@@ -148,9 +150,9 @@ final class ProjectAssetRepository
             $subject = ItemProject::referenceAssociation($binding->itemtype);
             $ownerId = $binding->projects->id;
             $subjectId = $binding->{$subject}->id;
-            $rows[] = ['id' => $binding->id, 'itemtype_1' => \Project::class, 'items_id_1' => $ownerId,
+            $rows[] = ['id' => $binding->id, 'itemtype_1' => LegacyProject::class, 'items_id_1' => $ownerId,
                 'itemtype_2' => $binding->itemtype, 'items_id_2' => $subjectId,
-                'is_1' => (int)($kind === \Project::class && $ownerId === $id),
+                'is_1' => (int)($kind === LegacyProject::class && $ownerId === $id),
                 'is_2' => (int)($binding->itemtype === $kind && $subjectId === $id)];
             $this->em->detach($binding);
         }
@@ -161,7 +163,7 @@ final class ProjectAssetRepository
     {
         try {
             $association = ItemProject::referenceAssociation($kind);
-        } catch (\InvalidArgumentException) {
+        } catch (InvalidArgumentException) {
             return null;
         }
         if ($project <= 0) {

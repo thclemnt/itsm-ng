@@ -32,6 +32,9 @@
  */
 
 use Glpi\Event;
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ConsumableRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -121,9 +124,9 @@ class Consumable extends CommonDBChild
     {
         global $DB;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            (new \itsmng\Database\Repository\ConsumableRepository($em))->returnToStock((int)$input['id']);
+            (new ConsumableRepository($em))->returnToStock((int)$input['id']);
             return true;
         } finally {
             $em->clear();
@@ -160,10 +163,10 @@ class Consumable extends CommonDBChild
         if (empty($itemtype) || $items_id <= 0) {
             return false;
         }
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            return (new \itsmng\Database\Repository\ConsumableRepository($em))->give((int)$ID, $itemtype, (int)$items_id);
-        } catch (\InvalidArgumentException) {
+            return (new ConsumableRepository($em))->give((int)$ID, $itemtype, (int)$items_id);
+        } catch (InvalidArgumentException) {
             return false;
         } finally {
             $em->clear();
@@ -265,7 +268,7 @@ class Consumable extends CommonDBChild
     {
         global $DB;
 
-        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['consumableitems_id' => $tID]);
+        return MappedReads::countMatching($DB, self::getTable(), ['consumableitems_id' => $tID]);
     }
 
 
@@ -280,7 +283,7 @@ class Consumable extends CommonDBChild
     {
         global $DB;
 
-        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['consumableitems_id' => $tID, 'NOT' => ['date_out' => null]]);
+        return MappedReads::countMatching($DB, self::getTable(), ['consumableitems_id' => $tID, 'NOT' => ['date_out' => null]]);
     }
 
 
@@ -295,7 +298,7 @@ class Consumable extends CommonDBChild
     {
         global $DB;
 
-        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['consumableitems_id' => $tID, 'date_out' => null]);
+        return MappedReads::countMatching($DB, self::getTable(), ['consumableitems_id' => $tID, 'date_out' => null]);
     }
 
 
@@ -347,7 +350,7 @@ class Consumable extends CommonDBChild
     {
         global $DB;
 
-        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['id' => $cID, 'date_out' => null]) === 1;
+        return MappedReads::countMatching($DB, self::getTable(), ['id' => $cID, 'date_out' => null]) === 1;
     }
 
 
@@ -362,7 +365,7 @@ class Consumable extends CommonDBChild
     {
         global $DB;
 
-        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['id' => $cID, 'NOT' => ['date_out' => null]]) === 1;
+        return MappedReads::countMatching($DB, self::getTable(), ['id' => $cID, 'NOT' => ['date_out' => null]]) === 1;
     }
 
 
@@ -465,10 +468,10 @@ class Consumable extends CommonDBChild
         $rand = mt_rand();
         $where = ['consumableitems_id' => $tID];
         $where += $show_old ? ['NOT' => ['date_out' => null]] : ['date_out' => null];
-        $number = \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), $where);
-        $em = \itsmng\Database\Orm::create($DB);
+        $number = MappedReads::countMatching($DB, self::getTable(), $where);
+        $em = Orm::create($DB);
         try {
-            $rows = (new \itsmng\Database\Repository\ConsumableRepository($em))->forModel((int)$tID, (bool)$show_old, (int)$_SESSION['glpilist_limit'], (int)$start);
+            $rows = (new ConsumableRepository($em))->forModel((int)$tID, (bool)$show_old, (int)$_SESSION['glpilist_limit'], (int)$start);
         } finally {
             $em->clear();
         }
@@ -564,9 +567,9 @@ class Consumable extends CommonDBChild
         }
 
         $scope = getEntitiesRestrictCriteria('glpi_consumableitems');
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            $repository = new \itsmng\Database\Repository\ConsumableRepository($em);
+            $repository = new ConsumableRepository($em);
             $usedRows = $repository->summary($scope, true);
             $newRows = $repository->summary($scope, false);
         } finally {
@@ -581,7 +584,7 @@ class Consumable extends CommonDBChild
             $new[$data['consumableitems_id']] = (int)$data['count'];
         }
         $types = [];
-        foreach (\itsmng\Database\MappedReads::matching($DB, 'glpi_consumableitems', $scope) as $data) {
+        foreach (MappedReads::matching($DB, 'glpi_consumableitems', $scope) as $data) {
             $types[$data['id']] = $data['name'];
         }
 

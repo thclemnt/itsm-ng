@@ -33,7 +33,13 @@
 
 namespace tests\units;
 
+use CertificateType;
 use DbTestCase;
+use Group;
+use Location;
+use Manufacturer;
+use State;
+use User;
 
 /* Test for inc/alert.class.php */
 
@@ -165,19 +171,19 @@ class Certificate extends DbTestCase
 
     public function _getIn($method = "")
     {
-        $type = new \CertificateType();
+        $type = new CertificateType();
         $typeId = $type->add(['name' => $this->getUniqueString(), 'entities_id' => 0]);
         $this->integer((int)$typeId)->isGreaterThan(0);
-        $manufacturerId = (new \Manufacturer())->add(['name' => $this->getUniqueString()]);
-        $locationId = (new \Location())->add(['name' => $this->getUniqueString()]);
+        $manufacturerId = (new Manufacturer())->add(['name' => $this->getUniqueString()]);
+        $locationId = (new Location())->add(['name' => $this->getUniqueString()]);
         $this->integer((int)$locationId)->isGreaterThan(0);
-        $groupId = (new \Group())->add(['name' => $this->getUniqueString()]);
+        $groupId = (new Group())->add(['name' => $this->getUniqueString()]);
         $this->integer((int)$groupId)->isGreaterThan(0);
-        $stateId = (new \State())->add(['name' => $this->getUniqueString()]);
+        $stateId = (new State())->add(['name' => $this->getUniqueString()]);
         $this->integer((int)$manufacturerId)->isGreaterThan(0);
         $this->integer((int)$stateId)->isGreaterThan(0);
-        $technicianId = (new \User())->add(['name' => $this->getUniqueString(), 'picture' => '']);
-        $ownerId = (new \User())->add(['name' => $this->getUniqueString(), 'picture' => '']);
+        $technicianId = (new User())->add(['name' => $this->getUniqueString(), 'picture' => '']);
+        $ownerId = (new User())->add(['name' => $this->getUniqueString(), 'picture' => '']);
         $this->integer((int)$technicianId)->isGreaterThan(0);
         $this->integer((int)$ownerId)->isGreaterThan(0);
         return [

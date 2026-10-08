@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DomainRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -414,7 +417,7 @@ class DomainRecord extends CommonDBChild
                    || count($_SESSION['glpiactiveprofile']['managed_domainrecordtypes']);
         $rand    = mt_rand();
 
-        $rows = (new \itsmng\Database\Repository\DomainRepository(\itsmng\Database\Orm::create($DB)))->records((int)$instID);
+        $rows = (new DomainRepository(Orm::create($DB)))->records((int)$instID);
         $number = count($rows);
 
         if ($canedit) {

@@ -4,9 +4,11 @@
 
 namespace itsmng\Database\Repository;
 
+use DateTimeImmutable;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
+use InvalidArgumentException;
 use itsmng\Database\Entity\ItemTicket;
 use itsmng\Database\Entity\TicketCost;
 
@@ -22,12 +24,12 @@ final class TicketAssetRepository
         try {
             ItemTicket::referenceAssociation($kind);
             return true;
-        } catch (\InvalidArgumentException) {
+        } catch (InvalidArgumentException) {
             return false;
         }
     }
 
-    public function activeOrRecent(string $kind, int $asset, array $finished, int $days, ?\DateTimeImmutable $now = null): array
+    public function activeOrRecent(string $kind, int $asset, array $finished, int $days, ?DateTimeImmutable $now = null): array
     {
         $query = $this->linked($kind, $asset);
         if ($query === null) {
@@ -75,7 +77,7 @@ final class TicketAssetRepository
         return $rows;
     }
 
-    public function recentlyFinishedCount(string $kind, int $asset, array $finished, int $days, ?\DateTimeImmutable $now = null): int
+    public function recentlyFinishedCount(string $kind, int $asset, array $finished, int $days, ?DateTimeImmutable $now = null): int
     {
         $query = $this->linked($kind, $asset);
         if ($query === null || !$finished) {
@@ -126,7 +128,7 @@ final class TicketAssetRepository
             ->where('IDENTITY(i.' . ItemTicket::referenceAssociation($kind) . ') = :asset')->setParameter('asset', $asset, Types::BIGINT);
     }
 
-    private function time(QueryBuilder $query, ?\DateTimeImmutable $now): string
+    private function time(QueryBuilder $query, ?DateTimeImmutable $now): string
     {
         if ($now === null) {
             return 'CURRENT_TIMESTAMP()';

@@ -33,6 +33,21 @@
 
 namespace tests\units;
 
+use Auth;
+use CommonDBTM;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Events;
+use Doctrine\ORM\Query;
+use Group;
+use Group_User as LegacyGroup_User;
+use Plugin;
+use Profile_User;
+use ReflectionProperty;
+use User;
+use itsmng\Database\Entity\User as UserEntity;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\GroupMembershipRepository;
+
 /* Test for inc/group_user.class.php */
 
 class Group_User extends \DbTestCase
@@ -48,26 +63,26 @@ class Group_User extends \DbTestCase
         $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
         $prefix = 'Member presentation ' . bin2hex(random_bytes(6));
         try {
-            $group = $this->createItem(\Group::class, [
+            $group = $this->createItem(Group::class, [
                 'name' => $prefix . ' parent', 'entities_id' => $entity, 'comment' => 'Parent tooltip',
             ]);
-            $child = $this->createItem(\Group::class, [
+            $child = $this->createItem(Group::class, [
                 'name' => $prefix . ' child', 'entities_id' => $entity, 'groups_id' => $group->getID(), 'comment' => 'Child tooltip',
             ]);
             $users = [];
             foreach ([$group, $child] as $index => $owner) {
-                $users[$index] = $this->createItem(\User::class, [
-                    'name' => $prefix . ' user ' . $index, 'entities_id' => $entity, 'authtype' => \Auth::DB_GLPI,
+                $users[$index] = $this->createItem(User::class, [
+                    'name' => $prefix . ' user ' . $index, 'entities_id' => $entity, 'authtype' => Auth::DB_GLPI,
                 ]);
-                $this->createItem(\Group_User::class, [
+                $this->createItem(LegacyGroup_User::class, [
                     'groups_id' => $owner->getID(), 'users_id' => $users[$index]->getID(), 'is_manager' => $index,
                 ]);
             }
             $connection = $DB->getDoctrineConnection();
             $level = $connection->getTransactionNestingLevel();
-            $em = new class ($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+            $em = new class ($connection, Orm::configuration($connection->getDatabasePlatform())) extends EntityManager {
                 public int $queries = 0;
-                public function createQuery(string $dql = ''): \Doctrine\ORM\Query
+                public function createQuery(string $dql = ''): Query
                 {
                     ++$this->queries;
                     return parent::createQuery($dql);
@@ -80,9 +95,9 @@ class Group_User extends \DbTestCase
                     ++$this->count;
                 }
             };
-            $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+            $em->getEventManager()->addEventListener([Events::postLoad], $loads);
             try {
-                $repository = new \itsmng\Database\Repository\GroupMembershipRepository($em);
+                $repository = new GroupMembershipRepository($em);
                 $ids = [(int)$group->getID(), (int)$child->getID()];
                 $legacy = $repository->members($ids, []);
                 $this->array(array_keys($legacy['rows'][0]))->isIdenticalTo([
@@ -95,7 +110,7 @@ class Group_User extends \DbTestCase
                 $this->array($page['rows'])->hasSize(2);
                 $this->integer($loads->count)->isIdenticalTo(0);
                 $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
-                $managed = $em->find(\itsmng\Database\Entity\User::class, (int)$users[0]->getID());
+                $managed = $em->find(UserEntity::class, (int)$users[0]->getID());
                 $oldFirstname = $managed->firstname;
                 $this->boolean($DB->update('glpi_users', ['firstname' => 'Grace'], ['id' => $users[0]->getID()]))->isTrue();
                 $fresh = $repository->members([(int)$group->getID()], [], withLinkFields: true);
@@ -107,26 +122,26 @@ class Group_User extends \DbTestCase
                 $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
                 $this->boolean($users[0]->getFromDB($users[0]->getID()))->isTrue();
             } finally {
-                $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+                $em->getEventManager()->removeEventListener([Events::postLoad], $loads);
                 $em->clear();
             }
             // _entities_id is a public add instruction, not a persisted field for
             // DbTestCase::checkInput to compare through getField().
-            $outside = new \User();
+            $outside = new User();
             $this->integer((int)$outside->add([
-                'name' => $prefix . ' outside', 'entities_id' => 0, '_entities_id' => 0, 'authtype' => \Auth::DB_GLPI,
+                'name' => $prefix . ' outside', 'entities_id' => 0, '_entities_id' => 0, 'authtype' => Auth::DB_GLPI,
             ]))->isGreaterThan(0);
             $this->boolean($outside->getFromDB($outside->getID()))->isTrue();
             $this->variable($outside->getField('entities_id'))->isEqualTo(0);
-            $this->createItem(\Profile_User::class, [
+            $this->createItem(Profile_User::class, [
                 'users_id' => $outside->getID(), 'profiles_id' => $_SESSION['glpiactiveprofile']['id'],
                 'entities_id' => 0, 'is_recursive' => 0,
             ]);
-            $this->array(array_values(array_map('intval', \Profile_User::getUserEntities($outside->getID()))))->isIdenticalTo([0]);
-            $this->createItem(\Group_User::class, ['groups_id' => $group->getID(), 'users_id' => $outside->getID()]);
+            $this->array(array_values(array_map('intval', Profile_User::getUserEntities($outside->getID()))))->isIdenticalTo([0]);
+            $this->createItem(LegacyGroup_User::class, ['groups_id' => $group->getID(), 'users_id' => $outside->getID()]);
             $this->boolean($group->can((int)$group->getID(), READ))->isTrue();
             $this->boolean($users[0]->can((int)$users[0]->getID(), READ))->isTrue();
-            $assertGroupLink = function (string $html, \Group $item, bool $linked = true): void {
+            $assertGroupLink = function (string $html, Group $item, bool $linked = true): void {
                 // Each tooltip owns a random DOM ID; assert its stable presentation
                 // and target instead of comparing independently rendered fragments.
                 $this->string($html)->contains($item->getNameID())->contains($item->fields['comment']);
@@ -137,12 +152,12 @@ class Group_User extends \DbTestCase
                     $this->string($html)->notContains('<a ');
                 }
             };
-            $direct = \Group_User::getPaginatedMembersForGroup($group);
+            $direct = LegacyGroup_User::getPaginatedMembersForGroup($group);
             $this->integer($direct['total'])->isIdenticalTo(1);
             $this->array($direct['rows'])->hasSize(1);
             $this->string($direct['rows'][0]['group'])->isIdenticalTo($users[0]->getLink());
             $assertGroupLink($direct['rows'][0]['parent'], $group);
-            $tree = \Group_User::getPaginatedMembersForGroup($group, '', 1);
+            $tree = LegacyGroup_User::getPaginatedMembersForGroup($group, '', 1);
             $this->integer($tree['total'])->isIdenticalTo(2);
             $this->array($tree['rows'])->hasSize(2);
             foreach ([$group, $child] as $index => $owner) {
@@ -150,17 +165,17 @@ class Group_User extends \DbTestCase
                 $assertGroupLink($tree['rows'][$index]['parent'], $owner);
             }
             $this->string($tree['rows'][1]['manager'])->contains(__('Manager'));
-            $page = \Group_User::getPaginatedMembersForGroup($group, 'is_manager', 1, 0, 1);
+            $page = LegacyGroup_User::getPaginatedMembersForGroup($group, 'is_manager', 1, 0, 1);
             $this->integer($page['total'])->isIdenticalTo(1);
             $this->array($page['rows'])->hasSize(1);
             $assertGroupLink($page['rows'][0]['group'], $child);
 
             $this->boolean($DB->update('glpi_groups', ['comment' => 'Current child tooltip'], ['id' => $child->getID()]))->isTrue();
             $this->boolean($child->getFromDB($child->getID()))->isTrue();
-            $fresh = \Group_User::getPaginatedMembersForGroup($group, 'is_manager', 1);
+            $fresh = LegacyGroup_User::getPaginatedMembersForGroup($group, 'is_manager', 1);
             $assertGroupLink($fresh['rows'][0]['group'], $child);
             $_SESSION['glpiactiveprofile']['group'] = 0;
-            $denied = \Group_User::getPaginatedMembersForGroup($group, 'is_manager', 1);
+            $denied = LegacyGroup_User::getPaginatedMembersForGroup($group, 'is_manager', 1);
             $assertGroupLink($denied['rows'][0]['group'], $child, false);
         } finally {
             $_SESSION = $session;
@@ -173,37 +188,37 @@ class Group_User extends \DbTestCase
         global $DB, $PLUGIN_HOOKS;
         $session = $_SESSION;
         $hooks = $PLUGIN_HOOKS;
-        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
         $active = $plugins->getValue();
         try {
             $this->login();
             $this->setEntity('_test_root_entity', true);
             $entity = (int)$_SESSION['glpiactive_entity'];
-            $group = $this->createItem(\Group::class, ['name' => $this->getUniqueString(),
+            $group = $this->createItem(Group::class, ['name' => $this->getUniqueString(),
                 'entities_id' => $entity, 'comment' => 'Before callback', 'ldap_value' => 'Complete group fields']);
             $users = [];
             foreach (['Alpha', 'Zulu'] as $name) {
-                $user = $this->createItem(\User::class, ['name' => $this->getUniqueString(), 'realname' => $name,
-                    'entities_id' => $entity, 'authtype' => \Auth::DB_GLPI, 'comment' => 'Complete user fields']);
+                $user = $this->createItem(User::class, ['name' => $this->getUniqueString(), 'realname' => $name,
+                    'entities_id' => $entity, 'authtype' => Auth::DB_GLPI, 'comment' => 'Complete user fields']);
                 $users[] = $user;
-                $this->createItem(\Group_User::class, ['groups_id' => $group->getID(), 'users_id' => $user->getID()]);
+                $this->createItem(LegacyGroup_User::class, ['groups_id' => $group->getID(), 'users_id' => $user->getID()]);
             }
             $first = (int)$users[0]->getID();
             $second = (int)$users[1]->getID();
             $connection = $DB->getDoctrineConnection();
             $level = $connection->getTransactionNestingLevel();
             $calls = [];
-            $callback = static function (\CommonDBTM $model) use (&$calls, $connection, $first, $second, $group): void {
+            $callback = static function (CommonDBTM $model) use (&$calls, $connection, $first, $second, $group): void {
                 $calls[] = ['type' => $model->getType(), 'fields' => $model->fields, 'right' => $model->right];
-                if ($model instanceof \User && (int)$model->getID() === $first) {
+                if ($model instanceof User && (int)$model->getID() === $first) {
                     $connection->update('glpi_users', ['firstname' => 'After callback'], ['id' => $second]);
                     $connection->update('glpi_groups', ['comment' => 'After callback'], ['id' => $group->getID()]);
                     $model->right = false;
                 }
             };
             $plugins->setValue(null, [...$active, 'member_link_fixture']);
-            $PLUGIN_HOOKS['item_can'] = ['member_link_fixture' => [\User::class => $callback, \Group::class => $callback]];
-            $page = \Group_User::getPaginatedMembersForGroup($group);
+            $PLUGIN_HOOKS['item_can'] = ['member_link_fixture' => [User::class => $callback, Group::class => $callback]];
+            $page = LegacyGroup_User::getPaginatedMembersForGroup($group);
             $this->integer($page['total'])->isIdenticalTo(2);
             $this->array($page['rows'])->hasSize(2);
             $this->array(array_column($calls, 'type'))->isIdenticalTo(['User', 'Group', 'User', 'Group']);

@@ -33,9 +33,18 @@
 
 namespace tests\units;
 
+use Auth;
 use DbTestCase;
+use Doctrine\ORM\Events;
+use Project as LegacyProject;
+use ProjectState;
 use ProjectTask;
 use ProjectTeam;
+use Session;
+use User;
+use itsmng\Database\Entity\Project as ProjectEntity;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ProjectRepository;
 
 /* Test for inc/project.class.php */
 class Project extends DbTestCase
@@ -46,8 +55,8 @@ class Project extends DbTestCase
         $this->login();
         $this->setEntity('_test_root_entity', true);
         $session = $_SESSION;
-        $entity = (int)\Session::getActiveEntity();
-        $em = \itsmng\Database\Orm::create($DB);
+        $entity = (int)Session::getActiveEntity();
+        $em = Orm::create($DB);
         $listener = new class () {
             public int $loaded = 0;
             public function postLoad(): void
@@ -55,31 +64,31 @@ class Project extends DbTestCase
                 ++$this->loaded;
             }
         };
-        $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+        $em->getEventManager()->addEventListener([Events::postLoad], $listener);
         try {
             $prefix = 'Project children ' . $this->getUniqueString();
-            $owner = $this->createItem(\User::class, [
-                'name' => $prefix . ' owner', 'entities_id' => $entity, 'authtype' => \Auth::DB_GLPI,
+            $owner = $this->createItem(User::class, [
+                'name' => $prefix . ' owner', 'entities_id' => $entity, 'authtype' => Auth::DB_GLPI,
             ]);
-            $this->integer((int)$owner->getID())->isNotIdenticalTo((int)\Session::getLoginUserID());
-            $parent = $this->createItem(\Project::class, [
-                'name' => $prefix . ' parent', 'entities_id' => $entity, 'users_id' => \Session::getLoginUserID(),
+            $this->integer((int)$owner->getID())->isNotIdenticalTo((int)Session::getLoginUserID());
+            $parent = $this->createItem(LegacyProject::class, [
+                'name' => $prefix . ' parent', 'entities_id' => $entity, 'users_id' => Session::getLoginUserID(),
             ]);
-            $other = $this->createItem(\Project::class, ['name' => $prefix . ' other', 'entities_id' => $entity]);
-            $state = $this->createItem(\ProjectState::class, ['name' => $prefix . ' state', 'color' => '#123456']);
+            $other = $this->createItem(LegacyProject::class, ['name' => $prefix . ' other', 'entities_id' => $entity]);
+            $state = $this->createItem(ProjectState::class, ['name' => $prefix . ' state', 'color' => '#123456']);
             $children = [];
             foreach (['team', 'denied', 'deleted', 'other'] as $kind) {
-                $children[$kind] = $this->createItem(\Project::class, [
+                $children[$kind] = $this->createItem(LegacyProject::class, [
                     'name' => $prefix . ' ' . $kind, 'content' => $prefix . ' detail ' . $kind,
                     'projects_id' => $kind === 'other' ? $other->getID() : $parent->getID(),
                     'entities_id' => $entity, 'users_id' => $owner->getID(), 'projectstates_id' => $state->getID(),
                 ]);
             }
-            $this->createItem(\ProjectTeam::class, [
-                'projects_id' => $children['team']->getID(), 'itemtype' => 'User', 'items_id' => \Session::getLoginUserID(),
+            $this->createItem(ProjectTeam::class, [
+                'projects_id' => $children['team']->getID(), 'itemtype' => 'User', 'items_id' => Session::getLoginUserID(),
             ]);
             $this->boolean($children['deleted']->delete(['id' => $children['deleted']->getID()]))->isTrue();
-            $repository = new \itsmng\Database\Repository\ProjectRepository($em);
+            $repository = new ProjectRepository($em);
             $expected = [(int)$children['team']->getID(), (int)$children['denied']->getID()];
             $ids = $repository->childIds((int)$parent->getID());
             $actual = $ids;
@@ -96,13 +105,13 @@ class Project extends DbTestCase
             $this->integer($listener->loaded)->isIdenticalTo(0);
             $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
 
-            $managed = $em->find(\itsmng\Database\Entity\Project::class, (int)$children['team']->getID());
+            $managed = $em->find(ProjectEntity::class, (int)$children['team']->getID());
             $this->integer($listener->loaded)->isIdenticalTo(1);
             $this->boolean($children['team']->update([
                 'id' => $children['team']->getID(), 'projects_id' => $other->getID(),
             ]))->isTrue();
             $this->array($repository->childIds((int)$parent->getID()))->isIdenticalTo([(int)$children['denied']->getID()]);
-            $this->integer((int)$em->getClassMetadata(\itsmng\Database\Entity\Project::class)
+            $this->integer((int)$em->getClassMetadata(ProjectEntity::class)
                 ->getIdentifierValues($managed->projects)['id'])->isIdenticalTo((int)$parent->getID());
             $this->boolean($em->contains($managed))->isTrue();
             $this->integer($listener->loaded)->isIdenticalTo(1);
@@ -110,7 +119,7 @@ class Project extends DbTestCase
                 'id' => $children['team']->getID(), 'projects_id' => $parent->getID(),
             ]))->isTrue();
 
-            $_SESSION['glpiactiveprofile']['project'] = \Project::READMY;
+            $_SESSION['glpiactiveprofile']['project'] = LegacyProject::READMY;
             $this->boolean($parent->can($parent->getID(), READ))->isTrue();
             $this->boolean($children['team']->getFromDB($children['team']->getID()))->isTrue();
             $this->boolean($children['team']->canViewItem())->isTrue();
@@ -130,12 +139,12 @@ class Project extends DbTestCase
             $this->boolean(strpos($html, '<span class=\'b\'>' . $prefix . ' ' . ($ids[0] === (int)$children['team']->getID() ? 'team' : 'denied'))
                 < strpos($html, '<span class=\'b\'>' . $prefix . ' ' . ($ids[1] === (int)$children['team']->getID() ? 'team' : 'denied')))->isTrue();
 
-            $custom = new class () extends \Project {
+            $custom = new class () extends LegacyProject {
                 public array $selection = [];
                 public array $calls = [];
                 public static function getTable($classname = null)
                 {
-                    return \Project::getTable();
+                    return LegacyProject::getTable();
                 }
                 public function find($condition = [], $order = [], $limit = null)
                 {
@@ -156,7 +165,7 @@ class Project extends DbTestCase
             $this->string($customHtml)->contains($prefix . ' other')->contains($prefix . ' denied')->notContains($prefix . ' team');
             $this->boolean(strpos($customHtml, $prefix . ' other') < strpos($customHtml, $prefix . ' denied'))->isTrue();
         } finally {
-            $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+            $em->getEventManager()->removeEventListener([Events::postLoad], $listener);
             $em->clear();
             $_SESSION = $session;
         }

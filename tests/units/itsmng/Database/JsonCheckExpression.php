@@ -4,10 +4,11 @@
 
 namespace tests\units\itsmng\Database;
 
+use atoum\atoum\test;
 use itsmng\Database\JsonCheckExpression as Expression;
 
 /** Exact MariaDB JSON alias grammar needs neither application bootstrap nor a database. */
-class JsonCheckExpression extends \atoum\atoum\test
+class JsonCheckExpression extends test
 {
     public function testQuotedNativeColumnGrammar(): void
     {

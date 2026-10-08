@@ -39,6 +39,7 @@ if (!defined('GLPI_ROOT')) {
 
 use Config;
 use DBConnection;
+use Doctrine\DBAL\Exception;
 use Glpi\Console\AbstractCommand;
 use Glpi\Console\Command\ForceNoPluginsOptionCommandInterface;
 use Symfony\Component\Console\Exception\InvalidArgumentException;
@@ -48,6 +49,7 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Symfony\Component\Console\Question\Question;
+use itsmng\Database\InstallationConnection;
 
 abstract class AbstractConfigureCommand extends AbstractCommand implements ForceNoPluginsOptionCommandInterface
 {
@@ -237,10 +239,10 @@ abstract class AbstractConfigureCommand extends AbstractCommand implements Force
             }
             $connection->close();
         } else {
-            $server = \itsmng\Database\InstallationConnection::mysqlServer($db_hostport, $db_user, $db_pass);
+            $server = InstallationConnection::mysqlServer($db_hostport, $db_user, $db_pass);
             try {
                 $version = $server->getServerVersion();
-            } catch (\Doctrine\DBAL\Exception $error) {
+            } catch (Exception $error) {
                 $message = sprintf(
                     __('Database connection failed with message "(%s) %s".'),
                     $error->getCode(),

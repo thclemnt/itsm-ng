@@ -4,18 +4,22 @@
 
 namespace tests\units\Glpi\Api\Deprecated;
 
-class Computer_SoftwareVersion extends \GLPITestCase
+use GLPITestCase;
+use Glpi\Api\Deprecated\Computer_SoftwareLicense;
+use Glpi\Api\Deprecated\Computer_SoftwareVersion as DeprecatedComputer_SoftwareVersion;
+
+class Computer_SoftwareVersion extends GLPITestCase
 {
     public function testSoftwareProjectionsPreserveTheDeprecatedFields(): void
     {
         $projections = [
-            \Glpi\Api\Deprecated\Computer_SoftwareVersion::class => [
+            DeprecatedComputer_SoftwareVersion::class => [
                 'id' => 11, 'computers_id' => 12, 'softwareversions_id' => 13,
                 'is_deleted_computer' => false, 'is_template_computer' => false,
                 'entities_id' => 0, 'is_deleted' => false, 'is_dynamic' => false,
                 'date_install' => null, 'links' => [],
             ],
-            \Glpi\Api\Deprecated\Computer_SoftwareLicense::class => [
+            Computer_SoftwareLicense::class => [
                 'id' => 11, 'computers_id' => 12, 'softwarelicenses_id' => 13,
                 'is_deleted' => false, 'is_dynamic' => false, 'links' => [],
             ],
@@ -44,7 +48,7 @@ class Computer_SoftwareVersion extends \GLPITestCase
 
     public function testDeprecatedCreationMapsTheJsonObjectInput(): void
     {
-        $version = new \Glpi\Api\Deprecated\Computer_SoftwareVersion();
+        $version = new DeprecatedComputer_SoftwareVersion();
         $input = (object)[
             'computers_id' => 12, 'softwareversions_id' => 13,
             'is_template_computer' => false, 'is_deleted_computer' => false,
@@ -54,7 +58,7 @@ class Computer_SoftwareVersion extends \GLPITestCase
             'is_template_item' => false, 'is_deleted_item' => false,
         ]);
 
-        $license = new \Glpi\Api\Deprecated\Computer_SoftwareLicense();
+        $license = new Computer_SoftwareLicense();
         $input = (object)['computers_id' => 12, 'softwarelicenses_id' => 13];
         $this->array((array)$license->mapDeprecatedToCurrentFields($input))->isEqualTo([
             'items_id' => 12, 'softwarelicenses_id' => 13, 'itemtype' => 'Computer',

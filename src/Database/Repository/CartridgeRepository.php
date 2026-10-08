@@ -4,6 +4,7 @@
 
 namespace itsmng\Database\Repository;
 
+use DateTimeImmutable;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
@@ -28,7 +29,7 @@ final class CartridgeRepository
             return false;
         }
         return $this->em->createQueryBuilder()->update(Entity\Cartridge::class, 'c')
-            ->set('c.date_use', ':today')->setParameter('today', new \DateTimeImmutable('today'), Types::DATE_IMMUTABLE)
+            ->set('c.date_use', ':today')->setParameter('today', new DateTimeImmutable('today'), Types::DATE_IMMUTABLE)
             ->set('c.printers', ':printer')->setParameter('printer', $printer, Types::INTEGER)
             ->where('c.id = :id AND c.date_use IS NULL')->setParameter('id', (int)$rows[0]['id'], Types::INTEGER)
             ->getQuery()->execute() > 0;
@@ -44,7 +45,7 @@ final class CartridgeRepository
     public function endLife(int $id, ?int $pages): bool
     {
         $query = $this->em->createQueryBuilder()->update(Entity\Cartridge::class, 'c')
-            ->set('c.date_out', ':today')->setParameter('today', new \DateTimeImmutable('today'), Types::DATE_IMMUTABLE)
+            ->set('c.date_out', ':today')->setParameter('today', new DateTimeImmutable('today'), Types::DATE_IMMUTABLE)
             ->where('c.id = :id')->setParameter('id', $id, Types::INTEGER);
         $changed = 'c.date_out IS NULL OR c.date_out <> :today';
         if ($pages !== null) {

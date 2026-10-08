@@ -1,5 +1,10 @@
 <?php
 
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ApplianceAssetRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access directly to this file");
 }
@@ -100,7 +105,7 @@ class Appliance_Item_Relation extends CommonDBRelation
 
     public static function getSQLCriteriaToSearchForItem($itemtype, $items_id)
     {
-        $selection = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'][$itemtype] ?? null;
+        $selection = EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'][$itemtype] ?? null;
         $conditions = [];
         if ($itemtype === static::$itemtype_1) {
             $conditions[] = [static::$items_id_1 => $items_id];
@@ -114,8 +119,8 @@ class Appliance_Item_Relation extends CommonDBRelation
     public static function getItemsAssociationRequest($itemtype, $items_id)
     {
         global $DB;
-        return new \itsmng\Database\RowIterator(
-            (new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB)))->relationRelationships($itemtype, (int)$items_id)
+        return new RowIterator(
+            (new ApplianceAssetRepository(Orm::create($DB)))->relationRelationships($itemtype, (int)$items_id)
         );
     }
 
@@ -203,7 +208,7 @@ class Appliance_Item_Relation extends CommonDBRelation
     public static function countForMainItem(CommonDBTM $item, $extra_types_where = [])
     {
         global $DB;
-        $repository = new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB));
+        $repository = new ApplianceAssetRepository(Orm::create($DB));
         $types = self::getTypes();
         $count = 0;
         foreach ($repository->relationKinds((int)$item->getID(), $extra_types_where) as $row) {
@@ -222,17 +227,17 @@ class Appliance_Item_Relation extends CommonDBRelation
         $subject = getItemForItemtype($itemtype);
         $rows = [];
         if ($subject && $subject->canView()) {
-            $rows = (new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB)))
+            $rows = (new ApplianceAssetRepository(Orm::create($DB)))
                 ->relations((int)$items_id, $itemtype, self::subjectCriteria($subject), $subject::getNameField());
         }
-        return new \itsmng\Database\RowIterator($rows);
+        return new RowIterator($rows);
     }
 
     public static function getDistinctTypes($items_id, $extra_where = [])
     {
         global $DB;
-        return new \itsmng\Database\RowIterator(
-            (new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB)))->relationKinds((int)$items_id, $extra_where)
+        return new RowIterator(
+            (new ApplianceAssetRepository(Orm::create($DB)))->relationKinds((int)$items_id, $extra_where)
         );
     }
 

@@ -4,9 +4,14 @@
 
 namespace itsmng\Database\Repository;
 
+use CommonITILActor;
+use CommonITILObject;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
+use InvalidArgumentException;
+use Search;
+use Ticket;
 use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\RecordCriteria;
@@ -25,7 +30,7 @@ final class TicketCollectionRepository
         $compiler = new RecordCriteria($query, $metadata, legacyValues: false);
         $deleted = filter_var($params['is_deleted'] ?? false, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         if ($deleted === null) {
-            throw new \InvalidArgumentException('is_deleted must be a boolean.');
+            throw new InvalidArgumentException('is_deleted must be a boolean.');
         }
         $query->where($compiler->where(['entities_id' => $visibility->entities ?: [-1], 'is_deleted' => $deleted]));
         $this->visibility($query, $visibility);
@@ -46,20 +51,20 @@ final class TicketCollectionRepository
                     continue;
                 }
                 if (!is_scalar($value)) {
-                    throw new \InvalidArgumentException('Collection text filters must be scalar.');
+                    throw new InvalidArgumentException('Collection text filters must be scalar.');
                 }
                 $property = $metadata->fieldNames[$field] ?? null;
                 if ($property !== null && $metadata->getTypeOfField($property) === Types::BOOLEAN && strcasecmp((string)$value, 'null') !== 0) {
                     $boolean = filter_var(is_string($value) ? trim($value, '^$ ') : $value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
                     if ($boolean === null) {
-                        throw new \InvalidArgumentException('Boolean text filter requires true/false or 1/0: ' . $field);
+                        throw new InvalidArgumentException('Boolean text filter requires true/false or 1/0: ' . $field);
                     }
                     $query->andWhere($compiler->where([$field => $boolean]));
                     continue;
                 }
                 // Patterns are bound values, so quotes need no SQL escaping. Backslashes
                 // remain literal LIKE characters; the existing search syntax owns anchors.
-                $pattern = \Search::makeTextSearchValue(str_replace('\\', '\\\\', (string)$value));
+                $pattern = Search::makeTextSearchValue(str_replace('\\', '\\\\', (string)$value));
                 $query->andWhere($compiler->where([$field => $pattern === null || $pattern === '' ? null : ['LIKE', $pattern]]));
             }
         }
@@ -82,26 +87,26 @@ final class TicketCollectionRepository
 
     private function visibility(QueryBuilder $query, TicketVisibility $access): void
     {
-        if ($access->has(\Ticket::READALL)) {
+        if ($access->has(Ticket::READALL)) {
             return;
         }
         $userRoles = $groupRoles = [];
         $allowed = [];
-        if ($access->has(\Ticket::READMY)) {
-            $userRoles = [\CommonITILActor::REQUESTER, \CommonITILActor::OBSERVER];
+        if ($access->has(Ticket::READMY)) {
+            $userRoles = [CommonITILActor::REQUESTER, CommonITILActor::OBSERVER];
             $allowed[] = 'IDENTITY(r.recipient) = :viewer';
         }
-        if ($access->has(\Ticket::READGROUP)) {
-            $groupRoles = [\CommonITILActor::REQUESTER, \CommonITILActor::OBSERVER];
+        if ($access->has(Ticket::READGROUP)) {
+            $groupRoles = [CommonITILActor::REQUESTER, CommonITILActor::OBSERVER];
         }
-        if ($access->has(\Ticket::OWN) || $access->has(\Ticket::READASSIGN)) {
-            $userRoles[] = \CommonITILActor::ASSIGN;
+        if ($access->has(Ticket::OWN) || $access->has(Ticket::READASSIGN)) {
+            $userRoles[] = CommonITILActor::ASSIGN;
         }
-        if ($access->has(\Ticket::READASSIGN)) {
-            $groupRoles[] = \CommonITILActor::ASSIGN;
-            if ($access->has(\Ticket::ASSIGN)) {
+        if ($access->has(Ticket::READASSIGN)) {
+            $groupRoles[] = CommonITILActor::ASSIGN;
+            if ($access->has(Ticket::ASSIGN)) {
                 $allowed[] = 'r.status = :incoming';
-                $query->setParameter('incoming', \CommonITILObject::INCOMING, Types::INTEGER);
+                $query->setParameter('incoming', CommonITILObject::INCOMING, Types::INTEGER);
             }
         }
         if ($userRoles && $access->user > 0) {
@@ -115,7 +120,7 @@ final class TicketCollectionRepository
         if ($access->validate && $access->user > 0) {
             $allowed[] = 'EXISTS (SELECT validation.id FROM ' . Entity\TicketValidation::class . ' validation WHERE validation.tickets = r AND IDENTITY(validation.validator) = :viewer)';
         }
-        if ($access->has(\Ticket::READMY) || ($access->user > 0 && ($userRoles || $access->validate))) {
+        if ($access->has(Ticket::READMY) || ($access->user > 0 && ($userRoles || $access->validate))) {
             $query->setParameter('viewer', $access->user, Types::BIGINT);
         }
         $query->andWhere($allowed ? '(' . implode(' OR ', $allowed) . ')' : '1 = 0');
@@ -128,7 +133,7 @@ final class TicketCollectionRepository
      */
     private function parent(QueryBuilder $query, array $parent): void
     {
-        $class = EntityRegistry::tables()[$parent['table']] ?? throw new \InvalidArgumentException('Parent collection requires a mapped record.');
+        $class = EntityRegistry::tables()[$parent['table']] ?? throw new InvalidArgumentException('Parent collection requires a mapped record.');
         $parentMetadata = $this->em->getClassMetadata($class);
         $metadata = $this->em->getClassMetadata(Entity\Ticket::class);
         $owners = [];
@@ -161,6 +166,6 @@ final class TicketCollectionRepository
                 return;
             }
         }
-        throw new \InvalidArgumentException('No ticket relationship is defined for parent ' . $parentMetadata->getTableName() . '.');
+        throw new InvalidArgumentException('No ticket relationship is defined for parent ' . $parentMetadata->getTableName() . '.');
     }
 }

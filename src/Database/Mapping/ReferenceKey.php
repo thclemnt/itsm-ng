@@ -4,10 +4,11 @@
 
 namespace itsmng\Database\Mapping;
 
+use Attribute;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 
 /** A generated identity key for a nullable reference, including mixed-case legacy columns. */
-#[\Attribute(\Attribute::TARGET_PROPERTY)]
+#[Attribute(Attribute::TARGET_PROPERTY)]
 final class ReferenceKey
 {
     public function __construct(public readonly string $column)

@@ -6,6 +6,7 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
 use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\RecordCriteria;
@@ -33,7 +34,7 @@ final class ImpactRepository
     public function relations(string $type, int $id, string $endpoint): array
     {
         if (!in_array($endpoint, ['source', 'impacted'], true)) {
-            throw new \InvalidArgumentException('Invalid impact endpoint');
+            throw new InvalidArgumentException('Invalid impact endpoint');
         }
         return (new RecordRepository($this->em))->matching('glpi_impactrelations', ['itemtype_' . $endpoint => $type, 'items_id_' . $endpoint => $id], ['id'], legacyValues: false);
     }
@@ -49,7 +50,7 @@ final class ImpactRepository
     /** Same filtered query supplies total and a bounded, deterministic page. */
     public function searchAssets(string $table, string $nameField, array $criteria, array $used, string $filter, int $page, bool $firstNameFirst, bool $allProjects, int $user, array $groups): array
     {
-        $entity = EntityRegistry::tables()[$table] ?? throw new \InvalidArgumentException('Impact asset type needs an ORM mapping');
+        $entity = EntityRegistry::tables()[$table] ?? throw new InvalidArgumentException('Impact asset type needs an ORM mapping');
         $query = $this->em->createQueryBuilder()->from($entity, 'r');
         $compiler = new RecordCriteria($query, $this->em->getClassMetadata($entity));
         $query->where($compiler->where($criteria));

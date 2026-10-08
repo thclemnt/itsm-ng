@@ -6,6 +6,7 @@ namespace itsmng\Database\Mapping;
 
 use Doctrine\ORM\Event\PostPersistEventArgs;
 use Doctrine\ORM\Event\PostUpdateEventArgs;
+use ReflectionProperty;
 
 /** Align only property-owned writable clocks after their successful native readback. */
 final class NativeTimestampOutcome
@@ -15,7 +16,7 @@ final class NativeTimestampOutcome
         $em = $event->getObjectManager();
         $metadata = $em->getClassMetadata($entity::class);
         foreach ($metadata->fieldMappings as $property => $field) {
-            foreach ((new \ReflectionProperty($metadata->name, $property))->getAttributes(NativeTimestamp::class) as $attribute) {
+            foreach ((new ReflectionProperty($metadata->name, $property))->getAttributes(NativeTimestamp::class) as $attribute) {
                 if ($attribute->newInstance()->ownsWritableClock($field)) {
                     $em->getUnitOfWork()->setOriginalEntityProperty(spl_object_id($entity), $property, $metadata->getFieldValue($entity, $property));
                 }

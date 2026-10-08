@@ -33,6 +33,14 @@
 
 namespace tests\units;
 
+use Config;
+use InvalidArgumentException;
+use Throwable;
+use itsmng\Database\MutationRollbackFailure;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\Repository\RecordRepository;
+
 /* Test for inc/migration.class.php */
 /**
  * @engine inline
@@ -139,16 +147,16 @@ class Migration extends \GLPITestCase
         $context = $prefix . '_context';
         $existingContext = $prefix . '_existing';
         $rows = static function (string $table, array $criteria = []) use ($DB): array {
-            $em = \itsmng\Database\Orm::create($DB);
+            $em = Orm::create($DB);
             try {
-                return (new \itsmng\Database\Repository\RecordRepository($em))->matching($table, $criteria, ['id ASC']);
+                return (new RecordRepository($em))->matching($table, $criteria, ['id ASC']);
             } finally {
                 $em->clear();
             }
         };
         $configsBefore = $rows('glpi_configs');
-        $logsBefore = $rows('glpi_logs', ['itemtype' => \Config::getType()]);
-        $frame = \itsmng\Database\OwnedMutationFrame::begin($connection);
+        $logsBefore = $rows('glpi_logs', ['itemtype' => Config::getType()]);
+        $frame = OwnedMutationFrame::begin($connection);
         $primary = null;
         try {
             foreach (['core', $context, $existingContext] as $owner) {
@@ -168,11 +176,11 @@ class Migration extends \GLPITestCase
             $this->array(array_column($core, 'context'))->isIdenticalTo(['core', 'core']);
             foreach ($core as $record) {
                 $this->integer($record['id'])->isGreaterThan(0);
-                $config = new \Config();
+                $config = new Config();
                 $this->boolean($config->getFromDB($record['id']))->isTrue();
                 $this->array($config->fields)->isIdenticalTo($record);
             }
-            $history = array_slice($rows('glpi_logs', ['itemtype' => \Config::getType()]), count($logsBefore));
+            $history = array_slice($rows('glpi_logs', ['itemtype' => Config::getType()]), count($logsBefore));
             $this->array($history)->hasSize(2);
             $this->array(array_column($history, 'old_value'))->isIdenticalTo([$one . ' ', $two . ' ']);
             $this->array(array_column($history, 'new_value'))->isIdenticalTo(['key', 'value']);
@@ -187,15 +195,15 @@ class Migration extends \GLPITestCase
             $this->array(array_column($other, 'value', 'name'))->isIdenticalTo([$one => 'key', $two => 'value']);
             $this->array(array_column($other, 'context'))->isIdenticalTo([$context, $context]);
             $this->array($rows('glpi_configs', ['context' => 'core', 'name' => [$one, $two]]))->isIdenticalTo($core);
-            $history = array_slice($rows('glpi_logs', ['itemtype' => \Config::getType()]), count($logsBefore) + 2);
+            $history = array_slice($rows('glpi_logs', ['itemtype' => Config::getType()]), count($logsBefore) + 2);
             $this->array($history)->hasSize(2);
             $this->array(array_column($history, 'old_value'))->isIdenticalTo([$one . " ($context) ", $two . " ($context) "]);
             $this->array(array_column($history, 'new_value'))->isIdenticalTo(['key', 'value']);
 
             // With one actual existing value, only the missing key is inserted.
-            \Config::setConfigurationValues($existingContext, [$one => 'setted value']);
+            Config::setConfigurationValues($existingContext, [$one => 'setted value']);
             $existing = $rows('glpi_configs', ['context' => $existingContext, 'name' => $one]);
-            $historyBeforeMissing = $rows('glpi_logs', ['itemtype' => \Config::getType()]);
+            $historyBeforeMissing = $rows('glpi_logs', ['itemtype' => Config::getType()]);
             $this->array($existing)->hasSize(1);
             $this->string($existing[0]['value'])->isIdenticalTo('setted value');
             $this->migration->addConfig([$one => 'key', $two => 'value'], $existingContext);
@@ -206,7 +214,7 @@ class Migration extends \GLPITestCase
             $missing = $rows('glpi_configs', ['context' => $existingContext, 'name' => $two]);
             $this->array($missing)->hasSize(1);
             $this->string($missing[0]['value'])->isIdenticalTo('value');
-            $history = array_slice($rows('glpi_logs', ['itemtype' => \Config::getType()]), count($historyBeforeMissing));
+            $history = array_slice($rows('glpi_logs', ['itemtype' => Config::getType()]), count($historyBeforeMissing));
             $this->array($history)->hasSize(1);
             $this->string($history[0]['old_value'])->isIdenticalTo($two . " ($existingContext) ");
             $this->string($history[0]['new_value'])->isIdenticalTo('value');
@@ -214,7 +222,7 @@ class Migration extends \GLPITestCase
             // Re-registering persisted keys and executing an empty queue are
             // idempotent: full rows and audit identities remain unchanged.
             $persisted = $rows('glpi_configs');
-            $audited = $rows('glpi_logs', ['itemtype' => \Config::getType()]);
+            $audited = $rows('glpi_logs', ['itemtype' => Config::getType()]);
             foreach (['core', $context, $existingContext] as $owner) {
                 $this->migration->addConfig([$one => 'replacement', $two => 'replacement'], $owner);
             }
@@ -223,7 +231,7 @@ class Migration extends \GLPITestCase
                     $this->migration->executeMigration();
                 })->isIdenticalTo('Task completed.');
                 $this->array($rows('glpi_configs'))->isIdenticalTo($persisted);
-                $this->array($rows('glpi_logs', ['itemtype' => \Config::getType()]))->isIdenticalTo($audited);
+                $this->array($rows('glpi_logs', ['itemtype' => Config::getType()]))->isIdenticalTo($audited);
             }
             $this->integer(count($persisted))->isIdenticalTo(count($configsBefore) + 6);
             $ownedIds = array_column(array_merge($core, $other, $existing, $missing), 'id');
@@ -236,13 +244,13 @@ class Migration extends \GLPITestCase
                 $this->string($record['user_name'])->isIdenticalTo('');
                 $this->string($record['date_mod'])->isIdenticalTo($_SESSION['glpi_currenttime']);
             }
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $primary = $error;
         } finally {
             try {
                 $frame->rollBack();
-            } catch (\Throwable $cleanup) {
-                $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationRollbackFailure($primary, $cleanup);
+            } catch (Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new MutationRollbackFailure($primary, $cleanup);
             } finally {
                 $_SESSION = $savedSession;
             }
@@ -252,7 +260,7 @@ class Migration extends \GLPITestCase
         }
         $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
         $this->array($rows('glpi_configs'))->isIdenticalTo($configsBefore);
-        $this->array($rows('glpi_logs', ['itemtype' => \Config::getType()]))->isIdenticalTo($logsBefore);
+        $this->array($rows('glpi_logs', ['itemtype' => Config::getType()]))->isIdenticalTo($logsBefore);
     }
 
     public function testBackupTables()
@@ -539,7 +547,7 @@ class Migration extends \GLPITestCase
             fn () => $this->migration->changeField('my_table', 'old_field', 'my_field', 'bool', ['value' => 2]),
         ] as $invalidField) {
             $this->exception($invalidField)
-                ->isInstanceOf(\InvalidArgumentException::class)
+                ->isInstanceOf(InvalidArgumentException::class)
                 ->hasMessage('default_value must be 0 or 1');
         }
         $this->array($this->queries)->isEmpty();
@@ -559,7 +567,7 @@ class Migration extends \GLPITestCase
             fn () => $this->migration->changeField('my_table', 'old_field', 'my_field', 'integer', ['value' => 'foo']),
         ] as $invalidField) {
             $this->exception($invalidField)
-                ->isInstanceOf(\InvalidArgumentException::class)
+                ->isInstanceOf(InvalidArgumentException::class)
                 ->hasMessage('default_value must be numeric');
         }
         $this->array($this->queries)->isEmpty();

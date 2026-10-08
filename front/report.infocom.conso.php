@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\FinancialRepository;
+use itsmng\Reporting\Criteria;
+
 include('../inc/includes.php');
 
 Session::checkRight("reports", READ);
@@ -113,15 +117,15 @@ function display_infocoms_report($itemtype, $begin, $end)
         return false;
     }
 
-    $mapped = \itsmng\Database\Repository\FinancialRepository::supports($itemtype);
+    $mapped = FinancialRepository::supports($itemtype);
     if ($mapped) {
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            $iterator = (new \itsmng\Database\Repository\FinancialRepository($em))->rows(
+            $iterator = (new FinancialRepository($em))->rows(
                 $itemtype,
                 (string)$begin,
                 (string)$end,
-                \itsmng\Reporting\Criteria::entities(),
+                Criteria::entities(),
                 false
             );
         } finally {
@@ -170,7 +174,7 @@ function display_infocoms_report($itemtype, $begin, $end)
                 break;
         }
 
-        $dates = \itsmng\Reporting\Criteria::financialDates((string)$begin, (string)$end);
+        $dates = Criteria::financialDates((string)$begin, (string)$end);
         if ($dates) {
             $criteria['WHERE'][] = $dates;
         }

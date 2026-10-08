@@ -4,8 +4,11 @@
 
 namespace itsmng\Database\Repository;
 
+use DateTimeImmutable;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
+use SLM;
 use itsmng\Database\Entity;
 
 /** Shared SLA/OLA selection; callers retain escalation and ticket lifecycle hooks. */
@@ -19,7 +22,7 @@ final class ServiceLevelRepository
         $this->queueClass = match ($kind) {
             'sla' => Entity\SlaLevelTicket::class,
             'ola' => Entity\OlaLevelTicket::class,
-            default => throw new \InvalidArgumentException('Unknown service-level kind'),
+            default => throw new InvalidArgumentException('Unknown service-level kind'),
         };
         $this->levelClass = $this->em->getClassMetadata($this->queueClass)->getAssociationTargetClass($kind . 'levels');
     }
@@ -54,7 +57,7 @@ final class ServiceLevelRepository
     }
 
     /** NULL dates remain unscheduled; use a single bound clock for due selection. */
-    public function scheduled(?int $ticket = null, ?int $type = null, ?\DateTimeImmutable $before = null, ?int $limit = null): array
+    public function scheduled(?int $ticket = null, ?int $type = null, ?DateTimeImmutable $before = null, ?int $limit = null): array
     {
         $query = $this->em->createQueryBuilder()->select('q', 'a.type AS agreement_type')->from($this->queueClass, 'q')
             ->join('q.' . $this->kind . 'levels', 'l')->join('l.' . $this->kind . 's', 'a')
@@ -84,9 +87,9 @@ final class ServiceLevelRepository
     public function agreementForTicket(int $ticket, int $type): ?int
     {
         $suffix = match ($type) {
-            \SLM::TTO => 'tto',
-            \SLM::TTR => 'ttr',
-            default => throw new \InvalidArgumentException('Unknown service-level type'),
+            SLM::TTO => 'tto',
+            SLM::TTR => 'ttr',
+            default => throw new InvalidArgumentException('Unknown service-level type'),
         };
         $row = $this->em->createQueryBuilder()->select('IDENTITY(t.' . $this->kind . 's_' . $suffix . ') AS agreement')
             ->from(Entity\Ticket::class, 't')->where('t.id = :ticket')->setParameter('ticket', $ticket, Types::INTEGER)

@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CartridgeRepository;
+use itsmng\Database\Repository\PrinterCompatibilityRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -163,7 +167,7 @@ class CartridgeItem extends CommonDBTM
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\PrinterCompatibilityRepository(\itsmng\Database\Orm::create($DB)))
+        return (new PrinterCompatibilityRepository(Orm::create($DB)))
             ->add((int)$cartridgeitems_id, (int)$printermodels_id);
     }
 
@@ -568,9 +572,9 @@ class CartridgeItem extends CommonDBTM
     {
         global $DB;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            $rows = (new \itsmng\Database\Repository\CartridgeRepository($em))->availableForPrinter(
+            $rows = (new CartridgeRepository($em))->availableForPrinter(
                 (int)$printer->fields['printermodels_id'],
                 getEntitiesRestrictCriteria(self::getTable(), '', $printer->fields['entities_id'], true)
             );

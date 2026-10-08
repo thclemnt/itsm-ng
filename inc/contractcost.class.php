@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CostRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -252,9 +255,9 @@ class ContractCost extends CommonDBChild
     {
         global $DB;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            $rows = (new \itsmng\Database\Repository\CostRepository($em))->rows(self::getType(), (int)$contracts_id, true);
+            $rows = (new CostRepository($em))->rows(self::getType(), (int)$contracts_id, true);
             return $rows[0] ?? [];
         } finally {
             $em->clear();
@@ -359,9 +362,9 @@ class ContractCost extends CommonDBChild
 
         echo "<div class='center'>";
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            $iterator = (new \itsmng\Database\Repository\CostRepository($em))->rows(self::getType(), (int)$ID);
+            $iterator = (new CostRepository($em))->rows(self::getType(), (int)$ID);
         } finally {
             $em->clear();
         }

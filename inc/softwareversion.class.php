@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\SoftwareRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -274,7 +277,7 @@ class SoftwareVersion extends CommonDBChild
             }
         }
 
-        $rows = (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))
+        $rows = (new SoftwareRepository(Orm::create($DB)))
             ->versionChoices((int)$p['softwares_id'], $p['used']);
 
         $values = [];
@@ -324,7 +327,7 @@ class SoftwareVersion extends CommonDBChild
          HTML;
         }
 
-        $rows = (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))
+        $rows = (new SoftwareRepository(Orm::create($DB)))
             ->versions((int)$softwares_id);
 
         Session::initNavigateListItems(

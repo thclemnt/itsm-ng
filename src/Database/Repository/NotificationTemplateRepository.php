@@ -6,6 +6,7 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\QueryBuilder;
 use itsmng\Database\Entity\NotificationTemplateTranslation;
 
 /** Translation ownership and locale selection; no HTML cleaning or lifecycle writes. */
@@ -44,7 +45,7 @@ final class NotificationTemplateRepository
         return $languages;
     }
 
-    private function translationsQuery(int $template): \Doctrine\ORM\QueryBuilder
+    private function translationsQuery(int $template): QueryBuilder
     {
         return $this->em->createQueryBuilder()->select('t')->from(NotificationTemplateTranslation::class, 't')
             ->where('IDENTITY(t.notificationtemplates) = :template')->setParameter('template', $template, Types::BIGINT);

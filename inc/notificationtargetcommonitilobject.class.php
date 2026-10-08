@@ -31,6 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\ITILDocumentAccess;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DocumentRepository;
+use itsmng\Database\Repository\UserRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -158,7 +164,7 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
         $userlinktable = getTableForItemType($this->obj->userlinkclass);
         $fkfield       = $this->obj->getForeignKeyField();
 
-        $iterator = new \itsmng\Database\RowIterator($this->recipientRepository()->linkedUsers(
+        $iterator = new RowIterator($this->recipientRepository()->linkedUsers(
             $userlinktable,
             $fkfield,
             (int)$this->obj->fields['id'],
@@ -198,7 +204,7 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
         }
 
         // Anonymous user
-        $iterator = new \itsmng\Database\RowIterator($this->recipientRepository()->anonymousUsers(
+        $iterator = new RowIterator($this->recipientRepository()->anonymousUsers(
             $userlinktable,
             $fkfield,
             (int)$this->obj->fields['id'],
@@ -368,7 +374,7 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
             $supplierlinktable = getTableForItemType($this->obj->supplierlinkclass);
             $fkfield           = $this->obj->getForeignKeyField();
 
-            $iterator = new \itsmng\Database\RowIterator($this->recipientRepository()->suppliers(
+            $iterator = new RowIterator($this->recipientRepository()->suppliers(
                 $supplierlinktable,
                 $fkfield,
                 (int)$this->obj->getID()
@@ -1014,7 +1020,7 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
         if ($item->getField('users_id_recipient')) {
             $user_tmp = new User();
             $uid = (int)$item->getField('users_id_recipient');
-            $names = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+            $names = (new UserRepository(Orm::create($DB)))
                 ->friendlyNameData([$uid]);
             $user_tmp->fields = $names[$uid] ?? [];
             $data["##$objettype.openbyuser##"] = $user_tmp->getName();
@@ -1024,7 +1030,7 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
         if ($item->getField('users_id_lastupdater')) {
             $user_tmp = new User();
             $uid = (int)$item->getField('users_id_lastupdater');
-            $names = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+            $names = (new UserRepository(Orm::create($DB)))
                 ->friendlyNameData([$uid]);
             $user_tmp->fields = $names[$uid] ?? [];
             $data["##$objettype.lastupdater##"] = $user_tmp->getName();
@@ -1036,7 +1042,7 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
             $assigned = $item->getUsers(CommonITILActor::ASSIGN);
             // The selected actor list owns order and duplicate handling. Read only
             // after its callback, without sharing a snapshot with other tag stages.
-            $names = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+            $names = (new UserRepository(Orm::create($DB)))
                 ->friendlyNameData(array_column($assigned, 'users_id'));
             foreach ($assigned as $tmp) {
                 $uid      = $tmp['users_id'];
@@ -1212,10 +1218,10 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
                   = countElementsInTableForEntity($item->getTable(), $this->getEntity(), $restrict, false);
 
             // Document
-            $iterator = new \itsmng\Database\RowIterator((new \itsmng\Database\Repository\DocumentRepository(\itsmng\Database\Orm::create($DB)))->notificationDocuments(
+            $iterator = new RowIterator((new DocumentRepository(Orm::create($DB)))->notificationDocuments(
                 $item->getType(),
                 (int)$item->getID(),
-                \itsmng\Database\ITILDocumentAccess::current($item->getType())
+                ITILDocumentAccess::current($item->getType())
             ));
 
             $data["documents"] = [];

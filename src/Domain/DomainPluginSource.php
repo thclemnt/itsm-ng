@@ -5,6 +5,7 @@
 namespace itsmng\Domain;
 
 use Doctrine\DBAL\Connection;
+use RuntimeException;
 
 /** Read only the supported completed Infotel Domains 2.1.0 export through DBAL. */
 final class DomainPluginSource
@@ -20,7 +21,7 @@ final class DomainPluginSource
     public function read(): DomainPluginSnapshot
     {
         if ($this->connection->createSchemaManager()->tablesExist(['glpi_plugin_domains_profiles'])) {
-            throw new \RuntimeException('Unsupported incomplete Domains plugin layout: glpi_plugin_domains_profiles remains; complete the pinned plugin upgrade before export.');
+            throw new RuntimeException('Unsupported incomplete Domains plugin layout: glpi_plugin_domains_profiles remains; complete the pinned plugin upgrade before export.');
         }
         return new DomainPluginSnapshot(
             $this->rows('glpi_plugin_domains_domaintypes', ['id', 'entities_id', 'name', 'comment', 'is_recursive']),
@@ -36,13 +37,13 @@ final class DomainPluginSource
     {
         $manager = $this->connection->createSchemaManager();
         if (!$manager->tablesExist([$table])) {
-            throw new \RuntimeException('Missing Domains plugin source table: ' . $table);
+            throw new RuntimeException('Missing Domains plugin source table: ' . $table);
         }
         $columns = array_keys($manager->listTableColumns($table));
         $missing = array_diff($fields, $columns);
         $unknown = array_diff($columns, $fields);
         if ($missing || $unknown) {
-            throw new \RuntimeException('Unsupported Domains plugin source columns: ' . $table
+            throw new RuntimeException('Unsupported Domains plugin source columns: ' . $table
                 . '; missing=' . implode(',', $missing) . '; unexpected=' . implode(',', $unknown));
         }
         $quote = $this->connection->quoteIdentifier(...);

@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ContentRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -179,7 +182,7 @@ class Notepad extends CommonDBChild
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\ContentRepository(\itsmng\Database\Orm::create($DB)))
+        return (new ContentRepository(Orm::create($DB)))
             ->notes($item->getType(), (int)$item->getID());
     }
 

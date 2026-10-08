@@ -5,6 +5,10 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use InvalidArgumentException;
+use ReflectionClass;
+use ReflectionProperty;
+use itsmng\Database\Mapping\ApplicationManaged;
 use itsmng\Database\Mapping\LegacyInput;
 use itsmng\Database\Mapping\DiscriminatedBy;
 use itsmng\Database\Mapping\DiscriminatorKey;
@@ -19,18 +23,18 @@ class NotificationTarget implements LegacyInput
     #[ORM\ManyToOne(targetEntity: Group::class)]
     #[ORM\JoinColumn(name: 'groups_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[DiscriminatedBy('type', 'items_id', [3, 5, 6])]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Group $group = null;
 
     #[ORM\ManyToOne(targetEntity: Profile::class)]
     #[ORM\JoinColumn(name: 'profiles_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[DiscriminatedBy('type', 'items_id', [2])]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Profile $profile = null;
 
     #[ORM\ManyToOne(targetEntity: Notification::class)]
     #[ORM\JoinColumn(name: 'notifications_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Notification $notifications = null;
 
     #[ORM\Id]
@@ -59,11 +63,11 @@ class NotificationTarget implements LegacyInput
         $column = $property === null ? null : $property->getAttributes(ORM\JoinColumn::class)[0]->newInstance()->name;
         if ($column === null) {
             if (($values['groups_id'] ?? null) !== null || ($values['profiles_id'] ?? null) !== null) {
-                throw new \InvalidArgumentException('A recipient constant cannot select a group or profile');
+                throw new InvalidArgumentException('A recipient constant cannot select a group or profile');
             }
             $values['groups_id'] = $values['profiles_id'] = null;
             if (array_key_exists('items_id', $values) && array_key_exists('recipient_code', $values) && (int)$values['items_id'] !== (int)$values['recipient_code']) {
-                throw new \InvalidArgumentException('Legacy and canonical notification recipient codes disagree');
+                throw new InvalidArgumentException('Legacy and canonical notification recipient codes disagree');
             }
             $values['recipient_code'] = array_key_exists('recipient_code', $values) ? $values['recipient_code'] : ($values['items_id'] ?? $this->items_id ?? 0);
             unset($values['items_id']);
@@ -71,17 +75,17 @@ class NotificationTarget implements LegacyInput
         }
         $other = $column === 'groups_id' ? 'profiles_id' : 'groups_id';
         if (($values[$other] ?? null) !== null) {
-            throw new \InvalidArgumentException('Notification recipient kind cannot select the other association');
+            throw new InvalidArgumentException('Notification recipient kind cannot select the other association');
         }
         $selected = array_key_exists($column, $values) ? $values[$column] : ($values['items_id'] ?? $this->items_id);
         if (filter_var($selected, FILTER_VALIDATE_INT) === false || (int)$selected <= 0) {
-            throw new \InvalidArgumentException('Notification group/profile requires a positive identifier');
+            throw new InvalidArgumentException('Notification group/profile requires a positive identifier');
         }
         if (array_key_exists($column, $values) && array_key_exists('items_id', $values) && (int)$values['items_id'] !== (int)$selected) {
-            throw new \InvalidArgumentException('Legacy and canonical notification recipients disagree');
+            throw new InvalidArgumentException('Legacy and canonical notification recipients disagree');
         }
         if (($values['recipient_code'] ?? null) !== null) {
-            throw new \InvalidArgumentException('A group/profile cannot also select a recipient constant');
+            throw new InvalidArgumentException('A group/profile cannot also select a recipient constant');
         }
         $values[$column] = (int)$selected;
         $values[$other] = null;
@@ -98,9 +102,9 @@ class NotificationTarget implements LegacyInput
         return array_values(array_unique($columns));
     }
 
-    private function recipientProperty(int $type): ?\ReflectionProperty
+    private function recipientProperty(int $type): ?ReflectionProperty
     {
-        foreach ((new \ReflectionClass($this))->getProperties() as $property) {
+        foreach ((new ReflectionClass($this))->getProperties() as $property) {
             foreach ($property->getAttributes(DiscriminatedBy::class) as $attribute) {
                 if (in_array($type, $attribute->newInstance()->values, true)) {
                     return $property;
@@ -119,13 +123,13 @@ class NotificationTarget implements LegacyInput
         if ($property !== null) {
             $selected = $this->{$property->getName()};
             if ($selected === null || ($selected->id !== null && $selected->id <= 0) || ($property->getName() === 'profile' ? $this->group !== null : $this->profile !== null)) {
-                throw new \InvalidArgumentException('Notification recipient kind requires its selected association');
+                throw new InvalidArgumentException('Notification recipient kind requires its selected association');
             }
             $this->recipient_code = null;
         } elseif ($this->group !== null || $this->profile !== null) {
-            throw new \InvalidArgumentException('A recipient constant cannot select a group or profile');
+            throw new InvalidArgumentException('A recipient constant cannot select a group or profile');
         } elseif ($this->recipient_code === null) {
-            throw new \InvalidArgumentException('A constant recipient requires a code');
+            throw new InvalidArgumentException('A constant recipient requires a code');
         }
     }
 }

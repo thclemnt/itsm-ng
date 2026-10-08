@@ -4,7 +4,9 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 use itsmng\Database\Mapping\UserReferenceAction;
@@ -39,24 +41,24 @@ class Problem
     public ?string $content = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date = null;
 
     #[ORM\Column(name: '`solvedate`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $solvedate = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $solvedate = null;
 
     #[ORM\Column(name: '`closedate`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $closedate = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $closedate = null;
 
     #[ORM\Column(name: '`time_to_resolve`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $time_to_resolve = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $time_to_resolve = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id_recipient', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
@@ -95,8 +97,8 @@ class Problem
     public int $actiontime = 0;
 
     #[ORM\Column(name: '`begin_waiting_date`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $begin_waiting_date = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $begin_waiting_date = null;
 
     #[ORM\Column(name: '`waiting_duration`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $waiting_duration = 0;
@@ -108,6 +110,6 @@ class Problem
     public int $solve_delay_stat = 0;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 }

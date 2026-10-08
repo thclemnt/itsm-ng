@@ -4,13 +4,17 @@
 
 namespace itsmng\Database\Mapping;
 
+use Attribute;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\DBAL\Schema\Table;
+use LogicException;
+use ReflectionClass;
+use ReflectionProperty;
 
 /** Read-only legacy identity derived from entity-local discriminator associations. */
-#[\Attribute(\Attribute::TARGET_PROPERTY)]
+#[Attribute(Attribute::TARGET_PROPERTY)]
 final readonly class DiscriminatorKey
 {
     public function __construct(public ?string $fallbackProperty = null, public ?int $emptyValue = null, public bool $exactDiscriminator = false, public array $emptyRequiredNullProperties = [])
@@ -27,7 +31,7 @@ final readonly class DiscriminatorKey
         $column = $metadata->getColumnName($property);
         $cases = [];
         foreach ($metadata->associationMappings as $name => $association) {
-            foreach ((new \ReflectionProperty($metadata->name, $name))->getAttributes(DiscriminatedBy::class) as $attribute) {
+            foreach ((new ReflectionProperty($metadata->name, $name))->getAttributes(DiscriminatedBy::class) as $attribute) {
                 $binding = $attribute->newInstance();
                 if ($binding->legacyColumn === $column) {
                     $selection = $platform->quoteIdentifier($association->joinColumns[0]->name);
@@ -41,7 +45,7 @@ final readonly class DiscriminatorKey
             }
         }
         if (!$cases) {
-            throw new \LogicException('Generated discriminator identity requires owning associations');
+            throw new LogicException('Generated discriminator identity requires owning associations');
         }
         return 'CASE ' . implode(' ', $cases) . ' ELSE '
             . ($this->fallbackProperty === null ? ($this->emptyValue === null ? 'NULL' : (string)$this->emptyValue) : $platform->quoteIdentifier($metadata->getColumnName($this->fallbackProperty))) . ' END';
@@ -66,7 +70,7 @@ final readonly class DiscriminatorKey
             }
             if ($table->hasIndex($index)) {
                 if ($table->getIndex($index)->getUnquotedColumns() !== [$join->name]) {
-                    throw new \LogicException('Conflicting current subject index declaration: ' . $index);
+                    throw new LogicException('Conflicting current subject index declaration: ' . $index);
                 }
             } else {
                 $table->addIndex([$join->name], $index);
@@ -127,7 +131,7 @@ final readonly class DiscriminatorKey
 
     public function subjectConstraintName(ClassMetadata $metadata): string
     {
-        $attributes = (new \ReflectionClass($metadata->name))->getAttributes(RequiredSubjectConstraint::class);
+        $attributes = (new ReflectionClass($metadata->name))->getAttributes(RequiredSubjectConstraint::class);
         $suffix = $attributes ? $attributes[0]->newInstance()->suffix : 'typed_item_kind';
         return $metadata->getTableName() . '_' . $suffix;
     }
@@ -143,28 +147,28 @@ final readonly class DiscriminatorKey
     private function subjectBindings(ClassMetadata $metadata, string $property): array
     {
         if ($this->fallbackProperty !== null || ($this->emptyRequiredNullProperties && $this->emptyValue === null)) {
-            throw new \LogicException('Subject schema requires declared owning branches and a coherent empty identity');
+            throw new LogicException('Subject schema requires declared owning branches and a coherent empty identity');
         }
         foreach ($this->emptyRequiredNullProperties as $emptyProperty) {
             if (!is_string($emptyProperty) || !$metadata->hasField($emptyProperty) || !$metadata->getFieldMapping($emptyProperty)->nullable) {
-                throw new \LogicException('Empty subject state requires declared nullable scalar properties');
+                throw new LogicException('Empty subject state requires declared nullable scalar properties');
             }
         }
         $bindings = [];
         foreach ($metadata->associationMappings as $name => $association) {
-            foreach ((new \ReflectionProperty($metadata->name, $name))->getAttributes(DiscriminatedBy::class) as $attribute) {
+            foreach ((new ReflectionProperty($metadata->name, $name))->getAttributes(DiscriminatedBy::class) as $attribute) {
                 $binding = $attribute->newInstance();
                 if ($binding->legacyColumn !== $metadata->getColumnName($property)) {
                     continue;
                 }
                 if (!$association->isToOneOwningSide() || $binding->emptyValue !== null || array_filter($binding->values, static fn ($value) => !is_string($value))) {
-                    throw new \LogicException('Required subject schema needs owning, nonempty string discriminator branches');
+                    throw new LogicException('Required subject schema needs owning, nonempty string discriminator branches');
                 }
                 $bindings[$name] = $binding;
             }
         }
         if (!$bindings) {
-            throw new \LogicException('Required subject schema needs owning associations');
+            throw new LogicException('Required subject schema needs owning associations');
         }
         return $bindings;
     }

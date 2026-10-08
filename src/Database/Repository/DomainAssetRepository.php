@@ -6,6 +6,7 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
 use itsmng\Database\Entity;
 use itsmng\Database\RecordCriteria;
 
@@ -27,7 +28,7 @@ final class DomainAssetRepository
     {
         try {
             $association = Entity\DomainItem::referenceAssociation($kind);
-        } catch (\InvalidArgumentException) {
+        } catch (InvalidArgumentException) {
             return [];
         }
         $class = $this->em->getClassMetadata(Entity\DomainItem::class)->getAssociationTargetClass($association);
@@ -55,7 +56,7 @@ final class DomainAssetRepository
         } else {
             try {
                 $association = Entity\DomainItem::referenceAssociation($kind);
-            } catch (\InvalidArgumentException) {
+            } catch (InvalidArgumentException) {
                 return [];
             }
         }

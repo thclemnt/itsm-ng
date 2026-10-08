@@ -4,7 +4,9 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
@@ -43,12 +45,12 @@ class TaskTemplate
     public ?string $comment = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 
     #[ORM\Column(name: '`state`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $state = 0;

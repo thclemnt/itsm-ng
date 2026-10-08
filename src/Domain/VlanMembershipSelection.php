@@ -5,6 +5,7 @@
 namespace itsmng\Domain;
 
 use Doctrine\ORM\Mapping\ClassMetadata;
+use InvalidArgumentException;
 use itsmng\Database\BooleanValue;
 
 /** One immutable natural key and its actual boolean assignment intent. */
@@ -21,7 +22,7 @@ final readonly class VlanMembershipSelection
         $port = filter_var($fields[$portColumn] ?? null, FILTER_VALIDATE_INT);
         $vlan = filter_var($fields[$vlanColumn] ?? null, FILTER_VALIDATE_INT);
         if ($port === false || $port <= 0 || $vlan === false || $vlan <= 0) {
-            throw new \InvalidArgumentException('VLAN membership requires positive port and VLAN identities.');
+            throw new InvalidArgumentException('VLAN membership requires positive port and VLAN identities.');
         }
         $mapping = $metadata->getFieldMapping('tagged');
         $value = array_key_exists($mapping->columnName, $fields) ? $fields[$mapping->columnName] : $mapping->options['default'];

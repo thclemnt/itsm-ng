@@ -4,7 +4,9 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\NativeTimestamp;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_logs')]
@@ -31,8 +33,8 @@ class Log
     public ?string $user_name = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`id_search_option`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $id_search_option = 0;

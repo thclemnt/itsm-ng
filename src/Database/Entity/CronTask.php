@@ -4,16 +4,23 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_crontasks')]
-#[\itsmng\Database\Mapping\PlatformOptions(\Doctrine\DBAL\Platforms\AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
-#[\itsmng\Database\Mapping\SchemaOwner]
-#[\itsmng\Database\Mapping\SchemaIndex('unicity', ['itemtype', 'name'], unique: true, postgresqlName: 'glpi_crontasks_unicity')]
-#[\itsmng\Database\Mapping\SchemaIndex('mode', ['mode'], postgresqlName: 'glpi_crontasks_mode')]
-#[\itsmng\Database\Mapping\SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_crontasks_date_mod')]
-#[\itsmng\Database\Mapping\SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_crontasks_date_creation')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
+#[SchemaOwner]
+#[SchemaIndex('unicity', ['itemtype', 'name'], unique: true, postgresqlName: 'glpi_crontasks_unicity')]
+#[SchemaIndex('mode', ['mode'], postgresqlName: 'glpi_crontasks_mode')]
+#[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_crontasks_date_mod')]
+#[SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_crontasks_date_creation')]
 class CronTask
 {
     #[ORM\Id]
@@ -22,15 +29,15 @@ class CronTask
     public ?int $id = null;
 
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 100, nullable: false)]
-    #[\itsmng\Database\Mapping\PlatformOptions(\Doctrine\DBAL\Platforms\PostgreSQLPlatform::class, ['default' => ''])]
+    #[PlatformOptions(PostgreSQLPlatform::class, ['default' => ''])]
     public string $itemtype = '';
 
     #[ORM\Column(name: '`name`', type: 'string', length: 150, nullable: false, options: ['comment' => 'task name'])]
-    #[\itsmng\Database\Mapping\PlatformOptions(\Doctrine\DBAL\Platforms\PostgreSQLPlatform::class, ['default' => ''])]
+    #[PlatformOptions(PostgreSQLPlatform::class, ['default' => ''])]
     public string $name = '';
 
     #[ORM\Column(name: '`frequency`', type: 'integer', nullable: false, options: ['comment' => 'second between launch'])]
-    #[\itsmng\Database\Mapping\PlatformOptions(\Doctrine\DBAL\Platforms\PostgreSQLPlatform::class, ['default' => 0])]
+    #[PlatformOptions(PostgreSQLPlatform::class, ['default' => 0])]
     public int $frequency = 0;
 
     #[ORM\Column(name: '`param`', type: 'integer', nullable: true, options: ['comment' => 'task specify parameter'])]
@@ -55,8 +62,8 @@ class CronTask
     public int $logs_lifetime = 30;
 
     #[ORM\Column(name: '`lastrun`', type: 'datetimetz', nullable: true, options: ['comment' => 'last run date'])]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $lastrun = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $lastrun = null;
 
     #[ORM\Column(name: '`lastcode`', type: 'integer', nullable: true, options: ['comment' => 'last run return code'])]
     public ?int $lastcode = null;
@@ -65,10 +72,10 @@ class CronTask
     public ?string $comment = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 }

@@ -4,7 +4,10 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\RackModel;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
@@ -12,7 +15,7 @@ use itsmng\Database\Mapping\ReferencePolicy;
 #[ORM\Table(name: 'glpi_enclosures')]
 class Enclosure
 {
-    #[\itsmng\Database\Mapping\RackModel]
+    #[RackModel]
     #[ORM\ManyToOne(targetEntity: EnclosureModel::class)]
     #[ORM\JoinColumn(name: 'enclosuremodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
@@ -84,10 +87,10 @@ class Enclosure
     public ?Manufacturer $manufacturers = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 }

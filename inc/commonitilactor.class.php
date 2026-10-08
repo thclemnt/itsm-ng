@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILActorRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -100,8 +103,8 @@ abstract class CommonITILActor extends CommonDBRelation
     public function getActors($items_id)
     {
         global $DB;
-        if (\itsmng\Database\Repository\ITILActorRepository::supports(static::class)) {
-            return (new \itsmng\Database\Repository\ITILActorRepository(\itsmng\Database\Orm::create($DB)))
+        if (ITILActorRepository::supports(static::class)) {
+            return (new ITILActorRepository(Orm::create($DB)))
                 ->actors(static::class, (int)$items_id);
         }
         $users = [];

@@ -33,6 +33,8 @@
 
 namespace tests\units;
 
+use Group;
+
 /* Test for inc/consumable.class.php */
 
 class Consumable extends \DbTestCase
@@ -132,7 +134,7 @@ class Consumable extends \DbTestCase
 
         // Test forced back to stock by removal of group (not replaced)
         $this->boolean($group->delete(['id' => $gid1], true))->isTrue();
-        $this->boolean((new \Group())->getFromDB($gid1))->isFalse();
+        $this->boolean((new Group())->getFromDB($gid1))->isFalse();
         $this->integer($consumable->getUnusedNumber($cu_id))->isEqualTo(10);
         $this->integer($consumable->getOldNumber($cu_id))->isEqualTo(10);
         $this->integer(
@@ -148,7 +150,7 @@ class Consumable extends \DbTestCase
 
         // Test replacement of a group (no back to stock)
         // The first group was purged above; replacement needs a remaining target.
-        $replacementGroup = new \Group();
+        $replacementGroup = new Group();
         $replacementId = (int)$replacementGroup->add(['name' => 'Test replacement group']);
         $this->integer($replacementId)->isGreaterThan(0);
         $this->boolean($replacementGroup->getFromDB($replacementId))->isTrue();

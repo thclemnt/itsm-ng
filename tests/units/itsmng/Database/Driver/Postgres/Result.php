@@ -4,9 +4,22 @@
 
 namespace tests\units\itsmng\Database\Driver\Postgres;
 
+use Doctrine\DBAL\DriverManager;
+use Doctrine\DBAL\Driver\PDO\Exception;
+use Doctrine\DBAL\Exception\InvalidColumnIndex;
+use Doctrine\DBAL\Result as DBALResult;
+use LogicException;
+use PDO;
+use PDOException;
+use PDOStatement;
+use RuntimeException;
+use Throwable;
+use ValueError;
+use atoum\atoum\test;
 use itsmng\Database\Driver\Postgres\Result as DriverResult;
+use itsmng\Database\LegacyResult;
 
-class Result extends \atoum\atoum\test
+class Result extends test
 {
     private function statement(): MetadataStatement
     {
@@ -56,12 +69,12 @@ class Result extends \atoum\atoum\test
     {
         $statement = $this->statement();
         $driver = new DriverResult($statement);
-        $connection = \Doctrine\DBAL\DriverManager::getConnection(['driver' => 'pdo_pgsql', 'dbname' => 'not-opened']);
+        $connection = DriverManager::getConnection(['driver' => 'pdo_pgsql', 'dbname' => 'not-opened']);
         $this->boolean($connection->isConnected())->isFalse();
         try {
             $this->string($driver->getColumnName(0))->isIdenticalTo('wide');
             $this->string($driver->getColumnName(0))->isIdenticalTo('wide');
-            $legacy = new \itsmng\Database\LegacyResult(new \Doctrine\DBAL\Result($driver, $connection), $driver->legacyRow(...));
+            $legacy = new LegacyResult(new DBALResult($driver, $connection), $driver->legacyRow(...));
             $expected = [5000000100, 1.25, 1, '2026-10-07 12:13:14', "binary\0value", null];
             $this->array($legacy->fetch_row())->isIdenticalTo($expected);
             $this->integer($legacy->field_count)->isIdenticalTo(6);
@@ -88,7 +101,7 @@ class Result extends \atoum\atoum\test
         }
         $empty = new MetadataStatement([['name' => 'none', 'native_type' => 'bool']], []);
         $emptyDriver = new DriverResult($empty);
-        $legacy = new \itsmng\Database\LegacyResult(new \Doctrine\DBAL\Result($emptyDriver, $connection), $emptyDriver->legacyRow(...));
+        $legacy = new LegacyResult(new DBALResult($emptyDriver, $connection), $emptyDriver->legacyRow(...));
         $this->integer($legacy->num_rows)->isIdenticalTo(0);
         $this->string($legacy->fieldName(0))->isIdenticalTo('none');
         $this->variable($legacy->fetch_row())->isNull();
@@ -103,29 +116,29 @@ class Result extends \atoum\atoum\test
         $this->array($result->legacyRow([false]))->isIdenticalTo([0]);
         $this->array($result->legacyRow([null]))->isIdenticalTo([null]);
         $this->array($statement->metadataCalls)->isIdenticalTo([0]);
-        $this->exception(fn () => $result->getColumnName(9))->isInstanceOf(\Doctrine\DBAL\Exception\InvalidColumnIndex::class);
-        $statement->failure = new \ValueError('Invalid native index');
-        $this->exception(fn () => $result->getColumnName(-1))->isInstanceOf(\Doctrine\DBAL\Exception\InvalidColumnIndex::class);
-        $error = new \PDOException('Native metadata failure');
+        $this->exception(fn () => $result->getColumnName(9))->isInstanceOf(InvalidColumnIndex::class);
+        $statement->failure = new ValueError('Invalid native index');
+        $this->exception(fn () => $result->getColumnName(-1))->isInstanceOf(InvalidColumnIndex::class);
+        $error = new PDOException('Native metadata failure');
         $error->errorInfo = ['XX000', 7, 'Native metadata failure'];
         $statement->failure = $error;
-        $this->exception(fn () => $result->getColumnName(1))->isInstanceOf(\Doctrine\DBAL\Driver\PDO\Exception::class);
+        $this->exception(fn () => $result->getColumnName(1))->isInstanceOf(Exception::class);
         $statement->failure = null;
         $statement->columns[1] = ['name' => 'untyped'];
         $this->string($result->getColumnName(1))->isIdenticalTo('untyped');
         $this->exception(fn () => $result->legacyRow([1 => 'value']))
-            ->isInstanceOf(\RuntimeException::class)->hasMessage('PostgreSQL driver did not supply native column type metadata.');
+            ->isInstanceOf(RuntimeException::class)->hasMessage('PostgreSQL driver did not supply native column type metadata.');
         $result->free();
         $this->integer($statement->freeCalls)->isIdenticalTo(1);
     }
 }
 
 /** A PDO boundary spy: no connection, SQL executor or replacement portability runner. */
-final class MetadataStatement extends \PDOStatement
+final class MetadataStatement extends PDOStatement
 {
     public array $metadataCalls = [];
     public int $freeCalls = 0;
-    public ?\Throwable $failure = null;
+    public ?Throwable $failure = null;
     private int $position = 0;
 
     public function __construct(public array $columns, public array $rows)
@@ -151,21 +164,21 @@ final class MetadataStatement extends \PDOStatement
         return count($this->rows);
     }
 
-    public function fetch(int $mode = \PDO::FETCH_DEFAULT, int $cursorOrientation = \PDO::FETCH_ORI_NEXT, int $cursorOffset = 0): mixed
+    public function fetch(int $mode = PDO::FETCH_DEFAULT, int $cursorOrientation = PDO::FETCH_ORI_NEXT, int $cursorOffset = 0): mixed
     {
         $row = $this->rows[$this->position++] ?? null;
         if ($row === null) {
             return false;
         }
         return match ($mode) {
-            \PDO::FETCH_NUM => $row,
-            \PDO::FETCH_ASSOC => array_combine(array_column($this->columns, 'name'), $row),
-            \PDO::FETCH_COLUMN => $row[0],
-            default => throw new \LogicException('Unexpected PDO fetch mode'),
+            PDO::FETCH_NUM => $row,
+            PDO::FETCH_ASSOC => array_combine(array_column($this->columns, 'name'), $row),
+            PDO::FETCH_COLUMN => $row[0],
+            default => throw new LogicException('Unexpected PDO fetch mode'),
         };
     }
 
-    public function fetchAll(int $mode = \PDO::FETCH_DEFAULT, mixed ...$args): array
+    public function fetchAll(int $mode = PDO::FETCH_DEFAULT, mixed ...$args): array
     {
         $rows = [];
         while ($this->position < count($this->rows)) {

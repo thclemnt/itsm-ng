@@ -4,7 +4,10 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\NativeTimestamp;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_olalevels_tickets')]
@@ -18,15 +21,15 @@ class OlaLevelTicket
 
     #[ORM\ManyToOne(targetEntity: Ticket::class)]
     #[ORM\JoinColumn(name: 'tickets_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Ticket $tickets = null;
 
     #[ORM\ManyToOne(targetEntity: OlaLevel::class)]
     #[ORM\JoinColumn(name: 'olalevels_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?OlaLevel $olalevels = null;
 
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date = null;
 }

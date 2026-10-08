@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\HistoryRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -384,7 +387,7 @@ class PurgeLogs extends CommonDBTM
             return false;
         }
         if ($month > 0) {
-            return ['date_mod' => ['<=', \itsmng\Database\Repository\HistoryRepository::cutoff($month)]];
+            return ['date_mod' => ['<=', HistoryRepository::cutoff($month)]];
         }
         return $month === Config::DELETE_ALL ? [] : false;
     }
@@ -399,10 +402,10 @@ class PurgeLogs extends CommonDBTM
         return self::repository()->count();
     }
 
-    private static function repository(): \itsmng\Database\Repository\HistoryRepository
+    private static function repository(): HistoryRepository
     {
         global $DB;
-        return new \itsmng\Database\Repository\HistoryRepository(\itsmng\Database\Orm::create($DB));
+        return new HistoryRepository(Orm::create($DB));
     }
 
 }

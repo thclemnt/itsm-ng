@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\DBAL\Connection;
+use itsmng\Database\Expressions;
+use itsmng\Database\ManagedTransactionScope;
+use itsmng\Database\TransactionOwnership;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -157,31 +162,31 @@ abstract class DBAdapter
     abstract public function inTransaction();
     abstract public static function getQuoteNameChar(): string;
 
-    protected ?\Doctrine\DBAL\Connection $doctrine = null;
+    protected ?Connection $doctrine = null;
 
     /** Doctrine owns the connection used by repositories and transitional callers. */
-    public function getDoctrineConnection(): \Doctrine\DBAL\Connection
+    public function getDoctrineConnection(): Connection
     {
-        return $this->doctrine ?? throw new \RuntimeException('Database connection is not open.');
+        return $this->doctrine ?? throw new RuntimeException('Database connection is not open.');
     }
 
     /** Domain frame admission is distinct from the legacy logical nesting predicate. */
     public function assertManagedTransaction(): void
     {
-        \itsmng\Database\TransactionOwnership::assertManaged($this->getDoctrineConnection());
+        TransactionOwnership::assertManaged($this->getDoctrineConnection());
     }
 
     /** Capture only after the caller has begun its own managed DBAL layer. */
-    public function captureManagedTransactionScope(): \itsmng\Database\ManagedTransactionScope
+    public function captureManagedTransactionScope(): ManagedTransactionScope
     {
         $connection = $this->getDoctrineConnection();
-        \itsmng\Database\TransactionOwnership::assertManaged($connection);
+        TransactionOwnership::assertManaged($connection);
         return $connection->captureManagedTransactionScope();
     }
 
-    public function expressions(): \itsmng\Database\Expressions
+    public function expressions(): Expressions
     {
-        return new \itsmng\Database\Expressions($this->getDoctrineConnection()->getDatabasePlatform());
+        return new Expressions($this->getDoctrineConnection()->getDatabasePlatform());
     }
 
     abstract public function installSchema(): bool;
@@ -267,7 +272,7 @@ abstract class DBAdapter
                 $this->error()
             );
             if (isCommandLine()) {
-                throw new \RuntimeException($message);
+                throw new RuntimeException($message);
             } else {
                 echo $message . "\n";
                 die(1);
@@ -778,7 +783,7 @@ abstract class DBAdapter
                 $this->error()
             );
             if (isCommandLine()) {
-                throw new \RuntimeException($message);
+                throw new RuntimeException($message);
             } else {
                 echo $message . "\n";
                 die(1);
@@ -809,7 +814,7 @@ abstract class DBAdapter
             $known_clauses = ['WHERE', 'ORDER', 'LIMIT', 'START'];
             foreach (array_keys($clauses) as $key) {
                 if (!in_array($key, $known_clauses)) {
-                    throw new \RuntimeException(
+                    throw new RuntimeException(
                         str_replace(
                             '%clause',
                             $key,
@@ -821,7 +826,7 @@ abstract class DBAdapter
         }
 
         if (!count($clauses['WHERE'])) {
-            throw new \RuntimeException('Cannot run an UPDATE query without WHERE clause!');
+            throw new RuntimeException('Cannot run an UPDATE query without WHERE clause!');
         }
 
         $query  = "UPDATE " . static::quoteName($table);
@@ -899,7 +904,7 @@ abstract class DBAdapter
                 $this->error()
             );
             if (isCommandLine()) {
-                throw new \RuntimeException($message);
+                throw new RuntimeException($message);
             } else {
                 echo $message . "\n";
                 die(1);
@@ -980,7 +985,7 @@ abstract class DBAdapter
                 $this->error()
             );
             if (isCommandLine()) {
-                throw new \RuntimeException($message);
+                throw new RuntimeException($message);
             } else {
                 echo $message . "\n";
                 die(1);

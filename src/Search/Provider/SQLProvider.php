@@ -34,8 +34,17 @@
 
 namespace itsmng\Search\Provider;
 
+use DBConnection;
+use RuntimeException;
+use SavedSearch;
+use Search;
+use Ticket;
+use Toolbox;
 use itsmng\Search\Output\LegacyOutput;
 use itsmng\Search\SearchOption;
+
+use function getEntitiesRestrictRequest;
+use function getItemForItemtype;
 
 final class SQLProvider implements SearchProviderInterface
 {
@@ -161,12 +170,12 @@ final class SQLProvider implements SearchProviderInterface
                 $first = false;
             }
             if ($data['itemtype'] == 'Entity') {
-                $COMMONWHERE .= \getEntitiesRestrictRequest($LINK, $itemtable);
+                $COMMONWHERE .= getEntitiesRestrictRequest($LINK, $itemtable);
             } elseif (isset($CFG_GLPI["union_search_type"][$data['itemtype']])) {
                 // Will be replace below in Union/Recursivity Hack
                 $COMMONWHERE .= $LINK . " ENTITYRESTRICT ";
             } else {
-                $COMMONWHERE .= \getEntitiesRestrictRequest($LINK, $itemtable, '', '', $data['item']->maybeRecursive() && $data['item']->isField('is_recursive'));
+                $COMMONWHERE .= getEntitiesRestrictRequest($LINK, $itemtable, '', '', $data['item']->maybeRecursive() && $data['item']->isField('is_recursive'));
             }
         }
         $WHERE = "";
@@ -219,7 +228,7 @@ final class SQLProvider implements SearchProviderInterface
             $count = "count(DISTINCT `{$itemtable}`.`id`)";
             // request currentuser for SQL supervision, not displayed
             $query_num = "SELECT {$count},
-                              '" . \Toolbox::addslashes_deep($_SESSION['glpiname']) . "' AS currentuser
+                              '" . Toolbox::addslashes_deep($_SESSION['glpiname']) . "' AS currentuser
                        FROM `{$itemtable}`" . $COMMONLEFTJOIN;
             $first = true;
             if (!empty($COMMONWHERE)) {
@@ -235,7 +244,7 @@ final class SQLProvider implements SearchProviderInterface
                 $tmpquery = $query_num;
                 foreach ($CFG_GLPI[$CFG_GLPI["union_search_type"][$data['itemtype']]] as $ctype) {
                     $ctable = $ctype::getTable();
-                    if (($citem = \getItemForItemtype($ctype)) && $citem->canView()) {
+                    if (($citem = getItemForItemtype($ctype)) && $citem->canView()) {
                         // State case
                         if ($data['itemtype'] == 'AllAssets') {
                             $query_num = str_replace($CFG_GLPI["union_search_type"][$data['itemtype']], $ctable, $tmpquery);
@@ -263,7 +272,7 @@ final class SQLProvider implements SearchProviderInterface
                             $query_num = str_replace("FROM `" . $CFG_GLPI["union_search_type"][$data['itemtype']] . "`", $replace, $tmpquery);
                             $query_num = str_replace($CFG_GLPI["union_search_type"][$data['itemtype']], $ctable, $query_num);
                         }
-                        $query_num = str_replace("ENTITYRESTRICT", \getEntitiesRestrictRequest('', $ctable, '', '', $citem->maybeRecursive()), $query_num);
+                        $query_num = str_replace("ENTITYRESTRICT", getEntitiesRestrictRequest('', $ctable, '', '', $citem->maybeRecursive()), $query_num);
                         $data['sql']['count'][] = $query_num;
                     }
                 }
@@ -292,7 +301,7 @@ final class SQLProvider implements SearchProviderInterface
             $QUERY = "";
             foreach ($CFG_GLPI[$CFG_GLPI["union_search_type"][$data['itemtype']]] as $ctype) {
                 $ctable = $ctype::getTable();
-                if (($citem = \getItemForItemtype($ctype)) && $citem->canView()) {
+                if (($citem = getItemForItemtype($ctype)) && $citem->canView()) {
                     if ($first) {
                         $first = false;
                     } else {
@@ -351,7 +360,7 @@ final class SQLProvider implements SearchProviderInterface
                         $tmpquery = str_replace("FROM `" . $CFG_GLPI["union_search_type"][$data['itemtype']] . "`", $replace, $tmpquery);
                         $tmpquery = str_replace($CFG_GLPI["union_search_type"][$data['itemtype']], $ctable, $tmpquery);
                     }
-                    $tmpquery = str_replace("ENTITYRESTRICT", \getEntitiesRestrictRequest('', $ctable, '', '', $citem->maybeRecursive()), $tmpquery);
+                    $tmpquery = str_replace("ENTITYRESTRICT", getEntitiesRestrictRequest('', $ctable, '', '', $citem->maybeRecursive()), $tmpquery);
                     $QUERY .= $tmpquery;
                 }
             }
@@ -386,7 +395,7 @@ final class SQLProvider implements SearchProviderInterface
         }
         $data['data'] = [];
         // Use a ReadOnly connection if available and configured to be used
-        $DBread = \DBConnection::getReadConnection();
+        $DBread = DBConnection::getReadConnection();
         if ($DBread->getProvider() === 'mysql') {
             $DBread->query("SET SESSION group_concat_max_len = 16384;");
         }
@@ -404,7 +413,7 @@ final class SQLProvider implements SearchProviderInterface
             $plan = $data['sql']['plan'];
             $countResult = $DBread->query($plan->countSql);
             if (!$countResult) {
-                throw new \RuntimeException($DBread->error());
+                throw new RuntimeException($DBread->error());
             }
             $plannedCount = (int)$DBread->result($countResult, 0, 0);
             $limit = $data['search']['export_all'] ? 0 : (int)$data['search']['list_limit'];
@@ -444,7 +453,7 @@ final class SQLProvider implements SearchProviderInterface
         if ($result) {
             $data['data']['execution_time'] = $DBread->execution_time;
             if (isset($data['search']['savedsearches_id'])) {
-                \SavedSearch::updateExecutionTime((int) $data['search']['savedsearches_id'], $DBread->execution_time);
+                SavedSearch::updateExecutionTime((int) $data['search']['savedsearches_id'], $DBread->execution_time);
             }
             $data['data']['totalcount'] = 0;
             // if real search or complete export : get numrows from request
@@ -553,12 +562,12 @@ final class SQLProvider implements SearchProviderInterface
             $data['data']['warning'] = "For compatibility keep raw data  (ITEM_X, META_X) at the top for the moment. Will be drop in next version";
             $data['data']['rows'] = [];
             $data['data']['items'] = [];
-            \Search::$output_type = $data['display_type'];
+            Search::$output_type = $data['display_type'];
             // This snapshot lives only for this result's formatting pass and is
             // first read by a core ticket-status cell, after its plugin hook.
             $ticketStatusCatalogue = null;
             $ticketStatuses = static function () use (&$ticketStatusCatalogue): array {
-                return $ticketStatusCatalogue ??= \Ticket::getAllStatusArray(true, true);
+                return $ticketStatusCatalogue ??= Ticket::getAllStatusArray(true, true);
             };
             while ($i < $data['data']['end']) {
                 $row = $DBread->fetchAssoc($result);
@@ -576,11 +585,11 @@ final class SQLProvider implements SearchProviderInterface
                             $fieldname = $matches[5];
                         }
                         // No Group_concat case
-                        if ($fieldname == 'content' || strpos($val ?? '', \Search::LONGSEP) === false) {
+                        if ($fieldname == 'content' || strpos($val ?? '', Search::LONGSEP) === false) {
                             $newrow[$j]['count'] = 1;
                             $handled = false;
-                            if ($fieldname != 'content' && strpos($val ?? '', \Search::SHORTSEP) !== false) {
-                                $split2 = LegacyOutput::explodeWithID(\Search::SHORTSEP, $val);
+                            if ($fieldname != 'content' && strpos($val ?? '', Search::SHORTSEP) !== false) {
+                                $split2 = LegacyOutput::explodeWithID(Search::SHORTSEP, $val);
                                 if (is_numeric($split2[1])) {
                                     $newrow[$j][0][$fieldname] = $split2[0];
                                     $newrow[$j][0]['id'] = $split2[1];
@@ -588,7 +597,7 @@ final class SQLProvider implements SearchProviderInterface
                                 }
                             }
                             if (!$handled) {
-                                if ($val === \Search::NULLVALUE) {
+                                if ($val === Search::NULLVALUE) {
                                     $newrow[$j][0][$fieldname] = null;
                                 } else {
                                     $newrow[$j][0][$fieldname] = $val;
@@ -598,15 +607,15 @@ final class SQLProvider implements SearchProviderInterface
                             if (!isset($newrow[$j])) {
                                 $newrow[$j] = [];
                             }
-                            $split = explode(\Search::LONGSEP, $val);
+                            $split = explode(Search::LONGSEP, $val);
                             $newrow[$j]['count'] = count($split);
                             foreach ($split as $key2 => $val2) {
                                 $handled = false;
-                                if (strpos($val2, \Search::SHORTSEP) !== false) {
-                                    $split2 = LegacyOutput::explodeWithID(\Search::SHORTSEP, $val2);
+                                if (strpos($val2, Search::SHORTSEP) !== false) {
+                                    $split2 = LegacyOutput::explodeWithID(Search::SHORTSEP, $val2);
                                     if (is_numeric($split2[1])) {
                                         $newrow[$j][$key2]['id'] = $split2[1];
-                                        if ($split2[0] == \Search::NULLVALUE) {
+                                        if ($split2[0] == Search::NULLVALUE) {
                                             $newrow[$j][$key2][$fieldname] = null;
                                         } else {
                                             $newrow[$j][$key2][$fieldname] = $split2[0];

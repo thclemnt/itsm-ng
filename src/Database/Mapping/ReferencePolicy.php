@@ -4,8 +4,11 @@
 
 namespace itsmng\Database\Mapping;
 
+use Attribute;
+use InvalidArgumentException;
+
 /** Semantics live beside the owning Doctrine association, which owns its target/type. */
-#[\Attribute(\Attribute::TARGET_PROPERTY)]
+#[Attribute(Attribute::TARGET_PROPERTY)]
 final readonly class ReferencePolicy
 {
     public function __construct(
@@ -15,7 +18,7 @@ final readonly class ReferencePolicy
         public ?UserReferenceAction $userPurge = null,
     ) {
         if (($kind === ReferenceKind::Inherited) !== ($modeProperty !== null)) {
-            throw new \InvalidArgumentException('Only inherited references declare a mode property');
+            throw new InvalidArgumentException('Only inherited references declare a mode property');
         }
     }
 }

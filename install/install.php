@@ -14,6 +14,8 @@ $GLPI->initErrorHandler();
 Config::detectRootDoc();
 require_once '../vendor/autoload.php';
 use Glpi\System\RequirementsManager;
+use itsmng\Database\InstallationConnection;
+use itsmng\Database\Installer;
 
 require_once GLPI_ROOT . "/src/languages/language.class.php";
 
@@ -142,7 +144,7 @@ switch ($step) {
                     throw new RuntimeException('Enter the name of an existing, empty PostgreSQL database.');
                 }
                 $database = DBConnection::createConnection('pgsql', $_SESSION['db_host'], $_SESSION['db_user'], $_SESSION['db_pass'], $_SESSION['db_name']);
-                \itsmng\Database\Installer::checkPostgres($database);
+                Installer::checkPostgres($database);
                 $version = $database->getVersion();
                 $databases_info[] = ['name' => $_SESSION['db_name'], 'table_count' => 0, 'creation_date' => '', 'last_update' => ''];
                 $database->close();
@@ -162,13 +164,13 @@ switch ($step) {
         }
         $server = null;
         try {
-            $server = \itsmng\Database\InstallationConnection::mysqlServer($_SESSION['db_host'], $_SESSION['db_user'], $_SESSION['db_pass']);
+            $server = InstallationConnection::mysqlServer($_SESSION['db_host'], $_SESSION['db_user'], $_SESSION['db_pass']);
             $version = $server->getServerVersion();
             $result = Config::checkDbEngine($version);
             $version = key($result);
             $ver_too_old = !$result[$version];
             if (!$ver_too_old) {
-                $databases_info = \itsmng\Database\InstallationConnection::mysqlDatabases($server);
+                $databases_info = InstallationConnection::mysqlDatabases($server);
             }
         } catch (Throwable $exception) {
             $connect_error = $exception->getMessage();
@@ -191,7 +193,7 @@ switch ($step) {
                     throw new RuntimeException('PostgreSQL upgrades are not available yet.');
                 }
                 $database = DBConnection::createConnection('pgsql', $_SESSION['db_host'], $_SESSION['db_user'], $_SESSION['db_pass'], $_SESSION['db_name']);
-                \itsmng\Database\Installer::checkPostgres($database);
+                Installer::checkPostgres($database);
                 $database->close();
                 $glpikey = new GLPIKey();
                 $secured = $glpikey->keyExists() || $glpikey->generate(false);
@@ -227,11 +229,11 @@ switch ($step) {
                 try {
                     if ($new_db) {
                         $error = 'create_db';
-                        $server = \itsmng\Database\InstallationConnection::mysqlServer($_SESSION['db_host'], $_SESSION['db_user'], $_SESSION['db_pass']);
-                        $db_created = \itsmng\Database\InstallationConnection::ensureMysqlDatabase($server, $_SESSION['databasename']);
+                        $server = InstallationConnection::mysqlServer($_SESSION['db_host'], $_SESSION['db_user'], $_SESSION['db_pass']);
+                        $db_created = InstallationConnection::ensureMysqlDatabase($server, $_SESSION['databasename']);
                     }
                     $error = 'use';
-                    $database = \itsmng\Database\InstallationConnection::mysqlDatabase($_SESSION['db_host'], $_SESSION['db_user'], $_SESSION['db_pass'], $_SESSION['databasename']);
+                    $database = InstallationConnection::mysqlDatabase($_SESSION['db_host'], $_SESSION['db_user'], $_SESSION['db_pass'], $_SESSION['databasename']);
                     $database->getServerVersion();
                     if (!DBConnection::createMainConfig($_SESSION['db_host'], $_SESSION['db_user'], $_SESSION['db_pass'], $_SESSION['databasename'])) {
                         $error = 'setup';
@@ -276,7 +278,7 @@ switch ($step) {
         $DB = new DB();
         if ($DB->getProvider() === 'pgsql') {
             try {
-                \itsmng\Database\Installer::installPostgres($DB, $_SESSION['language'] ?? 'en_GB');
+                Installer::installPostgres($DB, $_SESSION['language'] ?? 'en_GB');
             } catch (Throwable $exception) {
                 $step = '6';
                 $twig_vars = ['action' => 'install', 'secured' => true, 'error' => 'use', 'sql_error' => $exception->getMessage(), 'created' => false];

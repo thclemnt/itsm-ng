@@ -33,7 +33,17 @@
 
 namespace tests\units;
 
+use Calendar;
+use CalendarSegment;
+use Calendar_Holiday;
 use DbTestCase;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Query;
+use Holiday;
+use TicketRecurrent as LegacyTicketRecurrent;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CalendarRepository;
+use itsmng\Domain\CalendarSchedule;
 
 /* Test for inc/ticketrecurrent.class.php */
 
@@ -556,32 +566,32 @@ class TicketRecurrent extends DbTestCase
         }
     }
 
-    private function clockedRecurrence(?int $now): \TicketRecurrent
+    private function clockedRecurrence(?int $now): LegacyTicketRecurrent
     {
-        $ticketRecurrent = new class () extends \TicketRecurrent {
+        $ticketRecurrent = new class () extends LegacyTicketRecurrent {
             public ?int $testTimestamp = null;
-            public ?\Doctrine\ORM\EntityManager $calendarEntityManager = null;
+            public ?EntityManager $calendarEntityManager = null;
 
             protected function recurrenceTimestamp(): int
             {
                 return $this->testTimestamp ?? parent::recurrenceTimestamp();
             }
 
-            protected function recurrenceSchedule(int $calendar): \itsmng\Domain\CalendarSchedule
+            protected function recurrenceSchedule(int $calendar): CalendarSchedule
             {
                 return $this->calendarEntityManager === null ? parent::recurrenceSchedule($calendar)
-                    : (new \itsmng\Database\Repository\CalendarRepository($this->calendarEntityManager))->schedule($calendar);
+                    : (new CalendarRepository($this->calendarEntityManager))->schedule($calendar);
             }
         };
         $ticketRecurrent->testTimestamp = $now;
         if ($now !== null) {
             global $DB;
             $connection = $DB->getDoctrineConnection();
-            $configuration = \itsmng\Database\Orm::configuration($connection->getDatabasePlatform());
-            $ticketRecurrent->calendarEntityManager = new class ($connection, $configuration) extends \Doctrine\ORM\EntityManager {
+            $configuration = Orm::configuration($connection->getDatabasePlatform());
+            $ticketRecurrent->calendarEntityManager = new class ($connection, $configuration) extends EntityManager {
                 public int $queryCount = 0;
 
-                public function createQuery(string $dql = ''): \Doctrine\ORM\Query
+                public function createQuery(string $dql = ''): Query
                 {
                     $this->queryCount++;
                     return parent::createQuery($dql);
@@ -593,10 +603,10 @@ class TicketRecurrent extends DbTestCase
 
     public function testRecurrenceReadsFreshCalendarValues()
     {
-        $calendar = new \Calendar();
+        $calendar = new Calendar();
         $calendarId = $calendar->add(['name' => 'Fresh recurrence calendar']);
         $this->integer($calendarId)->isGreaterThan(0);
-        $segment = new \CalendarSegment();
+        $segment = new CalendarSegment();
         $segmentId = $segment->add([
             'calendars_id' => $calendarId, 'day' => 2, 'begin' => '09:00:00', 'end' => '19:00:00',
         ]);
@@ -616,12 +626,12 @@ class TicketRecurrent extends DbTestCase
         $this->string($calculate())->isIdenticalTo('2026-10-06 08:00:00');
         $this->integer($recurrent->calendarEntityManager->queryCount)->isIdenticalTo(4);
 
-        $holiday = new \Holiday();
+        $holiday = new Holiday();
         $holidayId = $holiday->add([
             'name' => 'Fresh recurrence closure', 'begin_date' => '2026-10-06', 'end_date' => '2026-10-06',
         ]);
         $this->integer($holidayId)->isGreaterThan(0);
-        $link = new \Calendar_Holiday();
+        $link = new Calendar_Holiday();
         $this->integer($link->add(['calendars_id' => $calendarId, 'holidays_id' => $holidayId]))->isGreaterThan(0);
         $this->string($calculate())->isIdenticalTo('2026-10-13 08:00:00');
         $this->integer($recurrent->calendarEntityManager->queryCount)->isIdenticalTo(6);

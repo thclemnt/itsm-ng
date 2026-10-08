@@ -4,6 +4,7 @@
 
 namespace itsmng\Database\Mapping;
 
+use Attribute;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
@@ -11,16 +12,17 @@ use Doctrine\DBAL\Schema\DefaultExpression;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Mapping\FieldMapping;
+use InvalidArgumentException;
 
 /** Native instant storage; the ORM field still owns hydration, defaults and nullability. */
-#[\Attribute(\Attribute::TARGET_PROPERTY)]
+#[Attribute(Attribute::TARGET_PROPERTY)]
 final class NativeTimestamp
 {
     /** An explicit name owns automatic touch on both providers, without an ORM version field. */
     public function __construct(public readonly ?string $touchTrigger = null)
     {
         if ($touchTrigger === '') {
-            throw new \InvalidArgumentException('Automatic timestamp touch requires an explicit trigger name.');
+            throw new InvalidArgumentException('Automatic timestamp touch requires an explicit trigger name.');
         }
     }
 
@@ -34,7 +36,7 @@ final class NativeTimestamp
     public function declaration(AbstractPlatform $platform, FieldMapping $field): ?string
     {
         if (!in_array($field->type, [Types::DATETIMETZ_MUTABLE, Types::DATETIMETZ_IMMUTABLE], true)) {
-            throw new \InvalidArgumentException('NativeTimestamp requires an ORM datetime with timezone field.');
+            throw new InvalidArgumentException('NativeTimestamp requires an ORM datetime with timezone field.');
         }
         if (!$platform instanceof AbstractMySQLPlatform) {
             // PostgreSQL already gives datetimetz native instant storage. Keep
@@ -51,7 +53,7 @@ final class NativeTimestamp
             $declaration .= ' DEFAULT ' . $platform->getCurrentTimestampSQL();
         } elseif ($default !== null) {
             if (!is_scalar($default)) {
-                throw new \InvalidArgumentException('Native timestamp default must be an SQL expression or a scalar value.');
+                throw new InvalidArgumentException('Native timestamp default must be an SQL expression or a scalar value.');
             }
             $declaration .= ' DEFAULT ' . $platform->quoteStringLiteral((string)$default);
         } elseif ($nullable) {

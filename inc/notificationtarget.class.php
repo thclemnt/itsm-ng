@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NotificationRecipientRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -797,7 +802,7 @@ class NotificationTarget extends CommonDBChild
     {
         global $DB;
 
-        $iterator = new \itsmng\Database\RowIterator($this->recipientRepository()->groupUsers(
+        $iterator = new RowIterator($this->recipientRepository()->groupUsers(
             (int)$group_id,
             (int)$manager,
             $this->getProfileJoinCriteria()
@@ -836,10 +841,10 @@ class NotificationTarget extends CommonDBChild
         ];
     }
 
-    protected function recipientRepository(): \itsmng\Database\Repository\NotificationRecipientRepository
+    protected function recipientRepository(): NotificationRecipientRepository
     {
         global $DB;
-        return new \itsmng\Database\Repository\NotificationRecipientRepository(\itsmng\Database\Orm::create($DB));
+        return new NotificationRecipientRepository(Orm::create($DB));
     }
 
 
@@ -891,7 +896,7 @@ class NotificationTarget extends CommonDBChild
     {
         global $DB;
 
-        foreach (\itsmng\Database\MappedReads::matching($DB, 'glpi_profiles') as $data) {
+        foreach (MappedReads::matching($DB, 'glpi_profiles') as $data) {
             $this->addTarget(
                 $data["id"],
                 sprintf(__('%1$s: %2$s'), Profile::getTypeName(1), $data["name"]),
@@ -909,7 +914,7 @@ class NotificationTarget extends CommonDBChild
         global $DB;
 
         // Filter groups which can be notified and have members (as notifications are sent to members)
-        $iterator = new \itsmng\Database\RowIterator(\itsmng\Database\MappedReads::matching(
+        $iterator = new RowIterator(MappedReads::matching(
             $DB,
             Group::getTable(),
             ['is_usergroup' => true, 'is_notify' => true] + getEntitiesRestrictCriteria('glpi_groups', 'entities_id', $entity, true),
@@ -1033,7 +1038,7 @@ class NotificationTarget extends CommonDBChild
         }
 
         if (!empty($id)) {
-            $iterator = new \itsmng\Database\RowIterator($this->recipientRepository()->users($id, $this->getProfileJoinCriteria()));
+            $iterator = new RowIterator($this->recipientRepository()->users($id, $this->getProfileJoinCriteria()));
 
             while ($data = $iterator->next()) {
                 //Add the user email and language in the notified users list
@@ -1093,7 +1098,7 @@ class NotificationTarget extends CommonDBChild
     {
         global $DB;
 
-        $iterator = new \itsmng\Database\RowIterator($this->recipientRepository()->profileUsers(
+        $iterator = new RowIterator($this->recipientRepository()->profileUsers(
             (int)$profiles_id,
             $this->getProfileJoinCriteria()
         ));
@@ -1456,7 +1461,7 @@ class NotificationTarget extends CommonDBChild
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\NotificationRecipientRepository(\itsmng\Database\Orm::create($DB)))->countForGroup(
+        return (new NotificationRecipientRepository(Orm::create($DB)))->countForGroup(
             (int)$group->getID(),
             getEntitiesRestrictCriteria(Notification::getTable(), '', '', true)
         );
@@ -1480,7 +1485,7 @@ class NotificationTarget extends CommonDBChild
             return false;
         }
 
-        $iterator = new \itsmng\Database\RowIterator((new \itsmng\Database\Repository\NotificationRecipientRepository(\itsmng\Database\Orm::create($DB)))->notificationsForGroup(
+        $iterator = new RowIterator((new NotificationRecipientRepository(Orm::create($DB)))->notificationsForGroup(
             (int)$group->getID(),
             getEntitiesRestrictCriteria(Notification::getTable(), '', '', true)
         ));

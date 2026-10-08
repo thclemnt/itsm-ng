@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Entity\ITILSolution as ITILSolutionEntity;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -489,7 +491,7 @@ class Ticket_Ticket extends CommonDBRelation
             unset($solution_data['date_mod']);
 
             foreach ($tickets as $data) {
-                $solution_data = \itsmng\Database\Entity\ITILSolution::withSubject($solution_data, 'Ticket', (int)$data['tickets_id']);
+                $solution_data = ITILSolutionEntity::withSubject($solution_data, 'Ticket', (int)$data['tickets_id']);
                 $solution_data['_linked_ticket'] = true;
                 $new_solution = new ITILSolution();
                 $new_solution->add(Toolbox::addslashes_deep($solution_data));

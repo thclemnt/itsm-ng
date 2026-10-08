@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILOriginRepository;
+use itsmng\Database\Repository\ITILUserRepository;
+
 use function PHPSTORM_META\map;
 
 if (!defined('GLPI_ROOT')) {
@@ -67,7 +71,7 @@ class ITILFollowup extends CommonDBChild
     public function cleanDBonPurge()
     {
         global $DB;
-        (new \itsmng\Database\Repository\ITILOriginRepository(\itsmng\Database\Orm::create($DB)))
+        (new ITILOriginRepository(Orm::create($DB)))
             ->reassignFollowup((int)$this->getID(), empty($this->input['_replace_by']) ? null : (int)$this->input['_replace_by']);
         parent::cleanDBonPurge();
     }
@@ -1261,7 +1265,7 @@ class ITILFollowup extends CommonDBChild
         // Print Followups for a job
         $showprivate = Session::haveRight(self::$rightname, self::SEEPRIVATE);
 
-        $iterator = (new \itsmng\Database\Repository\ITILUserRepository(\itsmng\Database\Orm::create($DB)))
+        $iterator = (new ITILUserRepository(Orm::create($DB)))
             ->followups((string)$itemtype, (int)$ID, (int)Session::getLoginUserID(), $showprivate);
 
         $out = "";
@@ -1516,7 +1520,7 @@ class ITILFollowup extends CommonDBChild
             // The author is an observer or a requester -> can be support agent OR
             // requester depending on how GLPI is used so we must check the user's
             // profiles
-            return (new \itsmng\Database\Repository\ITILUserRepository(\itsmng\Database\Orm::create($DB)))
+            return (new ITILUserRepository(Orm::create($DB)))
                 ->hasCentralProfile((int)$user_id);
         } elseif (in_array(CommonITILActor::REQUESTER, $roles)) {
             // The author is a requester -> not from support agent

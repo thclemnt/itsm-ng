@@ -1,5 +1,9 @@
 <?php
 
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\PlacementRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access directly to this file");
 }
@@ -84,7 +88,7 @@ class Item_Enclosure extends CommonDBRelation
         }
         $canedit = $enclosure->canEdit($ID);
 
-        $items = \itsmng\Database\MappedReads::matching($DB, self::getTable(), ['enclosures_id' => $enclosure->getID()]);
+        $items = MappedReads::matching($DB, self::getTable(), ['enclosures_id' => $enclosure->getID()]);
 
         Session::initNavigateListItems(
             self::getType(),
@@ -196,7 +200,7 @@ class Item_Enclosure extends CommonDBRelation
             ]
         );
 
-        $used = (new \itsmng\Database\Repository\PlacementRepository(\itsmng\Database\Orm::create($DB)))->enclosureSelection();
+        $used = (new PlacementRepository(Orm::create($DB)))->enclosureSelection();
 
         Ajax::updateItemOnSelectEvent(
             "dropdown_itemtype$rand",

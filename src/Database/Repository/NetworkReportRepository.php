@@ -7,6 +7,7 @@ namespace itsmng\Database\Repository;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
 use itsmng\Database\Entity;
 
 /** Scoped endpoint projection followed by bounded, independent address hydration. */
@@ -20,7 +21,7 @@ final class NetworkReportRepository
     public function rows(string $kind, array $ids, ?array $entities): array
     {
         if (!in_array($kind, ['equipment', 'outlet', 'location'], true)) {
-            throw new \InvalidArgumentException('Unknown network report kind');
+            throw new InvalidArgumentException('Unknown network report kind');
         }
         $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn ($id) => $id > 0)));
         if (!$ids || $entities === []) {

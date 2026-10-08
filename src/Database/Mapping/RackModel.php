@@ -4,8 +4,10 @@
 
 namespace itsmng\Database\Mapping;
 
+use Attribute;
+
 /** The owning model association supplies an asset's physical rack dimensions. */
-#[\Attribute(\Attribute::TARGET_PROPERTY)]
+#[Attribute(Attribute::TARGET_PROPERTY)]
 final class RackModel
 {
 }

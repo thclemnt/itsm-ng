@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILAssetRepository;
+use itsmng\Database\RowIterator;
 use itsmng\Timezone;
 
 if (!defined('GLPI_ROOT')) {
@@ -1943,8 +1946,8 @@ class Problem extends CommonITILObject
     {
         global $DB;
 
-        return new \itsmng\Database\RowIterator(
-            (new \itsmng\Database\Repository\ITILAssetRepository(\itsmng\Database\Orm::create($DB)))
+        return new RowIterator(
+            (new ITILAssetRepository(Orm::create($DB)))
                 ->active('Problem', (string)$itemtype, (int)$items_id, array_merge($this->getSolvedStatusArray(), $this->getClosedStatusArray()))
         );
     }

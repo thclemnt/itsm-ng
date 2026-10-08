@@ -33,7 +33,18 @@
 
 namespace tests\units;
 
+use CronTask as LegacyCronTask;
+use DateTime;
+use DateTimeImmutable;
+use DateTimeZone;
 use DbTestCase;
+use Doctrine\DBAL\Schema\Schema;
+use itsmng\Database\BaselineSchema;
+use itsmng\Database\Entity\CronTask as CronTaskEntity;
+use itsmng\Database\Entity\CronTaskLog;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CronTaskRepository;
+use itsmng\Database\SchemaCheck;
 
 /* Test for inc/crontask.class.php */
 
@@ -52,14 +63,14 @@ class CronTask extends DbTestCase
         // Compare digests so a failed read-only check cannot print log contents.
         $beforeRows = $rowsHash();
         $level = $connection->getTransactionNestingLevel();
-        $manager = \itsmng\Database\Orm::create($DB);
+        $manager = Orm::create($DB);
         try {
-            $metadata = $manager->getClassMetadata(\itsmng\Database\Entity\CronTaskLog::class);
+            $metadata = $manager->getClassMetadata(CronTaskLog::class);
             $metadata->fieldMappings['content']->length = 173;
-            $expected = (new \itsmng\Database\BaselineSchema($manager))->build($platform)->getTable('glpi_crontasklogs');
-            $this->array((new \itsmng\Database\SchemaCheck())->differences(
+            $expected = (new BaselineSchema($manager))->build($platform)->getTable('glpi_crontasklogs');
+            $this->array((new SchemaCheck())->differences(
                 $connection,
-                new \Doctrine\DBAL\Schema\Schema([clone $expected])
+                new Schema([clone $expected])
             ))->isIdenticalTo(['Changed column: glpi_crontasklogs.content']);
             $after = $schemaManager->introspectTable('glpi_crontasklogs');
             $this->boolean($schemaManager->createComparator()->compareTables($before, $after)->isEmpty())->isTrue();
@@ -206,8 +217,8 @@ class CronTask extends DbTestCase
         $taskIds = $DB->getDoctrineConnection()->fetchFirstColumn('SELECT id FROM glpi_crontasks');
         $this->array($taskIds)->isNotEmpty();
         $this->boolean($DB->update(
-            \CronTask::getTable(),
-            ['state' => \CronTask::STATE_DISABLE],
+            LegacyCronTask::getTable(),
+            ['state' => LegacyCronTask::STATE_DISABLE],
             ['id' => $taskIds]
         ))->isTrue();
         $this->boolean($crontask->getNeedToRun())->isFalse();
@@ -237,39 +248,39 @@ class CronTask extends DbTestCase
 
         $connection = $DB->getDoctrineConnection();
         $depth = $connection->getTransactionNestingLevel();
-        $em = \itsmng\Database\Orm::create($DB);
-        $em->createQuery('UPDATE ' . \itsmng\Database\Entity\CronTask::class . ' t SET t.state = :waiting')
-            ->setParameter('waiting', \CronTask::STATE_WAITING)->execute();
+        $em = Orm::create($DB);
+        $em->createQuery('UPDATE ' . CronTaskEntity::class . ' t SET t.state = :waiting')
+            ->setParameter('waiting', LegacyCronTask::STATE_WAITING)->execute();
         $prefix = 'Overdue ' . bin2hex(random_bytes(6));
-        $now = new \DateTimeImmutable('2030-01-10 12:00:00', new \DateTimeZone('UTC'));
+        $now = new DateTimeImmutable('2030-01-10 12:00:00', new DateTimeZone('UTC'));
         $cases = [
-            ['frequency overdue', 60, 121, \CronTask::STATE_RUNNING, true],
-            ['two-hour overdue', 86400, 7201, \CronTask::STATE_RUNNING, true],
-            ['frequency exact', 60, 120, \CronTask::STATE_RUNNING, false],
-            ['two-hour exact', 86400, 7200, \CronTask::STATE_RUNNING, false],
-            ['one-second overdue', 1, 3, \CronTask::STATE_RUNNING, true],
-            ['one-second exact', 1, 2, \CronTask::STATE_RUNNING, false],
-            ['recent', 1, 1, \CronTask::STATE_RUNNING, false],
-            ['never run', 60, null, \CronTask::STATE_RUNNING, false],
-            ['future', 60, -60, \CronTask::STATE_RUNNING, false],
-            ['waiting', 60, 86400, \CronTask::STATE_WAITING, false],
-            ['disabled', 60, 86400, \CronTask::STATE_DISABLE, false],
+            ['frequency overdue', 60, 121, LegacyCronTask::STATE_RUNNING, true],
+            ['two-hour overdue', 86400, 7201, LegacyCronTask::STATE_RUNNING, true],
+            ['frequency exact', 60, 120, LegacyCronTask::STATE_RUNNING, false],
+            ['two-hour exact', 86400, 7200, LegacyCronTask::STATE_RUNNING, false],
+            ['one-second overdue', 1, 3, LegacyCronTask::STATE_RUNNING, true],
+            ['one-second exact', 1, 2, LegacyCronTask::STATE_RUNNING, false],
+            ['recent', 1, 1, LegacyCronTask::STATE_RUNNING, false],
+            ['never run', 60, null, LegacyCronTask::STATE_RUNNING, false],
+            ['future', 60, -60, LegacyCronTask::STATE_RUNNING, false],
+            ['waiting', 60, 86400, LegacyCronTask::STATE_WAITING, false],
+            ['disabled', 60, 86400, LegacyCronTask::STATE_DISABLE, false],
         ];
         $expected = [];
         foreach ($cases as [$name, $frequency, $age, $state, $overdue]) {
-            $task = new \itsmng\Database\Entity\CronTask();
+            $task = new CronTaskEntity();
             $task->itemtype = 'CronTask';
             $task->name = $prefix . ' ' . $name;
             $task->frequency = $frequency;
             $task->state = $state;
-            $task->lastrun = $age === null ? null : \DateTime::createFromImmutable($now->modify(sprintf('%+d seconds', -$age)));
+            $task->lastrun = $age === null ? null : DateTime::createFromImmutable($now->modify(sprintf('%+d seconds', -$age)));
             $em->persist($task);
             if ($overdue) {
                 $expected[] = $task->name;
             }
         }
         $em->flush();
-        $repository = new \itsmng\Database\Repository\CronTaskRepository($em);
+        $repository = new CronTaskRepository($em);
         $this->array($repository->overdueNames($now))->isEqualTo($expected);
         $this->array(array_column($repository->overdue($now), 'name'))->isEqualTo($expected);
         // The operational clock is whole seconds, including an injected fractional-second clock.

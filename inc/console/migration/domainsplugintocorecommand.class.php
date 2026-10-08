@@ -38,6 +38,7 @@ if (!defined('GLPI_ROOT')) {
 }
 
 use Glpi\Console\AbstractCommand;
+use Throwable;
 use itsmng\Domain\DomainPluginImport;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -67,7 +68,7 @@ class DomainsPluginToCoreCommand extends AbstractCommand
         $importer = new DomainPluginImport($this->db);
         try {
             $plan = $importer->plan();
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $output->writeln('<error>' . $error->getMessage() . '</error>');
             return self::ERROR_PLUGIN_VERSION_OR_DATA_INVALID;
         }
@@ -90,7 +91,7 @@ class DomainsPluginToCoreCommand extends AbstractCommand
             $result = $importer->import(static function (string $event, string $kind, int $id) use ($output): void {
                 $output->writeln($event . ': ' . $kind . ' ' . $id, OutputInterface::VERBOSITY_VERBOSE);
             });
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $output->writeln('<error>Domains import rolled back: ' . $error->getMessage() . '</error>');
             return self::ERROR_PLUGIN_IMPORT_FAILED;
         }

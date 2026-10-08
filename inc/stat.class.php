@@ -31,6 +31,13 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILStatisticsRepository;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\StatisticsClassificationRepository;
+use itsmng\Database\Repository\TicketAssetStatisticsRepository;
+use itsmng\Reporting\Criteria;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -188,10 +195,10 @@ class Stat extends CommonGLPI
     {
         global $DB;
 
-        if ($scoped && \itsmng\Reporting\Criteria::entities() === []) {
+        if ($scoped && Criteria::entities() === []) {
             return [];
         }
-        return (new \itsmng\Database\Repository\StatisticsClassificationRepository(\itsmng\Database\Orm::create($DB)))
+        return (new StatisticsClassificationRepository(Orm::create($DB)))
             ->options($table, $label, $criteria, $order);
     }
 
@@ -820,8 +827,8 @@ class Stat extends CommonGLPI
         if (!$item instanceof CommonITILObject) {
             return;
         }
-        return (new \itsmng\Database\Repository\ITILStatisticsRepository(
-            \itsmng\Database\Orm::create(DBConnection::getReadConnection())
+        return (new ITILStatisticsRepository(
+            Orm::create(DBConnection::getReadConnection())
         ))->monthly(
             $itemtype,
             $type,
@@ -830,7 +837,7 @@ class Stat extends CommonGLPI
             (string)$param,
             $value,
             $value2,
-            \itsmng\Reporting\Criteria::entities(),
+            Criteria::entities(),
             array_merge($item->getClosedStatusArray(), $item->getSolvedStatusArray()),
             $item->getClosedStatusArray(),
             $add_criteria
@@ -865,8 +872,8 @@ class Stat extends CommonGLPI
         }
         $start = isset($_GET['export_all']) ? 0 : max(0, (int)$start);
         $limit = isset($_GET['export_all']) ? null : max(0, (int)$_SESSION['glpilist_limit']);
-        $page = (new \itsmng\Database\Repository\TicketAssetStatisticsRepository(\itsmng\Database\Orm::create($DB)))
-            ->page($date1, $date2, \itsmng\Reporting\Criteria::entities(), $start, $limit);
+        $page = (new TicketAssetStatisticsRepository(Orm::create($DB)))
+            ->page($date1, $date2, Criteria::entities(), $start, $limit);
         $numrows = $page['total'];
 
         if ($numrows > 0) {
@@ -915,7 +922,7 @@ class Stat extends CommonGLPI
                     if ($view_entities) {
                         $ent = $item->getEntityID();
                         if (!array_key_exists($ent, $entities)) {
-                            $entity = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+                            $entity = (new RecordRepository(Orm::create($DB)))
                                 ->find('glpi_entities', 'id', (int)$ent);
                             $entities[$ent] = $entity['completename'] ?? '';
                         }

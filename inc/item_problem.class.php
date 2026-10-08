@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\DropdownChoiceContext;
+use itsmng\Database\MappedReads;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -102,7 +105,7 @@ class Item_Problem extends CommonItilObject_Item
             $options = array_unique($problem->getAllTypesForHelpdesk());
             $dropdownChoiceTokens = [];
             foreach (array_keys($options) as $kind) {
-                $dropdownChoiceTokens[$kind] = \itsmng\Database\DropdownChoiceContext::token($kind, []);
+                $dropdownChoiceTokens[$kind] = DropdownChoiceContext::token($kind, []);
             }
             $dropdownChoiceTokens = json_encode($dropdownChoiceTokens, JSON_THROW_ON_ERROR);
 
@@ -259,7 +262,7 @@ class Item_Problem extends CommonItilObject_Item
                 case 'Supplier':
                     if ($_SESSION['glpishow_count_on_tabs']) {
                         $from = $item->getType() == 'Group' ? 'glpi_groups_problems' : 'glpi_problems_' . strtolower($item->getType() . 's');
-                        $nb = \itsmng\Database\MappedReads::countMatching($DB, $from, [
+                        $nb = MappedReads::countMatching($DB, $from, [
                             $item->getForeignKeyField() => $item->fields['id'],
                         ]);
                     }

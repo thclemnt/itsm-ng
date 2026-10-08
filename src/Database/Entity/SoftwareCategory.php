@@ -5,6 +5,7 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
@@ -26,7 +27,7 @@ class SoftwareCategory
     #[ORM\ManyToOne(targetEntity: SoftwareCategory::class)]
     #[ORM\JoinColumn(name: 'softwarecategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?SoftwareCategory $softwarecategories = null;
 
     #[ORM\Column(name: '`completename`', type: 'text', nullable: true)]

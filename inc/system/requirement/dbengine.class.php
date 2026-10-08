@@ -33,6 +33,10 @@
 
 namespace Glpi\System\Requirement;
 
+use DBAdapter;
+use RuntimeException;
+use itsmng\Database\CheckConstraintSupport;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -49,7 +53,7 @@ class DbEngine extends AbstractRequirement
      */
     private $db;
 
-    public function __construct(\DBAdapter $db)
+    public function __construct(DBAdapter $db)
     {
         $this->title = __('Testing DB engine version');
         $this->db = $db;
@@ -64,9 +68,9 @@ class DbEngine extends AbstractRequirement
         } else {
             $maria = stripos($rawVersion, 'MariaDB') !== false;
             try {
-                $version = \itsmng\Database\CheckConstraintSupport::version($rawVersion, $maria);
-                $supported = \itsmng\Database\CheckConstraintSupport::supportsVersion($rawVersion, $maria);
-            } catch (\RuntimeException) {
+                $version = CheckConstraintSupport::version($rawVersion, $maria);
+                $supported = CheckConstraintSupport::supportsVersion($rawVersion, $maria);
+            } catch (RuntimeException) {
                 $supported = false;
             }
         }

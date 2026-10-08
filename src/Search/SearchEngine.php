@@ -34,8 +34,15 @@
 
 namespace itsmng\Search;
 
+use DisplayPreference;
+use Html;
+use Search;
+use Session;
+use Toolbox;
 use itsmng\Search\Input\QueryBuilder;
 use itsmng\Search\Provider\SQLProvider;
+
+use function getItemForItemtype;
 
 final class SearchEngine
 {
@@ -86,9 +93,9 @@ final class SearchEngine
         if (class_exists($itemtype)) {
             $p['target'] = $itemtype::getSearchURL();
         } else {
-            $p['target'] = \Toolbox::getItemTypeSearchURL($itemtype);
+            $p['target'] = Toolbox::getItemTypeSearchURL($itemtype);
         }
-        $p['display_type'] = \Search::HTML_OUTPUT;
+        $p['display_type'] = Search::HTML_OUTPUT;
         $p['showmassiveactions'] = true;
         $p['dont_flush'] = false;
         $p['show_pager'] = true;
@@ -122,8 +129,8 @@ final class SearchEngine
         // Set display type for export if define
         if (isset($p['display_type'])) {
             // Limit to 10 element
-            if ($p['display_type'] == \Search::GLOBAL_SEARCH) {
-                $p['list_limit'] = \Search::GLOBAL_DISPLAY_COUNT;
+            if ($p['display_type'] == Search::GLOBAL_SEARCH) {
+                $p['list_limit'] = Search::GLOBAL_DISPLAY_COUNT;
             }
         }
         if ($p['export_all']) {
@@ -140,20 +147,20 @@ final class SearchEngine
         // Instanciate an object to access method
         $data['item'] = null;
         if ($itemtype != 'AllAssets') {
-            $data['item'] = \getItemForItemtype($itemtype);
+            $data['item'] = getItemForItemtype($itemtype);
         }
         $data['display_type'] = $data['search']['display_type'];
         if (!$CFG_GLPI['allow_search_all']) {
             foreach ($p['criteria'] as $val) {
                 if (isset($val['field']) && $val['field'] == 'all') {
-                    \Html::displayRightError();
+                    Html::displayRightError();
                 }
             }
         }
         if (!$CFG_GLPI['allow_search_view']) {
             foreach ($p['criteria'] as $val) {
                 if (isset($val['field']) && $val['field'] == 'view') {
-                    \Html::displayRightError();
+                    Html::displayRightError();
                 }
             }
         }
@@ -171,7 +178,7 @@ final class SearchEngine
         $data['meta_toview'] = [];
         if (!$forcetoview) {
             // Add items to display depending of personal prefs
-            $displaypref = \DisplayPreference::getForTypeUser($itemtype, \Session::getLoginUserID());
+            $displaypref = DisplayPreference::getForTypeUser($itemtype, Session::getLoginUserID());
             if (count($displaypref)) {
                 foreach ($displaypref as $val) {
                     array_push($data['toview'], $val);

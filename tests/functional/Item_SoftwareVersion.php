@@ -34,6 +34,19 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\DBAL\ArrayParameterType;
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\DBAL\Configuration;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Logging\Middleware;
+use Doctrine\DBAL\Query\QueryBuilder;
+use Doctrine\DBAL\Result;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Id\AssignedGenerator;
+use Doctrine\ORM\Mapping\ClassMetadata;
+use Entity;
+use Item_SoftwareLicense;
 use Item_SoftwareVersion as ItemSoftwareVersionModel;
 use Computer as ComputerModel;
 use DbUtils as DbUtilsModel;
@@ -46,8 +59,26 @@ use Doctrine\DBAL\Types\StringType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use Doctrine\ORM\Events;
+use Plugin;
+use Psr\Log\AbstractLogger;
+use ReflectionProperty;
+use Software;
+use SoftwareCategory;
+use SoftwareLicense;
+use SoftwareVersion;
 use itsmng\Database\EntityRestriction;
+use itsmng\Database\Entity\Entity as EntityRecord;
+use itsmng\Database\Entity\ItemSoftwareLicense;
+use itsmng\Database\Entity\ItemSoftwareVersion;
+use itsmng\Database\Entity\Software as SoftwareEntity;
+use itsmng\Database\Entity\SoftwareCategory as SoftwareCategoryEntity;
+use itsmng\Database\Entity\SoftwareLicense as SoftwareLicenseEntity;
+use itsmng\Database\Entity\SoftwareLicenseType;
+use itsmng\Database\Entity\SoftwareVersion as SoftwareVersionEntity;
+use itsmng\Database\MySQLConnection;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\PostgresConnection;
 use itsmng\Database\Repository\SoftwareInstallationRepository;
 use itsmng\Database\SoftwareRenderingReadOperation;
 use LogicException;
@@ -74,14 +105,14 @@ class Item_SoftwareVersion extends DbTestCase
         $this->setEntity('_test_root_entity', true);
         $suffix = bin2hex(random_bytes(6));
         $root = (int)getItemByTypeName('Entity', '_test_root_entity', true);
-        $software = $this->createItem(\Software::class, [
+        $software = $this->createItem(Software::class, [
             'name' => 'Installation fixture software ' . $suffix,
             'entities_id' => $root,
             'is_recursive' => 1,
         ]);
         $versions = [];
         foreach ([1, 2] as $number) {
-            $versions[] = $this->createItem(\SoftwareVersion::class, [
+            $versions[] = $this->createItem(SoftwareVersion::class, [
                 'name' => 'Installation fixture version ' . $number . ' ' . $suffix,
                 'softwares_id' => $software->getID(),
                 'entities_id' => $root,
@@ -90,7 +121,7 @@ class Item_SoftwareVersion extends DbTestCase
         }
         $computers = [];
         foreach ($entities as $index => $entity) {
-            $computer = $this->createItem(\Computer::class, [
+            $computer = $this->createItem(ComputerModel::class, [
                 'name' => 'Installation fixture computer ' . $index . ' ' . $suffix,
                 'entities_id' => (int)getItemByTypeName('Entity', $entity, true),
             ]);
@@ -218,7 +249,7 @@ class Item_SoftwareVersion extends DbTestCase
         $ver1 = $versions[0]->getID();
         $ver2 = $versions[1]->getID();
         $c00 = (int)$DB->getDoctrineConnection()->fetchOne('SELECT COALESCE(MAX(id), 0) + 1 FROM glpi_computers');
-        $this->boolean((new \Computer())->getFromDB($c00))->isFalse();
+        $this->boolean((new ComputerModel())->getFromDB($c00))->isFalse();
 
         // Do some installations
         $softver = new \Item_SoftwareVersion();
@@ -293,38 +324,38 @@ class Item_SoftwareVersion extends DbTestCase
         $session = $_SESSION;
         $request = $_REQUEST;
         $hooks = $PLUGIN_HOOKS;
-        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
         $active = $plugins->getValue();
         $connection = $DB->getDoctrineConnection();
         $level = $connection->getTransactionNestingLevel();
         try {
             $this->login();
             $this->setEntity('_test_root_entity', true);
-            $child = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(),
+            $child = $this->createItem(Entity::class, ['name' => $this->getUniqueString(),
                 'entities_id' => (int)$_SESSION['glpiactive_entity']]);
             [$software, $versions, $computers] = $this->installationFixtures([$child->fields['name']]);
             $computer = $computers[0];
             $entity = (int)$software->fields['entities_id'];
-            $categoryParent = $this->createItem(\SoftwareCategory::class, ['name' => 'Parent ' . $this->getUniqueString()]);
-            $category = $this->createItem(\SoftwareCategory::class, ['name' => 'Child & category',
+            $categoryParent = $this->createItem(SoftwareCategory::class, ['name' => 'Parent ' . $this->getUniqueString()]);
+            $category = $this->createItem(SoftwareCategory::class, ['name' => 'Child & category',
                 'softwarecategories_id' => $categoryParent->getID()]);
             $this->boolean($software->update(['id' => $software->getID(),
                 'softwarecategories_id' => $category->getID(), 'comment' => 'Full permission fields']))->isTrue();
             $installations = [];
             $licenses = [];
             foreach ($versions as $index => $version) {
-                $installations[] = $this->createItem(\Item_SoftwareVersion::class, [
+                $installations[] = $this->createItem(ItemSoftwareVersionModel::class, [
                     'itemtype' => 'Computer', 'items_id' => $computer->getID(),
                     'softwareversions_id' => $version->getID(),
                 ]);
-                $licenses[] = $this->createItem(\SoftwareLicense::class, [
+                $licenses[] = $this->createItem(SoftwareLicense::class, [
                     'name' => $this->getUniqueString(), 'softwares_id' => $software->getID(),
                     'entities_id' => $entity, 'is_recursive' => 1, 'number' => -1,
                     'softwareversions_id_buy' => $versions[0]->getID(),
                     // Public zero input becomes an empty owning reference, retaining buy fallback.
                     'softwareversions_id_use' => $index === 0 ? 0 : $version->getID(),
                 ]);
-                $this->createItem(\Item_SoftwareLicense::class, [
+                $this->createItem(Item_SoftwareLicense::class, [
                     'itemtype' => 'Computer', 'items_id' => $computer->getID(),
                     'softwarelicenses_id' => $licenses[$index]->getID(),
                 ]);
@@ -501,7 +532,7 @@ class Item_SoftwareVersion extends DbTestCase
             $render = function () use ($computer): array {
                 ob_start();
                 try {
-                    \Item_SoftwareVersion::showForItem($computer);
+                    ItemSoftwareVersionModel::showForItem($computer);
                     $html = ob_get_contents();
                 } finally {
                     ob_end_clean();
@@ -539,8 +570,8 @@ class Item_SoftwareVersion extends DbTestCase
             $comments = [];
             $names = [];
             $plugins->setValue(null, [...$active, 'effective_license_fixture']);
-            $PLUGIN_HOOKS['item_can'] = ['effective_license_fixture' => [\Software::class =>
-                static function (\Software $item) use (&$calls, &$comments, &$names, $connection, $licenses, $versions): void {
+            $PLUGIN_HOOKS['item_can'] = ['effective_license_fixture' => [Software::class =>
+                static function (Software $item) use (&$calls, &$comments, &$names, $connection, $licenses, $versions): void {
                     $comments[] = $item->fields['comment'];
                     $names[] = $item->fields['name'];
                     if (++$calls === 1) {
@@ -575,7 +606,7 @@ class Item_SoftwareVersion extends DbTestCase
     {
         global $DB;
         $originalLevel = $DB->getDoctrineConnection()->getTransactionNestingLevel();
-        $logger = new class () extends \Psr\Log\AbstractLogger {
+        $logger = new class () extends AbstractLogger {
             public array $queries = [];
 
             public function log($level, $message, array $context = []): void
@@ -585,17 +616,17 @@ class Item_SoftwareVersion extends DbTestCase
                 }
             }
         };
-        $configuration = new \Doctrine\DBAL\Configuration();
-        $configuration->setMiddlewares([new \Doctrine\DBAL\Logging\Middleware($logger)]);
+        $configuration = new Configuration();
+        $configuration->setMiddlewares([new Middleware($logger)]);
         $parameters = $DB->getDoctrineConnection()->getParams();
         $connection = $DB->getProvider() === 'pgsql'
-            ? \itsmng\Database\PostgresConnection::create($parameters, $configuration)
-            : \itsmng\Database\MySQLConnection::create($parameters, $configuration);
+            ? PostgresConnection::create($parameters, $configuration)
+            : MySQLConnection::create($parameters, $configuration);
         // An independent real writer owns this rolled-back graph, not DbTestCase's caller frame.
-        $frame = \itsmng\Database\OwnedMutationFrame::begin($connection);
+        $frame = OwnedMutationFrame::begin($connection);
         try {
-            $manager = new \Doctrine\ORM\EntityManager($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform()));
-            $root = $manager->getReference(\itsmng\Database\Entity\Entity::class, 0);
+            $manager = new EntityManager($connection, Orm::configuration($connection->getDatabasePlatform()));
+            $root = $manager->getReference(EntityRecord::class, 0);
             $owner = max(
                 (int)$connection->fetchOne('SELECT MAX(id) FROM glpi_computers'),
                 (int)$connection->fetchOne('SELECT MAX(id) FROM glpi_monitors')
@@ -604,8 +635,8 @@ class Item_SoftwareVersion extends DbTestCase
             foreach (['Computer', 'Monitor'] as $kind) {
                 $class = '\\itsmng\\Database\\Entity\\' . $kind;
                 $metadata = $manager->getClassMetadata($class);
-                $metadata->setIdGeneratorType(\Doctrine\ORM\Mapping\ClassMetadata::GENERATOR_TYPE_NONE);
-                $metadata->setIdGenerator(new \Doctrine\ORM\Id\AssignedGenerator());
+                $metadata->setIdGeneratorType(ClassMetadata::GENERATOR_TYPE_NONE);
+                $metadata->setIdGenerator(new AssignedGenerator());
                 $subject = new $class();
                 $subject->id = $owner;
                 $subject->entities = $root;
@@ -613,23 +644,23 @@ class Item_SoftwareVersion extends DbTestCase
                 $manager->persist($subject);
                 $subjects[$kind] = $subject;
             }
-            $software = new \itsmng\Database\Entity\Software();
+            $software = new SoftwareEntity();
             $software->entities = $root;
             $software->name = 'Installation license projection';
-            $category = new \itsmng\Database\Entity\SoftwareCategory();
+            $category = new SoftwareCategoryEntity();
             $category->name = 'Installation category';
             $category->completename = 'Parent > Installation category';
             $manager->persist($category);
             $software->softwarecategories = $category;
             $manager->persist($software);
-            $type = new \itsmng\Database\Entity\SoftwareLicenseType();
+            $type = new SoftwareLicenseType();
             $type->entities = $root;
             $type->name = 'Projection type';
             $manager->persist($type);
             $versions = [];
             $licenses = [];
             $allocate = static function ($license, string $kind) use ($manager, $subjects): void {
-                $allocation = new \itsmng\Database\Entity\ItemSoftwareLicense();
+                $allocation = new ItemSoftwareLicense();
                 $allocation->itemtype = $kind;
                 $association = $allocation::referenceAssociation($kind);
                 $allocation->{$association} = $subjects[$kind];
@@ -638,19 +669,19 @@ class Item_SoftwareVersion extends DbTestCase
             };
             // The last real installation is deliberately outside the requested page keys.
             for ($index = 0; $index < 26; ++$index) {
-                $version = new \itsmng\Database\Entity\SoftwareVersion();
+                $version = new SoftwareVersionEntity();
                 $version->entities = $root;
                 $version->softwares = $software;
                 $version->name = 'Projection version ' . $index;
                 $manager->persist($version);
                 $versions[] = $version;
-                $installation = new \itsmng\Database\Entity\ItemSoftwareVersion();
+                $installation = new ItemSoftwareVersion();
                 $installation->entities = $root;
                 $installation->itemtype = 'Computer';
                 $installation->computer = $subjects['Computer'];
                 $installation->softwareversions = $version;
                 $manager->persist($installation);
-                $license = new \itsmng\Database\Entity\SoftwareLicense();
+                $license = new SoftwareLicenseEntity();
                 $license->entities = $root;
                 $license->softwares = $software;
                 $license->name = 'Projection license ' . $index;
@@ -662,7 +693,7 @@ class Item_SoftwareVersion extends DbTestCase
                 $allocate($license, 'Computer');
             }
             $allocate($licenses[0], 'Computer'); // Duplicate allocation, not another displayed license.
-            $other = new \itsmng\Database\Entity\SoftwareLicense();
+            $other = new SoftwareLicenseEntity();
             $other->entities = $root;
             $other->softwares = $software;
             $other->name = 'Buy and use on different versions';
@@ -672,14 +703,14 @@ class Item_SoftwareVersion extends DbTestCase
             $other->softwarelicensetypes = $type;
             $manager->persist($other);
             $allocate($other, 'Computer');
-            $monitorLicense = new \itsmng\Database\Entity\SoftwareLicense();
+            $monitorLicense = new SoftwareLicenseEntity();
             $monitorLicense->entities = $root;
             $monitorLicense->softwares = $software;
             $monitorLicense->name = 'Monitor license';
             $monitorLicense->buyVersion = $versions[0];
             $manager->persist($monitorLicense);
             $allocate($monitorLicense, 'Monitor');
-            $monitorInstallation = new \itsmng\Database\Entity\ItemSoftwareVersion();
+            $monitorInstallation = new ItemSoftwareVersion();
             $monitorInstallation->entities = $root;
             $monitorInstallation->itemtype = 'Monitor';
             $monitorInstallation->monitor = $subjects['Monitor'];
@@ -690,7 +721,7 @@ class Item_SoftwareVersion extends DbTestCase
                 'itemtype' => 'Computer', 'items_id' => $owner, 'softwareversions_id' => $version->id,
             ], array_slice($versions, 0, 25));
             $manager->clear();
-            $repository = new \itsmng\Database\Repository\SoftwareInstallationRepository($manager);
+            $repository = new SoftwareInstallationRepository($manager);
             $logger->queries = [];
             $this->array($repository->licensesForInstallations([]))->isEmpty();
             $this->array($logger->queries)->isEmpty();
@@ -826,16 +857,16 @@ class Item_SoftwareVersion extends DbTestCase
             $display = $repository->displayDataForInstallations($displayBoundary);
             $this->array($logger->queries)->hasSize(4);
             $this->array(array_keys($display['versions']))->isIdenticalTo([$versions[0]->id, $versions[25]->id]);
-            $managedSoftware = $manager->find(\itsmng\Database\Entity\Software::class, $software->id);
+            $managedSoftware = $manager->find(SoftwareEntity::class, $software->id);
             $connection->update('glpi_softwares', ['name' => 'Fresh link label'], ['id' => $software->id]);
             $this->string($repository->displayDataForInstallations([$displayRows[0]])['softwares'][$software->id]['name'])
                 ->isIdenticalTo('Fresh link label');
             $this->string($managedSoftware->name)->isIdenticalTo('Installation license projection');
             $this->boolean($manager->contains($managedSoftware))->isTrue();
             $probe = new SoftwareRenderingProbe($connection);
-            $reader = new \itsmng\Database\SoftwareRenderingReadOperation($probe);
-            $string = \Doctrine\DBAL\Types\Type::getType('string');
-            $bigint = \Doctrine\DBAL\Types\Type::getType('bigint');
+            $reader = new SoftwareRenderingReadOperation($probe);
+            $string = Type::getType('string');
+            $bigint = Type::getType('bigint');
             try {
                 $this->array($reader->rendering('Computer', $owner, []))->isIdenticalTo([
                     'licenses' => [], 'display' => $emptyDisplay,
@@ -849,9 +880,9 @@ class Item_SoftwareVersion extends DbTestCase
                 $this->array($probe->queries)->hasSize(4);
                 $this->integer($probe->builders)->isIdenticalTo(4);
                 $this->array($probe->queries[0]['types'])->isIdenticalTo([
-                    \Doctrine\DBAL\Types\Types::BIGINT,
-                    \Doctrine\DBAL\ArrayParameterType::INTEGER,
-                    \Doctrine\DBAL\ArrayParameterType::INTEGER,
+                    Types::BIGINT,
+                    ArrayParameterType::INTEGER,
+                    ArrayParameterType::INTEGER,
                 ]);
                 foreach (['Computer', 'Monitor'] as $kind) {
                     $this->array($reader->rendering($kind, $owner, $displayBoundary))->isIdenticalTo([
@@ -864,36 +895,36 @@ class Item_SoftwareVersion extends DbTestCase
                 $connection->update('glpi_softwarecategories', ['name' => 'Fresh category'], ['id' => $category->id]);
                 $this->string($reader->rendering('Computer', $owner, $displayRows)['display']['categories'][$category->id]['name'])
                     ->isIdenticalTo('Fresh category');
-                \Doctrine\DBAL\Types\Type::overrideType('string', new class () extends \Doctrine\DBAL\Types\StringType {
-                    public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                Type::overrideType('string', new class () extends StringType {
+                    public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                     {
                         return 'UPPER(' . $sqlExpr . ')';
                     }
-                    public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+                    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
                     {
-                        throw new \LogicException('Scalar result aliases must not run PHP conversion');
+                        throw new LogicException('Scalar result aliases must not run PHP conversion');
                     }
                 });
                 $this->array($reader->rendering('Computer', $owner, $displayRows)['display'])
                     ->isIdenticalTo($repository->displayDataForInstallations($displayRows));
                 $this->string($reader->rendering('Computer', $owner, $displayRows)['display']['softwares'][$software->id]['name'])
                     ->isIdenticalTo('FRESH LINK LABEL');
-                \Doctrine\DBAL\Types\Type::overrideType('string', new class () extends \Doctrine\DBAL\Types\StringType {
-                    public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                Type::overrideType('string', new class () extends StringType {
+                    public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                     {
                         return 'NULL';
                     }
-                    public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+                    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
                     {
-                        throw new \LogicException('NULL scalar aliases must not run PHP conversion');
+                        throw new LogicException('NULL scalar aliases must not run PHP conversion');
                     }
                 });
                 $this->array($reader->rendering('Computer', $owner, $displayRows)['display'])
                     ->isIdenticalTo($repository->displayDataForInstallations($displayRows));
                 $this->variable($reader->rendering('Computer', $owner, $displayRows)['display']['softwares'][$software->id]['name'])->isNull();
-                \Doctrine\DBAL\Types\Type::overrideType('string', $string);
-                \Doctrine\DBAL\Types\Type::overrideType('bigint', new class () extends \Doctrine\DBAL\Types\BigIntType {
-                    public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                Type::overrideType('string', $string);
+                Type::overrideType('bigint', new class () extends BigIntType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                     {
                         return 'CASE WHEN ' . $sqlExpr . ' = -1 THEN -1 ELSE -1 END';
                     }
@@ -904,23 +935,23 @@ class Item_SoftwareVersion extends DbTestCase
                 // Inferred array enum bindings must not acquire a per-ID BIGINT SQL conversion.
                 $this->array($converted['display'])->isIdenticalTo($repository->displayDataForInstallations($displayRows));
                 $this->array($converted['display']['softwares'])->hasSize(1);
-                \Doctrine\DBAL\Types\Type::overrideType('bigint', $bigint);
+                Type::overrideType('bigint', $bigint);
                 $extension = new class ($connection) extends SoftwareRenderingProbe {
-                    private ?\Doctrine\Common\EventManager $events = null;
-                    public function getEventManager(): \Doctrine\Common\EventManager
+                    private ?EventManager $events = null;
+                    public function getEventManager(): EventManager
                     {
-                        return $this->events ??= new \Doctrine\Common\EventManager();
+                        return $this->events ??= new EventManager();
                     }
                 };
-                $local = new \itsmng\Database\SoftwareRenderingReadOperation($extension);
+                $local = new SoftwareRenderingReadOperation($extension);
                 $listener = new class () {
                     public int $loads = 0;
-                    public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+                    public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
                     {
                         ++$this->loads;
                     }
                 };
-                $extension->getEventManager()->addEventListener([\Doctrine\ORM\Events::loadClassMetadata], $listener);
+                $extension->getEventManager()->addEventListener([Events::loadClassMetadata], $listener);
                 try {
                     $this->array($local->rendering('Computer', $owner, $displayRows))->isIdenticalTo([
                         'licenses' => $repository->effectiveLicenseIdsForVersions('Computer', $owner, array_column($displayRows, 'verid')),
@@ -932,8 +963,8 @@ class Item_SoftwareVersion extends DbTestCase
                     $local->close();
                 }
             } finally {
-                \Doctrine\DBAL\Types\Type::overrideType('string', $string);
-                \Doctrine\DBAL\Types\Type::overrideType('bigint', $bigint);
+                Type::overrideType('string', $string);
+                Type::overrideType('bigint', $bigint);
                 $reader->close();
             }
 
@@ -948,13 +979,13 @@ class Item_SoftwareVersion extends DbTestCase
     }
 }
 
-class SoftwareRenderingProbe extends \Doctrine\DBAL\Connection
+class SoftwareRenderingProbe extends Connection
 {
     public int $builders = 0;
     public array $queries = [];
     public array $queryBuilders = [];
 
-    public function __construct(private readonly \Doctrine\DBAL\Connection $selected)
+    public function __construct(private readonly Connection $selected)
     {
         parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
     }
@@ -964,18 +995,18 @@ class SoftwareRenderingProbe extends \Doctrine\DBAL\Connection
         return $this->selected->isTransactionActive();
     }
 
-    public function getDatabasePlatform(): \Doctrine\DBAL\Platforms\AbstractPlatform
+    public function getDatabasePlatform(): AbstractPlatform
     {
         return $this->selected->getDatabasePlatform();
     }
 
-    public function createQueryBuilder(): \Doctrine\DBAL\Query\QueryBuilder
+    public function createQueryBuilder(): QueryBuilder
     {
         ++$this->builders;
         return $this->queryBuilders[] = parent::createQueryBuilder();
     }
 
-    public function executeQuery(string $sql, array $params = [], array $types = [], ?\Doctrine\DBAL\Cache\QueryCacheProfile $qcp = null): \Doctrine\DBAL\Result
+    public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
     {
         $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
         return $this->selected->executeQuery($sql, $params, $types, $qcp);

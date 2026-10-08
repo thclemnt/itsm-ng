@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Domain\BrowserNotificationInbox;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -122,7 +124,7 @@ class NotificationAjax implements NotificationInterface
 
         $return = [];
         if ($CFG_GLPI['notifications_ajax']) {
-            foreach ((new \itsmng\Domain\BrowserNotificationInbox($DB))->pending((int)Session::getLoginUserID()) as $message) {
+            foreach ((new BrowserNotificationInbox($DB))->pending((int)Session::getLoginUserID()) as $message) {
                 $url = null;
                 if (
                     is_string($message->itemtype) && $message->itemtype !== 'NotificationAjax' &&
@@ -162,6 +164,6 @@ class NotificationAjax implements NotificationInterface
         if ((!is_int($id) && !is_string($id)) || filter_var($id, FILTER_VALIDATE_INT) === false || (int)$id <= 0) {
             return;
         }
-        (new \itsmng\Domain\BrowserNotificationInbox($DB))->acknowledge((int)$id, (int)Session::getLoginUserID());
+        (new BrowserNotificationInbox($DB))->acknowledge((int)$id, (int)Session::getLoginUserID());
     }
 }

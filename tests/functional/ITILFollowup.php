@@ -33,12 +33,37 @@
 
 namespace tests\units;
 
+use Change;
+use Change_User;
 use CommonITILActor;
+use DBAdapter;
+use DateTimeImmutable;
 use DbTestCase;
+use Doctrine\DBAL\Configuration;
+use Doctrine\DBAL\Logging\Middleware;
 use ITILFollowup as CoreITILFollowup;
+use Log;
+use Plugin;
+use Problem;
+use Psr\Log\AbstractLogger;
+use ReflectionProperty;
+use Session;
+use Throwable;
 use Ticket;
 use Ticket_User;
 use User;
+use itsmng\Database\MutationCleanupFailure;
+use itsmng\Database\MutationRollbackFailure;
+use itsmng\Database\MySQLConnection;
+use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\PostgresConnection;
+use itsmng\Search\Provider\JoinBuilder;
+
+use const CREATE;
+use const DELETE;
+use const ERROR;
+use const PURGE;
+use const UPDATE;
 
 /* Test for inc/itilfollowup.class.php */
 
@@ -51,7 +76,7 @@ class ITILFollowup extends DbTestCase
         $session = $_SESSION;
         $level = $original->getDoctrineConnection()->getTransactionNestingLevel();
         $scope = $original->getDoctrineConnection()->captureManagedTransactionScope();
-        $logger = new class () extends \Psr\Log\AbstractLogger {
+        $logger = new class () extends AbstractLogger {
             public array $queries = [];
             public function log($level, $message, array $context = []): void
             {
@@ -60,22 +85,22 @@ class ITILFollowup extends DbTestCase
                 }
             }
         };
-        $configuration = new \Doctrine\DBAL\Configuration();
-        $configuration->setMiddlewares([new \Doctrine\DBAL\Logging\Middleware($logger)]);
+        $configuration = new Configuration();
+        $configuration->setMiddlewares([new Middleware($logger)]);
         $parameters = $original->getDoctrineConnection()->getParams();
         $connection = $original->getProvider() === 'pgsql'
-            ? \itsmng\Database\PostgresConnection::create($parameters, $configuration)
-            : \itsmng\Database\MySQLConnection::create($parameters, $configuration);
+            ? PostgresConnection::create($parameters, $configuration)
+            : MySQLConnection::create($parameters, $configuration);
         $probe = clone $original;
-        (new \ReflectionProperty(\DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
+        (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
         $frame = null;
         $primary = null;
         try {
             $DB = $probe;
-            $frame = \itsmng\Database\OwnedMutationFrame::begin($connection);
+            $frame = OwnedMutationFrame::begin($connection);
             $this->login();
             $this->setEntity(0, true);
-            foreach ([\Ticket::class, \Change::class, \Problem::class] as $kind) {
+            foreach ([Ticket::class, Change::class, Problem::class] as $kind) {
                 $parent = new $kind();
                 $parentId = $parent->add(['name' => $this->getUniqueString(), 'content' => 'Followup parent',
                     'entities_id' => 0, '_disablenotif' => true]);
@@ -128,13 +153,13 @@ class ITILFollowup extends DbTestCase
                 $connection->update('glpi_itilfollowups', ['content' => 'Changed after first read'], ['id' => $id]);
                 $this->boolean($model->getFromDB($id))->isTrue();
                 $this->string($model->fields['content'])->isIdenticalTo('Changed after first read');
-                if ($kind === \Change::class) {
+                if ($kind === Change::class) {
                     // A public followup callback changes real parent actors before permission evaluation.
                     $connection->delete('glpi_changes_users', ['changes_id' => $parentId]);
                     $connection->delete('glpi_changes_groups', ['changes_id' => $parentId]);
-                    $actor = new \Change_User();
+                    $actor = new Change_User();
                     $this->integer($actor->add(['changes_id' => $parentId,
-                        'users_id' => \Session::getLoginUserID(), 'type' => CommonITILActor::REQUESTER]))->isGreaterThan(0);
+                        'users_id' => Session::getLoginUserID(), 'type' => CommonITILActor::REQUESTER]))->isGreaterThan(0);
                     $_SESSION['glpiactiveprofile'][$kind::$rightname] = $kind::READMY;
                     $this->boolean($model->canUpdateItem())->isTrue();
                     $model->afterRead = static function () use ($connection, $parentId): void {
@@ -144,14 +169,14 @@ class ITILFollowup extends DbTestCase
                     $model->afterRead = null;
                     $this->boolean($model->canUpdateItem())->isFalse();
                     $this->integer($actor->add(['changes_id' => $parentId,
-                        'users_id' => \Session::getLoginUserID(), 'type' => CommonITILActor::REQUESTER]))->isGreaterThan(0);
+                        'users_id' => Session::getLoginUserID(), 'type' => CommonITILActor::REQUESTER]))->isGreaterThan(0);
                     $this->boolean($model->canUpdateItem())->isTrue();
                     $_SESSION['glpiactiveprofile'][$kind::$rightname] = $rights;
                 }
 
             }
             $frame->assertActive();
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $primary = $error;
         } finally {
             $DB = $original;
@@ -160,19 +185,19 @@ class ITILFollowup extends DbTestCase
                 if ($frame !== null) {
                     $frame->rollBack();
                 }
-            } catch (\Throwable $cleanup) {
-                $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationRollbackFailure($primary, $cleanup);
+            } catch (Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new MutationRollbackFailure($primary, $cleanup);
             }
             try {
                 $connection->close();
-            } catch (\Throwable $cleanup) {
-                $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($primary, $cleanup);
+            } catch (Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
             }
             try {
                 $scope->assertActive();
                 $this->integer($original->getDoctrineConnection()->getTransactionNestingLevel())->isIdenticalTo($level);
-            } catch (\Throwable $cleanup) {
-                $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($primary, $cleanup);
+            } catch (Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
             }
         }
         if ($primary !== null) {
@@ -182,7 +207,7 @@ class ITILFollowup extends DbTestCase
 
     public function testCustomFollowupParentReadDispatchIsRetained(): void
     {
-        $parent = new class () extends \Ticket {
+        $parent = new class () extends Ticket {
             public static array $reads = [];
             public function getFromDB($id)
             {
@@ -236,7 +261,7 @@ class ITILFollowup extends DbTestCase
             }
             $links = [];
             $table = CoreITILFollowup::getTable();
-            $join = \itsmng\Search\Provider\JoinBuilder::addLeftJoin(
+            $join = JoinBuilder::addLeftJoin(
                 Ticket::class,
                 Ticket::getTable(),
                 $links,
@@ -306,32 +331,32 @@ class ITILFollowup extends DbTestCase
         ]);
         $this->integer($id)->isGreaterThan(0);
         $this->boolean($followup->maybeDeleted())->isFalse();
-        $this->boolean($followup->can($id, \DELETE))->isFalse();
-        $this->boolean($followup->can($id, \PURGE))->isTrue();
+        $this->boolean($followup->can($id, DELETE))->isFalse();
+        $this->boolean($followup->can($id, PURGE))->isTrue();
         $profile = $_SESSION['glpiactiveprofile'];
         $input = ['id' => $id, 'itemtype' => Ticket::class, 'items_id' => $target];
         try {
-            $_SESSION['glpiactiveprofile'][CoreITILFollowup::$rightname] &= ~\PURGE;
-            $this->boolean($followup->can($id, \PURGE))->isFalse();
-            $this->boolean((new CoreITILFollowup())->can(-1, \CREATE, $input))->isTrue();
+            $_SESSION['glpiactiveprofile'][CoreITILFollowup::$rightname] &= ~PURGE;
+            $this->boolean($followup->can($id, PURGE))->isFalse();
+            $this->boolean((new CoreITILFollowup())->can(-1, CREATE, $input))->isTrue();
             $this->boolean($followup->update($input))->isFalse();
-            $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'][\ERROR])->isIdenticalTo([
+            $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'][ERROR])->isIdenticalTo([
                 __('Cannot update item: not enough right on the parent(s) item(s)'),
             ]);
-            unset($_SESSION['MESSAGE_AFTER_REDIRECT'][\ERROR]);
+            unset($_SESSION['MESSAGE_AFTER_REDIRECT'][ERROR]);
             $this->boolean($followup->getFromDB($id))->isTrue();
             $this->integer($followup->fields['items_id'])->isIdenticalTo($source);
 
             $_SESSION['glpiactiveprofile'] = $profile;
-            $_SESSION['glpiactiveprofile'][CoreITILFollowup::$rightname] = \PURGE;
+            $_SESSION['glpiactiveprofile'][CoreITILFollowup::$rightname] = PURGE;
             $_SESSION['glpiactiveprofile'][Ticket::$rightname] &= ~Ticket::OWN;
-            $this->boolean($followup->can($id, \PURGE))->isTrue();
-            $this->boolean((new CoreITILFollowup())->can(-1, \CREATE, $input))->isFalse();
+            $this->boolean($followup->can($id, PURGE))->isTrue();
+            $this->boolean((new CoreITILFollowup())->can(-1, CREATE, $input))->isFalse();
             $this->boolean($followup->update($input))->isFalse();
-            $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'][\ERROR])->isIdenticalTo([
+            $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'][ERROR])->isIdenticalTo([
                 __('Cannot update item: not enough right on the parent(s) item(s)'),
             ]);
-            unset($_SESSION['MESSAGE_AFTER_REDIRECT'][\ERROR]);
+            unset($_SESSION['MESSAGE_AFTER_REDIRECT'][ERROR]);
             $this->boolean($followup->getFromDB($id))->isTrue();
             $this->integer($followup->fields['items_id'])->isIdenticalTo($source);
 
@@ -414,21 +439,21 @@ class ITILFollowup extends DbTestCase
         $this->login();
         $parentId = $this->getNewITILObject($itemtype);
         $parent = new $itemtype();
-        $this->boolean($parent->can($parentId, \UPDATE))->isTrue();
+        $this->boolean($parent->can($parentId, UPDATE))->isTrue();
         $connection = $DB->getDoctrineConnection();
         $depth = $connection->getTransactionNestingLevel();
         $this->integer($depth)->isGreaterThan(0);
         $savedHooks = $PLUGIN_HOOKS;
-        $activated = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $activated = new ReflectionProperty(Plugin::class, 'activated_plugins');
         $savedPlugins = $activated->getValue();
         $savedClock = $_SESSION['glpi_currenttime'];
         $events = [];
-        $clock = new \DateTimeImmutable('2031-02-03 04:05:06');
+        $clock = new DateTimeImmutable('2031-02-03 04:05:06');
         $assertUpdater = function () use ($connection, $parent, $parentId, &$clock): void {
             $row = $connection->fetchAssociative('SELECT users_id_lastupdater, date_mod FROM '
                 . $connection->quoteIdentifier($parent->getTable()) . ' WHERE id = ?', [$parentId]);
-            $this->integer((int)$row['users_id_lastupdater'])->isEqualTo((int)\Session::getLoginUserID());
-            $this->integer((new \DateTimeImmutable($row['date_mod']))->getTimestamp())->isEqualTo($clock->getTimestamp());
+            $this->integer((int)$row['users_id_lastupdater'])->isEqualTo((int)Session::getLoginUserID());
+            $this->integer((new DateTimeImmutable($row['date_mod']))->getTimestamp())->isEqualTo($clock->getTimestamp());
         };
         try {
             $activated->setValue(null, [...$savedPlugins, 'itil_purge_fixture']);
@@ -444,7 +469,7 @@ class ITILFollowup extends DbTestCase
             $fupId = $fup->add(['content' => 'my followup', 'itemtype' => $itemtype, 'items_id' => $parentId]);
             $this->integer((int)$fupId)->isGreaterThan(0);
             $this->boolean((bool)$fup->maybeDeleted())->isFalse();
-            $this->boolean((bool)$fup->can($fupId, \PURGE))->isTrue();
+            $this->boolean((bool)$fup->can($fupId, PURGE))->isTrue();
             $this->array($events)->isEqualTo(['item_add']);
             $assertUpdater();
 
@@ -466,7 +491,7 @@ class ITILFollowup extends DbTestCase
             $assertUpdater();
             $actions = array_map('intval', $connection->fetchFirstColumn('SELECT linked_action FROM glpi_logs '
                 . 'WHERE itemtype = ? AND items_id = ? ORDER BY id', [$itemtype, $parentId]));
-            foreach ([\Log::HISTORY_ADD_SUBITEM, \Log::HISTORY_UPDATE_SUBITEM, \Log::HISTORY_DELETE_SUBITEM] as $action) {
+            foreach ([Log::HISTORY_ADD_SUBITEM, Log::HISTORY_UPDATE_SUBITEM, Log::HISTORY_DELETE_SUBITEM] as $action) {
                 $this->boolean(in_array($action, $actions, true))->isTrue();
             }
             $this->variable($DB->getDoctrineConnection())->isIdenticalTo($connection);

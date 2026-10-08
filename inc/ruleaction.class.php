@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\GroupMembershipRepository;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -324,8 +329,8 @@ class RuleAction extends CommonDBChild
     {
         global $DB;
 
-        $records = new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB));
-        $iterator = new \itsmng\Database\RowIterator($records->matching($this->getTable(), [static::$items_id => $ID], 'id'));
+        $records = new RecordRepository(Orm::create($DB));
+        $iterator = new RowIterator($records->matching($this->getTable(), [static::$items_id => $ID], 'id'));
 
         $rules_actions = [];
         while ($rule = $iterator->next()) {
@@ -484,8 +489,8 @@ class RuleAction extends CommonDBChild
             $actions_options = $rule->getAllActions();
 
             $actions = [];
-            $records = new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB));
-            $iterator = new \itsmng\Database\RowIterator($records->matching($this->getTable(), [static::$items_id => $rules_id]));
+            $records = new RecordRepository(Orm::create($DB));
+            $iterator = new RowIterator($records->matching($this->getTable(), [static::$items_id => $rules_id]));
 
             while ($action = $iterator->next()) {
                 if (
@@ -710,7 +715,7 @@ class RuleAction extends CommonDBChild
 
                             $param['name']      = 'value';
                             global $DB;
-                            $groups = (new \itsmng\Database\Repository\GroupMembershipRepository(\itsmng\Database\Orm::create($DB)))->groupsWithMembers();
+                            $groups = (new GroupMembershipRepository(Orm::create($DB)))->groupsWithMembers();
                             $param['condition'] = ['id' => $groups ?: [-1]];
                             $param['right']     = ['validate_incident', 'validate_request'];
                             $param['used']      = $used;

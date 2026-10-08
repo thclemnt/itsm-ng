@@ -259,7 +259,7 @@ class Migration
                     } elseif (in_array($default_value, ['0', '1'])) {
                         $format .= " DEFAULT '$default_value'";
                     } else {
-                        throw new \InvalidArgumentException(__('default_value must be 0 or 1'));
+                        throw new InvalidArgumentException(__('default_value must be 0 or 1'));
                     }
                 }
                 break;
@@ -297,7 +297,7 @@ class Migration
                     } elseif (is_numeric($default_value)) {
                         $format .= " DEFAULT '$default_value'";
                     } else {
-                        throw new \InvalidArgumentException(__('default_value must be numeric'));
+                        throw new InvalidArgumentException(__('default_value must be numeric'));
                     }
                 }
                 break;

@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -217,7 +220,7 @@ class Alert extends CommonDBTM
         if ($items_id <= 0 || $type <= 0) {
             return false;
         }
-        $rows = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+        $rows = (new RecordRepository(Orm::create($DB)))
             ->matching(self::getTable(), ['itemtype' => $itemtype, 'items_id' => $items_id, 'type' => $type], 'id', 1);
         if ($row = $rows[0] ?? null) {
             return $row['id'];
@@ -245,7 +248,7 @@ class Alert extends CommonDBTM
         if ($items_id <= 0 || $type <= 0) {
             return false;
         }
-        $rows = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+        $rows = (new RecordRepository(Orm::create($DB)))
             ->matching(self::getTable(), ['itemtype' => $itemtype, 'items_id' => $items_id, 'type' => $type], 'id', 1);
         if ($row = $rows[0] ?? null) {
             return $row['date'];
@@ -267,7 +270,7 @@ class Alert extends CommonDBTM
         global $DB;
 
         if ($items_id) {
-            $rows = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+            $rows = (new RecordRepository(Orm::create($DB)))
                 ->matching(self::getTable(), ['itemtype' => $itemtype, 'items_id' => $items_id], ['date DESC', 'id DESC'], 1);
             if ($row = $rows[0] ?? null) {
                 //TRANS: %s is the date

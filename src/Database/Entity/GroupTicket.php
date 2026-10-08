@@ -5,6 +5,9 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\ITILStatisticsRelation;
+use itsmng\Database\Mapping\ITILStatisticsRole;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_groups_tickets')]
@@ -13,13 +16,13 @@ class GroupTicket
 {
     #[ORM\ManyToOne(targetEntity: Ticket::class)]
     #[ORM\JoinColumn(name: 'tickets_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ITILStatisticsRelation(\itsmng\Database\Mapping\ITILStatisticsRole::Groups)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ITILStatisticsRelation(ITILStatisticsRole::Groups)]
+    #[ApplicationManaged]
     public ?Ticket $tickets = null;
 
     #[ORM\ManyToOne(targetEntity: Group::class)]
     #[ORM\JoinColumn(name: 'groups_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Group $groups = null;
 
     #[ORM\Id]

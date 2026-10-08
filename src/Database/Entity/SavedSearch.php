@@ -4,7 +4,10 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
@@ -29,7 +32,7 @@ class SavedSearch
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?User $users = null;
 
     #[ORM\Column(name: '`is_private`', type: 'boolean', nullable: false, options: ['default' => true])]
@@ -56,8 +59,8 @@ class SavedSearch
     public int $do_count = 2;
 
     #[ORM\Column(name: '`last_execution_date`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $last_execution_date = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $last_execution_date = null;
 
     #[ORM\Column(name: '`counter`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $counter = 0;

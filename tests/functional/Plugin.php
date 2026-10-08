@@ -33,7 +33,43 @@
 
 namespace tests\units;
 
+use Computer;
+use Contact as LegacyContact;
+use DBAdapter;
 use DbTestCase;
+use Doctrine\DBAL\Configuration;
+use Doctrine\DBAL\Logging\Middleware;
+use Doctrine\DBAL\Schema\Table;
+use Doctrine\DBAL\Types\Types;
+use FieldUnicity;
+use Infocom as LegacyInfocom;
+use InvalidArgumentException;
+use Manufacturer;
+use Plugin as LegacyPlugin;
+use PluginFooBar;
+use PluginRecursionDropdown;
+use PluginRecursionLink;
+use PluginRecursionOwner;
+use PluginRecursionPublicLink;
+use Psr\Log\AbstractLogger;
+use ReflectionProperty;
+use Supplier as LegacySupplier;
+use Throwable;
+use itsmng\Database\Entity\Contact;
+use itsmng\Database\Entity\Document;
+use itsmng\Database\Entity\DocumentItem;
+use itsmng\Database\Entity\Entity;
+use itsmng\Database\Entity\Infocom;
+use itsmng\Database\Entity\Supplier;
+use itsmng\Database\MutationCleanupFailure;
+use itsmng\Database\MySQLConnection;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\PostgresConnection;
+use itsmng\Database\Repository\FieldUnicityRepository;
+use itsmng\Database\Repository\RelationshipLifecycleRepository;
+use itsmng\Database\TransactionOwnership;
+use itsmng\Database\TransactionOwnershipMismatch;
 
 /* Test for inc/plugin.class.php */
 
@@ -49,59 +85,59 @@ class Plugin extends DbTestCase
             $name = "Plugin's \\ label";
             $connection->insert($dropdownTable, ['id' => 100, 'name' => $name, 'entities_id' => $entity]);
             $connection->insert($dropdownTable, ['id' => 101, 'name' => $name, 'entities_id' => $child]);
-            $dropdown = new \PluginRecursionDropdown();
+            $dropdown = new PluginRecursionDropdown();
             $input = ['name' => addslashes($name), 'entities_id' => $entity];
             // Before the fix this actual public import lookup rejects the plugin table.
             $this->integer($dropdown->findID($input))->isIdenticalTo(100);
             $this->integer($dropdown->import($input))->isIdenticalTo(100);
-            $this->integer(\PluginRecursionDropdown::$additions)->isIdenticalTo(0);
+            $this->integer(PluginRecursionDropdown::$additions)->isIdenticalTo(0);
             $input['entities_id'] = $child;
             $this->integer($dropdown->findID($input))->isIdenticalTo(101);
             $connection->delete($dropdownTable, ['id' => 101]);
             $this->integer($dropdown->findID($input))->isIdenticalTo(-1);
-            $connection->update($dropdownTable, ['is_recursive' => true], ['id' => 100], ['is_recursive' => \Doctrine\DBAL\Types\Types::BOOLEAN]);
+            $connection->update($dropdownTable, ['is_recursive' => true], ['id' => 100], ['is_recursive' => Types::BOOLEAN]);
             $this->integer($dropdown->findID($input))->isIdenticalTo(100, 'Recursive ancestor scope is retained');
             $input['entities_id'] = [];
             $this->integer($dropdown->findID($input))->isIdenticalTo(-1, 'Empty scope cannot import another entity row');
             $new = ['name' => 'new ' . $this->getUniqueString(), 'entities_id' => $entity, '_no_history' => 1];
             $id = $dropdown->import($new);
             $this->integer((int)$id)->isGreaterThan(0);
-            $this->integer(\PluginRecursionDropdown::$additions)->isIdenticalTo(1, 'Missing rows use the public add lifecycle');
+            $this->integer(PluginRecursionDropdown::$additions)->isIdenticalTo(1, 'Missing rows use the public add lifecycle');
             $this->integer((int)$dropdown->import($new))->isIdenticalTo((int)$id);
-            $this->integer(\PluginRecursionDropdown::$additions)->isIdenticalTo(1);
+            $this->integer(PluginRecursionDropdown::$additions)->isIdenticalTo(1);
             $this->boolean($dropdown->getFromDB(100))->isTrue();
             $this->boolean($dropdown->isUsed())->isFalse();
             $connection->insert($linkTable, ['id' => 100, 'targets_id' => 100]);
-            \PluginRecursionLink::$relations = [$dropdownTable => [$linkTable => 'targets_id']];
+            PluginRecursionLink::$relations = [$dropdownTable => [$linkTable => 'targets_id']];
             $this->boolean($dropdown->isUsed())->isTrue();
-            \PluginRecursionLink::$relations = [$dropdownTable => ['_' . $linkTable => 'targets_id']];
+            PluginRecursionLink::$relations = [$dropdownTable => ['_' . $linkTable => 'targets_id']];
             $this->boolean($dropdown->isUsed())->isFalse('Managed relations are excluded');
-            \PluginRecursionLink::$relations = [$dropdownTable => [$linkTable => ['items_id', 'itemtype']]];
-            $connection->update($linkTable, ['items_id' => 100, 'itemtype' => \Manufacturer::class], ['id' => 100]);
+            PluginRecursionLink::$relations = [$dropdownTable => [$linkTable => ['items_id', 'itemtype']]];
+            $connection->update($linkTable, ['items_id' => 100, 'itemtype' => Manufacturer::class], ['id' => 100]);
             $this->boolean($dropdown->isUsed())->isFalse('A discriminator mismatch is not a use');
-            $connection->update($linkTable, ['itemtype' => \PluginRecursionDropdown::class], ['id' => 100]);
+            $connection->update($linkTable, ['itemtype' => PluginRecursionDropdown::class], ['id' => 100]);
             $this->boolean($dropdown->isUsed())->isTrue();
-            $manufacturer = $this->createItem(\Manufacturer::class, ['name' => $this->getUniqueString()]);
-            \PluginRecursionLink::$relations = [\Manufacturer::getTable() => [$linkTable => 'targets_id']];
+            $manufacturer = $this->createItem(Manufacturer::class, ['name' => $this->getUniqueString()]);
+            PluginRecursionLink::$relations = [Manufacturer::getTable() => [$linkTable => 'targets_id']];
             $connection->update($linkTable, ['targets_id' => $manufacturer->getID()], ['id' => 100]);
             $this->boolean($manufacturer->isUsed())->isTrue('Core dropdowns include their declared plugin children');
             $connection->update($linkTable, ['targets_id' => 0], ['id' => 100]);
             $this->boolean($manufacturer->isUsed())->isFalse();
             // CommonTreeDropdown has its own import lookup. Exercise that existing path too.
-            $tree = new \PluginRecursionOwner();
+            $tree = new PluginRecursionOwner();
             $connection->insert($treeTable, ['id' => 100, 'name' => 'tree', 'completename' => 'tree', 'entities_id' => $entity]);
             $treeInput = ['name' => 'tree', 'entities_id' => $entity];
             $this->integer((int)$tree->findID($treeInput))->isIdenticalTo(100);
             $this->integer((int)$tree->import($treeInput))->isIdenticalTo(100);
             $this->boolean($tree->getFromDB(100))->isTrue();
-            \PluginRecursionLink::$relations = [$treeTable => [$linkTable => 'targets_id']];
+            PluginRecursionLink::$relations = [$treeTable => [$linkTable => 'targets_id']];
             $connection->update($linkTable, ['targets_id' => 100], ['id' => 100]);
             $this->boolean($tree->isUsed())->isTrue();
-            \PluginRecursionLink::$relations = [$dropdownTable => [$linkTable => 'missing_column']];
-            $this->exception(static fn () => $dropdown->isUsed())->isInstanceOf(\InvalidArgumentException::class);
-            $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+            PluginRecursionLink::$relations = [$dropdownTable => [$linkTable => 'missing_column']];
+            $this->exception(static fn () => $dropdown->isUsed())->isInstanceOf(InvalidArgumentException::class);
+            $plugins = new ReflectionProperty(LegacyPlugin::class, 'activated_plugins');
             $plugins->setValue(null, []);
-            $this->exception(static fn () => $dropdown->findID($input))->isInstanceOf(\InvalidArgumentException::class);
+            $this->exception(static fn () => $dropdown->findID($input))->isInstanceOf(InvalidArgumentException::class);
             $plugins->setValue(null, ['recursion']);
         });
     }
@@ -111,38 +147,38 @@ class Plugin extends DbTestCase
         $this->withPluginLifecycleFixture(function ($connection, array $tables, int $entity): void {
             [$dropdownTable, , $linkTable] = $tables;
             $connection->insert($linkTable, ['id' => 100]);
-            $plain = new \PluginRecursionLink();
+            $plain = new PluginRecursionLink();
             // A plain plugin model with no children must also be purgeable.
             $this->boolean($plain->delete(['id' => 100], true, false))->isTrue();
             $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $connection->quoteIdentifier($linkTable) . ' WHERE id = 100'))->isIdenticalTo(0);
-            $manufacturer = $this->createItem(\Manufacturer::class, ['name' => $this->getUniqueString()]);
-            $replacement = $this->createItem(\Manufacturer::class, ['name' => $this->getUniqueString()]);
+            $manufacturer = $this->createItem(Manufacturer::class, ['name' => $this->getUniqueString()]);
+            $replacement = $this->createItem(Manufacturer::class, ['name' => $this->getUniqueString()]);
             $connection->insert($linkTable, ['id' => 101, 'targets_id' => $manufacturer->getID()]);
             $connection->insert($linkTable, ['id' => 102, 'targets_id' => $replacement->getID()]);
-            \PluginRecursionLink::$relations = [\Manufacturer::getTable() => [$linkTable => 'targets_id']];
-            \PluginRecursionLink::$refuseUpdate = true;
+            PluginRecursionLink::$relations = [Manufacturer::getTable() => [$linkTable => 'targets_id']];
+            PluginRecursionLink::$refuseUpdate = true;
             $this->boolean($manufacturer->delete(['id' => $manufacturer->getID(), '_replace_by' => $replacement->getID()], true, false))->isFalse();
             $this->boolean($manufacturer->getFromDB($manufacturer->getID()))->isTrue('A child veto preserves the core parent');
             $this->integer((int)$connection->fetchOne('SELECT targets_id FROM ' . $connection->quoteIdentifier($linkTable) . ' WHERE id = 101'))->isIdenticalTo((int)$manufacturer->getID());
-            \PluginRecursionLink::$refuseUpdate = false;
-            \PluginRecursionLink::$lifecycleUpdates = [];
+            PluginRecursionLink::$refuseUpdate = false;
+            PluginRecursionLink::$lifecycleUpdates = [];
             $this->boolean($manufacturer->delete(['id' => $manufacturer->getID(), '_replace_by' => $replacement->getID()], true, false))->isTrue();
-            $this->array(\PluginRecursionLink::$lifecycleUpdates)->hasSize(1);
-            $this->integer((int)\PluginRecursionLink::$lifecycleUpdates[0]['id'])->isIdenticalTo(101);
+            $this->array(PluginRecursionLink::$lifecycleUpdates)->hasSize(1);
+            $this->integer((int)PluginRecursionLink::$lifecycleUpdates[0]['id'])->isIdenticalTo(101);
             $this->integer((int)$connection->fetchOne('SELECT targets_id FROM ' . $connection->quoteIdentifier($linkTable) . ' WHERE id = 101'))->isIdenticalTo((int)$replacement->getID());
-            \PluginRecursionLink::$lifecycleUpdates = [];
+            PluginRecursionLink::$lifecycleUpdates = [];
             $this->boolean($replacement->delete(['id' => $replacement->getID()], true, false))->isTrue();
-            $this->array(\PluginRecursionLink::$lifecycleUpdates)->hasSize(2);
+            $this->array(PluginRecursionLink::$lifecycleUpdates)->hasSize(2);
             $this->array(array_map('intval', $connection->fetchFirstColumn('SELECT targets_id FROM ' . $connection->quoteIdentifier($linkTable) . ' ORDER BY id')))->isIdenticalTo([0, 0]);
             $connection->insert($dropdownTable, ['id' => 100, 'name' => 'plugin parent', 'entities_id' => $entity]);
             $connection->insert($dropdownTable, ['id' => 101, 'name' => 'replacement', 'entities_id' => $entity]);
-            $connection->update($linkTable, ['items_id' => 100, 'itemtype' => \PluginRecursionDropdown::class], ['id' => 101]);
-            $connection->update($linkTable, ['items_id' => 100, 'itemtype' => \Manufacturer::class], ['id' => 102]);
-            \PluginRecursionLink::$relations = [$dropdownTable => [$linkTable => ['items_id', 'itemtype']]];
-            \PluginRecursionLink::$lifecycleUpdates = [];
-            $parent = new \PluginRecursionDropdown();
+            $connection->update($linkTable, ['items_id' => 100, 'itemtype' => PluginRecursionDropdown::class], ['id' => 101]);
+            $connection->update($linkTable, ['items_id' => 100, 'itemtype' => Manufacturer::class], ['id' => 102]);
+            PluginRecursionLink::$relations = [$dropdownTable => [$linkTable => ['items_id', 'itemtype']]];
+            PluginRecursionLink::$lifecycleUpdates = [];
+            $parent = new PluginRecursionDropdown();
             $this->boolean($parent->delete(['id' => 100, '_replace_by' => 101], true, false))->isTrue();
-            $this->array(\PluginRecursionLink::$lifecycleUpdates)->hasSize(1);
+            $this->array(PluginRecursionLink::$lifecycleUpdates)->hasSize(1);
             $this->array(array_map('intval', $connection->fetchFirstColumn('SELECT items_id FROM ' . $connection->quoteIdentifier($linkTable) . ' ORDER BY id')))->isIdenticalTo([101, 100]);
             $this->boolean($parent->getFromDB(101))->isTrue('The replacement survives the public purge');
         });
@@ -152,16 +188,16 @@ class Plugin extends DbTestCase
     {
         $this->withPluginLifecycleFixture(function ($connection, array $tables): void {
             $linkTable = $tables[3];
-            $parent = $this->createItem(\Manufacturer::class, ['name' => $this->getUniqueString()]);
-            $replacement = $this->createItem(\Manufacturer::class, ['name' => $this->getUniqueString()]);
+            $parent = $this->createItem(Manufacturer::class, ['name' => $this->getUniqueString()]);
+            $replacement = $this->createItem(Manufacturer::class, ['name' => $this->getUniqueString()]);
             $connection->insert($linkTable, ['id' => 100, 'public_id' => 900, 'targets_id' => $parent->getID()]);
             $connection->insert($linkTable, ['id' => 900, 'public_id' => 100, 'targets_id' => $replacement->getID()]);
-            \PluginRecursionLink::$relations = [\Manufacturer::getTable() => [$linkTable => 'targets_id']];
+            PluginRecursionLink::$relations = [Manufacturer::getTable() => [$linkTable => 'targets_id']];
             $this->boolean($parent->isUsed())->isTrue();
             $this->boolean($parent->delete(['id' => $parent->getID(), '_replace_by' => $replacement->getID()], true, false))->isTrue();
-            $this->array(\PluginRecursionLink::$lifecycleUpdates)->hasSize(1);
-            $this->integer((int)\PluginRecursionLink::$lifecycleUpdates[0]['public_id'])->isIdenticalTo(900);
-            $this->boolean(\PluginRecursionLink::$lifecycleUpdates[0]['_disablenotif'])->isTrue();
+            $this->array(PluginRecursionLink::$lifecycleUpdates)->hasSize(1);
+            $this->integer((int)PluginRecursionLink::$lifecycleUpdates[0]['public_id'])->isIdenticalTo(900);
+            $this->boolean(PluginRecursionLink::$lifecycleUpdates[0]['_disablenotif'])->isTrue();
             $this->integer((int)$connection->fetchOne('SELECT targets_id FROM ' . $connection->quoteIdentifier($linkTable) . ' WHERE id = 100'))
                 ->isIdenticalTo((int)$replacement->getID());
             $this->integer((int)$connection->fetchOne('SELECT targets_id FROM ' . $connection->quoteIdentifier($linkTable) . ' WHERE id = 900'))
@@ -177,96 +213,96 @@ class Plugin extends DbTestCase
         $original = $DB;
         $config = $CFG_GLPI;
         $session = $_SESSION;
-        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $plugins = new ReflectionProperty(LegacyPlugin::class, 'activated_plugins');
         $active = $plugins->getValue();
-        $declarations = \PluginRecursionLink::$relations;
-        $updates = \PluginRecursionLink::$lifecycleUpdates;
-        $refuse = \PluginRecursionLink::$refuseUpdate;
-        $additions = \PluginRecursionDropdown::$additions;
+        $declarations = PluginRecursionLink::$relations;
+        $updates = PluginRecursionLink::$lifecycleUpdates;
+        $refuse = PluginRecursionLink::$refuseUpdate;
+        $additions = PluginRecursionDropdown::$additions;
         $caller = $original->getDoctrineConnection();
         $scope = $caller->captureManagedTransactionScope();
         $level = $caller->getTransactionNestingLevel();
         $connection = $original->getProvider() === 'pgsql'
-            ? \itsmng\Database\PostgresConnection::create($caller->getParams())
-            : \itsmng\Database\MySQLConnection::create($caller->getParams());
+            ? PostgresConnection::create($caller->getParams())
+            : MySQLConnection::create($caller->getParams());
         $probe = clone $original;
-        (new \ReflectionProperty(\DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
+        (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
         $schema = $connection->createSchemaManager();
-        $tables = [\PluginRecursionDropdown::getTable(), \PluginRecursionOwner::getTable(), \PluginRecursionLink::getTable(), \PluginRecursionPublicLink::getTable()];
+        $tables = [PluginRecursionDropdown::getTable(), PluginRecursionOwner::getTable(), PluginRecursionLink::getTable(), PluginRecursionPublicLink::getTable()];
         $created = [];
         $frame = null;
         $failure = null;
         try {
-            \itsmng\Database\TransactionOwnership::assertManaged($connection);
+            TransactionOwnership::assertManaged($connection);
             foreach ($tables as $table) {
                 $this->boolean($schema->tablesExist([$table]))->isFalse();
-                $definition = new \Doctrine\DBAL\Schema\Table($table);
-                $definition->addColumn('id', \Doctrine\DBAL\Types\Types::INTEGER, ['autoincrement' => true]);
+                $definition = new Table($table);
+                $definition->addColumn('id', Types::INTEGER, ['autoincrement' => true]);
                 $definition->setPrimaryKey(['id']);
                 if (in_array($table, [$tables[2], $tables[3]], true)) {
                     if ($table === $tables[3]) {
-                        $definition->addColumn('public_id', \Doctrine\DBAL\Types\Types::INTEGER);
+                        $definition->addColumn('public_id', Types::INTEGER);
                         $definition->addUniqueIndex(['public_id']);
                     }
                     foreach (['targets_id', 'items_id'] as $column) {
-                        $definition->addColumn($column, \Doctrine\DBAL\Types\Types::INTEGER, ['default' => 0]);
+                        $definition->addColumn($column, Types::INTEGER, ['default' => 0]);
                     }
-                    $definition->addColumn('itemtype', \Doctrine\DBAL\Types\Types::STRING, ['length' => 100, 'default' => '']);
+                    $definition->addColumn('itemtype', Types::STRING, ['length' => 100, 'default' => '']);
                 } else {
-                    $definition->addColumn('name', \Doctrine\DBAL\Types\Types::STRING, ['length' => 255]);
-                    $definition->addColumn('entities_id', \Doctrine\DBAL\Types\Types::INTEGER);
-                    $definition->addColumn('is_recursive', \Doctrine\DBAL\Types\Types::BOOLEAN, ['default' => false]);
+                    $definition->addColumn('name', Types::STRING, ['length' => 255]);
+                    $definition->addColumn('entities_id', Types::INTEGER);
+                    $definition->addColumn('is_recursive', Types::BOOLEAN, ['default' => false]);
                     if ($table === $tables[1]) {
-                        $definition->addColumn('completename', \Doctrine\DBAL\Types\Types::STRING, ['length' => 255]);
-                        $definition->addColumn(\PluginRecursionOwner::getForeignKeyField(), \Doctrine\DBAL\Types\Types::INTEGER, ['default' => 0]);
+                        $definition->addColumn('completename', Types::STRING, ['length' => 255]);
+                        $definition->addColumn(PluginRecursionOwner::getForeignKeyField(), Types::INTEGER, ['default' => 0]);
                     }
                 }
                 $schema->createTable($definition);
                 $created[] = $table;
             }
             $DB = $probe;
-            $frame = \itsmng\Database\OwnedMutationFrame::begin($connection);
+            $frame = OwnedMutationFrame::begin($connection);
             $plugins->setValue(null, ['recursion']);
-            foreach ([\PluginRecursionDropdown::class, \PluginRecursionOwner::class, \PluginRecursionLink::class, \PluginRecursionPublicLink::class] as $class) {
-                $this->boolean(\Plugin::registerClass($class))->isTrue();
+            foreach ([PluginRecursionDropdown::class, PluginRecursionOwner::class, PluginRecursionLink::class, PluginRecursionPublicLink::class] as $class) {
+                $this->boolean(LegacyPlugin::registerClass($class))->isTrue();
             }
-            \PluginRecursionLink::$relations = [];
-            \PluginRecursionLink::$lifecycleUpdates = [];
-            \PluginRecursionLink::$refuseUpdate = false;
-            \PluginRecursionDropdown::$additions = 0;
+            PluginRecursionLink::$relations = [];
+            PluginRecursionLink::$lifecycleUpdates = [];
+            PluginRecursionLink::$refuseUpdate = false;
+            PluginRecursionDropdown::$additions = 0;
             $this->login();
             $this->setEntity('_test_root_entity', true);
             $operation($connection, $tables, (int)getItemByTypeName('Entity', '_test_root_entity', true), (int)getItemByTypeName('Entity', '_test_child_1', true));
             $frame->assertActive();
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $failure = $error;
         } finally {
             $DB = $original;
             $CFG_GLPI = $config;
             $_SESSION = $session;
             $plugins->setValue(null, $active);
-            \PluginRecursionLink::$relations = $declarations;
-            \PluginRecursionLink::$lifecycleUpdates = $updates;
-            \PluginRecursionLink::$refuseUpdate = $refuse;
-            \PluginRecursionDropdown::$additions = $additions;
+            PluginRecursionLink::$relations = $declarations;
+            PluginRecursionLink::$lifecycleUpdates = $updates;
+            PluginRecursionLink::$refuseUpdate = $refuse;
+            PluginRecursionDropdown::$additions = $additions;
             try {
                 $frame?->rollBack();
-                \itsmng\Database\TransactionOwnership::assertManaged($connection);
+                TransactionOwnership::assertManaged($connection);
                 if ($connection->getTransactionNestingLevel() !== 0) {
-                    throw new \itsmng\Database\TransactionOwnershipMismatch('Plugin fixture DDL requires its own frame closed.');
+                    throw new TransactionOwnershipMismatch('Plugin fixture DDL requires its own frame closed.');
                 }
                 foreach (array_reverse($created) as $table) {
                     $schema->dropTable($table);
                 }
-            } catch (\Throwable $cleanup) {
-                $failure = $failure === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($failure, $cleanup);
+            } catch (Throwable $cleanup) {
+                $failure = $failure === null ? $cleanup : new MutationCleanupFailure($failure, $cleanup);
             }
             try {
                 $probe->close();
                 $scope->assertActive();
                 $this->integer($caller->getTransactionNestingLevel())->isIdenticalTo($level);
-            } catch (\Throwable $cleanup) {
-                $failure = $failure === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($failure, $cleanup);
+            } catch (Throwable $cleanup) {
+                $failure = $failure === null ? $cleanup : new MutationCleanupFailure($failure, $cleanup);
             }
         }
         if ($failure !== null) {
@@ -283,40 +319,40 @@ class Plugin extends DbTestCase
         $session = $_SESSION;
         $registered = $CFG_GLPI['unicity_types'];
         $caller = $original->getDoctrineConnection();
-        \itsmng\Database\TransactionOwnership::assertManaged($caller);
+        TransactionOwnership::assertManaged($caller);
         $scope = $caller->captureManagedTransactionScope();
         $level = $caller->getTransactionNestingLevel();
         $connection = $original->getProvider() === 'pgsql'
-            ? \itsmng\Database\PostgresConnection::create($caller->getParams())
-            : \itsmng\Database\MySQLConnection::create($caller->getParams());
+            ? PostgresConnection::create($caller->getParams())
+            : MySQLConnection::create($caller->getParams());
         $probe = clone $original;
-        (new \ReflectionProperty(\DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
-        $table = \PluginFooBar::getTable();
+        (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
+        $table = PluginFooBar::getTable();
         $schema = $connection->createSchemaManager();
         $created = false;
         $frame = null;
         $failure = null;
         try {
             // Fixture DDL belongs to a separate physical owner, never DbTestCase's frame.
-            \itsmng\Database\TransactionOwnership::assertManaged($connection);
+            TransactionOwnership::assertManaged($connection);
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo(0);
             $this->boolean($schema->tablesExist([$table]))->isFalse();
-            $definition = new \Doctrine\DBAL\Schema\Table($table);
-            $definition->addColumn('id', \Doctrine\DBAL\Types\Types::INTEGER);
+            $definition = new Table($table);
+            $definition->addColumn('id', Types::INTEGER);
             $definition->setPrimaryKey(['id']);
             foreach (['name', 'serial'] as $column) {
-                $definition->addColumn($column, \Doctrine\DBAL\Types\Types::STRING, ['length' => 100, 'notnull' => false]);
+                $definition->addColumn($column, Types::STRING, ['length' => 100, 'notnull' => false]);
             }
-            $definition->addColumn('entities_id', \Doctrine\DBAL\Types\Types::INTEGER);
-            $definition->addColumn('users_id', \Doctrine\DBAL\Types\Types::INTEGER, ['notnull' => false]);
-            $definition->addColumn('is_template', \Doctrine\DBAL\Types\Types::BOOLEAN, ['default' => false]);
-            $definition->addColumn('payload', \Doctrine\DBAL\Types\Types::JSON, ['notnull' => false]);
+            $definition->addColumn('entities_id', Types::INTEGER);
+            $definition->addColumn('users_id', Types::INTEGER, ['notnull' => false]);
+            $definition->addColumn('is_template', Types::BOOLEAN, ['default' => false]);
+            $definition->addColumn('payload', Types::JSON, ['notnull' => false]);
             $schema->createTable($definition);
             $created = true;
             $DB = $probe;
-            $frame = \itsmng\Database\OwnedMutationFrame::begin($connection);
-            $this->boolean(\Plugin::registerClass(\PluginFooBar::class, ['unicity_types' => true]))->isTrue();
-            $this->array($CFG_GLPI['unicity_types'])->contains(\PluginFooBar::class);
+            $frame = OwnedMutationFrame::begin($connection);
+            $this->boolean(LegacyPlugin::registerClass(PluginFooBar::class, ['unicity_types' => true]))->isTrue();
+            $this->array($CFG_GLPI['unicity_types'])->contains(PluginFooBar::class);
             $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
             $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
             $rows = [
@@ -332,18 +368,18 @@ class Plugin extends DbTestCase
                     $table,
                     ['id' => $index + 1, 'name' => $name, 'serial' => $serial,
                     'users_id' => $user, 'entities_id' => $entity, 'is_template' => $template],
-                    ['is_template' => \Doctrine\DBAL\Types\Types::BOOLEAN]
+                    ['is_template' => Types::BOOLEAN]
                 );
             }
             // Exercise the existing public API before the new repository entry point.
-            $rule = new \FieldUnicity();
-            $rule->fields = ['itemtype' => \PluginFooBar::class, 'fields' => 'name', 'entities_id' => $source, 'is_recursive' => 0];
-            $this->output(static fn () => \FieldUnicity::showDoubles($rule))->contains('duplicate')
+            $rule = new FieldUnicity();
+            $rule->fields = ['itemtype' => PluginFooBar::class, 'fields' => 'name', 'entities_id' => $source, 'is_recursive' => 0];
+            $this->output(static fn () => FieldUnicity::showDoubles($rule))->contains('duplicate')
                 ->contains("<td class='numeric'>3</td>")->notContains('child only')->notContains('singleton');
             $rule->fields['is_recursive'] = 1;
-            $this->output(static fn () => \FieldUnicity::showDoubles($rule))->contains('duplicate')->contains('child only');
-            $repository = new \itsmng\Database\Repository\FieldUnicityRepository(\itsmng\Database\Orm::create($probe));
-            $item = new \PluginFooBar();
+            $this->output(static fn () => FieldUnicity::showDoubles($rule))->contains('duplicate')->contains('child only');
+            $repository = new FieldUnicityRepository(Orm::create($probe));
+            $item = new PluginFooBar();
             $this->array($repository->duplicatesForItem($item, ['name'], [$source]))
                 ->isIdenticalTo([['cpt' => 3, 'name' => 'duplicate']]);
             $this->array($repository->duplicatesForItem($item, ['name', 'serial'], [$source]))
@@ -356,15 +392,15 @@ class Plugin extends DbTestCase
             $this->array($repository->duplicatesForItem($item, ['unknown'], []))->isEmpty();
             foreach (['unknown', 'payload', 'name) OR 1=1 --'] as $invalid) {
                 $this->exception(static fn () => $repository->duplicatesForItem($item, [$invalid], [$source]))
-                    ->isInstanceOf(\InvalidArgumentException::class);
+                    ->isInstanceOf(InvalidArgumentException::class);
             }
             // Mapped assets retain the existing ORM semantics, including root scope.
-            $this->array($repository->duplicatesForItem(new \Computer(), ['name'], [0]))
-                ->isIdenticalTo($repository->duplicates(\Computer::getTable(), ['name'], [0], true));
-            $CFG_GLPI['unicity_types'] = array_values(array_diff($registered, [\PluginFooBar::class]));
+            $this->array($repository->duplicatesForItem(new Computer(), ['name'], [0]))
+                ->isIdenticalTo($repository->duplicates(Computer::getTable(), ['name'], [0], true));
+            $CFG_GLPI['unicity_types'] = array_values(array_diff($registered, [PluginFooBar::class]));
             $this->exception(static fn () => $repository->duplicatesForItem($item, ['name'], [$source]))
-                ->isInstanceOf(\InvalidArgumentException::class);
-        } catch (\Throwable $error) {
+                ->isInstanceOf(InvalidArgumentException::class);
+        } catch (Throwable $error) {
             $failure = $error;
         } finally {
             $DB = $original;
@@ -372,22 +408,22 @@ class Plugin extends DbTestCase
             $_SESSION = $session;
             try {
                 $frame?->rollBack();
-                \itsmng\Database\TransactionOwnership::assertManaged($connection);
+                TransactionOwnership::assertManaged($connection);
                 if ($connection->getTransactionNestingLevel() !== 0) {
-                    throw new \itsmng\Database\TransactionOwnershipMismatch('Plugin fixture DDL requires its frame to be closed.');
+                    throw new TransactionOwnershipMismatch('Plugin fixture DDL requires its frame to be closed.');
                 }
                 if ($created) {
                     $schema->dropTable($table);
                 }
-            } catch (\Throwable $cleanup) {
-                $failure = $failure === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($failure, $cleanup);
+            } catch (Throwable $cleanup) {
+                $failure = $failure === null ? $cleanup : new MutationCleanupFailure($failure, $cleanup);
             }
             try {
                 $probe->close();
                 $scope->assertActive();
                 $this->integer($caller->getTransactionNestingLevel())->isIdenticalTo($level);
-            } catch (\Throwable $cleanup) {
-                $failure = $failure === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($failure, $cleanup);
+            } catch (Throwable $cleanup) {
+                $failure = $failure === null ? $cleanup : new MutationCleanupFailure($failure, $cleanup);
             }
         }
         if ($failure !== null) {
@@ -403,14 +439,14 @@ class Plugin extends DbTestCase
         $original = $DB;
         $config = $CFG_GLPI;
         $session = $_SESSION;
-        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $plugins = new ReflectionProperty(LegacyPlugin::class, 'activated_plugins');
         $active = $plugins->getValue();
-        $declarations = \PluginRecursionLink::$relations;
+        $declarations = PluginRecursionLink::$relations;
         $caller = $original->getDoctrineConnection();
-        \itsmng\Database\TransactionOwnership::assertManaged($caller);
+        TransactionOwnership::assertManaged($caller);
         $scope = $caller->captureManagedTransactionScope();
         $level = $caller->getTransactionNestingLevel();
-        $logger = new class () extends \Psr\Log\AbstractLogger {
+        $logger = new class () extends AbstractLogger {
             public array $documentReads = [];
             public function log($level, $message, array $context = []): void
             {
@@ -420,95 +456,95 @@ class Plugin extends DbTestCase
                 }
             }
         };
-        $configuration = new \Doctrine\DBAL\Configuration();
-        $configuration->setMiddlewares([new \Doctrine\DBAL\Logging\Middleware($logger)]);
+        $configuration = new Configuration();
+        $configuration->setMiddlewares([new Middleware($logger)]);
         $connection = $original->getProvider() === 'pgsql'
-            ? \itsmng\Database\PostgresConnection::create($caller->getParams(), $configuration)
-            : \itsmng\Database\MySQLConnection::create($caller->getParams(), $configuration);
+            ? PostgresConnection::create($caller->getParams(), $configuration)
+            : MySQLConnection::create($caller->getParams(), $configuration);
         $probe = clone $original;
-        (new \ReflectionProperty(\DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
+        (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
         $schema = $connection->createSchemaManager();
-        $owner = \PluginRecursionOwner::getTable();
-        $link = \PluginRecursionLink::getTable();
+        $owner = PluginRecursionOwner::getTable();
+        $link = PluginRecursionLink::getTable();
         $created = [];
         $frame = null;
         $failure = null;
         try {
-            \itsmng\Database\TransactionOwnership::assertManaged($connection);
+            TransactionOwnership::assertManaged($connection);
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo(0);
             foreach ([$owner, $link] as $table) {
                 $this->boolean($schema->tablesExist([$table]))->isFalse();
-                $definition = new \Doctrine\DBAL\Schema\Table($table);
+                $definition = new Table($table);
                 foreach (['id', 'targets_id', 'peers_id', 'items_id'] as $column) {
-                    $definition->addColumn($column, \Doctrine\DBAL\Types\Types::INTEGER, ['default' => 0]);
+                    $definition->addColumn($column, Types::INTEGER, ['default' => 0]);
                 }
                 $definition->setPrimaryKey(['id']);
-                $definition->addColumn('itemtype', \Doctrine\DBAL\Types\Types::STRING, ['length' => 100, 'default' => '']);
+                $definition->addColumn('itemtype', Types::STRING, ['length' => 100, 'default' => '']);
                 if ($table === $owner) {
-                    $definition->addColumn('entities_id', \Doctrine\DBAL\Types\Types::INTEGER);
-                    $definition->addColumn('is_recursive', \Doctrine\DBAL\Types\Types::BOOLEAN, ['default' => false]);
-                    $definition->addColumn(\PluginRecursionOwner::getForeignKeyField(), \Doctrine\DBAL\Types\Types::INTEGER, ['default' => 0]);
+                    $definition->addColumn('entities_id', Types::INTEGER);
+                    $definition->addColumn('is_recursive', Types::BOOLEAN, ['default' => false]);
+                    $definition->addColumn(PluginRecursionOwner::getForeignKeyField(), Types::INTEGER, ['default' => 0]);
                 }
                 $schema->createTable($definition);
                 $created[] = $table;
             }
             $DB = $probe;
-            $frame = \itsmng\Database\OwnedMutationFrame::begin($connection);
+            $frame = OwnedMutationFrame::begin($connection);
             $plugins->setValue(null, ['recursion']);
-            $this->boolean(\Plugin::registerClass(\PluginRecursionOwner::class))->isTrue();
+            $this->boolean(LegacyPlugin::registerClass(PluginRecursionOwner::class))->isTrue();
             $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
             $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
-            $manager = \itsmng\Database\Orm::create($probe);
-            $record = new \itsmng\Database\Entity\Supplier();
-            $record->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, $source);
+            $manager = Orm::create($probe);
+            $record = new Supplier();
+            $record->entities = $manager->getReference(Entity::class, $source);
             $record->name = 'plugin-recursion-' . $this->getUniqueString();
             $record->is_recursive = true;
             $manager->persist($record);
             $manager->flush();
-            $target = new \Supplier();
+            $target = new LegacySupplier();
             $this->boolean($target->getFromDB($record->id))->isTrue();
             $connection->insert($owner, ['id' => 1, 'targets_id' => $record->id, 'entities_id' => $child]);
-            \PluginRecursionLink::$relations = [\Supplier::getTable() => [$owner => 'targets_id']];
-            $this->array(\Plugin::getDatabaseRelations())->isIdenticalTo(\PluginRecursionLink::$relations);
+            PluginRecursionLink::$relations = [LegacySupplier::getTable() => [$owner => 'targets_id']];
+            $this->array(LegacyPlugin::getDatabaseRelations())->isIdenticalTo(PluginRecursionLink::$relations);
             $this->boolean($target->canUnrecurs())->isFalse('A directly scoped plugin row prevents unrecursion');
             $connection->update($owner, ['entities_id' => $source], ['id' => 1]);
             $this->boolean($target->canUnrecurs())->isTrue('A permitted plugin owner allows unrecursion');
             $connection->update($owner, ['entities_id' => $child], ['id' => 1]);
             $connection->insert($link, ['id' => 1, 'targets_id' => $record->id, 'peers_id' => 1,
-                'items_id' => 1, 'itemtype' => \PluginRecursionOwner::class]);
-            \PluginRecursionLink::$relations = [\Supplier::getTable() => [$link => 'targets_id'], $owner => [$link => 'peers_id']];
+                'items_id' => 1, 'itemtype' => PluginRecursionOwner::class]);
+            PluginRecursionLink::$relations = [LegacySupplier::getTable() => [$link => 'targets_id'], $owner => [$link => 'peers_id']];
             $this->boolean($target->canUnrecurs())->isFalse('An unscoped plugin link keeps the other declared owner');
-            $contact = new \itsmng\Database\Entity\Contact();
-            $contact->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, $child);
+            $contact = new Contact();
+            $contact->entities = $manager->getReference(Entity::class, $child);
             $contact->name = 'mapped-peer-' . $this->getUniqueString();
             $manager->persist($contact);
             $manager->flush();
             $connection->update($link, ['peers_id' => $contact->id], ['id' => 1]);
-            \PluginRecursionLink::$relations = [\Supplier::getTable() => [$link => 'targets_id'], \Contact::getTable() => [$link => 'peers_id']];
+            PluginRecursionLink::$relations = [LegacySupplier::getTable() => [$link => 'targets_id'], LegacyContact::getTable() => [$link => 'peers_id']];
             $this->boolean($target->canUnrecurs())->isFalse('A plugin link also checks its declared mapped core peer');
-            $contact->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, $source);
+            $contact->entities = $manager->getReference(Entity::class, $source);
             $manager->flush();
             $this->boolean($target->canUnrecurs())->isTrue('A permitted mapped core peer allows unrecursion');
-            \PluginRecursionLink::$relations = [\Supplier::getTable() => [$link => 'targets_id'], $owner => [$link => 'peers_id']];
+            PluginRecursionLink::$relations = [LegacySupplier::getTable() => [$link => 'targets_id'], $owner => [$link => 'peers_id']];
             $connection->update($link, ['peers_id' => 0], ['id' => 1]);
             $this->boolean($target->canUnrecurs())->isTrue('An empty peer sentinel does not invent an outside owner');
-            \PluginRecursionLink::$relations = [\Supplier::getTable() => [$link => 'targets_id'],
+            PluginRecursionLink::$relations = [LegacySupplier::getTable() => [$link => 'targets_id'],
                 '_virtual_device' => [$link => ['items_id', 'itemtype']]];
             $this->boolean($target->canUnrecurs())->isFalse('A declared virtual plugin endpoint keeps its owner');
             $connection->update($owner, ['entities_id' => $source], ['id' => 1]);
             $this->boolean($target->canUnrecurs())->isTrue('A permitted virtual endpoint allows unrecursion');
             $connection->update($link, ['itemtype' => 'UnknownPluginModel'], ['id' => 1]);
-            $this->exception(static fn () => $target->canUnrecurs())->isInstanceOf(\InvalidArgumentException::class);
+            $this->exception(static fn () => $target->canUnrecurs())->isInstanceOf(InvalidArgumentException::class);
             foreach (['unknown', 'targets_id) OR 1=1 --', 'itemtype'] as $column) {
-                \PluginRecursionLink::$relations = [\Supplier::getTable() => [$owner => $column]];
+                PluginRecursionLink::$relations = [LegacySupplier::getTable() => [$owner => $column]];
                 if ($column === 'itemtype') {
                     // A declared polymorphic reference must match both target id and type.
-                    $connection->update($owner, ['items_id' => $record->id, 'itemtype' => \Supplier::class, 'entities_id' => $child], ['id' => 1]);
+                    $connection->update($owner, ['items_id' => $record->id, 'itemtype' => LegacySupplier::class, 'entities_id' => $child], ['id' => 1]);
                     $this->boolean($target->canUnrecurs())->isFalse();
-                    $connection->update($owner, ['itemtype' => \Computer::class], ['id' => 1]);
+                    $connection->update($owner, ['itemtype' => Computer::class], ['id' => 1]);
                     $this->boolean($target->canUnrecurs())->isTrue();
                 } else {
-                    $this->exception(static fn () => $target->canUnrecurs())->isInstanceOf(\InvalidArgumentException::class);
+                    $this->exception(static fn () => $target->canUnrecurs())->isInstanceOf(InvalidArgumentException::class);
                 }
             }
             // The plugin itself may be a recursive parent; only its declared
@@ -516,101 +552,101 @@ class Plugin extends DbTestCase
             $connection->insert(
                 $owner,
                 ['id' => 2, 'entities_id' => $source, 'is_recursive' => true],
-                ['is_recursive' => \Doctrine\DBAL\Types\Types::BOOLEAN]
+                ['is_recursive' => Types::BOOLEAN]
             );
-            $pluginTarget = new \PluginRecursionOwner();
+            $pluginTarget = new PluginRecursionOwner();
             $this->boolean($pluginTarget->getFromDB(2))->isTrue();
             $connection->update($link, ['targets_id' => 2, 'peers_id' => $contact->id], ['id' => 1]);
-            $contact->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, $child);
+            $contact->entities = $manager->getReference(Entity::class, $child);
             $manager->flush();
-            \PluginRecursionLink::$relations = [$owner => [$link => 'targets_id'], \Contact::getTable() => [$link => 'peers_id']];
+            PluginRecursionLink::$relations = [$owner => [$link => 'targets_id'], LegacyContact::getTable() => [$link => 'peers_id']];
             $this->boolean($pluginTarget->canUnrecurs())->isFalse('A plugin parent retains its declared outside peer');
-            $contact->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, $source);
+            $contact->entities = $manager->getReference(Entity::class, $source);
             $manager->flush();
             $this->boolean($pluginTarget->canUnrecurs())->isTrue('A plugin parent with permitted peers may stop recursion');
-            \PluginRecursionLink::$relations = [];
+            PluginRecursionLink::$relations = [];
             $logger->documentReads = [];
             $this->boolean($pluginTarget->canUnrecurs())->isTrue();
             $this->array($logger->documentReads)->hasSize(1, 'The mapped document-owner tail is still queried for a plugin parent');
-            $this->array(array_slice($logger->documentReads[0], 0, 2))->isIdenticalTo([2, \PluginRecursionOwner::class]);
-            $connection->insert($owner, ['id' => 3, 'entities_id' => $child, \PluginRecursionOwner::getForeignKeyField() => 2]);
+            $this->array(array_slice($logger->documentReads[0], 0, 2))->isIdenticalTo([2, PluginRecursionOwner::class]);
+            $connection->insert($owner, ['id' => 3, 'entities_id' => $child, PluginRecursionOwner::getForeignKeyField() => 2]);
             $this->boolean($pluginTarget->canUnrecurs())->isFalse('A plugin tree protects its own outside child without a hook declaration');
             $connection->update($owner, ['entities_id' => $source], ['id' => 3]);
             $this->boolean($pluginTarget->canUnrecurs())->isTrue('A plugin tree permits its own same-scope child');
 
-            $financial = new \itsmng\Database\Entity\Infocom();
-            $financial->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, $child);
-            $financial->itemtype = \PluginRecursionOwner::class;
+            $financial = new Infocom();
+            $financial->entities = $manager->getReference(Entity::class, $child);
+            $financial->itemtype = PluginRecursionOwner::class;
             $financial->items_id = 2;
             $financial->suppliers = $record;
             $manager->persist($financial);
             $manager->flush();
-            \PluginRecursionLink::$relations = [$owner => [\Infocom::getTable() => ['items_id', 'itemtype']]];
+            PluginRecursionLink::$relations = [$owner => [LegacyInfocom::getTable() => ['items_id', 'itemtype']]];
             $this->boolean($pluginTarget->canUnrecurs())->isFalse('A plugin parent also checks a declared mapped child');
-            $financial->itemtype = \Computer::class;
+            $financial->itemtype = Computer::class;
             $manager->flush();
             $this->boolean($pluginTarget->canUnrecurs())->isTrue('A polymorphic declaration binds the actual plugin type');
-            $financial->itemtype = \PluginRecursionOwner::class;
-            $financial->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, $source);
+            $financial->itemtype = PluginRecursionOwner::class;
+            $financial->entities = $manager->getReference(Entity::class, $source);
             $manager->flush();
             $this->boolean($pluginTarget->canUnrecurs())->isTrue();
-            \PluginRecursionLink::$relations = [];
+            PluginRecursionLink::$relations = [];
             $connection->update($owner, ['entities_id' => $child], ['id' => 2]);
             // Infocom already owns its entity. Its virtual plugin endpoint must
             // not replace that existing policy with the endpoint's different scope.
             $this->boolean($target->canUnrecurs())->isTrue('A scoped mapped link keeps its own entity policy');
-            $financial->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, $child);
+            $financial->entities = $manager->getReference(Entity::class, $child);
             $manager->flush();
             $this->boolean($target->canUnrecurs())->isFalse('The mapped financial owner still prevents unsafe recursion');
-            $financial->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, $source);
-            $document = new \itsmng\Database\Entity\Document();
-            $document->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, $child);
+            $financial->entities = $manager->getReference(Entity::class, $source);
+            $document = new Document();
+            $document->entities = $manager->getReference(Entity::class, $child);
             $document->name = 'recursion-document-' . $this->getUniqueString();
             $manager->persist($document);
-            $attachment = new \itsmng\Database\Entity\DocumentItem();
+            $attachment = new DocumentItem();
             $attachment->documents = $document;
-            $attachment->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, $source);
+            $attachment->entities = $manager->getReference(Entity::class, $source);
             $attachment->supplier = $record;
-            $attachment->itemtype = \Supplier::class;
+            $attachment->itemtype = LegacySupplier::class;
             $manager->persist($attachment);
             $manager->flush();
             $this->boolean($target->canUnrecurs())->isFalse('Document ownership remains independent of cached link scope');
-            $document->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, $source);
+            $document->entities = $manager->getReference(Entity::class, $source);
             $manager->flush();
             $this->boolean($target->canUnrecurs())->isTrue();
             $plugins->setValue(null, []);
-            $this->exception(static fn () => $pluginTarget->canUnrecurs())->isInstanceOf(\InvalidArgumentException::class);
+            $this->exception(static fn () => $pluginTarget->canUnrecurs())->isInstanceOf(InvalidArgumentException::class);
             $plugins->setValue(null, ['recursion']);
-            $repository = new \itsmng\Database\Repository\RelationshipLifecycleRepository($manager);
-            $this->exception(static fn () => $repository->hasOutsideEntities($owner, 2, 2, \Computer::class, [$source]))
-                ->isInstanceOf(\InvalidArgumentException::class);
+            $repository = new RelationshipLifecycleRepository($manager);
+            $this->exception(static fn () => $repository->hasOutsideEntities($owner, 2, 2, Computer::class, [$source]))
+                ->isInstanceOf(InvalidArgumentException::class);
             $frame->assertActive();
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $failure = $error;
         } finally {
             $DB = $original;
             $CFG_GLPI = $config;
             $_SESSION = $session;
             $plugins->setValue(null, $active);
-            \PluginRecursionLink::$relations = $declarations;
+            PluginRecursionLink::$relations = $declarations;
             try {
                 $frame?->rollBack();
-                \itsmng\Database\TransactionOwnership::assertManaged($connection);
+                TransactionOwnership::assertManaged($connection);
                 if ($connection->getTransactionNestingLevel() !== 0) {
-                    throw new \itsmng\Database\TransactionOwnershipMismatch('Plugin fixture DDL requires its frame to be closed.');
+                    throw new TransactionOwnershipMismatch('Plugin fixture DDL requires its frame to be closed.');
                 }
                 foreach (array_reverse($created) as $table) {
                     $schema->dropTable($table);
                 }
-            } catch (\Throwable $cleanup) {
-                $failure = $failure === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($failure, $cleanup);
+            } catch (Throwable $cleanup) {
+                $failure = $failure === null ? $cleanup : new MutationCleanupFailure($failure, $cleanup);
             }
             try {
                 $probe->close();
                 $scope->assertActive();
                 $this->integer($caller->getTransactionNestingLevel())->isIdenticalTo($level);
-            } catch (\Throwable $cleanup) {
-                $failure = $failure === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($failure, $cleanup);
+            } catch (Throwable $cleanup) {
+                $failure = $failure === null ? $cleanup : new MutationCleanupFailure($failure, $cleanup);
             }
         }
         if ($failure !== null) {

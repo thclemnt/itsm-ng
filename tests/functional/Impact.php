@@ -36,12 +36,17 @@ namespace tests\units;
 use CommonDBTM;
 use Computer;
 use Config as ConfigModel;
+use Doctrine\ORM\Event\PostLoadEventArgs;
 use Impact as ImpactModel;
 use ImpactCompound;
 use ImpactItem;
 use ImpactRelation;
 use Item_Ticket;
+use Session;
 use Ticket;
+use itsmng\Database\Entity\User;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\UserRepository;
 
 class Impact extends \DbTestCase
 {
@@ -52,14 +57,14 @@ class Impact extends \DbTestCase
         $this->login();
         $this->setEntity('_test_root_entity', true);
         $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         $connection = $em->getConnection();
         $level = $connection->getTransactionNestingLevel();
         $savedConfig = $CFG_GLPI;
-        $user = (int)\Session::getLoginUserID();
+        $user = (int)Session::getLoginUserID();
         $observer = new class () {
             public int $loads = 0;
-            public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
+            public function postLoad(PostLoadEventArgs $event): void
             {
                 ++$this->loads;
             }
@@ -80,7 +85,7 @@ class Impact extends \DbTestCase
                 'priority_3' => null, 'priority_4' => '', 'priority_5' => '#123456', 'priority_6' => '0',
             ], ['id' => $user]);
             $CFG_GLPI['priority_3'] = '#abcdef';
-            $repository = new \itsmng\Database\Repository\UserRepository($em);
+            $repository = new UserRepository($em);
             $colors = $repository->priorityColors($user);
             $this->array($colors)->hasSize(6);
             $this->variable($colors['priority_3'])->isNull();
@@ -90,32 +95,32 @@ class Impact extends \DbTestCase
             $this->array($repository->priorityColors(-1))->isEmpty();
             $this->integer($observer->loads)->isIdenticalTo(0);
             $this->integer($em->getUnitOfWork()->size())->isIdenticalTo(0);
-            $managed = $em->find(\itsmng\Database\Entity\User::class, $user);
+            $managed = $em->find(User::class, $user);
             $this->integer($observer->loads)->isGreaterThan(0);
 
             // The renderer consumes an already built graph; keep its counters and
             // priorities explicit so maximum-priority and empty-cell behavior are tested.
             $graph = ['nodes' => [], 'edges' => []];
             foreach ($computers as $computer) {
-                $node = \Impact::getNodeID($computer);
+                $node = ImpactModel::getNodeID($computer);
                 $graph['nodes'][$node] = ['id' => $node, 'label' => $computer->fields['name'],
                     'ITILObjects' => ['incidents' => [], 'problems' => [], 'changes' => []]];
             }
-            $root = \Impact::getNodeID($computers[0]);
-            $first = \Impact::getNodeID($computers[1]);
-            $second = \Impact::getNodeID($computers[2]);
+            $root = ImpactModel::getNodeID($computers[0]);
+            $first = ImpactModel::getNodeID($computers[1]);
+            $second = ImpactModel::getNodeID($computers[2]);
             $graph['nodes'][$first]['ITILObjects'] = [
                 'incidents' => [['priority' => 2], ['priority' => 5]],
                 'problems' => [['priority' => 3]], 'changes' => [['priority' => 4]],
             ];
             $graph['nodes'][$second]['ITILObjects']['incidents'] = [['priority' => 6]];
             foreach ([$first, $second] as $node) {
-                $graph['edges'][] = ['source' => $root, 'target' => $node, 'flag' => \Impact::DIRECTION_FORWARD];
+                $graph['edges'][] = ['source' => $root, 'target' => $node, 'flag' => ImpactModel::DIRECTION_FORWARD];
             }
             $render = static function () use ($computers, &$graph): string {
                 ob_start();
                 try {
-                    \Impact::displayListView($computers[0], $graph);
+                    ImpactModel::displayListView($computers[0], $graph);
                     return ob_get_contents();
                 } finally {
                     ob_end_clean();

@@ -5,6 +5,7 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_changetemplatepredefinedfields')]
@@ -12,7 +13,7 @@ class ChangeTemplatePredefinedField
 {
     #[ORM\ManyToOne(targetEntity: ChangeTemplate::class)]
     #[ORM\JoinColumn(name: 'changetemplates_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?ChangeTemplate $changetemplates = null;
 
     #[ORM\Id]

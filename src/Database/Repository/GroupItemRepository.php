@@ -6,9 +6,12 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
+use InvalidArgumentException;
 use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\RecordCriteria;
+
+use function getTableForItemType;
 
 final class GroupItemRepository
 {
@@ -18,7 +21,7 @@ final class GroupItemRepository
 
     public static function supports(string $type): bool
     {
-        return isset(EntityRegistry::tables()[\getTableForItemType($type)]);
+        return isset(EntityRegistry::tables()[getTableForItemType($type)]);
     }
 
     public function count(string $type, string $field, array $groups, bool $members, array $scope): int
@@ -33,7 +36,7 @@ final class GroupItemRepository
             return [];
         }
         $id = $type === 'Consumable' ? 'c.id' : 'r.id';
-        $class = $type === 'Consumable' ? Entity\ConsumableItem::class : EntityRegistry::tables()[\getTableForItemType($type)];
+        $class = $type === 'Consumable' ? Entity\ConsumableItem::class : EntityRegistry::tables()[getTableForItemType($type)];
         $query = $this->query($type, $field, $groups, $members, $scope)->select($id . ' AS id');
         if ($this->em->getClassMetadata($class)->hasField('name')) {
             $query->addSelect('CASE WHEN r.name IS NULL THEN 0 ELSE 1 END AS HIDDEN unnamed')->orderBy('unnamed')->addOrderBy('r.name');
@@ -45,9 +48,9 @@ final class GroupItemRepository
     private function query(string $type, string $field, array $groups, bool $members, array $scope): QueryBuilder
     {
         if (!in_array($field, ['groups_id', 'groups_id_tech'], true)) {
-            throw new \InvalidArgumentException('Unsupported group assignment field');
+            throw new InvalidArgumentException('Unsupported group assignment field');
         }
-        $class = $type === 'Consumable' ? Entity\ConsumableItem::class : EntityRegistry::tables()[\getTableForItemType($type)];
+        $class = $type === 'Consumable' ? Entity\ConsumableItem::class : EntityRegistry::tables()[getTableForItemType($type)];
         $query = $this->em->createQueryBuilder()->from($class, 'r')->setParameter('groups', array_values($groups) ?: [-1]);
         $compiler = new RecordCriteria($query, $this->em->getClassMetadata($class));
         $query->where($compiler->where($scope));

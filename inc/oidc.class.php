@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\OidcRepository;
+
 require __DIR__ . "/../vendor/autoload.php";
 
 if (!defined("GLPI_ROOT")) {
@@ -49,7 +52,7 @@ class Oidc extends CommonDBTM
         global $DB, $CFG_GLPI;
 
         //Get config from DB and use it to setup oidc
-        $oidc_db = (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::create($DB)))->configuration();
+        $oidc_db = (new OidcRepository(Orm::create($DB)))->configuration();
         $oidc_db['ClientSecret'] = @Toolbox::sodiumDecrypt((string)($oidc_db['ClientSecret'] ?? ''));
         $oidc_db['scope'] = explode(',', addslashes(str_replace(' ', '', (string)($oidc_db['scope'] ?? ''))));
 
@@ -143,7 +146,7 @@ class Oidc extends CommonDBTM
         $ID = false;
 
         // Check for custom mapping for the username
-        $mapping = (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::create($DB)))->mapping();
+        $mapping = (new OidcRepository(Orm::create($DB)))->mapping();
 
         $auth_username = null;
         if ($mapping && !empty($mapping['name']) && isset($user_array[$mapping['name']])) {
@@ -159,7 +162,7 @@ class Oidc extends CommonDBTM
         }
 
         if ($auth_username) {
-            $ID = (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::create($DB)))->linkableUser((string)$auth_username, (bool)$oidc_db['sso_link_users']);
+            $ID = (new OidcRepository(Orm::create($DB)))->linkableUser((string)$auth_username, (bool)$oidc_db['sso_link_users']);
             $newUser = $ID === null;
         }
 
@@ -236,10 +239,10 @@ class Oidc extends CommonDBTM
         global $DB;
 
         $DB->getDoctrineConnection()->transactional(static function () use ($DB, $user_array, $id): void {
-            $email = (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::create($DB)))->synchronizeProfile(
+            $email = (new OidcRepository(Orm::create($DB)))->synchronizeProfile(
                 (int)$id,
                 $user_array,
-                new \DateTimeImmutable($_SESSION['glpi_currenttime'] ?? 'now')
+                new DateTimeImmutable($_SESSION['glpi_currenttime'] ?? 'now')
             );
             if ($email !== null && $email !== '' && !UserEmail::isEmailForUser($id, $email)) {
                 (new UserEmail())->add(['users_id' => $id, 'email' => $email, 'is_dynamic' => 0]);
@@ -273,10 +276,10 @@ class Oidc extends CommonDBTM
                 "group" => $_POST["group"],
                 "date_mod" => $_SESSION["glpi_currenttime"],
             ];
-            (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::create($DB)))->saveMapping($oidc_result);
+            (new OidcRepository(Orm::create($DB)))->saveMapping($oidc_result);
         }
 
-        $oidc_db = (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::create($DB)))->mapping() + array_fill_keys(
+        $oidc_db = (new OidcRepository(Orm::create($DB)))->mapping() + array_fill_keys(
             ['name', 'given_name', 'family_name', 'picture', 'email', 'locale', 'phone_number', 'group', 'date_mod'],
             null
         );

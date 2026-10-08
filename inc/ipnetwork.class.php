@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
 * */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\IPNetworkRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -624,9 +627,9 @@ class IPNetwork extends CommonImplicitTreeDropdown
             $criteria = [];
         }
         if (!is_array($criteria)) {
-            throw new \InvalidArgumentException('Network filters must use structured field criteria.');
+            throw new InvalidArgumentException('Network filters must use structured field criteria.');
         }
-        return (new \itsmng\Database\Repository\IPNetworkRepository(\itsmng\Database\Orm::create($DB)))->matching(
+        return (new IPNetworkRepository(Orm::create($DB)))->matching(
             $relation,
             $address,
             $mask,
@@ -911,7 +914,7 @@ class IPNetwork extends CommonImplicitTreeDropdown
         };
         try {
             $DB->getDoctrineConnection()->transactional(static function () use ($DB, &$ids, $invalidate): void {
-                $ids = (new \itsmng\Database\Repository\IPNetworkRepository(\itsmng\Database\Orm::create($DB)))->resetTree();
+                $ids = (new IPNetworkRepository(Orm::create($DB)))->resetTree();
                 $invalidate();
                 foreach ($ids as $id) {
                     $network = new self();

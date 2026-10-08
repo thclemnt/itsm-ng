@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -61,7 +64,7 @@ class Entity_Reminder extends CommonDBRelation
         global $DB;
 
         $ent   = [];
-        $rows = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+        $rows = (new RecordRepository(Orm::create($DB)))
             ->matching(self::getTable(), ['reminders_id' => $reminder->fields['id']], 'id');
         foreach ($rows as $data) {
             $ent[$data['entities_id']][] = $data;

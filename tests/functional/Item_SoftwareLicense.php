@@ -34,6 +34,16 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Item_SoftwareLicense as LegacyItem_SoftwareLicense;
+use itsmng\Database\CurrentReadUnavailable;
+use itsmng\Database\Entity\Entity;
+use itsmng\Database\Entity\Software;
+use itsmng\Database\Entity\SoftwareVersion;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\Repository\SoftwareAssignmentRepository;
+use itsmng\Domain\SoftwareAssignmentCancelled;
 
 /* Test for inc/item_softwarelicense.class.php */
 
@@ -94,7 +104,7 @@ class Item_SoftwareLicense extends DbTestCase
          ])
         )->isTrue();
 
-        $rows = \Item_SoftwareLicense::getLicenseForInstallation(
+        $rows = LegacyItem_SoftwareLicense::getLicenseForInstallation(
             'Computer',
             $computer1->fields['id'],
             $version1->fields['id']
@@ -260,11 +270,11 @@ class Item_SoftwareLicense extends DbTestCase
     {
         global $DB;
         $this->login();
-        $manager = \itsmng\Database\Orm::create($DB);
-        $root = $manager->getReference(\itsmng\Database\Entity\Entity::class, 0);
+        $manager = Orm::create($DB);
+        $root = $manager->getReference(Entity::class, 0);
         $owners = [];
         foreach (['Allocation owner A', 'Allocation owner B'] as $name) {
-            $owner = new \itsmng\Database\Entity\Software();
+            $owner = new Software();
             $owner->entities = $root;
             $owner->name = $name;
             $manager->persist($owner);
@@ -272,7 +282,7 @@ class Item_SoftwareLicense extends DbTestCase
         }
         $versions = [];
         for ($index = 0; $index < 25; ++$index) {
-            $version = new \itsmng\Database\Entity\SoftwareVersion();
+            $version = new SoftwareVersion();
             $version->entities = $root;
             $version->softwares = $owners[$index % 2];
             $version->name = 'Allocation owner version ' . $index;
@@ -283,24 +293,24 @@ class Item_SoftwareLicense extends DbTestCase
         $ids = array_map(static fn ($version): int => $version->id, $versions);
         $expected = [$owners[0]->id, $owners[1]->id];
         sort($expected);
-        $repository = new \itsmng\Database\Repository\SoftwareAssignmentRepository($manager);
+        $repository = new SoftwareAssignmentRepository($manager);
         $this->array($repository->softwareIdsForVersions([...array_reverse($ids), $ids[0]], current: false))->isIdenticalTo($expected);
         $this->array($repository->softwareIdsForVersions([...array_reverse($ids), $ids[0]], current: true))->isIdenticalTo($expected);
         $this->array($repository->softwareIdsForVersions([], current: true))->isEmpty();
         $missing = 1 + (int)$DB->getDoctrineConnection()->fetchOne('SELECT MAX(id) FROM glpi_softwareversions');
         foreach ([false, true] as $current) {
             $this->exception(static fn () => $repository->softwareIdsForVersions([...$ids, $missing], current: $current))
-                ->isInstanceOf(\itsmng\Domain\SoftwareAssignmentCancelled::class)
+                ->isInstanceOf(SoftwareAssignmentCancelled::class)
                 ->hasMessage('A required owning software version is missing.');
         }
         $this->exception(static fn () => $repository->softwareIdsForVersions([$ids[0], 0]))
-            ->isInstanceOf(\itsmng\Domain\SoftwareAssignmentCancelled::class);
+            ->isInstanceOf(SoftwareAssignmentCancelled::class);
         $this->exception(static fn () => $repository->softwareIdsForVersions([$ids[0], -1]))
-            ->isInstanceOf(\itsmng\Domain\SoftwareAssignmentCancelled::class);
+            ->isInstanceOf(SoftwareAssignmentCancelled::class);
         // A real owning reassignment must be visible through a new current read,
         // even though the manager still has the earlier version object managed.
         $connection = $DB->getDoctrineConnection();
-        $frame = \itsmng\Database\OwnedMutationFrame::begin($connection);
+        $frame = OwnedMutationFrame::begin($connection);
         try {
             $connection->update('glpi_softwareversions', ['softwares_id' => $owners[1]->id], ['id' => $versions[0]->id]);
             $this->array($repository->softwareIdsForVersions([$versions[0]->id], current: true))->isIdenticalTo([$owners[1]->id]);
@@ -308,14 +318,14 @@ class Item_SoftwareLicense extends DbTestCase
             $frame->rollBack();
         }
         $this->array($repository->softwareIdsForVersions([$versions[0]->id], current: true))->isIdenticalTo([$owners[0]->id]);
-        if ($connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\AbstractMySQLPlatform) {
+        if ($connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
             $capability = $connection->fetchAllAssociative("SHOW SESSION VARIABLES LIKE 'innodb_snapshot_isolation'");
             if ($capability !== []) {
                 $originalFlag = $capability[0]['Value'];
                 try {
                     $connection->executeStatement('SET SESSION innodb_snapshot_isolation = ON');
                     $this->exception(static fn () => $repository->softwareIdsForVersions($ids, current: true))
-                        ->isInstanceOf(\itsmng\Database\CurrentReadUnavailable::class);
+                        ->isInstanceOf(CurrentReadUnavailable::class);
                     $this->string(strtoupper($connection->fetchAllAssociative("SHOW SESSION VARIABLES LIKE 'innodb_snapshot_isolation'")[0]['Value']))->isIdenticalTo('ON');
                 } finally {
                     $connection->executeStatement('SET SESSION innodb_snapshot_isolation = ' . (strtoupper($originalFlag) === 'ON' ? 'ON' : 'OFF'));

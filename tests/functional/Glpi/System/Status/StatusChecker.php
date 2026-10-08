@@ -36,8 +36,13 @@ namespace tests\units\Glpi\System\Status;
 use AuthLDAP;
 use AuthMail;
 use CronTask;
+use DateTime;
+use DateTimeImmutable;
+use DateTimeZone;
 use DbTestCase;
 use Glpi\System\Status\StatusChecker as GlpiStatusChecker;
+use itsmng\Database\Entity\CronTask as CronTaskEntity;
+use itsmng\Database\Orm;
 
 class StatusChecker extends DbTestCase
 {
@@ -106,11 +111,11 @@ class StatusChecker extends DbTestCase
         $connection = $DB->getDoctrineConnection();
         $depth = $connection->getTransactionNestingLevel();
         $this->integer($depth)->isGreaterThan(0);
-        $em = \itsmng\Database\Orm::create($DB);
-        $em->createQuery('UPDATE ' . \itsmng\Database\Entity\CronTask::class . ' t SET t.state = :waiting')
+        $em = Orm::create($DB);
+        $em->createQuery('UPDATE ' . CronTaskEntity::class . ' t SET t.state = :waiting')
             ->setParameter('waiting', CronTask::STATE_WAITING)->execute();
         $prefix = 'Status overdue ' . bin2hex(random_bytes(6));
-        $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
         foreach ([
             ['Ticket', 'duplicate', 60, $now->modify('-1 day'), CronTask::STATE_RUNNING],
             ['Problem', 'duplicate', 86400, $now->modify('-1 day'), CronTask::STATE_RUNNING],
@@ -119,11 +124,11 @@ class StatusChecker extends DbTestCase
             ['CronTask', 'waiting', 60, $now->modify('-1 day'), CronTask::STATE_WAITING],
             ['CronTask', 'disabled', 60, $now->modify('-1 day'), CronTask::STATE_DISABLE],
         ] as [$type, $name, $frequency, $lastrun, $state]) {
-            $task = new \itsmng\Database\Entity\CronTask();
+            $task = new CronTaskEntity();
             $task->itemtype = $type;
             $task->name = $prefix . ' ' . $name;
             $task->frequency = $frequency;
-            $task->lastrun = $lastrun === null ? null : \DateTime::createFromImmutable($lastrun);
+            $task->lastrun = $lastrun === null ? null : DateTime::createFromImmutable($lastrun);
             $task->state = $state;
             $em->persist($task);
         }

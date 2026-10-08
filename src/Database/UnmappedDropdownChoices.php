@@ -4,13 +4,17 @@
 
 namespace itsmng\Database;
 
+use DBAdapter;
+use DBmysqlIterator;
+use LogicException;
+
 /** Custom plugin tables retain their installed query contract until the plugin supplies mappings. */
 final class UnmappedDropdownChoices
 {
-    public static function read(\DBAdapter $database, string $table, array $where, array $order, array $translations, string $kind, string $language, int $limit, int $offset): \DBmysqlIterator
+    public static function read(DBAdapter $database, string $table, array $where, array $order, array $translations, string $kind, string $language, int $limit, int $offset): DBmysqlIterator
     {
         if (isset(EntityRegistry::tables()[$table])) {
-            throw new \LogicException('Mapped core dropdown choices require their ORM repository.');
+            throw new LogicException('Mapped core dropdown choices require their ORM repository.');
         }
         $criteria = ['SELECT' => [$table . '.*'], 'FROM' => $table, 'WHERE' => $where, 'ORDERBY' => $order, 'LIMIT' => $limit, 'START' => $offset];
         foreach ($translations as $role => $translation) {

@@ -4,15 +4,20 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\AllocationSubjectScope;
+use itsmng\Database\Mapping\AssetClassification;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Domain\AllocationSubject;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_printers')]
-class Printer implements \itsmng\Domain\AllocationSubject
+class Printer implements AllocationSubject
 {
-    use \itsmng\Database\Mapping\AllocationSubjectScope;
+    use AllocationSubjectScope;
 
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
@@ -31,8 +36,8 @@ class Printer implements \itsmng\Domain\AllocationSubject
     public ?string $name = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`contact`', type: 'string', length: 255, nullable: true)]
     public ?string $contact = null;
@@ -90,7 +95,7 @@ class Printer implements \itsmng\Domain\AllocationSubject
     #[ORM\ManyToOne(targetEntity: PrinterType::class)]
     #[ORM\JoinColumn(name: 'printertypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
-    #[\itsmng\Database\Mapping\AssetClassification]
+    #[AssetClassification]
     public ?PrinterType $printertypes = null;
 
     #[ORM\ManyToOne(targetEntity: PrinterModel::class)]
@@ -143,6 +148,6 @@ class Printer implements \itsmng\Domain\AllocationSubject
     public bool $is_dynamic = false;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 }

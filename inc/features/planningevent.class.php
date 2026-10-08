@@ -55,6 +55,8 @@ use CommonITILTask;
 use User;
 use DateInterval;
 use Entity;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\PlanningRepository;
 
 trait PlanningEvent
 {
@@ -531,7 +533,7 @@ trait PlanningEvent
         }
 
         $iterator = $itemtype === 'PlanningExternalEvent'
-            ? (new \itsmng\Database\Repository\PlanningRepository(\itsmng\Database\Orm::create($DB)))->externalEvents($WHERE)
+            ? (new PlanningRepository(Orm::create($DB)))->externalEvents($WHERE)
             : $DB->request($criteria);
 
         $events_toadd = [];

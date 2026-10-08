@@ -33,6 +33,8 @@
 
 namespace tests\units;
 
+use GLPIKey as LegacyGLPIKey;
+
 /* Test for inc/glpikey.class.php */
 
 class GLPIKey extends \GLPITestCase
@@ -53,7 +55,7 @@ class GLPIKey extends \GLPITestCase
      */
     public function testDecryptUsingLegacyKey($ciphertext, $key, $expected)
     {
-        $this->string((new \GLPIKey())->decryptUsingLegacyKey($ciphertext, $key))
+        $this->string((new LegacyGLPIKey())->decryptUsingLegacyKey($ciphertext, $key))
             ->isIdenticalTo($expected);
         $this->error()->withType(E_DEPRECATED)->withAnyMessage()->notExists();
     }

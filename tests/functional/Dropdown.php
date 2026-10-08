@@ -33,8 +33,63 @@
 
 namespace tests\units;
 
+use Budget;
+use Closure;
+use Computer;
 use DbTestCase;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\ArrayParameterType;
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\DriverManager;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Query\QueryBuilder as DBALQueryBuilder;
+use Doctrine\DBAL\Result;
+use Doctrine\DBAL\Types\BigIntType;
+use Doctrine\DBAL\Types\IntegerType;
+use Doctrine\DBAL\Types\StringType;
+use Doctrine\DBAL\Types\TextType;
+use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use Doctrine\ORM\Event\PostLoadEventArgs;
+use Doctrine\ORM\Events;
+use Doctrine\ORM\Internal\Hydration\AbstractHydrator;
+use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\ORM\Mapping\Column;
+use Doctrine\ORM\Mapping\Entity as MappingEntity;
+use Doctrine\ORM\Mapping\Id;
+use Doctrine\ORM\Mapping\Table;
+use Doctrine\ORM\Query;
+use Doctrine\ORM\QueryBuilder;
+use Dropdown as LegacyDropdown;
+use Entity;
 use Generator;
+use LogicException;
+use Profile;
+use Psr\Cache\CacheItemInterface;
+use ReflectionProperty;
+use Supplier;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Symfony\Component\Cache\Psr16Cache;
+use ValueError;
+use itsmng\Database\DropdownReadOperation;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\EntityScopeReadOperation;
+use itsmng\Database\Entity\Budget as BudgetEntity;
+use itsmng\Database\Entity\Contact;
+use itsmng\Database\Entity\DropdownTranslation;
+use itsmng\Database\Entity\Profile as ProfileEntity;
+use itsmng\Database\Entity\ProfileRight;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DropdownChoiceRepository;
+use itsmng\Database\Repository\DropdownTranslationRepository;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\TreeRepository;
+use itsmng\Database\TreeReadOperation;
+use mock\DBmysql;
 
 /* Test for inc/dropdown.class.php */
 
@@ -45,13 +100,13 @@ class Dropdown extends DbTestCase
         global $DB;
         $this->login();
         $connection = $DB->getDoctrineConnection();
-        $parent = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
-        $child = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => $parent->getID()]);
+        $parent = $this->createItem(Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $child = $this->createItem(Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => $parent->getID()]);
         $id = (int)$child->getID();
         $expected = getEntitiesRestrictCriteria('glpi_suppliers', '', [$id], true);
-        $counter = new \ReflectionProperty(\itsmng\Database\Orm::class, 'unitsOfWork');
+        $counter = new ReflectionProperty(Orm::class, 'unitsOfWork');
         $before = $counter->getValue();
-        $operation = new \itsmng\Database\EntityScopeReadOperation();
+        $operation = new EntityScopeReadOperation();
         $this->array($operation->criteria('glpi_suppliers', '', [$id], true))->isIdenticalTo($expected);
         $this->array($operation->criteria('glpi_suppliers', '', [$id], true))->isIdenticalTo($expected);
         $this->integer($counter->getValue() - $before)->isIdenticalTo(1, 'One scalar operation owns one manager across current permission reads');
@@ -66,24 +121,24 @@ class Dropdown extends DbTestCase
         global $DB;
         $this->login();
         $connection = $DB->getDoctrineConnection();
-        $entity = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $entity = $this->createItem(Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
         $id = (int)$entity->getID();
-        $child = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => $id]);
+        $child = $this->createItem(Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => $id]);
         $childId = (int)$child->getID();
         $connection->update('glpi_entities', ['ancestors_cache' => 'cache lower', 'sons_cache' => null], ['id' => $id]);
         $fields = ['id', 'entities_id', 'ancestors_cache', 'sons_cache'];
-        $manager = \itsmng\Database\Orm::forConnection($connection);
-        $oracle = new \itsmng\Database\Repository\TreeRepository($manager);
+        $manager = Orm::forConnection($connection);
+        $oracle = new TreeRepository($manager);
         $expected = $oracle->rows('glpi_entities', $fields, ['id' => $id]);
         $probe = new DropdownScalarReadProbe($connection);
-        $reader = new \itsmng\Database\TreeReadOperation($probe);
-        $originalText = \Doctrine\DBAL\Types\Type::getType('text');
-        $originalBigint = \Doctrine\DBAL\Types\Type::getType('bigint');
+        $reader = new TreeReadOperation($probe);
+        $originalText = Type::getType('text');
+        $originalBigint = Type::getType('bigint');
         $database = $DB;
         try {
             $publicProbe = new DropdownScalarReadProbe($connection);
             $this->mockGenerator->orphanize('__construct');
-            $DB = new \mock\DBmysql();
+            $DB = new DBmysql();
             $this->calling($DB)->getProvider = $database->getProvider();
             $routes = 0;
             $this->calling($DB)->getDoctrineConnection = static function () use ($publicProbe, &$routes) {
@@ -96,7 +151,7 @@ class Dropdown extends DbTestCase
             $this->integer($routes)->isIdenticalTo(4, 'Each ancestor read uses the selected connection');
             $this->integer($publicProbe->builders)->isIdenticalTo(2);
             $this->array($publicProbe->queries[0]['params'])->isIdenticalTo(['id0' => (string)$childId]);
-            $this->array($publicProbe->queries[0]['types'])->isIdenticalTo(['id0' => \Doctrine\DBAL\Types\Types::BIGINT]);
+            $this->array($publicProbe->queries[0]['types'])->isIdenticalTo(['id0' => Types::BIGINT]);
             $connection->update('glpi_entities', ['entities_id' => 0], ['id' => $childId]);
             $this->array(getAncestorsOf('glpi_entities', [$childId, $id, $childId, 0]))->isIdenticalTo([0 => 0]);
             $this->array($publicProbe->queries)->hasSize(3);
@@ -110,7 +165,7 @@ class Dropdown extends DbTestCase
             $this->array($reader->rows('glpi_entities', $fields, ['id' => $id]))->isIdenticalTo($expected);
             $this->array($probe->queries)->hasSize(1);
             $this->integer($probe->builders)->isIdenticalTo(1);
-            $this->array($probe->queries[0]['types'])->isIdenticalTo(['id' => \Doctrine\DBAL\Types\Types::BIGINT]);
+            $this->array($probe->queries[0]['types'])->isIdenticalTo(['id' => Types::BIGINT]);
             $this->array($probe->queries[0]['params'])->isIdenticalTo(['id' => (string)$id]);
             foreach ([[$id], [$id, 0, $id], [$id, null, 'NULL'], [null, 'null'], ['selected' => $id]] as $ids) {
                 $this->array($reader->rows('glpi_entities', $fields, ['id' => $ids]))
@@ -118,7 +173,7 @@ class Dropdown extends DbTestCase
             }
             $this->integer($probe->builders)->isIdenticalTo(6);
             $this->array($probe->queries[3]['params'])->isIdenticalTo(['id0' => (string)$id, 'id1' => null, 'id2' => null]);
-            $this->array($probe->queries[3]['types'])->isIdenticalTo(array_fill_keys(['id0', 'id1', 'id2'], \Doctrine\DBAL\Types\Types::BIGINT));
+            $this->array($probe->queries[3]['types'])->isIdenticalTo(array_fill_keys(['id0', 'id1', 'id2'], Types::BIGINT));
             $builders = $probe->builders;
             foreach ([null, 'NULL', ['=', $id], ['>', $id], [true, $id]] as $criteria) {
                 $this->array($reader->rows('glpi_entities', ['id'], ['id' => $criteria]))
@@ -136,36 +191,36 @@ class Dropdown extends DbTestCase
             $this->array($reader->rows('glpi_entities', $fields, ['id' => $id]))
                 ->isIdenticalTo($oracle->rows('glpi_entities', $fields, ['id' => $id]));
             // Scalar SQL aliases historically do not call PHP value converters.
-            \Doctrine\DBAL\Types\Type::overrideType('text', new DropdownScalarSqlText());
+            Type::overrideType('text', new DropdownScalarSqlText());
             $this->string($reader->rows('glpi_entities', ['ancestors_cache'], ['id' => $id])[0]['ancestors_cache'])
                 ->isIdenticalTo('CHANGED LOWER');
             $this->array($reader->rows('glpi_entities', ['ancestors_cache'], ['id' => $id]))
                 ->isIdenticalTo($oracle->rows('glpi_entities', ['ancestors_cache'], ['id' => $id]));
             $this->array($reader->rows('glpi_entities', ['ancestors_cache'], ['id' => [$id, null]]))
                 ->isIdenticalTo($oracle->rows('glpi_entities', ['ancestors_cache'], ['id' => [$id, null]]));
-            \Doctrine\DBAL\Types\Type::overrideType('bigint', new DropdownNegativeScalarId());
+            Type::overrideType('bigint', new DropdownNegativeScalarId());
             $this->array($reader->rows('glpi_entities', ['id'], ['id' => $id]))->isEmpty();
             $this->array($reader->rows('glpi_entities', ['id'], ['id' => [$id, 0]]))->isEmpty();
             $this->array($reader->rows('glpi_entities', ['id'], ['id' => [$id, 0]]))
                 ->isIdenticalTo($oracle->rows('glpi_entities', ['id'], ['id' => [$id, 0]]));
-            \Doctrine\DBAL\Types\Type::overrideType('bigint', $originalBigint);
-            \Doctrine\DBAL\Types\Type::overrideType('text', $originalText);
+            Type::overrideType('bigint', $originalBigint);
+            Type::overrideType('text', $originalText);
             $extension = new class ($connection) extends DropdownScalarReadProbe {
-                private ?\Doctrine\Common\EventManager $events = null;
-                public function getEventManager(): \Doctrine\Common\EventManager
+                private ?EventManager $events = null;
+                public function getEventManager(): EventManager
                 {
-                    return $this->events ??= new \Doctrine\Common\EventManager();
+                    return $this->events ??= new EventManager();
                 }
             };
-            $local = new \itsmng\Database\TreeReadOperation($extension);
+            $local = new TreeReadOperation($extension);
             $listener = new class () {
                 public int $loads = 0;
-                public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
                 {
                     ++$this->loads;
                 }
             };
-            $extension->getEventManager()->addEventListener([\Doctrine\ORM\Events::loadClassMetadata], $listener);
+            $extension->getEventManager()->addEventListener([Events::loadClassMetadata], $listener);
             $this->array($local->rows('glpi_entities', ['id', 'name'], ['id' => $id]))
                 ->isIdenticalTo($oracle->rows('glpi_entities', ['id', 'name'], ['id' => $id]));
             $this->array($local->rows('glpi_entities', ['id', 'name'], ['id' => [$id]]))
@@ -179,8 +234,8 @@ class Dropdown extends DbTestCase
             $this->integer($probe->builders)->isIdenticalTo($builders, 'General predicates/order retain the existing ORM criteria contract');
         } finally {
             $DB = $database;
-            \Doctrine\DBAL\Types\Type::overrideType('text', $originalText);
-            \Doctrine\DBAL\Types\Type::overrideType('bigint', $originalBigint);
+            Type::overrideType('text', $originalText);
+            Type::overrideType('bigint', $originalBigint);
             $reader->close();
             $manager->clear();
         }
@@ -191,17 +246,17 @@ class Dropdown extends DbTestCase
         global $DB;
         $this->login();
         $connection = $DB->getDoctrineConnection();
-        $entity = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $entity = $this->createItem(Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
         $id = (int)$entity->getID();
         $depth = $connection->getTransactionNestingLevel();
-        $other = \Doctrine\DBAL\DriverManager::getConnection($connection->getParams(), $connection->getConfiguration());
+        $other = DriverManager::getConnection($connection->getParams(), $connection->getConfiguration());
         $this->mockGenerator->orphanize('__construct');
-        $adapter = new \mock\DBmysql();
+        $adapter = new DBmysql();
         $calls = 0;
         $this->calling($adapter)->getDoctrineConnection = static function () use (&$calls, $connection, $other) {
             return ++$calls % 2 === 1 ? $connection : $other;
         };
-        $operation = new \itsmng\Database\EntityScopeReadOperation();
+        $operation = new EntityScopeReadOperation();
         try {
             $first = $operation->rows($adapter, 'glpi_entities', ['id', 'name'], ['id' => $id]);
             $this->array($first)->hasSize(1);
@@ -224,13 +279,13 @@ class Dropdown extends DbTestCase
         $this->login();
         $session = $_SESSION;
         try {
-            $left = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
-            $right = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $left = $this->createItem(Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $right = $this->createItem(Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
             $leftId = (int)$left->getID();
             $rightId = (int)$right->getID();
             $name = $this->getUniqueString();
-            $one = $this->createItem(\Supplier::class, ['name' => $name . ' left', 'entities_id' => $leftId]);
-            $two = $this->createItem(\Supplier::class, ['name' => $name . ' right', 'entities_id' => $rightId]);
+            $one = $this->createItem(Supplier::class, ['name' => $name . ' left', 'entities_id' => $leftId]);
+            $two = $this->createItem(Supplier::class, ['name' => $name . ' right', 'entities_id' => $rightId]);
             $collect = static function (array $rows) use (&$collect): array {
                 $ids = [];
                 foreach ($rows as $row) {
@@ -256,7 +311,7 @@ class Dropdown extends DbTestCase
                     $_SESSION['glpiactiveentities'] = $active;
                     $_SESSION['glpishowallentities'] = $showAll;
                 };
-                $result = \Dropdown::getDropdownValue([
+                $result = LegacyDropdown::getDropdownValue([
                     'itemtype' => ScopeCallbackSupplier::class, 'entity_restrict' => $requested,
                     'searchText' => $name, 'display_emptychoice' => false, 'page' => 1, 'page_limit' => 20,
                 ], false);
@@ -275,41 +330,41 @@ class Dropdown extends DbTestCase
     {
         global $DB;
         $connection = $DB->getDoctrineConnection();
-        $manager = new class ($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+        $manager = new class ($connection, Orm::configuration($connection->getDatabasePlatform())) extends EntityManager {
             public array $hydrationModes = [];
-            public function newHydrator(string|int $hydrationMode): \Doctrine\ORM\Internal\Hydration\AbstractHydrator
+            public function newHydrator(string|int $hydrationMode): AbstractHydrator
             {
                 $this->hydrationModes[] = $hydrationMode;
                 return parent::newHydrator($hydrationMode);
             }
         };
-        $oracle = \itsmng\Database\Orm::create($DB);
+        $oracle = Orm::create($DB);
         $depth = $connection->getTransactionNestingLevel();
         try {
             $ids = [];
             foreach (range(0, 2) as $index) {
-                $budget = $this->createItem(\Budget::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+                $budget = $this->createItem(Budget::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
                 $id = $ids[] = (int)$budget->getID();
                 $connection->update('glpi_budgets', [
                     'name' => $index === 0 ? null : "O'Reilly\\budget", 'comment' => null,
                     'begin_date' => '2026-02-03', 'end_date' => null, 'is_deleted' => false,
                     'locations_id' => $index === 2 ? (int)getItemByTypeName('Location', '_location01', true) : null,
-                ], ['id' => $id], ['is_deleted' => \Doctrine\DBAL\Types\Types::BOOLEAN]);
+                ], ['id' => $id], ['is_deleted' => Types::BOOLEAN]);
             }
             $connection->insert('glpi_dropdowntranslations', ['itemtype' => 'Budget', 'items_id' => $ids[1],
                 'language' => 'en_GB', 'field' => 'name', 'value' => "Translated O'Reilly\\budget"]);
             $translations = ['translatedName' => ['field' => 'name', 'output' => 'transname']];
             $expected = [];
             foreach ($ids as $index => $id) {
-                $record = $oracle->find(\itsmng\Database\Entity\Budget::class, $id);
-                $expected[] = (new \itsmng\Database\Repository\RecordRepository($oracle))->toRow($record)
+                $record = $oracle->find(BudgetEntity::class, $id);
+                $expected[] = (new RecordRepository($oracle))->toRow($record)
                     + ['transname' => $index === 1 ? "Translated O'Reilly\\budget" : null];
             }
-            $repository = $manager->getRepository(\itsmng\Database\Entity\Budget::class);
+            $repository = $manager->getRepository(BudgetEntity::class);
             $rows = $repository->choices(['id' => $ids], ['name'], $translations, 'Budget', 'en_GB', 0, 0);
             $this->array($rows)->isIdenticalTo($expected);
             $this->array($manager->hydrationModes)->isIdenticalTo(
-                [\Doctrine\ORM\Query::HYDRATE_ARRAY],
+                [Query::HYDRATE_ARRAY],
                 'Dropdown choices must project typed rows without hydrating complete entities'
             );
             $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
@@ -323,23 +378,23 @@ class Dropdown extends DbTestCase
 
             $previousCache = $GLOBALS['GLPI_CACHE'] ?? null;
             $memory = new DropdownOwnedPlanCache(storeSerialized: false);
-            $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache($memory);
+            $GLOBALS['GLPI_CACHE'] = new Psr16Cache($memory);
             try {
-                $owned = new \itsmng\Database\DropdownReadOperation($connection);
+                $owned = new DropdownReadOperation($connection);
                 $this->array($owned->choices('glpi_budgets', ['id' => $ids], ['name'], $translations, 'Budget', 'en_GB', 0, 0))
                     ->isIdenticalTo($expected);
                 $this->integer($memory->planWrites)->isIdenticalTo(1);
                 $owned->close();
-                $warm = new \itsmng\Database\DropdownReadOperation($connection);
+                $warm = new DropdownReadOperation($connection);
                 $this->array($warm->choices('glpi_budgets', ['id' => $ids], ['name'], $translations, 'Budget', 'en_GB', 0, 0))
                     ->isIdenticalTo($expected);
                 $this->integer($memory->planWrites)->isIdenticalTo(1, 'A new private reader uses the actual compiled query');
-                $privateManager = (new \ReflectionProperty($warm, 'manager'))->getValue($warm);
+                $privateManager = (new ReflectionProperty($warm, 'manager'))->getValue($warm);
                 $loaded = array_keys($privateManager->getMetadataFactory()->getLoadedMetadata());
                 sort($loaded);
                 $this->array($loaded)->isIdenticalTo([
-                    \itsmng\Database\Entity\Budget::class,
-                    \itsmng\Database\Entity\DropdownTranslation::class,
+                    BudgetEntity::class,
+                    DropdownTranslation::class,
                 ], 'Warm scalar choices do not load Entity/Location target metadata');
                 $connection->update('glpi_budgets', ['name' => 'Changed live choice'], ['id' => $ids[2]]);
                 $connection->update('glpi_dropdowntranslations', ['value' => 'Changed live translation'], ['itemtype' => 'Budget', 'items_id' => $ids[1], 'field' => 'name', 'language' => 'en_GB']);
@@ -355,22 +410,22 @@ class Dropdown extends DbTestCase
             }
 
             // Domain query/criteria overrides still select one profile despite several rights.
-            $profile = $this->createItem(\Profile::class, ['name' => $this->getUniqueString()]);
+            $profile = $this->createItem(Profile::class, ['name' => $this->getUniqueString()]);
             $profileId = (int)$profile->getID();
             $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_profilerights WHERE profiles_id = ?', [$profileId]))
                 ->isGreaterThan(1);
-            $profileRepository = $manager->getRepository(\itsmng\Database\Entity\Profile::class);
+            $profileRepository = $manager->getRepository(ProfileEntity::class);
             $manager->hydrationModes = [];
             $this->array(array_column($profileRepository->choices(['id' => $profileId], ['name'], [], 'Profile', 'en_GB', 0, 0), 'id'))
                 ->isIdenticalTo([$profileId]);
-            $this->array($manager->hydrationModes)->isIdenticalTo([\Doctrine\ORM\Query::HYDRATE_ARRAY]);
+            $this->array($manager->hydrationModes)->isIdenticalTo([Query::HYDRATE_ARRAY]);
             $this->array($profileRepository->choices(['id' => $profileId, 'glpi_profilerights.rights' => -1], ['name'], [], 'Profile', 'en_GB', 0, 0))
                 ->isEmpty();
             $previousCache = $GLOBALS['GLPI_CACHE'] ?? null;
-            $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache($memory);
+            $GLOBALS['GLPI_CACHE'] = new Psr16Cache($memory);
             $writes = $memory->planWrites;
             try {
-                $ownedProfile = new \itsmng\Database\DropdownReadOperation($connection);
+                $ownedProfile = new DropdownReadOperation($connection);
                 $this->array(array_column($ownedProfile->choices('glpi_profiles', ['id' => $profileId], ['name'], [], 'Profile', 'en_GB', 0, 0), 'id'))
                     ->isIdenticalTo([$profileId]);
                 $this->array($ownedProfile->choices('glpi_profiles', ['id' => $profileId, 'glpi_profilerights.rights' => -1], ['name'], [], 'Profile', 'en_GB', 0, 0))->isEmpty();
@@ -390,9 +445,9 @@ class Dropdown extends DbTestCase
     {
         global $DB;
         $connection = $DB->getDoctrineConnection();
-        $manager = new class ($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+        $manager = new class ($connection, Orm::configuration($connection->getDatabasePlatform())) extends EntityManager {
             public array $hydrationModes = [];
-            public function newHydrator(string|int $hydrationMode): \Doctrine\ORM\Internal\Hydration\AbstractHydrator
+            public function newHydrator(string|int $hydrationMode): AbstractHydrator
             {
                 $this->hydrationModes[] = $hydrationMode;
                 return parent::newHydrator($hydrationMode);
@@ -401,40 +456,40 @@ class Dropdown extends DbTestCase
         $id = (int)getItemByTypeName('Budget', '_budget01', true);
         $listener = new class () {
             public int $loaded = 0;
-            public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
+            public function postLoad(PostLoadEventArgs $event): void
             {
-                if ($event->getObject() instanceof \itsmng\Database\Entity\Budget) {
+                if ($event->getObject() instanceof BudgetEntity) {
                     ++$this->loaded;
                     $event->getObject()->name = 'Post-load presentation';
                 }
             }
         };
         try {
-            $repository = $manager->getRepository(\itsmng\Database\Entity\Budget::class);
-            $managed = $manager->find(\itsmng\Database\Entity\Budget::class, $id);
+            $repository = $manager->getRepository(BudgetEntity::class);
+            $managed = $manager->find(BudgetEntity::class, $id);
             $managed->name = 'Pending managed value';
             $manager->hydrationModes = [];
             $this->string($repository->choices(['id' => $id], [], [], 'Budget', 'en_GB', 0, 0)[0]['name'])
                 ->isIdenticalTo('Pending managed value');
-            $this->array($manager->hydrationModes)->isIdenticalTo([\Doctrine\ORM\Query::HYDRATE_OBJECT]);
+            $this->array($manager->hydrationModes)->isIdenticalTo([Query::HYDRATE_OBJECT]);
             $this->boolean($manager->contains($managed))->isFalse();
             $manager->clear();
-            $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+            $manager->getEventManager()->addEventListener([Events::postLoad], $listener);
             $this->string($repository->choices(['id' => $id], [], [], 'Budget', 'en_GB', 0, 0)[0]['name'])
                 ->isIdenticalTo('Post-load presentation');
             $this->integer($listener->loaded)->isIdenticalTo(1);
-            $manager->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+            $manager->getEventManager()->removeEventListener([Events::postLoad], $listener);
             $manager->clear();
             $manager->hydrationModes = [];
             $collision = $repository->choices(['id' => $id], [], [
                 'translatedName' => ['field' => 'name', 'output' => 'value0'],
             ], 'Budget', 'en_GB', 0, 0);
             $this->array($collision[0])->hasKey('value0');
-            $this->array($manager->hydrationModes)->isIdenticalTo([\Doctrine\ORM\Query::HYDRATE_OBJECT]);
+            $this->array($manager->hydrationModes)->isIdenticalTo([Query::HYDRATE_OBJECT]);
             $manager->clear();
 
             // A custom presenter may observe the managed record before choices detaches it.
-            $custom = new class ($manager, $manager->getClassMetadata(\itsmng\Database\Entity\Budget::class)) extends \itsmng\Database\Repository\DropdownChoiceRepository {
+            $custom = new class ($manager, $manager->getClassMetadata(BudgetEntity::class)) extends DropdownChoiceRepository {
                 public bool $presentedManaged = false;
                 public bool $dispatchedOriginalSignature = false;
                 public function choices(array $criteria, array $order, array $translations, string $kind, string $language, int $limit, int $offset): array
@@ -442,7 +497,7 @@ class Dropdown extends DbTestCase
                     $this->dispatchedOriginalSignature = true;
                     return parent::choices($criteria, $order, $translations, $kind, $language, $limit, $offset);
                 }
-                protected function choiceQuery(): \Doctrine\ORM\QueryBuilder
+                protected function choiceQuery(): QueryBuilder
                 {
                     return parent::choiceQuery()->andWhere('r.is_deleted = false');
                 }
@@ -457,14 +512,14 @@ class Dropdown extends DbTestCase
             $this->string($custom->choices(['id' => $id], [], [], 'Budget', 'en_GB', 0, 0)[0]['name'])->endWith(' custom');
             $this->boolean($custom->presentedManaged)->isTrue();
             $this->boolean($custom->dispatchedOriginalSignature)->isTrue();
-            $this->array($manager->hydrationModes)->isIdenticalTo([\Doctrine\ORM\Query::HYDRATE_OBJECT]);
+            $this->array($manager->hydrationModes)->isIdenticalTo([Query::HYDRATE_OBJECT]);
             $manager->clear();
             $contact = getItemByTypeName('Contact', '_contact01_name');
-            $this->string($manager->getRepository(\itsmng\Database\Entity\Contact::class)
+            $this->string($manager->getRepository(Contact::class)
                 ->choices(['id' => (int)$contact->getID()], [], [], 'Contact', 'en_GB', 0, 0)[0]['name'])
                 ->isIdenticalTo(($contact->fields['name'] ?? '') . ' ' . ($contact->fields['firstname'] ?? ''));
         } finally {
-            $manager->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+            $manager->getEventManager()->removeEventListener([Events::postLoad], $listener);
             $manager->clear();
         }
     }
@@ -475,26 +530,26 @@ class Dropdown extends DbTestCase
         $connection = $DB->getDoctrineConnection();
         $id = (int)getItemByTypeName('Budget', '_budget01', true);
         $expected = $connection->fetchOne('SELECT name FROM glpi_budgets WHERE id = ?', [$id]);
-        \itsmng\Database\EntityRegistry::tables();
-        $registry = new \ReflectionProperty(\itsmng\Database\EntityRegistry::class, 'model');
+        EntityRegistry::tables();
+        $registry = new ReflectionProperty(EntityRegistry::class, 'model');
         $original = $registry->getValue();
         $previous = $GLOBALS['GLPI_CACHE'] ?? null;
         $memory = new DropdownOwnedPlanCache(storeSerialized: false);
         try {
-            $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache($memory);
+            $GLOBALS['GLPI_CACHE'] = new Psr16Cache($memory);
             $model = $original;
             $model['tables']['glpi_budgets'] = DropdownUnknownBudget::class;
             $registry->setValue(null, $model);
             DropdownUnknownRepository::$constructedLocally = false;
             DropdownUnknownRepository::$called = false;
-            $reader = new \itsmng\Database\DropdownReadOperation($connection);
+            $reader = new DropdownReadOperation($connection);
             $rows = $reader->choices('glpi_budgets', ['id' => $id], ['name'], [], 'Budget', 'en_GB', 0, 0);
             $this->string($rows[0]['name'])->isIdenticalTo($expected . ' original override');
             $this->boolean(DropdownUnknownRepository::$constructedLocally)->isTrue();
             $this->boolean(DropdownUnknownRepository::$called)->isTrue();
             $this->integer($memory->planWrites)->isIdenticalTo(0);
             $registry->setValue(null, $original);
-            $reader = new \itsmng\Database\DropdownReadOperation($connection);
+            $reader = new DropdownReadOperation($connection);
             $this->string($reader->choices('glpi_budgets', ['id' => $id], ['name'], [], 'Budget', 'en_GB', 0, 0)[0]['name'])->isIdenticalTo($expected);
             $this->integer($memory->planWrites)->isIdenticalTo(1);
         } finally {
@@ -509,32 +564,32 @@ class Dropdown extends DbTestCase
     {
         global $DB;
         $connection = $DB->getDoctrineConnection();
-        $profile = $this->createItem(\Profile::class, ['name' => $this->getUniqueString()]);
+        $profile = $this->createItem(Profile::class, ['name' => $this->getUniqueString()]);
         $id = (int)$connection->fetchOne('SELECT id FROM glpi_profilerights WHERE profiles_id = ? ORDER BY id', [(int)$profile->getID()]);
         $connection->insert('glpi_dropdowntranslations', ['itemtype' => 'ProfileRight', 'items_id' => $id, 'language' => 'en_GB', 'field' => 'name', 'value' => 'live lower']);
         $previous = $GLOBALS['GLPI_CACHE'] ?? null;
         $memory = new DropdownOwnedPlanCache(storeSerialized: false);
-        $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache($memory);
-        $registry = \Doctrine\DBAL\Types\Type::getTypeRegistry();
-        $original = $registry->get(\Doctrine\DBAL\Types\Types::TEXT);
+        $GLOBALS['GLPI_CACHE'] = new Psr16Cache($memory);
+        $registry = Type::getTypeRegistry();
+        $original = $registry->get(Types::TEXT);
         $translations = ['translatedName' => ['field' => 'name', 'output' => 'transname']];
         try {
-            $oracle = \itsmng\Database\Orm::create($DB);
-            $root = $oracle->getClassMetadata(\itsmng\Database\Entity\ProfileRight::class);
-            $this->array(array_column($root->fieldMappings, 'type'))->notContains(\Doctrine\DBAL\Types\Types::TEXT);
-            $reader = new \itsmng\Database\DropdownReadOperation($connection);
+            $oracle = Orm::create($DB);
+            $root = $oracle->getClassMetadata(ProfileRight::class);
+            $this->array(array_column($root->fieldMappings, 'type'))->notContains(Types::TEXT);
+            $reader = new DropdownReadOperation($connection);
             $this->string($reader->choices('glpi_profilerights', ['id' => $id], ['name'], $translations, 'ProfileRight', 'en_GB', 0, 0)[0]['transname'])->isIdenticalTo('live lower');
             $this->integer($memory->planWrites)->isIdenticalTo(1);
-            \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::TEXT, DropdownUpperTextType::class);
-            $reader = new \itsmng\Database\DropdownReadOperation($connection);
+            Type::overrideType(Types::TEXT, DropdownUpperTextType::class);
+            $reader = new DropdownReadOperation($connection);
             $this->string($reader->choices('glpi_profilerights', ['id' => $id], ['name'], $translations, 'ProfileRight', 'en_GB', 0, 0)[0]['transname'])->isIdenticalTo('LIVE LOWER');
             $this->integer($memory->planWrites)->isIdenticalTo(1, 'Joined-field SQL conversion bypasses the warm default plan');
-            $registry->override(\Doctrine\DBAL\Types\Types::TEXT, $original);
-            $reader = new \itsmng\Database\DropdownReadOperation($connection);
+            $registry->override(Types::TEXT, $original);
+            $reader = new DropdownReadOperation($connection);
             $this->string($reader->choices('glpi_profilerights', ['id' => $id], ['name'], $translations, 'ProfileRight', 'en_GB', 0, 0)[0]['transname'])->isIdenticalTo('live lower');
             $this->integer($memory->planWrites)->isIdenticalTo(1);
         } finally {
-            $registry->override(\Doctrine\DBAL\Types\Types::TEXT, $original);
+            $registry->override(Types::TEXT, $original);
             $GLOBALS['GLPI_CACHE'] = $previous;
         }
     }
@@ -544,7 +599,7 @@ class Dropdown extends DbTestCase
         foreach ([false, true] as $multiple) {
             $options = ['readonly' => true, 'multiple' => $multiple, 'noselect2' => true,
                 'display' => false, 'rand' => 313, 'values' => $multiple ? [7, 9] : [7]];
-            $html = \Dropdown::showFromArray('readonly_choice', [7 => 'First label', 9 => 'Second label'], $options);
+            $html = LegacyDropdown::showFromArray('readonly_choice', [7 => 'First label', 9 => 'Second label'], $options);
             $field = $multiple ? 'readonly_choice[]' : 'readonly_choice';
             $this->string($html)->contains("<input type='hidden' name='$field' value='7'>")
                 ->contains('First label')->notContains('<select');
@@ -557,7 +612,7 @@ class Dropdown extends DbTestCase
             $result = null;
             $options['display'] = true;
             $this->output(function () use ($options, &$result): void {
-                $result = \Dropdown::showFromArray('readonly_choice', [7 => 'First label', 9 => 'Second label'], $options);
+                $result = LegacyDropdown::showFromArray('readonly_choice', [7 => 'First label', 9 => 'Second label'], $options);
             })->isIdenticalTo($html);
             $this->integer($result)->isIdenticalTo(313);
         }
@@ -566,9 +621,9 @@ class Dropdown extends DbTestCase
     public function testDropdownNameProjectionAvoidsHydration(): void
     {
         global $DB;
-        $em = \itsmng\Database\Orm::create($DB);
-        $repository = new \itsmng\Database\Repository\DropdownTranslationRepository($em);
-        $reader = new \itsmng\Database\DropdownReadOperation($em->getConnection());
+        $em = Orm::create($DB);
+        $repository = new DropdownTranslationRepository($em);
+        $reader = new DropdownReadOperation($em->getConnection());
         $listener = new class () {
             public int $loaded = 0;
 
@@ -577,7 +632,7 @@ class Dropdown extends DbTestCase
                 ++$this->loaded;
             }
         };
-        $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+        $em->getEventManager()->addEventListener([Events::postLoad], $listener);
         try {
             foreach ([
                 'Computer' => '_test_pc01', 'Contact' => '_contact01_name',
@@ -606,7 +661,7 @@ class Dropdown extends DbTestCase
                 }
             }
         } finally {
-            $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+            $em->getEventManager()->removeEventListener([Events::postLoad], $listener);
             $em->clear();
         }
     }
@@ -620,28 +675,28 @@ class Dropdown extends DbTestCase
         $connection->update('glpi_budgets', [
             'name' => "O'Reilly\\budget", 'comment' => null, 'is_deleted' => false,
             'begin_date' => '2026-02-03', 'end_date' => null, 'locations_id' => $location,
-        ], ['id' => $budget], ['is_deleted' => \Doctrine\DBAL\Types\Types::BOOLEAN]);
-        $repository = new \itsmng\Database\Repository\DropdownTranslationRepository(\itsmng\Database\Orm::create($DB));
-        $publicExpected = \Dropdown::getDropdownName('glpi_budgets', $budget, false, false, false);
+        ], ['id' => $budget], ['is_deleted' => Types::BOOLEAN]);
+        $repository = new DropdownTranslationRepository(Orm::create($DB));
+        $publicExpected = LegacyDropdown::getDropdownName('glpi_budgets', $budget, false, false, false);
         $database = $DB;
         $probe = new DropdownScalarReadProbe($connection);
         try {
             $this->mockGenerator->orphanize('__construct');
-            $DB = new \mock\DBmysql();
+            $DB = new DBmysql();
             $this->calling($DB)->getProvider = $database->getProvider();
             $routes = 0;
             $this->calling($DB)->getDoctrineConnection = static function () use ($probe, &$routes) {
                 ++$routes;
                 return $probe;
             };
-            $this->string(\Dropdown::getDropdownName('glpi_budgets', $budget, false, false, false))->isIdenticalTo($publicExpected);
+            $this->string(LegacyDropdown::getDropdownName('glpi_budgets', $budget, false, false, false))->isIdenticalTo($publicExpected);
             $this->array($probe->queries)->hasSize(1);
             $this->integer($routes)->isIdenticalTo(1);
             $this->integer($probe->builders)->isIdenticalTo(1);
         } finally {
             $DB = $database;
         }
-        $reader = new \itsmng\Database\DropdownReadOperation($connection);
+        $reader = new DropdownReadOperation($connection);
         $columns = ['id', 'name', 'comment', 'is_deleted', 'begin_date', 'end_date', 'locations_id'];
         $expected = [
             'id' => $budget, 'name' => "O'Reilly\\budget", 'comment' => null, 'is_deleted' => 0,
@@ -652,13 +707,13 @@ class Dropdown extends DbTestCase
             ->isIdenticalTo($expected);
         $this->array($reader->label('glpi_budgets', $budget, 'Budget', 'en_GB', [], $columns))->isIdenticalTo($expected);
         $scalarColumns = array_values(array_diff($columns, ['locations_id']));
-        $this->array((new \itsmng\Database\DropdownReadOperation($connection))->label('glpi_budgets', $budget, 'Budget', 'en_GB', [], $scalarColumns))
+        $this->array((new DropdownReadOperation($connection))->label('glpi_budgets', $budget, 'Budget', 'en_GB', [], $scalarColumns))
             ->isIdenticalTo(array_diff_key($expected, ['locations_id' => true]));
         $connection->update(
             'glpi_budgets',
             ['is_deleted' => true, 'locations_id' => null],
             ['id' => $budget],
-            ['is_deleted' => \Doctrine\DBAL\Types\Types::BOOLEAN]
+            ['is_deleted' => Types::BOOLEAN]
         );
         $expected['is_deleted'] = 1;
         $expected['locations_id'] = null;
@@ -666,50 +721,50 @@ class Dropdown extends DbTestCase
             ->isIdenticalTo($expected);
         $this->array($reader->label('glpi_budgets', $budget, 'Budget', 'en_GB', [], $columns))->isIdenticalTo($expected);
         $scalarColumns = array_values(array_diff($columns, ['locations_id']));
-        $this->array((new \itsmng\Database\DropdownReadOperation($connection))->label('glpi_budgets', $budget, 'Budget', 'en_GB', [], $scalarColumns))
+        $this->array((new DropdownReadOperation($connection))->label('glpi_budgets', $budget, 'Budget', 'en_GB', [], $scalarColumns))
             ->isIdenticalTo(array_diff_key($expected, ['locations_id' => true]));
         $this->variable($repository->dropdownRow('glpi_budgets', -1, 'Budget', 'en_GB', [], $columns))->isNull();
 
-        $this->variable((new \itsmng\Database\DropdownReadOperation($connection))->label('glpi_budgets', -1, 'Budget', 'en_GB', [], ['name']))->isNull();
-        $originalString = \Doctrine\DBAL\Types\Type::getType('string');
-        $originalInteger = \Doctrine\DBAL\Types\Type::getType('integer');
+        $this->variable((new DropdownReadOperation($connection))->label('glpi_budgets', -1, 'Budget', 'en_GB', [], ['name']))->isNull();
+        $originalString = Type::getType('string');
+        $originalInteger = Type::getType('integer');
         try {
-            \Doctrine\DBAL\Types\Type::overrideType('string', new class () extends \Doctrine\DBAL\Types\StringType {
-                public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+            Type::overrideType('string', new class () extends StringType {
+                public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                 {
                     return 'UPPER(' . $sqlExpr . ')';
                 }
-                public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+                public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
                 {
                     return $value === null ? 'converted null' : 'converted ' . $value;
                 }
             });
             // Enum hydration remains authoritative even for explicit scalar selections.
-            $enumReader = new \itsmng\Database\DropdownReadOperation($connection);
+            $enumReader = new DropdownReadOperation($connection);
             $this->exception(fn () => $repository->dropdownRow('glpi_entities', 0, 'Entity', 'en_GB', [], ['ldap_mode']))
-                ->isInstanceOf(\ValueError::class);
+                ->isInstanceOf(ValueError::class);
             $this->exception(fn () => $enumReader->label('glpi_entities', 0, 'Entity', 'en_GB', [], ['ldap_mode']))
-                ->isInstanceOf(\ValueError::class);
+                ->isInstanceOf(ValueError::class);
             $enumReader->close();
             $selected = ['name', 'name', 'comment'];
             $ordinary = $repository->dropdownRow('glpi_budgets', $budget, 'Budget', 'en_GB', [], $selected);
             $this->string($ordinary['name'])->isIdenticalTo("converted O'REILLY\\BUDGET");
-            $this->array((new \itsmng\Database\DropdownReadOperation($connection))->label('glpi_budgets', $budget, 'Budget', 'en_GB', [], $selected))->isIdenticalTo($ordinary);
-            \Doctrine\DBAL\Types\Type::overrideType('integer', new class () extends \Doctrine\DBAL\Types\IntegerType {
-                public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+            $this->array((new DropdownReadOperation($connection))->label('glpi_budgets', $budget, 'Budget', 'en_GB', [], $selected))->isIdenticalTo($ordinary);
+            Type::overrideType('integer', new class () extends IntegerType {
+                public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                 {
                     return '(' . $sqlExpr . ' * 0 - 1)';
                 }
             });
             $this->variable($repository->dropdownRow('glpi_budgets', $budget, 'Budget', 'en_GB', [], ['name']))->isNull();
-            $this->variable((new \itsmng\Database\DropdownReadOperation($connection))->label('glpi_budgets', $budget, 'Budget', 'en_GB', [], ['name']))->isNull();
+            $this->variable((new DropdownReadOperation($connection))->label('glpi_budgets', $budget, 'Budget', 'en_GB', [], ['name']))->isNull();
         } finally {
-            \Doctrine\DBAL\Types\Type::overrideType('string', $originalString);
-            \Doctrine\DBAL\Types\Type::overrideType('integer', $originalInteger);
+            Type::overrideType('string', $originalString);
+            Type::overrideType('integer', $originalInteger);
             $reader->close();
         }
 
-        $customName = new class () extends \Computer {
+        $customName = new class () extends Computer {
             public static function getNameField()
             {
                 return 'serial';
@@ -734,19 +789,19 @@ class Dropdown extends DbTestCase
                 $connection->delete('glpi_dropdowntranslations', $key);
                 $connection->insert('glpi_dropdowntranslations', $key + ['value' => $value]);
             }
-            $this->array(\Dropdown::getDropdownName('glpi_computers', $computer, true))->isIdenticalTo([
+            $this->array(LegacyDropdown::getDropdownName('glpi_computers', $computer, true))->isIdenticalTo([
                 'name' => 'Translated computer', 'comment' => "Translated O'Reilly\\comment",
             ]);
             // The existing formatter ignores translated comments when the source is NULL.
             $connection->update('glpi_computers', ['comment' => null], ['id' => $computer]);
-            $this->array(\Dropdown::getDropdownName('glpi_computers', $computer, true))->isIdenticalTo([
+            $this->array(LegacyDropdown::getDropdownName('glpi_computers', $computer, true))->isIdenticalTo([
                 'name' => 'Translated computer', 'comment' => '',
             ]);
-            $this->array(\Dropdown::getDropdownName('glpi_computers', $computer, true, false))->isIdenticalTo([
+            $this->array(LegacyDropdown::getDropdownName('glpi_computers', $computer, true, false))->isIdenticalTo([
                 'name' => '(' . $computer . ')', 'comment' => '',
             ]);
-            $this->string(\Dropdown::getDropdownName('glpi_computers', -1))->isIdenticalTo('&nbsp;');
-            $this->array(\Dropdown::getDropdownName('glpi_computers', -1, true))->isIdenticalTo([
+            $this->string(LegacyDropdown::getDropdownName('glpi_computers', -1))->isIdenticalTo('&nbsp;');
+            $this->array(LegacyDropdown::getDropdownName('glpi_computers', -1, true))->isIdenticalTo([
                 'name' => '&nbsp;', 'comment' => '',
             ]);
         } finally {
@@ -1008,18 +1063,18 @@ class Dropdown extends DbTestCase
         $database = $DB;
         $probe = new DropdownScalarReadProbe($database->getDoctrineConnection());
         $this->mockGenerator->orphanize('__construct');
-        $adapter = new \mock\DBmysql();
+        $adapter = new DBmysql();
         $this->calling($adapter)->getProvider = $database->getProvider();
         $this->calling($adapter)->getDoctrineConnection = $probe;
         try {
             $DB = $adapter;
-            $this->string(\Dropdown::getDropdownName('glpi_budgets', $budget->getID(), false, false))
+            $this->string(LegacyDropdown::getDropdownName('glpi_budgets', $budget->getID(), false, false))
                 ->isIdenticalTo($budget->getName());
             $this->array($probe->queries)->hasSize(1);
             $this->string($probe->queries[0]['sql'])->contains('glpi_budgets');
             $this->array(array_values($probe->queries[0]['params']))->contains((int)$budget->getID());
             $probe->queries = [];
-            $this->array(\Dropdown::getDropdownName('glpi_budgets', $budget->getID(), true, false))
+            $this->array(LegacyDropdown::getDropdownName('glpi_budgets', $budget->getID(), true, false))
                 ->isIdenticalTo($expected);
             $this->array($probe->queries)->hasSize(3);
             foreach ([0 => ['glpi_budgets', $budget->getID()],
@@ -2049,7 +2104,7 @@ class Dropdown extends DbTestCase
         $orderedIds = $DB->getDoctrineConnection()->fetchFirstColumn(
             'SELECT id FROM glpi_users WHERE id IN (?) ORDER BY name, id',
             [array_keys($choices)],
-            [\Doctrine\DBAL\ArrayParameterType::INTEGER]
+            [ArrayParameterType::INTEGER]
         );
         $this->integer(count($orderedIds))->isIdenticalTo(count($choices));
         $expected['results'] = [$emptyChoice];
@@ -2284,14 +2339,14 @@ class Dropdown extends DbTestCase
 
 
 /** Change grants at the existing virtual callback immediately before the authority clamp. */
-class ScopeCallbackSupplier extends \Supplier
+class ScopeCallbackSupplier extends Supplier
 {
     public static int $checks = 0;
-    public static ?\Closure $beforeAuthority = null;
+    public static ?Closure $beforeAuthority = null;
 
     public static function getTable($classname = null)
     {
-        return \Supplier::getTable();
+        return Supplier::getTable();
     }
 
     public function isEntityAssign()
@@ -2304,11 +2359,11 @@ class ScopeCallbackSupplier extends \Supplier
 }
 
 
-final class DropdownOwnedPlanCache extends \Symfony\Component\Cache\Adapter\ArrayAdapter
+final class DropdownOwnedPlanCache extends ArrayAdapter
 {
     public int $planWrites = 0;
 
-    public function save(\Psr\Cache\CacheItemInterface $item): bool
+    public function save(CacheItemInterface $item): bool
     {
         if (is_string($item->get()) && str_contains($item->get(), 'Doctrine\\ORM\\Query\\ParserResult')) {
             ++$this->planWrites;
@@ -2317,34 +2372,34 @@ final class DropdownOwnedPlanCache extends \Symfony\Component\Cache\Adapter\Arra
     }
 }
 
-final class DropdownUpperTextType extends \Doctrine\DBAL\Types\TextType
+final class DropdownUpperTextType extends TextType
 {
-    public function convertToPHPValueSQL($sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+    public function convertToPHPValueSQL($sqlExpr, AbstractPlatform $platform): string
     {
         return 'UPPER(' . $sqlExpr . ')';
     }
 }
 
 
-#[\Doctrine\ORM\Mapping\Entity(repositoryClass: DropdownUnknownRepository::class)]
-#[\Doctrine\ORM\Mapping\Table(name: 'glpi_budgets')]
+#[MappingEntity(repositoryClass: DropdownUnknownRepository::class)]
+#[Table(name: 'glpi_budgets')]
 final class DropdownUnknownBudget
 {
-    #[\Doctrine\ORM\Mapping\Id]
-    #[\Doctrine\ORM\Mapping\Column(type: 'bigint')]
+    #[Id]
+    #[Column(type: 'bigint')]
     public ?int $id = null;
-    #[\Doctrine\ORM\Mapping\Column(type: 'string', nullable: true)]
+    #[Column(type: 'string', nullable: true)]
     public ?string $name = null;
 }
 
-final class DropdownUnknownRepository extends \itsmng\Database\Repository\DropdownChoiceRepository
+final class DropdownUnknownRepository extends DropdownChoiceRepository
 {
     public static bool $constructedLocally = false;
     public static bool $called = false;
 
-    public function __construct(\Doctrine\ORM\EntityManagerInterface $em, \Doctrine\ORM\Mapping\ClassMetadata $class)
+    public function __construct(EntityManagerInterface $em, ClassMetadata $class)
     {
-        self::$constructedLocally = $em->getConfiguration()->getMetadataCache() instanceof \Symfony\Component\Cache\Adapter\ArrayAdapter
+        self::$constructedLocally = $em->getConfiguration()->getMetadataCache() instanceof ArrayAdapter
             && $em->getConfiguration()->getQueryCache() === null;
         parent::__construct($em, $class);
     }
@@ -2362,17 +2417,17 @@ final class DropdownUnknownRepository extends \itsmng\Database\Repository\Dropdo
 
 
 /** Observe the actual selected connection without opening another transaction or socket. */
-class DropdownScalarReadProbe extends \Doctrine\DBAL\Connection
+class DropdownScalarReadProbe extends Connection
 {
     public int $builders = 0;
     public array $queries = [];
 
-    public function __construct(private readonly \Doctrine\DBAL\Connection $selected)
+    public function __construct(private readonly Connection $selected)
     {
         parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
     }
 
-    public function getDatabasePlatform(): \Doctrine\DBAL\Platforms\AbstractPlatform
+    public function getDatabasePlatform(): AbstractPlatform
     {
         return $this->selected->getDatabasePlatform();
     }
@@ -2382,13 +2437,13 @@ class DropdownScalarReadProbe extends \Doctrine\DBAL\Connection
         return $this->selected->isTransactionActive();
     }
 
-    public function createQueryBuilder(): \Doctrine\DBAL\Query\QueryBuilder
+    public function createQueryBuilder(): DBALQueryBuilder
     {
         ++$this->builders;
         return parent::createQueryBuilder();
     }
 
-    public function executeQuery(string $sql, array $params = [], array $types = [], ?\Doctrine\DBAL\Cache\QueryCacheProfile $qcp = null): \Doctrine\DBAL\Result
+    public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
     {
         $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
         return $this->selected->executeQuery($sql, $params, $types, $qcp);
@@ -2396,22 +2451,22 @@ class DropdownScalarReadProbe extends \Doctrine\DBAL\Connection
 }
 
 
-final class DropdownScalarSqlText extends \Doctrine\DBAL\Types\TextType
+final class DropdownScalarSqlText extends TextType
 {
-    public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+    public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
     {
         return 'UPPER(' . $sqlExpr . ')';
     }
 
-    public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): mixed
+    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
     {
-        throw new \LogicException('Scalar aliases must not acquire entity PHP conversion');
+        throw new LogicException('Scalar aliases must not acquire entity PHP conversion');
     }
 }
 
-final class DropdownNegativeScalarId extends \Doctrine\DBAL\Types\BigIntType
+final class DropdownNegativeScalarId extends BigIntType
 {
-    public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
     {
         return '(' . $sqlExpr . ' * 0 - 1)';
     }

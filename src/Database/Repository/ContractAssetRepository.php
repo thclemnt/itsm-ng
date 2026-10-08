@@ -6,6 +6,7 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
 use itsmng\Database\Entity\ContractItem;
 use itsmng\Database\RecordCriteria;
 
@@ -20,7 +21,7 @@ final class ContractAssetRepository
     {
         try {
             $association = ContractItem::referenceAssociation($kind);
-        } catch (\InvalidArgumentException) {
+        } catch (InvalidArgumentException) {
             return ['count' => 0, 'rows' => []];
         }
         $class = $this->em->getClassMetadata(ContractItem::class)->getAssociationTargetClass($association);
@@ -45,7 +46,7 @@ final class ContractAssetRepository
                 }
             }
             if ($component === null) {
-                throw new \InvalidArgumentException('Installed component requires its owning definition association');
+                throw new InvalidArgumentException('Installed component requires its owning definition association');
             }
             $query->leftJoin('r.' . $component, 'd')->addSelect('d.designation AS name_device')->addOrderBy('d.designation');
         } else {

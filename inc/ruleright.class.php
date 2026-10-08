@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Domain\Authentication\AuthenticationRuleMutations;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -125,9 +127,9 @@ class RuleRight extends Rule
     }
 
 
-    private ?\itsmng\Domain\Authentication\AuthenticationRuleMutations $authenticationMutations = null;
+    private ?AuthenticationRuleMutations $authenticationMutations = null;
 
-    public function processAuthentication(&$input, &$output, &$params, &$options, \itsmng\Domain\Authentication\AuthenticationRuleMutations $mutations): void
+    public function processAuthentication(&$input, &$output, &$params, &$options, AuthenticationRuleMutations $mutations): void
     {
         $previous = $this->authenticationMutations;
         $this->authenticationMutations = $mutations;

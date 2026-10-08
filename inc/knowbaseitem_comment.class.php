@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\LegacyValues;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\KnowledgeBaseRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -132,7 +136,7 @@ class KnowbaseItem_Comment extends CommonDBTM
                 ];
             }
 
-            $nb = (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
+            $nb = (new KnowledgeBaseRepository(Orm::create($DB)))
                 ->commentCount((int)$where['knowbaseitems_id'], $where['language']);
         }
         return self::createTabEntry(self::getTypeName($nb), $nb);
@@ -171,7 +175,7 @@ class KnowbaseItem_Comment extends CommonDBTM
         $kbitem = new KnowbaseItem();
         $kbitem->getFromDB($kbitem_id);
 
-        $number = (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
+        $number = (new KnowledgeBaseRepository(Orm::create($DB)))
             ->commentCount((int)$where['knowbaseitems_id'], $where['language']);
 
         $cancomment = $kbitem->canComment();
@@ -301,8 +305,8 @@ class KnowbaseItem_Comment extends CommonDBTM
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
-            ->comments((int)$kbitem_id, \itsmng\Database\LegacyValues::decode($lang), $parent === null ? null : (int)$parent);
+        return (new KnowledgeBaseRepository(Orm::create($DB)))
+            ->comments((int)$kbitem_id, LegacyValues::decode($lang), $parent === null ? null : (int)$parent);
     }
 
     public function cleanDBonPurge()
@@ -310,7 +314,7 @@ class KnowbaseItem_Comment extends CommonDBTM
         global $DB;
 
         // Keep other authors' replies visible at the deleted comment's level.
-        (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
+        (new KnowledgeBaseRepository(Orm::create($DB)))
             ->preserveReplies((int)$this->getID(), $this->fields['parent_comment_id']);
     }
 

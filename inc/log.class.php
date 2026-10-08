@@ -34,6 +34,7 @@
 use itsmng\Database\Orm;
 use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\HistoryRepository;
+use itsmng\Database\Repository\RecordRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -97,7 +98,7 @@ class Log extends CommonDBTM
                 }
                 $items_id = $item->getID();
             }
-            $nb = (new \itsmng\Database\Repository\HistoryRepository(\itsmng\Database\Orm::create(DBConnection::getReadConnection())))->count([
+            $nb = (new HistoryRepository(Orm::create(DBConnection::getReadConnection())))->count([
                     'itemtype' => $item->getType(),
                     'items_id' => $items_id
                 ]);
@@ -339,7 +340,7 @@ class Log extends CommonDBTM
 
     public static function countForItem(CommonDBTM $item, array $filters = []): int
     {
-        $repository = new \itsmng\Database\Repository\HistoryRepository(\itsmng\Database\Orm::create(DBConnection::getReadConnection()));
+        $repository = new HistoryRepository(Orm::create(DBConnection::getReadConnection()));
         return $repository->count(['items_id' => (int)$item->getID(), 'itemtype' => $item->getType()] + $filters);
     }
 
@@ -368,9 +369,9 @@ class Log extends CommonDBTM
 
         $SEARCHOPTION = Search::getOptions($itemtype);
 
-        $repository = new \itsmng\Database\Repository\HistoryRepository(\itsmng\Database\Orm::create($DBread));
+        $repository = new HistoryRepository(Orm::create($DBread));
         $rows = $repository->forItem($itemtype, (int)$items_id, $sqlfilters, (int)$start, (int)$limit, is_string($options['sort'] ?? null) ? $options['sort'] : 'id', is_string($options['order'] ?? null) ? $options['order'] : 'DESC');
-        $users = new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DBread));
+        $users = new RecordRepository(Orm::create($DBread));
         $changes = [];
         foreach ($rows as $data) {
             $tmp = [];
@@ -781,7 +782,7 @@ class Log extends CommonDBTM
         $itemtype = $item->getType();
         $items_id = $item->getField('id');
 
-        $rows = (new \itsmng\Database\Repository\HistoryRepository(\itsmng\Database\Orm::create($DB)))
+        $rows = (new HistoryRepository(Orm::create($DB)))
             ->facets($itemtype, (int)$items_id, ['user_name']);
 
         $values = [];
@@ -814,7 +815,7 @@ class Log extends CommonDBTM
         $itemtype = $item->getType();
         $items_id = $item->getField('id');
 
-        $rows = (new \itsmng\Database\Repository\HistoryRepository(\itsmng\Database\Orm::create($DB)))
+        $rows = (new HistoryRepository(Orm::create($DB)))
             ->facets($itemtype, (int)$items_id, ['linked_action', 'itemtype_link', 'id_search_option']);
 
         $values = [];
@@ -977,7 +978,7 @@ class Log extends CommonDBTM
         $itemtype = $item->getType();
         $items_id = $item->getField('id');
 
-        $rows = (new \itsmng\Database\Repository\HistoryRepository(\itsmng\Database\Orm::create($DB)))
+        $rows = (new HistoryRepository(Orm::create($DB)))
             ->facets($itemtype, (int)$items_id, ['linked_action']);
 
         $values = [];

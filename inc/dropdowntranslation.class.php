@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DropdownTranslationRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -47,10 +52,10 @@ class DropdownTranslation extends CommonDBChild
     public $dohistory       = true;
     public static $rightname       = 'dropdown';
 
-    private static function repository(): \itsmng\Database\Repository\DropdownTranslationRepository
+    private static function repository(): DropdownTranslationRepository
     {
         global $DB;
-        return new \itsmng\Database\Repository\DropdownTranslationRepository(\itsmng\Database\Orm::create($DB));
+        return new DropdownTranslationRepository(Orm::create($DB));
     }
 
 
@@ -344,7 +349,7 @@ class DropdownTranslation extends CommonDBChild
                 }
             }
 
-            $childIds = isset(\itsmng\Database\EntityRegistry::tables()[$item->getTable()])
+            $childIds = isset(EntityRegistry::tables()[$item->getTable()])
                 ? self::repository()->childIds($item->getTable(), $foreignKey, $item->getID())
                 : array_keys($item->find([$foreignKey => $item->getID()]));
             foreach ($childIds as $childId) {
@@ -392,7 +397,7 @@ class DropdownTranslation extends CommonDBChild
                  "</a></div><br>";
         }
 
-        $iterator = new \itsmng\Database\RowIterator(self::repository()->rows(
+        $iterator = new RowIterator(self::repository()->rows(
             [
               'itemtype'  => $item->getType(),
               'items_id'  => $item->getID(),
@@ -566,7 +571,7 @@ class DropdownTranslation extends CommonDBChild
 
         $used = [];
         if (!empty($options)) {
-            $iterator = new \itsmng\Database\RowIterator(self::repository()->rows([
+            $iterator = new RowIterator(self::repository()->rows([
                   'itemtype'  => $item->getType(),
                   'items_id'  => $item->getID(),
                   'language'  => $language
@@ -700,7 +705,7 @@ class DropdownTranslation extends CommonDBChild
     public static function getTranslationByName($itemtype, $field, $value)
     {
         $item = new $itemtype();
-        if (isset(\itsmng\Database\EntityRegistry::tables()[$item->getTable()])) {
+        if (isset(EntityRegistry::tables()[$item->getTable()])) {
             $id = self::repository()->dropdownId($item->getTable(), $field, $value);
         } else {
             $matches = $item->find([$field => Toolbox::addslashes_deep($value)], ['id ASC'], 1);

@@ -4,6 +4,9 @@
 
 namespace itsmng\Database\Repository;
 
+use CronTask as LegacyCronTask;
+use CronTaskLog as LegacyCronTaskLog;
+use DateTimeImmutable;
 use Doctrine\DBAL\LockMode;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
@@ -16,14 +19,14 @@ final class CronLogRepository
     {
     }
 
-    public function start(int $task, ?\DateTimeImmutable $now = null): bool
+    public function start(int $task, ?DateTimeImmutable $now = null): bool
     {
-        $now ??= new \DateTimeImmutable();
+        $now ??= new DateTimeImmutable();
         $minute = $now->setTime((int)$now->format('H'), (int)$now->format('i'), 0);
         return $this->em->createQueryBuilder()->update(CronTask::class, 't')
             ->set('t.state', ':running')->set('t.lastrun', ':time')
             ->where('t.id = :id AND t.state <> :running')->setParameter('id', $task, Types::INTEGER)
-            ->setParameter('running', \CronTask::STATE_RUNNING, Types::INTEGER)
+            ->setParameter('running', LegacyCronTask::STATE_RUNNING, Types::INTEGER)
             ->setParameter('time', $minute, Types::DATETIMETZ_IMMUTABLE)->getQuery()->execute() > 0;
     }
 
@@ -31,7 +34,7 @@ final class CronLogRepository
     {
         return $this->em->createQueryBuilder()->update(CronTask::class, 't')->set('t.state', ':state')
             ->where('t.id = :id AND t.state = :running')->setParameter('id', $task, Types::INTEGER)
-            ->setParameter('state', $state, Types::INTEGER)->setParameter('running', \CronTask::STATE_RUNNING, Types::INTEGER)
+            ->setParameter('state', $state, Types::INTEGER)->setParameter('running', LegacyCronTask::STATE_RUNNING, Types::INTEGER)
             ->getQuery()->execute() > 0;
     }
 
@@ -49,10 +52,10 @@ final class CronLogRepository
             'AVG(l.volume) AS volavg'
         )
             ->from(CronTaskLog::class, 'l')->where('IDENTITY(l.task) = :task AND l.state = :stop')
-            ->setParameter('task', $task, Types::INTEGER)->setParameter('stop', \CronTaskLog::STATE_STOP, Types::INTEGER)
+            ->setParameter('task', $task, Types::INTEGER)->setParameter('stop', LegacyCronTaskLog::STATE_STOP, Types::INTEGER)
             ->getQuery()->getSingleResult();
         if ($row['datemin'] !== null) {
-            $row['datemin'] = (new \DateTimeImmutable($row['datemin']))->format('Y-m-d H:i:s');
+            $row['datemin'] = (new DateTimeImmutable($row['datemin']))->format('Y-m-d H:i:s');
         }
         return $row;
     }
@@ -60,7 +63,7 @@ final class CronLogRepository
     public function history(int $task, int $limit, int $offset): array
     {
         return (new RecordRepository($this->em))->matching('glpi_crontasklogs', [
-            'crontasks_id' => $task, 'state' => [\CronTaskLog::STATE_STOP, \CronTaskLog::STATE_ERROR],
+            'crontasks_id' => $task, 'state' => [LegacyCronTaskLog::STATE_STOP, LegacyCronTaskLog::STATE_ERROR],
         ], 'id DESC', max(1, $limit), max(0, $offset));
     }
 
@@ -83,9 +86,9 @@ final class CronLogRepository
     }
 
     /** Expire leaves in bounded batches; newer children keep their parent readable. */
-    public function expire(int $task, int $days, ?\DateTimeImmutable $now = null): int
+    public function expire(int $task, int $days, ?DateTimeImmutable $now = null): int
     {
-        $now ??= new \DateTimeImmutable();
+        $now ??= new DateTimeImmutable();
         $cutoff = $now->setTimestamp($now->getTimestamp() - $days * DAY_TIMESTAMP);
         return $this->em->getConnection()->transactional(function () use ($task, $cutoff): int {
             // Serialize retention with other cleanup/claim operations for this task.
@@ -96,10 +99,10 @@ final class CronLogRepository
                 return 0;
             }
             $activeRoot = 0;
-            if ((int)$state['state'] === \CronTask::STATE_RUNNING) {
+            if ((int)$state['state'] === LegacyCronTask::STATE_RUNNING) {
                 $activeRoot = (int)$this->em->createQueryBuilder()->select('MAX(l.id)')->from(CronTaskLog::class, 'l')
                     ->where('IDENTITY(l.task) = :task AND l.state = :start')
-                    ->setParameter('task', $task, Types::INTEGER)->setParameter('start', \CronTaskLog::STATE_START, Types::INTEGER)
+                    ->setParameter('task', $task, Types::INTEGER)->setParameter('start', LegacyCronTaskLog::STATE_START, Types::INTEGER)
                     ->getQuery()->getSingleScalarResult();
             }
             $deleted = 0;

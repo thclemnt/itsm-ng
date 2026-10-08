@@ -4,7 +4,10 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
@@ -26,7 +29,7 @@ class QueuedChat
     #[ORM\ManyToOne(targetEntity: NotificationTemplate::class)]
     #[ORM\JoinColumn(name: 'notificationtemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?NotificationTemplate $notificationtemplates = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
@@ -56,16 +59,16 @@ class QueuedChat
     public int $sent_try = 0;
 
     #[ORM\Column(name: '`create_time`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $create_time = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $create_time = null;
 
     #[ORM\Column(name: '`send_time`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $send_time = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $send_time = null;
 
     #[ORM\Column(name: '`sent_time`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $sent_time = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $sent_time = null;
 
     #[ORM\Column(name: '`entName`', type: 'text', nullable: true)]
     public ?string $entName = null;

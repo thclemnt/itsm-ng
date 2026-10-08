@@ -4,12 +4,18 @@
 
 namespace itsmng\Database\Repository;
 
+use CommonDBTM;
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
 use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\RecordCriteria;
+
+use function getTableNameForForeignKeyField;
+use function isPluginItemType;
 
 final class FieldUnicityRepository
 {
@@ -58,7 +64,7 @@ final class FieldUnicityRepository
     }
 
     /** Registered plugin models retain their own schema; core records keep their ORM query. */
-    public function duplicatesForItem(\CommonDBTM $item, array $fields, ?array $entities): array
+    public function duplicatesForItem(CommonDBTM $item, array $fields, ?array $entities): array
     {
         if (!$fields || $entities === []) {
             return [];
@@ -67,11 +73,11 @@ final class FieldUnicityRepository
         if (isset(EntityRegistry::tables()[$table])) {
             return $this->duplicates($table, $fields, $entities, $item->maybeTemplate());
         }
-        $plugin = \isPluginItemType($item->getType());
+        $plugin = isPluginItemType($item->getType());
         if (!$plugin || !in_array($item->getType(), $GLOBALS['CFG_GLPI']['unicity_types'] ?? [], true)
             || !preg_match('/^glpi_plugin_[a-z0-9_]+$/D', $table)
             || !str_starts_with($table, 'glpi_plugin_' . strtolower($plugin['plugin']) . '_')) {
-            throw new \InvalidArgumentException('Uniqueness requires a mapped record or a registered plugin model.');
+            throw new InvalidArgumentException('Uniqueness requires a mapped record or a registered plugin model.');
         }
         $scoped = $entities !== null && $item->isEntityAssign();
         $templates = $item->maybeTemplate();
@@ -85,16 +91,16 @@ final class FieldUnicityRepository
         $types = [];
         foreach (array_unique([...$fields, ...($scoped ? ['entities_id'] : []), ...($templates ? ['is_template'] : [])]) as $field) {
             if (!is_string($field) || !preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/D', $field) || !$schema->hasColumn($field)) {
-                throw new \InvalidArgumentException('Plugin uniqueness requires existing column names.');
+                throw new InvalidArgumentException('Plugin uniqueness requires existing column names.');
             }
             $types[$field] = Type::lookupName($schema->getColumn($field)->getType());
             if (!in_array($types[$field], $groupable, true)) {
-                throw new \InvalidArgumentException('Plugin uniqueness requires scalar columns.');
+                throw new InvalidArgumentException('Plugin uniqueness requires scalar columns.');
             }
         }
         if (($scoped && !in_array($types['entities_id'], $integers, true))
             || ($templates && !in_array($types['is_template'], [...$integers, Types::BOOLEAN], true))) {
-            throw new \InvalidArgumentException('Plugin uniqueness requires integer entity and boolean or integer template columns.');
+            throw new InvalidArgumentException('Plugin uniqueness requires integer entity and boolean or integer template columns.');
         }
         $platform = $connection->getDatabasePlatform();
         $query = $connection->createQueryBuilder()->select('COUNT(*) AS cpt')
@@ -102,10 +108,10 @@ final class FieldUnicityRepository
         foreach (array_values($fields) as $index => $field) {
             $column = $platform->quoteIdentifier($field);
             $query->addSelect($column)->addGroupBy($column)->addOrderBy($column)->andWhere($column . ' IS NOT NULL');
-            if (\getTableNameForForeignKeyField($field) !== '') {
+            if (getTableNameForForeignKeyField($field) !== '') {
                 // Unmapped plugin references retain their legacy empty-zero sentinel.
                 if (!in_array($types[$field], [...$integers, ...$strings], true)) {
-                    throw new \InvalidArgumentException('Plugin uniqueness references require integer or text columns.');
+                    throw new InvalidArgumentException('Plugin uniqueness references require integer or text columns.');
                 }
                 $query->andWhere($column . ' <> :empty_' . $index)
                     ->setParameter('empty_' . $index, in_array($types[$field], $strings, true) ? '0' : 0, $types[$field]);
@@ -115,7 +121,7 @@ final class FieldUnicityRepository
         }
         if ($scoped) {
             $query->andWhere($platform->quoteIdentifier('entities_id') . ' IN (:entities)')
-                ->setParameter('entities', array_map('intval', $entities), \Doctrine\DBAL\ArrayParameterType::INTEGER);
+                ->setParameter('entities', array_map('intval', $entities), ArrayParameterType::INTEGER);
         }
         if ($templates) {
             $query->andWhere($platform->quoteIdentifier('is_template') . ' = :template')
@@ -134,13 +140,13 @@ final class FieldUnicityRepository
         if (!$fields || $entities === []) {
             return [];
         }
-        $class = EntityRegistry::tables()[$table] ?? throw new \InvalidArgumentException('Unmapped uniqueness target');
+        $class = EntityRegistry::tables()[$table] ?? throw new InvalidArgumentException('Unmapped uniqueness target');
         $metadata = $this->em->getClassMetadata($class);
         $query = $this->em->createQueryBuilder()->from($class, 'r')->select('COUNT(r.id) AS cpt')->having('COUNT(r.id) > 1');
         $compiler = new RecordCriteria($query, $metadata);
         foreach ($fields as $field) {
             if (!preg_match('/^[a-zA-Z0-9_]+$/D', $field)) {
-                throw new \InvalidArgumentException('Uniqueness fields require mapped column names');
+                throw new InvalidArgumentException('Uniqueness fields require mapped column names');
             }
             $expression = $compiler->column($field);
             $query->addSelect($expression . ' AS ' . $field)->addGroupBy($field)->andWhere($expression . ' IS NOT NULL');

@@ -6,6 +6,7 @@ namespace itsmng\Database\Type;
 
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Types\Type;
+use InvalidArgumentException;
 
 /** A wall-clock boundary, including 24:00:00. DateTime would lose that boundary. */
 final class ClockTimeType extends Type
@@ -37,7 +38,7 @@ final class ClockTimeType extends Type
             $value .= ':00';
         }
         if (!preg_match('/^(?:(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]|24:00:00)$/D', $value)) {
-            throw new \InvalidArgumentException('Invalid clock time boundary');
+            throw new InvalidArgumentException('Invalid clock time boundary');
         }
         return $value;
     }

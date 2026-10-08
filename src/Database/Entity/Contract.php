@@ -4,27 +4,32 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeImmutable;
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use InvalidArgumentException;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Repository\ContractRepository;
 
-#[ORM\Entity(repositoryClass: \itsmng\Database\Repository\ContractRepository::class)]
+#[ORM\Entity(repositoryClass: ContractRepository::class)]
 #[ORM\Table(name: 'glpi_contracts')]
 class Contract
 {
     /** Contract months clamp to the anniversary day in the target month. */
-    public function endsOn(): ?\DateTimeImmutable
+    public function endsOn(): ?DateTimeImmutable
     {
         return $this->calendarDeadline($this->duration);
     }
 
-    public function noticeStartsOn(): ?\DateTimeImmutable
+    public function noticeStartsOn(): ?DateTimeImmutable
     {
         return $this->calendarDeadline($this->duration - $this->notice);
     }
 
     /** Renewal periods stay anchored to the original contract anniversary. */
-    public function periodEndsOn(int $period, bool $notice = false): ?\DateTimeImmutable
+    public function periodEndsOn(int $period, bool $notice = false): ?DateTimeImmutable
     {
         if ($this->periodicity <= 0 || $period < 0) {
             return null;
@@ -33,20 +38,20 @@ class Contract
         return $this->calendarDeadline($initial + $period * $this->periodicity - ($notice ? $this->notice : 0));
     }
 
-    public function renewedDeadline(int $renewal, bool $notice = false): ?\DateTimeImmutable
+    public function renewedDeadline(int $renewal, bool $notice = false): ?DateTimeImmutable
     {
         if ($renewal < 0) {
-            throw new \InvalidArgumentException('Contract renewal index must not be negative');
+            throw new InvalidArgumentException('Contract renewal index must not be negative');
         }
         return $this->calendarDeadline(($renewal + 1) * $this->duration - ($notice ? $this->notice : 0));
     }
 
-    private function calendarDeadline(int $months): ?\DateTimeImmutable
+    private function calendarDeadline(int $months): ?DateTimeImmutable
     {
         if ($this->begin_date === null) {
             return null;
         }
-        $start = \DateTimeImmutable::createFromInterface($this->begin_date)->setTime(0, 0);
+        $start = DateTimeImmutable::createFromInterface($this->begin_date)->setTime(0, 0);
         $month = $start->modify('first day of this month')->modify(sprintf('%+d months', $months));
         return $month->setDate((int)$month->format('Y'), (int)$month->format('m'), min((int)$start->format('d'), (int)$month->format('t')));
     }
@@ -76,7 +81,7 @@ class Contract
     public ?ContractType $contracttypes = null;
 
     #[ORM\Column(name: '`begin_date`', type: 'date', nullable: true)]
-    public ?\DateTimeInterface $begin_date = null;
+    public ?DateTimeInterface $begin_date = null;
 
     #[ORM\Column(name: '`duration`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $duration = 0;
@@ -144,10 +149,10 @@ class Contract
     public ?State $states = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 }

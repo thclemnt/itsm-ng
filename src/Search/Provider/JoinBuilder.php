@@ -34,7 +34,24 @@
 
 namespace itsmng\Search\Provider;
 
+use CommonDBTM;
+use DBmysqlIterator;
+use Plugin;
+use Project;
+use RSSFeed;
+use Reminder;
+use Session;
+use Ticket;
+use TicketValidation;
 use itsmng\Search\SearchOption;
+
+use function getEntitiesRestrictRequest;
+use function getForeignKeyFieldForTable;
+use function getItemForItemtype;
+use function getItemTypeForTable;
+use function getTableForItemType;
+use function getTableNameForForeignKeyField;
+use function isPluginItemType;
 
 final class JoinBuilder
 {
@@ -54,9 +71,9 @@ final class JoinBuilder
             case 'User':
                 return JoinBuilder::addLeftJoin($itemtype, $ref_table, $already_link_tables, "glpi_profiles_users", "profiles_users_id", 0, 0, ['jointype' => 'child']);
             case 'Reminder':
-                return \Reminder::addVisibilityJoins();
+                return Reminder::addVisibilityJoins();
             case 'RSSFeed':
-                return \RSSFeed::addVisibilityJoins();
+                return RSSFeed::addVisibilityJoins();
             case 'ProjectTask':
                 // Same structure in addDefaultWhere
                 $out = '';
@@ -66,18 +83,18 @@ final class JoinBuilder
             case 'Project':
                 // Same structure in addDefaultWhere
                 $out = '';
-                if (!\Session::haveRight("project", \Project::READALL)) {
+                if (!Session::haveRight("project", Project::READALL)) {
                     $out .= JoinBuilder::addLeftJoin($itemtype, $ref_table, $already_link_tables, "glpi_projectteams", "projectteams_id", 0, 0, ['jointype' => 'child']);
                 }
                 return $out;
             case 'Ticket':
                 // Same structure in addDefaultWhere
                 $out = '';
-                if (!\Session::haveRight("ticket", \Ticket::READALL)) {
+                if (!Session::haveRight("ticket", Ticket::READALL)) {
                     $searchopt = & SearchOption::getOptions($itemtype);
                     // show mine : requester
                     $out .= JoinBuilder::addLeftJoin($itemtype, $ref_table, $already_link_tables, "glpi_tickets_users", "tickets_users_id", 0, 0, $searchopt[4]['joinparams']['beforejoin']['joinparams']);
-                    if (\Session::haveRight("ticket", \Ticket::READGROUP)) {
+                    if (Session::haveRight("ticket", Ticket::READGROUP)) {
                         if (count($_SESSION['glpigroups'])) {
                             $out .= JoinBuilder::addLeftJoin($itemtype, $ref_table, $already_link_tables, "glpi_groups_tickets", "groups_tickets_id", 0, 0, $searchopt[71]['joinparams']['beforejoin']['joinparams']);
                         }
@@ -87,18 +104,18 @@ final class JoinBuilder
                     if (count($_SESSION['glpigroups'])) {
                         $out .= JoinBuilder::addLeftJoin($itemtype, $ref_table, $already_link_tables, "glpi_groups_tickets", "groups_tickets_id", 0, 0, $searchopt[65]['joinparams']['beforejoin']['joinparams']);
                     }
-                    if (\Session::haveRight("ticket", \Ticket::OWN)) {
+                    if (Session::haveRight("ticket", Ticket::OWN)) {
                         // Can own ticket : show assign to me
                         $out .= JoinBuilder::addLeftJoin($itemtype, $ref_table, $already_link_tables, "glpi_tickets_users", "tickets_users_id", 0, 0, $searchopt[5]['joinparams']['beforejoin']['joinparams']);
                     }
-                    if (\Session::haveRightsOr("ticket", [\Ticket::READMY, \Ticket::READASSIGN])) {
+                    if (Session::haveRightsOr("ticket", [Ticket::READMY, Ticket::READASSIGN])) {
                         // show mine + assign to me
                         $out .= JoinBuilder::addLeftJoin($itemtype, $ref_table, $already_link_tables, "glpi_tickets_users", "tickets_users_id", 0, 0, $searchopt[5]['joinparams']['beforejoin']['joinparams']);
                         if (count($_SESSION['glpigroups'])) {
                             $out .= JoinBuilder::addLeftJoin($itemtype, $ref_table, $already_link_tables, "glpi_groups_tickets", "groups_tickets_id", 0, 0, $searchopt[8]['joinparams']['beforejoin']['joinparams']);
                         }
                     }
-                    if (\Session::haveRightsOr('ticketvalidation', [\TicketValidation::VALIDATEINCIDENT, \TicketValidation::VALIDATEREQUEST])) {
+                    if (Session::haveRightsOr('ticketvalidation', [TicketValidation::VALIDATEINCIDENT, TicketValidation::VALIDATEREQUEST])) {
                         $out .= JoinBuilder::addLeftJoin($itemtype, $ref_table, $already_link_tables, "glpi_ticketvalidations", "ticketvalidations_id", 0, 0, $searchopt[58]['joinparams']['beforejoin']['joinparams']);
                     }
                 }
@@ -118,9 +135,9 @@ final class JoinBuilder
                 }
                 // Same structure in addDefaultWhere
                 $out = '';
-                if (!\Session::haveRight("{$right}", $itemtype::READALL)) {
+                if (!Session::haveRight("{$right}", $itemtype::READALL)) {
                     $searchopt = & SearchOption::getOptions($itemtype);
-                    if (\Session::haveRight("{$right}", $itemtype::READMY)) {
+                    if (Session::haveRight("{$right}", $itemtype::READMY)) {
                         // show mine : requester
                         $out .= JoinBuilder::addLeftJoin($itemtype, $ref_table, $already_link_tables, "glpi_" . $table . "_users", $table . "_users_id", 0, 0, $searchopt[4]['joinparams']['beforejoin']['joinparams']);
                         if (count($_SESSION['glpigroups'])) {
@@ -141,7 +158,7 @@ final class JoinBuilder
                 return $out;
             default:
                 // Plugin can override core definition for its type
-                if ($plug = \isPluginItemType($itemtype)) {
+                if ($plug = isPluginItemType($itemtype)) {
                     $plugin_name = $plug['plugin'];
                     $hook_function = 'plugin_' . strtolower((string) $plugin_name) . '_addDefaultJoin';
                     $hook_closure = function () use ($hook_function, $itemtype, $ref_table, &$already_link_tables) {
@@ -149,7 +166,7 @@ final class JoinBuilder
                             return $hook_function($itemtype, $ref_table, $already_link_tables);
                         }
                     };
-                    $out = \Plugin::doOneHook($plugin_name, $hook_closure);
+                    $out = Plugin::doOneHook($plugin_name, $hook_closure);
                     if (!empty($out)) {
                         return $out;
                     }
@@ -185,18 +202,18 @@ final class JoinBuilder
             return false;
         }
         $complexjoin = JoinBuilder::computeComplexJoinID($joinparams);
-        $is_fkey_composite_on_self = \getTableNameForForeignKeyField($linkfield) == $ref_table && $linkfield != \getForeignKeyFieldForTable($ref_table);
+        $is_fkey_composite_on_self = getTableNameForForeignKeyField($linkfield) == $ref_table && $linkfield != getForeignKeyFieldForTable($ref_table);
         // Auto link
         if ($ref_table == $new_table && empty($complexjoin) && !$is_fkey_composite_on_self) {
-            $transitemtype = \getItemTypeForTable($new_table);
-            if (\Session::haveTranslations($transitemtype, $field)) {
+            $transitemtype = getItemTypeForTable($new_table);
+            if (Session::haveTranslations($transitemtype, $field)) {
                 $transAS = $nt . '_trans_' . $field;
                 return JoinBuilder::joinDropdownTranslations($transAS, $nt, $transitemtype, $field);
             }
             return "";
         }
         // Multiple link possibilies case
-        if (!empty($linkfield) && $linkfield != \getForeignKeyFieldForTable($new_table)) {
+        if (!empty($linkfield) && $linkfield != getForeignKeyFieldForTable($new_table)) {
             $nt .= "_" . $linkfield;
             $AS = " AS `{$nt}`";
         }
@@ -214,7 +231,7 @@ final class JoinBuilder
         }
         // Do not take into account standard linkfield
         $tocheck = $nt . "." . $linkfield;
-        if ($linkfield == \getForeignKeyFieldForTable($new_table)) {
+        if ($linkfield == getForeignKeyFieldForTable($new_table)) {
             $tocheck = $nt;
         }
         if (in_array($tocheck, $already_link_tables)) {
@@ -223,7 +240,7 @@ final class JoinBuilder
         array_push($already_link_tables, $tocheck);
         $specific_leftjoin = '';
         // Plugin can override core definition for its type
-        if ($plug = \isPluginItemType($itemtype)) {
+        if ($plug = isPluginItemType($itemtype)) {
             $plugin_name = $plug['plugin'];
             $hook_function = 'plugin_' . strtolower((string) $plugin_name) . '_addLeftJoin';
             $hook_closure = function () use ($hook_function, $itemtype, $ref_table, $new_table, $linkfield, &$already_link_tables) {
@@ -231,7 +248,7 @@ final class JoinBuilder
                     return $hook_function($itemtype, $ref_table, $new_table, $linkfield, $already_link_tables);
                 }
             };
-            $specific_leftjoin = \Plugin::doOneHook($plugin_name, $hook_closure);
+            $specific_leftjoin = Plugin::doOneHook($plugin_name, $hook_closure);
         }
         // Link with plugin tables : need to know left join structure
         if (empty($specific_leftjoin) && preg_match("/^glpi_plugin_([a-z0-9]+)/", $new_table, $matches)) {
@@ -243,7 +260,7 @@ final class JoinBuilder
                         return $hook_function($itemtype, $ref_table, $new_table, $linkfield, $already_link_tables);
                     }
                 };
-                $specific_leftjoin = \Plugin::doOneHook($plugin_name, $hook_closure);
+                $specific_leftjoin = Plugin::doOneHook($plugin_name, $hook_closure);
             }
         }
         if (!empty($linkfield)) {
@@ -258,7 +275,7 @@ final class JoinBuilder
                         if (isset($tab['linkfield'])) {
                             $interlinkfield = $tab['linkfield'];
                         } else {
-                            $interlinkfield = \getForeignKeyFieldForTable($intertable);
+                            $interlinkfield = getForeignKeyFieldForTable($intertable);
                         }
                         $interjoinparams = [];
                         if (isset($tab['joinparams'])) {
@@ -284,7 +301,7 @@ final class JoinBuilder
             if (isset($joinparams['condition'])) {
                 $condition = $joinparams['condition'];
                 if (is_array($condition)) {
-                    $it = new \DBmysqlIterator(null);
+                    $it = new DBmysqlIterator(null);
                     $condition = $it->analyseCrit($condition);
                 }
                 // Conditions may already use the provider's identifier quotes (for
@@ -319,7 +336,7 @@ final class JoinBuilder
             if (empty($specific_leftjoin)) {
                 switch ($joinparams['jointype']) {
                     case 'child':
-                        $linkfield = \getForeignKeyFieldForTable($cleanrt);
+                        $linkfield = getForeignKeyFieldForTable($cleanrt);
                         if (isset($joinparams['linkfield'])) {
                             $linkfield = $joinparams['linkfield'];
                         }
@@ -332,18 +349,18 @@ final class JoinBuilder
                         // Item_Item join
                         $specific_leftjoin = " LEFT JOIN `{$new_table}` {$AS}
                                           ON ((`{$rt}`.`id`
-                                                = `{$nt}`.`" . \getForeignKeyFieldForTable($cleanrt) . "_1`
+                                                = `{$nt}`.`" . getForeignKeyFieldForTable($cleanrt) . "_1`
                                                OR `{$rt}`.`id`
-                                                 = `{$nt}`.`" . \getForeignKeyFieldForTable($cleanrt) . "_2`)
+                                                 = `{$nt}`.`" . getForeignKeyFieldForTable($cleanrt) . "_2`)
                                               {$addcondition})";
                         break;
                     case 'item_item_revert':
                         // Item_Item join reverting previous item_item
                         $specific_leftjoin = " LEFT JOIN `{$new_table}` {$AS}
                                           ON ((`{$nt}`.`id`
-                                                = `{$rt}`.`" . \getForeignKeyFieldForTable($cleannt) . "_1`
+                                                = `{$rt}`.`" . getForeignKeyFieldForTable($cleannt) . "_1`
                                                OR `{$nt}`.`id`
-                                                 = `{$rt}`.`" . \getForeignKeyFieldForTable($cleannt) . "_2`)
+                                                 = `{$rt}`.`" . getForeignKeyFieldForTable($cleannt) . "_2`)
                                               {$addcondition})";
                         break;
                     case "mainitemtype_mainitem":
@@ -392,8 +409,8 @@ final class JoinBuilder
                         $specific_leftjoin = "LEFT JOIN `{$new_table}` {$AS}
                                           ON (`{$rt}`.`{$linkfield}` = `{$nt}`.`id`
                                               {$addcondition})";
-                        $transitemtype = \getItemTypeForTable($new_table);
-                        if (\Session::haveTranslations($transitemtype, $field)) {
+                        $transitemtype = getItemTypeForTable($new_table);
+                        if (Session::haveTranslations($transitemtype, $field)) {
                             $transAS = $nt . '_trans_' . $field;
                             $specific_leftjoin .= JoinBuilder::joinDropdownTranslations($transAS, $nt, $transitemtype, $field);
                         }
@@ -418,11 +435,11 @@ final class JoinBuilder
         $from_referencetype = SearchOption::getMetaReferenceItemtype($from_type);
         $LINK = " LEFT JOIN ";
         $from_table = $from_type::getTable();
-        $from_fk = \getForeignKeyFieldForTable($from_table);
+        $from_fk = getForeignKeyFieldForTable($from_table);
         $to_table = $to_type::getTable();
-        $to_fk = \getForeignKeyFieldForTable($to_table);
-        $to_obj = \getItemForItemtype($to_type);
-        $to_entity_restrict = $to_obj->isField('entities_id') ? \getEntitiesRestrictRequest('AND', $to_table) : '';
+        $to_fk = getForeignKeyFieldForTable($to_table);
+        $to_obj = getItemForItemtype($to_type);
+        $to_entity_restrict = $to_obj->isField('entities_id') ? getEntitiesRestrictRequest('AND', $to_table) : '';
         $complexjoin = JoinBuilder::computeComplexJoinID($joinparams);
         $alias_suffix = ($complexjoin != '' ? '_' . $complexjoin : '') . '_' . $to_type;
         $JOIN = "";
@@ -477,7 +494,7 @@ final class JoinBuilder
             if (!in_array($softwarelicenses_table, $already_link_tables2)) {
                 array_push($already_link_tables2, $softwarelicenses_table);
                 $JOIN .= "{$LINK} `glpi_softwarelicenses` AS `{$softwarelicenses_table}`
-                        ON ({$to_table}.`id` = `{$softwarelicenses_table}`.`softwares_id`" . \getEntitiesRestrictRequest(' AND', $softwarelicenses_table, '', '', true) . ") ";
+                        ON ({$to_table}.`id` = `{$softwarelicenses_table}`.`softwares_id`" . getEntitiesRestrictRequest(' AND', $softwarelicenses_table, '', '', true) . ") ";
             }
             return $JOIN;
         }
@@ -550,20 +567,20 @@ final class JoinBuilder
             return $JOIN;
         }
         // Generic JOIN
-        $from_obj = \getItemForItemtype($from_referencetype);
+        $from_obj = getItemForItemtype($from_referencetype);
         $from_item_obj = null;
-        $to_obj = \getItemForItemtype($to_type);
+        $to_obj = getItemForItemtype($to_type);
         $to_item_obj = null;
         if (SearchOption::isPossibleMetaSubitemOf($from_referencetype, $to_type)) {
-            $from_item_obj = \getItemForItemtype($from_referencetype . '_Item');
+            $from_item_obj = getItemForItemtype($from_referencetype . '_Item');
             if (!$from_item_obj) {
-                $from_item_obj = \getItemForItemtype('Item_' . $from_referencetype);
+                $from_item_obj = getItemForItemtype('Item_' . $from_referencetype);
             }
         }
         if (SearchOption::isPossibleMetaSubitemOf($to_type, $from_referencetype)) {
-            $to_item_obj = \getItemForItemtype($to_type . '_Item');
+            $to_item_obj = getItemForItemtype($to_type . '_Item');
             if (!$to_item_obj) {
-                $to_item_obj = \getItemForItemtype('Item_' . $to_type);
+                $to_item_obj = getItemForItemtype('Item_' . $to_type);
             }
         }
         if ($from_obj && $from_obj->isField($to_fk)) {
@@ -705,6 +722,6 @@ final class JoinBuilder
      */
     public static function getOrigTableName(string $itemtype): string
     {
-        return is_a($itemtype, \CommonDBTM::class, true) ? $itemtype::getTable() : \getTableForItemType($itemtype);
+        return is_a($itemtype, CommonDBTM::class, true) ? $itemtype::getTable() : getTableForItemType($itemtype);
     }
 }

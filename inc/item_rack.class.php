@@ -1,5 +1,9 @@
 <?php
 
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\PlacementRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access directly to this file");
 }
@@ -105,7 +109,7 @@ class Item_Rack extends CommonDBRelation
         }
         $canedit = $rack->canEdit($ID);
 
-        $items = \itsmng\Database\MappedReads::matching($DB, self::getTable(), ['racks_id' => $rack->getID()], ['position DESC']);
+        $items = MappedReads::matching($DB, self::getTable(), ['racks_id' => $rack->getID()], ['position DESC']);
         $link = new self();
 
         if ($canedit) {
@@ -443,14 +447,14 @@ JAVASCRIPT;
         global $DB;
 
         if (static::class === self::class) {
-            $manager = \itsmng\Database\Orm::create($DB);
+            $manager = Orm::create($DB);
             try {
-                $items = (new \itsmng\Database\Repository\PlacementRepository($manager))->rackStatistics((int)$rack->getID());
+                $items = (new PlacementRepository($manager))->rackStatistics((int)$rack->getID());
             } finally {
                 $manager->clear();
             }
         } else {
-            $items = \itsmng\Database\MappedReads::matching($DB, self::getTable(), ['racks_id' => $rack->getID()]);
+            $items = MappedReads::matching($DB, self::getTable(), ['racks_id' => $rack->getID()]);
         }
 
         $weight = 0;
@@ -543,7 +547,7 @@ JAVASCRIPT;
             $text = $type::getTypeName(1);
         }
 
-        $selection = (new \itsmng\Database\Repository\PlacementRepository(\itsmng\Database\Orm::create($DB)))->rackSelection();
+        $selection = (new PlacementRepository(Orm::create($DB)))->rackSelection();
         $used = $selection['used'];
         $used_reserved = $selection['reserved'];
         $initialUsed = ($options['is_reserved'] ?? $this->fields['is_reserved'] ?? false) ? $used_reserved : $used;

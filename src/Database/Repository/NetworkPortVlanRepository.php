@@ -8,6 +8,8 @@ use Doctrine\DBAL\LockMode;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Query;
+use Doctrine\ORM\QueryBuilder;
+use UnexpectedValueException;
 use itsmng\Database\Entity\Entity;
 use itsmng\Database\Entity\NetworkPort;
 use itsmng\Database\Entity\NetworkPortVlan;
@@ -134,10 +136,10 @@ final class NetworkPortVlanRepository
             }
             $entity = (int)$rows[0]['parent'];
         }
-        throw new \UnexpectedValueException('Cyclic VLAN membership entity ancestry.');
+        throw new UnexpectedValueException('Cyclic VLAN membership entity ancestry.');
     }
 
-    private function membershipQuery(): \Doctrine\ORM\QueryBuilder
+    private function membershipQuery(): QueryBuilder
     {
         return $this->em->createQueryBuilder()->select('m.id, IDENTITY(m.networkports) AS networkports_id, IDENTITY(m.vlans) AS vlans_id, m.tagged')
             ->from(NetworkPortVlan::class, 'm');

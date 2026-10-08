@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CronLogRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -59,7 +62,7 @@ class CronTaskLog extends CommonDBTM
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\CronLogRepository(\itsmng\Database\Orm::create($DB)))
+        return (new CronLogRepository(Orm::create($DB)))
             ->expire((int)$id, (int)$days);
     }
 
@@ -67,7 +70,7 @@ class CronTaskLog extends CommonDBTM
     public function cleanDBonPurge()
     {
         global $DB;
-        (new \itsmng\Database\Repository\CronLogRepository(\itsmng\Database\Orm::create($DB)))
+        (new CronLogRepository(Orm::create($DB)))
             ->preserveChildren((int)$this->getID(), $this->fields['crontasklogs_id'] ?: null);
     }
 

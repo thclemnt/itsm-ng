@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\FinancialRepository;
+use itsmng\Reporting\Criteria;
+
 include('../inc/includes.php');
 
 Session::checkRight("reports", READ);
@@ -114,14 +118,14 @@ function display_infocoms_report($itemtype, $begin, $end)
     if (!$DB->fieldExists($itemtable, "ticket_tco", false)) {
         return false;
     }
-    if (\itsmng\Database\Repository\FinancialRepository::supports($itemtype)) {
-        $em = \itsmng\Database\Orm::create($DB);
+    if (FinancialRepository::supports($itemtype)) {
+        $em = Orm::create($DB);
         try {
-            $iterator = (new \itsmng\Database\Repository\FinancialRepository($em))->rows(
+            $iterator = (new FinancialRepository($em))->rows(
                 $itemtype,
                 (string)$begin,
                 (string)$end,
-                \itsmng\Reporting\Criteria::entities(),
+                Criteria::entities(),
                 true
             );
         } finally {
@@ -162,7 +166,7 @@ function display_infocoms_report($itemtype, $begin, $end)
            'ORDERBY'      => ['entname ASC', 'buy_date', 'use_date']
         ];
 
-        $dates = \itsmng\Reporting\Criteria::financialDates((string)$begin, (string)$end);
+        $dates = Criteria::financialDates((string)$begin, (string)$end);
         if ($dates) {
             $criteria['WHERE'][] = $dates;
         }

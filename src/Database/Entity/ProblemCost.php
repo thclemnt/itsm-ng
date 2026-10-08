@@ -4,7 +4,10 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\CostParent;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
@@ -14,8 +17,8 @@ class ProblemCost
 {
     #[ORM\ManyToOne(targetEntity: Problem::class)]
     #[ORM\JoinColumn(name: 'problems_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\CostParent]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[CostParent]
+    #[ApplicationManaged]
     public ?Problem $problems = null;
 
     #[ORM\Id]
@@ -30,10 +33,10 @@ class ProblemCost
     public ?string $comment = null;
 
     #[ORM\Column(name: '`begin_date`', type: 'date', nullable: true)]
-    public ?\DateTimeInterface $begin_date = null;
+    public ?DateTimeInterface $begin_date = null;
 
     #[ORM\Column(name: '`end_date`', type: 'date', nullable: true)]
-    public ?\DateTimeInterface $end_date = null;
+    public ?DateTimeInterface $end_date = null;
 
     #[ORM\Column(name: '`actiontime`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $actiontime = 0;
@@ -55,6 +58,6 @@ class ProblemCost
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
     #[ReferencePolicy(ReferenceKind::RootEntity)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Entity $entities = null;
 }

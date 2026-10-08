@@ -4,7 +4,9 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
@@ -29,8 +31,8 @@ class NotImportedEmail
     public ?MailCollector $mailcollectors = null;
 
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: false, options: ['default' => 'CURRENT_TIMESTAMP'])]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date = null;
 
     #[ORM\Column(name: '`subject`', type: 'text', nullable: true)]
     public ?string $subject = null;

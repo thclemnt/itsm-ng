@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\LocationRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -500,9 +503,9 @@ JS;
            'inventory' => __('Inventory number'),
         ];
         $values = [];
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            $repository = new \itsmng\Database\Repository\LocationRepository($em);
+            $repository = new LocationRepository($em);
             foreach (array_unique($itemtypes) as $itemtype) {
                 $item = getItemForItemtype($itemtype);
                 if (!$item || !$item->maybeLocated()) {

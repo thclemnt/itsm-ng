@@ -5,8 +5,10 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Type\FixedStringType;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_slalevels')]
@@ -33,13 +35,13 @@ class SlaLevel
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
     #[ReferencePolicy(ReferenceKind::RootEntity)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_recursive = false;
 
-    #[ORM\Column(name: '`match`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 10, nullable: true)]
+    #[ORM\Column(name: '`match`', type: FixedStringType::NAME, length: 10, nullable: true)]
     public ?string $match = null;
 
     #[ORM\Column(name: '`uuid`', type: 'string', length: 255, nullable: true)]

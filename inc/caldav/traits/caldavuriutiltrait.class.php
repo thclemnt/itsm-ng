@@ -35,6 +35,8 @@ namespace Glpi\CalDAV\Traits;
 
 use Glpi\CalDAV\Backend\Principal;
 use Glpi\CalDAV\Contracts\CalDAVCompatibleItemInterface;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CalendarObjectRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -195,7 +197,7 @@ trait CalDAVUriUtilTrait
             $CFG_GLPI['planning_types'],
             static fn ($kind) => is_a($kind, CalDAVCompatibleItemInterface::class, true)
         )));
-        $repository = new \itsmng\Database\Repository\CalendarObjectRepository(\itsmng\Database\Orm::create($DB));
+        $repository = new CalendarObjectRepository(Orm::create($DB));
         $matches = $repository->subjectsForUid($uid, $kinds);
         // Unmapped plugin calendars retain their public model lookup extension.
         foreach ($kinds as $kind) {

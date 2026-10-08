@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -124,7 +126,7 @@ class Telemetry extends CommonGLPI
         $dbinfos = $DB->getInfo();
 
         $connection = $DB->getDoctrineConnection();
-        if ($connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform) {
+        if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
             $size = $connection->fetchOne('SELECT ROUND(pg_database_size(current_database()) / 1048576.0, 1)');
         } else {
             $size = $connection->fetchOne(

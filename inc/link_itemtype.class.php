@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\LinkRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -77,7 +80,7 @@ class Link_Itemtype extends CommonDBChild
             return false;
         }
 
-        $iterator = (new \itsmng\Database\Repository\LinkRepository(\itsmng\Database\Orm::create($DB)))->itemtypes((int)$links_id);
+        $iterator = (new LinkRepository(Orm::create($DB)))->itemtypes((int)$links_id);
         $types  = [];
         $used   = [];
         $numrows = count($iterator);
@@ -168,7 +171,7 @@ class Link_Itemtype extends CommonDBChild
             switch ($item->getType()) {
                 case 'Link':
                     if ($_SESSION['glpishow_count_on_tabs']) {
-                        $nb = (new \itsmng\Database\Repository\LinkRepository(\itsmng\Database\Orm::create($DB)))->countItemtypes((int)$item->getID());
+                        $nb = (new LinkRepository(Orm::create($DB)))->countItemtypes((int)$item->getID());
                     }
                     return self::createTabEntry(_n(
                         'Associated item type',
@@ -203,6 +206,6 @@ class Link_Itemtype extends CommonDBChild
     {
         global $DB;
 
-        (new \itsmng\Database\Repository\LinkRepository(\itsmng\Database\Orm::create($DB)))->deletePluginItemtypes((string)$itemtype);
+        (new LinkRepository(Orm::create($DB)))->deletePluginItemtypes((string)$itemtype);
     }
 }

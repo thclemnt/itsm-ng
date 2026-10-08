@@ -4,9 +4,13 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\ReferenceMode;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_entities')]
@@ -23,7 +27,7 @@ class Entity
     #[ORM\ManyToOne(targetEntity: self::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', options: ['default' => 0])]
     #[ReferencePolicy(ReferenceKind::RootParent)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?self $parent = null;
 
     #[ORM\Column(name: '`completename`', type: 'text', nullable: true)]
@@ -94,8 +98,8 @@ class Entity
     #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'ldap_mode', emptyZero: true)]
     public ?AuthLDAP $authldap = null;
 
-    #[ORM\Column(type: 'string', length: 16, enumType: \itsmng\Database\ReferenceMode::class, options: ['default' => 'explicit'])]
-    public \itsmng\Database\ReferenceMode $ldap_mode = \itsmng\Database\ReferenceMode::Explicit;
+    #[ORM\Column(type: 'string', length: 16, enumType: ReferenceMode::class, options: ['default' => 'explicit'])]
+    public ReferenceMode $ldap_mode = ReferenceMode::Explicit;
 
     #[ORM\Column(name: '`mail_domain`', type: 'string', length: 255, nullable: true)]
     public ?string $mail_domain = null;
@@ -162,8 +166,8 @@ class Entity
     #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'calendar_mode', emptyZero: true)]
     public ?Calendar $calendar = null;
 
-    #[ORM\Column(type: 'string', length: 16, enumType: \itsmng\Database\ReferenceMode::class, options: ['default' => 'inherit'])]
-    public \itsmng\Database\ReferenceMode $calendar_mode = \itsmng\Database\ReferenceMode::Inherit;
+    #[ORM\Column(type: 'string', length: 16, enumType: ReferenceMode::class, options: ['default' => 'inherit'])]
+    public ReferenceMode $calendar_mode = ReferenceMode::Inherit;
 
     #[ORM\Column(name: '`auto_assign_mode`', type: 'integer', nullable: false, options: ['default' => '-2'])]
     public int $auto_assign_mode = -2;
@@ -172,8 +176,8 @@ class Entity
     public int $tickettype = -2;
 
     #[ORM\Column(name: '`max_closedate`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $max_closedate = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $max_closedate = null;
 
     #[ORM\Column(name: '`inquest_config`', type: 'integer', nullable: false, options: ['default' => '-2'])]
     public int $inquest_config = -2;
@@ -207,32 +211,32 @@ class Entity
     #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'tickettemplate_mode', emptyZero: true)]
     public ?TicketTemplate $tickettemplate = null;
 
-    #[ORM\Column(type: 'string', length: 16, enumType: \itsmng\Database\ReferenceMode::class, options: ['default' => 'inherit'])]
-    public \itsmng\Database\ReferenceMode $tickettemplate_mode = \itsmng\Database\ReferenceMode::Inherit;
+    #[ORM\Column(type: 'string', length: 16, enumType: ReferenceMode::class, options: ['default' => 'inherit'])]
+    public ReferenceMode $tickettemplate_mode = ReferenceMode::Inherit;
 
     #[ORM\ManyToOne(targetEntity: ChangeTemplate::class)]
     #[ORM\JoinColumn(name: 'changetemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'changetemplate_mode', emptyZero: true)]
     public ?ChangeTemplate $changetemplate = null;
 
-    #[ORM\Column(type: 'string', length: 16, enumType: \itsmng\Database\ReferenceMode::class, options: ['default' => 'inherit'])]
-    public \itsmng\Database\ReferenceMode $changetemplate_mode = \itsmng\Database\ReferenceMode::Inherit;
+    #[ORM\Column(type: 'string', length: 16, enumType: ReferenceMode::class, options: ['default' => 'inherit'])]
+    public ReferenceMode $changetemplate_mode = ReferenceMode::Inherit;
 
     #[ORM\ManyToOne(targetEntity: ProblemTemplate::class)]
     #[ORM\JoinColumn(name: 'problemtemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'problemtemplate_mode', emptyZero: true)]
     public ?ProblemTemplate $problemtemplate = null;
 
-    #[ORM\Column(type: 'string', length: 16, enumType: \itsmng\Database\ReferenceMode::class, options: ['default' => 'inherit'])]
-    public \itsmng\Database\ReferenceMode $problemtemplate_mode = \itsmng\Database\ReferenceMode::Inherit;
+    #[ORM\Column(type: 'string', length: 16, enumType: ReferenceMode::class, options: ['default' => 'inherit'])]
+    public ReferenceMode $problemtemplate_mode = ReferenceMode::Inherit;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id_software', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'software_entity_mode', emptyZero: false)]
     public ?Entity $software_entity = null;
 
-    #[ORM\Column(type: 'string', length: 16, enumType: \itsmng\Database\ReferenceMode::class, options: ['default' => 'inherit'])]
-    public \itsmng\Database\ReferenceMode $software_entity_mode = \itsmng\Database\ReferenceMode::Inherit;
+    #[ORM\Column(type: 'string', length: 16, enumType: ReferenceMode::class, options: ['default' => 'inherit'])]
+    public ReferenceMode $software_entity_mode = ReferenceMode::Inherit;
 
     #[ORM\Column(name: '`default_contract_alert`', type: 'integer', nullable: false, options: ['default' => '-2'])]
     public int $default_contract_alert = -2;
@@ -256,12 +260,12 @@ class Entity
     public int $inquest_duration = 0;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 
     #[ORM\Column(name: '`autofill_decommission_date`', type: 'string', length: 255, nullable: false, options: ['default' => '-2'])]
     public string $autofill_decommission_date = '-2';

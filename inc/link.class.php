@@ -34,6 +34,8 @@
 use Glpi\Toolbox\URL;
 use itsmng\Database\EntityScopeReadOperation;
 use itsmng\Database\LinkCountReadOperation;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\LinkRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -341,7 +343,7 @@ class Link extends CommonDBTM
             strstr($link, "[DOMAIN]")
             && in_array($item->getType(), $CFG_GLPI['domain_types'], true)
         ) {
-            $domain = (new \itsmng\Database\Repository\LinkRepository(\itsmng\Database\Orm::create($DB)))->domainName($item->getType(), (int)$item->getID());
+            $domain = (new LinkRepository(Orm::create($DB)))->domainName($item->getType(), (int)$item->getID());
             if ($domain !== null) {
                 $link = str_replace('[DOMAIN]', $domain, $link);
             }
@@ -412,7 +414,7 @@ class Link extends CommonDBTM
         $ipmac = [];
         if (get_class($item) == 'NetworkEquipment') {
             if ($replace_IP) {
-                foreach ((new \itsmng\Database\Repository\LinkRepository(\itsmng\Database\Orm::create($DB)))->equipmentAddresses((int)$item->getID()) as $data2) {
+                foreach ((new LinkRepository(Orm::create($DB)))->equipmentAddresses((int)$item->getID()) as $data2) {
                     $ipmac['ip' . $data2['id']]['ip']  = $data2["ip"];
                     $ipmac['ip' . $data2['id']]['mac'] = ($item->isField('mac') ? $item->getField('mac') : '');
                 }
@@ -428,14 +430,14 @@ class Link extends CommonDBTM
         }
 
         if ($replace_IP) {
-            foreach ((new \itsmng\Database\Repository\LinkRepository(\itsmng\Database\Orm::create($DB)))->portAddresses($item->getType(), (int)$item->getID()) as $data2) {
+            foreach ((new LinkRepository(Orm::create($DB)))->portAddresses($item->getType(), (int)$item->getID()) as $data2) {
                 $ipmac['ip' . $data2['id']]['ip']  = $data2["ip"];
                 $ipmac['ip' . $data2['id']]['mac'] = $data2["mac"];
             }
         }
 
         if ($replace_MAC) {
-            foreach ((new \itsmng\Database\Repository\LinkRepository(\itsmng\Database\Orm::create($DB)))->portMacs($item->getType(), (int)$item->getID(), (bool)$replace_IP) as $data2) {
+            foreach ((new LinkRepository(Orm::create($DB)))->portMacs($item->getType(), (int)$item->getID(), (bool)$replace_IP) as $data2) {
                 $ipmac['mac' . $data2['id']]['ip']  = '';
                 $ipmac['mac' . $data2['id']]['mac'] = $data2["mac"];
             }
@@ -649,7 +651,7 @@ class Link extends CommonDBTM
 
         $restrict = self::getEntityRestrictForItem($item);
 
-        return (new \itsmng\Database\Repository\LinkRepository(\itsmng\Database\Orm::create($DB)))->forItem($item->getType(), getEntitiesRestrictCriteria('glpi_links', 'entities_id', $restrict, true));
+        return (new LinkRepository(Orm::create($DB)))->forItem($item->getType(), getEntitiesRestrictCriteria('glpi_links', 'entities_id', $restrict, true));
     }
 
     public static function getIcon()

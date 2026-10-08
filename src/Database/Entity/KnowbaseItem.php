@@ -4,11 +4,14 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Repository\KnowledgeBaseChoiceRepository;
 
-#[ORM\Entity(repositoryClass: \itsmng\Database\Repository\KnowledgeBaseChoiceRepository::class)]
+#[ORM\Entity(repositoryClass: KnowledgeBaseChoiceRepository::class)]
 #[ORM\Table(name: 'glpi_knowbaseitems')]
 class KnowbaseItem
 {
@@ -40,18 +43,18 @@ class KnowbaseItem
     public int $view = 0;
 
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`begin_date`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $begin_date = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $begin_date = null;
 
     #[ORM\Column(name: '`end_date`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $end_date = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $end_date = null;
 }

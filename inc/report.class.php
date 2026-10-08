@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\AssetRepository;
+use itsmng\Database\Repository\NetworkReportRepository;
+use itsmng\Reporting\Criteria;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -184,14 +189,14 @@ class Report extends CommonGLPI
         // 1. Get counts of itemtype
         $items     = $CFG_GLPI["asset_types"];
 
-        $assets = new \itsmng\Database\Repository\AssetRepository(\itsmng\Database\Orm::create($DB));
+        $assets = new AssetRepository(Orm::create($DB));
 
         echo "<table class='tab_cadrehov' aria-label='Show default report'>";
 
         foreach ($items as $itemtype) {
             $table_item = getTableForItemType($itemtype);
             if ($assets->supports($itemtype)) {
-                $number = $assets->count($itemtype, \itsmng\Reporting\Criteria::entities());
+                $number = $assets->count($itemtype, Criteria::entities());
             } else {
                 // Plugin assets retain their registered table and visibility rules.
                 $filters = [];
@@ -213,7 +218,7 @@ class Report extends CommonGLPI
         echo "<tr class='tab_bg_1'><td colspan='2' class='b'>" . OperatingSystem::getTypeName(1) . "</td></tr>";
 
         // 2. Get some more number data (operating systems per computer)
-        foreach ($assets->operatingSystems(\itsmng\Reporting\Criteria::entities()) as $data) {
+        foreach ($assets->operatingSystems(Criteria::entities()) as $data) {
             if (empty($data['name'])) {
                 $data['name'] = Dropdown::EMPTY_VALUE;
             }
@@ -236,7 +241,7 @@ class Report extends CommonGLPI
             $typefield  = getForeignKeyFieldForTable(getTableForItemType($typeclass));
 
             if ($assets->supports($itemtype)) {
-                $rows = $assets->countsByType($itemtype, \itsmng\Reporting\Criteria::entities());
+                $rows = $assets->countsByType($itemtype, Criteria::entities());
             } else {
                 $criteria = [
                    'SELECT'    => [
@@ -282,8 +287,8 @@ class Report extends CommonGLPI
     {
         global $DB;
 
-        $rows = (new \itsmng\Database\Repository\NetworkReportRepository(\itsmng\Database\Orm::create($DB)))
-            ->rows($kind, $ids, \itsmng\Reporting\Criteria::entities());
+        $rows = (new NetworkReportRepository(Orm::create($DB)))
+            ->rows($kind, $ids, Criteria::entities());
 
         if ($rows) {
             echo "<table class='tab_cadre_fixehov'aria-label='Devices'>";

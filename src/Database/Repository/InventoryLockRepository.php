@@ -6,6 +6,8 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Item_Devices;
+use LogicException;
 use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
 
@@ -93,7 +95,7 @@ final class InventoryLockRepository
                     }
                 }
                 if ($association === null) {
-                    throw new \LogicException('Inventory component requires a mapped device association: ' . $kind);
+                    throw new LogicException('Inventory component requires a mapped device association: ' . $kind);
                 }
                 $query->leftJoin('r.' . $association, 'd')->addSelect('d.designation AS name');
             }
@@ -103,12 +105,12 @@ final class InventoryLockRepository
 
     private function componentClass(string $kind): ?string
     {
-        if (!in_array($kind, \Item_Devices::getDeviceTypes(), true)) {
+        if (!in_array($kind, Item_Devices::getDeviceTypes(), true)) {
             return null;
         }
         $class = EntityRegistry::tables()[$kind::getTable()] ?? null;
         if ($class === null) {
-            throw new \LogicException('Inventory component requires a registered Doctrine entity: ' . $kind);
+            throw new LogicException('Inventory component requires a registered Doctrine entity: ' . $kind);
         }
         return $class;
     }

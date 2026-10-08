@@ -4,6 +4,8 @@
 
 namespace itsmng\Database;
 
+use UnexpectedValueException;
+
 /** Recognize the finite native subject-policy grammar, without executing catalog SQL. */
 final class SubjectPolicyExpression
 {
@@ -26,7 +28,7 @@ final class SubjectPolicyExpression
                 $right = self::guardedCoalesce($right, $check, $postgres);
             }
             return $left === $right;
-        } catch (\UnexpectedValueException) {
+        } catch (UnexpectedValueException) {
             return false;
         }
     }
@@ -34,7 +36,7 @@ final class SubjectPolicyExpression
     private static function parse(string $sql, bool $postgres, bool $ansiQuotes, bool $nativeCatalog = false): array
     {
         if (strlen($sql) > 262144) {
-            throw new \UnexpectedValueException();
+            throw new UnexpectedValueException();
         }
         $tokens = [];
         $offset = 0;
@@ -50,12 +52,12 @@ final class SubjectPolicyExpression
                 $end = strpos($sql, "\\'", $offset + 2);
                 $literal = $end === false ? null : substr($sql, $offset + 2, $end - $offset - 2);
                 if ($literal === null || !preg_match('/\A[\x20-\x26\x28-\x5b\x5d-\x7e]*\z/D', $literal)) {
-                    throw new \UnexpectedValueException();
+                    throw new UnexpectedValueException();
                 }
                 $match = ["'" . $literal . "'"];
                 $offset += 2; // The two catalog-only backslashes.
             } elseif (!preg_match('/\G(?:\'(?:[^\'\\\\]|\'\')*\'|`(?:[^`]|``)+`|"(?:[^"]|"")+"|[a-zA-Z_][a-zA-Z_0-9]*|[0-9]+|::|>=|[=(),])/A', $sql, $match, 0, $offset)) {
-                throw new \UnexpectedValueException();
+                throw new UnexpectedValueException();
             }
             $token = $match[0];
             $offset += strlen($token);
@@ -63,20 +65,20 @@ final class SubjectPolicyExpression
                 $tokens[] = ['string', str_replace("''", "'", substr($token, 1, -1))];
             } elseif ($token[0] === '`' || $token[0] === '"') {
                 if ($token[0] === '"' && !$postgres && !$ansiQuotes) {
-                    throw new \UnexpectedValueException();
+                    throw new UnexpectedValueException();
                 }
                 $tokens[] = ['identifier', str_replace($token[0] . $token[0], $token[0], substr($token, 1, -1))];
             } else {
                 $tokens[] = strtolower($token);
             }
             if (count($tokens) > 32768) {
-                throw new \UnexpectedValueException();
+                throw new UnexpectedValueException();
             }
         }
         $parser = new self($tokens, $postgres);
         $result = $parser->expression();
         if ($parser->position !== count($tokens)) {
-            throw new \UnexpectedValueException();
+            throw new UnexpectedValueException();
         }
         return self::canonical($result, $postgres);
     }
@@ -106,14 +108,14 @@ final class SubjectPolicyExpression
                     foreach ($terms as $term) {
                         $next[] = [...$term, ...$atoms];
                         if (count($next) > 256) {
-                            throw new \UnexpectedValueException();
+                            throw new UnexpectedValueException();
                         }
                     }
                 }
             }
             $terms = $node[0] === 'or' ? [...$terms, ...$next] : $next;
             if (count($terms) > 256) {
-                throw new \UnexpectedValueException();
+                throw new UnexpectedValueException();
             }
         }
         $sets = [];
@@ -208,7 +210,7 @@ final class SubjectPolicyExpression
     private function expression(): array
     {
         if (++$this->depth > 128) {
-            throw new \UnexpectedValueException();
+            throw new UnexpectedValueException();
         }
         $values = [$this->conjunction()];
         while ($this->take('or')) {
@@ -268,7 +270,7 @@ final class SubjectPolicyExpression
     private function value(): array
     {
         if (++$this->depth > 128) {
-            throw new \UnexpectedValueException();
+            throw new UnexpectedValueException();
         }
         if ($this->take('(')) {
             $value = $this->expression();
@@ -282,7 +284,7 @@ final class SubjectPolicyExpression
                 $branches[] = [$subject === null ? $condition : ['=', $subject, $condition], $this->value()];
             }
             if (!$branches) {
-                throw new \UnexpectedValueException();
+                throw new UnexpectedValueException();
             }
             $this->expect('else');
             $fallback = $this->value();
@@ -309,7 +311,7 @@ final class SubjectPolicyExpression
             }
             $this->expect(')');
         } else {
-            $token = $this->tokens[$this->position++] ?? throw new \UnexpectedValueException();
+            $token = $this->tokens[$this->position++] ?? throw new UnexpectedValueException();
             if (is_array($token)) {
                 $value = $token;
             } elseif ($token === 'null') {
@@ -317,32 +319,32 @@ final class SubjectPolicyExpression
             } elseif (ctype_digit($token)) {
                 $value = ['integer', $token];
             } elseif (preg_match('/^_(?:utf8|utf8mb3|utf8mb4|ascii)$/D', $token)) {
-                $value = $this->tokens[$this->position++] ?? throw new \UnexpectedValueException();
+                $value = $this->tokens[$this->position++] ?? throw new UnexpectedValueException();
                 if (!is_array($value) || $value[0] !== 'string' || preg_match('/[^\x20-\x7e]/', $value[1])) {
-                    throw new \UnexpectedValueException();
+                    throw new UnexpectedValueException();
                 }
             } elseif (preg_match('/^[a-z_][a-z_0-9]*$/D', $token)) {
                 $value = ['identifier', $token];
             } else {
-                throw new \UnexpectedValueException();
+                throw new UnexpectedValueException();
             }
         }
         while ($this->take('::')) {
             if (!$this->postgres) {
-                throw new \UnexpectedValueException();
+                throw new UnexpectedValueException();
             }
             // The deparser adds widening casts to native varchar/text and bigint
             // constants. Length-limited casts, functions and collations are refused.
             if ($this->take('text')) {
                 if (!in_array($value[0], ['identifier', 'string'], true)) {
-                    throw new \UnexpectedValueException();
+                    throw new UnexpectedValueException();
                 }
             } elseif ($this->take('bigint') || $this->take('integer')) {
                 if (!in_array($value[0], ['literal_null', 'integer'], true)) {
-                    throw new \UnexpectedValueException();
+                    throw new UnexpectedValueException();
                 }
             } else {
-                throw new \UnexpectedValueException();
+                throw new UnexpectedValueException();
             }
         }
         --$this->depth;
@@ -361,7 +363,7 @@ final class SubjectPolicyExpression
     private function expect(string $token): void
     {
         if (!$this->take($token)) {
-            throw new \UnexpectedValueException();
+            throw new UnexpectedValueException();
         }
     }
 }

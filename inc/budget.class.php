@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\BudgetRepository;
+use itsmng\Reporting\Criteria;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -355,8 +360,8 @@ class Budget extends CommonDropdown
             return false;
         }
 
-        $em = \itsmng\Database\Orm::create($DB);
-        $repository = new \itsmng\Database\Repository\BudgetRepository($em);
+        $em = Orm::create($DB);
+        $repository = new BudgetRepository($em);
         $itemtypes = $repository->itemTypes((int)$budgets_id);
         $itemtypes[] = 'Contract';
         $itemtypes[] = 'Ticket';
@@ -383,8 +388,8 @@ class Budget extends CommonDropdown
                 continue;
             }
 
-            if (\itsmng\Database\Repository\BudgetRepository::supports($itemtype)) {
-                $rows = $repository->items($itemtype, (int)$budgets_id, \itsmng\Reporting\Criteria::entities());
+            if (BudgetRepository::supports($itemtype)) {
+                $rows = $repository->items($itemtype, (int)$budgets_id, Criteria::entities());
             } else {
                 // Unmapped plugin types retain their registered table and visibility rules.
                 $criteria = [
@@ -467,9 +472,9 @@ class Budget extends CommonDropdown
             return false;
         }
 
-        $em = \itsmng\Database\Orm::create($DB);
-        $repository = new \itsmng\Database\Repository\BudgetRepository($em);
-        $itemtypes = $repository->itemTypes((int)$budgets_id, \itsmng\Reporting\Criteria::entities());
+        $em = Orm::create($DB);
+        $repository = new BudgetRepository($em);
+        $itemtypes = $repository->itemTypes((int)$budgets_id, Criteria::entities());
         $total = 0;
         $totalbytypes = [];
         $entities_values = [];
@@ -488,8 +493,8 @@ class Budget extends CommonDropdown
             }
 
             $table = getTableForItemType($itemtype);
-            if (\itsmng\Database\Repository\BudgetRepository::supports($itemtype)) {
-                $iterator = $repository->totalsByEntity($itemtype, (int)$budgets_id, \itsmng\Reporting\Criteria::entities());
+            if (BudgetRepository::supports($itemtype)) {
+                $iterator = $repository->totalsByEntity($itemtype, (int)$budgets_id, Criteria::entities());
             } else {
                 $criteria = [
                     'SELECT'       => [
@@ -556,7 +561,7 @@ class Budget extends CommonDropdown
 
         // Sort only the entities represented in the spending totals.
         $allentities = $entities_values
-            ? \itsmng\Database\MappedReads::matching($DB, 'glpi_entities', ['id' => array_keys($entities_values)], 'completename')
+            ? MappedReads::matching($DB, 'glpi_entities', ['id' => array_keys($entities_values)], 'completename')
             : [];
 
         foreach ($allentities as $entityRow) {

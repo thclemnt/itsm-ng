@@ -33,7 +33,22 @@
 
 namespace tests\units;
 
+use CommonITILObject;
+use DateTime;
 use DbTestCase;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Query;
+use Entity;
+use Html;
+use Planning;
+use Session;
+use TicketTask as LegacyTicketTask;
+use Toolbox;
+use itsmng\Database\Entity\Entity as EntityRecord;
+use itsmng\Database\Entity\Group;
+use itsmng\Database\Entity\User;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILTaskRepository;
 
 /* Test for inc/tickettask.class.php */
 
@@ -54,12 +69,12 @@ class TicketTask extends DbTestCase
             $this->login();
             $this->setEntity('_test_root_entity', true);
             $outside = (int)$_SESSION['glpiactive_entity'];
-            $entity = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => $outside]);
+            $entity = $this->createItem(Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => $outside]);
             $this->setEntity((int)$entity->getID(), false);
-            $writer = \itsmng\Database\Orm::create($DB);
-            $scopeEntity = $writer->getReference(\itsmng\Database\Entity\Entity::class, (int)$entity->getID());
-            $user = (int)\Session::getLoginUserID();
-            $group = new \itsmng\Database\Entity\Group();
+            $writer = Orm::create($DB);
+            $scopeEntity = $writer->getReference(EntityRecord::class, (int)$entity->getID());
+            $user = (int)Session::getLoginUserID();
+            $group = new Group();
             $group->name = $this->getUniqueString();
             $group->entities = $scopeEntity;
             $writer->persist($group);
@@ -70,19 +85,19 @@ class TicketTask extends DbTestCase
                 $parent = new $parentClass();
                 $parent->name = 'Parent ' . $index;
                 $parent->entities = $index === 3
-                    ? $writer->getReference(\itsmng\Database\Entity\Entity::class, $outside) : $scopeEntity;
-                $parent->status = $index === 4 ? \CommonITILObject::CLOSED : \CommonITILObject::INCOMING;
+                    ? $writer->getReference(EntityRecord::class, $outside) : $scopeEntity;
+                $parent->status = $index === 4 ? CommonITILObject::CLOSED : CommonITILObject::INCOMING;
                 $parent->is_deleted = $index === 2;
                 $parent->priority = 3;
                 $writer->persist($parent);
                 $task = new $taskClass();
                 $task->$relation = $parent;
                 $task->content = '&lt;b&gt;Task ' . $index . '&lt;/b&gt; &amp; detail';
-                $task->technician = $index === 6 ? null : $writer->getReference(\itsmng\Database\Entity\User::class, $user);
+                $task->technician = $index === 6 ? null : $writer->getReference(User::class, $user);
                 $task->groups_tech = $index === 7 ? null : $group;
-                $task->state = $index === 5 ? \Planning::DONE : \Planning::TODO;
+                $task->state = $index === 5 ? Planning::DONE : Planning::TODO;
                 $task->is_private = $index === 1;
-                $task->date_mod = $index === 7 ? null : new \DateTime('2030-01-0' . ($index + 1) . ' 12:00:00');
+                $task->date_mod = $index === 7 ? null : new DateTime('2030-01-0' . ($index + 1) . ' 12:00:00');
                 $writer->persist($task);
                 $parents[] = $parent;
                 $tasks[] = $task;
@@ -94,15 +109,15 @@ class TicketTask extends DbTestCase
             $_SESSION['glpipriority_3'] = '#123456';
             $scope = getEntitiesRestrictCriteria($parentType::getTable());
             $statuses = $parentType::getNotSolvedStatusArray();
-            $reader = new class ($DB->getDoctrineConnection(), \itsmng\Database\Orm::configuration($DB->getDoctrineConnection()->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+            $reader = new class ($DB->getDoctrineConnection(), Orm::configuration($DB->getDoctrineConnection()->getDatabasePlatform())) extends EntityManager {
                 public int $queries = 0;
-                public function createQuery(string $dql = ''): \Doctrine\ORM\Query
+                public function createQuery(string $dql = ''): Query
                 {
                     ++$this->queries;
                     return parent::createQuery($dql);
                 }
             };
-            $repository = new \itsmng\Database\Repository\ITILTaskRepository($reader);
+            $repository = new ITILTaskRepository($reader);
             $page = $repository->centralList($type, $statuses, true, $user, null, $scope, 0);
             $rows = $page['rows'];
             $this->integer($page['total'])->isIdenticalTo(4);
@@ -138,14 +153,14 @@ class TicketTask extends DbTestCase
             $this->array($rendered)->hasSize(2);
             foreach ([2, 1] as $position => $index) {
                 $id = sprintf(__('%1$s: %2$s'), __('ID'), $tasks[$index]->id);
-                $content = \Toolbox::unclean_cross_side_scripting_deep(html_entity_decode($tasks[$index]->content, ENT_QUOTES, 'UTF-8'));
+                $content = Toolbox::unclean_cross_side_scripting_deep(html_entity_decode($tasks[$index]->content, ENT_QUOTES, 'UTF-8'));
                 $this->array($rendered[$position])->isIdenticalTo([
                     "<div class='priority_block' style='border-color: #123456'>\n                  <span style='background: #123456'></span>&nbsp;$id</div>",
                     $parents[$index]->name,
-                    "<a href='" . $parentType::getFormURLWithID($parents[$index]->id) . "&amp;forcetab=" . $tab . "$1'> " . \Html::resume_text(\Html::Clean($content), 50),
+                    "<a href='" . $parentType::getFormURLWithID($parents[$index]->id) . "&amp;forcetab=" . $tab . "$1'> " . Html::resume_text(Html::Clean($content), 50),
                 ]);
             }
-            $this->string($html)->contains(\Html::makeTitle($type === 'TicketTask' ? __('Ticket tasks to do') : __('Problem tasks to do'), 2, 4));
+            $this->string($html)->contains(Html::makeTitle($type === 'TicketTask' ? __('Ticket tasks to do') : __('Problem tasks to do'), 2, 4));
             $this->boolean($DB->update($parentType::getTable(), ['name' => 'Current parent title'], ['id' => $parents[2]->id]))->isTrue();
             [, $fresh] = $render();
             $this->string($fresh[0][1])->isIdenticalTo('Current parent title');
@@ -157,7 +172,7 @@ class TicketTask extends DbTestCase
             $this->string($emptyHtml)->isEmpty();
             $this->array($emptyRows)->isEmpty();
             if ($type === 'TicketTask') {
-                $custom = new class () extends \TicketTask {
+                $custom = new class () extends LegacyTicketTask {
                     public static int $loads = 0;
                     public static function getType()
                     {
@@ -165,7 +180,7 @@ class TicketTask extends DbTestCase
                     }
                     public static function getTable($classname = null)
                     {
-                        return \TicketTask::getTable();
+                        return LegacyTicketTask::getTable();
                     }
                     public function getFromDB($id)
                     {

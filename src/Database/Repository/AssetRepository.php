@@ -6,6 +6,10 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\QueryBuilder;
+use InvalidArgumentException;
+use LogicException;
+use ReflectionProperty;
 use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\Mapping\AssetClassification;
@@ -72,7 +76,7 @@ final class AssetRepository
         $class = $this->entityClass($itemtype);
         $association = $this->classificationAssociation($class);
         if ($association === null) {
-            throw new \InvalidArgumentException('Asset classification requires a mapped association');
+            throw new InvalidArgumentException('Asset classification requires a mapped association');
         }
         $query = $this->em->createQueryBuilder()->select('COUNT(a.id) AS count', 't.name AS name')
             ->from($class, 'a')->leftJoin('a.' . $association, 't')->groupBy('t.name')->orderBy('t.name');
@@ -92,7 +96,7 @@ final class AssetRepository
         return $query->getQuery()->getScalarResult();
     }
 
-    private function visible(\Doctrine\ORM\QueryBuilder $query, string $class, ?array $entities): void
+    private function visible(QueryBuilder $query, string $class, ?array $entities): void
     {
         foreach (['is_deleted', 'is_template'] as $flag) {
             if ($this->em->getClassMetadata($class)->hasField($flag)) {
@@ -106,18 +110,18 @@ final class AssetRepository
 
     private function entityClass(string $itemtype): string
     {
-        return EntityRegistry::tables()[getTableForItemType($itemtype)] ?? throw new \InvalidArgumentException('Unmapped asset type');
+        return EntityRegistry::tables()[getTableForItemType($itemtype)] ?? throw new InvalidArgumentException('Unmapped asset type');
     }
 
     private function classificationAssociation(string $class): ?string
     {
         $selected = null;
         foreach ($this->em->getClassMetadata($class)->associationMappings as $name => $mapping) {
-            if (!(new \ReflectionProperty($class, $name))->getAttributes(AssetClassification::class)) {
+            if (!(new ReflectionProperty($class, $name))->getAttributes(AssetClassification::class)) {
                 continue;
             }
             if (!$mapping->isToOneOwningSide() || $selected !== null) {
-                throw new \LogicException('Asset reporting requires one owning classification association');
+                throw new LogicException('Asset reporting requires one owning classification association');
             }
             $selected = $name;
         }

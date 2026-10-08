@@ -6,6 +6,7 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
 
 /** Active ITIL objects linked through the selected owning asset association. */
 final class ITILAssetRepository
@@ -22,7 +23,7 @@ final class ITILAssetRepository
         [, $parent, , , , , $links] = ITILStatisticsType::definition($this->em, $type);
         try {
             $association = $links::referenceAssociation($kind);
-        } catch (\InvalidArgumentException) {
+        } catch (InvalidArgumentException) {
             return [];
         }
         $query = $this->em->createQueryBuilder()->select('r.id, r.name, r.priority')->from($links, 'i')

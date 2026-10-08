@@ -4,6 +4,14 @@
 
 namespace tests\units\itsmng\Database;
 
+use Closure;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Platforms\MySQLPlatform;
+use Doctrine\DBAL\ServerVersionProvider;
+use InvalidArgumentException;
+use Pdo\Mysql;
+use SensitiveParameter;
+use atoum\atoum\test;
 use itsmng\Database\MySQLConnection as Policy;
 use itsmng\Database\MySQLManagedConnection;
 use PDO;
@@ -16,9 +24,10 @@ use itsmng\Database\CurrentReadUnavailable;
 use LogicException;
 use RuntimeException;
 use Throwable;
+use stdClass;
 
 /** Session and lazy transport policy are independent of application configuration and servers. */
-class MySQLConnection extends \atoum\atoum\test
+class MySQLConnection extends test
 {
     private function parameters(): array
     {
@@ -56,7 +65,7 @@ class MySQLConnection extends \atoum\atoum\test
     {
         $base = $this->parameters();
         foreach ([
-            ['driver' => 'mysqli'], ['driverClass' => \stdClass::class], ['wrapperClass' => \stdClass::class], ['persistent' => true],
+            ['driver' => 'mysqli'], ['driverClass' => stdClass::class], ['wrapperClass' => stdClass::class], ['persistent' => true],
             ['ssl' => 'yes'], ['ssl_verify_server_cert' => 0], ['ssl_unknown' => 'unhandled'],
             ['ssl_key' => ['invalid']], ['ssl_ca' => '/configured/ca.pem'],
             ['driverOptions' => 'invalid'], ['driverOptions' => [123456789 => true]],
@@ -66,13 +75,13 @@ class MySQLConnection extends \atoum\atoum\test
             ['driverOptions' => [PDO::ATTR_TIMEOUT => -1]],
         ] as $invalid) {
             $this->exception(static fn () => Policy::create(array_replace($base, $invalid)))
-                ->isInstanceOf(\InvalidArgumentException::class);
+                ->isInstanceOf(InvalidArgumentException::class);
         }
     }
 
     public function testExplicitTlsMaterialAndVerificationReachPdo(): void
     {
-        $tlsPrefix = class_exists(\Pdo\Mysql::class, false) ? 'Pdo\\Mysql::ATTR_SSL_' : 'PDO::MYSQL_ATTR_SSL_';
+        $tlsPrefix = class_exists(Mysql::class, false) ? 'Pdo\\Mysql::ATTR_SSL_' : 'PDO::MYSQL_ATTR_SSL_';
         $this->boolean(defined($tlsPrefix . 'VERIFY_SERVER_CERT'))->isTrue('The supported runtime must provide PDO MySQL TLS verification');
         $tls = $this->parameters() + ['ssl' => true, 'ssl_verify_server_cert' => true, 'ssl_key' => '/configured/key.pem',
             'ssl_cert' => '/configured/cert.pem', 'ssl_ca' => '/configured/ca.pem', 'ssl_capath' => '/configured/cas', 'ssl_cipher' => 'fixture-cipher'];
@@ -86,7 +95,7 @@ class MySQLConnection extends \atoum\atoum\test
         $unverified = Policy::parameters(array_replace($tls, ['ssl_verify_server_cert' => false]));
         $this->boolean($unverified['driverOptions'][constant($tlsPrefix . 'VERIFY_SERVER_CERT')])->isFalse();
         $this->exception(static fn () => Policy::parameters($tls + ['driverOptions' => [constant($tlsPrefix . 'CA') => '/different/ca.pem']]))
-            ->isInstanceOf(\InvalidArgumentException::class);
+            ->isInstanceOf(InvalidArgumentException::class);
         $this->boolean(Policy::create($tls)->isConnected())->isFalse('TLS mapping and ownership remain lazy without accessing configured files');
     }
 
@@ -262,7 +271,7 @@ final class CurrentReadDriverSession implements DriverConnection
     public ?Throwable $refusal = null;
     public CurrentReadNativeState $native;
 
-    public function __construct(public array $capability, public \Closure $verify)
+    public function __construct(public array $capability, public Closure $verify)
     {
         $this->native = new CurrentReadNativeState();
     }
@@ -365,18 +374,18 @@ final class CurrentReadDriver implements Driver
     {
     }
 
-    public function connect(#[\SensitiveParameter] array $params): DriverConnection
+    public function connect(#[SensitiveParameter] array $params): DriverConnection
     {
         return $this->session;
     }
 
-    public function getDatabasePlatform(\Doctrine\DBAL\ServerVersionProvider $versionProvider): \Doctrine\DBAL\Platforms\AbstractPlatform
+    public function getDatabasePlatform(ServerVersionProvider $versionProvider): AbstractPlatform
     {
-        return new \Doctrine\DBAL\Platforms\MySQLPlatform();
+        return new MySQLPlatform();
     }
 
-    public function getExceptionConverter(): \Doctrine\DBAL\Driver\API\ExceptionConverter
+    public function getExceptionConverter(): Driver\API\ExceptionConverter
     {
-        return new \Doctrine\DBAL\Driver\API\MySQL\ExceptionConverter();
+        return new Driver\API\MySQL\ExceptionConverter();
     }
 }

@@ -34,6 +34,7 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 
 class Location extends DbTestCase
 {
@@ -147,7 +148,7 @@ class Location extends DbTestCase
                 ]);
             }
         )
-           ->isInstanceOf(\Doctrine\DBAL\Exception\UniqueConstraintViolationException::class);
+           ->isInstanceOf(UniqueConstraintViolationException::class);
 
         $this->boolean($location_2->getFromDB($location_2_id))->isTrue();
         $this->string($location_2->fields['name'])->isIdenticalTo('Non unique location');

@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\UserEmailRepository;
+use itsmng\Database\UserEmailReadOperation;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -96,7 +100,7 @@ class UserEmail extends CommonDBChild
     {
         global $DB;
 
-        return (new \itsmng\Database\UserEmailReadOperation($DB->getDoctrineConnection()))->preferred((int)$users_id)['email'] ?? '';
+        return (new UserEmailReadOperation($DB->getDoctrineConnection()))->preferred((int)$users_id)['email'] ?? '';
     }
 
 
@@ -111,7 +115,7 @@ class UserEmail extends CommonDBChild
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\UserEmailRepository(\itsmng\Database\Orm::create($DB)))->all((int)$users_id);
+        return (new UserEmailRepository(Orm::create($DB)))->all((int)$users_id);
     }
 
 
@@ -127,7 +131,7 @@ class UserEmail extends CommonDBChild
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\UserEmailRepository(\itsmng\Database\Orm::create($DB)))->contains((int)$users_id, (string)$email);
+        return (new UserEmailRepository(Orm::create($DB)))->contains((int)$users_id, (string)$email);
     }
 
 
@@ -235,7 +239,7 @@ class UserEmail extends CommonDBChild
         }
 
         // First email is default
-        if ((new \itsmng\Database\Repository\UserEmailRepository(\itsmng\Database\Orm::create($DB)))->preferred((int)$input['users_id']) === null) {
+        if ((new UserEmailRepository(Orm::create($DB)))->preferred((int)$input['users_id']) === null) {
             $input['is_default'] = 1;
         }
 
@@ -287,7 +291,7 @@ class UserEmail extends CommonDBChild
             in_array('is_default', $this->updates)
             && ($this->input["is_default"] == 1)
         ) {
-            (new \itsmng\Database\Repository\UserEmailRepository(\itsmng\Database\Orm::create($DB)))->selectDefault((int)$this->fields['users_id'], (int)$this->input['id']);
+            (new UserEmailRepository(Orm::create($DB)))->selectDefault((int)$this->fields['users_id'], (int)$this->input['id']);
         }
 
         parent::post_updateItem($history);
@@ -300,7 +304,7 @@ class UserEmail extends CommonDBChild
 
         // Select this address without changing another user's defaults.
         if (isset($this->fields['is_default']) && ($this->fields["is_default"] == 1)) {
-            (new \itsmng\Database\Repository\UserEmailRepository(\itsmng\Database\Orm::create($DB)))->selectDefault((int)$this->fields['users_id'], (int)$this->fields['id']);
+            (new UserEmailRepository(Orm::create($DB)))->selectDefault((int)$this->fields['users_id'], (int)$this->fields['id']);
         }
 
         parent::post_addItem();
@@ -313,7 +317,7 @@ class UserEmail extends CommonDBChild
 
         // Prefer an existing default, then the oldest surviving address.
         if ($this->fields["is_default"] == 1) {
-            (new \itsmng\Database\Repository\UserEmailRepository(\itsmng\Database\Orm::create($DB)))->selectDefault((int)$this->fields['users_id']);
+            (new UserEmailRepository(Orm::create($DB)))->selectDefault((int)$this->fields['users_id']);
         }
 
         parent::post_deleteFromDB();

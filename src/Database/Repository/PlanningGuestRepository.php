@@ -8,6 +8,7 @@ use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\LockMode;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
 use itsmng\Database\Entity\PlanningExternalEvent;
 use itsmng\Database\Entity\PlanningExternalEventGuest;
 use itsmng\Database\Entity\User;
@@ -23,7 +24,7 @@ final class PlanningGuestRepository
         $ids = [];
         foreach ($values as $value) {
             if ((!is_int($value) && !is_string($value)) || filter_var($value, FILTER_VALIDATE_INT) === false || (int)$value <= 0) {
-                throw new \InvalidArgumentException('Planning guests require positive user IDs');
+                throw new InvalidArgumentException('Planning guests require positive user IDs');
             }
             $ids[(int)$value] = (int)$value;
         }
@@ -44,7 +45,7 @@ final class PlanningGuestRepository
         $this->em->getConnection()->transactional(function () use ($event, $ids): void {
             $record = $this->em->find(PlanningExternalEvent::class, $event);
             if ($record === null) {
-                throw new \InvalidArgumentException('Unknown planning event');
+                throw new InvalidArgumentException('Unknown planning event');
             }
             $this->em->lock($record, LockMode::PESSIMISTIC_WRITE);
             // Validate existence without hydrating each complete user. Bound the
@@ -56,7 +57,7 @@ final class PlanningGuestRepository
                     ->getQuery()->getSingleColumnResult(), true);
                 foreach ($batch as $id) {
                     if (!isset($existing[$id])) {
-                        throw new \InvalidArgumentException('Unknown planning guest: ' . $id);
+                        throw new InvalidArgumentException('Unknown planning guest: ' . $id);
                     }
                 }
             }
@@ -85,7 +86,7 @@ final class PlanningGuestRepository
         }
         $this->em->getConnection()->transactional(function () use ($source, $destination): void {
             if ($destination !== null && $this->em->find(User::class, $destination) === null) {
-                throw new \InvalidArgumentException('Unknown replacement guest');
+                throw new InvalidArgumentException('Unknown replacement guest');
             }
             $events = $this->em->createQueryBuilder()->select('IDENTITY(g.event) AS id')->from(PlanningExternalEventGuest::class, 'g')
                 ->where('g.user = :id')->setParameter('id', $source, Types::INTEGER)->orderBy('g.event')->getQuery()->getScalarResult();

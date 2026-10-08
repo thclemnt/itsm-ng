@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\MappedReads;
+use itsmng\Database\MappedStorage;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CartridgeRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -230,7 +235,7 @@ class Cartridge extends CommonDBChild
     {
         global $DB;
 
-        return (bool)(new \itsmng\Database\MappedStorage($DB))->update($this->getTable(), (int)$input['id'], [
+        return (bool)(new MappedStorage($DB))->update($this->getTable(), (int)$input['id'], [
             'date_out' => null, 'date_use' => null, 'printers_id' => null,
         ]);
     }
@@ -252,9 +257,9 @@ class Cartridge extends CommonDBChild
     {
         global $DB;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            $installed = (new \itsmng\Database\Repository\CartridgeRepository($em))->install((int)$pID, (int)$tID);
+            $installed = (new CartridgeRepository($em))->install((int)$pID, (int)$tID);
         } finally {
             $em->clear();
         }
@@ -285,9 +290,9 @@ class Cartridge extends CommonDBChild
                 $toadd['pages'] = $printer->fields['last_pages_counter'];
             }
 
-            $em = \itsmng\Database\Orm::create($DB);
+            $em = Orm::create($DB);
             try {
-                $changed = (new \itsmng\Database\Repository\CartridgeRepository($em))->endLife((int)$ID, isset($toadd['pages']) ? (int)$toadd['pages'] : null);
+                $changed = (new CartridgeRepository($em))->endLife((int)$ID, isset($toadd['pages']) ? (int)$toadd['pages'] : null);
             } finally {
                 $em->clear();
             }
@@ -433,7 +438,7 @@ class Cartridge extends CommonDBChild
     {
         global $DB;
 
-        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['cartridgeitems_id' => $tID]);
+        return MappedReads::countMatching($DB, self::getTable(), ['cartridgeitems_id' => $tID]);
     }
 
 
@@ -450,7 +455,7 @@ class Cartridge extends CommonDBChild
     {
         global $DB;
 
-        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['printers_id' => $pID]);
+        return MappedReads::countMatching($DB, self::getTable(), ['printers_id' => $pID]);
     }
 
 
@@ -465,7 +470,7 @@ class Cartridge extends CommonDBChild
     {
         global $DB;
 
-        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['cartridgeitems_id' => $tID, 'date_out' => null, 'NOT' => ['date_use' => null]]);
+        return MappedReads::countMatching($DB, self::getTable(), ['cartridgeitems_id' => $tID, 'date_out' => null, 'NOT' => ['date_use' => null]]);
     }
 
 
@@ -482,7 +487,7 @@ class Cartridge extends CommonDBChild
     {
         global $DB;
 
-        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['printers_id' => $pID, 'date_out' => null, 'NOT' => ['date_use' => null]]);
+        return MappedReads::countMatching($DB, self::getTable(), ['printers_id' => $pID, 'date_out' => null, 'NOT' => ['date_use' => null]]);
     }
 
 
@@ -497,7 +502,7 @@ class Cartridge extends CommonDBChild
     {
         global $DB;
 
-        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['cartridgeitems_id' => $tID, 'NOT' => ['date_out' => null]]);
+        return MappedReads::countMatching($DB, self::getTable(), ['cartridgeitems_id' => $tID, 'NOT' => ['date_out' => null]]);
     }
 
 
@@ -514,7 +519,7 @@ class Cartridge extends CommonDBChild
     {
         global $DB;
 
-        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['printers_id' => $pID, 'NOT' => ['date_out' => null]]);
+        return MappedReads::countMatching($DB, self::getTable(), ['printers_id' => $pID, 'NOT' => ['date_out' => null]]);
     }
 
 
@@ -529,7 +534,7 @@ class Cartridge extends CommonDBChild
     {
         global $DB;
 
-        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['cartridgeitems_id' => $tID, 'date_use' => null]);
+        return MappedReads::countMatching($DB, self::getTable(), ['cartridgeitems_id' => $tID, 'date_use' => null]);
     }
 
 
@@ -577,9 +582,9 @@ class Cartridge extends CommonDBChild
         $pages_printed    = 0;
         $nb_pages_printed = 0;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            $rows = (new \itsmng\Database\Repository\CartridgeRepository($em))->forModel((int)$tID, (bool)$show_old);
+            $rows = (new CartridgeRepository($em))->forModel((int)$tID, (bool)$show_old);
         } finally {
             $em->clear();
         }
@@ -764,9 +769,9 @@ class Cartridge extends CommonDBChild
         $canedit = Session::haveRight("cartridge", UPDATE);
         $rand    = mt_rand();
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            $rows = (new \itsmng\Database\Repository\CartridgeRepository($em))->forPrinter((int)$instID, (bool)$old);
+            $rows = (new CartridgeRepository($em))->forPrinter((int)$instID, (bool)$old);
         } finally {
             $em->clear();
         }
@@ -1017,7 +1022,7 @@ class Cartridge extends CommonDBChild
     {
         global $DB, $CFG_GLPI;
 
-        $rows = \itsmng\Database\MappedReads::matching($DB, 'glpi_entities', ['id' => $entity], [], 1);
+        $rows = MappedReads::matching($DB, 'glpi_entities', ['id' => $entity], [], 1);
         $data = reset($rows);
         return !$data || $data['cartridges_alert_repeat'] == -1
             ? $CFG_GLPI['cartridges_alert_repeat'] : $data['cartridges_alert_repeat'];

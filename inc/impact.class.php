@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ImpactRepository;
+use itsmng\Database\Repository\UserRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -101,7 +105,7 @@ class Impact extends CommonGLPI
             $total = 0;
         } elseif ($is_enabled_asset) {
             // If on an asset, get the number of its direct dependencies
-            $total = (new \itsmng\Database\Repository\ImpactRepository(\itsmng\Database\Orm::create($DB)))
+            $total = (new ImpactRepository(Orm::create($DB)))
                 ->relationCount(get_class($item), (int)$item->getID(), self::getEnabledItemtypes());
         }
 
@@ -318,9 +322,9 @@ class Impact extends CommonGLPI
                         || $itemtype_item['node']['ITILObjects']['problems']
                         || $itemtype_item['node']['ITILObjects']['changes']
                     )) {
-                        $em = \itsmng\Database\Orm::create($DB);
+                        $em = Orm::create($DB);
                         try {
-                            $overrides = (new \itsmng\Database\Repository\UserRepository($em))
+                            $overrides = (new UserRepository($em))
                                 ->priorityColors((int)Session::getLoginUserID());
                         } finally {
                             $em->clear();
@@ -925,7 +929,7 @@ class Impact extends CommonGLPI
             $criteria['is_template'] = false;
         }
         $config = Config::getConfigurationValues('core');
-        return (new \itsmng\Database\Repository\ImpactRepository(\itsmng\Database\Orm::create($DB)))->searchAssets(
+        return (new ImpactRepository(Orm::create($DB)))->searchAssets(
             $itemtype::getTable(),
             $itemtype::getNameField(),
             $criteria,
@@ -1173,7 +1177,7 @@ class Impact extends CommonGLPI
         }
 
         // Get relations of the current node
-        $relations = (new \itsmng\Database\Repository\ImpactRepository(\itsmng\Database\Orm::create($DB)))
+        $relations = (new ImpactRepository(Orm::create($DB)))
             ->relations(get_class($node), (int)$node->getID(), $target);
 
         // Add current code to the graph if we found at least one impact relation
@@ -1646,7 +1650,7 @@ class Impact extends CommonGLPI
             return;
         }
 
-        (new \itsmng\Database\Repository\ImpactRepository(\itsmng\Database\Orm::create($DB)))
+        (new ImpactRepository(Orm::create($DB)))
             ->clean(get_class($item), (int)$item->getID());
     }
 

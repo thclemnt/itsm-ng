@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CalendarRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -60,10 +63,10 @@ class CalendarSegment extends CommonDBChild
     }
 
 
-    private static function repository(): \itsmng\Database\Repository\CalendarRepository
+    private static function repository(): CalendarRepository
     {
         global $DB;
-        return new \itsmng\Database\Repository\CalendarRepository(\itsmng\Database\Orm::create($DB));
+        return new CalendarRepository(Orm::create($DB));
     }
 
 

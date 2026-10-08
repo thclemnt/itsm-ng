@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\SharedContentRepository;
+use itsmng\Database\SharedContentAccess;
 use itsmng\Timezone;
 use Glpi\Toolbox\URL;
 use SimplePie\SimplePie;
@@ -940,13 +943,13 @@ class RSSFeed extends CommonDBVisible implements ExtraVisibilityCriteria
         }
         $label = $personal ? _n('Personal RSS feed', 'Personal RSS feeds', Session::getPluralNumber()) : _n('Public RSS feed', 'Public RSS feeds', Session::getPluralNumber());
         $titre = $central ? "<a href='" . $CFG_GLPI['root_doc'] . '/front/rssfeed.php' . "'>" . $label . '</a>' : $label;
-        $access = \itsmng\Database\SharedContentAccess::current(Session::haveRight(self::$rightname, READ));
-        $rows = (new \itsmng\Database\Repository\SharedContentRepository(\itsmng\Database\Orm::create($DB)))->listing(
+        $access = SharedContentAccess::current(Session::haveRight(self::$rightname, READ));
+        $rows = (new SharedContentRepository(Orm::create($DB)))->listing(
             'rssfeed',
             $access,
             $personal,
             Session::getCurrentInterface() == 'central',
-            new \DateTimeImmutable()
+            new DateTimeImmutable()
         );
         $nb = count($rows);
 

@@ -4,16 +4,22 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_phonemodels')]
-#[\itsmng\Database\Mapping\PlatformOptions(\Doctrine\DBAL\Platforms\AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
-#[\itsmng\Database\Mapping\SchemaOwner]
-#[\itsmng\Database\Mapping\SchemaIndex('name', ['name'], postgresqlName: 'glpi_phonemodels_name')]
-#[\itsmng\Database\Mapping\SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_phonemodels_date_mod')]
-#[\itsmng\Database\Mapping\SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_phonemodels_date_creation')]
-#[\itsmng\Database\Mapping\SchemaIndex('product_number', ['product_number'], postgresqlName: 'glpi_phonemodels_product_number')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
+#[SchemaOwner]
+#[SchemaIndex('name', ['name'], postgresqlName: 'glpi_phonemodels_name')]
+#[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_phonemodels_date_mod')]
+#[SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_phonemodels_date_creation')]
+#[SchemaIndex('product_number', ['product_number'], postgresqlName: 'glpi_phonemodels_product_number')]
 class PhoneModel
 {
     #[ORM\Id]
@@ -31,10 +37,10 @@ class PhoneModel
     public ?string $product_number = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 }

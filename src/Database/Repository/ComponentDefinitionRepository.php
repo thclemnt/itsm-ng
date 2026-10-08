@@ -7,6 +7,8 @@ namespace itsmng\Database\Repository;
 use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Query;
+use InvalidArgumentException;
+use Item_Devices;
 use itsmng\Database\EntityRegistry;
 
 /** Current owning definition and binding records for one component command. */
@@ -17,7 +19,7 @@ final class ComponentDefinitionRepository
     }
 
     /** Only closed, property-owned subject families enter the delegated command. */
-    public static function supportsFamily(\Item_Devices $model, string $definitionTable, ?string $column = null): bool
+    public static function supportsFamily(Item_Devices $model, string $definitionTable, ?string $column = null): bool
     {
         $table = $model->getTable();
         $column ??= $model::getDeviceForeignKey();
@@ -47,7 +49,7 @@ final class ComponentDefinitionRepository
     {
         $class = EntityRegistry::tables()[$table] ?? null;
         if ($class === null) {
-            throw new \InvalidArgumentException('Component ownership requires a mapped record.');
+            throw new InvalidArgumentException('Component ownership requires a mapped record.');
         }
         $query = $this->em->createQueryBuilder()->select('component')->from($class, 'component')
             ->where('component.id = :id')->setParameter('id', $id, 'bigint')->getQuery();

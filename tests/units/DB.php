@@ -33,6 +33,10 @@
 
 namespace tests\units;
 
+use DB as LegacyDB;
+use InvalidArgumentException;
+use itsmng\Database\PostgresParameters;
+
 /* Test for inc/dbmysql.class.php */
 
 class DB extends \GLPITestCase
@@ -42,20 +46,20 @@ class DB extends \GLPITestCase
         $columns = implode(', ', array_map(static fn (int $number): string =>
             'asset_alias.column_' . $number . ' AS scalar_' . $number, range(1, 160)));
         $plain = 'SELECT ' . $columns . ' FROM assets asset_alias WHERE asset_alias.id = ?';
-        $this->string(\itsmng\Database\PostgresParameters::prepare($plain))->isIdenticalTo($plain);
+        $this->string(PostgresParameters::prepare($plain))->isIdenticalTo($plain);
         $opaque = <<<'SQL'
 SELECT "identifier""$1", '$2 -- /* ??', E'escaped\\backslash\'quote', café$embedded, alias$1, 100 / 2 - 1
 -- $3 ? /* literal line comment
 FROM assets WHERE id = ?
 SQL;
-        $this->string(\itsmng\Database\PostgresParameters::prepare($opaque))->isIdenticalTo($opaque);
+        $this->string(PostgresParameters::prepare($opaque))->isIdenticalTo($opaque);
         $source = <<<'SQL'
 SELECT $tag$dollar $1 ? /* body */ 'quoted'\path$tag$, $$untagged$$, /* outer /* inner */ tail */ ?
 SQL;
         $expected = <<<'SQL'
 SELECT E'dollar $1 ? /* body */ ''quoted''\\path', E'untagged', /* outer    inner    tail */ ?
 SQL;
-        $this->string(\itsmng\Database\PostgresParameters::prepare($source))->isIdenticalTo($expected);
+        $this->string(PostgresParameters::prepare($source))->isIdenticalTo($expected);
     }
 
     public function testPostgresNumberedParametersRetainOrderTypesAndJsonOperators(): void
@@ -70,9 +74,9 @@ SELECT long_identifier, "quoted$1", '$2', $tag$ignored $3 ?$tag$, café$1, alias
 WHERE second = ? AND first = ? AND again = ? AND doc ?? 'key' AND doc ??| ARRAY['a'] AND doc ??& ARRAY['b']
 /* $3 /* nested $4 */ ? */ -- $5 ?
 SQL;
-        $this->array(\itsmng\Database\PostgresParameters::bind($source, [false, null]))
+        $this->array(PostgresParameters::bind($source, [false, null]))
             ->isIdenticalTo([$expected, [null, false, null]]);
-        $this->array(\itsmng\Database\PostgresParameters::bind('SELECT $1, $2, $1', ['literal ? $9', 42]))
+        $this->array(PostgresParameters::bind('SELECT $1, $2, $1', ['literal ? $9', 42]))
             ->isIdenticalTo(['SELECT ?, ?, ?', ['literal ? $9', 42, 'literal ? $9']]);
     }
 
@@ -80,15 +84,15 @@ SQL;
     {
         foreach (["'unterminated", '"unterminated', '$tag$unterminated', '/* outer /* inner */'] as $suffix) {
             $sql = 'SELECT ordinary_projection, other_projection FROM ordinary_table WHERE value = ' . $suffix;
-            $this->exception(static fn () => \itsmng\Database\PostgresParameters::prepare($sql))
-                ->isInstanceOf(\InvalidArgumentException::class);
-            $this->exception(static fn () => \itsmng\Database\PostgresParameters::bind($sql, [1]))
-                ->isInstanceOf(\InvalidArgumentException::class);
+            $this->exception(static fn () => PostgresParameters::prepare($sql))
+                ->isInstanceOf(InvalidArgumentException::class);
+            $this->exception(static fn () => PostgresParameters::bind($sql, [1]))
+                ->isInstanceOf(InvalidArgumentException::class);
         }
         foreach ([['SELECT ordinary_name, $0', [1]], ['SELECT ordinary_name, $2', [1]],
             ['SELECT ordinary_name, $1', [1, 2]]] as [$sql, $values]) {
-            $this->exception(static fn () => \itsmng\Database\PostgresParameters::bind($sql, $values))
-                ->isInstanceOf(\InvalidArgumentException::class);
+            $this->exception(static fn () => PostgresParameters::bind($sql, $values))
+                ->isInstanceOf(InvalidArgumentException::class);
         }
     }
 
@@ -146,7 +150,7 @@ SQL;
     {
         global $DB;
         $expected = $DB->getProvider() === 'pgsql' ? $pgsqlExpected : $mysqlExpected;
-        $this->string(\DB::quoteName($raw))->isIdenticalTo($expected);
+        $this->string(LegacyDB::quoteName($raw))->isIdenticalTo($expected);
     }
 
     protected function dataValue()

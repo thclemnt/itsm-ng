@@ -11,6 +11,7 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Tools\SchemaTool;
+use atoum\atoum\test;
 use itsmng\Database\BaselineSchema;
 use itsmng\Database\Entity\Alert;
 use itsmng\Database\Entity\Computer;
@@ -31,7 +32,7 @@ use ReflectionProperty;
 require_once dirname(__DIR__, 3) . '/fixtures/DisconnectedSchemaConnection.php';
 require_once dirname(__DIR__, 3) . '/fixtures/NativeTemporalProbe.php';
 
-class NativeTimestampSchema extends \atoum\atoum\test
+class NativeTimestampSchema extends test
 {
     public function testInitialTemporalCohortOwnsStorageReplacementAndTouchDdl(): void
     {

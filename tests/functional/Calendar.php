@@ -33,6 +33,7 @@
 
 namespace tests\units;
 
+use Calendar_Holiday;
 use DbTestCase;
 
 /* Test for inc/calendar.class.php */
@@ -55,13 +56,13 @@ class Calendar extends DbTestCase
             $_SESSION['glpiactiveprofile']['calendar'] = READ;
             $this->boolean($calendar->can($calendar->getID(), READ))->isTrue();
             $this->boolean($link->canCreateItem())->isFalse('DONT_CHECK is not an alternate write grant when the Calendar is only readable');
-            $this->boolean((new \Calendar_Holiday())->can(-1, CREATE, $input))->isFalse();
+            $this->boolean((new Calendar_Holiday())->can(-1, CREATE, $input))->isFalse();
             $this->boolean($link->can($id, PURGE))->isFalse();
 
             $_SESSION['glpiactiveprofile']['calendar'] = UPDATE;
             $this->boolean($holiday->can($holiday->getID(), READ))->isFalse();
             $this->boolean($link->canCreateItem())->isTrue('The declared secondary DONT_CHECK role does not require Holiday READ');
-            $this->boolean((new \Calendar_Holiday())->can(-1, CREATE, $input))->isTrue();
+            $this->boolean((new Calendar_Holiday())->can(-1, CREATE, $input))->isTrue();
             $added = $this->createItem('Calendar_Holiday', $input);
             $addedId = (int)$added->getID();
             $this->boolean($added->can($addedId, PURGE))->isTrue();
@@ -72,10 +73,10 @@ class Calendar extends DbTestCase
             $this->boolean($link->can($id, PURGE))->isTrue();
 
             $invalid = ['calendars_id' => (int)$calendar->getID(), 'holidays_id' => -1];
-            $this->boolean((new \Calendar_Holiday())->can(-1, CREATE, $invalid))->isFalse();
+            $this->boolean((new Calendar_Holiday())->can(-1, CREATE, $invalid))->isFalse();
             $_SESSION['glpiactiveentities'] = [];
             $_SESSION['glpishowallentities'] = false;
-            $this->boolean((new \Calendar_Holiday())->can(-1, CREATE, $input))->isFalse('Calendar entity scope still owns closure admission');
+            $this->boolean((new Calendar_Holiday())->can(-1, CREATE, $input))->isFalse('Calendar entity scope still owns closure admission');
             $this->boolean($link->can($id, PURGE))->isFalse();
         } finally {
             $_SESSION = $savedSession;

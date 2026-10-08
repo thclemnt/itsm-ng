@@ -4,7 +4,10 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
@@ -14,7 +17,7 @@ class Reservation
 {
     #[ORM\ManyToOne(targetEntity: ReservationItem::class)]
     #[ORM\JoinColumn(name: 'reservationitems_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?ReservationItem $reservationitems = null;
 
     #[ORM\Id]
@@ -23,12 +26,12 @@ class Reservation
     public ?int $id = null;
 
     #[ORM\Column(name: '`begin`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $begin = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $begin = null;
 
     #[ORM\Column(name: '`end`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $end = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $end = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]

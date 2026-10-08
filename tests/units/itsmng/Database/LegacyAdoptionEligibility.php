@@ -4,6 +4,8 @@
 
 namespace tests\units\itsmng\Database;
 
+use RuntimeException;
+use atoum\atoum\test;
 use itsmng\Database\LegacyAdoptionEligibility as Admission;
 use itsmng\Database\Migration\V220\Baseline;
 use itsmng\Database\Migration\V220\DomainDocuments;
@@ -13,7 +15,7 @@ use itsmng\Database\Migration\V220\References;
 use itsmng\Database\Migration\V220\Seeds;
 
 /** Admission is pure; native refusal and retry remain in migration-history. */
-class LegacyAdoptionEligibility extends \atoum\atoum\test
+class LegacyAdoptionEligibility extends test
 {
     public function testHistoricalAndExperimentalProvenance(): void
     {
@@ -82,7 +84,7 @@ class LegacyAdoptionEligibility extends \atoum\atoum\test
     {
         $before = serialize([$release, $states]);
         $this->exception(static fn () => Admission::proof($release, $states, '2.2.0', '2.2.0'))
-            ->isInstanceOf(\RuntimeException::class)->message->contains($diagnostic);
+            ->isInstanceOf(RuntimeException::class)->message->contains($diagnostic);
         $this->string(serialize([$release, $states]))->isIdenticalTo($before);
     }
 }

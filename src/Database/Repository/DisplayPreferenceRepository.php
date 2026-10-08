@@ -8,6 +8,8 @@ use Doctrine\DBAL\LockMode;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
+use InvalidArgumentException;
+use RuntimeException;
 use itsmng\Database\Entity\DisplayPreference;
 use itsmng\Database\Entity\Entity;
 use itsmng\Database\Entity\User;
@@ -28,7 +30,7 @@ final class DisplayPreferenceRepository
     private function scope(QueryBuilder $query, int $owner): QueryBuilder
     {
         if ($owner < 0) {
-            throw new \InvalidArgumentException('Invalid display preference owner');
+            throw new InvalidArgumentException('Invalid display preference owner');
         }
         return $owner === 0 ? $query->andWhere('p.owner IS NULL')
             : $query->andWhere('IDENTITY(p.owner) = :owner')->setParameter('owner', $owner, Types::INTEGER);
@@ -37,13 +39,13 @@ final class DisplayPreferenceRepository
     private function lockOwner(int $owner): ?User
     {
         if ($owner < 0) {
-            throw new \InvalidArgumentException('Invalid display preference owner');
+            throw new InvalidArgumentException('Invalid display preference owner');
         }
         if ($owner === 0) {
             // The real root entity anchors application-wide defaults, even when
             // a type has no preference rows yet. No synthetic user is required.
             if ($this->em->find(Entity::class, 0, LockMode::PESSIMISTIC_WRITE) === null) {
-                throw new \RuntimeException('Missing root entity for default display preferences');
+                throw new RuntimeException('Missing root entity for default display preferences');
             }
             return null;
         }

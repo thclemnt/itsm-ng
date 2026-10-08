@@ -4,6 +4,9 @@
 
 namespace itsmng\Database\Repository;
 
+use CronTask as LegacyCronTask;
+use CronTaskLog;
+use DateTimeImmutable;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
@@ -45,9 +48,9 @@ final class CronTaskRepository
     }
 
     /** Normal runs observe windows/locks; forced runs only require an allowed mode and an idle task. */
-    public function next(int $mode, string $name, array $activePlugins, array $locks = [], ?\DateTimeImmutable $now = null): ?array
+    public function next(int $mode, string $name, array $activePlugins, array $locks = [], ?DateTimeImmutable $now = null): ?array
     {
-        $now ??= new \DateTimeImmutable();
+        $now ??= new DateTimeImmutable();
         $query = $this->em->createQueryBuilder()->select('t')->from(CronTask::class, 't');
         $plugins = ['(NOT (' . $this->prefix($query, 'Plugin', 'legacy') . ') AND NOT ('
             . $this->prefix($query, 'GlpiPlugin\\', 'namespaced') . '))'];
@@ -60,9 +63,9 @@ final class CronTaskRepository
         }
         if ($mode < 0) {
             $query->andWhere('t.state <> :running AND BIT_AND(t.allowmode, :mode) <> 0')
-                ->setParameter('running', \CronTask::STATE_RUNNING, Types::INTEGER)->setParameter('mode', -$mode, Types::INTEGER);
+                ->setParameter('running', LegacyCronTask::STATE_RUNNING, Types::INTEGER)->setParameter('mode', -$mode, Types::INTEGER);
         } else {
-            $query->andWhere('t.state = :waiting')->setParameter('waiting', \CronTask::STATE_WAITING, Types::INTEGER);
+            $query->andWhere('t.state = :waiting')->setParameter('waiting', LegacyCronTask::STATE_WAITING, Types::INTEGER);
             if ($mode > 0) {
                 $query->andWhere('t.mode = :mode')->setParameter('mode', $mode, Types::INTEGER);
             }
@@ -84,24 +87,24 @@ final class CronTaskRepository
     }
 
     /** Preserve the strict two-frequency OR two-hour watcher threshold. */
-    public function overdue(?\DateTimeImmutable $now = null): array
+    public function overdue(?DateTimeImmutable $now = null): array
     {
         return $this->rows($this->overdueQuery($now)->select('t'));
     }
 
     /** Public health needs names only, including independently registered duplicate names. */
-    public function overdueNames(?\DateTimeImmutable $now = null): array
+    public function overdueNames(?DateTimeImmutable $now = null): array
     {
         return array_column($this->overdueQuery($now)->select('t.name AS name')
             ->getQuery()->getScalarResult(), 'name');
     }
 
-    private function overdueQuery(?\DateTimeImmutable $now): QueryBuilder
+    private function overdueQuery(?DateTimeImmutable $now): QueryBuilder
     {
         // Operational status follows the selected database clock, not the session or PHP clock.
         $clock = $now === null ? 'CURRENT_EPOCH_SECONDS()' : ':now';
         $query = $this->em->createQueryBuilder()->from(CronTask::class, 't')
-            ->where('t.state = :running')->setParameter('running', \CronTask::STATE_RUNNING, Types::INTEGER)
+            ->where('t.state = :running')->setParameter('running', LegacyCronTask::STATE_RUNNING, Types::INTEGER)
             ->andWhere('t.lastrun IS NOT NULL')
             ->andWhere('(EPOCH_SECONDS(t.lastrun) + 2 * t.frequency < ' . $clock
                 . ' OR EPOCH_SECONDS(t.lastrun) + 7200 < ' . $clock . ')')->orderBy('t.id');
@@ -112,9 +115,9 @@ final class CronTaskRepository
     }
 
     /** Decide whether to notify without dispatching notifications or running a task. */
-    public function needsErrorNotification(int $task, int $threshold = 5, ?\DateTimeImmutable $now = null): bool
+    public function needsErrorNotification(int $task, int $threshold = 5, ?DateTimeImmutable $now = null): bool
     {
-        $cutoff = ($now ?? new \DateTimeImmutable())->modify('-1 day');
+        $cutoff = ($now ?? new DateTimeImmutable())->modify('-1 day');
         if ((new RecordRepository($this->em))->countMatching('glpi_alerts', [
             'crontasks_id' => $task, 'date' => ['>', $cutoff],
         ])) {
@@ -122,7 +125,7 @@ final class CronTaskRepository
         }
         $errors = 0;
         foreach ((new CronLogRepository($this->em))->history($task, $threshold * 2, 0) as $row) {
-            $errors += (int)$row['state'] === \CronTaskLog::STATE_ERROR ? 1 : 0;
+            $errors += (int)$row['state'] === CronTaskLog::STATE_ERROR ? 1 : 0;
         }
         return $errors >= $threshold;
     }

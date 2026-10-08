@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NetworkPortAggregateRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -317,7 +321,7 @@ class NetworkPortInstantiation extends CommonDBChild
         if (($this->canHaveVirtualPort) && ($display_options['virtual_ports'])) {
             $virtual_header = $row->getHeaderByName('Instantiation', 'VirtualPorts');
 
-            $iterator = new \itsmng\Database\RowIterator((new \itsmng\Database\Repository\NetworkPortAggregateRepository(\itsmng\Database\Orm::create($DB)))
+            $iterator = new RowIterator((new NetworkPortAggregateRepository(Orm::create($DB)))
                 ->virtualPorts((int)$netport->getID()));
 
             if (count($iterator)) {
@@ -739,7 +743,7 @@ class NetworkPortInstantiation extends CommonDBChild
 
         $macAddresses = [];
         foreach ($netport_types as $netport_type) {
-            $iterator = new \itsmng\Database\RowIterator((new \itsmng\Database\Repository\NetworkPortAggregateRepository(\itsmng\Database\Orm::create($DB)))
+            $iterator = new RowIterator((new NetworkPortAggregateRepository(Orm::create($DB)))
                 ->availablePorts($lastItem->getType(), (int)$lastItem->getID(), $netport_type));
 
             if (count($iterator)) {

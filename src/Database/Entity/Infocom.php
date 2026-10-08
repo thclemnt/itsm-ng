@@ -4,9 +4,14 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeImmutable;
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\VirtualAssetLink;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_infocoms')]
@@ -14,12 +19,12 @@ use itsmng\Database\Mapping\ReferencePolicy;
 class Infocom
 {
     /** Calendar months clamp the purchase day to the last day of the expiry month. */
-    public function warrantyExpiresOn(): ?\DateTimeImmutable
+    public function warrantyExpiresOn(): ?DateTimeImmutable
     {
         if ($this->warranty_date === null || $this->warranty_duration <= 0) {
             return null;
         }
-        $start = \DateTimeImmutable::createFromInterface($this->warranty_date)->setTime(0, 0);
+        $start = DateTimeImmutable::createFromInterface($this->warranty_date)->setTime(0, 0);
         $month = $start->modify('first day of this month')->modify('+' . $this->warranty_duration . ' months');
         return $month->setDate((int)$month->format('Y'), (int)$month->format('m'), min((int)$start->format('d'), (int)$month->format('t')));
     }
@@ -30,7 +35,7 @@ class Infocom
     public ?int $id = null;
 
     #[ORM\Column(name: '`items_id`', type: 'bigint', nullable: false, options: ['default' => '0'])]
-    #[\itsmng\Database\Mapping\VirtualAssetLink("itemtype")]
+    #[VirtualAssetLink("itemtype")]
     public int $items_id = 0;
 
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 100, nullable: false)]
@@ -39,17 +44,17 @@ class Infocom
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
     #[ReferencePolicy(ReferenceKind::RootEntity)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_recursive = false;
 
     #[ORM\Column(name: '`buy_date`', type: 'date', nullable: true)]
-    public ?\DateTimeInterface $buy_date = null;
+    public ?DateTimeInterface $buy_date = null;
 
     #[ORM\Column(name: '`use_date`', type: 'date', nullable: true)]
-    public ?\DateTimeInterface $use_date = null;
+    public ?DateTimeInterface $use_date = null;
 
     #[ORM\Column(name: '`warranty_duration`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $warranty_duration = 0;
@@ -101,28 +106,28 @@ class Infocom
     public int $alert = 0;
 
     #[ORM\Column(name: '`order_date`', type: 'date', nullable: true)]
-    public ?\DateTimeInterface $order_date = null;
+    public ?DateTimeInterface $order_date = null;
 
     #[ORM\Column(name: '`delivery_date`', type: 'date', nullable: true)]
-    public ?\DateTimeInterface $delivery_date = null;
+    public ?DateTimeInterface $delivery_date = null;
 
     #[ORM\Column(name: '`inventory_date`', type: 'date', nullable: true)]
-    public ?\DateTimeInterface $inventory_date = null;
+    public ?DateTimeInterface $inventory_date = null;
 
     #[ORM\Column(name: '`warranty_date`', type: 'date', nullable: true)]
-    public ?\DateTimeInterface $warranty_date = null;
+    public ?DateTimeInterface $warranty_date = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 
     #[ORM\Column(name: '`decommission_date`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $decommission_date = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $decommission_date = null;
 
     #[ORM\ManyToOne(targetEntity: BusinessCriticity::class)]
     #[ORM\JoinColumn(name: 'businesscriticities_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]

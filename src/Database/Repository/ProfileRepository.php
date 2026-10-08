@@ -10,6 +10,8 @@ use Doctrine\ORM\QueryBuilder;
 use itsmng\Database\Entity\Profile;
 use itsmng\Database\Entity\ProfileRight;
 
+use function importArrayFromDB;
+
 final class ProfileRepository
 {
     public function __construct(private EntityManager $em)
@@ -20,7 +22,7 @@ final class ProfileRepository
     public function helpdeskItemTypes(int $id): array
     {
         $profile = $this->em->getRepository(Profile::class)->find($id);
-        return \importArrayFromDB($profile?->helpdesk_item_type);
+        return importArrayFromDB($profile?->helpdesk_item_type);
     }
 
     /** Match the full registered right set, including explicit zero-valued rights. */

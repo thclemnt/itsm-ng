@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\LegacyValues;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DisplayPreferenceRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -57,8 +61,8 @@ class DisplayPreference extends CommonDBTM
     public function prepareInputForAdd($input)
     {
         global $DB;
-        $input['rank'] = (new \itsmng\Database\Repository\DisplayPreferenceRepository(\itsmng\Database\Orm::create($DB)))
-            ->nextRank(\itsmng\Database\LegacyValues::decode($input['itemtype']), (int)$input['users_id']);
+        $input['rank'] = (new DisplayPreferenceRepository(Orm::create($DB)))
+            ->nextRank(LegacyValues::decode($input['itemtype']), (int)$input['users_id']);
         return $input;
     }
 
@@ -111,7 +115,7 @@ class DisplayPreference extends CommonDBTM
     public static function getForTypeUser($itemtype, $user_id)
     {
         global $DB;
-        return (new \itsmng\Database\Repository\DisplayPreferenceRepository(\itsmng\Database\Orm::create($DB)))
+        return (new DisplayPreferenceRepository(Orm::create($DB)))
             ->columns($itemtype, (int)$user_id);
     }
 
@@ -128,8 +132,8 @@ class DisplayPreference extends CommonDBTM
         if ($owner <= 0 || !self::canConfigureOwner($owner)) {
             return false;
         }
-        $type = \itsmng\Database\LegacyValues::decode($input['itemtype']);
-        $repository = new \itsmng\Database\Repository\DisplayPreferenceRepository(\itsmng\Database\Orm::create($DB));
+        $type = LegacyValues::decode($input['itemtype']);
+        $repository = new DisplayPreferenceRepository(Orm::create($DB));
         $fallback = null;
         if (!$repository->rows($type, 0)) {
             foreach (Search::getOptions($type) as $key => $value) {
@@ -162,8 +166,8 @@ class DisplayPreference extends CommonDBTM
         if (!self::canConfigureOwner((int)$input['users_id'])) {
             return false;
         }
-        return (new \itsmng\Database\Repository\DisplayPreferenceRepository(\itsmng\Database\Orm::create($DB)))
-            ->move(\itsmng\Database\LegacyValues::decode($input['itemtype']), (int)$input['users_id'], (int)$input['id'], $action);
+        return (new DisplayPreferenceRepository(Orm::create($DB)))
+            ->move(LegacyValues::decode($input['itemtype']), (int)$input['users_id'], (int)$input['id'], $action);
     }
 
 
@@ -192,7 +196,7 @@ class DisplayPreference extends CommonDBTM
         $IDuser = Session::getLoginUserID();
         $personal_write = Session::haveRight(self::$rightname, self::PERSONAL);
         // Defined items
-        $preferences = (new \itsmng\Database\Repository\DisplayPreferenceRepository(\itsmng\Database\Orm::create($DB)))
+        $preferences = (new DisplayPreferenceRepository(Orm::create($DB)))
             ->rows($itemtype, (int)$IDuser);
         $numrows = count($preferences);
 
@@ -438,7 +442,7 @@ class DisplayPreference extends CommonDBTM
         $global_write = Session::haveRight(self::$rightname, self::GENERAL);
 
         // Defined items
-        $preferences = (new \itsmng\Database\Repository\DisplayPreferenceRepository(\itsmng\Database\Orm::create($DB)))
+        $preferences = (new DisplayPreferenceRepository(Orm::create($DB)))
             ->rows($itemtype, (int)$IDuser);
         $numrows = count($preferences);
 
@@ -587,7 +591,7 @@ class DisplayPreference extends CommonDBTM
 
         $url = Toolbox::getItemTypeFormURL(__CLASS__);
 
-        $preferences = (new \itsmng\Database\Repository\DisplayPreferenceRepository(\itsmng\Database\Orm::create($DB)))
+        $preferences = (new DisplayPreferenceRepository(Orm::create($DB)))
             ->countsByType((int)$users_id);
 
         if (count($preferences) > 0) {

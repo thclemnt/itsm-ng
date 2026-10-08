@@ -31,6 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\ConnexityInput;
+use itsmng\Database\DeletionUnit;
+use itsmng\Database\MappedStorage;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -97,8 +103,8 @@ abstract class CommonDBConnexity extends CommonDBTM
             return false;
         }
         try {
-            return \itsmng\Database\ConnexityInput::normalize($this, $input);
-        } catch (\InvalidArgumentException) {
+            return ConnexityInput::normalize($this, $input);
+        } catch (InvalidArgumentException) {
             $this->reportInvalidLifecycleEndpointInput($input);
             return false;
         }
@@ -111,8 +117,8 @@ abstract class CommonDBConnexity extends CommonDBTM
 
     final protected function authorizeLifecycleUpdate(array $input): array|false
     {
-        if (\itsmng\Database\ConnexityInput::endpoints($this)
-            && !$this->checkAttachedItemChangesAllowed($input, \itsmng\Database\ConnexityInput::fields($this))) {
+        if (ConnexityInput::endpoints($this)
+            && !$this->checkAttachedItemChangesAllowed($input, ConnexityInput::fields($this))) {
             return false;
         }
         return $input;
@@ -120,7 +126,7 @@ abstract class CommonDBConnexity extends CommonDBTM
 
     final protected function finalizeLifecycleUpdate(array $storedFields): bool
     {
-        if (!\itsmng\Database\ConnexityInput::endpoints($this)) {
+        if (!ConnexityInput::endpoints($this)) {
             return parent::finalizeLifecycleUpdate($storedFields);
         }
         $original = clone $this;
@@ -129,7 +135,7 @@ abstract class CommonDBConnexity extends CommonDBTM
         // projection. A callback can cancel a prepared write or supply a new
         // owning column without retaining the old read-only generated identity.
         $writes = array_intersect_key($this->fields, array_fill_keys($this->updates, true));
-        foreach (\itsmng\Database\ConnexityInput::endpoints($this) as $identity => $endpoint) {
+        foreach (ConnexityInput::endpoints($this) as $identity => $endpoint) {
             $kind = array_key_exists($endpoint['discriminator'], $writes)
                 ? $writes[$endpoint['discriminator']] : $storedFields[$endpoint['discriminator']];
             $column = is_string($kind) || is_int($kind) ? ($endpoint['selections'][$kind]['column'] ?? null) : null;
@@ -232,7 +238,7 @@ abstract class CommonDBConnexity extends CommonDBTM
             }
             foreach ($ids as $id) {
                 $input[$this->getIndexName()] = $id;
-                \itsmng\Database\DeletionUnit::requireSuccess($DB->getDoctrineConnection(), (bool)$this->delete($input, 1));
+                DeletionUnit::requireSuccess($DB->getDoctrineConnection(), (bool)$this->delete($input, 1));
             }
         }
     }
@@ -289,10 +295,10 @@ abstract class CommonDBConnexity extends CommonDBTM
         if ($criteria === null) {
             return $res;
         }
-        if (\itsmng\Database\MappedStorage::supports(static::getTable())
+        if (MappedStorage::supports(static::getTable())
             && !array_diff(array_keys($criteria), ['SELECT', 'FROM', 'WHERE'])
             && ($criteria['FROM'] ?? null) === static::getTable() && is_array($criteria['WHERE'] ?? null)) {
-            $ids = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+            $ids = (new RecordRepository(Orm::create($DB)))
                 ->identifiers(static::getTable(), static::getIndexName(), $criteria['WHERE']);
         } else {
             $ids = array_column(iterator_to_array(static::getItemsAssociationRequest($itemtype, $items_id)), 'id');

@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\KnowledgeBaseAccess;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\KnowledgeBaseRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -257,8 +261,8 @@ JAVASCRIPT;
         $inst = new KnowbaseItemCategory();
         $language = DropdownTranslation::canBeTranslated($inst)
             && Session::haveTranslations($inst->getType(), 'name') ? $_SESSION['glpilanguage'] : null;
-        $tree = (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
-            ->categoryTree(\itsmng\Database\KnowledgeBaseAccess::current(), $language);
+        $tree = (new KnowledgeBaseRepository(Orm::create($DB)))
+            ->categoryTree(KnowledgeBaseAccess::current(), $language);
         $categories = $tree['categories'];
 
         // Children precede parents, so retain visible ancestors in one pass.

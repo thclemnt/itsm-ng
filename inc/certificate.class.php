@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CertificateRepository;
+
 /**
  * @since 9.2
  */
@@ -823,9 +826,9 @@ class Certificate extends CommonDBTM
         $message      = [];
         foreach (array_keys(Entity::getEntitiesToNotify('use_certificates_alert')) as $entity) {
             $before = Entity::getUsedConfig('send_certificates_alert_before_delay', $entity);
-            $em = \itsmng\Database\Orm::create($DB);
+            $em = Orm::create($DB);
             try {
-                $result = (new \itsmng\Database\Repository\CertificateRepository($em))->expiring((int)$entity, (int)$before);
+                $result = (new CertificateRepository($em))->expiring((int)$entity, (int)$before);
             } finally {
                 $em->clear();
             }

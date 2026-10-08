@@ -6,6 +6,7 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
 use itsmng\Database\Entity\RequestType;
 
 /** Classification queries use typed mappings and keep template identities separate. */
@@ -23,7 +24,7 @@ final class ITILClassificationRepository
             'TicketTemplate' => ['tickettemplates_id_incident', 'tickettemplates_id_demand'],
             'ChangeTemplate' => ['changetemplates_id'],
             'ProblemTemplate' => ['problemtemplates_id'],
-            default => throw new \InvalidArgumentException('Unsupported ITIL template type'),
+            default => throw new InvalidArgumentException('Unsupported ITIL template type'),
         };
     }
 
@@ -55,7 +56,7 @@ final class ITILClassificationRepository
         $query = $this->em->createQueryBuilder()->update(RequestType::class, 'r');
         foreach ($fields as $field) {
             if (!in_array($field, $allowed, true)) {
-                throw new \InvalidArgumentException('Unsupported request source');
+                throw new InvalidArgumentException('Unsupported request source');
             }
             $query->set('r.' . $field, ':disabled');
         }

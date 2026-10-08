@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\LegacyValues;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\KnowledgeBaseRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -67,7 +71,7 @@ class KnowbaseItem_Revision extends CommonDBTM
                 ];
             }
 
-            $nb = (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
+            $nb = (new KnowledgeBaseRepository(Orm::create($DB)))
                 ->revisionCount((int)$where['knowbaseitems_id'], $where['language']);
         }
         return self::createTabEntry(self::getTypeName($nb), $nb);
@@ -110,7 +114,7 @@ class KnowbaseItem_Revision extends CommonDBTM
             ];
         }
 
-        $repository = new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB));
+        $repository = new KnowledgeBaseRepository(Orm::create($DB));
         $number = $repository->revisionCount((int)$where['knowbaseitems_id'], $where['language']);
 
         // No revisions in database
@@ -340,7 +344,7 @@ class KnowbaseItem_Revision extends CommonDBTM
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
-            ->nextRevision((int)$this->fields['knowbaseitems_id'], \itsmng\Database\LegacyValues::decode($this->fields['language']));
+        return (new KnowledgeBaseRepository(Orm::create($DB)))
+            ->nextRevision((int)$this->fields['knowbaseitems_id'], LegacyValues::decode($this->fields['language']));
     }
 }

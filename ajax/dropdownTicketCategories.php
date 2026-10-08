@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\TicketCategoryRepository;
+
 if (strpos($_SERVER['PHP_SELF'], "dropdownTicketCategories.php")) {
     include('../inc/includes.php');
     header("Content-Type: text/html; charset=UTF-8");
@@ -45,9 +48,9 @@ $active = array_map('intval', $_SESSION['glpiactiveentities'] ?? []);
 $requested = array_filter((array)($_POST['entity_restrict'] ?? $active), static fn ($id) => filter_var($id, FILTER_VALIDATE_INT) !== false);
 $requested = array_map('intval', $requested);
 $entities = array_values(array_intersect($active, $requested));
-$em = \itsmng\Database\Orm::create($DB);
+$em = Orm::create($DB);
 try {
-    $values = (new \itsmng\Database\Repository\TicketCategoryRepository($em))->choices(
+    $values = (new TicketCategoryRepository($em))->choices(
         (int)($_POST['type'] ?? 0),
         $entities,
         Session::getCurrentInterface() === 'helpdesk'

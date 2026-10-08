@@ -4,6 +4,7 @@
 
 namespace itsmng\Search\Provider;
 
+use CommonDBTM;
 use itsmng\Database\EntityRegistry;
 
 /** Resolve a virtual asset field before rendering a concrete union member. */
@@ -11,7 +12,7 @@ final class UnionMember
 {
     private ?array $columns;
 
-    public function __construct(private string $virtualTable, private \CommonDBTM $item)
+    public function __construct(private string $virtualTable, private CommonDBTM $item)
     {
         $table = $item::getTable();
         $this->columns = isset(EntityRegistry::tables()[$table])

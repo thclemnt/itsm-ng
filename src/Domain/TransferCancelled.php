@@ -4,8 +4,10 @@
 
 namespace itsmng\Domain;
 
+use RuntimeException;
+
 /** A selected, required transfer mutation was refused by its public lifecycle. */
-final class TransferCancelled extends \RuntimeException
+final class TransferCancelled extends RuntimeException
 {
     public static function requireWrite(mixed $result, string $operation): mixed
     {

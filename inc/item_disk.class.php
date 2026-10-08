@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\InventoryRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -283,7 +286,7 @@ class Item_Disk extends CommonDBChild
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\InventoryRepository(\itsmng\Database\Orm::create($DB)))
+        return (new InventoryRepository(Orm::create($DB)))
             ->disks($item->getType(), (int)$item->getID());
     }
 

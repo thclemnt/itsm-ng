@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CostRepository;
 use itsmng\Timezone;
 
 if (!defined('GLPI_ROOT')) {
@@ -371,10 +373,10 @@ abstract class CommonITILCost extends CommonDBChild
     {
         global $DB;
 
-        if (\itsmng\Database\Repository\CostRepository::supports(static::getType())) {
-            $em = \itsmng\Database\Orm::create($DB);
+        if (CostRepository::supports(static::getType())) {
+            $em = Orm::create($DB);
             try {
-                return (new \itsmng\Database\Repository\CostRepository($em))->actionTime(static::getType(), (int)$items_id);
+                return (new CostRepository($em))->actionTime(static::getType(), (int)$items_id);
             } finally {
                 $em->clear();
             }
@@ -759,13 +761,13 @@ abstract class CommonITILCost extends CommonDBChild
     {
         global $DB;
 
-        if (!\itsmng\Database\Repository\CostRepository::supports($type)) {
+        if (!CostRepository::supports($type)) {
             $item = getItemForItemtype($type);
             return $item->find([static::$items_id => $parents], $last ? ['end_date DESC', 'id DESC'] : ['begin_date'], $last ? 1 : null);
         }
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            return (new \itsmng\Database\Repository\CostRepository($em))->rows($type, $parents, $last);
+            return (new CostRepository($em))->rows($type, $parents, $last);
         } finally {
             $em->clear();
         }

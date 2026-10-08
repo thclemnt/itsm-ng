@@ -4,7 +4,10 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
@@ -14,7 +17,7 @@ class Cartridge
 {
     #[ORM\ManyToOne(targetEntity: CartridgeItem::class)]
     #[ORM\JoinColumn(name: 'cartridgeitems_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?CartridgeItem $cartridgeitems = null;
 
     #[ORM\Id]
@@ -25,32 +28,32 @@ class Cartridge
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
     #[ReferencePolicy(ReferenceKind::RootEntity)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Entity $entities = null;
 
     #[ORM\ManyToOne(targetEntity: Printer::class)]
     #[ORM\JoinColumn(name: 'printers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Printer $printers = null;
 
     #[ORM\Column(name: '`date_in`', type: 'date', nullable: true)]
-    public ?\DateTimeInterface $date_in = null;
+    public ?DateTimeInterface $date_in = null;
 
     #[ORM\Column(name: '`date_use`', type: 'date', nullable: true)]
-    public ?\DateTimeInterface $date_use = null;
+    public ?DateTimeInterface $date_use = null;
 
     #[ORM\Column(name: '`date_out`', type: 'date', nullable: true)]
-    public ?\DateTimeInterface $date_out = null;
+    public ?DateTimeInterface $date_out = null;
 
     #[ORM\Column(name: '`pages`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $pages = 0;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 }

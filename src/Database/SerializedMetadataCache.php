@@ -7,6 +7,8 @@ namespace itsmng\Database;
 use Psr\SimpleCache\CacheInterface;
 use Symfony\Component\Cache\Adapter\Psr16Adapter;
 use Symfony\Component\Cache\Marshaller\DefaultMarshaller;
+use Throwable;
+use UnexpectedValueException;
 
 /** PSR-6 bridge that never leaves live metadata in an application cache backend. */
 final class SerializedMetadataCache extends Psr16Adapter
@@ -26,11 +28,11 @@ final class SerializedMetadataCache extends Psr16Adapter
                 continue;
             }
             set_error_handler(static function (int $severity, string $message): never {
-                throw new \UnexpectedValueException($message);
+                throw new UnexpectedValueException($message);
             });
             try {
                 $value = $this->marshaller->unmarshall($bytes);
-            } catch (\Throwable) {
+            } catch (Throwable) {
                 continue; // A damaged optional cache is a miss, never a mapping failure.
             } finally {
                 restore_error_handler();

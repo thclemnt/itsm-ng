@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\AssetRepository;
+use itsmng\Domain\SoftwareAllocationSubjectLifecycle;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -43,7 +47,7 @@ class Peripheral extends CommonDBTM
 {
     use Glpi\Features\DCBreadcrumb;
     use Glpi\Features\Clonable;
-    use \itsmng\Domain\SoftwareAllocationSubjectLifecycle;
+    use SoftwareAllocationSubjectLifecycle;
 
     // From CommonDBTM
     public $dohistory                   = true;
@@ -316,9 +320,9 @@ class Peripheral extends CommonDBTM
     {
         global $DB;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            return (new \itsmng\Database\Repository\AssetRepository($em))->linkedItems($this->getType(), (int)$this->getID());
+            return (new AssetRepository($em))->linkedItems($this->getType(), (int)$this->getID());
         } finally {
             $em->clear();
         }

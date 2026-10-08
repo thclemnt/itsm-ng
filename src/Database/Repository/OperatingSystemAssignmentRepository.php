@@ -6,7 +6,9 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
 use itsmng\Database\Entity;
+use itsmng\Database\EntityRegistry;
 
 /** OS assignments are owned by an asset, independently of nullable component labels. */
 final class OperatingSystemAssignmentRepository
@@ -49,7 +51,7 @@ final class OperatingSystemAssignmentRepository
     private function wouldMergeComponent(string $component, string $other, int $source, ?int $replacement): bool
     {
         $sameOwner = [];
-        foreach (\itsmng\Database\EntityRegistry::discriminatedReferences('glpi_items_operatingsystems')['items_id']['selections'] as $kind => $selection) {
+        foreach (EntityRegistry::discriminatedReferences('glpi_items_operatingsystems')['items_id']['selections'] as $kind => $selection) {
             $association = Entity\ItemOperatingSystem::referenceAssociation($kind);
             $sameOwner[] = 'IDENTITY(a.' . $association . ') = IDENTITY(b.' . $association . ')';
         }
@@ -75,10 +77,10 @@ final class OperatingSystemAssignmentRepository
             '2' => 'a.name', 'architecture' => 'a.name', 'glpi_operatingsystemarchitectures.name' => 'a.name',
             '3' => 'sp.name', 'servicepack' => 'sp.name', 'glpi_operatingsystemservicepacks.name' => 'sp.name',
         ];
-        $field = $columns[$sort] ?? throw new \InvalidArgumentException('Unsupported OS sort field');
+        $field = $columns[$sort] ?? throw new InvalidArgumentException('Unsupported OS sort field');
         $direction = strtoupper($order);
         if (!in_array($direction, ['ASC', 'DESC'], true)) {
-            throw new \InvalidArgumentException('Unsupported OS sort direction');
+            throw new InvalidArgumentException('Unsupported OS sort direction');
         }
         return $this->em->createQueryBuilder()
             ->select('r.id AS assocID, os.name AS name, v.name AS version, a.name AS architecture, sp.name AS servicepack')

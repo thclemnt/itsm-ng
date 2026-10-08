@@ -605,7 +605,7 @@ class Search
      *
      * @return array Clean $SEARCH_OPTION array
      **/
-    public static function getCleanedOptions($itemtype, $action = \READ, $withplugins = true)
+    public static function getCleanedOptions($itemtype, $action = READ, $withplugins = true)
     {
         return SearchOption::getCleanedOptions($itemtype, $action, $withplugins);
     }

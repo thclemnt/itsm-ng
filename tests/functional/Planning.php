@@ -33,6 +33,24 @@
 
 namespace tests\units;
 
+use Auth;
+use Closure;
+use CommonDBTM;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Events;
+use Doctrine\ORM\Query;
+use Entity;
+use Glpi\CalDAV\Backend\Calendar;
+use Group;
+use Planning as LegacyPlanning;
+use Session;
+use User;
+use itsmng\Database\Entity\Group as GroupEntity;
+use itsmng\Database\Entity\User as UserEntity;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\PlanningRepository;
+use itsmng\Database\Repository\UserRepository;
+
 /* Test for inc/planning.class.php */
 
 class Planning extends \DbTestCase
@@ -46,14 +64,14 @@ class Planning extends \DbTestCase
             $this->login();
             $this->setEntity('_test_root_entity', true);
             $parent = (int)$_SESSION['glpiactive_entity'];
-            $scope = $this->createItem(\Entity::class, ['name' => 'Planning choices ' . $this->getUniqueString(), 'entities_id' => $parent]);
-            $child = $this->createItem(\Entity::class, ['name' => 'Nested choices', 'entities_id' => (int)$scope->getID()]);
+            $scope = $this->createItem(Entity::class, ['name' => 'Planning choices ' . $this->getUniqueString(), 'entities_id' => $parent]);
+            $child = $this->createItem(Entity::class, ['name' => 'Nested choices', 'entities_id' => (int)$scope->getID()]);
             $groups = [];
             foreach (['Beta', 'Alpha first', 'Alpha second'] as $name) {
-                $groups[] = $this->createItem(\Group::class, ['name' => $name, 'entities_id' => (int)$scope->getID()]);
+                $groups[] = $this->createItem(Group::class, ['name' => $name, 'entities_id' => (int)$scope->getID()]);
             }
-            $inherited = $this->createItem(\Group::class, ['name' => 'Recursive parent', 'entities_id' => $parent, 'is_recursive' => 1]);
-            $nested = $this->createItem(\Group::class, ['name' => 'Nested group', 'entities_id' => (int)$child->getID()]);
+            $inherited = $this->createItem(Group::class, ['name' => 'Recursive parent', 'entities_id' => $parent, 'is_recursive' => 1]);
+            $nested = $this->createItem(Group::class, ['name' => 'Nested group', 'entities_id' => (int)$child->getID()]);
             foreach ([$groups[1], $groups[2]] as $group) {
                 $this->boolean($DB->update('glpi_groups', ['name' => 'Alpha'], ['id' => $group->getID()]))->isTrue();
             }
@@ -63,8 +81,8 @@ class Planning extends \DbTestCase
                 ['id' => (int)$groups[2]->getID(), 'name' => 'Alpha'],
                 ['id' => (int)$groups[0]->getID(), 'name' => 'Beta'],
             ];
-            $manager = \itsmng\Database\Orm::create($DB);
-            $repository = new \itsmng\Database\Repository\PlanningRepository($manager);
+            $manager = Orm::create($DB);
+            $repository = new PlanningRepository($manager);
             $loads = new class () {
                 public int $count = 0;
                 public function postLoad(): void
@@ -72,12 +90,12 @@ class Planning extends \DbTestCase
                     ++$this->count;
                 }
             };
-            $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+            $manager->getEventManager()->addEventListener([Events::postLoad], $loads);
             $this->array($repository->groupChoices((int)$scope->getID()))->isIdenticalTo($expected);
             $this->array($repository->groupChoices((int)$scope->getID(), []))->isEmpty();
             $this->integer($loads->count)->isIdenticalTo(0);
             $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
-            $manager->find(\itsmng\Database\Entity\Group::class, (int)$groups[0]->getID());
+            $manager->find(GroupEntity::class, (int)$groups[0]->getID());
             $this->integer($loads->count)->isGreaterThan(0);
 
             $options = static function (callable $render): array {
@@ -92,16 +110,16 @@ class Planning extends \DbTestCase
                 return array_map(static fn (array $match): array => ['id' => (int)$match[1], 'name' => $match[2]], $matches);
             };
             $empty = ['id' => 0, 'name' => '-----'];
-            $_SESSION['glpiactiveprofile']['planning'] = \Planning::READALL;
+            $_SESSION['glpiactiveprofile']['planning'] = LegacyPlanning::READALL;
             $_SESSION['glpigroups'] = [];
-            $this->array($options([\Planning::class, 'showAddGroupForm']))->isIdenticalTo([$empty, ...$expected]);
-            $this->array($options([\Planning::class, 'showAddGroupUsersForm']))->isIdenticalTo([$empty, ...$expected]);
-            $_SESSION['glpiactiveprofile']['planning'] = \Planning::READGROUP;
+            $this->array($options([LegacyPlanning::class, 'showAddGroupForm']))->isIdenticalTo([$empty, ...$expected]);
+            $this->array($options([LegacyPlanning::class, 'showAddGroupUsersForm']))->isIdenticalTo([$empty, ...$expected]);
+            $_SESSION['glpiactiveprofile']['planning'] = LegacyPlanning::READGROUP;
             $_SESSION['glpigroups'] = [$groups[0]->getID(), $inherited->getID(), $nested->getID()];
-            $this->array($options([\Planning::class, 'showAddGroupForm']))->isIdenticalTo([$empty, $expected[2]]);
-            $this->array($options([\Planning::class, 'showAddGroupUsersForm']))->isIdenticalTo([$empty, ...$expected]);
+            $this->array($options([LegacyPlanning::class, 'showAddGroupForm']))->isIdenticalTo([$empty, $expected[2]]);
+            $this->array($options([LegacyPlanning::class, 'showAddGroupUsersForm']))->isIdenticalTo([$empty, ...$expected]);
             $_SESSION['glpigroups'] = [];
-            $this->array($options([\Planning::class, 'showAddGroupForm']))->isIdenticalTo([$empty]);
+            $this->array($options([LegacyPlanning::class, 'showAddGroupForm']))->isIdenticalTo([$empty]);
 
             // Reusing the repository and rendering again must observe writes,
             // even with the same Group already managed by the caller's manager.
@@ -110,7 +128,7 @@ class Planning extends \DbTestCase
                 $this->boolean($DB->update('glpi_groups', ['name' => $name], ['id' => $groups[0]->getID()]))->isTrue();
                 $this->array($repository->groupChoices((int)$scope->getID(), $_SESSION['glpigroups']))
                     ->isIdenticalTo([['id' => (int)$groups[0]->getID(), 'name' => $name]]);
-                $this->array($options([\Planning::class, 'showAddGroupForm']))
+                $this->array($options([LegacyPlanning::class, 'showAddGroupForm']))
                     ->isIdenticalTo([$empty, ['id' => (int)$groups[0]->getID(), 'name' => (string)$name]]);
             }
         } finally {
@@ -131,23 +149,23 @@ class Planning extends \DbTestCase
         try {
             $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
             $prefix = 'Planning token ' . bin2hex(random_bytes(6));
-            $actor = $this->createItem(\User::class, [
-                'name' => $prefix . ' actor', 'entities_id' => $entity, 'authtype' => \Auth::DB_GLPI,
+            $actor = $this->createItem(User::class, [
+                'name' => $prefix . ' actor', 'entities_id' => $entity, 'authtype' => Auth::DB_GLPI,
             ]);
-            $owner = $this->createItem(\User::class, [
-                'name' => $prefix . ' owner', 'entities_id' => $entity, 'authtype' => \Auth::DB_GLPI,
+            $owner = $this->createItem(User::class, [
+                'name' => $prefix . ' owner', 'entities_id' => $entity, 'authtype' => Auth::DB_GLPI,
             ]);
             $id = (int)$owner->getID();
             $_SESSION['glpiID'] = $id;
             // Issuing one's own personal token does not require user-management rights.
             $_SESSION['glpiactiveprofile']['user'] = 0;
-            $this->boolean((bool)\Session::haveRight('user', UPDATE))->isFalse();
-            $repository = new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB));
+            $this->boolean((bool)Session::haveRight('user', UPDATE))->isFalse();
+            $repository = new UserRepository(Orm::create($DB));
             $actorToken = str_repeat('a', 40);
             $connection->update('glpi_users', ['personal_token' => $actorToken], ['id' => $actor->getID()]);
             $render = static function () use ($actor): string {
                 ob_start();
-                \Planning::showSingleLinePlanningFilter('User_' . $actor->getID(), ['type' => 'user', 'display' => true]);
+                LegacyPlanning::showSingleLinePlanningFilter('User_' . $actor->getID(), ['type' => 'user', 'display' => true]);
                 return ob_get_clean();
             };
             $tokens = static function (string $html): array {
@@ -160,8 +178,8 @@ class Planning extends \DbTestCase
                 $this->array($tokens($html))->isIdenticalTo([$token, $token]);
                 $this->string($html)->contains('&uID=' . $actor->getID() . '&gID=0');
                 $this->string($html)->contains($CFG_GLPI['url_base'] . '/caldav.php/'
-                    . \Glpi\CalDAV\Backend\Calendar::PREFIX_USERS . '/' . $actor->fields['name'] . '/'
-                    . \Glpi\CalDAV\Backend\Calendar::BASE_CALENDAR_URI);
+                    . Calendar::PREFIX_USERS . '/' . $actor->fields['name'] . '/'
+                    . Calendar::BASE_CALENDAR_URI);
                 $this->string($repository->tokenValue($id, 'personal_token'))->isIdenticalTo($token);
             }
             foreach ([null, '', '0'] as $emptyToken) {
@@ -197,9 +215,9 @@ class Planning extends \DbTestCase
         $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
         $connection = $DB->getDoctrineConnection();
         $level = $connection->getTransactionNestingLevel();
-        $em = new class ($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+        $em = new class ($connection, Orm::configuration($connection->getDatabasePlatform())) extends EntityManager {
             public int $queries = 0;
-            public function createQuery(string $dql = ''): \Doctrine\ORM\Query
+            public function createQuery(string $dql = ''): Query
             {
                 ++$this->queries;
                 return parent::createQuery($dql);
@@ -212,18 +230,18 @@ class Planning extends \DbTestCase
                 ++$this->loaded;
             }
         };
-        $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+        $em->getEventManager()->addEventListener([Events::postLoad], $listener);
         try {
             $prefix = 'Planning names ' . bin2hex(random_bytes(6));
-            $user = $this->createItem(\User::class, [
+            $user = $this->createItem(User::class, [
                 'name' => $prefix, 'firstname' => 'Ada', 'realname' => 'Reader',
-                'entities_id' => $entity, 'authtype' => \Auth::DB_GLPI,
+                'entities_id' => $entity, 'authtype' => Auth::DB_GLPI,
             ]);
-            $first = $this->createItem(\Group::class, ['name' => $prefix . ' first', 'entities_id' => $entity]);
-            $second = $this->createItem(\Group::class, ['name' => $prefix . ' second', 'entities_id' => $entity]);
+            $first = $this->createItem(Group::class, ['name' => $prefix . ' first', 'entities_id' => $entity]);
+            $second = $this->createItem(Group::class, ['name' => $prefix . ' second', 'entities_id' => $entity]);
             $id = (int)$user->getID();
             $missing = PHP_INT_MAX;
-            $repository = new \itsmng\Database\Repository\UserRepository($em);
+            $repository = new UserRepository($em);
             $this->array($repository->friendlyNameData([]))->isEmpty();
             $this->integer($em->queries)->isIdenticalTo(0);
             $names = $repository->friendlyNameData([$id, $id, $missing]);
@@ -232,7 +250,7 @@ class Planning extends \DbTestCase
             $this->integer($em->queries)->isIdenticalTo(1);
             $this->integer($listener->loaded)->isIdenticalTo(0);
             $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
-            $managed = $em->find(\itsmng\Database\Entity\User::class, $id);
+            $managed = $em->find(UserEntity::class, $id);
             $this->integer($listener->loaded)->isIdenticalTo(1);
             $connection->update('glpi_users', ['firstname' => 'Grace'], ['id' => $id]);
             $this->string($repository->friendlyNameData([$id])[$id]['firstname'])->isIdenticalTo('Grace');
@@ -255,13 +273,13 @@ class Planning extends \DbTestCase
             PlanningTimelineWriter::$write = static function () use ($connection, $id): void {
                 $connection->update('glpi_users', ['firstname' => 'Grace'], ['id' => $id]);
             };
-            foreach ([\User::FIRSTNAME_BEFORE, \User::REALNAME_BEFORE] as $format) {
+            foreach ([User::FIRSTNAME_BEFORE, User::REALNAME_BEFORE] as $format) {
                 $_SESSION['glpinames_format'] = $format;
                 $_SESSION['glpiis_ids_visible'] = $CFG_GLPI['is_ids_visible'] = 1;
                 $connection->update('glpi_users', ['firstname' => 'Ada'], ['id' => $id]);
                 $this->boolean($user->getFromDB($id))->isTrue();
                 $before = $user->getName();
-                $resources = \Planning::getTimelineResources();
+                $resources = LegacyPlanning::getTimelineResources();
                 $this->boolean($user->getFromDB($id))->isTrue();
                 $after = $user->getName();
                 $this->string($before)->isNotIdenticalTo($after);
@@ -281,7 +299,7 @@ class Planning extends \DbTestCase
             }
         } finally {
             PlanningTimelineWriter::$write = null;
-            $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+            $em->getEventManager()->removeEventListener([Events::postLoad], $listener);
             $em->clear();
             $_SESSION = $session;
             $CFG_GLPI['is_ids_visible'] = $idsVisible;
@@ -439,9 +457,9 @@ class Planning extends \DbTestCase
 
 
 /** A dynamic planning resource: its read is an observable write boundary. */
-class PlanningTimelineWriter extends \CommonDBTM
+class PlanningTimelineWriter extends CommonDBTM
 {
-    public static ?\Closure $write = null;
+    public static ?Closure $write = null;
 
     public function getFromDB($ID)
     {

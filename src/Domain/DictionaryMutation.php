@@ -4,7 +4,9 @@
 
 namespace itsmng\Domain;
 
+use DBAdapter;
 use Doctrine\DBAL\Connection;
+use Throwable;
 use itsmng\Database\LifecycleModelJournal;
 use itsmng\Database\LifecycleNotifications;
 use itsmng\Database\MutationCleanupFailure;
@@ -20,7 +22,7 @@ final class DictionaryMutation
     public static function run(Connection $connection, callable $operation): void
     {
         $database = $GLOBALS['DB'] ?? null;
-        if (!$database instanceof \DBAdapter || $database->isSlave() || $database->getDoctrineConnection() !== $connection) {
+        if (!$database instanceof DBAdapter || $database->isSlave() || $database->getDoctrineConnection() !== $connection) {
             throw new TransactionOwnershipMismatch('Dictionary callbacks require the supplied active writer.');
         }
         TransactionOwnership::assertManaged($connection);
@@ -44,13 +46,13 @@ final class DictionaryMutation
             $assertActive();
             $frame->commit();
             $accepted = true;
-        } catch (\Throwable $primary) {
+        } catch (Throwable $primary) {
             $failure = $primary;
             if ($frame !== null) {
                 try {
                     $frame->rollBack();
                     $rolledBack = true;
-                } catch (\Throwable $cleanup) {
+                } catch (Throwable $cleanup) {
                     // A callback's replacement frame is not ours to unwind.
                     $failure = new MutationRollbackFailure($primary, $cleanup);
                 }
@@ -58,13 +60,13 @@ final class DictionaryMutation
         } finally {
             try {
                 $notifications = $delivery->finish($accepted);
-            } catch (\Throwable $cleanup) {
+            } catch (Throwable $cleanup) {
                 $failure = self::preserveFailure($failure, $cleanup);
             }
             if ($rolledBack) {
                 try {
                     $journal->restore();
-                } catch (\Throwable $cleanup) {
+                } catch (Throwable $cleanup) {
                     $failure = self::preserveFailure($failure, $cleanup);
                 }
                 try {
@@ -75,7 +77,7 @@ final class DictionaryMutation
                             $_SESSION['MESSAGE_AFTER_REDIRECT'][$type][] = $message;
                         }
                     }
-                } catch (\Throwable $cleanup) {
+                } catch (Throwable $cleanup) {
                     $failure = self::preserveFailure($failure, $cleanup);
                 }
             }
@@ -87,7 +89,7 @@ final class DictionaryMutation
         LifecycleNotifications::deliver($notifications);
     }
 
-    private static function preserveFailure(?\Throwable $primary, \Throwable $cleanup): \Throwable
+    private static function preserveFailure(?Throwable $primary, Throwable $cleanup): Throwable
     {
         return $primary === null ? $cleanup : new MutationCleanupFailure(
             $primary,

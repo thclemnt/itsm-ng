@@ -36,6 +36,8 @@ use Glpi\Toolbox\URL;
 use ScssPhp\ScssPhp\Compiler;
 use ScssPhp\ScssPhp\OutputStyle;
 use ScssPhp\ScssPhp\ValueConverter;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\UserRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -1655,7 +1657,7 @@ JAVASCRIPT
     {
         global $DB;
         if (Session::haveRight("accessibility", READ)) {
-            $font = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+            $font = (new UserRepository(Orm::create($DB)))
                 ->accessibilityFont((int)Session::getLoginUserID());
             switch ($font) {
                 case "OpenDyslexic":

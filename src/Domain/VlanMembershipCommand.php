@@ -4,8 +4,11 @@
 
 namespace itsmng\Domain;
 
+use DBAdapter;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use NetworkPort_Vlan;
+use RuntimeException;
 use itsmng\Database\ManagedTransactionScope;
 use itsmng\Database\Repository\NetworkPortVlanRepository;
 use itsmng\Database\TransactionOwnershipMismatch;
@@ -20,10 +23,10 @@ final class VlanMembershipCommand
     private bool $prepared = false;
 
     public function __construct(
-        private readonly \DBAdapter $database,
+        private readonly DBAdapter $database,
         private readonly Connection $connection,
         private readonly ManagedTransactionScope $scope,
-        private readonly \NetworkPort_Vlan $model,
+        private readonly NetworkPort_Vlan $model,
         private readonly NetworkPortVlanRepository $memberships,
         private readonly ClassMetadata $metadata,
         private readonly bool $removing
@@ -141,7 +144,7 @@ final class VlanMembershipCommand
     {
         $this->assertActive();
         if ($identity <= 0 || ($this->identity !== null && $this->identity !== $identity)) {
-            throw new \RuntimeException('A VLAN membership producer changed its selected identity.');
+            throw new RuntimeException('A VLAN membership producer changed its selected identity.');
         }
         $this->identity = $identity;
         $this->assertModel();
@@ -154,7 +157,7 @@ final class VlanMembershipCommand
         if ($this->selected !== null && (!$this->selected->matches($this->model->fields, $this->metadata)
             || ($this->identity !== null && (int)$this->model->getID() !== $this->identity)
             || ($this->prepared && !$this->inputMatches()))) {
-            throw new \RuntimeException('A callback changed the prepared VLAN membership.');
+            throw new RuntimeException('A callback changed the prepared VLAN membership.');
         }
     }
 
@@ -162,7 +165,7 @@ final class VlanMembershipCommand
     {
         $this->assertActive();
         if ($this->selected !== null && $this->identity !== null && (int)$identity !== $this->identity) {
-            throw new \RuntimeException('A callback loaded a different VLAN membership.');
+            throw new RuntimeException('A callback loaded a different VLAN membership.');
         }
     }
 

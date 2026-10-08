@@ -4,6 +4,8 @@
 
 namespace itsmng\Database;
 
-final class TransactionOwnershipMismatch extends \LogicException
+use LogicException;
+
+final class TransactionOwnershipMismatch extends LogicException
 {
 }

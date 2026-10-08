@@ -35,6 +35,10 @@
 declare(ticks=1);
 
 use Glpi\Event;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CronLogRepository;
+use itsmng\Database\Repository\CronTaskRepository;
+use itsmng\Database\Repository\RecordRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -182,7 +186,7 @@ class CronTask extends CommonDBTM
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\CronTaskRepository(\itsmng\Database\Orm::create($DB)))
+        return (new CronTaskRepository(Orm::create($DB)))
             ->usedItemtypes();
     }
 
@@ -272,7 +276,7 @@ class CronTask extends CommonDBTM
         }
 
         return $DB->getDoctrineConnection()->transactional(function () use ($DB) {
-            if ((new \itsmng\Database\Repository\CronLogRepository(\itsmng\Database\Orm::create($DB)))
+            if ((new CronLogRepository(Orm::create($DB)))
                 ->start((int)$this->fields['id'])) {
                 $this->timer = microtime(true);
                 $this->volume = 0;
@@ -295,7 +299,7 @@ class CronTask extends CommonDBTM
                     'elapsed' => 0
                 ]);
                 if (!$this->startlog) {
-                    throw new \RuntimeException('Unable to record cron task start.');
+                    throw new RuntimeException('Unable to record cron task start.');
                 }
                 return true;
             }
@@ -348,7 +352,7 @@ class CronTask extends CommonDBTM
         }
 
         return $DB->getDoctrineConnection()->transactional(function () use ($DB, $retcode, $log_state) {
-            if ((new \itsmng\Database\Repository\CronLogRepository(\itsmng\Database\Orm::create($DB)))
+            if ((new CronLogRepository(Orm::create($DB)))
                 ->finish((int)$this->fields['id'], (int)$this->fields['state'])) {
                 // No gettext for log but add gettext line to be parsed for pot generation
                 // order is important for insertion in english in the database
@@ -380,7 +384,7 @@ class CronTask extends CommonDBTM
                     'elapsed' => (microtime(true) - $this->timer)
                 ]);
                 if (!$logId) {
-                    throw new \RuntimeException('Unable to record cron task completion.');
+                    throw new RuntimeException('Unable to record cron task completion.');
                 }
                 return true;
             }
@@ -436,7 +440,7 @@ class CronTask extends CommonDBTM
                 $locks[] = basename($lock, '.lock');
             }
         }
-        $row = (new \itsmng\Database\Repository\CronTaskRepository(\itsmng\Database\Orm::create($DB)))
+        $row = (new CronTaskRepository(Orm::create($DB)))
             ->next((int)$mode, (string)$name, Plugin::getPlugins(), $locks);
         if ($row === null) {
             return false;
@@ -452,7 +456,7 @@ class CronTask extends CommonDBTM
     {
         global $DB;
 
-        if ((new \itsmng\Database\Repository\CronTaskRepository(\itsmng\Database\Orm::create($DB)))
+        if ((new CronTaskRepository(Orm::create($DB)))
             ->needsErrorNotification((int)$this->fields['id'])) {
             // No alert has been sent within last day, so we can send one without bothering administrator
             NotificationEvent::raiseEvent('alert', $this, ['items' => [$this->fields['id'] => $this->fields]]);
@@ -1104,7 +1108,7 @@ class CronTask extends CommonDBTM
         $temp = new CronTask();
         $ret = true;
 
-        $rows = (new \itsmng\Database\Repository\CronTaskRepository(\itsmng\Database\Orm::create($DB)))
+        $rows = (new CronTaskRepository(Orm::create($DB)))
             ->forPlugin((string)$plugin);
         foreach ($rows as $data) {
             if (!$temp->delete($data)) {
@@ -1168,7 +1172,7 @@ class CronTask extends CommonDBTM
         echo "</td></tr>";
 
         if ($nbstop) {
-            $data = (new \itsmng\Database\Repository\CronLogRepository(\itsmng\Database\Orm::create($DB)))
+            $data = (new CronLogRepository(Orm::create($DB)))
                 ->statistics((int)$this->fields['id']);
 
             echo "<tr class='tab_bg_1'><td>" . __('Start date') . "</td>";
@@ -1280,7 +1284,7 @@ class CronTask extends CommonDBTM
         // Display the pager
         Html::printAjaxPager(__('Last run list'), $start, $number);
 
-        $iterator = (new \itsmng\Database\Repository\CronLogRepository(\itsmng\Database\Orm::create($DB)))
+        $iterator = (new CronLogRepository(Orm::create($DB)))
             ->history((int)$this->fields['id'], (int)$_SESSION['glpilist_limit'], (int)$start);
 
         if (count($iterator)) {
@@ -1338,7 +1342,7 @@ class CronTask extends CommonDBTM
         echo "<p><a href='javascript:reloadTab(\"crontasklogs_id=0\");'>" . __('Last run list') . "</a>" .
             "</p>";
 
-        $iterator = (new \itsmng\Database\Repository\CronLogRepository(\itsmng\Database\Orm::create($DB)))
+        $iterator = (new CronLogRepository(Orm::create($DB)))
             ->details((int)$this->fields['id'], (int)$logid);
 
         if (count($iterator)) {
@@ -1892,7 +1896,7 @@ class CronTask extends CommonDBTM
             $vol += Event::cleanOld($task->fields['param']);
         }
 
-        foreach ((new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+        foreach ((new RecordRepository(Orm::create($DB)))
             ->matching('glpi_crontasks', ['logs_lifetime' => ['>', 0]], 'id') as $data) {
             if ($data['logs_lifetime'] > 0) {
                 $vol += CronTaskLog::cleanOld($data['id'], $data['logs_lifetime']);
@@ -1913,7 +1917,7 @@ class CronTask extends CommonDBTM
     {
         global $DB;
 
-        $rows = (new \itsmng\Database\Repository\CronTaskRepository(\itsmng\Database\Orm::create($DB)))
+        $rows = (new CronTaskRepository(Orm::create($DB)))
             ->overdue();
         $crontasks = array_column($rows, null, 'id');
 

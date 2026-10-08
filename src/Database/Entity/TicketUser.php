@@ -5,19 +5,23 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\ITILStatisticsRelation;
+use itsmng\Database\Mapping\ITILStatisticsRole;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\SchemaIndex;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_tickets_users')]
-#[\itsmng\Database\Mapping\SchemaIndex('unicity', ['tickets_id', 'type', 'actor_key', 'actor_email_key'], unique: true, postgresqlName: 'glpi_tickets_users_unicity')]
-#[\itsmng\Database\Mapping\SchemaIndex('glpi_tickets_users_actor_parent', ['tickets_id'])]
+#[SchemaIndex('unicity', ['tickets_id', 'type', 'actor_key', 'actor_email_key'], unique: true, postgresqlName: 'glpi_tickets_users_unicity')]
+#[SchemaIndex('glpi_tickets_users_actor_parent', ['tickets_id'])]
 class TicketUser
 {
     #[ORM\ManyToOne(targetEntity: Ticket::class)]
     #[ORM\JoinColumn(name: 'tickets_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ITILStatisticsRelation(\itsmng\Database\Mapping\ITILStatisticsRole::Users)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ITILStatisticsRelation(ITILStatisticsRole::Users)]
+    #[ApplicationManaged]
     public ?Ticket $tickets = null;
 
     #[ORM\Id]
@@ -28,7 +32,7 @@ class TicketUser
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?User $actor = null;
 
     #[ORM\Column(name: '`type`', type: 'integer', nullable: false, options: ['default' => '1'])]

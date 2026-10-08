@@ -37,6 +37,11 @@ if (!defined('GLPI_ROOT')) {
 
 use Glpi\CalDAV\Contracts\CalDAVCompatibleItemInterface;
 use Glpi\CalDAV\Traits\VobjectConverterTrait;
+use itsmng\Database\DropdownChoiceContext;
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ProjectRepository;
+use itsmng\Database\Repository\ProjectTaskRepository;
 use itsmng\Timezone;
 use Sabre\VObject\Component\VCalendar;
 use Sabre\VObject\Property\FlatText;
@@ -514,9 +519,9 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
     {
         global $DB;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            return (new \itsmng\Database\Repository\ProjectRepository($em))->ticketIds((int)$ID === 0 ? null : (int)$ID);
+            return (new ProjectRepository($em))->ticketIds((int)$ID === 0 ? null : (int)$ID);
         } finally {
             $em->clear();
         }
@@ -769,9 +774,9 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
     {
         global $DB;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            return (new \itsmng\Database\Repository\ProjectRepository($em))->taskDuration((int)$projecttasks_id);
+            return (new ProjectRepository($em))->taskDuration((int)$projecttasks_id);
         } finally {
             $em->clear();
         }
@@ -789,9 +794,9 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
     {
         global $DB;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            return (new \itsmng\Database\Repository\ProjectRepository($em))->effectiveDuration((int)$projects_id === 0 ? null : (int)$projects_id);
+            return (new ProjectRepository($em))->effectiveDuration((int)$projects_id === 0 ? null : (int)$projects_id);
         } finally {
             $em->clear();
         }
@@ -809,9 +814,9 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
     {
         global $DB;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            return (new \itsmng\Database\Repository\ProjectRepository($em))->plannedDuration((int)$projects_id === 0 ? null : (int)$projects_id);
+            return (new ProjectRepository($em))->plannedDuration((int)$projects_id === 0 ? null : (int)$projects_id);
         } finally {
             $em->clear();
         }
@@ -1135,15 +1140,15 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
             )
         );
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            $rows = (new \itsmng\Database\Repository\ProjectTaskRepository($em))->listing(
+            $rows = (new ProjectTaskRepository($em))->listing(
                 $criteria['WHERE'],
                 $criteria['ORDERBY'],
                 Session::haveTranslations('ProjectTaskType', 'name') ? $_SESSION['glpilanguage'] : null,
                 Session::haveTranslations('ProjectState', 'name') ? $_SESSION['glpilanguage'] : null
             );
-            $durations = (new \itsmng\Database\Repository\ProjectTaskRepository($em))->effectiveDurations(array_column($rows, 'id'));
+            $durations = (new ProjectTaskRepository($em))->effectiveDurations(array_column($rows, 'id'));
         } finally {
             $em->clear();
         }
@@ -1300,7 +1305,7 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
                 if (class_exists($type)) {
                     $item = new $type();
                     $types_for_dropdown[$type] = $item->getTypeName(1);
-                    $choiceTokens[$type] = \itsmng\Database\DropdownChoiceContext::token(
+                    $choiceTokens[$type] = DropdownChoiceContext::token(
                         $type,
                         ['entity_restrict' => $choiceScope],
                     );
@@ -1565,9 +1570,9 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
 
         $todisplay = [];
         if (static::class === self::class) {
-            $em = \itsmng\Database\Orm::create($DB);
+            $em = Orm::create($DB);
             try {
-                $roots = (new \itsmng\Database\Repository\ProjectTaskRepository($em))->rootIdsForGantt((int)$ID);
+                $roots = (new ProjectTaskRepository($em))->rootIdsForGantt((int)$ID);
             } finally {
                 $em->clear();
             }
@@ -1641,7 +1646,7 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
 
         $groups = null;
         if ($whogroup === 'mine') {
-            $groups = $_SESSION['glpigroups'] ?? ($who > 0 ? \itsmng\Database\MappedReads::identifiers($DB, Group_User::getTable(), 'groups_id', ['users_id' => $who]) : []);
+            $groups = $_SESSION['glpigroups'] ?? ($who > 0 ? MappedReads::identifiers($DB, Group_User::getTable(), 'groups_id', ['users_id' => $who]) : []);
         } elseif (is_array($whogroup)) {
             $groups = $whogroup;
         } elseif ((int)$whogroup > 0) {
@@ -1650,9 +1655,9 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
         $profileScope = $groups === null && (int)$who <= 0
             ? getEntitiesRestrictCriteria('glpi_profiles_users', '', $_SESSION['glpiactive_entity'], true)
             : [];
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            $rows = (new \itsmng\Database\Repository\ProjectTaskRepository($em))->planning(
+            $rows = (new ProjectTaskRepository($em))->planning(
                 (int)$who,
                 $groups,
                 $profileScope,
@@ -1833,9 +1838,9 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
             return false;
         }
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            $percent_done = (new \itsmng\Database\Repository\ProjectRepository($em))->taskProgress((int)$ID);
+            $percent_done = (new ProjectRepository($em))->taskProgress((int)$ID);
         } finally {
             $em->clear();
         }
@@ -1880,9 +1885,9 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
 
         global $DB;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            $tasks = (new \itsmng\Database\Repository\ProjectTaskRepository($em))->forTeam($criteria);
+            $tasks = (new ProjectTaskRepository($em))->forTeam($criteria);
         } finally {
             $em->clear();
         }

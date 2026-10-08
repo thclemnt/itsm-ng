@@ -8,6 +8,7 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
 use itsmng\Database\Entity;
 use itsmng\Database\Query\AutoNameNumber;
 
@@ -50,7 +51,7 @@ final class AutoNameRepository
         $this->assertMask($position, $width);
         $metadata = $this->em->getClassMetadata($class);
         if (!$metadata->hasField($field) || !in_array($metadata->getTypeOfField($field), [Types::STRING, Types::TEXT], true)) {
-            throw new \InvalidArgumentException('Automatic numbering requires a mapped text field.');
+            throw new InvalidArgumentException('Automatic numbering requires a mapped text field.');
         }
         $fieldExpression = 'r.' . $field;
         $predicate = $this->em->getConnection()->getDatabasePlatform() instanceof PostgreSQLPlatform
@@ -78,18 +79,18 @@ final class AutoNameRepository
         $connection = $this->em->getConnection();
         $schema = $connection->createSchemaManager()->introspectTable($table);
         if (!$schema->hasColumn($field) || !in_array(Type::lookupName($schema->getColumn($field)->getType()), [Types::STRING, Types::TEXT], true)) {
-            throw new \InvalidArgumentException('Plugin automatic numbering requires an existing text field.');
+            throw new InvalidArgumentException('Plugin automatic numbering requires an existing text field.');
         }
         foreach (['is_deleted', 'is_template', ...($entity === null ? [] : ['entities_id'])] as $column) {
             if (!$schema->hasColumn($column)) {
-                throw new \InvalidArgumentException('Plugin automatic numbering requires its asset scope columns.');
+                throw new InvalidArgumentException('Plugin automatic numbering requires its asset scope columns.');
             }
         }
         $flagTypes = [];
         foreach (['is_deleted', 'is_template'] as $column) {
             $type = Type::lookupName($schema->getColumn($column)->getType());
             if (!in_array($type, [Types::BOOLEAN, Types::SMALLINT, Types::INTEGER, Types::BIGINT], true)) {
-                throw new \InvalidArgumentException('Plugin automatic numbering requires boolean or integer asset flags.');
+                throw new InvalidArgumentException('Plugin automatic numbering requires boolean or integer asset flags.');
             }
             $flagTypes[$column] = $type;
         }
@@ -115,7 +116,7 @@ final class AutoNameRepository
     private function assertMask(int $position, int $width): void
     {
         if ($position < 1 || $width < 1 || $width > 10) {
-            throw new \InvalidArgumentException('Automatic numbering requires a one-to-ten-character mask.');
+            throw new InvalidArgumentException('Automatic numbering requires a one-to-ten-character mask.');
         }
     }
 }

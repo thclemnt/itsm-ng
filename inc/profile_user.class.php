@@ -33,7 +33,9 @@
 
 use itsmng\Database\Orm;
 use itsmng\Database\ProfileUserReadOperation;
+use itsmng\Database\Repository\ProfileUserRepository;
 use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\RowIterator;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -404,7 +406,7 @@ class Profile_User extends CommonDBRelation
             echo "</div>";
         }
 
-        $iterator = new \itsmng\Database\RowIterator(self::repository()->usersInEntity((int)$ID));
+        $iterator = new RowIterator(self::repository()->usersInEntity((int)$ID));
 
         $nb = count($iterator);
 
@@ -528,7 +530,7 @@ class Profile_User extends CommonDBRelation
         $canshowentity = Entity::canView();
         $canshowuser = User::canView();
 
-        $iterator = new \itsmng\Database\RowIterator(self::repository()->usersWithProfile(
+        $iterator = new RowIterator(self::repository()->usersWithProfile(
             (int)$ID,
             getEntitiesRestrictCriteria(self::getTable(), 'entities_id', $_SESSION['glpiactiveentities'], true)
         ));
@@ -671,7 +673,7 @@ class Profile_User extends CommonDBRelation
      **/
     public static function getUserEntities($user_ID, $is_recursive = true, $default_first = false)
     {
-        $iterator = new \itsmng\Database\RowIterator(self::scopeReader()->scopes((int)$user_ID));
+        $iterator = new RowIterator(self::scopeReader()->scopes((int)$user_ID));
         $entities = [];
 
         while ($data = $iterator->next()) {
@@ -714,7 +716,7 @@ class Profile_User extends CommonDBRelation
      **/
     public static function getUserEntitiesForRight($user_ID, $rightname, $rights, $is_recursive = true)
     {
-        $iterator = new \itsmng\Database\RowIterator(self::scopeReader()->scopes((int)$user_ID, right: $rightname, mask: (int)$rights));
+        $iterator = new RowIterator(self::scopeReader()->scopes((int)$user_ID, right: $rightname, mask: (int)$rights));
 
         if (count($iterator) > 0) {
             $entities = [];
@@ -777,7 +779,7 @@ class Profile_User extends CommonDBRelation
      **/
     public static function getEntitiesForProfileByUser($users_id, $profiles_id, $child = false)
     {
-        $iterator = new \itsmng\Database\RowIterator(self::scopeReader()->scopes((int)$users_id, (int)$profiles_id));
+        $iterator = new RowIterator(self::scopeReader()->scopes((int)$users_id, (int)$profiles_id));
 
         $entities = [];
         while ($data = $iterator->next()) {
@@ -809,7 +811,7 @@ class Profile_User extends CommonDBRelation
      **/
     public static function getEntitiesForUser($users_id, $child = false)
     {
-        $iterator = new \itsmng\Database\RowIterator(self::scopeReader()->scopes((int)$users_id));
+        $iterator = new RowIterator(self::scopeReader()->scopes((int)$users_id));
 
         $entities = [];
         while ($data = $iterator->next()) {
@@ -848,16 +850,16 @@ class Profile_User extends CommonDBRelation
     }
 
 
-    private static function scopeReader(): \itsmng\Database\ProfileUserReadOperation
+    private static function scopeReader(): ProfileUserReadOperation
     {
         global $DB;
-        return new \itsmng\Database\ProfileUserReadOperation($DB->getDoctrineConnection());
+        return new ProfileUserReadOperation($DB->getDoctrineConnection());
     }
 
-    private static function repository(): \itsmng\Database\Repository\ProfileUserRepository
+    private static function repository(): ProfileUserRepository
     {
         global $DB;
-        return new \itsmng\Database\Repository\ProfileUserRepository(\itsmng\Database\Orm::create($DB));
+        return new ProfileUserRepository(Orm::create($DB));
     }
 
     /**
@@ -868,7 +870,7 @@ class Profile_User extends CommonDBRelation
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))->countMatching(
+        return (new RecordRepository(Orm::create($DB)))->countMatching(
             self::getTable(),
             ['users_id' => (int)$user_ID, 'profiles_id' => (int)$profile_id]
         );

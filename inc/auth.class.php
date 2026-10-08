@@ -33,13 +33,17 @@
 
 use Glpi\Event;
 use Glpi\Toolbox\URL;
+use itsmng\Database\AuthenticationType;
 use itsmng\Database\LegacyValues;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\LdapRepository;
 use itsmng\Database\Repository\MailAuthenticationRepository;
+use itsmng\Database\Repository\OidcRepository;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\UserPasswordRepository;
 use itsmng\Database\Repository\UserRepository;
+use itsmng\Domain\Authentication\AuthenticationCompletion;
+use itsmng\Domain\Authentication\VerifiedLoginProvider;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -68,7 +72,7 @@ class Auth extends CommonGLPI
     public $password_expired = false;
 
     /** Only modeled verification producers may own an existing-account completion. */
-    private ?\itsmng\Domain\Authentication\AuthenticationCompletion $authenticationCompletion = null;
+    private ?AuthenticationCompletion $authenticationCompletion = null;
 
     /**
      * Indicated if user was found in the directory.
@@ -81,15 +85,15 @@ class Auth extends CommonGLPI
     /** @var bool Store user LDAP dn */
     public $user_dn = false;
 
-    public const DB_GLPI  = \itsmng\Database\AuthenticationType::Local->value;
-    public const MAIL     = \itsmng\Database\AuthenticationType::Mail->value;
-    public const LDAP     = \itsmng\Database\AuthenticationType::Ldap->value;
-    public const EXTERNAL = \itsmng\Database\AuthenticationType::External->value;
-    public const CAS      = \itsmng\Database\AuthenticationType::Cas->value;
-    public const X509     = \itsmng\Database\AuthenticationType::X509->value;
-    public const API      = \itsmng\Database\AuthenticationType::Api->value;
-    public const COOKIE   = \itsmng\Database\AuthenticationType::Cookie->value;
-    public const NOT_YET_AUTHENTIFIED = \itsmng\Database\AuthenticationType::Pending->value;
+    public const DB_GLPI  = AuthenticationType::Local->value;
+    public const MAIL     = AuthenticationType::Mail->value;
+    public const LDAP     = AuthenticationType::Ldap->value;
+    public const EXTERNAL = AuthenticationType::External->value;
+    public const CAS      = AuthenticationType::Cas->value;
+    public const X509     = AuthenticationType::X509->value;
+    public const API      = AuthenticationType::Api->value;
+    public const COOKIE   = AuthenticationType::Cookie->value;
+    public const NOT_YET_AUTHENTIFIED = AuthenticationType::Pending->value;
 
     public const USER_DOESNT_EXIST       = 0;
     public const USER_EXISTS_WITH_PWD    = 1;
@@ -446,7 +450,7 @@ class Auth extends CommonGLPI
                 $this->user->fields = $evaluation->context + [
                    '_ruleright_process' => true,
                 ];
-                $this->authenticationCompletion = new \itsmng\Domain\Authentication\AuthenticationCompletion(
+                $this->authenticationCompletion = new AuthenticationCompletion(
                     (int)$row['id'],
                     $_SESSION['glpi_currenttime'],
                     $evaluation->outcome
@@ -767,13 +771,13 @@ class Auth extends CommonGLPI
                 if ($this->user_present && in_array($authtype, [self::API, self::COOKIE], true)
                     && (int)$this->user->fields['authtype'] === self::DB_GLPI
                     && (int)$this->user->fields['auths_id'] === 0) {
-                    $this->authenticationCompletion = new \itsmng\Domain\Authentication\AuthenticationCompletion(
+                    $this->authenticationCompletion = new AuthenticationCompletion(
                         (int)$this->user->getID(),
                         $_SESSION['glpi_currenttime'],
                         provider:
                         $authtype === self::API
-                            ? \itsmng\Domain\Authentication\VerifiedLoginProvider::ApiToken
-                            : \itsmng\Domain\Authentication\VerifiedLoginProvider::RememberCookie
+                            ? VerifiedLoginProvider::ApiToken
+                            : VerifiedLoginProvider::RememberCookie
                     );
                 }
 
@@ -1795,9 +1799,9 @@ class Auth extends CommonGLPI
                'logout'       => URL::sanitizeURL(trim((string) $_POST["logout"])),
                'sso_link_users' => $_POST['sso_link_users'],
             ];
-            (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::create($DB)))->saveConfiguration($oidc_result);
+            (new OidcRepository(Orm::create($DB)))->saveConfiguration($oidc_result);
         }
-        $oidc_db = (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::create($DB)))->configuration();
+        $oidc_db = (new OidcRepository(Orm::create($DB)))->configuration();
         $oidc_db['ClientSecret'] = Toolbox::sodiumDecrypt((string)($oidc_db['ClientSecret'] ?? ''));
 
         $form = [

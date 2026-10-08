@@ -4,13 +4,18 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\ReferenceKey;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\SchemaIndex;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_businesscriticities')]
-#[\itsmng\Database\Mapping\SchemaIndex('unicity', ['parent_key', 'name'], unique: true, postgresqlName: 'glpi_businesscriticities_unicity')]
+#[SchemaIndex('unicity', ['parent_key', 'name'], unique: true, postgresqlName: 'glpi_businesscriticities_unicity')]
 class BusinessCriticity
 {
     #[ORM\Id]
@@ -33,17 +38,17 @@ class BusinessCriticity
     public ?string $comment = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 
     #[ORM\ManyToOne(targetEntity: BusinessCriticity::class)]
     #[ORM\JoinColumn(name: 'businesscriticities_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?BusinessCriticity $businesscriticities = null;
 
     #[ORM\Column(name: '`completename`', type: 'text', nullable: true)]
@@ -57,7 +62,7 @@ class BusinessCriticity
 
     #[ORM\Column(name: '`sons_cache`', type: 'text', length: 4294967295, nullable: true)]
     public ?string $sons_cache = null;
-    #[\itsmng\Database\Mapping\ReferenceKey('businesscriticities_id')]
+    #[ReferenceKey('businesscriticities_id')]
     #[ORM\Column(name: '`parent_key`', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS')]
     public ?int $parent_key = null;
 }

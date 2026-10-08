@@ -4,27 +4,50 @@
 
 namespace tests\units;
 
+use Auth;
+use Computer;
 use DBAdapter;
+use DateTime;
+use DbTestCase;
 use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\DBAL\Configuration;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Logging\Middleware;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Result;
+use Doctrine\DBAL\Types\TextType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use Doctrine\ORM\Event\OnClearEventArgs;
 use Doctrine\ORM\Events;
+use Dropdown;
+use DropdownTranslation;
+use Peripheral;
+use PeripheralType;
+use Plugin;
+use Psr\Log\AbstractLogger;
+use Reservation as LegacyReservation;
+use ReservationItem;
+use Session;
+use Throwable;
+use User;
 use itsmng\Database\Entity as Record;
+use itsmng\Database\MutationCleanupFailure;
+use itsmng\Database\MutationRollbackFailure;
+use itsmng\Database\MySQLConnection;
 use itsmng\Database\Orm;
 use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\PostgresConnection;
+use itsmng\Database\Repository\ReservationItemRepository;
 use itsmng\Database\Repository\ReservationRepository;
 use LogicException;
 use mock\tests\units\ReservationDisplayAdapterBase as ReservationDisplayAdapter;
 use ReflectionProperty;
 use SplObjectStorage;
 
-class Reservation extends \DbTestCase
+class Reservation extends DbTestCase
 {
     public function testPublicAddReturnsAfterLifecycleWithoutControllerNavigation(): void
     {
@@ -35,35 +58,35 @@ class Reservation extends \DbTestCase
         $hooks = $PLUGIN_HOOKS;
         $hadUri = array_key_exists('REQUEST_URI', $_SERVER);
         $uri = $_SERVER['REQUEST_URI'] ?? null;
-        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
         $activePlugins = $plugins->getValue();
         $connection = $DB->getDoctrineConnection();
         $depth = $connection->getTransactionNestingLevel();
         $this->integer($depth)->isGreaterThan(0);
         try {
-            $entity = (int)\Session::getActiveEntity();
-            $asset = $this->createItem(\Computer::class, [
+            $entity = (int)Session::getActiveEntity();
+            $asset = $this->createItem(Computer::class, [
                 'name' => 'Reservation lifecycle ' . $this->getUniqueString(), 'entities_id' => $entity,
             ]);
-            $item = $this->createItem(\ReservationItem::class, [
+            $item = $this->createItem(ReservationItem::class, [
                 'itemtype' => 'Computer', 'items_id' => $asset->getID(), 'entities_id' => $entity, 'is_active' => 1,
             ]);
             $events = [];
             $observed = [];
             $plugins->setValue(null, [...$activePlugins, 'reservation_lifecycle_fixture']);
-            $PLUGIN_HOOKS['item_add']['reservation_lifecycle_fixture'][\Reservation::class]
-                = static function (\Reservation $reservation) use (&$events, &$observed, $connection): void {
+            $PLUGIN_HOOKS['item_add']['reservation_lifecycle_fixture'][LegacyReservation::class]
+                = static function (LegacyReservation $reservation) use (&$events, &$observed, $connection): void {
                     global $DB;
                     $id = (int)$reservation->getID();
                     $events[] = ['hook', $id];
                     $observed[] = [
                         'id' => $id,
-                        'rows' => countElementsInTable(\Reservation::getTable(), ['id' => $id]),
+                        'rows' => countElementsInTable(LegacyReservation::getTable(), ['id' => $id]),
                         'writer' => $DB->getDoctrineConnection() === $connection,
                         'depth' => $connection->getTransactionNestingLevel(),
                     ];
                 };
-            $reservation = new \Reservation();
+            $reservation = new LegacyReservation();
             $ids = $expectedEvents = [];
             // Creation is a model operation in every context, including callers
             // with no HTTP request. The owning form alone performs navigation.
@@ -81,7 +104,7 @@ class Reservation extends \DbTestCase
                 }
                 $day = sprintf('2030-03-%02d', $index + 1);
                 $input = [
-                    'reservationitems_id' => $item->getID(), 'users_id' => (int)\Session::getLoginUserID(),
+                    'reservationitems_id' => $item->getID(), 'users_id' => (int)Session::getLoginUserID(),
                     'begin' => $day . ' 09:00:00', 'end' => $day . ' 10:00:00',
                     'comment' => 'Completed public booking ' . $index,
                 ];
@@ -103,7 +126,7 @@ class Reservation extends \DbTestCase
                 $this->string($output)->isEmpty();
                 $this->array($events)->isIdenticalTo($expectedEvents);
                 $this->array($observed[$index])->isIdenticalTo(['id' => $id, 'rows' => 1, 'writer' => true, 'depth' => $depth]);
-                $readback = new \Reservation();
+                $readback = new LegacyReservation();
                 $this->boolean($readback->getFromDB($id))->isTrue();
                 foreach (['begin', 'end', 'comment'] as $field) {
                     $this->string($readback->fields[$field])->isIdenticalTo($input[$field]);
@@ -112,7 +135,7 @@ class Reservation extends \DbTestCase
                 $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
             }
             $this->array(array_unique($ids))->hasSize(4);
-            $this->integer(countElementsInTable(\Reservation::getTable(), ['reservationitems_id' => $item->getID()]))->isIdenticalTo(4);
+            $this->integer(countElementsInTable(LegacyReservation::getTable(), ['reservationitems_id' => $item->getID()]))->isIdenticalTo(4);
 
             foreach ([
                 ['2030-03-05 10:00:00', '2030-03-05 09:00:00', __('Error in entering dates. The starting date is later than the ending date')],
@@ -120,8 +143,8 @@ class Reservation extends \DbTestCase
             ] as [$begin, $end, $error]) {
                 ob_start();
                 try {
-                    $failed = (new \Reservation())->add([
-                        'reservationitems_id' => $item->getID(), 'users_id' => (int)\Session::getLoginUserID(),
+                    $failed = (new LegacyReservation())->add([
+                        'reservationitems_id' => $item->getID(), 'users_id' => (int)Session::getLoginUserID(),
                         'begin' => $begin, 'end' => $end,
                     ]);
                     $output = ob_get_contents();
@@ -133,26 +156,26 @@ class Reservation extends \DbTestCase
                 $this->array($events)->isIdenticalTo($expectedEvents);
             }
             $foreign = (int)getItemByTypeName('User', 'itsm', true);
-            $this->integer($foreign)->isGreaterThan(0)->isNotIdenticalTo((int)\Session::getLoginUserID());
-            $_SESSION['glpiactiveprofile']['reservation'] = \ReservationItem::RESERVEANITEM;
+            $this->integer($foreign)->isGreaterThan(0)->isNotIdenticalTo((int)Session::getLoginUserID());
+            $_SESSION['glpiactiveprofile']['reservation'] = ReservationItem::RESERVEANITEM;
             $creation = ['reservationitems_id' => $item->getID()];
             // The opening form and legacy empty borrower selection remain valid.
-            $this->boolean((new \Reservation())->can(-1, CREATE, $creation))->isTrue();
-            foreach ([null, '', 0, '0', false, (int)\Session::getLoginUserID(), (string)\Session::getLoginUserID()] as $borrower) {
+            $this->boolean((new LegacyReservation())->can(-1, CREATE, $creation))->isTrue();
+            foreach ([null, '', 0, '0', false, (int)Session::getLoginUserID(), (string)Session::getLoginUserID()] as $borrower) {
                 $selection = $creation + ['users_id' => $borrower];
-                $this->boolean((new \Reservation())->can(-1, CREATE, $selection))->isTrue();
+                $this->boolean((new LegacyReservation())->can(-1, CREATE, $selection))->isTrue();
             }
             $selection = $creation + ['users_id' => $foreign];
-            $this->boolean((new \Reservation())->can(-1, CREATE, $selection))->isFalse();
+            $this->boolean((new LegacyReservation())->can(-1, CREATE, $selection))->isFalse();
             $_SESSION['glpiactiveprofile']['reservation'] |= UPDATE;
-            $this->boolean((new \Reservation())->can(-1, CREATE, $selection))->isTrue();
+            $this->boolean((new LegacyReservation())->can(-1, CREATE, $selection))->isTrue();
             foreach ([$foreign . 'junk', -1, true, 1.5, []] as $borrower) {
                 $selection = $creation + ['users_id' => $borrower];
-                $this->boolean((new \Reservation())->can(-1, CREATE, $selection))->isFalse();
+                $this->boolean((new LegacyReservation())->can(-1, CREATE, $selection))->isFalse();
             }
             $_SESSION['glpiactiveprofile']['reservation'] = 0;
-            $this->boolean((new \Reservation())->can(-1, CREATE, $input))->isFalse();
-            $this->integer(countElementsInTable(\Reservation::getTable(), ['reservationitems_id' => $item->getID()]))->isIdenticalTo(4);
+            $this->boolean((new LegacyReservation())->can(-1, CREATE, $input))->isFalse();
+            $this->integer(countElementsInTable(LegacyReservation::getTable(), ['reservationitems_id' => $item->getID()]))->isIdenticalTo(4);
             $this->object($DB->getDoctrineConnection())->isIdenticalTo($connection);
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
         } finally {
@@ -176,8 +199,8 @@ class Reservation extends \DbTestCase
         $level = $original->getDoctrineConnection()->getTransactionNestingLevel();
         $rootId = (int)getItemByTypeName('Entity', '_test_root_entity', true);
         $childId = (int)getItemByTypeName('Entity', '_test_child_1', true);
-        $this->boolean((bool)\Session::haveRight('reservation', READ))->isTrue();
-        $logger = new class () extends \Psr\Log\AbstractLogger {
+        $this->boolean((bool)Session::haveRight('reservation', READ))->isTrue();
+        $logger = new class () extends AbstractLogger {
             public array $reads = [];
             public function log($level, $message, array $context = []): void
             {
@@ -189,14 +212,14 @@ class Reservation extends \DbTestCase
                 }
             }
         };
-        $configuration = new \Doctrine\DBAL\Configuration();
-        $configuration->setMiddlewares([new \Doctrine\DBAL\Logging\Middleware($logger)]);
+        $configuration = new Configuration();
+        $configuration->setMiddlewares([new Middleware($logger)]);
         $parameters = $original->getDoctrineConnection()->getParams();
         $connection = $original->getProvider() === 'pgsql'
-            ? \itsmng\Database\PostgresConnection::create($parameters, $configuration)
-            : \itsmng\Database\MySQLConnection::create($parameters, $configuration);
+            ? PostgresConnection::create($parameters, $configuration)
+            : MySQLConnection::create($parameters, $configuration);
         $probe = clone $original;
-        (new \ReflectionProperty(\DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
+        (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
         $frame = null;
         $primary = null;
         try {
@@ -209,7 +232,7 @@ class Reservation extends \DbTestCase
             $user->name = 'reservation-display-' . bin2hex(random_bytes(6));
             $user->firstname = 'Reservation Ada';
             $user->realname = 'Reader';
-            $user->authtype = \Auth::DB_GLPI;
+            $user->authtype = Auth::DB_GLPI;
             $em->persist($user);
             $items = $assets = [];
             foreach ([['Computer', 'computer', $rootId], ['Monitor', 'monitor', $childId], ['Computer', 'computer', 0]] as $index => [$kind, $association, $entityId]) {
@@ -230,8 +253,8 @@ class Reservation extends \DbTestCase
                 $reservation = new Record\Reservation();
                 $reservation->reservationitems = $item;
                 $reservation->users = $owner;
-                $reservation->begin = new \DateTime('2030-01-01 09:00:00');
-                $reservation->end = $end === null ? null : new \DateTime($end);
+                $reservation->begin = new DateTime('2030-01-01 09:00:00');
+                $reservation->end = $end === null ? null : new DateTime($end);
                 $reservation->comment = $comment;
                 $em->persist($reservation);
             };
@@ -247,7 +270,7 @@ class Reservation extends \DbTestCase
             $_SESSION['glpiactiveentities'] = [$rootId, $childId];
             $_SESSION['glpishowallentities'] = 0;
             $_SESSION['glpi_currenttime'] = '2030-01-01 10:00:00';
-            $_SESSION['glpinames_format'] = \User::FIRSTNAME_BEFORE;
+            $_SESSION['glpinames_format'] = User::FIRSTNAME_BEFORE;
             $_SESSION['glpiis_ids_visible'] = 0;
             $repository = new ReservationRepository($em);
             $loads = new class () {
@@ -257,7 +280,7 @@ class Reservation extends \DbTestCase
                     ++$this->count;
                 }
             };
-            $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+            $em->getEventManager()->addEventListener([Events::postLoad], $loads);
             try {
                 $itemRows = $repository->forItem($items[0]->id, $_SESSION['glpi_currenttime'], false);
                 $this->array($itemRows)->hasSize(14);
@@ -289,7 +312,7 @@ class Reservation extends \DbTestCase
                 $this->string($fresh[0]['_user_firstname'])->isIdenticalTo('Reservation Fresh');
                 $connection->update('glpi_users', ['firstname' => 'Reservation Ada'], ['id' => $user->id]);
             } finally {
-                $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+                $em->getEventManager()->removeEventListener([Events::postLoad], $loads);
                 $em->clear();
             }
             $rows = $repository->forUser($user->id, $_SESSION['glpi_currenttime'], false, [$rootId, $childId]);
@@ -308,14 +331,14 @@ class Reservation extends \DbTestCase
                 }
             }
             $this->array($repository->nativeForUser(0, $_SESSION['glpi_currenttime'], false, null))->isEmpty();
-            $originalText = \Doctrine\DBAL\Types\Type::getType(\Doctrine\DBAL\Types\Types::TEXT);
+            $originalText = Type::getType(Types::TEXT);
             try {
-                \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::TEXT, new ReservationDisplayTextType());
+                Type::overrideType(Types::TEXT, new ReservationDisplayTextType());
                 $converted = $repository->nativeForUser($user->id, $_SESSION['glpi_currenttime'], true, [$rootId, $childId]);
                 $this->array($converted)->isIdenticalTo($repository->forUser($user->id, $_SESSION['glpi_currenttime'], true, [$rootId, $childId]));
                 $this->string($converted[0]['comment'])->isIdenticalTo('PAST BOUNDARY RESERVATION|php');
             } finally {
-                \Doctrine\DBAL\Types\Type::overrideType(\Doctrine\DBAL\Types\Types::TEXT, $originalText);
+                Type::overrideType(Types::TEXT, $originalText);
             }
 
             $connection->update('glpi_reservations', ['comment' => null], ['reservationitems_id' => $items[2]->id]);
@@ -328,7 +351,7 @@ class Reservation extends \DbTestCase
             $render = static function (int $id): string {
                 ob_start();
                 try {
-                    \Reservation::showForUser($id);
+                    LegacyReservation::showForUser($id);
                     return ob_get_contents();
                 } finally {
                     ob_end_clean();
@@ -440,8 +463,8 @@ class Reservation extends \DbTestCase
                 $connection->update('glpi_users', ['firstname' => $firstName], ['id' => $user->id]);
                 $connection->update('glpi_computers', ['name' => $firstName . ' asset'], ['id' => $assets[0]->id]);
                 $name = getUserName($user->id);
-                $labels = [\Dropdown::getDropdownName('glpi_entities', $rootId), \Dropdown::getDropdownName('glpi_entities', $childId)];
-                $asset = new \Computer();
+                $labels = [Dropdown::getDropdownName('glpi_entities', $rootId), Dropdown::getDropdownName('glpi_entities', $childId)];
+                $asset = new Computer();
                 $this->boolean($asset->getFromDB($assets[0]->id))->isTrue();
                 $this->boolean($asset->can($assets[0]->id, READ))->isTrue();
                 $link = $asset->getLink();
@@ -473,7 +496,7 @@ class Reservation extends \DbTestCase
             $this->string($render($user->id))->isIdenticalTo('');
             $this->array($logger->reads)->isEmpty();
             $frame->assertActive();
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $primary = $error;
         } finally {
             $DB = $original;
@@ -482,13 +505,13 @@ class Reservation extends \DbTestCase
                 if ($frame !== null) {
                     $frame->rollBack();
                 }
-            } catch (\Throwable $cleanup) {
-                $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationRollbackFailure($primary, $cleanup);
+            } catch (Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new MutationRollbackFailure($primary, $cleanup);
             }
             try {
                 $probe->close();
-            } catch (\Throwable $cleanup) {
-                $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($primary, $cleanup);
+            } catch (Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
             }
         }
         if ($primary !== null) {
@@ -516,13 +539,13 @@ class Reservation extends \DbTestCase
                 ++$this->loaded;
             }
         };
-        $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+        $em->getEventManager()->addEventListener([Events::postLoad], $listener);
         try {
-            $this->boolean((bool)\Session::haveRight('reservation', \ReservationItem::RESERVEANITEM))->isTrue();
+            $this->boolean((bool)Session::haveRight('reservation', ReservationItem::RESERVEANITEM))->isTrue();
             $prefix = 'Reservation classification ' . bin2hex(random_bytes(6));
-            $first = $this->createItem(\PeripheralType::class, ['name' => $prefix . ' first']);
-            $second = $this->createItem(\PeripheralType::class, ['name' => $prefix . ' second']);
-            $this->createItem(\DropdownTranslation::class, [
+            $first = $this->createItem(PeripheralType::class, ['name' => $prefix . ' first']);
+            $second = $this->createItem(PeripheralType::class, ['name' => $prefix . ' second']);
+            $this->createItem(DropdownTranslation::class, [
                 'itemtype' => 'PeripheralType', 'items_id' => $second->getID(),
                 'language' => 'en_GB', 'field' => 'name', 'value' => $prefix . ' translated',
             ]);
@@ -532,17 +555,17 @@ class Reservation extends \DbTestCase
                 if ($kind !== 'untyped') {
                     $input['peripheraltypes_id'] = $first->getID();
                 }
-                $assets[$kind] = $this->createItem(\Peripheral::class, $input);
-                $items[$kind] = $this->createItem(\ReservationItem::class, [
+                $assets[$kind] = $this->createItem(Peripheral::class, $input);
+                $items[$kind] = $this->createItem(ReservationItem::class, [
                     'itemtype' => 'Peripheral', 'items_id' => $assets[$kind]->getID(),
                     'entities_id' => $input['entities_id'], 'is_active' => $kind === 'inactive' ? 0 : 1,
                 ]);
             }
             $scope = ['AND' => [
-                getEntitiesRestrictCriteria(\Peripheral::getTable(), '', [$entity], false),
+                getEntitiesRestrictCriteria(Peripheral::getTable(), '', [$entity], false),
                 ['id' => array_map(static fn ($asset) => (int)$asset->getID(), $assets)],
             ]];
-            $repository = new \itsmng\Database\Repository\ReservationItemRepository($em);
+            $repository = new ReservationItemRepository($em);
             $rows = array_column($repository->available('Peripheral', 'name', $scope, null, null), null, 'items_id');
             $this->array($rows)->hasSize(2);
             $this->integer((int)$rows[$assets['typed']->getID()]['peripheraltypes_id'])->isIdenticalTo((int)$first->getID());
@@ -572,7 +595,7 @@ class Reservation extends \DbTestCase
             $render = static function (): string {
                 ob_start();
                 try {
-                    \ReservationItem::showListSimple();
+                    ReservationItem::showListSimple();
                     return ob_get_contents();
                 } finally {
                     ob_end_clean();
@@ -581,13 +604,13 @@ class Reservation extends \DbTestCase
             $html = $render();
             $this->string($html)->contains($prefix . ' typed')->contains($prefix . ' untyped')
                 ->contains("<small class='text-muted'>" . $prefix . ' translated</small>')
-                ->contains("<small class='text-muted'>" . htmlspecialchars(\Peripheral::getTypeName()) . '</small>')
+                ->contains("<small class='text-muted'>" . htmlspecialchars(Peripheral::getTypeName()) . '</small>')
                 ->contains('reservationitems_id=' . $items['typed']->getID())
                 ->notContains($prefix . ' inactive')->notContains($prefix . ' outside');
             $_SESSION['glpiactiveprofile']['reservation'] = 0;
             $this->string($render())->isIdenticalTo('');
         } finally {
-            $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+            $em->getEventManager()->removeEventListener([Events::postLoad], $listener);
             $em->clear();
             $_SESSION = $session;
             $_POST = $post;
@@ -598,11 +621,11 @@ class Reservation extends \DbTestCase
 
 }
 
-final class ReservationDisplayTextType extends \Doctrine\DBAL\Types\TextType
+final class ReservationDisplayTextType extends TextType
 {
     public static $callback = null;
 
-    public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+    public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
     {
         if (self::$callback !== null) {
             $callback = self::$callback;
@@ -612,7 +635,7 @@ final class ReservationDisplayTextType extends \Doctrine\DBAL\Types\TextType
         return 'UPPER(' . $sqlExpr . ')';
     }
 
-    public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): ?string
+    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): ?string
     {
         return $value === null ? null : (string)$value . '|php';
     }

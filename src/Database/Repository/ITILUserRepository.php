@@ -7,6 +7,7 @@ namespace itsmng\Database\Repository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\EntityRegistry;
+use itsmng\Database\Entity\ITILFollowup;
 use itsmng\Database\Entity\ProfileUser;
 use itsmng\Database\Mapping\UserReferenceAction;
 
@@ -34,7 +35,7 @@ final class ITILUserRepository
 
     public function followups(string $type, int $item, int $viewer, bool $private): array
     {
-        $class = \itsmng\Database\Entity\ITILFollowup::class;
+        $class = ITILFollowup::class;
         $subject = $this->em->getClassMetadata($class)->getAssociationMapping($class::subjectAssociation($type))->joinColumns[0]->name;
         $where = [$subject => $item];
         if (!$private) {

@@ -6,6 +6,7 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
 use itsmng\Database\Entity;
 
 /** Transfer links use their owning association; application callbacks move the parent. */
@@ -118,7 +119,7 @@ final class TransferBindingRepository
     {
         try {
             return 'IDENTITY(r.' . $this->class::referenceAssociation($type) . ')';
-        } catch (\InvalidArgumentException) {
+        } catch (InvalidArgumentException) {
             return null;
         }
     }

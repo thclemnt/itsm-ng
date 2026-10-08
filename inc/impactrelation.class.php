@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ImpactRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -101,7 +104,7 @@ class ImpactRelation extends CommonDBRelation
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\ImpactRepository(\itsmng\Database\Orm::create($DB)))->relationId([
+        return (new ImpactRepository(Orm::create($DB)))->relationId([
             'itemtype_source' => $input['itemtype_source'],
             'items_id_source' => $input['items_id_source'],
             'itemtype_impacted' => $input['itemtype_impacted'],

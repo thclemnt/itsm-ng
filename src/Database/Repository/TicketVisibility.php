@@ -4,6 +4,9 @@
 
 namespace itsmng\Database\Repository;
 
+use Session;
+use TicketValidation;
+
 /** Immutable authorization snapshot for a ticket read operation. */
 final readonly class TicketVisibility
 {
@@ -14,11 +17,11 @@ final readonly class TicketVisibility
     public static function fromSession(): self
     {
         return new self(
-            (int)\Session::getLoginUserID(),
+            (int)Session::getLoginUserID(),
             array_map('intval', $_SESSION['glpiactiveentities'] ?? []),
             array_map('intval', $_SESSION['glpigroups'] ?? []),
             (int)($_SESSION['glpiactiveprofile']['ticket'] ?? 0),
-            \Session::haveRightsOr('ticketvalidation', [\TicketValidation::VALIDATEINCIDENT, \TicketValidation::VALIDATEREQUEST])
+            Session::haveRightsOr('ticketvalidation', [TicketValidation::VALIDATEINCIDENT, TicketValidation::VALIDATEREQUEST])
         );
     }
 

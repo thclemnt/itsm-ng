@@ -4,8 +4,12 @@
 
 namespace itsmng\Database\Repository;
 
+use DateTime;
+use DateTimeImmutable;
+use DateTimeInterface;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
 use itsmng\Database\Entity\DropdownTranslation;
 use itsmng\Database\Entity\ProfileUser;
 use itsmng\Database\Entity\ProjectTask;
@@ -35,7 +39,7 @@ final class ProjectTaskRepository
     }
 
     /** Explicit groups take precedence; null selects the user or eligible central-profile users. */
-    public function planning(int $user, ?array $groups, array $profileScope, \DateTimeInterface $begin, \DateTimeInterface $end, bool $showDone, bool $unplanned): array
+    public function planning(int $user, ?array $groups, array $profileScope, DateTimeInterface $begin, DateTimeInterface $end, bool $showDone, bool $unplanned): array
     {
         if ($groups === [] || $begin > $end) {
             return [];
@@ -65,8 +69,8 @@ final class ProjectTaskRepository
         } else {
             $query->andWhere('task.plan_end_date >= :begin AND task.plan_start_date <= :end');
         }
-        $query->setParameter('begin', \DateTime::createFromInterface($begin), Types::DATETIME_MUTABLE)
-            ->setParameter('end', \DateTime::createFromInterface($end), Types::DATETIME_MUTABLE)
+        $query->setParameter('begin', DateTime::createFromInterface($begin), Types::DATETIME_MUTABLE)
+            ->setParameter('end', DateTime::createFromInterface($end), Types::DATETIME_MUTABLE)
             ->orderBy('task.plan_start_date')->addOrderBy('task.id');
         $records = new RecordRepository($this->em);
         $rows = [];
@@ -74,7 +78,7 @@ final class ProjectTaskRepository
             $row = $records->toRow($task);
             if ($unplanned) {
                 // Typed hydration supplies the creation date; presentation receives the legacy date format.
-                $creation = \DateTimeImmutable::createFromInterface($task->date);
+                $creation = DateTimeImmutable::createFromInterface($task->date);
                 $row['notp_date'] = $creation->setTimestamp($creation->getTimestamp() - $task->planned_duration)->format('Y-m-d H:i:s');
                 $row['notp_edate'] = $creation->setTimestamp($creation->getTimestamp() + $task->planned_duration)->format('Y-m-d H:i:s');
             }
@@ -137,7 +141,7 @@ final class ProjectTaskRepository
         }
         foreach ($order as $clause) {
             if (!preg_match('/^(\w+)(?: (ASC|DESC))?$/D', $clause, $parts)) {
-                throw new \InvalidArgumentException('Invalid task listing order');
+                throw new InvalidArgumentException('Invalid task listing order');
             }
             $expression = match ($parts[1]) {
                 'tname' => 'dtype.name', 'sname' => 'state.name', 'fname' => 'father.name',

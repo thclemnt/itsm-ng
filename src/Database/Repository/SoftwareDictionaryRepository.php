@@ -6,7 +6,10 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Query;
 use Doctrine\ORM\QueryBuilder;
+use Software;
+use SoftwareLicense;
 use itsmng\Database\Entity;
 use itsmng\Database\LifecycleModelJournal;
 use itsmng\Domain\SoftwareAssignmentCancelled;
@@ -76,7 +79,7 @@ final class SoftwareDictionaryRepository
         return $this->em->createQueryBuilder()->select('s.id AS id', 's.name AS name', 'IDENTITY(s.entities) AS entities_id', 'm.name AS manufacturer')
             ->from(Entity\Software::class, 's')->leftJoin('s.manufacturers', 'm')
             ->where('s.id = :id AND s.is_template = :inactive')->setParameter('id', $id, Types::INTEGER)
-            ->setParameter('inactive', false, Types::BOOLEAN)->getQuery()->getOneOrNullResult(\Doctrine\ORM\Query::HYDRATE_SCALAR);
+            ->setParameter('inactive', false, Types::BOOLEAN)->getQuery()->getOneOrNullResult(Query::HYDRATE_SCALAR);
     }
 
     public function unusedSoftware(array $ids): array
@@ -112,12 +115,12 @@ final class SoftwareDictionaryRepository
         } catch (SoftwareAssignmentCancelled) {
             return false;
         }
-        $software = new \Software();
+        $software = new Software();
         if ($source <= 0 || $target <= 0 || !$software->getFromDB($target)) {
             return false;
         }
         return SoftwareMutation::run($DB, $software, LifecycleModelJournal::state($software), fn () => $service->withSoftwareHierarchy([$source, $target], function () use ($DB, $source, $target, $service): bool {
-            SoftwareMutation::assertTransactionalStorage($DB, [\Software::getTable(), \SoftwareLicense::getTable()]);
+            SoftwareMutation::assertTransactionalStorage($DB, [Software::getTable(), SoftwareLicense::getTable()]);
             $service->lockSoftwareAssignments([$source, $target]);
             if ($source === $target) {
                 return true;

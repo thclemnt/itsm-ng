@@ -4,6 +4,8 @@
 
 namespace itsmng\Database;
 
+use InvalidArgumentException;
+
 /** Attachment access after the caller has checked the parent ITIL object's rights. */
 final readonly class ITILDocumentAccess
 {
@@ -20,7 +22,7 @@ final readonly class ITILDocumentAccess
     public static function current(string $itemtype): self
     {
         if (!in_array($itemtype, ['Ticket', 'Change', 'Problem'], true)) {
-            throw new \InvalidArgumentException('Unsupported ITIL document type');
+            throw new InvalidArgumentException('Unsupported ITIL document type');
         }
         return $itemtype::getAssociatedDocumentAccess();
     }

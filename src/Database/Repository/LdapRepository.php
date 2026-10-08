@@ -4,6 +4,7 @@
 
 namespace itsmng\Database\Repository;
 
+use Auth;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
@@ -89,7 +90,7 @@ final class LdapRepository
             ->orderBy('u.name', strtoupper($order) === 'DESC' ? 'DESC' : 'ASC')->addOrderBy('u.id');
         if ($server !== null) {
             $query->where('u.auths_id = :server AND u.authtype IN (:types)')->setParameter('server', $server, Types::INTEGER)
-                ->setParameter('types', [-1, \Auth::NOT_YET_AUTHENTIFIED, \Auth::LDAP, \Auth::EXTERNAL, \Auth::CAS]);
+                ->setParameter('types', [-1, Auth::NOT_YET_AUTHENTIFIED, Auth::LDAP, Auth::EXTERNAL, Auth::CAS]);
         }
         $records = new RecordRepository($this->em);
         foreach ($query->getQuery()->toIterable() as $user) {
@@ -111,7 +112,7 @@ final class LdapRepository
             $this->em->createQueryBuilder()->update(Entity\User::class, 'u')->set('u.auth_source_code', ':replacement')
                 ->where('u.auth_source_code = :server AND u.authtype IN (:types)')->setParameter('server', $server, Types::INTEGER)
                 ->setParameter('replacement', $replacement, Types::INTEGER)
-                ->setParameter('types', [-1, \Auth::API, \Auth::COOKIE])->getQuery()->execute();
+                ->setParameter('types', [-1, Auth::API, Auth::COOKIE])->getQuery()->execute();
         });
     }
 

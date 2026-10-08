@@ -1,5 +1,8 @@
 <?php
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\MailAuthenticationRepository;
+use itsmng\Database\Repository\UserRepository;
 use itsmng\MailServer;
 
 /**
@@ -242,7 +245,7 @@ class AuthMail extends CommonDBTM
     public static function useAuthMail()
     {
         global $DB;
-        return (new \itsmng\Database\Repository\MailAuthenticationRepository(\itsmng\Database\Orm::create($DB)))->activeCount() > 0;
+        return (new MailAuthenticationRepository(Orm::create($DB)))->activeCount() > 0;
     }
 
 
@@ -335,7 +338,7 @@ class AuthMail extends CommonDBTM
     {
         global $DB;
         Rule::cleanForItemCriteria($this, 'MAIL_SERVER');
-        (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+        (new UserRepository(Orm::create($DB)))
             ->reassignMailServer((int)$this->getID(), (int)($this->input['_replace_by'] ?? 0));
     }
 

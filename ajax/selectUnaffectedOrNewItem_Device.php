@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ComponentRepository;
+
 /**
  * @since 0.85
  */
@@ -50,10 +54,10 @@ if (
     $devicetype = $_POST['itemtype'];
     $linktype   = $devicetype::getItem_DeviceType();
 
-    if (isset(\itsmng\Database\EntityRegistry::tables()[$linktype::getTable()])) {
-        $manager = \itsmng\Database\Orm::create($DB);
+    if (isset(EntityRegistry::tables()[$linktype::getTable()])) {
+        $manager = Orm::create($DB);
         try {
-            $result = (new \itsmng\Database\Repository\ComponentRepository($manager))->stock(
+            $result = (new ComponentRepository($manager))->stock(
                 $linktype::getTable(),
                 $devicetype::getForeignKeyField(),
                 (int)$_POST['items_id']

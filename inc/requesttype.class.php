@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILClassificationRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -178,7 +181,7 @@ class RequestType extends CommonDropdown
         }
 
         if (count($update)) {
-            (new \itsmng\Database\Repository\ITILClassificationRepository(\itsmng\Database\Orm::create($DB)))
+            (new ITILClassificationRepository(Orm::create($DB)))
                 ->clearOtherDefaults((int)$this->fields['id'], array_keys($update));
         }
     }
@@ -225,7 +228,7 @@ class RequestType extends CommonDropdown
         }
 
         if (count($update)) {
-            (new \itsmng\Database\Repository\ITILClassificationRepository(\itsmng\Database\Orm::create($DB)))
+            (new ITILClassificationRepository(Orm::create($DB)))
                 ->clearOtherDefaults((int)$this->fields['id'], array_keys($update));
         }
     }
@@ -242,7 +245,7 @@ class RequestType extends CommonDropdown
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\ITILClassificationRepository(\itsmng\Database\Orm::create($DB)))
+        return (new ITILClassificationRepository(Orm::create($DB)))
             ->defaultRequestType((string)$source);
     }
 

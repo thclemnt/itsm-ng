@@ -36,6 +36,7 @@ namespace tests\units;
 use Generator;
 use Glpi\Api\Deprecated\TicketFollowup;
 use ITILFollowup;
+use Toolbox as LegacyToolbox;
 use stdClass;
 use Ticket;
 
@@ -55,7 +56,7 @@ class Toolbox extends \GLPITestCase
             file_put_contents($file, $contents);
             $message = null;
             $error = null;
-            $this->string(\Toolbox::callCurl('file://' . $file, [], $message, $error))
+            $this->string(LegacyToolbox::callCurl('file://' . $file, [], $message, $error))
                 ->isIdenticalTo($contents);
             $this->variable($message)->isNull();
             $this->variable($error)->isNull();
@@ -471,7 +472,7 @@ class Toolbox extends \GLPITestCase
         $crypted = null;
         $this->when(
             function () use ($string, $key, &$crypted) {
-                $crypted = \Toolbox::encrypt($string, $key);
+                $crypted = LegacyToolbox::encrypt($string, $key);
             }
         )->error()
             ->withType(E_USER_DEPRECATED)
@@ -632,26 +633,26 @@ class Toolbox extends \GLPITestCase
         try {
             // Save an image twice
             $this->boolean(copy(__DIR__ . '/../../pics/add_dropdown.png', $test_file))->isTrue(); // savePicture moves its source
-            $first_pict = \Toolbox::savePicture($test_file);
+            $first_pict = LegacyToolbox::savePicture($test_file);
             $this->string($first_pict)->matches('#[^/]+/.+\.png#'); // generated random name inside subdir
 
             $this->boolean(copy(__DIR__ . '/../../pics/add_dropdown.png', $test_file))->isTrue(); // savePicture moves its source
-            $second_pict = \Toolbox::savePicture($test_file);
+            $second_pict = LegacyToolbox::savePicture($test_file);
             $this->string($second_pict)->matches('#[^/]+/.+\.png#'); // generated random name inside subdir
 
             // Check that second saving of same image is not overriding first saved image.
             $this->string($first_pict)->isNotEqualTo($second_pict);
 
             // Delete saved images
-            $this->boolean(\Toolbox::deletePicture($first_pict))->isTrue();
-            $this->boolean(\Toolbox::deletePicture($second_pict))->isTrue();
+            $this->boolean(LegacyToolbox::deletePicture($first_pict))->isTrue();
+            $this->boolean(LegacyToolbox::deletePicture($second_pict))->isTrue();
 
             // Save not an image
-            $this->boolean(\Toolbox::savePicture(__DIR__ . '/../notanimage.jpg'))->isFalse();
+            $this->boolean(LegacyToolbox::savePicture(__DIR__ . '/../notanimage.jpg'))->isFalse();
 
             // Save and delete unexisting files
-            $this->boolean(\Toolbox::savePicture('notafile.jpg'))->isFalse();
-            $this->boolean(\Toolbox::deletePicture('notafile.jpg'))->isFalse();
+            $this->boolean(LegacyToolbox::savePicture('notafile.jpg'))->isFalse();
+            $this->boolean(LegacyToolbox::deletePicture('notafile.jpg'))->isFalse();
         } finally {
             if (is_file($test_file)) {
                 unlink($test_file);
@@ -661,7 +662,7 @@ class Toolbox extends \GLPITestCase
                     continue;
                 }
                 if (is_file(GLPI_PICTURE_DIR . '/' . $picture)) {
-                    \Toolbox::deletePicture($picture);
+                    LegacyToolbox::deletePicture($picture);
                 }
                 $directory = dirname(GLPI_PICTURE_DIR . '/' . $picture);
                 if (preg_match('#^[a-f0-9]{2}/[^/]+\.png$#', $picture) && !in_array($directory, $existingDirectories, true)

@@ -5,6 +5,7 @@
 namespace itsmng\Appliance;
 
 use Doctrine\DBAL\Connection;
+use RuntimeException;
 
 /** DBAL reads the unmodeled historical plugin export; core persistence belongs to the domain. */
 final class PluginApplianceSource
@@ -56,7 +57,7 @@ final class PluginApplianceSource
             // These integers are the historical plugin format, not a core relationship catalogue.
             $row['itemtype'] = match ($relationTypes[$owner] ?? null) {
                 1 => 'Location', 2 => 'Network', 3 => 'Domain',
-                default => throw new \RuntimeException('Unknown appliance plugin relation kind or owner at relation ' . $row['id']),
+                default => throw new RuntimeException('Unknown appliance plugin relation kind or owner at relation ' . $row['id']),
             };
             $row['appliances_items_id'] = $row['plugin_appliances_appliances_items_id'];
             $row['items_id'] = $row['relations_id'];
@@ -76,12 +77,12 @@ final class PluginApplianceSource
     {
         $manager = $this->connection->createSchemaManager();
         if (!$manager->tablesExist([$table])) {
-            throw new \RuntimeException('Missing appliance plugin source table: ' . $table);
+            throw new RuntimeException('Missing appliance plugin source table: ' . $table);
         }
         $columns = $manager->listTableColumns($table);
         $missing = array_diff($required, array_keys($columns));
         if ($missing) {
-            throw new \RuntimeException('Missing appliance plugin source columns: ' . $table . '.' . implode(', ' . $table . '.', $missing));
+            throw new RuntimeException('Missing appliance plugin source columns: ' . $table . '.' . implode(', ' . $table . '.', $missing));
         }
         $fields = [...$required, ...array_keys(array_intersect_key($optional, $columns))];
         $quote = $this->connection->getDatabasePlatform()->quoteIdentifier(...);

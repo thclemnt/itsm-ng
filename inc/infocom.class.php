@@ -31,6 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Entity\Infocom as InfocomEntity;
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\InfocomRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -275,10 +281,10 @@ class Infocom extends CommonDBChild
         global $DB;
 
         if (static::class !== self::class
-            || (\itsmng\Database\EntityRegistry::tables()[$this->getTable()] ?? null) !== \itsmng\Database\Entity\Infocom::class) {
+            || (EntityRegistry::tables()[$this->getTable()] ?? null) !== InfocomEntity::class) {
             return $this->getFromDBforDevice($itemtype, $ID);
         }
-        $activated = (new \itsmng\Database\Repository\InfocomRepository(\itsmng\Database\Orm::create($DB)))
+        $activated = (new InfocomRepository(Orm::create($DB)))
             ->isActivatedFor($itemtype, (int)$ID);
         if (!$activated) {
             // item_empty hooks see defaults before the captured link is assigned.
@@ -514,9 +520,9 @@ class Infocom extends CommonDBChild
 
         foreach (Entity::getEntitiesToNotify('use_infocoms_alert') as $entity => $value) {
             $before    = Entity::getUsedConfig('send_infocoms_alert_before_delay', $entity);
-            $em = \itsmng\Database\Orm::create($DB);
+            $em = Orm::create($DB);
             try {
-                $rows = (new \itsmng\Database\Repository\InfocomRepository($em))->warrantiesExpiring((int)$entity, (int)$before);
+                $rows = (new InfocomRepository($em))->warrantiesExpiring((int)$entity, (int)$before);
             } finally {
                 $em->clear();
             }
@@ -832,7 +838,7 @@ JS;
             return false;
         }
 
-        $count = \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), [
+        $count = MappedReads::countMatching($DB, self::getTable(), [
             'itemtype' => $itemtype, 'items_id' => $device_id,
         ]);
 
@@ -2230,9 +2236,9 @@ JS;
     {
         global $DB;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            return (new \itsmng\Database\Repository\InfocomRepository($em))->types($where);
+            return (new InfocomRepository($em))->types($where);
         } finally {
             $em->clear();
         }

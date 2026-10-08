@@ -4,11 +4,15 @@
 
 namespace tests\units;
 
+use DateTime;
+use DbTestCase;
+use Entity as LegacyEntity;
+use Stat as LegacyStat;
 use itsmng\Database\Entity;
 use itsmng\Database\Orm;
 
 /** Public reporting calls keep fresh rows and application entity/deletion scope. */
-class Stat extends \DbTestCase
+class Stat extends DbTestCase
 {
     protected function types(): array
     {
@@ -24,7 +28,7 @@ class Stat extends \DbTestCase
     {
         global $DB;
         $this->login();
-        $entity = (int)(new \Entity())->add(['name' => 'Statistics metadata scope ' . $type, 'entities_id' => 0]);
+        $entity = (int)(new LegacyEntity())->add(['name' => 'Statistics metadata scope ' . $type, 'entities_id' => 0]);
         $this->integer($entity)->isGreaterThan(0);
         $_SESSION['glpishowallentities'] = false;
         $_SESSION['glpiactiveentities'] = [$entity];
@@ -39,9 +43,9 @@ class Stat extends \DbTestCase
             $record->name = 'Statistics current data';
             $record->content = 'Functional reporting fixture';
             $record->status = $closed;
-            $record->date = new \DateTime($date);
-            $record->solvedate = new \DateTime($date);
-            $record->closedate = new \DateTime($date);
+            $record->date = new DateTime($date);
+            $record->solvedate = new DateTime($date);
+            $record->closedate = new DateTime($date);
             $record->solve_delay_stat = $delay;
             $record->is_deleted = $deleted;
             $manager->persist($record);
@@ -51,7 +55,7 @@ class Stat extends \DbTestCase
         $create($entity, true, '2025-01-15 12:00:00', 900);
         $create(0, false, '2025-01-15 12:00:00', 900);
         $create($entity, false, '2025-02-01 00:00:00', 900);
-        $measure = static fn (string $metric): array => \Stat::constructEntryValues($type, $metric, '2025-01-01', '2025-01-31');
+        $measure = static fn (string $metric): array => LegacyStat::constructEntryValues($type, $metric, '2025-01-01', '2025-01-31');
         $this->array($measure('inter_total'))->isIdenticalTo(['2025-01' => 1]);
         $this->array($measure('inter_solved'))->isIdenticalTo(['2025-01' => 1]);
         $this->float($measure('inter_avgsolvedtime')['2025-01'])->isEqualTo(200.0);

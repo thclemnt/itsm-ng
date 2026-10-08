@@ -4,20 +4,28 @@
 
 namespace tests\units\itsmng\Database\Query;
 
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\MariaDBPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Result;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Query\Parser;
 use Doctrine\ORM\Query\QueryException;
+use LogicException;
+use atoum\atoum\test;
 use itsmng\Database\Entity\KnowbaseItem;
+use itsmng\Database\Entity\KnowbaseItemTranslation;
+use itsmng\Database\KnowledgeBaseAccess;
 use itsmng\Database\Orm;
 use itsmng\Database\Query\KnowledgeBaseFullText as FullText;
+use itsmng\Database\Repository\KnowledgeBaseRepository;
 use tests\fixtures\DisconnectedSchemaConnection;
 
 require_once dirname(__DIR__, 4) . '/fixtures/DisconnectedSchemaConnection.php';
 
-class KnowledgeBaseFullText extends \atoum\atoum\test
+class KnowledgeBaseFullText extends test
 {
     public function testBoundDqlPreservesParameterOccurrencesAndProviderPredicates(): void
     {
@@ -60,7 +68,7 @@ class KnowledgeBaseFullText extends \atoum\atoum\test
                 $strict = new DisconnectedSchemaConnection($platform);
                 // Only the driver boundary is synthetic. The actual repository,
                 // parser, SQL walker, parameter mapping and hydrators execute.
-                $connection = new class ([], $strict->getDriver()) extends \Doctrine\DBAL\Connection {
+                $connection = new class ([], $strict->getDriver()) extends Connection {
                     public array $counts = [];
                     public array $statements = [];
 
@@ -74,19 +82,19 @@ class KnowledgeBaseFullText extends \atoum\atoum\test
                         string $sql,
                         array $params = [],
                         array $types = [],
-                        ?\Doctrine\DBAL\Cache\QueryCacheProfile $qcp = null
-                    ): \Doctrine\DBAL\Result {
+                        ?QueryCacheProfile $qcp = null
+                    ): Result {
                         $this->statements[] = [$sql, $params];
                         $rows = [];
                         if (preg_match('/^SELECT COUNT\(/i', $sql)) {
                             if ($this->counts === [] || !preg_match('/\bAS\s+(sclr_\d+)/i', $sql, $alias)) {
-                                throw new \LogicException('Unexpected repository count projection.');
+                                throw new LogicException('Unexpected repository count projection.');
                             }
                             $rows = [[$alias[1] => array_shift($this->counts)]];
                         }
                         // Counts select the production branch; the empty page
                         // supplies no fake application data or native proof.
-                        return new class ($rows) extends \Doctrine\DBAL\Result {
+                        return new class ($rows) extends Result {
                             public function __construct(private array $rows)
                             {
                             }
@@ -108,8 +116,8 @@ class KnowledgeBaseFullText extends \atoum\atoum\test
                 $this->string($connection->quote("quoted'fixture"))->isIdenticalTo("'quoted''fixture'");
                 $connection->counts = $counts;
                 $manager = new EntityManager($connection, Orm::configuration($platform));
-                $access = new \itsmng\Database\KnowledgeBaseAccess(3, false, true, true, true, [4], 2, [1], [0]);
-                $page = (new \itsmng\Database\Repository\KnowledgeBaseRepository($manager))->listPage($access, [
+                $access = new KnowledgeBaseAccess(3, false, true, true, true, [4], 2, [1], [0]);
+                $page = (new KnowledgeBaseRepository($manager))->listPage($access, [
                     'type' => $type, 'contains' => $text, 'category' => 1, 'faq' => false,
                     'language' => $language, 'offset' => 1, 'limit' => 2,
                 ]);
@@ -177,7 +185,7 @@ class KnowledgeBaseFullText extends \atoum\atoum\test
             'KB_MATCH(k.name, k.answer, k.comment, :terms)',
             'KB_MATCH(k.unknown_field, :terms)',
             'KB_SCORE(k.name, :terms, 1)',
-            'KB_MATCH(k.name, :terms, (SELECT t.id FROM ' . \itsmng\Database\Entity\KnowbaseItemTranslation::class . ' t))',
+            'KB_MATCH(k.name, :terms, (SELECT t.id FROM ' . KnowbaseItemTranslation::class . ' t))',
         ] as $expression) {
             $this->exception(static fn () => $manager->createQuery('SELECT k.id FROM ' . KnowbaseItem::class
                 . ' k WHERE ' . $expression . ' = true')->getSQL())->isInstanceOf(QueryException::class);

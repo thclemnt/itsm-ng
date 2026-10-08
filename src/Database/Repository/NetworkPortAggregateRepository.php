@@ -5,11 +5,14 @@
 namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\ArrayParameterType;
+use Doctrine\DBAL\LockMode;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
 use itsmng\Database\Entity\NetworkPort;
 use itsmng\Database\Entity\NetworkPortAggregate;
 use itsmng\Database\Entity\NetworkPortAggregateOrigin;
+use itsmng\Database\Entity\NetworkPortAlias;
 
 final class NetworkPortAggregateRepository
 {
@@ -22,7 +25,7 @@ final class NetworkPortAggregateRepository
         $ids = [];
         foreach ($values as $value) {
             if (filter_var($value, FILTER_VALIDATE_INT) === false || (int)$value <= 0) {
-                throw new \InvalidArgumentException('Aggregate origins require positive port IDs');
+                throw new InvalidArgumentException('Aggregate origins require positive port IDs');
             }
             $ids[(int)$value] = (int)$value;
         }
@@ -43,10 +46,10 @@ final class NetworkPortAggregateRepository
         $this->em->getConnection()->transactional(function () use ($aggregate, $ids): void {
             $board = $this->em->find(NetworkPortAggregate::class, $aggregate);
             if ($board === null) {
-                throw new \InvalidArgumentException('Unknown aggregate');
+                throw new InvalidArgumentException('Unknown aggregate');
             }
             // Serialize edits to one ordered membership set.
-            $this->em->lock($board, \Doctrine\DBAL\LockMode::PESSIMISTIC_WRITE);
+            $this->em->lock($board, LockMode::PESSIMISTIC_WRITE);
             // Only existence is needed. Keep batches bounded and diagnose the
             // first missing origin in selection order before changing membership.
             foreach (array_chunk($ids, 1000) as $batch) {
@@ -56,7 +59,7 @@ final class NetworkPortAggregateRepository
                     ->getQuery()->getSingleColumnResult(), true);
                 foreach ($batch as $id) {
                     if (!isset($existing[$id])) {
-                        throw new \InvalidArgumentException('Unknown aggregate origin: ' . $id);
+                        throw new InvalidArgumentException('Unknown aggregate origin: ' . $id);
                     }
                 }
             }
@@ -91,7 +94,7 @@ final class NetworkPortAggregateRepository
         }
         $this->em->getConnection()->transactional(function () use ($source, $destination): void {
             if ($this->em->find(NetworkPort::class, $destination) === null) {
-                throw new \InvalidArgumentException('Unknown replacement origin port');
+                throw new InvalidArgumentException('Unknown replacement origin port');
             }
             $aggregates = $this->em->createQueryBuilder()->select('IDENTITY(o.aggregate) AS id')
                 ->from(NetworkPortAggregateOrigin::class, 'o')->where('o.port = :port')
@@ -102,7 +105,7 @@ final class NetworkPortAggregateRepository
                 if ($board === null) {
                     continue;
                 }
-                $this->em->lock($board, \Doctrine\DBAL\LockMode::PESSIMISTIC_WRITE);
+                $this->em->lock($board, LockMode::PESSIMISTIC_WRITE);
                 $ids = array_map(static fn (int $port): int => $port === $source ? $destination : $port, $this->originIds($id));
                 $this->replaceOrigins($id, $ids);
             }
@@ -120,7 +123,7 @@ final class NetworkPortAggregateRepository
     public function virtualPorts(int $port): array
     {
         $rows = $this->em->createQueryBuilder()->select('IDENTITY(a.networkports_id) AS id')
-            ->from(\itsmng\Database\Entity\NetworkPortAlias::class, 'a')
+            ->from(NetworkPortAlias::class, 'a')
             ->where('a.networkports_id_alias = :port')->setParameter('port', $port, Types::INTEGER)->getQuery()->getScalarResult();
         $ids = [];
         foreach (array_merge($rows, $this->aggregatesForPort($port)) as $row) {

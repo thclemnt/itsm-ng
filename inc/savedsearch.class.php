@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\SavedSearchRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -53,10 +56,10 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
     public const COUNT_AUTO = 2;
 
 
-    private static function repository(): \itsmng\Database\Repository\SavedSearchRepository
+    private static function repository(): SavedSearchRepository
     {
         global $DB;
-        return new \itsmng\Database\Repository\SavedSearchRepository(\itsmng\Database\Orm::create($DB));
+        return new SavedSearchRepository(Orm::create($DB));
     }
 
     private function isOwnedByCurrentUser(): bool
@@ -1310,7 +1313,7 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
             Toolbox::logWarning('Count on tabs has been disabled; crontask is inefficient.');
             return 0;
         }
-        $lastdate = (new \DateTimeImmutable($task->getField('lastrun')))->sub(new \DateInterval('P7D'));
+        $lastdate = (new DateTimeImmutable($task->getField('lastrun')))->sub(new DateInterval('P7D'));
         $repository = self::repository();
         $rows = $repository->stale($lastdate);
         if (!$rows) {
@@ -1318,7 +1321,7 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
         }
         $_SESSION['glpiname'] ??= 'crontab';
         $_SESSION['glpigroups'] ??= [];
-        $now = new \DateTimeImmutable();
+        $now = new DateTimeImmutable();
         $connection = $DB->getDoctrineConnection();
         $connection->transactional(static function () use ($connection, $repository, $rows, $now): void {
             foreach ($rows as $row) {
@@ -1331,7 +1334,7 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
                             $repository->recordExecution((int)$row['id'], (int)$data['data']['execution_time'], false, $now);
                         }
                     });
-                } catch (\Exception $error) {
+                } catch (Exception $error) {
                     Toolbox::logError($error);
                 }
             }

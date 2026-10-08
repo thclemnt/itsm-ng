@@ -40,6 +40,8 @@ if (!defined('GLPI_ROOT')) {
 use CommonDBConnexity;
 use Session;
 use Toolbox;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Mapping\LegacyInput;
 
 /**
  * Clonable objects
@@ -87,8 +89,8 @@ trait Clonable
                 $relation_override = $override_input;
                 // Abstract families such as Item_Devices return concrete models;
                 // their owning subject columns belong to each concrete entity.
-                $entity = \itsmng\Database\EntityRegistry::tables()[$relation_item::getTable()] ?? null;
-                if ($item_field === 'items_id' && $entity !== null && is_a($entity, \itsmng\Database\Mapping\LegacyInput::class, true) && method_exists($entity, 'withReference')) {
+                $entity = EntityRegistry::tables()[$relation_item::getTable()] ?? null;
+                if ($item_field === 'items_id' && $entity !== null && is_a($entity, LegacyInput::class, true) && method_exists($entity, 'withReference')) {
                     $relation_override = array_replace($relation_override, (new $entity())->normalizeInput(
                         $entity::withReference($relation_override, $this->getType(), (int)$this->getID())
                     ));

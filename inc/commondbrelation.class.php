@@ -31,6 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\ConnexityInput;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -793,7 +799,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
 
         // True if item changed
         if (
-            !\itsmng\Database\ConnexityInput::endpoints($this)
+            !ConnexityInput::endpoints($this)
             && !$this->checkAttachedItemChangesAllowed($input, [static::$itemtype_1,
                                                                    static::$items_id_1,
                                                                    static::$itemtype_2,
@@ -2011,12 +2017,12 @@ abstract class CommonDBRelation extends CommonDBConnexity
         global $DB;
 
         $params = static::getDistinctTypesParams($items_id, $extra_where);
-        if (isset(\itsmng\Database\EntityRegistry::tables()[static::getTable()])
+        if (isset(EntityRegistry::tables()[static::getTable()])
             && !array_diff(array_keys($params), ['SELECT', 'DISTINCT', 'FROM', 'WHERE', 'ORDER'])
             && $params['FROM'] === static::getTable() && $params['SELECT'] === 'itemtype'
             && ($params['DISTINCT'] ?? false) === true && is_array($params['WHERE'])) {
-            return new \itsmng\Database\RowIterator(
-                (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+            return new RowIterator(
+                (new RecordRepository(Orm::create($DB)))
                     ->distinctValues(static::getTable(), 'itemtype', $params['WHERE'], $params['ORDER'] ?? [])
             );
         }

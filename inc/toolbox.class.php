@@ -40,6 +40,8 @@ use Monolog\Logger;
 use Mexitek\PHPColors\Color;
 use Psr\Log\InvalidArgumentException;
 use Symfony\Component\Console\Output\OutputInterface;
+use itsmng\Database\Installer;
+use itsmng\Database\Migration\History;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -2695,10 +2697,10 @@ class Toolbox
         // Config lifecycle callbacks use the selected writer inside History publication.
         $DB = $database;
 
-        if ($replace && $DB->getProvider() === 'mysql' && !\itsmng\Database\Migration\History::isInstalling($DB->getDoctrineConnection())) {
-            \itsmng\Database\Installer::resetMysqlCore($DB->getDoctrineConnection());
+        if ($replace && $DB->getProvider() === 'mysql' && !History::isInstalling($DB->getDoctrineConnection())) {
+            Installer::resetMysqlCore($DB->getDoctrineConnection());
         }
-        (new \itsmng\Database\Migration\History())->install(
+        (new History())->install(
             $DB,
             $lang,
             isCommandLine() ? null : static function (string $step): void {

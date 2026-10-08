@@ -33,7 +33,19 @@
 
 namespace tests\units;
 
+use Auth;
+use Contact;
 use DbTestCase;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Events;
+use Doctrine\ORM\Query;
+use NotificationEventMailing;
+use NotificationTargetProject;
+use NotificationTargetProjectTask;
+use Notification_NotificationTemplate;
+use Project;
+use ProjectTask;
 use itsmng\Database\Entity;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ProjectRepository;
@@ -54,10 +66,10 @@ class ProjectTeam extends DbTestCase
         $rootId = getItemByTypeName('Entity', '_test_root_entity', true);
         $connection = $DB->getDoctrineConnection();
         $level = $connection->getTransactionNestingLevel();
-        $em = new class ($connection, Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+        $em = new class ($connection, Orm::configuration($connection->getDatabasePlatform())) extends EntityManager {
             public int $queries = 0;
 
-            public function createQuery(string $dql = ''): \Doctrine\ORM\Query
+            public function createQuery(string $dql = ''): Query
             {
                 ++$this->queries;
                 return parent::createQuery($dql);
@@ -71,7 +83,7 @@ class ProjectTeam extends DbTestCase
                 ++$this->count;
             }
         };
-        $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+        $em->getEventManager()->addEventListener([Events::postLoad], $loads);
         try {
             $root = $em->getReference(Entity\Entity::class, $rootId);
             $parentClass = $taskTeam ? Entity\ProjectTask::class : Entity\Project::class;
@@ -100,7 +112,7 @@ class ProjectTeam extends DbTestCase
                 $user->name = 'recipient-' . $this->getUniqueString();
                 $user->language = 'fr_FR';
                 $user->is_active = $i !== 1;
-                $user->authtype = \Auth::DB_GLPI;
+                $user->authtype = Auth::DB_GLPI;
                 $em->persist($user);
                 $email = new Entity\UserEmail();
                 $email->users = $user;
@@ -171,11 +183,11 @@ class ProjectTeam extends DbTestCase
             $this->integer($loads->count)->isIdenticalTo(0);
             $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
 
-            $model = $taskTeam ? new \ProjectTask() : new \Project();
+            $model = $taskTeam ? new ProjectTask() : new Project();
             $this->boolean($model->getFromDB($parentId))->isTrue();
-            $target = $taskTeam ? new \NotificationTargetProjectTask($rootId, 'new', $model)
-                : new \NotificationTargetProject($rootId, 'new', $model);
-            $target->setMode(\Notification_NotificationTemplate::MODE_MAIL)->setEvent(\NotificationEventMailing::class);
+            $target = $taskTeam ? new NotificationTargetProjectTask($rootId, 'new', $model)
+                : new NotificationTargetProject($rootId, 'new', $model);
+            $target->setMode(Notification_NotificationTemplate::MODE_MAIL)->setEvent(NotificationEventMailing::class);
             $target->addTeamUsers();
             // Account state and actual profile scope are still admitted by the public target.
             $this->array(array_keys($target->target))->isIdenticalTo(['user0@example.test']);
@@ -184,7 +196,7 @@ class ProjectTeam extends DbTestCase
             $target->addTeamContacts();
             $target->addTeamSuppliers();
             $this->array($target->target)->hasSize(26)->hasKey('contact0@example.test')->hasKey('supplier@example.test');
-            $legacyContact = new \Contact();
+            $legacyContact = new Contact();
             $this->boolean($legacyContact->getFromDB($contactId))->isTrue();
             $this->string($target->target['contact0@example.test']['username'])->isIdenticalTo($legacyContact->getName());
             $this->string($target->target['contact1@example.test']['username'])->isIdenticalTo(NOT_AVAILABLE);
@@ -205,7 +217,7 @@ class ProjectTeam extends DbTestCase
             $target->addTeamContacts();
             $this->array($target->target)->hasSize(24)->hasKey('fresh@example.test')->notHasKey('contact0@example.test');
             $this->string($target->target['fresh@example.test']['username'])->contains('Fresh');
-            $connection->update('glpi_users', ['is_active' => false], ['id' => $userId], ['is_active' => \Doctrine\DBAL\Types\Types::BOOLEAN]);
+            $connection->update('glpi_users', ['is_active' => false], ['id' => $userId], ['is_active' => Types::BOOLEAN]);
             $target->target = [];
             $target->addTeamUsers();
             $this->array($target->target)->isEmpty();

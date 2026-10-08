@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\DropdownChoiceContext;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ContentRepository;
+use itsmng\Database\Repository\SoftwareRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -348,7 +353,7 @@ class Document_Item extends CommonDBRelation
             $newitemtype = $itemtype;
         }
 
-        $ids = (new \itsmng\Database\Repository\ContentRepository(\itsmng\Database\Orm::create($DB)))
+        $ids = (new ContentRepository(Orm::create($DB)))
             ->documentIds($itemtype, (int)$oldid);
         foreach ($ids as $documentId) {
             $docitem = new self();
@@ -395,7 +400,7 @@ class Document_Item extends CommonDBRelation
             };
             $dropdownChoiceTokens = [];
             foreach (array_keys(array_unique($options)) as $kind) {
-                $dropdownChoiceTokens[$kind] = \itsmng\Database\DropdownChoiceContext::token($kind, []);
+                $dropdownChoiceTokens[$kind] = DropdownChoiceContext::token($kind, []);
             }
             $dropdownChoiceTokens = json_encode($dropdownChoiceTokens, JSON_THROW_ON_ERROR);
 
@@ -504,7 +509,7 @@ class Document_Item extends CommonDBRelation
                         $softwareIds[] = $license['softwares_id'];
                     }
                     $softwareNames = $softwareIds === [] ? []
-                        : (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))
+                        : (new SoftwareRepository(Orm::create($DB)))
                             ->names($softwareIds);
                 }
 
@@ -715,7 +720,7 @@ class Document_Item extends CommonDBRelation
                     $entities = $entity;
                 }
             }
-            $repository = new \itsmng\Database\Repository\ContentRepository(\itsmng\Database\Orm::create($DB));
+            $repository = new ContentRepository(Orm::create($DB));
             $nb = $repository->documentCount(getEntitiesRestrictCriteria('glpi_documents', '', $entities, true));
 
             if ($item->getType() == 'Document') {
@@ -934,7 +939,7 @@ class Document_Item extends CommonDBRelation
         $scope = Session::getLoginUserID()
             ? getEntitiesRestrictCriteria('glpi_documents', '', '', true)
             : ['entities_id' => 0];
-        $iterator = (new \itsmng\Database\Repository\ContentRepository(\itsmng\Database\Orm::create($DB)))
+        $iterator = (new ContentRepository(Orm::create($DB)))
             ->documents($item->getType(), (int)$item->getID(), $scope, $sort, $order);
         $number = count($iterator);
         $i      = 0;

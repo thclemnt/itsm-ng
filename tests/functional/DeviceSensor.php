@@ -34,6 +34,9 @@
 namespace tests\units;
 
 use DbTestCase;
+use DeviceSensorModel;
+use DeviceSensorType;
+use Manufacturer;
 
 class DeviceSensor extends DbTestCase
 {
@@ -58,9 +61,9 @@ class DeviceSensor extends DbTestCase
         // Add
         $in = [
            'designation'              => $this->method,
-           'manufacturers_id'         => (new \Manufacturer())->add(['name' => $this->getUniqueString()]),
-           'devicesensortypes_id'     => (new \DeviceSensorType())->add(['name' => $this->getUniqueString()]),
-           'devicesensormodels_id'    => (new \DeviceSensorModel())->add(['name' => $this->getUniqueString()]),
+           'manufacturers_id'         => (new Manufacturer())->add(['name' => $this->getUniqueString()]),
+           'devicesensortypes_id'     => (new DeviceSensorType())->add(['name' => $this->getUniqueString()]),
+           'devicesensormodels_id'    => (new DeviceSensorModel())->add(['name' => $this->getUniqueString()]),
         ];
         $id = $obj->add($in);
         $this->integer((int)$id)->isGreaterThan(0);
@@ -89,9 +92,9 @@ class DeviceSensor extends DbTestCase
         $in = [
            'id'                    => $id,
            'designation'           => $this->method,
-           'manufacturers_id'      => (new \Manufacturer())->add(['name' => $this->getUniqueString()]),
-           'devicesensortypes_id'  => (new \DeviceSensorType())->add(['name' => $this->getUniqueString()]),
-           'devicesensormodels_id' => (new \DeviceSensorModel())->add(['name' => $this->getUniqueString()]),
+           'manufacturers_id'      => (new Manufacturer())->add(['name' => $this->getUniqueString()]),
+           'devicesensortypes_id'  => (new DeviceSensorType())->add(['name' => $this->getUniqueString()]),
+           'devicesensormodels_id' => (new DeviceSensorModel())->add(['name' => $this->getUniqueString()]),
         ];
         $this->boolean($obj->update($in))->isTrue();
         $this->boolean($obj->getFromDB($id))->isTrue();

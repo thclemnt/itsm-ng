@@ -4,7 +4,10 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\AssetClassification;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
@@ -15,7 +18,7 @@ class Certificate
     #[ORM\ManyToOne(targetEntity: CertificateType::class)]
     #[ORM\JoinColumn(name: 'certificatetypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
-    #[\itsmng\Database\Mapping\AssetClassification]
+    #[AssetClassification]
     public ?CertificateType $certificatetypes = null;
 
     #[ORM\Id]
@@ -98,7 +101,7 @@ class Certificate
     public bool $is_autosign = false;
 
     #[ORM\Column(name: '`date_expiration`', type: 'date', nullable: true)]
-    public ?\DateTimeInterface $date_expiration = null;
+    public ?DateTimeInterface $date_expiration = null;
 
     #[ORM\ManyToOne(targetEntity: State::class)]
     #[ORM\JoinColumn(name: 'states_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
@@ -115,10 +118,10 @@ class Certificate
     public ?string $certificate_item = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 }

@@ -31,9 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\EntityRegistry;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
 /** Compatibility view for older callers; declarations live on entity properties. */
-$RELATION = \itsmng\Database\EntityRegistry::lifecycleRelations();
+$RELATION = EntityRegistry::lifecycleRelations();

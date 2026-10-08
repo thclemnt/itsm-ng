@@ -42,6 +42,14 @@ use DBmysql;
 use DBpgsql;
 use DbTestCase;
 use Doctrine\DBAL\Connection;
+use Group;
+use Group_User;
+use Notification;
+use NotificationTarget;
+use NotificationTemplate;
+use NotificationTemplateTranslation;
+use Notification_NotificationTemplate;
+use Session;
 use itsmng\Database\Entity\Contract as ContractRecord;
 use itsmng\Database\Entity\ContractCost as ContractCostRecord;
 use itsmng\Database\Entity\Entity;
@@ -553,7 +561,7 @@ class Contract extends DbTestCase
                 ++$calls;
                 $this->boolean($contract->update(['id' => $contract->getID(), 'comment' => 'Owned veto mutation']))->isTrue();
                 $_SESSION['contract_frame_marker'] = 'must-rewind';
-                \Session::addMessageAfterRedirect('Contract frame veto warning', true, WARNING, false);
+                Session::addMessageAfterRedirect('Contract frame veto warning', true, WARNING, false);
                 $queue->input = false;
             };
             $this->variable((new ContractAlertPublisher($GLOBALS['DB']))->publish('end', Alert::END, 0, $payload))
@@ -886,7 +894,7 @@ class Contract extends DbTestCase
         $configuration = $CFG_GLPI;
         $hooks = $PLUGIN_HOOKS;
         $session = $_SESSION;
-        $pluginProperty = new ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $pluginProperty = new ReflectionProperty(Plugin::class, 'activated_plugins');
         $plugins = $pluginProperty->getValue();
         $caller = $replacement = null;
         $failure = null;
@@ -901,37 +909,37 @@ class Contract extends DbTestCase
                 'notice' => 1,
             ]);
             $this->boolean($contract->getFromDB($contract->getID()))->isTrue();
-            $template = $this->createItem(\NotificationTemplate::class, ['name' => 'Contract frame template', 'itemtype' => 'Contract']);
-            $this->createItem(\NotificationTemplateTranslation::class, [
+            $template = $this->createItem(NotificationTemplate::class, ['name' => 'Contract frame template', 'itemtype' => 'Contract']);
+            $this->createItem(NotificationTemplateTranslation::class, [
                 'notificationtemplates_id' => $template->getID(),
                 'language' => '',
                 'subject' => 'Contract frame',
                 'content_text' => '##FOREACHcontracts####contract.name####ENDFOREACHcontracts##',
                 'content_html' => '',
             ]);
-            $notification = $this->createItem(\Notification::class, [
+            $notification = $this->createItem(Notification::class, [
                 'name' => 'Contract frame notification',
                 'itemtype' => 'Contract',
                 'event' => 'end',
                 'entities_id' => 0,
                 'is_active' => 1,
             ]);
-            $this->createItem(\Notification_NotificationTemplate::class, [
+            $this->createItem(Notification_NotificationTemplate::class, [
                 'notifications_id' => $notification->getID(),
                 'notificationtemplates_id' => $template->getID(),
-                'mode' => \Notification_NotificationTemplate::MODE_AJAX,
+                'mode' => Notification_NotificationTemplate::MODE_AJAX,
             ]);
-            $recipients = $this->createItem(\Group::class, [
+            $recipients = $this->createItem(Group::class, [
                 'name' => 'Contract frame recipients ' . $this->getUniqueString(),
                 'entities_id' => 0,
             ]);
-            $this->createItem(\Group_User::class, [
+            $this->createItem(Group_User::class, [
                 'groups_id' => $recipients->getID(),
                 'users_id' => getItemByTypeName('User', TU_USER, true),
             ]);
-            $this->createItem(\NotificationTarget::class, [
+            $this->createItem(NotificationTarget::class, [
                 'notifications_id' => $notification->getID(),
-                'type' => \Notification::GROUP_TYPE,
+                'type' => Notification::GROUP_TYPE,
                 'items_id' => $recipients->getID(),
             ]);
             $CFG_GLPI['use_notifications'] = true;

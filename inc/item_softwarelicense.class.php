@@ -31,6 +31,18 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\DropdownChoiceContext;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Entity\ItemSoftwareLicense;
+use itsmng\Database\LifecycleModelJournal;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\SoftwareInstallationRepository;
+use itsmng\Domain\SoftwareAssignmentCancelled;
+use itsmng\Domain\SoftwareAssignmentService;
+use itsmng\Domain\SoftwareLifecycleAdmission;
+use itsmng\Domain\SoftwareMutation;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -40,7 +52,7 @@ if (!defined('GLPI_ROOT')) {
  */
 class Item_SoftwareLicense extends CommonDBRelation
 {
-    use \itsmng\Domain\SoftwareLifecycleAdmission;
+    use SoftwareLifecycleAdmission;
 
     // From CommonDBRelation
     public static $itemtype_1 = 'itemtype';
@@ -62,9 +74,9 @@ class Item_SoftwareLicense extends CommonDBRelation
     private function hasMappedSubject(): bool
     {
         try {
-            \itsmng\Database\Entity\ItemSoftwareLicense::referenceAssociation($this->fields['itemtype'] ?? '');
+            ItemSoftwareLicense::referenceAssociation($this->fields['itemtype'] ?? '');
             return true;
-        } catch (\InvalidArgumentException) {
+        } catch (InvalidArgumentException) {
             return false;
         }
     }
@@ -76,7 +88,7 @@ class Item_SoftwareLicense extends CommonDBRelation
 
         $checkpoint = $priorState;
         $checkpoint['input'] = $this->input;
-        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateAllocation(
+        return (new SoftwareAssignmentService($DB))->mutateAllocation(
             $this,
             $checkpoint,
             fn () => parent::executePreparedAdd($operation, $priorState),
@@ -88,11 +100,11 @@ class Item_SoftwareLicense extends CommonDBRelation
     {
         global $DB;
 
-        $checkpoint = \itsmng\Database\LifecycleModelJournal::state($this);
+        $checkpoint = LifecycleModelJournal::state($this);
         $checkpoint['fields'] = $storedFields;
         $checkpoint['updates'] = [];
         $checkpoint['oldvalues'] = [];
-        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateAllocation(
+        return (new SoftwareAssignmentService($DB))->mutateAllocation(
             $this,
             $checkpoint,
             fn () => parent::executePreparedUpdate($operation, $storedFields),
@@ -108,11 +120,11 @@ class Item_SoftwareLicense extends CommonDBRelation
     {
         global $DB;
 
-        $checkpoint = \itsmng\Database\LifecycleModelJournal::state($this);
+        $checkpoint = LifecycleModelJournal::state($this);
         $checkpoint['fields'] = $storedFields;
         $checkpoint['updates'] = [];
         $checkpoint['oldvalues'] = [];
-        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateAllocation(
+        return (new SoftwareAssignmentService($DB))->mutateAllocation(
             $this,
             $checkpoint,
             fn () => parent::executePreparedRestore($operation, $storedFields),
@@ -126,7 +138,7 @@ class Item_SoftwareLicense extends CommonDBRelation
 
         $database = $DB;
         if (!array_key_exists(static::getIndexName(), $input)
-            || !\itsmng\Domain\SoftwareMutation::loadForMutation(
+            || !SoftwareMutation::loadForMutation(
                 $database,
                 $this,
                 $input[static::getIndexName()],
@@ -134,9 +146,9 @@ class Item_SoftwareLicense extends CommonDBRelation
             )) {
             return false;
         }
-        return (new \itsmng\Domain\SoftwareAssignmentService($database))->mutateAllocation(
+        return (new SoftwareAssignmentService($database))->mutateAllocation(
             $this,
-            \itsmng\Database\LifecycleModelJournal::state($this),
+            LifecycleModelJournal::state($this),
             fn () => parent::delete($input, $force, $history),
             'delete'
         );
@@ -146,7 +158,7 @@ class Item_SoftwareLicense extends CommonDBRelation
     public function post_addItem()
     {
 
-        \itsmng\Domain\SoftwareAssignmentCancelled::requireSuccess(
+        SoftwareAssignmentCancelled::requireSuccess(
             SoftwareLicense::updateValidityIndicator($this->fields['softwarelicenses_id']),
             'Allocated licence validity update'
         );
@@ -159,7 +171,7 @@ class Item_SoftwareLicense extends CommonDBRelation
     {
         if (array_key_exists('softwarelicenses_id', $this->oldvalues)) {
             foreach (array_unique([$this->oldvalues['softwarelicenses_id'], $this->fields['softwarelicenses_id']]) as $licence) {
-                \itsmng\Domain\SoftwareAssignmentCancelled::requireSuccess(
+                SoftwareAssignmentCancelled::requireSuccess(
                     SoftwareLicense::updateValidityIndicator($licence),
                     'Reassigned licence validity update'
                 );
@@ -172,7 +184,7 @@ class Item_SoftwareLicense extends CommonDBRelation
     public function post_deleteFromDB()
     {
 
-        \itsmng\Domain\SoftwareAssignmentCancelled::requireSuccess(
+        SoftwareAssignmentCancelled::requireSuccess(
             SoftwareLicense::updateValidityIndicator($this->fields['softwarelicenses_id']),
             'Removed allocation licence validity update'
         );
@@ -508,13 +520,13 @@ JAVASCRIPT;
     {
         global $DB;
 
-        $repository = new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB));
+        $repository = new SoftwareInstallationRepository(Orm::create($DB));
         $target_types = $itemtype !== null ? [$itemtype] : $repository->itemTypes(true, (int)$softwarelicenses_id, false);
 
         $count = 0;
         foreach ($target_types as $itemtype) {
             $itemtable = $itemtype::getTable();
-            if (isset(\itsmng\Database\EntityRegistry::tables()[$itemtable])) {
+            if (isset(EntityRegistry::tables()[$itemtable])) {
                 $count += $repository->count(true, (int)$softwarelicenses_id, false, $itemtype, $itemtable, $entity === -1 ? [] : getEntitiesRestrictCriteria($itemtable, '', $entity));
                 continue;
             }
@@ -566,13 +578,13 @@ JAVASCRIPT;
     {
         global $DB;
 
-        $repository = new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB));
+        $repository = new SoftwareInstallationRepository(Orm::create($DB));
         $target_types = $repository->itemTypes(true, (int)$softwares_id, true);
 
         $count = 0;
         foreach ($target_types as $itemtype) {
             $itemtable = $itemtype::getTable();
-            if (isset(\itsmng\Database\EntityRegistry::tables()[$itemtable])) {
+            if (isset(EntityRegistry::tables()[$itemtable])) {
                 $count += $repository->count(true, (int)$softwares_id, true, $itemtype, $itemtable, getEntitiesRestrictCriteria($itemtable));
                 continue;
             }
@@ -641,13 +653,13 @@ JAVASCRIPT;
 
         $tot = 0;
 
-        $entities = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+        $entities = (new RecordRepository(Orm::create($DB)))
             ->matching('glpi_entities', getEntitiesRestrictCriteria('glpi_entities'), ['completename']);
-        $repository = new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB));
+        $repository = new SoftwareInstallationRepository(Orm::create($DB));
         $counts = [];
         foreach ($repository->itemTypes(true, (int)$softwarelicense_id) as $itemtype) {
             $table = $itemtype::getTable();
-            if (isset(\itsmng\Database\EntityRegistry::tables()[$table])) {
+            if (isset(EntityRegistry::tables()[$table])) {
                 foreach ($repository->countsByEntity(true, (int)$softwarelicense_id, $itemtype, $table, getEntitiesRestrictCriteria($table)) as $entity => $quantity) {
                     $counts[$entity][$itemtype] = $quantity;
                 }
@@ -745,7 +757,7 @@ JAVASCRIPT;
             asort($values);
             $dropdownChoiceTokens = [];
             foreach (array_keys($values) as $kind) {
-                $dropdownChoiceTokens[$kind] = \itsmng\Database\DropdownChoiceContext::token($kind, []);
+                $dropdownChoiceTokens[$kind] = DropdownChoiceContext::token($kind, []);
             }
             $dropdownChoiceTokens = json_encode($dropdownChoiceTokens, JSON_THROW_ON_ERROR);
             $form = [
@@ -1121,7 +1133,7 @@ JAVASCRIPT;
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB)))
+        return (new SoftwareInstallationRepository(Orm::create($DB)))
             ->licensesForInstallation($itemtype, (int)$items_id, (int)$softwareversions_id);
     }
 
@@ -1159,12 +1171,12 @@ JAVASCRIPT;
         global $DB;
 
         Toolbox::deprecated('Use clone');
-        $rows = (new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB)))
+        $rows = (new SoftwareInstallationRepository(Orm::create($DB)))
             ->assignmentsForClone(true, $itemtype, (int)$oldid);
         foreach ($rows as $data) {
             $csl = new self();
             unset($data['id']);
-            $data = \itsmng\Database\Entity\ItemSoftwareLicense::withReference($data, $itemtype, (int)$newid);
+            $data = ItemSoftwareLicense::withReference($data, $itemtype, (int)$newid);
             $data['_no_history'] = true;
 
             $csl->add($data);

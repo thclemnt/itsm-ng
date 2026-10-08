@@ -4,15 +4,21 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\AllocationSubjectScope;
+use itsmng\Database\Mapping\AssetClassification;
+use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\RackModel;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Domain\AllocationSubject;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_computers')]
-class Computer implements \itsmng\Domain\AllocationSubject
+class Computer implements AllocationSubject
 {
-    use \itsmng\Database\Mapping\AllocationSubjectScope;
+    use AllocationSubjectScope;
 
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
@@ -53,8 +59,8 @@ class Computer implements \itsmng\Domain\AllocationSubject
     public ?string $comment = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\ManyToOne(targetEntity: AutoUpdateSystem::class)]
     #[ORM\JoinColumn(name: 'autoupdatesystems_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
@@ -71,7 +77,7 @@ class Computer implements \itsmng\Domain\AllocationSubject
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Network $networks = null;
 
-    #[\itsmng\Database\Mapping\RackModel]
+    #[RackModel]
     #[ORM\ManyToOne(targetEntity: ComputerModel::class)]
     #[ORM\JoinColumn(name: 'computermodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
@@ -80,7 +86,7 @@ class Computer implements \itsmng\Domain\AllocationSubject
     #[ORM\ManyToOne(targetEntity: ComputerType::class)]
     #[ORM\JoinColumn(name: 'computertypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
-    #[\itsmng\Database\Mapping\AssetClassification]
+    #[AssetClassification]
     public ?ComputerType $computertypes = null;
 
     #[ORM\Column(name: '`is_template`', type: 'boolean', nullable: false, options: ['default' => false])]
@@ -122,8 +128,8 @@ class Computer implements \itsmng\Domain\AllocationSubject
     public ?string $uuid = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_recursive = false;

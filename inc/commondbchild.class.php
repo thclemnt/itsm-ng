@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\ConnexityInput;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -462,7 +464,7 @@ abstract class CommonDBChild extends CommonDBConnexity
 
         // True if item changed
         if (
-            !\itsmng\Database\ConnexityInput::endpoints($this)
+            !ConnexityInput::endpoints($this)
             && !$this->checkAttachedItemChangesAllowed($input, [static::$itemtype,
                                                                    static::$items_id])
         ) {

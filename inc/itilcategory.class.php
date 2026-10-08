@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILClassificationRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -438,8 +441,8 @@ class ITILCategory extends CommonTreeDropdown
 
         echo "<div class='center'>";
 
-        $templateFields = \itsmng\Database\Repository\ITILClassificationRepository::templateFields($tt->getType());
-        $iterator = (new \itsmng\Database\Repository\ITILClassificationRepository(\itsmng\Database\Orm::create($DB)))
+        $templateFields = ITILClassificationRepository::templateFields($tt->getType());
+        $iterator = (new ITILClassificationRepository(Orm::create($DB)))
             ->categoriesForTemplate($tt->getType(), (int)$ID, getEntitiesRestrictCriteria('glpi_itilcategories', '', '', true));
 
         echo "<table class='tab_cadre_fixe' aria-label='Item Detail'>";

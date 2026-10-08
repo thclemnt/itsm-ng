@@ -4,9 +4,16 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
+use Doctrine\ORM\Event\PreFlushEventArgs;
 use Doctrine\ORM\Mapping as ORM;
+use Doctrine\Persistence\Event\LifecycleEventArgs;
+use InvalidArgumentException;
+use SplObjectStorage;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Repository\DomainRepository;
 
 #[ORM\Entity]
 #[ORM\HasLifecycleCallbacks]
@@ -44,8 +51,8 @@ class Domain
     public bool $is_recursive = false;
 
     #[ORM\Column(name: '`date_expiration`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_expiration = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_expiration = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id_tech', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
@@ -67,12 +74,12 @@ class Domain
     public ?string $comment = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 
     /** The commercial supplier must be local or a recursive ancestor of this owner. */
     public function assertCommercialSupplierOwnership(): void
@@ -83,7 +90,7 @@ class Domain
         $owner = $this->entities;
         $supplierOwner = $this->suppliers->entities;
         if ($owner === null || $supplierOwner === null) {
-            throw new \InvalidArgumentException('Domain commercial supplier requires valid owner entities.');
+            throw new InvalidArgumentException('Domain commercial supplier requires valid owner entities.');
         }
         $same = static fn (Entity $first, Entity $second): bool => $first === $second
             || ($first->id !== null && $second->id !== null && $first->id === $second->id);
@@ -91,11 +98,11 @@ class Domain
             return;
         }
         if ($this->suppliers->is_recursive) {
-            $visited = new \SplObjectStorage();
+            $visited = new SplObjectStorage();
             $identifiers = [];
             while ($owner !== null) {
                 if ($visited->offsetExists($owner) || ($owner->id !== null && isset($identifiers[$owner->id]))) {
-                    throw new \InvalidArgumentException('Domain commercial supplier owner hierarchy contains a cycle.');
+                    throw new InvalidArgumentException('Domain commercial supplier owner hierarchy contains a cycle.');
                 }
                 $visited->offsetSet($owner);
                 if ($owner->id !== null) {
@@ -107,15 +114,15 @@ class Domain
                 }
             }
         }
-        throw new \InvalidArgumentException('Domain commercial supplier must belong to its owner entity or a recursive ancestor.');
+        throw new InvalidArgumentException('Domain commercial supplier must belong to its owner entity or a recursive ancestor.');
     }
 
     #[ORM\PrePersist]
     #[ORM\PreUpdate]
     #[ORM\PreFlush]
-    public function validateCommercialSupplierOwnership(\Doctrine\Persistence\Event\LifecycleEventArgs|\Doctrine\ORM\Event\PreFlushEventArgs $event): void
+    public function validateCommercialSupplierOwnership(LifecycleEventArgs|PreFlushEventArgs $event): void
     {
-        (new \itsmng\Database\Repository\DomainRepository($event->getObjectManager()))
+        (new DomainRepository($event->getObjectManager()))
             ->assertSupplierBoolean($this->suppliers);
         $this->assertCommercialSupplierOwnership();
     }

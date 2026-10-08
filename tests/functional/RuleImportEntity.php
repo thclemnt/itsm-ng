@@ -3,6 +3,8 @@
 namespace tests\units;
 
 use DbTestCase;
+use RuleAction;
+use RuleImportEntity as LegacyRuleImportEntity;
 
 class RuleImportEntity extends DbTestCase
 {
@@ -14,8 +16,8 @@ class RuleImportEntity extends DbTestCase
         $sibling = (int)getItemByTypeName('Entity', '_test_child_2', true);
         $value = "_import_O'Reilly\\branch";
         $connection->update('glpi_entities', ['tag' => $value], ['id' => $child]);
-        $rule = new \RuleImportEntity();
-        $action = new \RuleAction();
+        $rule = new LegacyRuleImportEntity();
+        $action = new RuleAction();
         $action->fields = [
             'action_type' => 'regex_result',
             'field' => '_affect_entity_by_tag',

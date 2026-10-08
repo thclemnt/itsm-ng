@@ -31,6 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\DeletionUnit;
+use itsmng\Database\LegacyValues;
+use itsmng\Database\MappedStorage;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\TreeRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -181,7 +187,7 @@ abstract class CommonTreeDropdown extends CommonDropdown
         $result = $this->getTreeRows(['id'], [$this->getForeignKeyField() => $this->fields['id']]);
 
         foreach ($result as $data) {
-            \itsmng\Database\DeletionUnit::requireSuccess($DB->getDoctrineConnection(), (bool)$tmp->update(['id' => $data['id'], $this->getForeignKeyField() => $parent]));
+            DeletionUnit::requireSuccess($DB->getDoctrineConnection(), (bool)$tmp->update(['id' => $data['id'], $this->getForeignKeyField() => $parent]));
         }
 
         return true;
@@ -290,8 +296,8 @@ abstract class CommonTreeDropdown extends CommonDropdown
     {
         global $DB;
 
-        if (\itsmng\Database\MappedStorage::supports($this->getTable())) {
-            return (new \itsmng\Database\Repository\TreeRepository(\itsmng\Database\Orm::create($DB)))
+        if (MappedStorage::supports($this->getTable())) {
+            return (new TreeRepository(Orm::create($DB)))
                 ->rows($this->getTable(), $fields, $criteria);
         }
         return $this->find($criteria);
@@ -311,9 +317,9 @@ abstract class CommonTreeDropdown extends CommonDropdown
         if (!$values) {
             return;
         }
-        if (\itsmng\Database\MappedStorage::supports($this->getTable())) {
-            (new \itsmng\Database\Repository\TreeRepository(\itsmng\Database\Orm::create($DB)))
-                ->updateDerived($this->getTable(), $ids, array_map(\itsmng\Database\LegacyValues::decode(...), $values));
+        if (MappedStorage::supports($this->getTable())) {
+            (new TreeRepository(Orm::create($DB)))
+                ->updateDerived($this->getTable(), $ids, array_map(LegacyValues::decode(...), $values));
         } else {
             $DB->update($this->getTable(), $values, ['id' => $ids]);
         }
@@ -371,7 +377,7 @@ abstract class CommonTreeDropdown extends CommonDropdown
             foreach ($ancestors as $ancestor) {
                 $ckey = 'sons_cache_' . $this->getTable() . '_' . $ancestor;
                 $connection = $DB->getDoctrineConnection();
-                if ($connection->isTransactionActive() || \itsmng\Database\DeletionUnit::isActive($connection)) {
+                if ($connection->isTransactionActive() || DeletionUnit::isActive($connection)) {
                     // Never publish a transaction-local hierarchy outside the database.
                     $GLPI_CACHE->delete($ckey);
                     continue;

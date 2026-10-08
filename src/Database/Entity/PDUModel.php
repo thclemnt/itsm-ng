@@ -4,15 +4,23 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\BooleanStorage;
+use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_pdumodels')]
-#[\itsmng\Database\Mapping\PlatformOptions(\Doctrine\DBAL\Platforms\AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
-#[\itsmng\Database\Mapping\SchemaOwner]
-#[\itsmng\Database\Mapping\SchemaIndex('name', ['name'], postgresqlName: 'glpi_pdumodels_name')]
-#[\itsmng\Database\Mapping\SchemaIndex('is_rackable', ['is_rackable'], postgresqlName: 'glpi_pdumodels_is_rackable')]
-#[\itsmng\Database\Mapping\SchemaIndex('product_number', ['product_number'], postgresqlName: 'glpi_pdumodels_product_number')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
+#[SchemaOwner]
+#[SchemaIndex('name', ['name'], postgresqlName: 'glpi_pdumodels_name')]
+#[SchemaIndex('is_rackable', ['is_rackable'], postgresqlName: 'glpi_pdumodels_is_rackable')]
+#[SchemaIndex('product_number', ['product_number'], postgresqlName: 'glpi_pdumodels_product_number')]
 class PDUModel
 {
     #[ORM\Id]
@@ -45,7 +53,7 @@ class PDUModel
     public int $max_power = 0;
 
     #[ORM\Column(name: '`is_half_rack`', type: 'boolean', nullable: false, options: ['default' => false])]
-    #[\itsmng\Database\Mapping\BooleanStorage(mysqlType: \Doctrine\DBAL\Types\Types::SMALLINT)]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $is_half_rack = false;
 
     #[ORM\Column(name: '`picture_front`', type: 'text', nullable: true)]
@@ -55,14 +63,14 @@ class PDUModel
     public ?string $picture_rear = null;
 
     #[ORM\Column(name: '`is_rackable`', type: 'boolean', nullable: false, options: ['default' => false])]
-    #[\itsmng\Database\Mapping\BooleanStorage(mysqlType: \Doctrine\DBAL\Types\Types::SMALLINT)]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $is_rackable = false;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 }

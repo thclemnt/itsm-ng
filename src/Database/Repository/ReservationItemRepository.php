@@ -4,8 +4,10 @@
 
 namespace itsmng\Database\Repository;
 
+use DateTime;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
 use itsmng\Database\Entity;
 use itsmng\Database\RecordCriteria;
 
@@ -20,7 +22,7 @@ final class ReservationItemRepository
         try {
             Entity\ReservationItem::referenceAssociation($type);
             return true;
-        } catch (\InvalidArgumentException) {
+        } catch (InvalidArgumentException) {
             return false;
         }
     }
@@ -72,8 +74,8 @@ final class ReservationItemRepository
         }
         if ($begin !== null && $end !== null) {
             $query->andWhere('NOT EXISTS (SELECT booking.id FROM ' . Entity\Reservation::class . ' booking WHERE booking.reservationitems = i.id AND booking.end > :begin AND booking.begin < :end)')
-                ->setParameter('begin', new \DateTime($begin), Types::DATETIMETZ_MUTABLE)
-                ->setParameter('end', new \DateTime($end), Types::DATETIMETZ_MUTABLE);
+                ->setParameter('begin', new DateTime($begin), Types::DATETIMETZ_MUTABLE)
+                ->setParameter('end', new DateTime($end), Types::DATETIMETZ_MUTABLE);
         }
         if ($type === 'Peripheral') {
             // The availability list needs this owning identity only for its type label.

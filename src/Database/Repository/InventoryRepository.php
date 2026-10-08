@@ -8,6 +8,7 @@ use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity;
+use itsmng\Database\RecordCriteria;
 
 /** Remaining disk and virtual-machine inventory projections. */
 final class InventoryRepository
@@ -62,7 +63,7 @@ final class InventoryRepository
             ->andWhere('vm.is_deleted = :false AND r.is_deleted = :false AND r.is_template = :false')
             ->setParameter('uuids', array_values(array_unique($uuids)), ArrayParameterType::STRING)
             ->setParameter('false', false, Types::BOOLEAN)->orderBy('r.id');
-        $query->andWhere((new \itsmng\Database\RecordCriteria($query, $this->em->getClassMetadata(Entity\Computer::class)))->where($scope));
+        $query->andWhere((new RecordCriteria($query, $this->em->getClassMetadata(Entity\Computer::class)))->where($scope));
         return $query->getQuery()->getScalarResult();
     }
 

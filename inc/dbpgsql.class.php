@@ -5,9 +5,16 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use Doctrine\DBAL\Driver\Statement;
+use Doctrine\DBAL\Exception;
+use itsmng\Database\LegacyResult;
 use itsmng\Database\LegacySql;
+use itsmng\Database\Migration\History;
 use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\PostgresConnection;
+use itsmng\Database\PostgresParameters;
 use itsmng\Database\PostgresStatement;
+use itsmng\Database\SequenceSynchronizer;
 
 class DBpgsql extends DBAdapter
 {
@@ -20,15 +27,15 @@ class DBpgsql extends DBAdapter
     public $dbsslmode = 'prefer';
 
     /** The adapter, ORM and legacy SQL use one DBAL-owned physical session. */
-    public function getDoctrineConnection(): \itsmng\Database\PostgresConnection
+    public function getDoctrineConnection(): PostgresConnection
     {
         return $this->doctrine ?? throw new RuntimeException('Database connection is not open.');
     }
 
     /** Protected factory seam keeps construction distinct from physical connect. */
-    protected function createDoctrineConnection(array $parameters): \itsmng\Database\PostgresConnection
+    protected function createDoctrineConnection(array $parameters): PostgresConnection
     {
-        return \itsmng\Database\PostgresConnection::create($parameters);
+        return PostgresConnection::create($parameters);
     }
 
     public function getProvider(): string
@@ -39,7 +46,7 @@ class DBpgsql extends DBAdapter
     public function installSchema(): bool
     {
         $connection = $this->getDoctrineConnection();
-        (new \itsmng\Database\Migration\History())->baseline($connection);
+        (new History())->baseline($connection);
         $this->clearSchemaCache();
         return true;
     }
@@ -83,7 +90,7 @@ class DBpgsql extends DBAdapter
             $this->error = 0;
             $this->setTimezone($this->guessTimezone());
             return true;
-        } catch (\Doctrine\DBAL\Exception $error) {
+        } catch (Exception $error) {
             $this->lastError = 'Unable to connect to PostgreSQL. Check host, database, credentials and TLS settings.';
             $this->close();
             return false;
@@ -109,7 +116,7 @@ class DBpgsql extends DBAdapter
                 throw new InvalidArgumentException('PostgreSQL text parameters cannot contain NUL bytes.');
             }
         }
-        [$sql, $values] = \itsmng\Database\PostgresParameters::bind($sql, $values);
+        [$sql, $values] = PostgresParameters::bind($sql, $values);
         return $this->executeResult($sql, function () use ($sql, $values) {
             $connection = $this->getDoctrineConnection();
             OwnershipUpdateUnit::assertResolvedWriter($this, $connection);
@@ -117,7 +124,7 @@ class DBpgsql extends DBAdapter
         });
     }
 
-    public function executePrepared(\Doctrine\DBAL\Driver\Statement $statement, string $sql, array $values, array $types)
+    public function executePrepared(Statement $statement, string $sql, array $values, array $types)
     {
         return $this->executeResult($sql, function () use ($statement, $sql, $values, $types) {
             $connection = $this->getDoctrineConnection();
@@ -137,19 +144,19 @@ class DBpgsql extends DBAdapter
         }
         try {
             $result = $execute();
-            if ($result instanceof \itsmng\Database\LegacyResult) {
+            if ($result instanceof LegacyResult) {
                 $this->affected = $result->num_rows;
                 return $result;
             }
             $this->affected = (int)$result->rowCount();
             $result->free();
             return true;
-        } catch (\Doctrine\DBAL\Exception\DriverException $error) {
+        } catch (Exception\DriverException $error) {
             $this->sqlState = $error->getSQLState() ?? '';
             $this->lastError = $error->getMessage();
             $this->affected = -1;
             Toolbox::logSqlError("PostgreSQL query error [{$this->sqlState}]: {$this->lastError}\nSQL: $sql");
-            if ($error instanceof \Doctrine\DBAL\Exception\ConnectionLost) {
+            if ($error instanceof Exception\ConnectionLost) {
                 throw $error;
             }
             return false;
@@ -350,7 +357,7 @@ SQL, [$this->dbschema, $table]);
 
     public function synchronizeSequences(): void
     {
-        \itsmng\Database\SequenceSynchronizer::synchronize($this->getDoctrineConnection());
+        SequenceSynchronizer::synchronize($this->getDoctrineConnection());
     }
 
     public function getVersion()
@@ -378,7 +385,7 @@ SQL, [$this->dbschema, $table]);
             // when DBAL itself would report NoActiveTransaction.
             $connection->assertCommittable();
             $connection->commit();
-        } catch (\Doctrine\DBAL\Exception\DriverException $error) {
+        } catch (Exception\DriverException $error) {
             if ($error->getSQLState() === '25P02') {
                 return false;
             }

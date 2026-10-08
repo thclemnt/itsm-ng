@@ -32,6 +32,9 @@
  */
 
 use Glpi\Event;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\SharedContentRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -338,7 +341,7 @@ class ReminderTranslation extends CommonDBChild
     {
 
         global $DB;
-        return (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+        return (new RecordRepository(Orm::create($DB)))
             ->countMatching('glpi_remindertranslations', ['reminders_id' => (int)$item->getID()]);
     }
 
@@ -354,6 +357,6 @@ class ReminderTranslation extends CommonDBChild
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\SharedContentRepository(\itsmng\Database\Orm::create($DB)))->translatedLanguages((int)$item->getID());
+        return (new SharedContentRepository(Orm::create($DB)))->translatedLanguages((int)$item->getID());
     }
 }

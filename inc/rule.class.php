@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\RuleRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -2120,7 +2125,7 @@ class Rule extends CommonDBTM
     {
         global $DB;
 
-        return 1 + (new \itsmng\Database\Repository\RuleRepository(\itsmng\Database\Orm::create($DB)))->maximumRank($this->getType());
+        return 1 + (new RuleRepository(Orm::create($DB)))->maximumRank($this->getType());
     }
 
 
@@ -3005,7 +3010,7 @@ class Rule extends CommonDBTM
 
         $rules = [];
 
-        $repository = new \itsmng\Database\Repository\RuleRepository(\itsmng\Database\Orm::create($DB));
+        $repository = new RuleRepository(Orm::create($DB));
         foreach ($repository->rulesForActions(getTableForItemType($this->ruleactionclass), $this->rules_id_field, get_class($this), $crit) as $ruleId) {
             $affect_rule = clone $this;
             $affect_rule->getRuleWithCriteriasAndActions($ruleId, 0, 1);
@@ -3226,7 +3231,7 @@ class Rule extends CommonDBTM
         }
 
         if (isset($item->input['_replace_by']) && ($item->input['_replace_by'] > 0)) {
-            (new \itsmng\Database\Repository\RuleRepository(\itsmng\Database\Orm::create($DB)))->replaceSelection(
+            (new RuleRepository(Orm::create($DB)))->replaceSelection(
                 $table,
                 $valfield,
                 $fieldfield,
@@ -3235,8 +3240,8 @@ class Rule extends CommonDBTM
                 $field
             );
         } else {
-            $records = new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB));
-            $iterator = new \itsmng\Database\RowIterator($records->matching($table, [
+            $records = new RecordRepository(Orm::create($DB));
+            $iterator = new RowIterator($records->matching($table, [
                 $valfield => (string)$item->getField('id'), $fieldfield => ['LIKE', $field],
             ]));
 
@@ -3340,7 +3345,7 @@ class Rule extends CommonDBTM
                         }
                         if (count($types)) {
                             global $DB;
-                            $nb = (new \itsmng\Database\Repository\RuleRepository(\itsmng\Database\Orm::create($DB)))
+                            $nb = (new RuleRepository(Orm::create($DB)))
                                 ->entityActionCount($types, (int)$item->getID());
                         }
                     }

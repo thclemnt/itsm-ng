@@ -31,6 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ConsumableRepository;
+use itsmng\Database\Repository\GroupItemRepository;
+use itsmng\Database\Repository\NotificationRecipientRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -97,7 +103,7 @@ class Group extends CommonTreeDropdown
     public function cleanDBonPurge()
     {
         global $DB;
-        (new \itsmng\Database\Repository\NotificationRecipientRepository(\itsmng\Database\Orm::create($DB)))->replaceGroup(
+        (new NotificationRecipientRepository(Orm::create($DB)))->replaceGroup(
             (int)$this->getID(),
             (int)($this->input['_replace_by'] ?? 0)
         );
@@ -683,9 +689,9 @@ class Group extends CommonTreeDropdown
         $counts = [];
         $scopes = [];
         $total = 0;
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            $repository = new \itsmng\Database\Repository\GroupItemRepository($em);
+            $repository = new GroupItemRepository($em);
             foreach ($types as $type) {
                 $item = getItemForItemtype($type);
                 if (!$item || !$item->canView() || !$item->isField($type === 'Consumable' ? 'items_id' : $field)) {
@@ -712,7 +718,7 @@ class Group extends CommonTreeDropdown
                     if ($user) {
                         $criteria = ['OR' => [$criteria, [
                             $field => 0,
-                            str_replace('groups', 'users', $field) => \itsmng\Database\MappedReads::identifiers($DB, 'glpi_groups_users', 'users_id', ['groups_id' => $groups_ids]),
+                            str_replace('groups', 'users', $field) => MappedReads::identifiers($DB, 'glpi_groups_users', 'users_id', ['groups_id' => $groups_ids]),
                         ]]];
                     }
                     $scope = ['AND' => [$scope, $criteria]];
@@ -970,9 +976,9 @@ class Group extends CommonTreeDropdown
         }
         parent::cleanRelationData();
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            (new \itsmng\Database\Repository\ConsumableRepository($em))->replaceGroup(
+            (new ConsumableRepository($em))->replaceGroup(
                 (int)$this->getID(),
                 (int)($this->input['_replace_by'] ?? 0)
             );

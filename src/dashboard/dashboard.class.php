@@ -28,6 +28,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DashboardRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -127,7 +130,7 @@ class Dashboard extends \CommonDBTM
     {
         global $DB;
 
-        $id = (new \itsmng\Database\Repository\DashboardRepository(\itsmng\Database\Orm::create($DB)))
+        $id = (new DashboardRepository(Orm::create($DB)))
             ->forUser((int)Session::getLoginUserID(), (int)($_SESSION['glpiactiveprofile']['id'] ?? 0));
         return $id !== null && $this->getFromDB($id);
     }

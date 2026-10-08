@@ -4,7 +4,9 @@
 
 namespace itsmng\Database;
 
+use LogicException;
+
 /** Marks a legacy SQL construct that still needs its own mapped query implementation. */
-final class UnsupportedCriteria extends \LogicException
+final class UnsupportedCriteria extends LogicException
 {
 }

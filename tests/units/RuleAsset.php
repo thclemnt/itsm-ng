@@ -34,6 +34,8 @@
 namespace tests\units;
 
 use DbTestCase;
+use Location;
+use RuleAsset as LegacyRuleAsset;
 
 /* Test for inc/ruleticket.class.php */
 
@@ -165,7 +167,7 @@ class RuleAsset extends DbTestCase
 
         $root_ent_id = getItemByTypeName('Entity', '_test_root_entity', true);
 
-        $location = new \Location();
+        $location = new Location();
         $location_id = $location->add([
            'name'        => 'RuleAsset assigned location',
            'entities_id' => $root_ent_id,
@@ -174,7 +176,7 @@ class RuleAsset extends DbTestCase
 
         // prepare rule
         $this->_createRuleComment(\RuleAsset::ONUPDATE);
-        $this->_createRuleLocation(\RuleAsset::ONUPDATE, $location_id);
+        $this->_createRuleLocation(LegacyRuleAsset::ONUPDATE, $location_id);
 
         foreach ($CFG_GLPI['asset_types'] as $itemtype) {
             $item     = new $itemtype();

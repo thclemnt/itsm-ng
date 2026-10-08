@@ -5,19 +5,23 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\ITILStatisticsRelation;
+use itsmng\Database\Mapping\ITILStatisticsRole;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\SchemaIndex;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_suppliers_tickets')]
-#[\itsmng\Database\Mapping\SchemaIndex('unicity', ['tickets_id', 'type', 'actor_key', 'actor_email_key'], unique: true, postgresqlName: 'glpi_suppliers_tickets_unicity')]
-#[\itsmng\Database\Mapping\SchemaIndex('glpi_suppliers_tickets_actor_parent', ['tickets_id'])]
+#[SchemaIndex('unicity', ['tickets_id', 'type', 'actor_key', 'actor_email_key'], unique: true, postgresqlName: 'glpi_suppliers_tickets_unicity')]
+#[SchemaIndex('glpi_suppliers_tickets_actor_parent', ['tickets_id'])]
 class SupplierTicket
 {
     #[ORM\ManyToOne(targetEntity: Ticket::class)]
     #[ORM\JoinColumn(name: 'tickets_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ITILStatisticsRelation(\itsmng\Database\Mapping\ITILStatisticsRole::Suppliers)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ITILStatisticsRelation(ITILStatisticsRole::Suppliers)]
+    #[ApplicationManaged]
     public ?Ticket $tickets = null;
 
     #[ORM\Id]
@@ -28,7 +32,7 @@ class SupplierTicket
     #[ORM\ManyToOne(targetEntity: Supplier::class)]
     #[ORM\JoinColumn(name: 'suppliers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Supplier $actor = null;
 
     #[ORM\Column(name: '`type`', type: 'integer', nullable: false, options: ['default' => '1'])]

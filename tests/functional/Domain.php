@@ -33,7 +33,41 @@
 
 namespace tests\units;
 
+use Appliance;
+use ApplianceEnvironment;
+use ApplianceType;
+use Appliance_Item;
+use Appliance_Item_Relation;
+use DateTimeImmutable;
 use DbTestCase;
+use Doctrine\DBAL\Schema\Table;
+use Doctrine\DBAL\Types\Types;
+use Domain as LegacyDomain;
+use DomainType;
+use Domain_Item;
+use Entity;
+use Infocom;
+use Log;
+use Plugin;
+use Profile;
+use ProfileRight;
+use ReflectionProperty;
+use RuntimeException;
+use Throwable;
+use itsmng\Appliance\AppliancePluginImport;
+use itsmng\Appliance\PluginApplianceSource;
+use itsmng\Database\Migration\Ledger;
+use itsmng\Database\MutationCleanupFailure;
+use itsmng\Database\MutationRollbackFailure;
+use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\TransactionOwnership;
+use itsmng\Database\TransactionOwnershipMismatch;
+use itsmng\Domain\DomainPluginImport;
+use itsmng\Domain\DomainPluginSource;
+
+use function exportArrayToDB;
+use function getItemTypeForTable;
+use function getTableForItemType;
 
 /* Test for inc/software.class.php */
 
@@ -45,7 +79,7 @@ class Domain extends DbTestCase
     {
         if ($method === 'testPluginImportRejectsReplacedCallbackFrames') {
             $connection = $GLOBALS['DB']->getDoctrineConnection();
-            \itsmng\Database\TransactionOwnership::assertManaged($connection);
+            TransactionOwnership::assertManaged($connection);
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo(0, 'Plugin source DDL cannot release a caller transaction');
             $manager = $connection->createSchemaManager();
             $sources = [
@@ -64,23 +98,23 @@ class Domain extends DbTestCase
             try {
                 // MySQL DDL belongs before DbTestCase's physical rollback frame.
                 foreach ($sources as $name => $fields) {
-                    $table = new \Doctrine\DBAL\Schema\Table($name);
-                    $table->addColumn('id', \Doctrine\DBAL\Types\Types::INTEGER);
+                    $table = new Table($name);
+                    $table->addColumn('id', Types::INTEGER);
                     $table->setPrimaryKey(['id']);
                     foreach (explode(' ', $fields) as $field) {
-                        $table->addColumn($field, \Doctrine\DBAL\Types\Types::STRING, ['length' => 255, 'notnull' => false]);
+                        $table->addColumn($field, Types::STRING, ['length' => 255, 'notnull' => false]);
                     }
                     $manager->createTable($table);
                     $this->importSourceTables[] = $name;
                 }
-            } catch (\Throwable $primary) {
+            } catch (Throwable $primary) {
                 $this->dropImportSources($primary);
                 throw $primary;
             }
         }
         try {
             parent::beforeTestMethod($method);
-        } catch (\Throwable $primary) {
+        } catch (Throwable $primary) {
             $this->dropImportSources($primary);
             throw $primary;
         }
@@ -91,7 +125,7 @@ class Domain extends DbTestCase
         $primary = null;
         try {
             parent::afterTestMethod($method);
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $primary = $error;
             throw $error;
         } finally {
@@ -100,27 +134,27 @@ class Domain extends DbTestCase
         }
     }
 
-    private function dropImportSources(?\Throwable $primary = null): void
+    private function dropImportSources(?Throwable $primary = null): void
     {
         if (!$this->importSourceTables) {
             return;
         }
         $connection = $GLOBALS['DB']->getDoctrineConnection();
         try {
-            \itsmng\Database\TransactionOwnership::assertManaged($connection);
+            TransactionOwnership::assertManaged($connection);
             if ($connection->getTransactionNestingLevel() !== 0) {
-                throw new \itsmng\Database\TransactionOwnershipMismatch('Plugin source cleanup requires the test frame to be closed.');
+                throw new TransactionOwnershipMismatch('Plugin source cleanup requires the test frame to be closed.');
             }
-        } catch (\Throwable $cleanup) {
-            throw $primary === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($primary, $cleanup);
+        } catch (Throwable $cleanup) {
+            throw $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
         }
         $manager = $connection->createSchemaManager();
         $failure = $primary;
         foreach (array_reverse($this->importSourceTables) as $table) {
             try {
                 $manager->dropTable($table);
-            } catch (\Throwable $cleanup) {
-                $failure = $failure === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($failure, $cleanup);
+            } catch (Throwable $cleanup) {
+                $failure = $failure === null ? $cleanup : new MutationCleanupFailure($failure, $cleanup);
             }
         }
         $this->importSourceTables = [];
@@ -138,17 +172,17 @@ class Domain extends DbTestCase
         $caller = $connection->captureManagedTransactionScope();
         // Class/table mappings populate lazy application caches.
         // Warm the supported aggregate and lifecycle participants before taking the full snapshot.
-        foreach ([\DomainType::class, \Domain::class, \Domain_Item::class,
-            \ApplianceType::class, \ApplianceEnvironment::class, \Appliance::class,
-            \Appliance_Item::class, \Appliance_Item_Relation::class,
-            \Profile::class, \ProfileRight::class, \Infocom::class, \Log::class, \Entity::class] as $model) {
-            $table = \getTableForItemType($model);
+        foreach ([DomainType::class, LegacyDomain::class, Domain_Item::class,
+            ApplianceType::class, ApplianceEnvironment::class, Appliance::class,
+            Appliance_Item::class, Appliance_Item_Relation::class,
+            Profile::class, ProfileRight::class, Infocom::class, Log::class, Entity::class] as $model) {
+            $table = getTableForItemType($model);
             $this->string($model::getTable())->isIdenticalTo($table);
-            $this->string(\getItemTypeForTable($table))->isIdenticalTo($model);
+            $this->string(getItemTypeForTable($table))->isIdenticalTo($model);
         }
         $session = $_SESSION;
         $hooks = $PLUGIN_HOOKS;
-        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
         $savedPlugins = $plugins->getValue();
         $config = $CFG_GLPI;
         $profileId = (int)$connection->fetchOne('SELECT MIN(id) FROM glpi_profiles');
@@ -158,23 +192,23 @@ class Domain extends DbTestCase
         $connection->insert('glpi_plugin_domains_configs', ['id' => 1, 'delay_expired' => '0', 'delay_whichexpire' => '0']);
         $connection->executeStatement('UPDATE glpi_entities SET send_domains_alert_expired_delay = -2, send_domains_alert_close_expiries_delay = -2, use_domains_alert = -2');
         $imports = [
-            [\itsmng\Domain\DomainPluginImport::class, \DomainType::class, 'glpi_plugin_domains_domaintypes'],
-            [\itsmng\Appliance\AppliancePluginImport::class, \ApplianceType::class, 'glpi_plugin_appliances_appliancetypes'],
+            [DomainPluginImport::class, DomainType::class, 'glpi_plugin_domains_domaintypes'],
+            [AppliancePluginImport::class, ApplianceType::class, 'glpi_plugin_appliances_appliancetypes'],
         ];
         foreach ($imports as [$importClass, $modelClass, $source]) {
             $session = $_SESSION;
-            $sourceItemtype = $importClass === \itsmng\Domain\DomainPluginImport::class
-                ? \itsmng\Domain\DomainPluginSource::ITEMTYPE : \itsmng\Appliance\PluginApplianceSource::ITEMTYPE;
-            $profileTypes = \exportArrayToDB([$sourceItemtype]);
+            $sourceItemtype = $importClass === DomainPluginImport::class
+                ? DomainPluginSource::ITEMTYPE : PluginApplianceSource::ITEMTYPE;
+            $profileTypes = exportArrayToDB([$sourceItemtype]);
             $connection->update('glpi_profiles', ['helpdesk_item_type' => $profileTypes], ['id' => $profileId]);
             // Explicit IDs/sequence synchronization can advance native high-water marks even after rollback.
             // Use the nearest unused type ID rather than consuming a distant fixture range.
             $id = (int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) + 1 FROM ' . $connection->quoteIdentifier($modelClass::getTable()));
             $connection->insert($source, ['id' => $id, 'entities_id' => '0', 'name' => 'Owned import type', 'comment' => '', 'is_recursive' => '0']);
             foreach (['created', 'adopted', 'complete', 'refused-add-hook', 'throwing-add-hook', 'profile-update-hook', 'owned-failure', 'writer-swap'] as $seam) {
-                $trial = \itsmng\Database\OwnedMutationFrame::begin($connection);
+                $trial = OwnedMutationFrame::begin($connection);
                 $replacement = null;
-                $primary = new \RuntimeException('Import callback primary failure');
+                $primary = new RuntimeException('Import callback primary failure');
                 $observed = null;
                 $calls = 0;
                 $context = $importClass . ' / ' . $seam;
@@ -192,7 +226,7 @@ class Domain extends DbTestCase
                         return;
                     }
                     $connection->rollBack();
-                    $replacement = \itsmng\Database\OwnedMutationFrame::begin($connection);
+                    $replacement = OwnedMutationFrame::begin($connection);
                     $connection->update('glpi_entities', ['comment' => 'Replacement import frame witness'], ['id' => 0]);
                 };
                 if (str_ends_with($seam, 'add-hook')) {
@@ -205,7 +239,7 @@ class Domain extends DbTestCase
                     };
                 }
                 if ($seam === 'profile-update-hook') {
-                    $PLUGIN_HOOKS['pre_item_update']['importprofile'][\Profile::class] = static function ($model) use ($callback, $profileId): void {
+                    $PLUGIN_HOOKS['pre_item_update']['importprofile'][Profile::class] = static function ($model) use ($callback, $profileId): void {
                         if ((int)$model->getID() === $profileId) {
                             $callback();
                             $model->input = false;
@@ -222,7 +256,7 @@ class Domain extends DbTestCase
                                 $callback();
                             }
                         });
-                    } catch (\Throwable $error) {
+                    } catch (Throwable $error) {
                         $failure = $error;
                     }
                     $DB = $database;
@@ -231,17 +265,17 @@ class Domain extends DbTestCase
                         if ($seam === 'owned-failure') {
                             $this->object($failure)->isIdenticalTo($primary);
                         } else {
-                            $this->object($failure)->isInstanceOf(\itsmng\Database\TransactionOwnershipMismatch::class);
+                            $this->object($failure)->isInstanceOf(TransactionOwnershipMismatch::class);
                         }
                         $this->object($observed)->isInstanceOf($modelClass, $context . ': item_add must expose the participating model');
                         $this->array($observed->fields)->isEmpty($context . ': an owned rollback restores the participating model');
                         $this->array($_SESSION)->isIdenticalTo($session);
                     } else {
-                        $this->object($failure)->isInstanceOf(\itsmng\Database\MutationRollbackFailure::class, $context . ': replacing the callback frame must refuse owned rollback');
+                        $this->object($failure)->isInstanceOf(MutationRollbackFailure::class, $context . ': replacing the callback frame must refuse owned rollback');
                         if ($seam === 'throwing-add-hook') {
                             $this->object($failure->primary)->isIdenticalTo($primary);
                         } else {
-                            $this->object($failure->primary)->isInstanceOf(\itsmng\Database\TransactionOwnershipMismatch::class);
+                            $this->object($failure->primary)->isInstanceOf(TransactionOwnershipMismatch::class);
                         }
                         $this->boolean($failure->rollbackUnproven)->isTrue();
                         $replacement->assertActive();
@@ -249,7 +283,7 @@ class Domain extends DbTestCase
                         $this->string($connection->fetchOne('SELECT comment FROM glpi_entities WHERE id = 0'))->isIdenticalTo('Replacement import frame witness');
                     }
                     $this->string($connection->fetchOne('SELECT helpdesk_item_type FROM glpi_profiles WHERE id = ?', [$profileId]))->isIdenticalTo($profileTypes, 'Profile adoption must not escape into the replacement transaction');
-                    $this->variable(\itsmng\Database\Migration\Ledger::state($connection, $importClass::RECEIPT))->isNull();
+                    $this->variable(Ledger::state($connection, $importClass::RECEIPT))->isNull();
                     $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $connection->quoteIdentifier($modelClass::getTable()) . ' WHERE id = ?', [$id]))->isIdenticalTo(0);
                     $replacement?->rollBack();
                     $replacement = null;
@@ -270,7 +304,7 @@ class Domain extends DbTestCase
             // The failed attempt must remain resumable through the actual public importer.
             $plan = (new $importClass($DB))->import();
             $this->boolean($plan->alreadyImported)->isFalse();
-            $this->boolean(\itsmng\Database\Migration\Ledger::state($connection, $importClass::RECEIPT)['complete'])->isTrue();
+            $this->boolean(Ledger::state($connection, $importClass::RECEIPT)['complete'])->isTrue();
             $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $connection->quoteIdentifier($modelClass::getTable()) . ' WHERE id = ?', [$id]))->isIdenticalTo(1);
             $this->boolean((new $importClass($DB))->import()->alreadyImported)->isTrue();
             $this->array($CFG_GLPI)->isIdenticalTo($config);
@@ -344,16 +378,16 @@ class Domain extends DbTestCase
         $rootValue = $connection->fetchOne('SELECT use_domains_alert FROM glpi_entities WHERE id = 0');
         try {
             // Root has no parent; an inherited setting cannot index a NULL owner.
-            $connection->update('glpi_entities', ['use_domains_alert' => \Entity::CONFIG_PARENT], ['id' => 0]);
-            $this->array(\Entity::getEntitiesToNotify('use_domains_alert'))->isEmpty();
+            $connection->update('glpi_entities', ['use_domains_alert' => Entity::CONFIG_PARENT], ['id' => 0]);
+            $this->array(Entity::getEntitiesToNotify('use_domains_alert'))->isEmpty();
             $connection->update('glpi_entities', ['use_domains_alert' => 1], ['id' => 0]);
-            $inherited = \Entity::getEntitiesToNotify('use_domains_alert');
+            $inherited = Entity::getEntitiesToNotify('use_domains_alert');
             foreach ([0, getItemByTypeName('Entity', '_test_root_entity', true),
                 getItemByTypeName('Entity', '_test_child_1', true), getItemByTypeName('Entity', '_test_child_2', true)] as $id) {
                 $this->integer((int)$inherited[$id])->isIdenticalTo(1);
             }
             $connection->update('glpi_entities', ['use_domains_alert' => 0], ['id' => 0]);
-            $this->array(\Entity::getEntitiesToNotify('use_domains_alert'))->isEmpty();
+            $this->array(Entity::getEntitiesToNotify('use_domains_alert'))->isEmpty();
         } finally {
             $connection->update('glpi_entities', ['use_domains_alert' => $rootValue], ['id' => 0]);
         }
@@ -375,12 +409,12 @@ class Domain extends DbTestCase
            getItemByTypeName('Entity', '_test_child_2', true)       => 1,
         ]);
 
-        $today = new \DateTimeImmutable('2026-09-28 16:30:00');
-        $this->array(\Domain::expiredDomainsCriteria($entity->fields['id'], $today)['WHERE'])->isEqualTo([
+        $today = new DateTimeImmutable('2026-09-28 16:30:00');
+        $this->array(LegacyDomain::expiredDomainsCriteria($entity->fields['id'], $today)['WHERE'])->isEqualTo([
             'entities_id' => $entity->fields['id'], 'is_deleted' => false,
             'date_expiration' => ['<', '2026-09-27 00:00:00'],
         ]);
-        $this->array(\Domain::closeExpiriesDomainsCriteria($entity->fields['id'], $today)['WHERE'])->isEqualTo([
+        $this->array(LegacyDomain::closeExpiriesDomainsCriteria($entity->fields['id'], $today)['WHERE'])->isEqualTo([
             'entities_id' => $entity->fields['id'], 'is_deleted' => false,
             'date_expiration' => ['>=', '2026-09-29 00:00:00'],
             ['date_expiration' => ['<', '2026-10-05 00:00:00']],

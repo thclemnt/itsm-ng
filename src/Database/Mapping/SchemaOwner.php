@@ -4,8 +4,10 @@
 
 namespace itsmng\Database\Mapping;
 
+use Attribute;
+
 /** The complete current table declaration belongs to this entity's ORM metadata. */
-#[\Attribute(\Attribute::TARGET_CLASS)]
+#[Attribute(Attribute::TARGET_CLASS)]
 final class SchemaOwner
 {
 }

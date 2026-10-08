@@ -4,7 +4,12 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\ITILStatisticsRelation;
+use itsmng\Database\Mapping\ITILStatisticsRole;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 use itsmng\Database\Mapping\UserReferenceAction;
@@ -16,8 +21,8 @@ class TicketTask
 {
     #[ORM\ManyToOne(targetEntity: Ticket::class)]
     #[ORM\JoinColumn(name: 'tickets_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ITILStatisticsRelation(\itsmng\Database\Mapping\ITILStatisticsRole::Tasks)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ITILStatisticsRelation(ITILStatisticsRole::Tasks)]
+    #[ApplicationManaged]
     public ?Ticket $tickets = null;
 
     #[ORM\Id]
@@ -34,8 +39,8 @@ class TicketTask
     public ?TaskCategory $taskcategories = null;
 
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
@@ -57,12 +62,12 @@ class TicketTask
     public int $actiontime = 0;
 
     #[ORM\Column(name: '`begin`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $begin = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $begin = null;
 
     #[ORM\Column(name: '`end`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $end = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $end = null;
 
     #[ORM\Column(name: '`state`', type: 'integer', nullable: false, options: ['default' => '1'])]
     public int $state = 1;
@@ -78,12 +83,12 @@ class TicketTask
     public ?Group $groups_tech = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 
     #[ORM\ManyToOne(targetEntity: TaskTemplate::class)]
     #[ORM\JoinColumn(name: 'tasktemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]

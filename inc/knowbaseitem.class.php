@@ -31,7 +31,13 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Glpi\Event;
+use itsmng\Database\KnowledgeBaseAccess;
+use itsmng\Database\Orm;
+use itsmng\Database\Query\KnowledgeBaseFullText;
+use itsmng\Database\Repository\KnowledgeBaseRepository;
+use itsmng\Database\Repository\RecordRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -999,7 +1005,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
     {
         global $DB;
 
-        (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
+        (new KnowledgeBaseRepository(Orm::create($DB)))
             ->publish((int)$this->getID());
     }
 
@@ -1012,7 +1018,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
     {
         global $DB;
 
-        (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
+        (new KnowledgeBaseRepository(Orm::create($DB)))
             ->incrementViews((int)$this->getID());
     }
 
@@ -1413,24 +1419,24 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                     $search  = Toolbox::unclean_cross_side_scripting_deep($params["contains"]);
 
                     $platform = $DB->getDoctrineConnection()->getDatabasePlatform();
-                    $search_wilcard = \itsmng\Database\Repository\KnowledgeBaseRepository::fullTextQuery($search, $platform);
+                    $search_wilcard = KnowledgeBaseRepository::fullTextQuery($search, $platform);
 
                     $translated = isset($translationJoin);
                     // Compatibility criteria share the bound ORM dialect renderer.
                     $columns = [$DB->quoteName('glpi_knowbaseitems.name'), $DB->quoteName('glpi_knowbaseitems.answer')];
                     $term = $DB->quote($search_wilcard);
                     $coreMatch = $search_wilcard === '' ? '1 = 0'
-                        : \itsmng\Database\Query\KnowledgeBaseFullText::sql($platform, $columns, $term);
+                        : KnowledgeBaseFullText::sql($platform, $columns, $term);
                     $score = $search_wilcard === '' ? '0'
-                        : \itsmng\Database\Query\KnowledgeBaseFullText::sql($platform, $columns, $term, true);
+                        : KnowledgeBaseFullText::sql($platform, $columns, $term, true);
                     $ors = [new QueryExpression($coreMatch)];
                     $eligibleTranslation = null;
                     $fullTextArticleMatch = null;
                     $fullTextTranslationMatch = null;
                     if ($translated && $search_wilcard !== '') {
                         $translationMatch = static fn (string $alias): string =>
-                            \itsmng\Database\Query\KnowledgeBaseFullText::sql($platform, [$DB->quoteName($alias . '.name')], $term)
-                            . ' OR ' . \itsmng\Database\Query\KnowledgeBaseFullText::sql($platform, [$DB->quoteName($alias . '.answer')], $term);
+                            KnowledgeBaseFullText::sql($platform, [$DB->quoteName($alias . '.name')], $term)
+                            . ' OR ' . KnowledgeBaseFullText::sql($platform, [$DB->quoteName($alias . '.answer')], $term);
                         $translationScope = $DB->quoteName('matching_translation.knowbaseitems_id') . ' = '
                             . $DB->quoteName('glpi_knowbaseitems.id') . ' AND ' . $DB->quoteName('matching_translation.language')
                             . ' = ' . $DB->quote($_SESSION['glpilanguage']);
@@ -1439,7 +1445,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                             . $translationScope . ' AND (' . $translationMatch('matching_translation') . '))');
                         $translationScores = [];
                         foreach (['name', 'answer'] as $field) {
-                            $translationScores[] = 'COALESCE(' . \itsmng\Database\Query\KnowledgeBaseFullText::sql(
+                            $translationScores[] = 'COALESCE(' . KnowledgeBaseFullText::sql(
                                 $platform,
                                 [$DB->quoteName('matching_translation.' . $field)],
                                 $term,
@@ -1489,8 +1495,8 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                     if ($numrows_search <= 0) {// not result this fulltext try with alternate search
                         $fullTextArticleMatch = null;
                         $fullTextTranslationMatch = null;
-                        $patterns = \itsmng\Database\Repository\KnowledgeBaseRepository::fallbackPatterns($search);
-                        $operator = $platform instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform ? ' ILIKE ' : ' LIKE ';
+                        $patterns = KnowledgeBaseRepository::fallbackPatterns($search);
+                        $operator = $platform instanceof PostgreSQLPlatform ? ' ILIKE ' : ' LIKE ';
                         $textMatch = static function (string $alias) use ($DB, $patterns, $operator): string {
                             $likes = [];
                             foreach ($patterns as $pattern) {
@@ -1606,8 +1612,8 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         }
 
         $list_limit = (int)$_SESSION['glpilist_limit'];
-        $page = (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DBread)))
-            ->listPage(\itsmng\Database\KnowledgeBaseAccess::current(), [
+        $page = (new KnowledgeBaseRepository(Orm::create($DBread)))
+            ->listPage(KnowledgeBaseAccess::current(), [
                 'type' => $type, 'contains' => (string)$params['contains'],
                 'category' => (int)$params['knowbaseitemcategories_id'], 'faq' => (bool)$params['faq'],
                 'language' => KnowbaseItemTranslation::isKbTranslationActive() ? $_SESSION['glpilanguage'] : null,
@@ -2225,7 +2231,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
             $kbi = new self();
         }
 
-        $ids = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+        $ids = (new RecordRepository(Orm::create($DB)))
             ->identifiers(self::getTable(), 'id', ['knowbaseitemcategories_id' => $category_id], 'id');
 
         // Filter on canViewItem

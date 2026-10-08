@@ -36,6 +36,8 @@ if (!defined('GLPI_ROOT')) {
 }
 
 use Sabre\VObject;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ContactRepository;
 
 /**
  * Contact class
@@ -102,7 +104,7 @@ class Contact extends CommonDBTM
     {
         global $DB;
 
-        $details = (new \itsmng\Database\Repository\ContactRepository(\itsmng\Database\Orm::create($DB)))
+        $details = (new ContactRepository(Orm::create($DB)))
             ->companyDetails((int)$this->getID());
         if ($details !== null) {
             unset($details['website']);
@@ -120,7 +122,7 @@ class Contact extends CommonDBTM
     {
         global $DB;
 
-        $details = (new \itsmng\Database\Repository\ContactRepository(\itsmng\Database\Orm::create($DB)))
+        $details = (new ContactRepository(Orm::create($DB)))
             ->companyDetails((int)$this->getID());
         return $details === null ? '' : $details['website'];
     }

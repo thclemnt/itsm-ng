@@ -4,7 +4,10 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\NativeTimestamp;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_ticketsatisfactions')]
@@ -13,7 +16,7 @@ class TicketSatisfaction
 {
     #[ORM\ManyToOne(targetEntity: Ticket::class)]
     #[ORM\JoinColumn(name: 'tickets_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Ticket $tickets = null;
 
     #[ORM\Id]
@@ -25,12 +28,12 @@ class TicketSatisfaction
     public int $type = 1;
 
     #[ORM\Column(name: '`date_begin`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_begin = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_begin = null;
 
     #[ORM\Column(name: '`date_answered`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_answered = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_answered = null;
 
     #[ORM\Column(name: '`satisfaction`', type: 'integer', nullable: true)]
     public ?int $satisfaction = null;

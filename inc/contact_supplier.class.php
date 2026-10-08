@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ContactRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -49,14 +52,14 @@ class Contact_Supplier extends CommonDBRelation
     private static function relatedItems(CommonDBTM $item): array
     {
         global $DB;
-        return (new \itsmng\Database\Repository\ContactRepository(\itsmng\Database\Orm::create($DB)))
+        return (new ContactRepository(Orm::create($DB)))
             ->related((int)$item->getID(), $item instanceof Contact, self::relatedScope($item));
     }
 
     private static function relatedScope(CommonDBTM $item): ?array
     {
         if (!$item instanceof Contact && !$item instanceof Supplier) {
-            throw new \InvalidArgumentException('Contact relations require a contact or supplier.');
+            throw new InvalidArgumentException('Contact relations require a contact or supplier.');
         }
         return Session::isCron() ? null : getEntitiesRestrictCriteria($item instanceof Contact ? Supplier::getTable() : Contact::getTable(), '', '', 'auto');
     }
@@ -64,7 +67,7 @@ class Contact_Supplier extends CommonDBRelation
     public static function countForItem(CommonDBTM $item)
     {
         global $DB;
-        return (new \itsmng\Database\Repository\ContactRepository(\itsmng\Database\Orm::create($DB)))
+        return (new ContactRepository(Orm::create($DB)))
             ->countRelated((int)$item->getID(), $item instanceof Contact, self::relatedScope($item));
     }
 

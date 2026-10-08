@@ -33,11 +33,48 @@
 
 namespace tests\units;
 
+use Closure;
+use CommonDBChild;
+use CommonDBRelation;
 use Computer;
+use Contact as LegacyContact;
+use DBAdapter;
 use DbTestCase;
+use Doctrine\DBAL\Configuration;
+use Doctrine\DBAL\Logging\Middleware;
 use Item_SoftwareVersion;
+use Link;
+use Link_Itemtype;
+use MassiveAction;
+use Plugin;
+use Psr\Log\AbstractLogger;
+use ReflectionProperty;
+use RuntimeException;
 use Software;
 use SoftwareVersion;
+use Throwable;
+use Transfer as LegacyTransfer;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Entity\Computer as ComputerEntity;
+use itsmng\Database\Entity\Contact;
+use itsmng\Database\Entity\Entity;
+use itsmng\Database\Entity\ItemSoftwareVersion;
+use itsmng\Database\Entity\ItemTicket;
+use itsmng\Database\Entity\Log;
+use itsmng\Database\Entity\Software as SoftwareEntity;
+use itsmng\Database\Entity\SoftwareVersion as SoftwareVersionEntity;
+use itsmng\Database\Entity\Ticket;
+use itsmng\Database\MutationCleanupFailure;
+use itsmng\Database\MutationRollbackFailure;
+use itsmng\Database\MySQLConnection;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\PostgresConnection;
+use itsmng\Database\TransactionOwnershipMismatch;
+use itsmng\Domain\SoftwareAssignmentCancelled;
+use itsmng\Domain\SoftwareAssignmentService;
+
+use function getItemTypeForTable;
 
 /* Test for inc/transfer.class.php */
 
@@ -151,7 +188,7 @@ class Transfer extends DbTestCase
                     $input['locations_id'] = $location_id;
                 }
 
-                if ($obj instanceof \CommonDBRelation) {
+                if ($obj instanceof CommonDBRelation) {
                     // Fixed relation endpoints are required owners, rather
                     // than optional scalar defaults in this transfer fixture.
                     foreach ([[$obj::$itemtype_1, $obj::$items_id_1], [$obj::$itemtype_2, $obj::$items_id_2]] as [$parentType, $parentColumn]) {
@@ -162,9 +199,9 @@ class Transfer extends DbTestCase
                     }
                 }
 
-                $entityClass = \itsmng\Database\EntityRegistry::tables()[$obj::getTable()] ?? null;
+                $entityClass = EntityRegistry::tables()[$obj::getTable()] ?? null;
                 if ($entityClass !== null) {
-                    $orm = \itsmng\Database\Orm::create($GLOBALS['DB']);
+                    $orm = Orm::create($GLOBALS['DB']);
                     foreach ($orm->getClassMetadata($entityClass)->associationMappings as $association) {
                         if (!$association->isToOneOwningSide()) {
                             continue;
@@ -173,7 +210,7 @@ class Transfer extends DbTestCase
                             if ($join->nullable || array_key_exists($join->name, $input)) {
                                 continue;
                             }
-                            $parentType = \getItemTypeForTable($orm->getClassMetadata($association->targetEntity)->getTableName());
+                            $parentType = getItemTypeForTable($orm->getClassMetadata($association->targetEntity)->getTableName());
                             $input[$join->name] = $addParent($parentType, $itemtype);
                         }
                     }
@@ -199,8 +236,8 @@ class Transfer extends DbTestCase
                     [$id]
                 );
                 $owner = $obj;
-                if (!$obj->isField('entities_id') && $obj instanceof \CommonDBChild) {
-                    $action = 'MassiveAction' . \MassiveAction::CLASS_ACTION_SEPARATOR . 'add_transfer_list';
+                if (!$obj->isField('entities_id') && $obj instanceof CommonDBChild) {
+                    $action = 'MassiveAction' . MassiveAction::CLASS_ACTION_SEPARATOR . 'add_transfer_list';
                     $this->array($obj->getSpecificMassiveActions())->notHasKey($action);
                     $owner = $obj->getItem();
                     $this->array($owner->getSpecificMassiveActions())->hasKey($action);
@@ -232,21 +269,21 @@ class Transfer extends DbTestCase
         $this->login();
         $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
         $destination = (int)getItemByTypeName('Entity', '_test_child_2', true);
-        $link = new \Link();
+        $link = new Link();
         $linkId = $link->add(['name' => 'Inherited transfer owner', 'entities_id' => $source]);
         $this->integer((int)$linkId)->isGreaterThan(0);
-        $child = new \Link_Itemtype();
+        $child = new Link_Itemtype();
         $childId = $child->add(['links_id' => $linkId, 'itemtype' => 'Computer']);
         $this->integer((int)$childId)->isGreaterThan(0);
         $this->boolean($child->getFromDB($childId))->isTrue();
         $this->boolean($child->isEntityAssign())->isTrue();
         $this->boolean($child->isField('entities_id'))->isFalse();
-        $action = 'MassiveAction' . \MassiveAction::CLASS_ACTION_SEPARATOR . 'add_transfer_list';
+        $action = 'MassiveAction' . MassiveAction::CLASS_ACTION_SEPARATOR . 'add_transfer_list';
         $this->array($child->getSpecificMassiveActions())->notHasKey($action);
         $owner = $child->getItem();
         $this->integer((int)$owner->getID())->isIdenticalTo((int)$linkId);
         $this->array($owner->getSpecificMassiveActions())->hasKey($action);
-        (new \Transfer())->moveItems([$owner->getType() => [$owner->getID()]], $destination, [$owner->getID()]);
+        (new LegacyTransfer())->moveItems([$owner->getType() => [$owner->getID()]], $destination, [$owner->getID()]);
         unset($_SESSION['glpitransfer_list']);
         $this->boolean($child->getFromDB($childId))->isTrue();
         $this->integer((int)$child->fields['links_id'])->isIdenticalTo((int)$linkId);
@@ -492,9 +529,9 @@ class Transfer extends DbTestCase
         $original = $DB;
         $session = $_SESSION;
         $originalLevel = $original->getDoctrineConnection()->getTransactionNestingLevel();
-        $logger = new class () extends \Psr\Log\AbstractLogger {
+        $logger = new class () extends AbstractLogger {
             public array $queries = [];
-            public ?\Closure $beforeCurrentInstallations = null;
+            public ?Closure $beforeCurrentInstallations = null;
 
             public function log($level, $message, array $context = []): void
             {
@@ -517,23 +554,23 @@ class Transfer extends DbTestCase
                 return count(array_filter($this->queries, static fn (string $sql): bool => (bool)preg_match('/\bFROM\s+glpi_softwareversions\b/i', $sql)));
             }
         };
-        $configuration = new \Doctrine\DBAL\Configuration();
-        $configuration->setMiddlewares([new \Doctrine\DBAL\Logging\Middleware($logger)]);
+        $configuration = new Configuration();
+        $configuration->setMiddlewares([new Middleware($logger)]);
         $parameters = $original->getDoctrineConnection()->getParams();
         $connection = $original->getProvider() === 'pgsql'
-            ? \itsmng\Database\PostgresConnection::create($parameters, $configuration)
-            : \itsmng\Database\MySQLConnection::create($parameters, $configuration);
+            ? PostgresConnection::create($parameters, $configuration)
+            : MySQLConnection::create($parameters, $configuration);
         // Test-only adapter admission: a real canonical connection, never the
         // original adapter's physical owner or a mock transaction implementation.
         $probe = clone $original;
-        (new \ReflectionProperty(\DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
+        (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
         $frame = null;
         $primary = null;
         try {
             $DB = $probe;
-            $frame = \itsmng\Database\OwnedMutationFrame::begin($connection);
+            $frame = OwnedMutationFrame::begin($connection);
             $operation($probe, $connection, $logger);
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $primary = $error;
         } finally {
             $DB = $original;
@@ -542,13 +579,13 @@ class Transfer extends DbTestCase
                 if ($frame !== null) {
                     $frame->rollBack();
                 }
-            } catch (\Throwable $cleanup) {
-                $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationRollbackFailure($primary, $cleanup);
+            } catch (Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new MutationRollbackFailure($primary, $cleanup);
             }
             try {
                 $probe->close();
-            } catch (\Throwable $cleanup) {
-                $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($primary, $cleanup);
+            } catch (Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
             }
         }
         if ($primary !== null) {
@@ -563,7 +600,7 @@ class Transfer extends DbTestCase
         $this->login();
         $this->setEntity('_test_root_entity', true);
         $savedHooks = $PLUGIN_HOOKS;
-        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
         $savedPlugins = $plugins->getValue();
         try {
             $plugins->setValue(null, [...$savedPlugins, 'transfer_frame_fixture']);
@@ -571,11 +608,11 @@ class Transfer extends DbTestCase
                 global $DB, $PLUGIN_HOOKS;
                 $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
                 $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
-                $manager = \itsmng\Database\Orm::create($database);
+                $manager = Orm::create($database);
                 $contacts = [];
                 foreach (['First callback owner', 'Later transfer owner'] as $name) {
-                    $contact = new \itsmng\Database\Entity\Contact();
-                    $contact->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, $source);
+                    $contact = new Contact();
+                    $contact->entities = $manager->getReference(Entity::class, $source);
                     $contact->name = $name;
                     $manager->persist($contact);
                     $contacts[] = $contact;
@@ -596,16 +633,16 @@ class Transfer extends DbTestCase
                             $GLOBALS['DB'] = clone $database;
                         } elseif ($mode !== 'owned_failure') {
                             $connection->rollBack();
-                            $replacement = \itsmng\Database\OwnedMutationFrame::begin($connection);
+                            $replacement = OwnedMutationFrame::begin($connection);
                             $connection->update('glpi_contacts', ['comment' => 'Replacement witness'], ['id' => $ids[0]]);
                         }
                         $_SESSION['transfer_frame_fixture'] = $mode;
                         $logger->queries = [];
                         if ($mode === 'owned_failure') {
-                            throw new \RuntimeException('Refused owned transfer callback');
+                            throw new RuntimeException('Refused owned transfer callback');
                         }
                     };
-                    $PLUGIN_HOOKS['item_update']['transfer_frame_fixture'][\Contact::class] = static function (\Contact $item) use ($ids, $mode, $change, &$retained): void {
+                    $PLUGIN_HOOKS['item_update']['transfer_frame_fixture'][LegacyContact::class] = static function (LegacyContact $item) use ($ids, $mode, $change, &$retained): void {
                         if ((int)$item->getID() === $ids[0]) {
                             $retained = $item;
                             if (in_array($mode, ['item_update', 'writer_swap', 'owned_failure'], true)) {
@@ -613,7 +650,7 @@ class Transfer extends DbTestCase
                             }
                         }
                     };
-                    $PLUGIN_HOOKS['pre_item_update']['transfer_frame_fixture'][\Contact::class] = static function (\Contact $item) use ($ids, $mode, $change, &$retained): void {
+                    $PLUGIN_HOOKS['pre_item_update']['transfer_frame_fixture'][LegacyContact::class] = static function (LegacyContact $item) use ($ids, $mode, $change, &$retained): void {
                         if ($mode === 'refused_update' && (int)$item->getID() === $ids[0]) {
                             $retained = $item;
                             $item->input = [];
@@ -629,8 +666,8 @@ class Transfer extends DbTestCase
                     $result = null;
                     try {
                         try {
-                            $result = (new \Transfer())->moveItems(['Contact' => $ids], $target, []);
-                        } catch (\Throwable $error) {
+                            $result = (new LegacyTransfer())->moveItems(['Contact' => $ids], $target, []);
+                        } catch (Throwable $error) {
                             $failure = $error;
                         } finally {
                             $DB = $database;
@@ -642,8 +679,8 @@ class Transfer extends DbTestCase
                             preg_match('/^\s*(?:INSERT|UPDATE|DELETE)\b/i', $sql) === 1));
                         $this->array($writes)->isEmpty();
                         if ($replacement !== null) {
-                            $this->object($failure)->isInstanceOf(\itsmng\Database\MutationRollbackFailure::class);
-                            $this->object($failure->primary)->isInstanceOf(\itsmng\Database\TransactionOwnershipMismatch::class);
+                            $this->object($failure)->isInstanceOf(MutationRollbackFailure::class);
+                            $this->object($failure->primary)->isInstanceOf(TransactionOwnershipMismatch::class);
                             $replacement->assertActive();
                             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level + 1);
                             $this->string($_SESSION['transfer_frame_fixture'])->isIdenticalTo($mode);
@@ -652,7 +689,7 @@ class Transfer extends DbTestCase
                         } else {
                             // The strict test logger throws when runTransfer logs
                             // an owned refusal, after its proven rollback/rewind.
-                            $this->object($failure)->isInstanceOf(\RuntimeException::class);
+                            $this->object($failure)->isInstanceOf(RuntimeException::class);
                             $this->string($failure->getMessage())->contains($mode === 'writer_swap'
                                 ? 'A transfer callback replaced its active writer.'
                                 : 'Refused owned transfer callback');
@@ -673,7 +710,7 @@ class Transfer extends DbTestCase
                     }
                 }
                 // A normal retry still joins and preserves the caller's frame.
-                $this->boolean((new \Transfer())->moveItems(['Contact' => $ids], $target, []))->isTrue();
+                $this->boolean((new LegacyTransfer())->moveItems(['Contact' => $ids], $target, []))->isTrue();
                 $this->array(array_map('intval', $connection->fetchFirstColumn('SELECT entities_id FROM glpi_contacts WHERE id IN (?, ?) ORDER BY id', $ids)))->isIdenticalTo([$target, $target]);
                 $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
             });
@@ -692,30 +729,30 @@ class Transfer extends DbTestCase
             $this->setEntity('_test_root_entity', true);
             $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
             $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
-            $manager = \itsmng\Database\Orm::create($database);
-            $entity = $manager->getReference(\itsmng\Database\Entity\Entity::class, $source);
-            $computer = new \itsmng\Database\Entity\Computer();
+            $manager = Orm::create($database);
+            $entity = $manager->getReference(Entity::class, $source);
+            $computer = new ComputerEntity();
             $computer->entities = $entity;
             $computer->name = 'Public related transfer boundary';
-            $ticket = new \itsmng\Database\Entity\Ticket();
+            $ticket = new Ticket();
             $ticket->entities = $entity;
             $ticket->name = 'Ticket must retain its original asset';
             $manager->persist($computer);
             $manager->persist($ticket);
             $manager->flush();
-            $link = new \itsmng\Database\Entity\ItemTicket();
+            $link = new ItemTicket();
             $link->itemtype = 'Computer';
             $link->computer = $computer;
             $link->tickets = $ticket;
-            $history = new \itsmng\Database\Entity\Log();
+            $history = new Log();
             $history->itemtype = 'Computer';
             $history->items_id = $computer->id;
             $history->new_value = 'Retained original history';
             $manager->persist($link);
             $manager->persist($history);
             $manager->flush();
-            $transfer = new class () extends \Transfer {
-                public ?\Closure $afterHistory = null;
+            $transfer = new class () extends LegacyTransfer {
+                public ?Closure $afterHistory = null;
                 public int $ticketCalls = 0;
 
                 public function transferHistory($itemtype, $ID, $newID)
@@ -738,14 +775,14 @@ class Transfer extends DbTestCase
             $level = $connection->getTransactionNestingLevel();
             $transfer->afterHistory = static function () use ($connection, $computer, $logger, &$replacement): void {
                 $connection->rollBack();
-                $replacement = \itsmng\Database\OwnedMutationFrame::begin($connection);
+                $replacement = OwnedMutationFrame::begin($connection);
                 $connection->update('glpi_computers', ['comment' => 'Public helper replacement witness'], ['id' => $computer->id]);
                 $logger->queries = [];
             };
             try {
                 $this->exception(static fn () => $transfer->moveItems(['Computer' => [$computer->id]], $target, ['keep_ticket' => 1]))
-                    ->isInstanceOf(\itsmng\Database\MutationRollbackFailure::class);
-                $this->object($replacement)->isInstanceOf(\itsmng\Database\OwnedMutationFrame::class);
+                    ->isInstanceOf(MutationRollbackFailure::class);
+                $this->object($replacement)->isInstanceOf(OwnedMutationFrame::class);
                 $replacement->assertActive();
                 $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level + 1);
                 $this->integer($transfer->ticketCalls)->isIdenticalTo(0);
@@ -772,25 +809,25 @@ class Transfer extends DbTestCase
     {
         $this->login();
         $this->withSoftwareOwnerQueryProbe(function ($database, $connection, $logger): void {
-            $manager = \itsmng\Database\Orm::create($database);
-            $root = $manager->getReference(\itsmng\Database\Entity\Entity::class, (int)getItemByTypeName('Entity', '_test_root_entity', true));
-            $software = new \itsmng\Database\Entity\Software();
+            $manager = Orm::create($database);
+            $root = $manager->getReference(Entity::class, (int)getItemByTypeName('Entity', '_test_root_entity', true));
+            $software = new SoftwareEntity();
             $software->entities = $root;
             $software->name = 'Bounded installation owners';
             $manager->persist($software);
-            $computer = new \itsmng\Database\Entity\Computer();
+            $computer = new ComputerEntity();
             $computer->entities = $root;
             $computer->name = 'Bounded installation subject';
             $manager->persist($computer);
             $manager->flush();
             $counts = [];
             for ($index = 1; $index <= 25; ++$index) {
-                $version = new \itsmng\Database\Entity\SoftwareVersion();
+                $version = new SoftwareVersionEntity();
                 $version->entities = $root;
                 $version->softwares = $software;
                 $version->name = 'Owner version ' . $index;
                 $manager->persist($version);
-                $installation = new \itsmng\Database\Entity\ItemSoftwareVersion();
+                $installation = new ItemSoftwareVersion();
                 $installation->itemtype = 'Computer';
                 $installation->entities = $root;
                 $installation->computer = $computer;
@@ -800,7 +837,7 @@ class Transfer extends DbTestCase
                 if (in_array($index, [1, 25], true)) {
                     $before = $connection->fetchAllAssociative('SELECT id, softwareversions_id, computers_id FROM glpi_items_softwareversions WHERE computers_id=? ORDER BY id', [$computer->id]);
                     $logger->queries = [];
-                    (new \itsmng\Domain\SoftwareAssignmentService($database))->lockTransferSubject('Computer', $computer->id);
+                    (new SoftwareAssignmentService($database))->lockTransferSubject('Computer', $computer->id);
                     $counts[] = $logger->ownerReads();
                     $this->integer($logger->ownerReads())->isIdenticalTo(2);
                     $model = new Computer();
@@ -819,39 +856,39 @@ class Transfer extends DbTestCase
     {
         $this->login();
         $this->withSoftwareOwnerQueryProbe(function ($database, $connection, $logger): void {
-            $manager = \itsmng\Database\Orm::create($database);
-            $root = $manager->getReference(\itsmng\Database\Entity\Entity::class, (int)getItemByTypeName('Entity', '_test_root_entity', true));
+            $manager = Orm::create($database);
+            $root = $manager->getReference(Entity::class, (int)getItemByTypeName('Entity', '_test_root_entity', true));
             $owners = [];
             foreach (['Initially selected owner', 'Changed owner'] as $name) {
-                $owner = new \itsmng\Database\Entity\Software();
+                $owner = new SoftwareEntity();
                 $owner->entities = $root;
                 $owner->name = $name;
                 $manager->persist($owner);
                 $owners[] = $owner;
             }
-            $computer = new \itsmng\Database\Entity\Computer();
+            $computer = new ComputerEntity();
             $computer->entities = $root;
             $manager->persist($computer);
-            $version = new \itsmng\Database\Entity\SoftwareVersion();
+            $version = new SoftwareVersionEntity();
             $version->entities = $root;
             $version->softwares = $owners[0];
             $manager->persist($version);
-            $installation = new \itsmng\Database\Entity\ItemSoftwareVersion();
+            $installation = new ItemSoftwareVersion();
             $installation->itemtype = 'Computer';
             $installation->entities = $root;
             $installation->computer = $computer;
             $installation->softwareversions = $version;
             $manager->persist($installation);
             $manager->flush();
-            $changeFrame = \itsmng\Database\OwnedMutationFrame::begin($connection);
+            $changeFrame = OwnedMutationFrame::begin($connection);
             try {
                 // Deterministic actual writer interleaving before the second
                 // observation. This is not claimed as a two-session race test.
                 $logger->beforeCurrentInstallations = static function () use ($connection, $version, $owners): void {
                     $connection->update('glpi_softwareversions', ['softwares_id' => $owners[1]->id], ['id' => $version->id]);
                 };
-                $this->exception(static fn () => (new \itsmng\Domain\SoftwareAssignmentService($database))->lockTransferSubject('Computer', $computer->id))
-                    ->isInstanceOf(\itsmng\Domain\SoftwareAssignmentCancelled::class)
+                $this->exception(static fn () => (new SoftwareAssignmentService($database))->lockTransferSubject('Computer', $computer->id))
+                    ->isInstanceOf(SoftwareAssignmentCancelled::class)
                     ->hasMessage('Transfer installation membership changed before locking; retry the command.');
                 $this->variable($logger->beforeCurrentInstallations)->isNull();
                 $this->integer((int)$connection->fetchOne('SELECT softwares_id FROM glpi_softwareversions WHERE id=?', [$version->id]))->isIdenticalTo($owners[1]->id);

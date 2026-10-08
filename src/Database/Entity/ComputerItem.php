@@ -5,6 +5,7 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_computers_items')]
@@ -20,7 +21,7 @@ class ComputerItem
 
     #[ORM\ManyToOne(targetEntity: Computer::class)]
     #[ORM\JoinColumn(name: 'computers_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Computer $computers = null;
 
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 100, nullable: false)]

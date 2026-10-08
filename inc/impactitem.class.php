@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ImpactRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -55,7 +58,7 @@ class ImpactItem extends CommonDBTM
     ) {
         global $DB;
 
-        $id = (new \itsmng\Database\Repository\ImpactRepository(\itsmng\Database\Orm::create($DB)))
+        $id = (new ImpactRepository(Orm::create($DB)))
             ->itemId(get_class($item), (int)$item->getID());
         $impact_item = new self();
 

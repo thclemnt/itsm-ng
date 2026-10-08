@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\DropdownChoiceContext;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DomainAssetRepository;
+use itsmng\Database\Repository\RecordRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -176,7 +181,7 @@ class Domain_Item extends CommonDBRelation
         $canedit = $domain->can($instID, UPDATE);
         $rand    = mt_rand();
 
-        $repository = new \itsmng\Database\Repository\DomainAssetRepository(\itsmng\Database\Orm::create($DB));
+        $repository = new DomainAssetRepository(Orm::create($DB));
         $types = $repository->types($instID, count(Domain::getTypes(true)));
 
         $number = count($types);
@@ -196,7 +201,7 @@ class Domain_Item extends CommonDBRelation
 
             $dropdownChoiceTokens = [];
             foreach (array_keys(array_unique($options)) as $kind) {
-                $dropdownChoiceTokens[$kind] = \itsmng\Database\DropdownChoiceContext::token($kind, []);
+                $dropdownChoiceTokens[$kind] = DropdownChoiceContext::token($kind, []);
             }
             $dropdownChoiceTokens = json_encode($dropdownChoiceTokens, JSON_THROW_ON_ERROR);
 
@@ -389,7 +394,7 @@ class Domain_Item extends CommonDBRelation
         $rand         = mt_rand();
         $is_recursive = $item->isRecursive();
 
-        $repository = new \itsmng\Database\Repository\DomainAssetRepository(\itsmng\Database\Orm::create($DB));
+        $repository = new DomainAssetRepository(Orm::create($DB));
         $rows = $repository->domains($item->getType(), $ID, getEntitiesRestrictCriteria(Domain::getTable(), '', '', true), $item instanceof DomainRelation);
 
         $number = count($rows);
@@ -421,7 +426,7 @@ class Domain_Item extends CommonDBRelation
                 }
             }
 
-            $nb = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))->countMatching(
+            $nb = (new RecordRepository(Orm::create($DB)))->countMatching(
                 Domain::getTable(),
                 ['is_deleted' => false] + getEntitiesRestrictCriteria(Domain::getTable(), '', $entities, true)
             );

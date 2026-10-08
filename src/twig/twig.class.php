@@ -1,5 +1,6 @@
 <?php
 
+use Symfony\Component\Filesystem\Filesystem;
 use Twig\Environment;
 use Twig\Extension\DebugExtension;
 use Twig\Extra\String\StringExtension;
@@ -34,7 +35,7 @@ class Twig
     /** Remove compiled templates; rendered content and session globals are never cached. */
     public static function clearCache(): void
     {
-        (new \Symfony\Component\Filesystem\Filesystem())->remove(GLPI_CACHE_DIR . '/twig');
+        (new Filesystem())->remove(GLPI_CACHE_DIR . '/twig');
     }
 
     public static function load_filters($twig)

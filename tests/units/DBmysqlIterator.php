@@ -33,9 +33,17 @@
 
 namespace tests\units;
 
+use DBmysqlIterator as LegacyDBmysqlIterator;
 use DbTestCase;
+use InvalidArgumentException;
 use Monolog\Logger;
 use Monolog\Handler\TestHandler;
+use QueryParam;
+use QuerySubQuery;
+use QueryUnion;
+use mock\DBmysql;
+use mock\DBpgsql;
+use stdClass;
 
 // Generic test classe, to be extended for CommonDBTM Object
 
@@ -54,7 +62,7 @@ class DBmysqlIterator extends DbTestCase
             // The legacy fixtures below include MySQL expressions and nested queries.
             // Select their dialect explicitly without opening a second connection.
             $this->mockGenerator->orphanize('__construct');
-            $DB = new \mock\DBmysql();
+            $DB = new DBmysql();
             $this->calling($DB)->query = false;
         }
         $this->it = new \DBmysqlIterator(null);
@@ -121,7 +129,7 @@ class DBmysqlIterator extends DbTestCase
             function () {
                 $this->it->execute('', ['foo' => 1]);
             }
-        )->isInstanceOf(\InvalidArgumentException::class)
+        )->isInstanceOf(InvalidArgumentException::class)
             ->hasMessage('Missing table name');
     }
 
@@ -135,7 +143,7 @@ class DBmysqlIterator extends DbTestCase
             function () {
                 $this->it->execute('');
             }
-        )->isInstanceOf(\InvalidArgumentException::class)
+        )->isInstanceOf(InvalidArgumentException::class)
             ->hasMessage('Missing table name');
     }
 
@@ -149,7 +157,7 @@ class DBmysqlIterator extends DbTestCase
             function () {
                 $this->it->execute(['FROM' => []]);
             }
-        )->isInstanceOf(\InvalidArgumentException::class)
+        )->isInstanceOf(InvalidArgumentException::class)
             ->hasMessage('Missing table name');
 
     }
@@ -301,9 +309,9 @@ class DBmysqlIterator extends DbTestCase
 
         $this->exception(
             function () {
-                $this->it->execute('foo', ['ORDER' => [new \stdClass()]]);
+                $this->it->execute('foo', ['ORDER' => [new stdClass()]]);
             }
-        )->isInstanceOf(\InvalidArgumentException::class)
+        )->isInstanceOf(InvalidArgumentException::class)
             ->hasMessage('Invalid order clause');
     }
 
@@ -359,7 +367,7 @@ class DBmysqlIterator extends DbTestCase
             function () {
                 $this->it->execute('foo', ['COUNT' => 'cpt', 'DISTINCT' => true]);
             }
-        )->isInstanceOf(\InvalidArgumentException::class)
+        )->isInstanceOf(InvalidArgumentException::class)
             ->hasMessage("With COUNT and DISTINCT, you must specify exactly one field, or use 'COUNT DISTINCT'");
     }
 
@@ -430,14 +438,14 @@ class DBmysqlIterator extends DbTestCase
             function () {
                 $this->it->execute('foo', ['LEFT JOIN' => 'bar']);
             }
-        )->isInstanceOf(\InvalidArgumentException::class)
+        )->isInstanceOf(InvalidArgumentException::class)
             ->hasMessage('BAD JOIN, value must be [ table => criteria ]');
 
         $this->exception(
             function () {
                 $this->it->execute('foo', ['INNER JOIN' => ['bar' => ['FKEY' => 'akey']]]);
             }
-        )->isInstanceOf(\InvalidArgumentException::class)
+        )->isInstanceOf(InvalidArgumentException::class)
             ->hasMessage('BAD FOREIGN KEY, should be [ table1 => key1, table2 => key2 ] or [ table1 => key1, table2 => key2, [criteria]]');
 
         //test conditions
@@ -645,14 +653,14 @@ class DBmysqlIterator extends DbTestCase
             function () {
                 $this->it->execute(['foo'], ['GROUPBY' => []]);
             }
-        )->isInstanceOf(\InvalidArgumentException::class)
+        )->isInstanceOf(InvalidArgumentException::class)
             ->hasMessage('Missing group by field');
 
         $this->exception(
             function () {
                 $this->it->execute(['foo'], ['GROUP' => []]);
             }
-        )->isInstanceOf(\InvalidArgumentException::class)
+        )->isInstanceOf(InvalidArgumentException::class)
             ->hasMessage('Missing group by field');
 
     }
@@ -1314,7 +1322,7 @@ class DBmysqlIterator extends DbTestCase
                     'SELECT' => ['f.id AS fid', 'b.name'],
                     'FROM' => 'foo AS f',
                     'LEFT JOIN' => ['bar AS b' => ['ON' => ['f' => 'bar_id', 'b' => 'id']]],
-                    'WHERE' => ['f.id' => new \QueryParam('id')],
+                    'WHERE' => ['f.id' => new QueryParam('id')],
                     'ORDER' => ['b.name ASC', 'f.id DESC'],
                     'LIMIT' => 10,
                     'START' => 5,
@@ -1331,11 +1339,11 @@ class DBmysqlIterator extends DbTestCase
     public function testProviderCompilation(array $criteria, string $mysqlExpected, string $pgsqlExpected)
     {
         $this->mockGenerator->orphanize('__construct');
-        $mysql = new \mock\DBmysql();
+        $mysql = new DBmysql();
         $this->mockGenerator->orphanize('__construct');
-        $pgsql = new \mock\DBpgsql();
+        $pgsql = new DBpgsql();
         foreach ([[$mysql, $mysqlExpected], [$pgsql, $pgsqlExpected]] as [$db, $expected]) {
-            $iterator = new \DBmysqlIterator($db);
+            $iterator = new LegacyDBmysqlIterator($db);
             $iterator->buildQuery($criteria);
             $this->string($iterator->getSql())->isIdenticalTo($expected);
         }
@@ -1346,9 +1354,9 @@ class DBmysqlIterator extends DbTestCase
         global $DB;
         $savedDatabase = $DB;
         $this->mockGenerator->orphanize('__construct');
-        $mysql = new \mock\DBmysql();
+        $mysql = new DBmysql();
         $this->mockGenerator->orphanize('__construct');
-        $pgsql = new \mock\DBpgsql();
+        $pgsql = new DBpgsql();
         $cases = [
             [
                 $mysql,
@@ -1363,11 +1371,11 @@ class DBmysqlIterator extends DbTestCase
         ];
         try {
             foreach ($cases as [$DB, $subqueryExpected, $unionExpected]) {
-                $subquery = new \QuerySubQuery(['SELECT' => 'id', 'FROM' => 'baz', 'WHERE' => ['z' => 'f']]);
-                $iterator = new \DBmysqlIterator($DB);
+                $subquery = new QuerySubQuery(['SELECT' => 'id', 'FROM' => 'baz', 'WHERE' => ['z' => 'f']]);
+                $iterator = new LegacyDBmysqlIterator($DB);
                 $iterator->buildQuery(['FROM' => 'foo', 'WHERE' => ['bar' => $subquery]]);
                 $this->string($iterator->getSql())->isIdenticalTo($subqueryExpected);
-                $union = new \QueryUnion([['FROM' => 'table1'], ['FROM' => 'table2']], false, 'allrows');
+                $union = new QueryUnion([['FROM' => 'table1'], ['FROM' => 'table2']], false, 'allrows');
                 $iterator->buildQuery(['FROM' => $union]);
                 $this->string($iterator->getSql())->isIdenticalTo($unionExpected);
             }

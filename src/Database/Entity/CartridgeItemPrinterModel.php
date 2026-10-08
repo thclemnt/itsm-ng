@@ -5,6 +5,7 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_cartridgeitems_printermodels')]
@@ -13,12 +14,12 @@ class CartridgeItemPrinterModel
 {
     #[ORM\ManyToOne(targetEntity: CartridgeItem::class)]
     #[ORM\JoinColumn(name: 'cartridgeitems_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?CartridgeItem $cartridgeitems = null;
 
     #[ORM\ManyToOne(targetEntity: PrinterModel::class)]
     #[ORM\JoinColumn(name: 'printermodels_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?PrinterModel $printermodels = null;
 
     #[ORM\Id]

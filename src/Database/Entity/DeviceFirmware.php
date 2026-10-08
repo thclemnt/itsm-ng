@@ -4,7 +4,9 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
@@ -34,7 +36,7 @@ class DeviceFirmware
     public ?Manufacturer $manufacturers = null;
 
     #[ORM\Column(name: '`date`', type: 'date', nullable: true)]
-    public ?\DateTimeInterface $date = null;
+    public ?DateTimeInterface $date = null;
 
     #[ORM\Column(name: '`version`', type: 'string', length: 255, nullable: true)]
     public ?string $version = null;
@@ -53,10 +55,10 @@ class DeviceFirmware
     public bool $is_recursive = false;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 }

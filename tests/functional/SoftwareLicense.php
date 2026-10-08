@@ -35,8 +35,16 @@ namespace tests\units;
 
 use DbTestCase;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Event\PostLoadEventArgs;
+use Doctrine\ORM\Events;
+use Doctrine\ORM\Query;
+use Entity;
+use Infocom;
 use Plugin;
 use ReflectionProperty;
+use Software;
+use SoftwareLicense as LegacySoftwareLicense;
 use itsmng\Database\Orm;
 use itsmng\Database\MySQLConnection;
 use itsmng\Database\LifecycleModelJournal;
@@ -47,6 +55,8 @@ use itsmng\Database\Entity\SoftwareLicense as SoftwareLicenseRecord;
 use itsmng\Database\Entity\SoftwareVersion as SoftwareVersionRecord;
 use itsmng\Database\Entity\ItemSoftwareLicense as AllocationRecord;
 use itsmng\Database\Entity\ItemSoftwareVersion as InstallationRecord;
+use itsmng\Database\Repository\FinancialRepository;
+use itsmng\Reporting\Criteria;
 
 /* Test for inc/softwarelicense.class.php */
 
@@ -62,9 +72,9 @@ class SoftwareLicense extends DbTestCase
         $config = $CFG_GLPI;
         $connection = $DB->getDoctrineConnection();
         $level = $connection->getTransactionNestingLevel();
-        $em = new class ($connection, Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+        $em = new class ($connection, Orm::configuration($connection->getDatabasePlatform())) extends EntityManager {
             public int $queries = 0;
-            public function createQuery(string $dql = ''): \Doctrine\ORM\Query
+            public function createQuery(string $dql = ''): Query
             {
                 ++$this->queries;
                 return parent::createQuery($dql);
@@ -72,23 +82,23 @@ class SoftwareLicense extends DbTestCase
         };
         $loads = new class () {
             public int $licenses = 0;
-            public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
+            public function postLoad(PostLoadEventArgs $event): void
             {
                 if ($event->getObject() instanceof SoftwareLicenseRecord) {
                     ++$this->licenses;
                 }
             }
         };
-        $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+        $em->getEventManager()->addEventListener([Events::postLoad], $loads);
         try {
             $this->login();
             $this->setEntity('_test_root_entity', true);
             $parent = (int)$_SESSION['glpiactive_entity'];
-            $entity = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => $parent]);
+            $entity = $this->createItem(Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => $parent]);
             $entityId = (int)$entity->getID();
             $CFG_GLPI['auto_create_infocoms'] = 0;
-            $software = $this->createItem(\Software::class, ['name' => $this->getUniqueString(), 'entities_id' => $entityId]);
-            $outsideSoftware = $this->createItem(\Software::class, ['name' => $this->getUniqueString(), 'entities_id' => $parent]);
+            $software = $this->createItem(Software::class, ['name' => $this->getUniqueString(), 'entities_id' => $entityId]);
+            $outsideSoftware = $this->createItem(Software::class, ['name' => $this->getUniqueString(), 'entities_id' => $parent]);
             $licenses = [];
             $financial = [];
             foreach ([
@@ -99,22 +109,22 @@ class SoftwareLicense extends DbTestCase
                 ['global', 10, '99.0000', '2089-12-31', '2090-02-01', $software],
                 ['global', 10, '99.0000', '2090-01-01', null, $outsideSoftware],
             ] as [$serial, $number, $value, $buy, $use, $owner]) {
-                $license = $this->createItem(\SoftwareLicense::class, ['name' => $this->getUniqueString(),
+                $license = $this->createItem(LegacySoftwareLicense::class, ['name' => $this->getUniqueString(),
                     'softwares_id' => $owner->getID(), 'entities_id' => $owner->fields['entities_id'],
                     'serial' => $serial, 'number' => $number]);
                 $licenses[] = $license;
-                $financial[] = $this->createItem(\Infocom::class, ['itemtype' => 'SoftwareLicense',
+                $financial[] = $this->createItem(Infocom::class, ['itemtype' => 'SoftwareLicense',
                     'items_id' => $license->getID(), 'value' => $value, 'buy_date' => $buy, 'use_date' => $use,
                     'sink_type' => 1, 'sink_time' => 3, 'sink_coeff' => 2.0]);
             }
             $this->setEntity($entityId, false);
-            $scope = \itsmng\Reporting\Criteria::entities();
+            $scope = Criteria::entities();
             $this->array(array_values($scope))->isIdenticalTo([$entityId]);
-            $repository = new \itsmng\Database\Repository\FinancialRepository($em);
+            $repository = new FinancialRepository($em);
             $rows = $repository->rows('SoftwareLicense', '2090-01-01', '2090-01-31', $scope, false);
             $this->integer($em->queries)->isIdenticalTo(1);
             $this->array(array_column($rows, 'id'))->isIdenticalTo(array_map(
-                static fn (\Infocom $item): int => (int)$item->getID(),
+                static fn (Infocom $item): int => (int)$item->getID(),
                 array_slice($financial, 0, 4)
             ));
             $this->array(array_column($rows, 'value'))->isIdenticalTo(['12.5000', '7.2500', '4.1250', '2.5000']);
@@ -134,7 +144,7 @@ class SoftwareLicense extends DbTestCase
             $this->object($em->getConnection())->isIdenticalTo($connection);
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
         } finally {
-            $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+            $em->getEventManager()->removeEventListener([Events::postLoad], $loads);
             $em->clear();
             $_SESSION = $session;
             $CFG_GLPI = $config;

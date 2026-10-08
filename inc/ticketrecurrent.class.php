@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CalendarRepository;
+use itsmng\Database\Repository\TicketRecurrentRepository;
+use itsmng\Domain\CalendarSchedule;
 use itsmng\Timezone;
 
 if (!defined('GLPI_ROOT')) {
@@ -357,10 +361,10 @@ class TicketRecurrent extends CommonDropdown
         return time();
     }
 
-    protected function recurrenceSchedule(int $calendar): \itsmng\Domain\CalendarSchedule
+    protected function recurrenceSchedule(int $calendar): CalendarSchedule
     {
         global $DB;
-        return (new \itsmng\Database\Repository\CalendarRepository(\itsmng\Database\Orm::create($DB)))
+        return (new CalendarRepository(Orm::create($DB)))
             ->schedule($calendar);
     }
 
@@ -532,7 +536,7 @@ class TicketRecurrent extends CommonDropdown
 
         $tot = 0;
 
-        $rows = (new \itsmng\Database\Repository\TicketRecurrentRepository(\itsmng\Database\Orm::create($DB)))->due();
+        $rows = (new TicketRecurrentRepository(Orm::create($DB)))->due();
         foreach ($rows as $data) {
             if (self::createTicket($data)) {
                 $tot++;

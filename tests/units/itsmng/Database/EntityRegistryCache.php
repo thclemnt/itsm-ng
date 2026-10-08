@@ -4,17 +4,43 @@
 
 namespace tests\units\itsmng\Database;
 
+use Doctrine\DBAL\DriverManager;
+use Doctrine\DBAL\Platforms\MySQLPlatform;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use Doctrine\ORM\Events;
+use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\ORM\Mapping\MappingException;
+use FilesystemIterator;
+use LogicException;
+use Psr\Log\AbstractLogger;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use ReflectionClass;
+use ReflectionProperty;
+use RuntimeException;
+use atoum\atoum\test;
 use itsmng\Database\EntityRegistry;
+use itsmng\Database\Entity\Computer;
+use itsmng\Database\Entity\Config;
+use itsmng\Database\Entity\Entity;
+use itsmng\Database\MappedRowProjection;
 use itsmng\Database\MappingFingerprint;
 use itsmng\Database\EntityRegistryCache as RegistryCache;
+use itsmng\Database\Mapping\AttributeDriver;
 use itsmng\Database\Mapping\MappedReference;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Psr16Cache;
+use itsmng\Database\Orm;
+use itsmng\Database\Query\BitCount;
+use itsmng\Database\Query\EpochSeconds;
+use itsmng\Database\SerializedMetadataCache;
+use stdClass;
 
 /** Mapping/cache behavior without an application bootstrap or database connection. */
-class EntityRegistryCache extends \atoum\atoum\test
+class EntityRegistryCache extends test
 {
     private string $root;
 
@@ -30,7 +56,7 @@ class EntityRegistryCache extends \atoum\atoum\test
 
     public function afterTestMethod($method): void
     {
-        $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->root, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
+        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($this->root, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
         foreach ($files as $file) {
             $file->isDir() ? rmdir($file->getPathname()) : unlink($file->getPathname());
         }
@@ -40,10 +66,10 @@ class EntityRegistryCache extends \atoum\atoum\test
 
     public function testPublicConfigurationsOwnMutableMappingState(): void
     {
-        $connection = \Doctrine\DBAL\DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
+        $connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
         $platform = $connection->getDatabasePlatform();
-        $first = \itsmng\Database\Orm::configuration($platform);
-        $second = \itsmng\Database\Orm::configuration($platform);
+        $first = Orm::configuration($platform);
+        $second = Orm::configuration($platform);
         $this->object($second)->isNotIdenticalTo($first);
         $this->object($second->getMetadataDriverImpl())->isNotIdenticalTo($first->getMetadataDriverImpl());
         $this->object($second->getMetadataCache())->isNotIdenticalTo($first->getMetadataCache());
@@ -51,24 +77,24 @@ class EntityRegistryCache extends \atoum\atoum\test
         $this->variable($second->getQueryCache())->isNull();
         $first->getMetadataDriverImpl()->setFileExtension('.custom');
         $this->string($second->getMetadataDriverImpl()->getFileExtension())->isNotIdenticalTo('.custom');
-        $custom = new \Doctrine\ORM\EntityManager($connection, $first);
-        $custom->getEventManager()->addEventListener(\Doctrine\ORM\Events::loadClassMetadata, new class () {
-            public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+        $custom = new EntityManager($connection, $first);
+        $custom->getEventManager()->addEventListener(Events::loadClassMetadata, new class () {
+            public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
             {
-                if ($event->getClassMetadata()->name === \itsmng\Database\Entity\Config::class) {
+                if ($event->getClassMetadata()->name === Config::class) {
                     $event->getClassMetadata()->setPrimaryTable(['name' => 'local_custom_config']);
                 }
             }
         });
-        $normal = new \Doctrine\ORM\EntityManager($connection, $second);
-        $this->string($custom->getClassMetadata(\itsmng\Database\Entity\Config::class)->getTableName())->isIdenticalTo('local_custom_config');
-        $this->string($normal->getClassMetadata(\itsmng\Database\Entity\Config::class)->getTableName())->isIdenticalTo('glpi_configs');
-        $first->addCustomNumericFunction('LOCAL_FUNCTION', \itsmng\Database\Query\BitCount::class);
-        $second->addCustomNumericFunction('LOCAL_FUNCTION', \itsmng\Database\Query\EpochSeconds::class);
-        $dql = 'SELECT LOCAL_FUNCTION(c.id) FROM ' . \itsmng\Database\Entity\Config::class . ' c';
+        $normal = new EntityManager($connection, $second);
+        $this->string($custom->getClassMetadata(Config::class)->getTableName())->isIdenticalTo('local_custom_config');
+        $this->string($normal->getClassMetadata(Config::class)->getTableName())->isIdenticalTo('glpi_configs');
+        $first->addCustomNumericFunction('LOCAL_FUNCTION', BitCount::class);
+        $second->addCustomNumericFunction('LOCAL_FUNCTION', EpochSeconds::class);
+        $dql = 'SELECT LOCAL_FUNCTION(c.id) FROM ' . Config::class . ' c';
         $this->string($custom->createQuery($dql)->getSQL())->contains('BIT_COUNT(');
         $this->string($normal->createQuery($dql)->getSQL())->contains('UNIX_TIMESTAMP(');
-        $first->addCustomNumericFunction('LOCAL_FUNCTION', \itsmng\Database\Query\EpochSeconds::class);
+        $first->addCustomNumericFunction('LOCAL_FUNCTION', EpochSeconds::class);
         $this->string($custom->createQuery($dql)->getSQL())->contains('UNIX_TIMESTAMP(');
         $this->boolean($connection->isConnected())->isFalse();
         $custom->clear();
@@ -79,32 +105,32 @@ class EntityRegistryCache extends \atoum\atoum\test
     public function testScalarIdentifiersMatchBothProvidersAndIgnorePublicCustomization(): void
     {
         $previousCache = $GLOBALS['GLPI_CACHE'] ?? null;
-        $model = new \ReflectionProperty(EntityRegistry::class, 'model');
+        $model = new ReflectionProperty(EntityRegistry::class, 'model');
         $previousModel = $model->getValue();
         $model->setValue(null, null);
         $GLOBALS['GLPI_CACHE'] = new Psr16Cache(new ArrayAdapter(storeSerialized: false));
         try {
-            $platform = new \Doctrine\DBAL\Platforms\MySQLPlatform();
-            $public = \itsmng\Database\Orm::configuration($platform);
+            $platform = new MySQLPlatform();
+            $public = Orm::configuration($platform);
             $driver = $public->getMetadataDriverImpl();
-            $connection = \Doctrine\DBAL\DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
-            $manager = new \Doctrine\ORM\EntityManager($connection, $public);
-            $manager->getEventManager()->addEventListener(\Doctrine\ORM\Events::loadClassMetadata, new class () {
-                public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+            $connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
+            $manager = new EntityManager($connection, $public);
+            $manager->getEventManager()->addEventListener(Events::loadClassMetadata, new class () {
+                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
                 {
                     $metadata = $event->getClassMetadata();
-                    if ($metadata->name === \itsmng\Database\Entity\Config::class) {
+                    if ($metadata->name === Config::class) {
                         $metadata->fieldMappings['id']->type = 'string';
                         $metadata->setPrimaryTable(['name' => 'public_custom_config']);
                     }
                 }
             });
-            $this->string($manager->getClassMetadata(\itsmng\Database\Entity\Config::class)->getTypeOfField('id'))->isIdenticalTo('string');
+            $this->string($manager->getClassMetadata(Config::class)->getTypeOfField('id'))->isIdenticalTo('string');
             $driver->setFileExtension('.public-custom-driver');
             $actual = EntityRegistry::scalarIdentifiers();
-            $this->string($actual[\itsmng\Database\Entity\Config::class]['type'])->isIdenticalTo('bigint');
-            $this->string(EntityRegistry::tables()['glpi_configs'])->isIdenticalTo(\itsmng\Database\Entity\Config::class);
-            $this->object(\itsmng\Database\Orm::configuration($platform)->getMetadataDriverImpl())->isNotIdenticalTo($driver);
+            $this->string($actual[Config::class]['type'])->isIdenticalTo('bigint');
+            $this->string(EntityRegistry::tables()['glpi_configs'])->isIdenticalTo(Config::class);
+            $this->object(Orm::configuration($platform)->getMetadataDriverImpl())->isNotIdenticalTo($driver);
             $this->string($driver->getFileExtension())->isIdenticalTo('.public-custom-driver');
             $this->boolean($connection->isConnected())->isFalse();
             $manager->clear();
@@ -112,12 +138,12 @@ class EntityRegistryCache extends \atoum\atoum\test
             $connection->close();
             ksort($actual);
             foreach ([['pdo_mysql', '8.4.0'], ['pdo_mysql', '10.11.18-MariaDB'], ['pdo_pgsql', '16.0']] as [$driverName, $version]) {
-                $connection = \Doctrine\DBAL\DriverManager::getConnection(['driver' => $driverName, 'serverVersion' => $version]);
+                $connection = DriverManager::getConnection(['driver' => $driverName, 'serverVersion' => $version]);
                 $platform = $connection->getDatabasePlatform();
-                $configuration = \itsmng\Database\Orm::configuration($platform);
-                $configuration->setMetadataDriverImpl(new \itsmng\Database\Mapping\AttributeDriver([dirname((new \ReflectionClass(EntityRegistry::class))->getFileName()) . '/Entity'], $platform));
+                $configuration = Orm::configuration($platform);
+                $configuration->setMetadataDriverImpl(new AttributeDriver([dirname((new ReflectionClass(EntityRegistry::class))->getFileName()) . '/Entity'], $platform));
                 $configuration->setMetadataCache(new ArrayAdapter(storeSerialized: true));
-                $manager = new \Doctrine\ORM\EntityManager($connection, $configuration);
+                $manager = new EntityManager($connection, $configuration);
                 $expected = [];
                 $quote = $configuration->getQuoteStrategy();
                 $quoteName = static fn (array $name): string => $name[1] ? $platform->quoteSingleIdentifier($name[0]) : $name[0];
@@ -143,7 +169,7 @@ class EntityRegistryCache extends \atoum\atoum\test
                         $this->boolean(isset($actual[$metadata->name]))->isFalse();
                     }
                 }
-                $entity = $manager->getClassMetadata(\itsmng\Database\Entity\Entity::class);
+                $entity = $manager->getClassMetadata(Entity::class);
                 $types = $enums = [];
                 foreach ($entity->fieldMappings as $mapping) {
                     $types[$mapping->columnName] = $mapping->type;
@@ -169,13 +195,13 @@ class EntityRegistryCache extends \atoum\atoum\test
 
     public function testScalarReferenceFactsRetainIdentifierValidationFallbacks(): void
     {
-        $connection = \Doctrine\DBAL\DriverManager::getConnection(['driver' => 'pdo_pgsql', 'serverVersion' => '16.0']);
-        $configuration = \itsmng\Database\Orm::configuration($connection->getDatabasePlatform());
+        $connection = DriverManager::getConnection(['driver' => 'pdo_pgsql', 'serverVersion' => '16.0']);
+        $configuration = Orm::configuration($connection->getDatabasePlatform());
         $configuration->setMetadataCache(new ArrayAdapter(storeSerialized: true));
-        $manager = new \Doctrine\ORM\EntityManager($connection, $configuration);
+        $manager = new EntityManager($connection, $configuration);
         try {
-            $source = $manager->getClassMetadata(\itsmng\Database\Entity\Computer::class);
-            $target = $manager->getClassMetadata(\itsmng\Database\Entity\Entity::class);
+            $source = $manager->getClassMetadata(Computer::class);
+            $target = $manager->getClassMetadata(Entity::class);
             $facts = EntityRegistry::scalarIdentifiers();
             // A mismatched reference column must inspect real metadata and reject it.
             $mismatch = clone $source;
@@ -184,7 +210,7 @@ class EntityRegistryCache extends \atoum\atoum\test
             $mismatch->associationMappings[$property] = clone $mismatch->associationMappings[$property];
             $mismatch->associationMappings[$property]->joinColumns[0] = clone $mismatch->associationMappings[$property]->joinColumns[0];
             $mismatch->associationMappings[$property]->joinColumns[0]->referencedColumnName = 'name';
-            $this->exception(static fn () => new \itsmng\Database\MappedRowProjection($manager, $mismatch, $facts))->isInstanceOf(\LogicException::class);
+            $this->exception(static fn () => new MappedRowProjection($manager, $mismatch, $facts))->isInstanceOf(LogicException::class);
             // No scalar fact is supplied for a composite or association identifier.
             unset($facts[$target->name]);
             $originalTarget = $target;
@@ -192,12 +218,12 @@ class EntityRegistryCache extends \atoum\atoum\test
             $manager->getMetadataFactory()->setMetadataFor($target->name, $target);
             $target->identifier = ['id', 'name'];
             $target->isIdentifierComposite = true;
-            $this->exception(static fn () => new \itsmng\Database\MappedRowProjection($manager, $source, $facts))->isInstanceOf(\Doctrine\ORM\Mapping\MappingException::class);
+            $this->exception(static fn () => new MappedRowProjection($manager, $source, $facts))->isInstanceOf(MappingException::class);
             $association = array_key_first($target->associationMappings);
             $this->string($association)->isNotEmpty();
             $target->identifier = [$association];
             $target->isIdentifierComposite = false;
-            $this->exception(static fn () => new \itsmng\Database\MappedRowProjection($manager, $source, $facts))->isInstanceOf(\LogicException::class);
+            $this->exception(static fn () => new MappedRowProjection($manager, $source, $facts))->isInstanceOf(LogicException::class);
             $manager->getMetadataFactory()->setMetadataFor($originalTarget->name, $originalTarget);
             $this->boolean($connection->isConnected())->isFalse();
         } finally {
@@ -279,8 +305,8 @@ class EntityRegistryCache extends \atoum\atoum\test
         $this->array($registry->load($build))->isIdenticalTo(['generation' => 5]);
         $this->integer(RegistryCacheWakeupProbe::$wakeups)->isIdenticalTo(0);
         $cache->clear();
-        $this->exception(static fn () => $registry->load(static fn () => throw new \LogicException('Invalid authoritative mapping')))
-            ->isInstanceOf(\LogicException::class)->hasMessage('Invalid authoritative mapping');
+        $this->exception(static fn () => $registry->load(static fn () => throw new LogicException('Invalid authoritative mapping')))
+            ->isInstanceOf(LogicException::class)->hasMessage('Invalid authoritative mapping');
     }
 
     public function testValidationPreservesSharedArraysAndRejectsRecursiveOrUnknownValues(): void
@@ -343,12 +369,12 @@ class EntityRegistryCache extends \atoum\atoum\test
         $cache = new class (new ArrayAdapter()) extends Psr16Cache {
             public function get($key, $default = null): mixed
             {
-                throw new \RuntimeException('Cache unavailable');
+                throw new RuntimeException('Cache unavailable');
             }
 
             public function set($key, $value, $ttl = null): bool
             {
-                throw new \RuntimeException('Cache unavailable');
+                throw new RuntimeException('Cache unavailable');
             }
         };
         $builds = 0;
@@ -365,15 +391,15 @@ class EntityRegistryCache extends \atoum\atoum\test
         $memory = new ArrayAdapter(storeSerialized: false);
         $pool = new Psr16Cache($memory);
         $fingerprint = MappingFingerprint::forSource($this->root);
-        $first = new \itsmng\Database\SerializedMetadataCache($pool, 'metadata_' . $fingerprint);
-        $metadata = new \Doctrine\ORM\Mapping\ClassMetadata(\itsmng\Database\Entity\Config::class);
-        $metadata->setIdGeneratorType(\Doctrine\ORM\Mapping\ClassMetadata::GENERATOR_TYPE_IDENTITY);
+        $first = new SerializedMetadataCache($pool, 'metadata_' . $fingerprint);
+        $metadata = new ClassMetadata(Config::class);
+        $metadata->setIdGeneratorType(ClassMetadata::GENERATOR_TYPE_IDENTITY);
         $this->boolean($first->save($first->getItem('config')->set($metadata)))->isTrue();
-        $metadata->setIdGeneratorType(\Doctrine\ORM\Mapping\ClassMetadata::GENERATOR_TYPE_NONE);
-        $second = new \itsmng\Database\SerializedMetadataCache($pool, 'metadata_' . $fingerprint);
+        $metadata->setIdGeneratorType(ClassMetadata::GENERATOR_TYPE_NONE);
+        $second = new SerializedMetadataCache($pool, 'metadata_' . $fingerprint);
         $hit = $second->getItem('config');
         $this->boolean($hit->isHit())->isTrue();
-        $this->integer($hit->get()->generatorType)->isIdenticalTo(\Doctrine\ORM\Mapping\ClassMetadata::GENERATOR_TYPE_IDENTITY);
+        $this->integer($hit->get()->generatorType)->isIdenticalTo(ClassMetadata::GENERATOR_TYPE_IDENTITY);
         $this->object($hit->get())->isNotIdenticalTo($first->getItem('config')->get());
         foreach ($memory->getValues() as $value) {
             $this->string($value);
@@ -382,7 +408,7 @@ class EntityRegistryCache extends \atoum\atoum\test
         $mtime = filemtime($file);
         file_put_contents($file, '<?php /* driver version 2 */');
         touch($file, $mtime);
-        $rotated = new \itsmng\Database\SerializedMetadataCache($pool, 'metadata_' . MappingFingerprint::forSource($this->root));
+        $rotated = new SerializedMetadataCache($pool, 'metadata_' . MappingFingerprint::forSource($this->root));
         $this->boolean($rotated->getItem('config')->isHit())->isFalse();
         $this->boolean($second->getItem('config')->isHit())->isTrue();
         $pool->clear();
@@ -393,10 +419,10 @@ class EntityRegistryCache extends \atoum\atoum\test
     {
         $memory = new ArrayAdapter(storeSerialized: false);
         $pool = new Psr16Cache($memory);
-        $cache = new \itsmng\Database\SerializedMetadataCache($pool, 'metadata');
-        $this->boolean($cache->save($cache->getItem('record')->set(new \stdClass())))->isTrue();
+        $cache = new SerializedMetadataCache($pool, 'metadata');
+        $this->boolean($cache->save($cache->getItem('record')->set(new stdClass())))->isTrue();
         $key = array_key_first($memory->getValues());
-        foreach (['truncated', new \stdClass()] as $invalid) {
+        foreach (['truncated', new stdClass()] as $invalid) {
             $pool->set($key, $invalid);
             $this->boolean($cache->getItem('record')->isHit())->isFalse();
         }
@@ -406,15 +432,15 @@ class EntityRegistryCache extends \atoum\atoum\test
         $throwing = new class (new ArrayAdapter()) extends Psr16Cache {
             public function getMultiple($keys, $default = null): iterable
             {
-                throw new \RuntimeException('Cache unavailable');
+                throw new RuntimeException('Cache unavailable');
             }
             public function setMultiple($values, $ttl = null): bool
             {
-                throw new \RuntimeException('Cache unavailable');
+                throw new RuntimeException('Cache unavailable');
             }
         };
-        $unavailable = new \itsmng\Database\SerializedMetadataCache($throwing, 'metadata');
-        $logger = new class () extends \Psr\Log\AbstractLogger {
+        $unavailable = new SerializedMetadataCache($throwing, 'metadata');
+        $logger = new class () extends AbstractLogger {
             public array $levels = [];
             public function log($level, $message, array $context = []): void
             {
@@ -423,7 +449,7 @@ class EntityRegistryCache extends \atoum\atoum\test
         };
         $unavailable->setLogger($logger);
         $this->boolean($unavailable->getItem('record')->isHit())->isFalse();
-        $this->boolean($unavailable->save($unavailable->getItem('record')->set(new \stdClass())))->isFalse();
+        $this->boolean($unavailable->save($unavailable->getItem('record')->set(new stdClass())))->isFalse();
         $this->array($logger->levels)->isIdenticalTo(['warning', 'warning', 'warning']);
     }
 
@@ -464,7 +490,7 @@ class EntityRegistryCache extends \atoum\atoum\test
     public function testRealRegistryColdAndWarmProjectionsAreIdentical(): void
     {
         $previous = $GLOBALS['GLPI_CACHE'] ?? null;
-        $model = new \ReflectionProperty(EntityRegistry::class, 'model');
+        $model = new ReflectionProperty(EntityRegistry::class, 'model');
         $previousModel = $model->getValue();
         $pool = new ArrayAdapter(storeSerialized: false);
         $GLOBALS['GLPI_CACHE'] = new Psr16Cache($pool);

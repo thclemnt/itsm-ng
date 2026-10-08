@@ -4,8 +4,10 @@
 
 namespace itsmng\Database\Mapping;
 
+use Attribute;
+
 /** The owning association used to group assets in the default inventory report. */
-#[\Attribute(\Attribute::TARGET_PROPERTY)]
+#[Attribute(Attribute::TARGET_PROPERTY)]
 final class AssetClassification
 {
 }

@@ -32,6 +32,16 @@
  */
 
 use Glpi\Event;
+use itsmng\Database\DropdownChoiceContext;
+use itsmng\Database\Entity\DocumentItem;
+use itsmng\Database\Entity\ITILFollowup as ITILFollowupEntity;
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILOriginRepository;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\TicketAssetRepository;
+use itsmng\Database\Repository\TicketAutomaticActionRepository;
+use itsmng\Database\RowIterator;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -940,7 +950,7 @@ class Ticket extends CommonITILObject
     {
         global $DB;
 
-        (new \itsmng\Database\Repository\ITILOriginRepository(\itsmng\Database\Orm::create($DB)))
+        (new ITILOriginRepository(Orm::create($DB)))
             ->reassignTicket((int)$this->getID(), empty($this->input['_replace_by']) ? null : (int)$this->input['_replace_by']);
 
         // OlaLevel_Ticket does not extends CommonDBConnexity
@@ -2395,7 +2405,7 @@ class Ticket extends CommonITILObject
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\TicketAssetRepository(\itsmng\Database\Orm::create($DB)))
+        return (new TicketAssetRepository(Orm::create($DB)))
             ->activeOrRecent((string)$itemtype, (int)$items_id, array_merge($this->getClosedStatusArray(), $this->getSolvedStatusArray()), (int)$days);
 
     }
@@ -2415,7 +2425,7 @@ class Ticket extends CommonITILObject
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\TicketAssetRepository(\itsmng\Database\Orm::create($DB)))
+        return (new TicketAssetRepository(Orm::create($DB)))
             ->activeCount((string)$itemtype, (int)$items_id, array_merge($this->getSolvedStatusArray(), $this->getClosedStatusArray()));
 
     }
@@ -2435,9 +2445,9 @@ class Ticket extends CommonITILObject
     {
         global $DB;
 
-        $rows = (new \itsmng\Database\Repository\TicketAssetRepository(\itsmng\Database\Orm::create($DB)))
+        $rows = (new TicketAssetRepository(Orm::create($DB)))
             ->active((string)$itemtype, (int)$items_id, array_merge($this->getSolvedStatusArray(), $this->getClosedStatusArray()), (int)$type);
-        return new \itsmng\Database\RowIterator($rows);
+        return new RowIterator($rows);
 
     }
 
@@ -2456,7 +2466,7 @@ class Ticket extends CommonITILObject
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\TicketAssetRepository(\itsmng\Database\Orm::create($DB)))
+        return (new TicketAssetRepository(Orm::create($DB)))
             ->recentlyFinishedCount((string)$itemtype, (int)$items_id, array_merge($this->getSolvedStatusArray(), $this->getClosedStatusArray()), (int)$days);
 
     }
@@ -3574,7 +3584,7 @@ class Ticket extends CommonITILObject
         global $DB;
         $done = 0;
 
-        foreach (\itsmng\Database\MappedReads::matching($DB, 'glpi_specialstatuses', [], ['id']) as $data) {
+        foreach (MappedReads::matching($DB, 'glpi_specialstatuses', [], ['id']) as $data) {
             $do_sort[] = $data['weight'];
             $status_db[] = $data;
         }
@@ -3672,7 +3682,7 @@ class Ticket extends CommonITILObject
         global $DB;
 
         $totalcost = 0;
-        $costs = (new \itsmng\Database\Repository\TicketAssetRepository(\itsmng\Database\Orm::create($DB)))
+        $costs = (new TicketAssetRepository(Orm::create($DB)))
             ->costs($item->getType(), (int)$item->getID());
         foreach ($costs as $data) {
             $totalcost += TicketCost::computeTotalCost($data['actiontime'], $data['cost_time'], $data['cost_fixed'], $data['cost_material']);
@@ -5341,7 +5351,7 @@ class Ticket extends CommonITILObject
             'entity_restrict' => Session::getActiveEntity(),
             'recursive' => Session::getIsActiveEntityRecursive(),
         ];
-        $ticketChoiceRequest['_idor_token'] = \itsmng\Database\DropdownChoiceContext::token('Ticket', $ticketChoiceRequest);
+        $ticketChoiceRequest['_idor_token'] = DropdownChoiceContext::token('Ticket', $ticketChoiceRequest);
         $form = [
            'action' => $formUrl,
            'itemtype' => $display_save_btn ? self::class : null,
@@ -7147,8 +7157,8 @@ class Ticket extends CommonITILObject
         // Recherche des entit??s
         $tot = 0;
 
-        $candidates = new \itsmng\Database\Repository\TicketAutomaticActionRepository(\itsmng\Database\Orm::create($DB));
-        $entities = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+        $candidates = new TicketAutomaticActionRepository(Orm::create($DB));
+        $entities = (new RecordRepository(Orm::create($DB)))
             ->identifiers(Entity::getTable(), 'id', [], ['id ASC']);
         foreach ($entities as $entityId) {
             $delay  = Entity::getUsedConfig('autoclose_delay', $entityId, '', Entity::CONFIG_NEVER);
@@ -7208,7 +7218,7 @@ class Ticket extends CommonITILObject
         }
         // Recherche des entit??s
         $tot = 0;
-        $candidates = new \itsmng\Database\Repository\TicketAutomaticActionRepository(\itsmng\Database\Orm::create($DB));
+        $candidates = new TicketAutomaticActionRepository(Orm::create($DB));
         foreach (Entity::getEntitiesToNotify('notclosed_delay') as $entity => $value) {
             $tickets = $candidates->overdue((int)$entity, [
                 $_SESSION['INCOMING'], $_SESSION['ASSIGNED'], $_SESSION['PLANNED'], $_SESSION['WAITING'],
@@ -7262,8 +7272,8 @@ class Ticket extends CommonITILObject
             $tabentities[0] = $rate;
         }
 
-        $candidates = new \itsmng\Database\Repository\TicketAutomaticActionRepository(\itsmng\Database\Orm::create($DB));
-        $entities = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+        $candidates = new TicketAutomaticActionRepository(Orm::create($DB));
+        $entities = (new RecordRepository(Orm::create($DB)))
             ->identifiers(Entity::getTable(), 'id', [], ['id ASC']);
         foreach ($entities as $entityId) {
             $rate   = Entity::getUsedConfig('inquest_config', $entityId, 'inquest_rate');
@@ -7357,8 +7367,8 @@ class Ticket extends CommonITILObject
         //search entities
         $tot = 0;
 
-        $candidates = new \itsmng\Database\Repository\TicketAutomaticActionRepository(\itsmng\Database\Orm::create($DB));
-        $entities = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+        $candidates = new TicketAutomaticActionRepository(Orm::create($DB));
+        $entities = (new RecordRepository(Orm::create($DB)))
             ->identifiers(Entity::getTable(), 'id', [], ['id ASC']);
 
         foreach ($entities as $entityId) {
@@ -7958,7 +7968,7 @@ class Ticket extends CommonITILObject
                            'itemtype' => 'Ticket'
                         ]);
                         foreach ($tomerge as $fup2) {
-                            $fup2 = \itsmng\Database\Entity\ITILFollowup::withReference($fup2, 'Ticket', (int)$merge_target_id);
+                            $fup2 = ITILFollowupEntity::withReference($fup2, 'Ticket', (int)$merge_target_id);
                             $fup2['sourceitems_id'] = $id;
                             $fup2['content'] = $DB->escape($fup2['content']);
                             unset($fup2['id']);
@@ -8009,7 +8019,7 @@ class Ticket extends CommonITILObject
                         ]);
 
                         foreach ($tomerge as $document_item2) {
-                            $document_item2 = \itsmng\Database\Entity\DocumentItem::withReference($document_item2, 'Ticket', (int)$merge_target_id);
+                            $document_item2 = DocumentItem::withReference($document_item2, 'Ticket', (int)$merge_target_id);
                             unset($document_item2['id']);
                             if (!$document_item->add($document_item2)) {
                                 //Cannot add document. Abort/fail the merge

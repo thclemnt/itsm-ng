@@ -34,6 +34,10 @@
 namespace tests\units;
 
 use DbTestCase;
+use Item_Devices;
+use Session;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\ForeignKeys;
 
 class Item_DeviceMemory extends DbTestCase
 {
@@ -67,21 +71,21 @@ class Item_DeviceMemory extends DbTestCase
             $link = $this->createItem('Item_DeviceMemory', ['devicememories_id' => $deviceId, 'itemtype' => 'Computer', 'items_id' => $assetId,
                 'entities_id' => 0, 'size' => 8192, 'serial' => null]);
             $id = (int)$link->getID();
-            $associated = \Item_Devices::getItemsAssociatedTo('Computer', $assetId);
+            $associated = Item_Devices::getItemsAssociatedTo('Computer', $assetId);
             $this->array($associated)->hasSize(1);
             $this->integer((int)$associated[0]->getID())->isIdenticalTo($id);
 
-            \Item_Devices::cloneItem('Computer', $assetId, $destinationId);
+            Item_Devices::cloneItem('Computer', $assetId, $destinationId);
             $cloned = $link->find(['itemtype' => 'Computer', 'items_id' => $destinationId]);
             $this->array($cloned)->hasSize(1);
             $copy = reset($cloned);
             $this->integer((int)$copy['size'])->isIdenticalTo(8192);
             $this->variable($copy['serial'])->isNull();
             $this->integer((int)$copy['devicememories_id'])->isIdenticalTo($deviceId);
-            $reference = \itsmng\Database\EntityRegistry::discriminatedReferences($link->getTable())['items_id'];
+            $reference = EntityRegistry::discriminatedReferences($link->getTable())['items_id'];
             $this->integer((int)$copy[$reference['selections']['Computer']['column']])->isIdenticalTo($destinationId);
 
-            \Item_Devices::cleanItemDeviceDBOnItemDelete('Computer', $assetId, true);
+            Item_Devices::cleanItemDeviceDBOnItemDelete('Computer', $assetId, true);
             $this->boolean($link->getFromDB($id))->isTrue();
             $this->array($link->fields)->hasKeys(['itemtype', 'items_id', 'serial']);
             $this->variable($link->fields['itemtype'])->isIdenticalTo($reference['empty_value'] === 0 ? null : '');
@@ -89,21 +93,21 @@ class Item_DeviceMemory extends DbTestCase
             $this->integer((int)$link->fields['devicememories_id'])->isIdenticalTo($deviceId);
             $this->integer((int)$link->fields['size'])->isIdenticalTo(8192);
             $this->variable($link->fields['serial'])->isNull();
-            \Item_Devices::cleanItemDeviceDBOnItemDelete('Computer', $destinationId, false);
+            Item_Devices::cleanItemDeviceDBOnItemDelete('Computer', $destinationId, false);
             $this->array($link->find(['itemtype' => 'Computer', 'items_id' => $destinationId]))->isEmpty();
             $this->boolean($link->getFromDB($id))->isTrue('Deleting the assigned clone preserves the separate stock binding');
 
-            $_SESSION['glpi_use_mode'] = \Session::DEBUG_MODE;
+            $_SESSION['glpi_use_mode'] = Session::DEBUG_MODE;
             $CFG_GLPI['debug_sql'] = true;
             $DEBUG_SQL = [];
             $SQL_TOTAL_REQUEST = 0;
             $this->array(array_column($link->getTableGroupRows($device, ''), 'id'))->isIdenticalTo([$id]);
             $link->getTableGroupRows($asset);
             $link->getTableGroupRows($device, 'Computer');
-            \Item_Devices::getItemsAssociatedTo('Computer', $assetId);
-            \Item_Devices::cleanItemDeviceDBOnItemDelete('Computer', $assetId, true);
+            Item_Devices::getItemsAssociatedTo('Computer', $assetId);
+            Item_Devices::cleanItemDeviceDBOnItemDelete('Computer', $assetId, true);
             $this->integer($SQL_TOTAL_REQUEST)->isIdenticalTo(0);
-            $this->array((new \itsmng\Database\ForeignKeys())->audit($DB->getDoctrineConnection()))->isEmpty();
+            $this->array((new ForeignKeys())->audit($DB->getDoctrineConnection()))->isEmpty();
         } finally {
             $_SESSION = $savedSession;
             $CFG_GLPI = $savedConfig;

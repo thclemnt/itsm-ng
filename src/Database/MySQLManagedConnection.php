@@ -5,16 +5,19 @@
 namespace itsmng\Database;
 
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Driver\Connection as DriverConnection;
+use Doctrine\DBAL\Driver\Exception;
+use itsmng\Database\Driver\OwnedConnection;
 
 /** The application and installation use one PDO-backed DBAL physical owner. */
 final class MySQLManagedConnection extends Connection implements ManagedTransactionConnection
 {
     use PdoTransactionOwnership;
 
-    protected function connect(): \Doctrine\DBAL\Driver\Connection
+    protected function connect(): DriverConnection
     {
         $connection = parent::connect();
-        if (!$connection instanceof \itsmng\Database\Driver\OwnedConnection) {
+        if (!$connection instanceof OwnedConnection) {
             $this->close();
             throw new TransactionOwnershipMismatch('MySQL ownership requires the canonical command-owning DBAL transport.');
         }
@@ -51,10 +54,10 @@ final class MySQLManagedConnection extends Connection implements ManagedTransact
     {
         $this->resetManagedFrames();
         try {
-            if ($this->_conn instanceof \itsmng\Database\Driver\OwnedConnection) {
+            if ($this->_conn instanceof OwnedConnection) {
                 $this->_conn->close();
             }
-        } catch (\Doctrine\DBAL\Driver\Exception $error) {
+        } catch (Exception $error) {
             throw $this->convertException($error);
         } finally {
             parent::close();

@@ -33,7 +33,15 @@
 
 namespace tests\units;
 
+use CommonDBConnexity;
 use DbTestCase;
+use Entity as LegacyEntity;
+use Entity_RSSFeed;
+use Notification as LegacyNotification;
+use Notification_NotificationTemplate as LegacyNotification_NotificationTemplate;
+use itsmng\Database\Entity\Entity;
+use itsmng\Database\Entity\Notification;
+use itsmng\Database\Orm;
 
 /* Test for inc/notification_notificationtemplate.class.php */
 
@@ -45,43 +53,43 @@ class Notification_NotificationTemplate extends DbTestCase
         $this->login();
         $this->setEntity('_test_root_entity', false);
         $session = $_SESSION;
-        $manager = \itsmng\Database\Orm::create($DB);
+        $manager = Orm::create($DB);
         $depth = $manager->getConnection()->getTransactionNestingLevel();
         try {
-            $parent = new \itsmng\Database\Entity\Notification();
-            $parent->entities = $manager->find(\itsmng\Database\Entity\Entity::class, $_SESSION['glpiactive_entity']);
+            $parent = new Notification();
+            $parent->entities = $manager->find(Entity::class, $_SESSION['glpiactive_entity']);
             $parent->name = 'Optional template ' . bin2hex(random_bytes(8));
             $parent->itemtype = 'Ticket';
             $parent->event = 'new';
-            $this->object($parent->entities)->isInstanceOf(\itsmng\Database\Entity\Entity::class);
+            $this->object($parent->entities)->isInstanceOf(Entity::class);
             $manager->persist($parent);
             $manager->flush();
-            $this->boolean((new \Notification())->can($parent->id, UPDATE))->isTrue();
+            $this->boolean((new LegacyNotification())->can($parent->id, UPDATE))->isTrue();
             $missing = (int)$manager->createQuery('SELECT MAX(t.id) FROM itsmng\\Database\\Entity\\NotificationTemplate t')->getSingleScalarResult() + 100;
             foreach ([null, '', 0, '0'] as $selection) {
                 $input = ['notifications_id' => $parent->id, 'notificationtemplates_id' => $selection,
-                    'mode' => \Notification_NotificationTemplate::MODE_MAIL];
-                $this->boolean((new \Notification_NotificationTemplate())->can(-1, CREATE, $input))->isTrue();
+                    'mode' => LegacyNotification_NotificationTemplate::MODE_MAIL];
+                $this->boolean((new LegacyNotification_NotificationTemplate())->can(-1, CREATE, $input))->isTrue();
                 $input['notifications_id'] = 0;
-                $this->boolean((new \Notification_NotificationTemplate())->can(-1, CREATE, $input))->isFalse();
+                $this->boolean((new LegacyNotification_NotificationTemplate())->can(-1, CREATE, $input))->isFalse();
             }
             $input = ['notifications_id' => $parent->id, 'notificationtemplates_id' => $missing,
-                'mode' => \Notification_NotificationTemplate::MODE_MAIL];
-            $this->boolean((new \Notification_NotificationTemplate())->can(-1, CREATE, $input))->isFalse();
+                'mode' => LegacyNotification_NotificationTemplate::MODE_MAIL];
+            $this->boolean((new LegacyNotification_NotificationTemplate())->can(-1, CREATE, $input))->isFalse();
 
             // Zero is a valid identity for the actual root entity, not an empty selection.
-            $relation = new \Entity_RSSFeed();
+            $relation = new Entity_RSSFeed();
             $relation->fields['entities_id'] = 0;
             $root = null;
             $this->boolean($relation->canConnexityItem(
                 'canUpdateItem',
                 'canUpdate',
-                \CommonDBConnexity::DONT_CHECK_ITEM_RIGHTS,
+                CommonDBConnexity::DONT_CHECK_ITEM_RIGHTS,
                 'Entity',
                 'entities_id',
                 $root
             ))->isTrue();
-            $this->object($root)->isInstanceOf(\Entity::class);
+            $this->object($root)->isInstanceOf(LegacyEntity::class);
             $this->integer((int)$root->getID())->isEqualTo(0);
             $this->integer($manager->getConnection()->getTransactionNestingLevel())->isEqualTo($depth);
         } finally {

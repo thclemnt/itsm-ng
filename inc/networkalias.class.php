@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
 * */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NetworkNameRepository;
+use itsmng\Reporting\Criteria;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -53,7 +57,7 @@ class NetworkAlias extends FQDNLabel
 
     private static function visibleForName(int $id): array
     {
-        $entities = \itsmng\Reporting\Criteria::entities();
+        $entities = Criteria::entities();
         return (new self())->find(['networknames_id' => $id] + ($entities === null ? [] : ['entities_id' => $entities]), 'id');
     }
 
@@ -394,7 +398,7 @@ class NetworkAlias extends FQDNLabel
             $order = "alias";
         }
 
-        $number = (new \itsmng\Database\Repository\NetworkNameRepository(\itsmng\Database\Orm::create($DB)))->countAliasesForDomain((int)$item->getID(), \itsmng\Reporting\Criteria::entities());
+        $number = (new NetworkNameRepository(Orm::create($DB)))->countAliasesForDomain((int)$item->getID(), Criteria::entities());
 
         echo "<br><div class='center'>";
 
@@ -424,8 +428,8 @@ class NetworkAlias extends FQDNLabel
                 )
             );
 
-            $rows = (new \itsmng\Database\Repository\NetworkNameRepository(\itsmng\Database\Orm::create($DB)))
-                ->aliasesForDomain((int)$item->getID(), $order, (int)$_SESSION['glpilist_limit'], (int)$start, \itsmng\Reporting\Criteria::entities());
+            $rows = (new NetworkNameRepository(Orm::create($DB)))
+                ->aliasesForDomain((int)$item->getID(), $order, (int)$_SESSION['glpilist_limit'], (int)$start, Criteria::entities());
             foreach ($rows as $data) {
                 Session::addToNavigateListItems($alias->getType(), $data["alias_id"]);
                 if ($address->getFromDB($data["address_id"])) {

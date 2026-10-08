@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\PlacementRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -544,7 +548,7 @@ class Rack extends CommonDBTM
         }
         $canedit = $room->canEdit($room_id);
 
-        $racks = \itsmng\Database\MappedReads::matching($DB, self::getTable(), ['dcrooms_id' => $room->getID(), 'is_deleted' => false]);
+        $racks = MappedReads::matching($DB, self::getTable(), ['dcrooms_id' => $room->getID(), 'is_deleted' => false]);
 
         Session::initNavigateListItems(
             self::getType(),
@@ -977,9 +981,9 @@ JAVASCRIPT;
     {
         global $DB;
 
-        $manager = \itsmng\Database\Orm::create($DB);
+        $manager = Orm::create($DB);
         try {
-            $iterator = (new \itsmng\Database\Repository\PlacementRepository($manager))->rackOccupancy((int)$this->getID());
+            $iterator = (new PlacementRepository($manager))->rackOccupancy((int)$this->getID());
         } finally {
             $manager->clear();
         }

@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\MappedReads;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -287,7 +289,7 @@ class ITILSolution extends CommonDBChild
     public static function countFor($itemtype, $items_id)
     {
         global $DB;
-        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), [
+        return MappedReads::countMatching($DB, self::getTable(), [
             'itemtype' => $itemtype,
             'items_id' => $items_id,
         ]);

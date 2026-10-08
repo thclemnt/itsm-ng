@@ -4,8 +4,12 @@
 
 namespace itsmng\Database;
 
+use Countable;
+use Iterator;
+use ReturnTypeWillChange;
+
 /** Scalar ORM results at the legacy dropdown boundary, with no driver dependency. */
-final class RowIterator implements \Iterator, \Countable
+final class RowIterator implements Iterator, Countable
 {
     private int $position = 0;
     private ?array $row = null;
@@ -32,7 +36,7 @@ final class RowIterator implements \Iterator, \Countable
     }
 
     /** Existing callers fetch the first row with next(), without an initial rewind. */
-    #[\ReturnTypeWillChange]
+    #[ReturnTypeWillChange]
     public function next()
     {
         return $this->row = $this->rows[$this->position++] ?? null;

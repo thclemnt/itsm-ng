@@ -5,16 +5,20 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\DiscriminatedBy;
+use itsmng\Database\Mapping\LegacyInput;
+use itsmng\Database\Mapping\RequiredItemReference;
 
 #[ORM\Entity]
 #[ORM\HasLifecycleCallbacks]
 #[ORM\Table(name: 'glpi_appliances_items_relations')]
-class ApplianceItemRelation implements \itsmng\Database\Mapping\LegacyInput
+class ApplianceItemRelation implements LegacyInput
 {
-    use \itsmng\Database\Mapping\RequiredItemReference;
+    use RequiredItemReference;
     #[ORM\ManyToOne(targetEntity: ApplianceItem::class)]
     #[ORM\JoinColumn(name: 'appliances_items_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?ApplianceItem $appliances_items = null;
 
     #[ORM\Id]
@@ -24,20 +28,20 @@ class ApplianceItemRelation implements \itsmng\Database\Mapping\LegacyInput
 
     #[ORM\ManyToOne(targetEntity: Location::class)]
     #[ORM\JoinColumn(name: 'locations_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\DiscriminatedBy('itemtype', 'items_id', ['Location'])]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[DiscriminatedBy('itemtype', 'items_id', ['Location'])]
+    #[ApplicationManaged]
     public ?Location $location = null;
 
     #[ORM\ManyToOne(targetEntity: Network::class)]
     #[ORM\JoinColumn(name: 'networks_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\DiscriminatedBy('itemtype', 'items_id', ['Network'])]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[DiscriminatedBy('itemtype', 'items_id', ['Network'])]
+    #[ApplicationManaged]
     public ?Network $network = null;
 
     #[ORM\ManyToOne(targetEntity: Domain::class)]
     #[ORM\JoinColumn(name: 'domains_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\DiscriminatedBy('itemtype', 'items_id', ['Domain'])]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[DiscriminatedBy('itemtype', 'items_id', ['Domain'])]
+    #[ApplicationManaged]
     public ?Domain $domain = null;
 
 }

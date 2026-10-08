@@ -4,12 +4,16 @@
 
 namespace itsmng\Database\Repository;
 
+use DateTime;
+use DateTimeImmutable;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\DBAL\LockMode;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
 use itsmng\Database\Entity\ItemKanban;
 use itsmng\Database\Entity\User;
+use itsmng\Database\MySQLConnection;
 
 final class KanbanRepository
 {
@@ -37,7 +41,7 @@ final class KanbanRepository
             ->setParameter('type', $type, Types::STRING)->setParameter('item', $item, Types::BIGINT)
             ->orderBy('s.id')->getQuery();
         if ($this->em->getConnection()->isTransactionActive()) {
-            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
+            MySQLConnection::assertCurrentReads($this->em->getConnection());
             $query->setLockMode(LockMode::PESSIMISTIC_WRITE);
         }
         return $query->getScalarResult();
@@ -49,7 +53,7 @@ final class KanbanRepository
             ->from(ItemKanban::class, 's')->where('s.id = :id')->setParameter('id', $id, Types::BIGINT)
             ->getQuery();
         if ($this->em->getConnection()->isTransactionActive()) {
-            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
+            MySQLConnection::assertCurrentReads($this->em->getConnection());
             $query->setLockMode(LockMode::PESSIMISTIC_WRITE);
         }
         $rows = $query->getScalarResult();
@@ -67,14 +71,14 @@ final class KanbanRepository
             ->setParameter('type', $type, Types::STRING)->setParameter('item', $item, Types::BIGINT)
             ->setParameter('owners', $owners)->orderBy('s.id')->setMaxResults(1)->getQuery();
         if ($this->em->getConnection()->isTransactionActive()) {
-            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
+            MySQLConnection::assertCurrentReads($this->em->getConnection());
             $query->setLockMode(LockMode::PESSIMISTIC_WRITE);
         }
         return $query->getScalarResult() !== [];
     }
 
     /** The database enforces one state per board/owner, including the shared owner. */
-    public function save(string $type, int $item, int $user, array $state, \DateTimeImmutable $modified): void
+    public function save(string $type, int $item, int $user, array $state, DateTimeImmutable $modified): void
     {
         $identity = $this->identity($type, $item, $user);
         $json = json_encode($state, JSON_FORCE_OBJECT | JSON_THROW_ON_ERROR);
@@ -87,11 +91,11 @@ final class KanbanRepository
                     $record->itemtype = $type;
                     $record->items_id = $item;
                     $record->owner = $user > 0 ? $this->em->getReference(User::class, $user) : null;
-                    $record->date_creation = \DateTime::createFromImmutable($modified);
+                    $record->date_creation = DateTime::createFromImmutable($modified);
                     $this->em->persist($record);
                 }
                 $record->state = $json;
-                $record->date_mod = \DateTime::createFromImmutable($modified);
+                $record->date_mod = DateTime::createFromImmutable($modified);
                 $this->em->flush();
             });
         } catch (UniqueConstraintViolationException $error) {
@@ -116,7 +120,7 @@ final class KanbanRepository
     private function identity(string $type, int $item, int $user): array
     {
         if ($user < 0) {
-            throw new \InvalidArgumentException('Invalid Kanban owner');
+            throw new InvalidArgumentException('Invalid Kanban owner');
         }
         return ['itemtype' => $type, 'items_id' => $item, 'owner' => $user > 0 ? $user : null];
     }

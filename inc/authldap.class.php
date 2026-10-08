@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\LdapRepository;
+
 /**
  *  Class used to manage Auth LDAP config
  */
@@ -651,7 +654,7 @@ class AuthLDAP extends CommonDBTM
 
         AuthLdapReplicate::addNewReplicateForm($target, $ID);
 
-        $replicas = (new \itsmng\Database\Repository\LdapRepository(\itsmng\Database\Orm::create($DB)))->replicas((int)$ID, byName: true);
+        $replicas = (new LdapRepository(Orm::create($DB)))->replicas((int)$ID, byName: true);
 
         if (($nb = count($replicas)) > 0) {
             echo "<br>";
@@ -2086,7 +2089,7 @@ class AuthLDAP extends CommonDBTM
         $glpi_users = [];
 
         $server = $values['mode'] == self::ACTION_IMPORT ? null : (int)$options['authldaps_id'];
-        foreach ((new \itsmng\Database\Repository\LdapRepository(\itsmng\Database\Orm::create($DB)))->userCandidates($server, $values['order']) as $user) {
+        foreach ((new LdapRepository(Orm::create($DB)))->userCandidates($server, $values['order']) as $user) {
             $tmpuser = new User();
 
             //Ldap add : fill the array with the login of the user
@@ -2447,7 +2450,7 @@ class AuthLDAP extends CommonDBTM
                 $glpi_groups = [];
 
                 //Get all groups from GLPI DB for the current entity and the subentities
-                $groupsInScope = (new \itsmng\Database\Repository\LdapRepository(\itsmng\Database\Orm::create($DB)))->groupIdentifiers(getEntitiesRestrictCriteria('glpi_groups'));
+                $groupsInScope = (new LdapRepository(Orm::create($DB)))->groupIdentifiers(getEntitiesRestrictCriteria('glpi_groups'));
 
                 //If the group exists in DB -> unset it from the LDAP groups
                 foreach ($groupsInScope as $group) {
@@ -2636,7 +2639,7 @@ class AuthLDAP extends CommonDBTM
                                     ($config_ldap->fields["group_field"] == 'dn')
                                     && (count($ou) > 0)
                                 ) {
-                                    foreach ((new \itsmng\Database\Repository\LdapRepository(\itsmng\Database\Orm::create($DB)))->groupValuesForDns($ou) as $group) {
+                                    foreach ((new LdapRepository(Orm::create($DB)))->groupValuesForDns($ou) as $group) {
                                         $groups[$group['ldap_value']] = [
                                             "cn" => $group['ldap_value'],
                                             "search_type" => "users"
@@ -2685,7 +2688,7 @@ class AuthLDAP extends CommonDBTM
     {
         global $DB;
 
-        $directories = (new \itsmng\Database\Repository\LdapRepository(\itsmng\Database\Orm::create($DB)))->directories(activeOnly: true);
+        $directories = (new LdapRepository(Orm::create($DB)))->directories(activeOnly: true);
 
         if (count($directories) == 1) {
             //If only one server, do not show the choose ldap server window
@@ -3115,7 +3118,7 @@ class AuthLDAP extends CommonDBTM
     public static function getLdapServers()
     {
         global $DB;
-        return array_column((new \itsmng\Database\Repository\LdapRepository(\itsmng\Database\Orm::create($DB)))->directories(), null, 'id');
+        return array_column((new LdapRepository(Orm::create($DB)))->directories(), null, 'id');
     }
 
 
@@ -3270,7 +3273,7 @@ class AuthLDAP extends CommonDBTM
             //  - there are multiple users having same login on different LDAP servers,
             //  - a user has been migrated from a LDAP server to another one, but GLPI is not yet aware of this.
             // Caveat: if user uses a wrong password, a login attempt will still be done on all active LDAP servers.
-            $known_servers_id = (new \itsmng\Database\Repository\LdapRepository(\itsmng\Database\Orm::create($DB)))->knownServerIds($login);
+            $known_servers_id = (new LdapRepository(Orm::create($DB)))->knownServerIds($login);
             usort(
                 $ldap_methods,
                 function (array $a, array $b) use ($known_servers_id) {
@@ -3856,7 +3859,7 @@ class AuthLDAP extends CommonDBTM
     public static function getNumberOfServers()
     {
         global $DB;
-        return (new \itsmng\Database\Repository\LdapRepository(\itsmng\Database\Orm::create($DB)))->activeCount();
+        return (new LdapRepository(Orm::create($DB)))->activeCount();
     }
 
 
@@ -3981,7 +3984,7 @@ class AuthLDAP extends CommonDBTM
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\LdapRepository(\itsmng\Database\Orm::create($DB)))->defaultId();
+        return (new LdapRepository(Orm::create($DB)))->defaultId();
     }
 
     public function post_updateItem($history = 1)
@@ -3989,7 +3992,7 @@ class AuthLDAP extends CommonDBTM
         global $DB;
 
         if (in_array('is_default', $this->updates) && $this->input["is_default"] == 1) {
-            (new \itsmng\Database\Repository\LdapRepository(\itsmng\Database\Orm::create($DB)))->clearOtherDefaults((int)$this->input['id']);
+            (new LdapRepository(Orm::create($DB)))->clearOtherDefaults((int)$this->input['id']);
         }
     }
 
@@ -3998,7 +4001,7 @@ class AuthLDAP extends CommonDBTM
         global $DB;
 
         if (isset($this->fields['is_default']) && $this->fields["is_default"] == 1) {
-            (new \itsmng\Database\Repository\LdapRepository(\itsmng\Database\Orm::create($DB)))->clearOtherDefaults((int)$this->fields['id']);
+            (new LdapRepository(Orm::create($DB)))->clearOtherDefaults((int)$this->fields['id']);
         }
     }
 
@@ -4067,7 +4070,7 @@ class AuthLDAP extends CommonDBTM
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\LdapRepository(\itsmng\Database\Orm::create($DB)))->emailImportDirectoryIds();
+        return (new LdapRepository(Orm::create($DB)))->emailImportDirectoryIds();
     }
 
 
@@ -4116,7 +4119,7 @@ class AuthLDAP extends CommonDBTM
     {
         global $DB;
         Rule::cleanForItemCriteria($this, 'LDAP_SERVER');
-        (new \itsmng\Database\Repository\LdapRepository(\itsmng\Database\Orm::create($DB)))
+        (new LdapRepository(Orm::create($DB)))
             ->reassignUsers((int)$this->getID(), (int)($this->input['_replace_by'] ?? 0));
         $replica = new AuthLdapReplicate();
         foreach ($replica->findIds(['authldaps_id' => $this->getID()]) as $id) {
@@ -4228,7 +4231,7 @@ class AuthLDAP extends CommonDBTM
     {
         global $DB;
 
-        $replicas = (new \itsmng\Database\Repository\LdapRepository(\itsmng\Database\Orm::create($DB)))->replicas((int)$master_id);
+        $replicas = (new LdapRepository(Orm::create($DB)))->replicas((int)$master_id);
         return array_map(static fn (array $replica): array => [
             'id' => $replica['id'],
             'host' => $replica['host'],
@@ -4286,7 +4289,7 @@ class AuthLDAP extends CommonDBTM
     public function isSyncFieldUsed()
     {
         global $DB;
-        return (new \itsmng\Database\Repository\LdapRepository(\itsmng\Database\Orm::create($DB)))->usesSyncField((int)$this->getID());
+        return (new LdapRepository(Orm::create($DB)))->usesSyncField((int)$this->getID());
     }
 
     /**

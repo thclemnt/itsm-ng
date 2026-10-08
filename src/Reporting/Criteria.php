@@ -4,12 +4,15 @@
 
 namespace itsmng\Reporting;
 
+use InvalidArgumentException;
+use Session;
+
 final class Criteria
 {
     /** Same non-recursive entity scope used by the report entry points. */
     public static function entities(): ?array
     {
-        return \Session::getActiveEntityScope();
+        return Session::getActiveEntityScope();
     }
 
     /** Either date must itself fall inside the entire requested interval. */
@@ -46,7 +49,7 @@ final class Criteria
     public static function years(mixed $selection): array
     {
         if (!is_array($selection)) {
-            throw new \InvalidArgumentException('Invalid report years');
+            throw new InvalidArgumentException('Invalid report years');
         }
         if (in_array($selection[0] ?? null, [0, '0'], true)) {
             return [];
@@ -60,7 +63,7 @@ final class Criteria
     public static function yearBounds(mixed $year): array
     {
         if (!is_scalar($year) || !preg_match('/^[1-9][0-9]{3}$/D', (string)$year) || (int)$year >= 9999) {
-            throw new \InvalidArgumentException('Invalid report year');
+            throw new InvalidArgumentException('Invalid report year');
         }
         return [$year . '-01-01', ((int)$year + 1) . '-01-01'];
     }

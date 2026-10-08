@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\LegacyValues;
+
 if (!defined('GLPI_ROOT')) {
     include('../inc/includes.php');
 }
@@ -51,7 +53,7 @@ if ($_POST) {
     if (isset($_POST['id']) && (
         !$setupdisplay->getFromDB((int)$_POST['id'])
         || (int)$setupdisplay->fields['users_id'] !== $owner
-        || $setupdisplay->fields['itemtype'] !== \itsmng\Database\LegacyValues::decode($_POST['itemtype'] ?? '')
+        || $setupdisplay->fields['itemtype'] !== LegacyValues::decode($_POST['itemtype'] ?? '')
     )) {
         Html::displayRightError();
     }

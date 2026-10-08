@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ReservationItemRepository;
+use itsmng\Database\Repository\ReservationRepository;
 use itsmng\Timezone;
 
 if (!defined('GLPI_ROOT')) {
@@ -479,7 +482,7 @@ class ReservationItem extends CommonDBChild
             $_POST['reservation_types'] = '';
         }
 
-        $repository = new \itsmng\Database\Repository\ReservationItemRepository(\itsmng\Database\Orm::create($DB));
+        $repository = new ReservationItemRepository(Orm::create($DB));
         foreach ($repository->types($_SESSION['glpiactiveentities']) as $type) {
             if ($item = getItemForItemtype($type)) {
                 $values[$type] = $item->getTypeName();
@@ -764,8 +767,8 @@ class ReservationItem extends CommonDBChild
         foreach (Entity::getEntitiesToNotify('use_reservations_alert') as $entity => $value) {
             $secs = $value * HOUR_TIMESTAMP;
 
-            $iterator = (new \itsmng\Database\Repository\ReservationRepository(\itsmng\Database\Orm::create($DB)))
-                ->expiring((int)$entity, (int)$secs, new \DateTimeImmutable());
+            $iterator = (new ReservationRepository(Orm::create($DB)))
+                ->expiring((int)$entity, (int)$secs, new DateTimeImmutable());
 
             foreach ($iterator as $data) {
                 if ($item_resa = getItemForItemtype($data['itemtype'])) {

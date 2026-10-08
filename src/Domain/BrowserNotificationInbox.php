@@ -4,6 +4,9 @@
 
 namespace itsmng\Domain;
 
+use DBAdapter;
+use DateTimeImmutable;
+use LogicException;
 use itsmng\Database\Entity\QueuedNotification;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\NotificationQueueRepository;
@@ -11,7 +14,7 @@ use itsmng\Database\Repository\NotificationQueueRepository;
 /** Recipient-owned presentation is distinct from queue admission and transport delivery. */
 final class BrowserNotificationInbox
 {
-    public function __construct(private \DBAdapter $database)
+    public function __construct(private DBAdapter $database)
     {
     }
 
@@ -27,13 +30,13 @@ final class BrowserNotificationInbox
             return false;
         }
         if ($this->database->isSlave()) {
-            throw new \LogicException('Browser notification acknowledgement requires the supplied writer.');
+            throw new LogicException('Browser notification acknowledgement requires the supplied writer.');
         }
         return $this->database->getDoctrineConnection()->transactional(function () use ($message, $recipient): bool {
             // The manager starts inside this transaction and cannot retain a prior replica/snapshot row.
             $em = Orm::create($this->database);
             $record = (new NotificationQueueRepository($em))->browserMessageForAcknowledgement($message, $recipient);
-            if ($record === null || !$record->acknowledgeBrowserMessage($recipient, new \DateTimeImmutable())) {
+            if ($record === null || !$record->acknowledgeBrowserMessage($recipient, new DateTimeImmutable())) {
                 return false;
             }
             $em->flush();

@@ -33,6 +33,8 @@
 
 namespace tests\units;
 
+use Infocom as LegacyInfocom;
+
 /* Test for inc/infocom.class.php */
 
 class Infocom extends \GLPITestCase
@@ -53,7 +55,7 @@ class Infocom extends \GLPITestCase
             [3, 1000, 5, 2, null],
         ] as [$type, $value, $duration, $coefficient, $purchase]) {
             foreach (['n', 'all'] as $view) {
-                $this->string(\Infocom::Amort($type, $value, $duration, $coefficient, $purchase, null, null, $view))
+                $this->string(LegacyInfocom::Amort($type, $value, $duration, $coefficient, $purchase, null, null, $view))
                     ->isIdenticalTo('-');
             }
         }
@@ -61,7 +63,7 @@ class Infocom extends \GLPITestCase
 
     public function testValidDegressiveScheduleIsUnchanged(): void
     {
-        $schedule = \Infocom::Amort(1, 1000.0, 5, 2, '2000-01-01', null, '2000-12-31', 'all');
+        $schedule = LegacyInfocom::Amort(1, 1000.0, 5, 2, '2000-01-01', null, '2000-12-31', 'all');
         $this->array($schedule)->isIdenticalTo([
             'annee' => [1 => 2000, 2 => 2001, 3 => 2002, 4 => 2003, 5 => 2004],
             'vcnetdeb' => [1 => 1000.0, 2 => 600.0, 3 => 360.0, 4 => 216.0, 5 => 108.0],
@@ -228,8 +230,8 @@ class Infocom extends \GLPITestCase
             $buydate,
             $usedate
         );
-        $this->array(\Infocom::Amort(2, $value, $duration, null, $buydate, $usedate, $fiscaldate, 'all'))
-            ->isIdenticalTo(\Infocom::mapOldAmortiseFormat($amortise, false));
+        $this->array(LegacyInfocom::Amort(2, $value, $duration, null, $buydate, $usedate, $fiscaldate, 'all'))
+            ->isIdenticalTo(LegacyInfocom::mapOldAmortiseFormat($amortise, false));
         foreach ($expected as $year => $values) {
             $this->array($amortise[$year])->isIdenticalTo($values);
         }

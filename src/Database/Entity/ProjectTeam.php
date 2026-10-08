@@ -5,18 +5,21 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\LegacyInput;
+use itsmng\Database\Mapping\ProjectTeamMember;
 
 #[ORM\Entity]
 #[ORM\HasLifecycleCallbacks]
 #[ORM\Table(name: 'glpi_projectteams')]
 #[ORM\UniqueConstraint(name: 'projectteams_unicity', columns: ['projects_id', 'itemtype', 'items_id'])]
-class ProjectTeam implements \itsmng\Database\Mapping\LegacyInput
+class ProjectTeam implements LegacyInput
 {
-    use \itsmng\Database\Mapping\ProjectTeamMember;
+    use ProjectTeamMember;
 
     #[ORM\ManyToOne(targetEntity: Project::class)]
     #[ORM\JoinColumn(name: 'projects_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Project $projects = null;
 
     #[ORM\Id]

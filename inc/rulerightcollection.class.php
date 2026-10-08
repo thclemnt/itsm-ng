@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Domain\Authentication\AuthenticationRuleEvaluation;
+use itsmng\Domain\Authentication\AuthenticationRuleMutations;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -54,19 +57,19 @@ class RuleRightCollection extends RuleCollection
     public $rules_rights        = [];
 
 
-    private ?\itsmng\Domain\Authentication\AuthenticationRuleMutations $authenticationMutations = null;
+    private ?AuthenticationRuleMutations $authenticationMutations = null;
 
-    public function evaluateAuthentication(array $groups, array $context, array $parameters): \itsmng\Domain\Authentication\AuthenticationRuleEvaluation
+    public function evaluateAuthentication(array $groups, array $context, array $parameters): AuthenticationRuleEvaluation
     {
         $previous = $this->authenticationMutations;
-        $mutations = new \itsmng\Domain\Authentication\AuthenticationRuleMutations();
+        $mutations = new AuthenticationRuleMutations();
         $this->authenticationMutations = $mutations;
         try {
             $output = $this->processAllRules($groups, $context, $parameters);
             // These control values are produced by the matching engine, not
             // copied account attributes. Preserve the established hook context.
             $control = array_intersect_key($output, array_flip(['_no_rule_matches', '_rule_process', '_ruleid']));
-            return new \itsmng\Domain\Authentication\AuthenticationRuleEvaluation($output, $mutations->outcome($control));
+            return new AuthenticationRuleEvaluation($output, $mutations->outcome($control));
         } finally {
             $this->authenticationMutations = $previous;
         }

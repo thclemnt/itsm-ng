@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CalendarRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -275,8 +278,8 @@ class Calendar extends CommonDropdown
     {
         global $DB;
 
-        $day = new \DateTimeImmutable(date('Y-m-d', strtotime($date)));
-        return (new \itsmng\Database\Repository\CalendarRepository(\itsmng\Database\Orm::create($DB)))
+        $day = new DateTimeImmutable(date('Y-m-d', strtotime($date)));
+        return (new CalendarRepository(Orm::create($DB)))
             ->isHoliday((int)$this->fields['id'], $day);
     }
 

@@ -31,6 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Entity\NetworkPortVlan;
+use itsmng\Database\RowIterator;
+use itsmng\Domain\VlanMembershipCommand;
+use itsmng\Domain\VlanMembershipService;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -38,7 +44,7 @@ if (!defined('GLPI_ROOT')) {
 
 class NetworkPort_Vlan extends CommonDBRelation
 {
-    private ?\itsmng\Domain\VlanMembershipCommand $membershipCommand = null;
+    private ?VlanMembershipCommand $membershipCommand = null;
 
     // From CommonDBRelation
     public static $itemtype_1          = 'NetworkPort';
@@ -169,7 +175,7 @@ class NetworkPort_Vlan extends CommonDBRelation
         global $DB;
 
         $previous = $this->membershipCommand;
-        return (new \itsmng\Domain\VlanMembershipService($DB))->mutate($this, function (\itsmng\Domain\VlanMembershipCommand $command) use ($operation, $previous): mixed {
+        return (new VlanMembershipService($DB))->mutate($this, function (VlanMembershipCommand $command) use ($operation, $previous): mixed {
             $this->membershipCommand = $command;
             try {
                 return $operation();
@@ -181,14 +187,14 @@ class NetworkPort_Vlan extends CommonDBRelation
 
     private function hasMembershipMapping(): bool
     {
-        return (\itsmng\Database\EntityRegistry::tables()[static::getTable()] ?? null) === \itsmng\Database\Entity\NetworkPortVlan::class;
+        return (EntityRegistry::tables()[static::getTable()] ?? null) === NetworkPortVlan::class;
     }
 
     public static function membershipsForPort($port): array
     {
         global $DB;
 
-        return (new \itsmng\Domain\VlanMembershipService($DB))->membershipsForPort((int)$port);
+        return (new VlanMembershipService($DB))->membershipsForPort((int)$port);
     }
 
 
@@ -256,7 +262,7 @@ class NetworkPort_Vlan extends CommonDBRelation
         $canedit = $port->canEdit($ID);
         $rand    = mt_rand();
 
-        $iterator = new \itsmng\Database\RowIterator((new \itsmng\Domain\VlanMembershipService($DB))->forPort((int)$ID));
+        $iterator = new RowIterator((new VlanMembershipService($DB))->forPort((int)$ID));
         $number = count($iterator);
 
         $vlans  = [];
@@ -359,7 +365,7 @@ class NetworkPort_Vlan extends CommonDBRelation
         $canedit = $vlan->canEdit($ID);
         $rand    = mt_rand();
 
-        $iterator = new \itsmng\Database\RowIterator((new \itsmng\Domain\VlanMembershipService($DB))->forVlan((int)$ID));
+        $iterator = new RowIterator((new VlanMembershipService($DB))->forVlan((int)$ID));
         $number = count($iterator);
 
         $vlans  = [];
@@ -431,7 +437,7 @@ class NetworkPort_Vlan extends CommonDBRelation
         global $DB;
 
         $vlans = [];
-        $iterator = new \itsmng\Database\RowIterator((new \itsmng\Domain\VlanMembershipService($DB))->membershipsForPort((int)$portID));
+        $iterator = new RowIterator((new VlanMembershipService($DB))->membershipsForPort((int)$portID));
 
         while ($data = $iterator->next()) {
             $vlans[$data['vlans_id']] = $data['vlans_id'];
@@ -449,12 +455,12 @@ class NetworkPort_Vlan extends CommonDBRelation
             switch ($item->getType()) {
                 case 'NetworkPort':
                     if ($_SESSION['glpishow_count_on_tabs']) {
-                        $nb = (new \itsmng\Domain\VlanMembershipService($GLOBALS['DB']))->countForPort((int)$item->getID());
+                        $nb = (new VlanMembershipService($GLOBALS['DB']))->countForPort((int)$item->getID());
                     }
                     return self::createTabEntry(Vlan::getTypeName(), $nb);
                 case 'Vlan':
                     if ($_SESSION['glpishow_count_on_tabs']) {
-                        $nb = (new \itsmng\Domain\VlanMembershipService($GLOBALS['DB']))->countForVlan((int)$item->getID());
+                        $nb = (new VlanMembershipService($GLOBALS['DB']))->countForVlan((int)$item->getID());
                     }
                     return self::createTabEntry(NetworkPort::getTypeName(), $nb);
             }

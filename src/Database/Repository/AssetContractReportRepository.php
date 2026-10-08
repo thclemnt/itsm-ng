@@ -4,11 +4,15 @@
 
 namespace itsmng\Database\Repository;
 
+use DateTimeImmutable;
+use DateTimeInterface;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
 use itsmng\Reporting\Criteria;
+
+use function getTableForItemType;
 
 /** Year and contract reports share asset scope and optional financial projections. */
 final class AssetContractReportRepository
@@ -19,12 +23,12 @@ final class AssetContractReportRepository
 
     public static function supports(string $itemtype): bool
     {
-        return isset(EntityRegistry::tables()[\getTableForItemType($itemtype)]);
+        return isset(EntityRegistry::tables()[getTableForItemType($itemtype)]);
     }
 
     public function rows(string $itemtype, array $years, ?array $entities, bool $underContract): array
     {
-        $class = EntityRegistry::tables()[\getTableForItemType($itemtype)];
+        $class = EntityRegistry::tables()[getTableForItemType($itemtype)];
         $metadata = $this->em->getClassMetadata($class);
         $query = $this->em->createQueryBuilder()->from($class, 'a')
             ->select('a.id AS itemid', 'ct.name AS type', 'c.duration', 'c.begin_date', 'e.completename AS entname', 'e.id AS entID')
@@ -69,8 +73,8 @@ final class AssetContractReportRepository
             foreach ($financial ? ['i.buy_date', 'c.begin_date'] : ['c.begin_date'] as $date) {
                 $dates[] = '(' . $date . ' >= :start' . $index . ' AND ' . $date . ' < :end' . $index . ')';
             }
-            $query->setParameter('start' . $index, new \DateTimeImmutable($start), Types::DATE_IMMUTABLE)
-                ->setParameter('end' . $index, new \DateTimeImmutable($end), Types::DATE_IMMUTABLE);
+            $query->setParameter('start' . $index, new DateTimeImmutable($start), Types::DATE_IMMUTABLE)
+                ->setParameter('end' . $index, new DateTimeImmutable($end), Types::DATE_IMMUTABLE);
         }
         if ($dates) {
             $query->andWhere('(' . implode(' OR ', $dates) . ')');
@@ -84,7 +88,7 @@ final class AssetContractReportRepository
         foreach ($rows as &$row) {
             foreach (['buy_date', 'begin_date'] as $date) {
                 $value = $row[$date] ?? null;
-                $row[$date] = $value instanceof \DateTimeInterface ? $value->format('Y-m-d') : $value;
+                $row[$date] = $value instanceof DateTimeInterface ? $value->format('Y-m-d') : $value;
             }
             $row['warranty_duration'] ??= null;
             $row['itemdeleted'] = (int)$row['itemdeleted'];

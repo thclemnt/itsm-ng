@@ -8,8 +8,13 @@ use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Mapping\JoinColumn;
+use InvalidArgumentException;
+use ReflectionClass;
+use ReflectionProperty;
+use atoum\atoum\test;
 use itsmng\Database\BaselineSchema;
 use itsmng\Database\EntityRegistry;
+use itsmng\Database\Entity\DocumentItem;
 use itsmng\Database\Entity\ItemDeviceBattery;
 use itsmng\Database\Entity\ItemDeviceHardDrive;
 use itsmng\Database\Entity\ItemDeviceMemory;
@@ -17,6 +22,8 @@ use itsmng\Database\Entity\ItemDeviceMotherboard;
 use itsmng\Database\Entity\ItemDevicePowerSupply;
 use itsmng\Database\Entity\ItemDeviceProcessor as Processor;
 use itsmng\Database\Entity\ItemDeviceSensor;
+use itsmng\Database\Entity\ItemProject;
+use itsmng\Database\Entity\ReservationItem;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Mapping\DiscriminatedBy;
 use itsmng\Database\Mapping\DiscriminatorKey;
@@ -34,7 +41,7 @@ use tests\fixtures\DisconnectedSchemaConnection;
 
 require_once dirname(__DIR__, 4) . '/fixtures/DisconnectedSchemaConnection.php';
 
-class ItemDeviceProcessor extends \atoum\atoum\test
+class ItemDeviceProcessor extends test
 {
     public function testComponentMetadataOwnsScopeForeignKeysAndFrozenStockDeclarations(): void
     {
@@ -59,21 +66,21 @@ class ItemDeviceProcessor extends \atoum\atoum\test
                     $metadata = $em->getClassMetadata($class);
                     $table = $schema->getTable($metadata->getTableName());
                     $scopeOwners = array_filter($metadata->associationMappings, static fn ($association): bool =>
-                        (new \ReflectionProperty($class, $association->fieldName))->getAttributes(EntityScopeOwner::class) !== []);
+                        (new ReflectionProperty($class, $association->fieldName))->getAttributes(EntityScopeOwner::class) !== []);
                     $this->boolean(count($scopeOwners) === 1)->isTrue('Exactly one property owns the component binding entity scope');
                     $scopeOwner = reset($scopeOwners);
                     $this->boolean($scopeOwner->isToOneOwningSide() && count($scopeOwner->joinColumns) === 1 && !$scopeOwner->joinColumns[0]->nullable)->isTrue('Cached entity scope belongs to a required owning definition association');
                     $definition = $em->getClassMetadata($scopeOwner->targetEntity);
                     $this->boolean($definition->hasField('designation') && $definition->hasAssociation('entities') && $definition->hasField('is_recursive'))->isTrue('The owning definition supplies its real entity and recursion scope');
                     $this->boolean(EntityRegistry::entityScopeOwner($table->getName()) === ['column' => $scopeOwner->joinColumns[0]->name, 'target' => $definition->getTableName()])->isTrue('Forwarding and replacement compatibility roles derive from the same property declaration');
-                    $this->boolean((new \ReflectionProperty($class, 'entities'))->getAttributes(EntityScopeOwner::class) === [])->isTrue('The cached entity projection does not own itself');
+                    $this->boolean((new ReflectionProperty($class, 'entities'))->getAttributes(EntityScopeOwner::class) === [])->isTrue('The cached entity projection does not own itself');
                     foreach ($metadata->associationMappings as $association) {
-                        $property = new \ReflectionProperty($class, $association->fieldName);
+                        $property = new ReflectionProperty($class, $association->fieldName);
                         if ($property->getAttributes(DiscriminatedBy::class) !== []) {
                             $this->boolean($property->getAttributes(EntityScopeOwner::class) === [])->isTrue('An attached asset remains distinct from the definition scope owner');
                         }
                     }
-                    $key = (new \ReflectionProperty($class, 'items_id'))->getAttributes(DiscriminatorKey::class)[0]->newInstance();
+                    $key = (new ReflectionProperty($class, 'items_id'))->getAttributes(DiscriminatorKey::class)[0]->newInstance();
                     $reference = EntityRegistry::discriminatedReferences($table->getName())['items_id'];
                     $this->boolean(array_keys($reference['selections']) === $kinds && $reference['empty_value'] === 0)->isTrue('Supported application kinds and stock policy belong to the entity properties');
                     $this->boolean($key->exactDiscriminator && $key->emptyValue === 0 && !$table->getColumn('items_id')->getNotnull() && $table->getColumn('items_id')->getDefault() === null)->isTrue('Exact nullable stock projection is an explicit property policy');
@@ -106,7 +113,7 @@ class ItemDeviceProcessor extends \atoum\atoum\test
     private function selections(string $class): array
     {
         $selections = [];
-        foreach ((new \ReflectionClass($class))->getProperties() as $property) {
+        foreach ((new ReflectionClass($class))->getProperties() as $property) {
             foreach ($property->getAttributes(DiscriminatedBy::class) as $attribute) {
                 $binding = $attribute->newInstance();
                 $column = $property->getAttributes(JoinColumn::class)[0]->newInstance()->name;
@@ -132,7 +139,7 @@ class ItemDeviceProcessor extends \atoum\atoum\test
             }
         }
         $this->array($record->normalizeInput(['serial' => null]))->isIdenticalTo(['serial' => null]);
-        $this->exception(static fn () => $record->normalizeInput(['itemtype' => null, 'items_id' => 1]))->isInstanceOf(\InvalidArgumentException::class);
+        $this->exception(static fn () => $record->normalizeInput(['itemtype' => null, 'items_id' => 1]))->isInstanceOf(InvalidArgumentException::class);
         $record->validateReference();
     }
 
@@ -155,15 +162,15 @@ class ItemDeviceProcessor extends \atoum\atoum\test
             ksort($expected);
             $this->array($actual)->isIdenticalTo($expected);
             foreach ([0, null, -1, true, false, 1.2, '1.2', '1e2', 'invalid'] as $invalid) {
-                $this->exception(static fn () => $record->normalizeInput(['itemtype' => $kind, 'items_id' => $invalid]))->isInstanceOf(\InvalidArgumentException::class);
+                $this->exception(static fn () => $record->normalizeInput(['itemtype' => $kind, 'items_id' => $invalid]))->isInstanceOf(InvalidArgumentException::class);
             }
-            $this->exception(static fn () => $record->normalizeInput(['itemtype' => $kind, 'items_id' => $id, $column => $id + 1]))->isInstanceOf(\InvalidArgumentException::class);
+            $this->exception(static fn () => $record->normalizeInput(['itemtype' => $kind, 'items_id' => $id, $column => $id + 1]))->isInstanceOf(InvalidArgumentException::class);
             foreach ([strtolower($kind), $kind . ' ', 'PluginAsset'] as $invalidKind) {
-                $this->exception(static fn () => $record->normalizeInput(['itemtype' => $invalidKind, 'items_id' => $id]))->isInstanceOf(\InvalidArgumentException::class);
+                $this->exception(static fn () => $record->normalizeInput(['itemtype' => $invalidKind, 'items_id' => $id]))->isInstanceOf(InvalidArgumentException::class);
             }
             foreach ($selections as $otherKind => [$otherProperty, $otherColumn]) {
                 if ($otherKind !== $kind) {
-                    $this->exception(static fn () => $record->normalizeInput(['itemtype' => $kind, 'items_id' => $id, $otherColumn => $id]))->isInstanceOf(\InvalidArgumentException::class);
+                    $this->exception(static fn () => $record->normalizeInput(['itemtype' => $kind, 'items_id' => $id, $otherColumn => $id]))->isInstanceOf(InvalidArgumentException::class);
                 }
             }
         }
@@ -200,11 +207,11 @@ class ItemDeviceProcessor extends \atoum\atoum\test
         $selections = $this->selections($class);
         foreach ($selections as $kind => [$property, $column, $target]) {
             $record->itemtype = $kind;
-            $this->exception(static fn () => $record->validateReference())->isInstanceOf(\InvalidArgumentException::class);
+            $this->exception(static fn () => $record->validateReference())->isInstanceOf(InvalidArgumentException::class);
             $subject = new $target();
             $subject->id = 0;
             $record->$property = $subject;
-            $this->exception(static fn () => $record->validateReference())->isInstanceOf(\InvalidArgumentException::class);
+            $this->exception(static fn () => $record->validateReference())->isInstanceOf(InvalidArgumentException::class);
             $subject->id = 4294995001;
             $record->validateReference();
             foreach ($selections as $otherKind => [$otherProperty, $otherColumn, $otherTarget]) {
@@ -214,11 +221,11 @@ class ItemDeviceProcessor extends \atoum\atoum\test
                 $other = new $otherTarget();
                 $other->id = $subject->id;
                 $record->$otherProperty = $other;
-                $this->exception(static fn () => $record->validateReference())->isInstanceOf(\InvalidArgumentException::class);
+                $this->exception(static fn () => $record->validateReference())->isInstanceOf(InvalidArgumentException::class);
                 $record->$otherProperty = null;
             }
             $record->itemtype = null;
-            $this->exception(static fn () => $record->validateReference())->isInstanceOf(\InvalidArgumentException::class);
+            $this->exception(static fn () => $record->validateReference())->isInstanceOf(InvalidArgumentException::class);
             $record->$property = null;
         }
         $record->validateReference();
@@ -235,13 +242,13 @@ class ItemDeviceProcessor extends \atoum\atoum\test
         $this->array($record->normalizeInput(['itemtype' => 'Computer', 'items_id' => 4294990001]))->isIdenticalTo(['itemtype' => 'Computer', 'computers_id' => 4294990001]);
         $this->array($record->normalizeInput(['itemtype' => 'Computer', 'computers_id' => 4294990001]))->isIdenticalTo(['itemtype' => 'Computer', 'computers_id' => 4294990001]);
         foreach (['Phone', 'PluginAsset', 'computer', 0, false] as $kind) {
-            $this->exception(static fn () => $record->normalizeInput(['itemtype' => $kind, 'items_id' => 9]))->isInstanceOf(\InvalidArgumentException::class);
+            $this->exception(static fn () => $record->normalizeInput(['itemtype' => $kind, 'items_id' => 9]))->isInstanceOf(InvalidArgumentException::class);
         }
         foreach ([null, 0, -1, true, false, 1.2, '1.2', '1e2', 'not an ID'] as $id) {
-            $this->exception(static fn () => $record->normalizeInput(['itemtype' => 'Computer', 'items_id' => $id]))->isInstanceOf(\InvalidArgumentException::class);
+            $this->exception(static fn () => $record->normalizeInput(['itemtype' => 'Computer', 'items_id' => $id]))->isInstanceOf(InvalidArgumentException::class);
         }
-        $this->exception(static fn () => $record->normalizeInput(['itemtype' => null, 'items_id' => 9]))->isInstanceOf(\InvalidArgumentException::class);
-        $this->exception(static fn () => $record->normalizeInput(['itemtype' => '', 'computers_id' => 9]))->isInstanceOf(\InvalidArgumentException::class);
+        $this->exception(static fn () => $record->normalizeInput(['itemtype' => null, 'items_id' => 9]))->isInstanceOf(InvalidArgumentException::class);
+        $this->exception(static fn () => $record->normalizeInput(['itemtype' => '', 'computers_id' => 9]))->isInstanceOf(InvalidArgumentException::class);
         $copy = ['itemtype' => 'Computer', 'items_id' => 9, 'computers_id' => 9, 'deviceprocessors_id' => 11, 'serial' => null];
         $this->array($record->normalizeInput(Processor::withReference($copy, 'Computer', 12)))->isIdenticalTo(['itemtype' => 'Computer', 'deviceprocessors_id' => 11, 'serial' => null, 'computers_id' => 12]);
         $this->array($record->normalizeInput(Processor::withReference($copy, '', 0)))->isIdenticalTo(['itemtype' => null, 'deviceprocessors_id' => 11, 'serial' => null, 'computers_id' => null]);
@@ -249,13 +256,13 @@ class ItemDeviceProcessor extends \atoum\atoum\test
 
     public function testMandatoryFamiliesAndRootEntityZeroKeepTheirDifferentPolicies(): void
     {
-        foreach ([\itsmng\Database\Entity\ItemProject::class, \itsmng\Database\Entity\DocumentItem::class, \itsmng\Database\Entity\ReservationItem::class] as $class) {
+        foreach ([ItemProject::class, DocumentItem::class, ReservationItem::class] as $class) {
             $required = new $class();
-            $this->exception(static fn () => $required->normalizeInput(['itemtype' => null, 'items_id' => 0]))->isInstanceOf(\InvalidArgumentException::class);
-            $this->exception(static fn () => $required->normalizeInput(['itemtype' => 'Computer', 'items_id' => 0]))->isInstanceOf(\InvalidArgumentException::class);
+            $this->exception(static fn () => $required->normalizeInput(['itemtype' => null, 'items_id' => 0]))->isInstanceOf(InvalidArgumentException::class);
+            $this->exception(static fn () => $required->normalizeInput(['itemtype' => 'Computer', 'items_id' => 0]))->isInstanceOf(InvalidArgumentException::class);
         }
-        $document = new \itsmng\Database\Entity\DocumentItem();
-        $rootColumn = (new \ReflectionProperty($document::class, $document::referenceAssociation('Entity')))->getAttributes(JoinColumn::class)[0]->newInstance()->name;
+        $document = new DocumentItem();
+        $rootColumn = (new ReflectionProperty($document::class, $document::referenceAssociation('Entity')))->getAttributes(JoinColumn::class)[0]->newInstance()->name;
         $this->integer($document->normalizeInput(['itemtype' => 'Entity', 'items_id' => 0])[$rootColumn])->isIdenticalTo(0);
     }
 }

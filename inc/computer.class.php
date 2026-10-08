@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\AssetRepository;
+use itsmng\Domain\SoftwareAllocationSubjectLifecycle;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -42,7 +47,7 @@ class Computer extends CommonDBTM
 {
     use Glpi\Features\DCBreadcrumb;
     use Glpi\Features\Clonable;
-    use \itsmng\Domain\SoftwareAllocationSubjectLifecycle;
+    use SoftwareAllocationSubjectLifecycle;
 
     // From CommonDBTM
     public $dohistory                   = true;
@@ -193,7 +198,7 @@ class Computer extends CommonDBTM
 
             // Propagates the changes to linked items
             foreach ($CFG_GLPI['directconnect_types'] as $type) {
-                $ids = \itsmng\Database\MappedReads::identifiers($DB, Computer_Item::getTable(), 'items_id', [
+                $ids = MappedReads::identifiers($DB, Computer_Item::getTable(), 'items_id', [
                     'itemtype' => $type, 'computers_id' => $this->getID(), 'is_deleted' => false,
                 ]);
                 $item = new $type();
@@ -467,9 +472,9 @@ class Computer extends CommonDBTM
     {
         global $DB;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            return (new \itsmng\Database\Repository\AssetRepository($em))->linkedItems(Computer::class, (int)$this->getID());
+            return (new AssetRepository($em))->linkedItems(Computer::class, (int)$this->getID());
         } finally {
             $em->clear();
         }

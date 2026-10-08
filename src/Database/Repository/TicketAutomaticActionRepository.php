@@ -4,6 +4,8 @@
 
 namespace itsmng\Database\Repository;
 
+use DateTimeImmutable;
+use DateTimeInterface;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
@@ -17,7 +19,7 @@ final class TicketAutomaticActionRepository
     {
     }
 
-    public function closeCandidates(int $entity, int $status, int $days, ?\DateTimeImmutable $calendarCutoff = null, ?\DateTimeImmutable $now = null): array
+    public function closeCandidates(int $entity, int $status, int $days, ?DateTimeImmutable $calendarCutoff = null, ?DateTimeImmutable $now = null): array
     {
         $query = $this->inEntity($entity)->andWhere('t.status = :status AND t.is_deleted = :no')
             ->setParameter('status', $status, Types::INTEGER)->setParameter('no', false, Types::BOOLEAN);
@@ -32,7 +34,7 @@ final class TicketAutomaticActionRepository
     }
 
     /** Closed tickets include soft-deleted rows, as in the existing purge action. */
-    public function purgeCandidates(int $entity, array $statuses, int $days, ?\DateTimeImmutable $now = null): array
+    public function purgeCandidates(int $entity, array $statuses, int $days, ?DateTimeImmutable $now = null): array
     {
         if (!$statuses) {
             return [];
@@ -44,7 +46,7 @@ final class TicketAutomaticActionRepository
         return $this->identifiers($query);
     }
 
-    public function overdue(int $entity, array $statuses, int $days, ?\DateTimeImmutable $now = null): array
+    public function overdue(int $entity, array $statuses, int $days, ?DateTimeImmutable $now = null): array
     {
         if (!$statuses) {
             return [];
@@ -63,7 +65,7 @@ final class TicketAutomaticActionRepository
     }
 
     /** Inherited selection watermark and the entity's own duration gate are distinct. */
-    public function surveyCandidates(int $entity, int $status, ?\DateTimeImmutable $after, int $days, int $duration, ?\DateTimeImmutable $now = null): array
+    public function surveyCandidates(int $entity, int $status, ?DateTimeImmutable $after, int $days, int $duration, ?DateTimeImmutable $now = null): array
     {
         if ($after === null) {
             return [];
@@ -81,8 +83,8 @@ final class TicketAutomaticActionRepository
         foreach ($rows as &$row) {
             $row['id'] = (int)$row['id'];
             $row['entities_id'] = (int)$row['entities_id'];
-            $row['closedate'] = $row['closedate'] instanceof \DateTimeInterface ? $row['closedate']->format('Y-m-d H:i:s')
-                : (new \DateTimeImmutable($row['closedate']))->format('Y-m-d H:i:s');
+            $row['closedate'] = $row['closedate'] instanceof DateTimeInterface ? $row['closedate']->format('Y-m-d H:i:s')
+                : (new DateTimeImmutable($row['closedate']))->format('Y-m-d H:i:s');
         }
         return $rows;
     }
@@ -93,7 +95,7 @@ final class TicketAutomaticActionRepository
             ->setParameter('entity', $entity, Types::BIGINT);
     }
 
-    private function time(QueryBuilder $query, ?\DateTimeImmutable $now): string
+    private function time(QueryBuilder $query, ?DateTimeImmutable $now): string
     {
         if ($now === null) {
             return 'CURRENT_TIMESTAMP()';

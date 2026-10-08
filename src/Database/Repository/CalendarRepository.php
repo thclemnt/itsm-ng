@@ -4,6 +4,7 @@
 
 namespace itsmng\Database\Repository;
 
+use DateTimeImmutable;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
@@ -109,7 +110,7 @@ final class CalendarRepository
             ->setParameter('calendar', $calendar, Types::INTEGER);
     }
 
-    public function isHoliday(int $calendar, \DateTimeImmutable $day): bool
+    public function isHoliday(int $calendar, DateTimeImmutable $day): bool
     {
         $links = $this->closureQuery($calendar)
             ->andWhere('holiday.is_perpetual = :yes OR (holiday.begin_date <= :day AND holiday.end_date >= :day)')

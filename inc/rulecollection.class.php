@@ -32,6 +32,10 @@
  */
 
 use Glpi\Event;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\RuleRepository;
+use itsmng\Database\RowIterator;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -65,11 +69,11 @@ class RuleCollection extends CommonDBTM
     /// Tab orientation : horizontal or vertical
     public $taborientation = 'horizontal';
 
-    private static function repository(): \itsmng\Database\Repository\RuleRepository
+    private static function repository(): RuleRepository
     {
         global $DB;
 
-        return new \itsmng\Database\Repository\RuleRepository(\itsmng\Database\Orm::create($DB));
+        return new RuleRepository(Orm::create($DB));
     }
 
     public static function getTable($classname = null)
@@ -216,7 +220,7 @@ class RuleCollection extends CommonDBTM
 
         //Select all the rules of a different type
         $criteria   = $this->getRuleListCriteria($p);
-        $iterator = new \itsmng\Database\RowIterator(self::repository()->matching(
+        $iterator = new RowIterator(self::repository()->matching(
             $criteria['WHERE'],
             $criteria['ORDER'],
             $criteria['LIMIT'] ?? 0,
@@ -253,7 +257,7 @@ class RuleCollection extends CommonDBTM
         if (($need & $this->RuleList->load) != $need) {
             //Select all the rules of a different type
             $criteria = $this->getRuleListCriteria(['condition' => $condition]);
-            $iterator = new \itsmng\Database\RowIterator(self::repository()->matching(
+            $iterator = new RowIterator(self::repository()->matching(
                 $criteria['WHERE'],
                 $criteria['ORDER'] ?? []
             ));
@@ -636,7 +640,7 @@ class RuleCollection extends CommonDBTM
             $add_condition = ['condition' => ['&', (int)$condition]];
         }
 
-        $iterator = new \itsmng\Database\RowIterator(self::repository()->matching($criteria['WHERE']));
+        $iterator = new RowIterator(self::repository()->matching($criteria['WHERE']));
         if (count($iterator) == 1) {
             $result = $iterator->next();
             $current_rank = $result['ranking'];
@@ -663,7 +667,7 @@ class RuleCollection extends CommonDBTM
                     return false;
             }
 
-            $iterator2 = new \itsmng\Database\RowIterator(self::repository()->matching(
+            $iterator2 = new RowIterator(self::repository()->matching(
                 $criteria['WHERE'],
                 $criteria['ORDERBY'],
                 1
@@ -710,7 +714,7 @@ class RuleCollection extends CommonDBTM
 
                 if ($diff != 0) {
                     // Move several rules
-                    $iterator3 = new \itsmng\Database\RowIterator(self::repository()->matching($criteria['WHERE']));
+                    $iterator3 = new RowIterator(self::repository()->matching($criteria['WHERE']));
                     while ($data = $iterator3->next()) {
                         $data['ranking'] += $diff;
                         $result = $rule->update(['id' => $data['id'], 'ranking' => $data['ranking']]);
@@ -791,7 +795,7 @@ class RuleCollection extends CommonDBTM
             }
 
             // Move back all rules between old and new rank
-            $iterator = new \itsmng\Database\RowIterator(self::repository()->matching([
+            $iterator = new RowIterator(self::repository()->matching([
                     'sub_type'  => $this->getRuleClassName(),
                     ['ranking'  => ['>', $old_rank]],
                     ['ranking'  => ['<=', $rank]]
@@ -806,7 +810,7 @@ class RuleCollection extends CommonDBTM
             }
 
             // Move forward all rule  between old and new rank
-            $iterator = new \itsmng\Database\RowIterator(self::repository()->matching([
+            $iterator = new RowIterator(self::repository()->matching([
                     'sub_type'  => $this->getRuleClassName(),
                     ['ranking'  => ['>=', $rank]],
                     ['ranking'  => ['<', $old_rank]]
@@ -1063,7 +1067,7 @@ class RuleCollection extends CommonDBTM
             $tmprule = new $rule['sub_type']();
             //check entities
             if ($tmprule->isEntityAssign()) {
-                $entities_found = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))->matching(
+                $entities_found = (new RecordRepository(Orm::create($DB)))->matching(
                     $entity->getTable(),
                     ['completename' => Html::entity_decode_deep($rule['entities_id'])],
                     legacyValues: false
@@ -1105,7 +1109,7 @@ class RuleCollection extends CommonDBTM
                         $criteria['pattern'] = Html::entity_decode_deep($criteria['pattern']);
                         $itemtype = getItemTypeForTable($available_criteria[$crit]['table']);
                         $item     = new $itemtype();
-                        $found = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))->matching(
+                        $found = (new RecordRepository(Orm::create($DB)))->matching(
                             $item->getTable(),
                             [$item instanceof CommonTreeDropdown ? 'completename' : 'name' => $criteria['pattern']],
                             legacyValues: false
@@ -1149,7 +1153,7 @@ class RuleCollection extends CommonDBTM
                         $action['value'] = Html::entity_decode_deep($action['value']);
                         $itemtype = getItemTypeForTable($available_actions[$act]['table']);
                         $item     = new $itemtype();
-                        $found = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))->matching(
+                        $found = (new RecordRepository(Orm::create($DB)))->matching(
                             $item->getTable(),
                             [$item instanceof CommonTreeDropdown ? 'completename' : 'name' => $action['value']],
                             legacyValues: false

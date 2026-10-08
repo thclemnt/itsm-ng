@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NotificationRecipientRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -605,7 +608,7 @@ class NotificationTargetTicket extends NotificationTargetCommonITILObject
         global $DB,$CFG_GLPI;
 
         if ($CFG_GLPI['notifications_mailing']) {
-            return (new \itsmng\Database\Repository\NotificationRecipientRepository(\itsmng\Database\Orm::create($DB)))->hasAuthorMailing();
+            return (new NotificationRecipientRepository(Orm::create($DB)))->hasAuthorMailing();
         }
         return false;
     }

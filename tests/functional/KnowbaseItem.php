@@ -33,7 +33,26 @@
 
 namespace test\units;
 
+use DBAdapter;
+use DBConnection;
 use DbTestCase;
+use Doctrine\ORM\Event\PostLoadEventArgs;
+use Entity_KnowbaseItem;
+use KnowbaseItem as LegacyKnowbaseItem;
+use KnowbaseItemCategory;
+use KnowbaseItemTranslation;
+use KnowbaseItem_Profile;
+use ReflectionProperty;
+use Session;
+use Throwable;
+use itsmng\Database\Entity\KnowbaseItem as KnowbaseItemEntity;
+use itsmng\Database\KnowledgeBaseAccess;
+use itsmng\Database\MutationCleanupFailure;
+use itsmng\Database\MySQLConnection;
+use itsmng\Database\Orm;
+use itsmng\Database\PostgresConnection;
+use itsmng\Database\Query\KnowledgeBaseFullText;
+use itsmng\Database\Repository\KnowledgeBaseRepository;
 
 /* Test for inc/knowbaseitem.class.php */
 
@@ -49,9 +68,9 @@ class KnowbaseItem extends DbTestCase
         $this->boolean(in_array(0, $_SESSION['glpiactiveentities'], false))->isFalse();
         $author = (int)getItemByTypeName('User', 'itsm', true);
         $this->integer($author)->isGreaterThan(0);
-        $this->boolean($author !== (int)\Session::getLoginUserID())->isTrue();
-        $category = $this->createItem(\KnowbaseItemCategory::class, ['name' => 'Visible article category']);
-        $otherCategory = $this->createItem(\KnowbaseItemCategory::class, ['name' => 'Other article category']);
+        $this->boolean($author !== (int)Session::getLoginUserID())->isTrue();
+        $category = $this->createItem(KnowbaseItemCategory::class, ['name' => 'Visible article category']);
+        $otherCategory = $this->createItem(KnowbaseItemCategory::class, ['name' => 'Other article category']);
         $articles = [];
         foreach ([
             ['Visible article alpha', 'Original alpha content', $category->getID(), $entity],
@@ -59,11 +78,11 @@ class KnowbaseItem extends DbTestCase
             ['Hidden article audience', 'Hidden audience content', $category->getID(), 0],
             ['Other category article', 'Other category content', $otherCategory->getID(), $entity],
         ] as [$name, $answer, $categoryId, $audience]) {
-            $article = $this->createItem(\KnowbaseItem::class, [
+            $article = $this->createItem(LegacyKnowbaseItem::class, [
                 'name' => $name, 'answer' => $answer, 'users_id' => $author,
                 'knowbaseitemcategories_id' => $categoryId, 'is_faq' => 0,
             ]);
-            $this->createItem(\Entity_KnowbaseItem::class, [
+            $this->createItem(Entity_KnowbaseItem::class, [
                 'knowbaseitems_id' => $article->getID(), 'entities_id' => $audience, 'is_recursive' => 0,
             ]);
             $articles[] = $article;
@@ -77,12 +96,12 @@ class KnowbaseItem extends DbTestCase
             $_SESSION['glpilist_limit'] = 20;
             $_GET = [];
             $CFG_GLPI['use_slave_for_search'] = 0;
-            $this->boolean((bool)\Session::haveRight('knowbase', \KnowbaseItem::KNOWBASEADMIN))->isFalse();
-            $this->object(\DBConnection::getReadConnection())->isIdenticalTo($DB);
+            $this->boolean((bool)Session::haveRight('knowbase', LegacyKnowbaseItem::KNOWBASEADMIN))->isFalse();
+            $this->object(DBConnection::getReadConnection())->isIdenticalTo($DB);
             $render = static function () use ($category): string {
                 ob_start();
                 try {
-                    \KnowbaseItem::showList(['knowbaseitemcategories_id' => $category->getID()], 'browse');
+                    LegacyKnowbaseItem::showList(['knowbaseitemcategories_id' => $category->getID()], 'browse');
                     return ob_get_contents();
                 } finally {
                     ob_end_clean();
@@ -95,7 +114,7 @@ class KnowbaseItem extends DbTestCase
                 ->notContains('Hidden article audience')->notContains('Hidden audience content')
                 ->notContains('Other category article');
             foreach (array_slice($articles, 0, 2) as $article) {
-                $this->string($html)->contains(\KnowbaseItem::getFormURLWithID($article->getID()));
+                $this->string($html)->contains(LegacyKnowbaseItem::getFormURLWithID($article->getID()));
             }
             $this->boolean($DB->update('glpi_knowbaseitems', [
                 'name' => 'Updated article alpha', 'answer' => 'Updated alpha content',
@@ -122,10 +141,10 @@ class KnowbaseItem extends DbTestCase
         $level = $original->getDoctrineConnection()->getTransactionNestingLevel();
         $parameters = $original->getDoctrineConnection()->getParams();
         $connection = $original->getProvider() === 'pgsql'
-            ? \itsmng\Database\PostgresConnection::create($parameters)
-            : \itsmng\Database\MySQLConnection::create($parameters);
+            ? PostgresConnection::create($parameters)
+            : MySQLConnection::create($parameters);
         $probe = clone $original;
-        (new \ReflectionProperty(\DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
+        (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
         $articles = [];
         $category = null;
         $primary = null;
@@ -136,8 +155,8 @@ class KnowbaseItem extends DbTestCase
             $author = (int)getItemByTypeName('User', 'itsm', true);
             $this->integer($entity)->isGreaterThan(0);
             $this->integer($author)->isGreaterThan(0);
-            $this->boolean($author !== (int)\Session::getLoginUserID())->isTrue();
-            $category = $this->createItem(\KnowbaseItemCategory::class, ['name' => 'Native search category']);
+            $this->boolean($author !== (int)Session::getLoginUserID())->isTrue();
+            $category = $this->createItem(KnowbaseItemCategory::class, ['name' => 'Native search category']);
             foreach ([
                 ['Zxquasar alpha Zxbasehit', 'First searchable content ZxunderXscoremark', $entity, null, null],
                 ['Second visible article', 'Zxquasar second content Zxunder_scoremark Zxnullmark', $entity, null, null],
@@ -146,30 +165,30 @@ class KnowbaseItem extends DbTestCase
                 ['Zxquasar expired article', 'Expired content', $entity, null, '2000-01-01 00:00:00'],
                 ['Original translation title', null, $entity, null, null],
             ] as [$name, $answer, $audience, $begin, $end]) {
-                $article = $this->createItem(\KnowbaseItem::class, [
+                $article = $this->createItem(LegacyKnowbaseItem::class, [
                     'name' => $name, 'answer' => $answer, 'users_id' => $author,
                     'knowbaseitemcategories_id' => $category->getID(), 'is_faq' => 0,
                     'begin_date' => $begin, 'end_date' => $end,
                 ]);
-                $this->createItem(\Entity_KnowbaseItem::class, [
+                $this->createItem(Entity_KnowbaseItem::class, [
                     'knowbaseitems_id' => $article->getID(), 'entities_id' => $audience, 'is_recursive' => 0,
                 ]);
                 $articles[] = $article;
             }
             // Overlapping grants must neither multiply the count nor occupy two page slots.
-            $this->createItem(\KnowbaseItem_Profile::class, [
+            $this->createItem(KnowbaseItem_Profile::class, [
                 'knowbaseitems_id' => $articles[0]->getID(), 'profiles_id' => $_SESSION['glpiactiveprofile']['id'],
                 'entities_id' => $entity, 'is_recursive' => 0,
             ]);
             foreach ([['fr_FR', 'Zxnebula étoile traduite'], ['de_DE', 'Wronglanguage unique result'],
                 ['fr_FR', 'Duplicate Zxduplicate Zxnebula translation']] as [$language, $name]) {
-                $this->createItem(\KnowbaseItemTranslation::class, [
+                $this->createItem(KnowbaseItemTranslation::class, [
                     'knowbaseitems_id' => $articles[5]->getID(), 'language' => $language,
                     'name' => $name, 'answer' => null,
                 ]);
             }
             foreach (['Base article earlier translation', 'Zxbasehit later translation'] as $name) {
-                $this->createItem(\KnowbaseItemTranslation::class, [
+                $this->createItem(KnowbaseItemTranslation::class, [
                     'knowbaseitems_id' => $articles[0]->getID(), 'language' => 'fr_FR',
                     'name' => $name, 'answer' => null,
                 ]);
@@ -183,15 +202,15 @@ class KnowbaseItem extends DbTestCase
             $_GET = [];
             $CFG_GLPI['translate_kb'] = 1;
             $CFG_GLPI['use_slave_for_search'] = 0;
-            $access = \itsmng\Database\KnowledgeBaseAccess::current();
+            $access = KnowledgeBaseAccess::current();
             $this->boolean($access->administrator)->isFalse();
-            $manager = \itsmng\Database\Orm::create($DB);
-            $repository = new \itsmng\Database\Repository\KnowledgeBaseRepository($manager);
+            $manager = Orm::create($DB);
+            $repository = new KnowledgeBaseRepository($manager);
             $loads = new class () {
                 public int $articles = 0;
-                public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
+                public function postLoad(PostLoadEventArgs $event): void
                 {
-                    if ($event->getObject() instanceof \itsmng\Database\Entity\KnowbaseItem) {
+                    if ($event->getObject() instanceof KnowbaseItemEntity) {
                         ++$this->articles;
                     }
                 }
@@ -211,7 +230,7 @@ class KnowbaseItem extends DbTestCase
                 'Base article earlier translation',
                 'An article hit keeps its first translation even when a later translation also matches'
             );
-            $criteria = \KnowbaseItem::getListRequest(['contains' => 'zxbasehit', 'faq' => false,
+            $criteria = LegacyKnowbaseItem::getListRequest(['contains' => 'zxbasehit', 'faq' => false,
                 'knowbaseitemcategories_id' => 0], 'search');
             $legacyBase = array_values(iterator_to_array($DB->request($criteria)));
             $this->array(array_column($legacyBase, 'id'))->isIdenticalTo([(int)$articles[0]->getID()]);
@@ -231,23 +250,23 @@ class KnowbaseItem extends DbTestCase
             // the same OR alternatives in the fallback, independently of index timing.
             foreach (['glpi_knowbaseitems' => ['quasa', $expectedIds],
                 'glpi_knowbaseitemtranslations' => ['uplicat', null]] as $table => [$word, $owned]) {
-                $native = \itsmng\Database\Query\KnowledgeBaseFullText::sql(
+                $native = KnowledgeBaseFullText::sql(
                     $connection->getDatabasePlatform(),
                     [$DB->quoteName('name'), $DB->quoteName('answer')],
                     '?'
                 );
                 $restriction = $owned === null ? 'knowbaseitems_id = ?' : 'id IN (?, ?)';
                 $parameters = $owned ?? [(int)$articles[5]->getID()];
-                $parameters[] = \itsmng\Database\Repository\KnowledgeBaseRepository::fullTextQuery(
+                $parameters[] = KnowledgeBaseRepository::fullTextQuery(
                     $word,
                     $connection->getDatabasePlatform()
                 );
                 $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $DB->quoteName($table)
                     . ' WHERE ' . $restriction . ' AND ' . $native, $parameters))->isIdenticalTo(0);
             }
-            $this->array(\itsmng\Database\Repository\KnowledgeBaseRepository::fallbackPatterns("^NULL$ / under_score"))
+            $this->array(KnowledgeBaseRepository::fallbackPatterns("^NULL$ / under_score"))
                 ->isIdenticalTo(['%NULL%', '%under!_score%']);
-            $this->array(\itsmng\Database\Repository\KnowledgeBaseRepository::fallbackPatterns('()<>+*'))->isEmpty();
+            $this->array(KnowledgeBaseRepository::fallbackPatterns('()<>+*'))->isEmpty();
             foreach (['()<>+*', 'wronglanguage'] as $text) {
                 $this->integer($repository->listPage($access, array_replace($options, ['contains' => $text]))['total'])->isIdenticalTo(0);
             }
@@ -265,7 +284,7 @@ class KnowbaseItem extends DbTestCase
             }
             // The retained public criteria API preserves later-only full-text and fallback matches.
             foreach (['zxduplicate', 'uplicat', "'uplicat'", 'uplicat / nonexistentword'] as $text) {
-                $criteria = \KnowbaseItem::getListRequest(['contains' => $text, 'faq' => false,
+                $criteria = LegacyKnowbaseItem::getListRequest(['contains' => $text, 'faq' => false,
                     'knowbaseitemcategories_id' => 0], 'search');
                 $legacy = array_values(iterator_to_array($DB->request($criteria)));
                 $this->array(array_column($legacy, 'id'))->isIdenticalTo([(int)$articles[5]->getID()]);
@@ -275,13 +294,13 @@ class KnowbaseItem extends DbTestCase
                 $literal = $repository->listPage($access, array_replace($options, ['contains' => $text]));
                 $this->integer($literal['total'])->isIdenticalTo(1, 'Literal search: ' . $text);
                 $this->array(array_column($literal['rows'], 'id'))->isIdenticalTo([(int)$articles[1]->getID()]);
-                $criteria = \KnowbaseItem::getListRequest(['contains' => $text, 'faq' => false,
+                $criteria = LegacyKnowbaseItem::getListRequest(['contains' => $text, 'faq' => false,
                     'knowbaseitemcategories_id' => 0], 'search');
                 $legacy = array_values(iterator_to_array($DB->request($criteria)));
                 $this->array(array_column($legacy, 'id'))->isIdenticalTo([(int)$articles[1]->getID()]);
             }
             foreach (["'quasa'", 'quasa / nonexistentword', '()<>+*'] as $text) {
-                $criteria = \KnowbaseItem::getListRequest(['contains' => $text, 'faq' => false,
+                $criteria = LegacyKnowbaseItem::getListRequest(['contains' => $text, 'faq' => false,
                     'knowbaseitemcategories_id' => 0], 'search');
                 $legacy = array_values(iterator_to_array($DB->request($criteria)));
                 if ($text === '()<>+*') {
@@ -292,7 +311,7 @@ class KnowbaseItem extends DbTestCase
             }
             ob_start();
             try {
-                \KnowbaseItem::showList(['contains' => 'zxnebu', 'faq' => false], 'search');
+                LegacyKnowbaseItem::showList(['contains' => 'zxnebu', 'faq' => false], 'search');
                 $html = ob_get_contents();
             } finally {
                 ob_end_clean();
@@ -305,7 +324,7 @@ class KnowbaseItem extends DbTestCase
                 ['is_faq' => 1],
                 ['id' => $articles[1]->getID()]
             ))->isTrue();
-            $faqViewer = new \itsmng\Database\KnowledgeBaseAccess(
+            $faqViewer = new KnowledgeBaseAccess(
                 $access->user,
                 false,
                 false,
@@ -319,7 +338,7 @@ class KnowbaseItem extends DbTestCase
             $this->array(array_column($repository->listPage($faqViewer, $options)['rows'], 'id'))
                 ->isIdenticalTo([(int)$articles[1]->getID()]);
             foreach ([[true, false, 1], [true, true, 0], [false, false, 0]] as [$publicFaq, $multiEntity, $expected]) {
-                $anonymous = new \itsmng\Database\KnowledgeBaseAccess(
+                $anonymous = new KnowledgeBaseAccess(
                     0,
                     false,
                     false,
@@ -341,10 +360,10 @@ class KnowbaseItem extends DbTestCase
             ))->isTrue();
             $this->array(array_column($repository->listPage($access, $options)['rows'], 'id'))
                 ->isIdenticalTo([(int)$articles[1]->getID()]);
-            $manager->find(\itsmng\Database\Entity\KnowbaseItem::class, (int)$articles[1]->getID());
+            $manager->find(KnowbaseItemEntity::class, (int)$articles[1]->getID());
             $this->integer($loads->articles)->isIdenticalTo(1, 'The observer detects a real entity load');
             $manager->clear();
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $primary = $error;
         } finally {
             // Restore fixture-creation rights for public lifecycle cleanup.
@@ -363,8 +382,8 @@ class KnowbaseItem extends DbTestCase
                 if ($category !== null && $category->getFromDB($category->getID())) {
                     $this->boolean($category->delete(['id' => $category->getID()], true))->isTrue();
                 }
-            } catch (\Throwable $cleanup) {
-                $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($primary, $cleanup);
+            } catch (Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
             } finally {
                 $DB = $original;
                 $_SESSION = $session;
@@ -372,8 +391,8 @@ class KnowbaseItem extends DbTestCase
                 $_GET = $get;
                 try {
                     $probe->close();
-                } catch (\Throwable $cleanup) {
-                    $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($primary, $cleanup);
+                } catch (Throwable $cleanup) {
+                    $primary = $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
                 }
             }
         }
@@ -640,11 +659,11 @@ class KnowbaseItem extends DbTestCase
     public function testGetForCategory()
     {
         $this->login();
-        $category = (new \KnowbaseItemCategory())->add(['name' => 'Article lookup category']);
+        $category = (new KnowbaseItemCategory())->add(['name' => 'Article lookup category']);
         $this->integer((int)$category)->isGreaterThan(0);
         $ids = [];
         for ($i = 0; $i < 3; ++$i) {
-            $ids[] = (int)(new \KnowbaseItem())->add([
+            $ids[] = (int)(new LegacyKnowbaseItem())->add([
                 'name' => 'Category article ' . $i,
                 'knowbaseitemcategories_id' => $category,
             ]);
@@ -657,9 +676,9 @@ class KnowbaseItem extends DbTestCase
         $this->calling($m_kbi)->canViewItem[2] = false;
         $this->calling($m_kbi)->canViewItem[3] = true;
 
-        $this->array(\KnowbaseItem::getForCategory($category, $m_kbi))
+        $this->array(LegacyKnowbaseItem::getForCategory($category, $m_kbi))
             ->hasSize(2)->containsValues([$ids[0], $ids[2]]);
-        $this->array(\KnowbaseItem::getForCategory($category, $m_kbi))
+        $this->array(LegacyKnowbaseItem::getForCategory($category, $m_kbi))
             ->isIdenticalTo([-1]);
     }
 

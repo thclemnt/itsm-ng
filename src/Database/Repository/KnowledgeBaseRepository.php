@@ -9,6 +9,8 @@ use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
+use Toolbox;
+use UnexpectedValueException;
 use itsmng\Database\Entity\DocumentItem;
 use itsmng\Database\Entity\DropdownTranslation;
 use itsmng\Database\Entity\KnowbaseItemCategory;
@@ -125,7 +127,7 @@ final class KnowledgeBaseRepository
         $total = null;
         if ($search) {
             $terms = self::fullTextQuery(
-                \Toolbox::unclean_cross_side_scripting_deep($options['contains']),
+                Toolbox::unclean_cross_side_scripting_deep($options['contains']),
                 $this->em->getConnection()->getDatabasePlatform()
             );
             if ($terms !== '') {
@@ -160,7 +162,7 @@ final class KnowledgeBaseRepository
                 }
             }
             if (!$total) {
-                $patterns = self::fallbackPatterns(\Toolbox::unclean_cross_side_scripting_deep($options['contains']));
+                $patterns = self::fallbackPatterns(Toolbox::unclean_cross_side_scripting_deep($options['contains']));
                 $postgres = $this->em->getConnection()->getDatabasePlatform() instanceof PostgreSQLPlatform;
                 $textMatch = static function (string $alias) use ($postgres, $patterns): string {
                     $likes = [];
@@ -284,7 +286,7 @@ final class KnowledgeBaseRepository
             $branch = [];
             foreach ($children[$parent ?? 'root'] ?? [] as $row) {
                 if (isset($ancestors[$row['id']])) {
-                    throw new \UnexpectedValueException('Cycle in knowledge-base comment ancestry.');
+                    throw new UnexpectedValueException('Cycle in knowledge-base comment ancestry.');
                 }
                 $row['answers'] = $build($row['id'], $ancestors + [$row['id'] => true]);
                 $branch[] = $row;

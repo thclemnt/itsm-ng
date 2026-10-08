@@ -5,19 +5,25 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\DiscriminatedBy;
+use itsmng\Database\Mapping\DiscriminatorKey;
+use itsmng\Database\Mapping\EntityScopeOwner;
+use itsmng\Database\Mapping\ItemReference;
+use itsmng\Database\Mapping\LegacyInput;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\HasLifecycleCallbacks]
 #[ORM\Table(name: 'glpi_items_devicesensors')]
-class ItemDeviceSensor implements \itsmng\Database\Mapping\LegacyInput
+class ItemDeviceSensor implements LegacyInput
 {
-    use \itsmng\Database\Mapping\ItemReference;
+    use ItemReference;
 
     #[ORM\ManyToOne(targetEntity: DeviceSensor::class)]
     #[ORM\JoinColumn(name: 'devicesensors_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\EntityScopeOwner]
+    #[EntityScopeOwner]
     public ?DeviceSensor $devicesensors = null;
 
     #[ORM\Id]
@@ -26,7 +32,7 @@ class ItemDeviceSensor implements \itsmng\Database\Mapping\LegacyInput
     public ?int $id = null;
 
     #[ORM\Column(name: '`items_id`', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS')]
-    #[\itsmng\Database\Mapping\DiscriminatorKey(emptyValue: 0, exactDiscriminator: true)]
+    #[DiscriminatorKey(emptyValue: 0, exactDiscriminator: true)]
     public int $items_id = 0;
 
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 255, nullable: true)]
@@ -34,14 +40,14 @@ class ItemDeviceSensor implements \itsmng\Database\Mapping\LegacyInput
 
     #[ORM\ManyToOne(targetEntity: Computer::class)]
     #[ORM\JoinColumn(name: 'computers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\DiscriminatedBy('itemtype', 'items_id', ['Computer'])]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[DiscriminatedBy('itemtype', 'items_id', ['Computer'])]
+    #[ApplicationManaged]
     public ?Computer $computer = null;
 
     #[ORM\ManyToOne(targetEntity: Peripheral::class)]
     #[ORM\JoinColumn(name: 'peripherals_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\DiscriminatedBy('itemtype', 'items_id', ['Peripheral'])]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[DiscriminatedBy('itemtype', 'items_id', ['Peripheral'])]
+    #[ApplicationManaged]
     public ?Peripheral $peripheral = null;
 
     #[ORM\Column(name: '`is_deleted`', type: 'boolean', nullable: false, options: ['default' => false])]
@@ -53,7 +59,7 @@ class ItemDeviceSensor implements \itsmng\Database\Mapping\LegacyInput
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
     #[ReferencePolicy(ReferenceKind::RootEntity)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]

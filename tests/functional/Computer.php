@@ -42,12 +42,24 @@ use DBmysql;
 use DBpgsql;
 use DbTestCase;
 use Doctrine\DBAL\Connection;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Events;
+use Doctrine\ORM\Query;
+use Dropdown;
+use Group;
+use Location;
+use State;
+use Toolbox;
+use User;
+use itsmng\Database\Entity\Computer as ComputerEntity;
 use itsmng\Database\MutationRollbackFailure;
 use itsmng\Database\MySQLConnection;
 use itsmng\Database\Orm;
 use itsmng\Database\OwnedMutationFrame;
 use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\PostgresConnection;
+use itsmng\Database\Repository\AssetRepository;
+use itsmng\Database\Repository\RecordWriter;
 use itsmng\Database\TransactionOwnershipMismatch;
 use Log;
 use Monitor;
@@ -68,12 +80,12 @@ class Computer extends DbTestCase
         global $DB, $PLUGIN_HOOKS;
         $session = $_SESSION;
         $hooks = $PLUGIN_HOOKS;
-        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
         $active = $plugins->getValue();
         $connection = $DB->getDoctrineConnection();
-        $em = new class ($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+        $em = new class ($connection, Orm::configuration($connection->getDatabasePlatform())) extends EntityManager {
             public int $queries = 0;
-            public function createQuery(string $dql = ''): \Doctrine\ORM\Query
+            public function createQuery(string $dql = ''): Query
             {
                 ++$this->queries;
                 return parent::createQuery($dql);
@@ -86,21 +98,21 @@ class Computer extends DbTestCase
                 ++$this->count;
             }
         };
-        $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+        $em->getEventManager()->addEventListener([Events::postLoad], $loads);
         try {
             $this->login();
             $this->setEntity('_test_root_entity', true);
             $entity = (int)$_SESSION['glpiactive_entity'];
-            $monitor = $this->createItem(\Monitor::class, ['name' => $this->getUniqueString(),
+            $monitor = $this->createItem(Monitor::class, ['name' => $this->getUniqueString(),
                 'entities_id' => $entity, 'is_global' => true]);
             $computers = [];
             $links = [];
             foreach (['First', 'Second', 'Deleted connection'] as $index => $label) {
-                $computer = $this->createItem(\Computer::class, ['name' => $label . ' ' . $this->getUniqueString(),
+                $computer = $this->createItem(ComputerModel::class, ['name' => $label . ' ' . $this->getUniqueString(),
                     'entities_id' => $entity, 'serial' => 'Serial ' . $index, 'otherserial' => 'Inventory ' . $index,
                     'comment' => 'Complete computer fields']);
                 $computers[(int)$computer->getID()] = $computer;
-                $links[] = $this->createItem(\Computer_Item::class, ['computers_id' => $computer->getID(),
+                $links[] = $this->createItem(Computer_Item::class, ['computers_id' => $computer->getID(),
                     'itemtype' => 'Monitor', 'items_id' => $monitor->getID(), 'is_dynamic' => $index === 1]);
             }
             $this->boolean($DB->update('glpi_computers_items', ['is_deleted' => true], ['id' => $links[2]->getID()]))->isTrue();
@@ -110,7 +122,7 @@ class Computer extends DbTestCase
             $this->array($selected)->hasSize(2);
             $ids = array_map('intval', array_column($selected, 'computers_id'));
             $linkIds = array_map('intval', array_column($selected, 'id'));
-            $repository = new \itsmng\Database\Repository\AssetRepository($em);
+            $repository = new AssetRepository($em);
             $this->array($repository->computerDisplayData([]))->isEmpty();
             $this->integer($em->queries)->isIdenticalTo(0);
             $data = $repository->computerDisplayData([$ids[1], $ids[0], $ids[1], PHP_INT_MAX]);
@@ -121,7 +133,7 @@ class Computer extends DbTestCase
             $this->array(array_keys($data[$ids[0]]))->isIdenticalTo([
                 'id', 'name', 'serial', 'otherserial', 'is_template', 'is_recursive', 'entities_id',
             ]);
-            $managed = $em->find(\itsmng\Database\Entity\Computer::class, $ids[0]);
+            $managed = $em->find(ComputerEntity::class, $ids[0]);
             $oldSerial = $managed->serial;
             $this->boolean($DB->update('glpi_computers', ['serial' => 'Current writer serial', 'is_template' => true], ['id' => $ids[0]]))->isTrue();
             $this->string($repository->computerDisplayData([$ids[0]])[$ids[0]]['serial'])->isIdenticalTo('Current writer serial');
@@ -138,7 +150,7 @@ class Computer extends DbTestCase
             $render = function () use ($monitor): array {
                 ob_start();
                 try {
-                    \Computer_Item::showForItem($monitor);
+                    Computer_Item::showForItem($monitor);
                     $html = ob_get_contents();
                 } finally {
                     ob_end_clean();
@@ -154,9 +166,9 @@ class Computer extends DbTestCase
                 $this->boolean($computer->getFromDB($computer->getID()))->isTrue();
                 $this->array($rows[$row['id']])->isIdenticalTo([
                     'name' => $computer->getLink(),
-                    'entity' => \Dropdown::getDropdownName('glpi_entities', $entity),
+                    'entity' => Dropdown::getDropdownName('glpi_entities', $entity),
                     'serial' => $computer->fields['serial'], 'otherserial' => $computer->fields['otherserial'],
-                    'inventory' => \Dropdown::getYesNo($row['is_dynamic']),
+                    'inventory' => Dropdown::getYesNo($row['is_dynamic']),
                 ]);
             }
             $this->string($rows[$linkIds[0]]['name'])->contains('&withtemplate=1');
@@ -169,8 +181,8 @@ class Computer extends DbTestCase
 
             $calls = [];
             $plugins->setValue(null, [...$active, 'connected_display_fixture']);
-            $PLUGIN_HOOKS['item_can'] = ['connected_display_fixture' => [\Computer::class =>
-                static function (\Computer $computer) use (&$calls, $connection, $ids): void {
+            $PLUGIN_HOOKS['item_can'] = ['connected_display_fixture' => [ComputerModel::class =>
+                static function (ComputerModel $computer) use (&$calls, $connection, $ids): void {
                     $calls[] = ['id' => (int)$computer->getID(), 'comment' => $computer->fields['comment'],
                         'serial' => $computer->fields['serial'], 'right' => $computer->right];
                     if ((int)$computer->getID() === $ids[0]) {
@@ -187,7 +199,7 @@ class Computer extends DbTestCase
             $this->string($hooked[$linkIds[1]]['serial'])->isIdenticalTo('Later callback serial');
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
         } finally {
-            $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+            $em->getEventManager()->removeEventListener([Events::postLoad], $loads);
             $em->clear();
             $_SESSION = $session;
             $PLUGIN_HOOKS = $hooks;
@@ -203,7 +215,7 @@ class Computer extends DbTestCase
         $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
         $savedConfig = $CFG_GLPI;
         $savedHooks = $PLUGIN_HOOKS;
-        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
         $savedPlugins = $plugins->getValue();
         $updated = [];
         try {
@@ -214,24 +226,24 @@ class Computer extends DbTestCase
             $CFG_GLPI['state_autoupdate_mode'] = 0;
             $CFG_GLPI['state_autoclean_mode'] = -1;
             $plugins->setValue(null, [...$savedPlugins, 'disconnect_fixture']);
-            $PLUGIN_HOOKS['item_update']['disconnect_fixture'][\Monitor::class] = static function (\Monitor $item) use (&$updated): void {
+            $PLUGIN_HOOKS['item_update']['disconnect_fixture'][Monitor::class] = static function (Monitor $item) use (&$updated): void {
                 $updated[] = (int)$item->getID();
             };
-            $computer = $this->createItem(\Computer::class, ['name' => '_disconnect_owner', 'entities_id' => $entity]);
+            $computer = $this->createItem(ComputerModel::class, ['name' => '_disconnect_owner', 'entities_id' => $entity]);
             $values = [
                 'contact' => 'Assigned contact', 'contact_num' => '12345',
                 'locations_id' => $this->getNewLocationId(), 'users_id' => $this->getNewUserId(),
                 'groups_id' => $this->getNewGroupId(), 'states_id' => $this->getNewStateId(),
             ];
             foreach (['ordinary', 'unchanged', 'global', 'bypass'] as $mode) {
-                $monitor = $this->createItem(\Monitor::class, [
+                $monitor = $this->createItem(Monitor::class, [
                     'name' => '_disconnect_' . $mode, 'entities_id' => $entity,
                     'is_global' => (int)($mode === 'global'),
                 ] + ($mode === 'unchanged' ? [
                     'contact' => '', 'contact_num' => '',
                     'locations_id' => 0, 'users_id' => 0, 'groups_id' => 0, 'states_id' => 0,
                 ] : $values));
-                $link = $this->createItem(\Computer_Item::class, [
+                $link = $this->createItem(Computer_Item::class, [
                     'computers_id' => $computer->getID(), 'itemtype' => 'Monitor', 'items_id' => $monitor->getID(),
                 ]);
                 $this->boolean($monitor->getFromDB($monitor->getID()))->isTrue();
@@ -1058,28 +1070,28 @@ class Computer extends DbTestCase
 
     private function getNewStateId(): int
     {
-        $id = (new \State())->add(['name' => $this->getUniqueString()]);
+        $id = (new State())->add(['name' => $this->getUniqueString()]);
         $this->integer((int)$id)->isGreaterThan(0);
         return (int)$id;
     }
 
     private function getNewLocationId(): int
     {
-        $id = (new \Location())->add(['name' => $this->getUniqueString()]);
+        $id = (new Location())->add(['name' => $this->getUniqueString()]);
         $this->integer((int)$id)->isGreaterThan(0);
         return (int)$id;
     }
 
     private function getNewGroupId(): int
     {
-        $id = (new \Group())->add(['name' => $this->getUniqueString()]);
+        $id = (new Group())->add(['name' => $this->getUniqueString()]);
         $this->integer((int)$id)->isGreaterThan(0);
         return (int)$id;
     }
 
     private function getNewUserId(): int
     {
-        $id = (new \User())->add(['name' => 'asset-user-' . parent::getUniqueString()]);
+        $id = (new User())->add(['name' => 'asset-user-' . parent::getUniqueString()]);
         $this->integer((int)$id)->isGreaterThan(0);
         return (int)$id;
     }
@@ -1381,7 +1393,7 @@ class Computer extends DbTestCase
         $names = [];
         foreach (['first', 'second'] as $suffix) {
             $name = $this->getUniqueString() . ' ' . $suffix;
-            $id = (new \Computer())->add(\Toolbox::addslashes_deep([
+            $id = (new ComputerModel())->add(Toolbox::addslashes_deep([
                 'entities_id' => 0,
                 'name' => $name,
             ]));
@@ -1415,9 +1427,9 @@ class Computer extends DbTestCase
         // A nullable stored name is legitimate; an ID-only iterator must reload
         // the other persisted fields without replacing NULL with an empty name.
         $marker = $this->getUniqueString();
-        $manager = \itsmng\Database\Orm::create($DB);
+        $manager = Orm::create($DB);
         try {
-            $nullableId = (new \itsmng\Database\Repository\RecordWriter($manager))->insert(
+            $nullableId = (new RecordWriter($manager))->insert(
                 'glpi_computers',
                 ['entities_id' => 0, 'name' => null, 'serial' => $marker]
             );
@@ -1435,7 +1447,7 @@ class Computer extends DbTestCase
             $this->array($row)->hasSize(1)->hasKey('id');
         }
         $nullableCount = 0;
-        foreach (\Computer::getFromIter($nullableIter) as $comp) {
+        foreach (ComputerModel::getFromIter($nullableIter) as $comp) {
             $this->object($comp)->isInstanceOf('Computer');
             $this->integer((int)$comp->getID())->isIdenticalTo($nullableId);
             $this->array($comp->fields)->hasKeys(['name', 'serial']);

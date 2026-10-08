@@ -4,9 +4,13 @@
 
 namespace itsmng\Database\Repository;
 
+use Alert as LegacyAlert;
+use DateTime;
+use DateTimeImmutable;
 use Doctrine\DBAL\LockMode;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use itsmng\Database\Entity\Group;
 use itsmng\Database\Entity\User;
 use itsmng\Database\Entity\PlanningRecall;
 use itsmng\Database\Entity\Alert;
@@ -27,12 +31,12 @@ final class PlanningRepository
         if ($groups === []) {
             return [];
         }
-        $query = $this->em->createQueryBuilder()->select('r.id, r.name')->from(\itsmng\Database\Entity\Group::class, 'r');
+        $query = $this->em->createQueryBuilder()->select('r.id, r.name')->from(Group::class, 'r');
         $criteria = ['entities_id' => $entity];
         if ($groups !== null) {
             $criteria['id'] = $groups;
         }
-        $compiler = new RecordCriteria($query, $this->em->getClassMetadata(\itsmng\Database\Entity\Group::class));
+        $compiler = new RecordCriteria($query, $this->em->getClassMetadata(Group::class));
         $query->where($compiler->where($criteria));
         $compiler->order(['name', 'id']);
         return $query->getQuery()->getArrayResult();
@@ -57,7 +61,7 @@ final class PlanningRepository
     }
 
     /** Recompute each recipient's date as typed state in one unit of work. */
-    public function rescheduleRecalls(string $type, int $item, \DateTimeImmutable $begin): void
+    public function rescheduleRecalls(string $type, int $item, DateTimeImmutable $begin): void
     {
         $this->em->getConnection()->transactional(function () use ($type, $item, $begin): void {
             $recalls = $this->em->createQueryBuilder()->select('r')->from(PlanningRecall::class, 'r')
@@ -65,7 +69,7 @@ final class PlanningRepository
                 ->setParameter('item', $item, Types::BIGINT)
                 ->getQuery()->getResult();
             foreach ($recalls as $recall) {
-                $recall->when = \DateTime::createFromImmutable($begin)->setTimestamp($begin->getTimestamp() - $recall->before_time);
+                $recall->when = DateTime::createFromImmutable($begin)->setTimestamp($begin->getTimestamp() - $recall->before_time);
             }
             $this->em->flush();
             foreach ($recalls as $recall) {
@@ -75,12 +79,12 @@ final class PlanningRepository
     }
 
     /** Select due, undelivered recalls; dispatch and delivery markers remain model responsibilities. */
-    public function dueRecalls(\DateTimeImmutable $before): array
+    public function dueRecalls(DateTimeImmutable $before): array
     {
         $query = $this->em->createQueryBuilder()->select('r')->from(PlanningRecall::class, 'r')
             ->where('r.when < :before')->setParameter('before', $before, Types::DATETIMETZ_IMMUTABLE)
             ->andWhere('NOT EXISTS (SELECT a.id FROM ' . Alert::class . ' a WHERE a.planningRecall = r AND a.type = :action)')
-            ->setParameter('action', \Alert::ACTION, Types::INTEGER)
+            ->setParameter('action', LegacyAlert::ACTION, Types::INTEGER)
             ->orderBy('r.when')->addOrderBy('r.id');
         $records = new RecordRepository($this->em);
         $rows = [];

@@ -4,15 +4,21 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\AllocationSubjectScope;
+use itsmng\Database\Mapping\AssetClassification;
+use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\RackModel;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Domain\AllocationSubject;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_networkequipments')]
-class NetworkEquipment implements \itsmng\Domain\AllocationSubject
+class NetworkEquipment implements AllocationSubject
 {
-    use \itsmng\Database\Mapping\AllocationSubjectScope;
+    use AllocationSubjectScope;
 
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
@@ -56,8 +62,8 @@ class NetworkEquipment implements \itsmng\Domain\AllocationSubject
     public ?Group $groups_tech = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
     public ?string $comment = null;
@@ -75,10 +81,10 @@ class NetworkEquipment implements \itsmng\Domain\AllocationSubject
     #[ORM\ManyToOne(targetEntity: NetworkEquipmentType::class)]
     #[ORM\JoinColumn(name: 'networkequipmenttypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
-    #[\itsmng\Database\Mapping\AssetClassification]
+    #[AssetClassification]
     public ?NetworkEquipmentType $networkequipmenttypes = null;
 
-    #[\itsmng\Database\Mapping\RackModel]
+    #[RackModel]
     #[ORM\ManyToOne(targetEntity: NetworkEquipmentModel::class)]
     #[ORM\JoinColumn(name: 'networkequipmentmodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
@@ -120,6 +126,6 @@ class NetworkEquipment implements \itsmng\Domain\AllocationSubject
     public bool $is_dynamic = false;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 }

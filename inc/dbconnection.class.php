@@ -78,13 +78,13 @@ class DBConnection extends CommonDBTM
         return match ($provider) {
             'mysql' => DBmysql::class,
             'pgsql' => DBpgsql::class,
-            default => throw new \InvalidArgumentException('Unknown database provider: ' . $provider),
+            default => throw new InvalidArgumentException('Unknown database provider: ' . $provider),
         };
     }
 
     public static function createConnection(string $provider, string $host, string $user, string $password, string $database): DBAdapter
     {
-        $db = (new \ReflectionClass(self::getAdapterClass($provider)))->newInstanceWithoutConstructor();
+        $db = (new ReflectionClass(self::getAdapterClass($provider)))->newInstanceWithoutConstructor();
         $db->dbhost = $host;
         $db->dbuser = $user;
         $db->dbpassword = rawurlencode($password);

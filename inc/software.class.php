@@ -31,6 +31,16 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\LifecycleModelJournal;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\SoftwareAssignmentRepository;
+use itsmng\Database\Repository\SoftwareRepository;
+use itsmng\Domain\SoftwareAssignmentCancelled;
+use itsmng\Domain\SoftwareAssignmentService;
+use itsmng\Domain\SoftwareLifecycleAdmission;
+use itsmng\Domain\SoftwareMutation;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -39,7 +49,7 @@ if (!defined('GLPI_ROOT')) {
 **/
 class Software extends CommonDBTM
 {
-    use \itsmng\Domain\SoftwareLifecycleAdmission;
+    use SoftwareLifecycleAdmission;
 
     use Glpi\Features\Clonable;
 
@@ -47,7 +57,7 @@ class Software extends CommonDBTM
     {
         global $DB;
 
-        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateSoftware(
+        return (new SoftwareAssignmentService($DB))->mutateSoftware(
             $this,
             $priorState,
             fn () => parent::executePreparedAdd($operation, $priorState),
@@ -59,11 +69,11 @@ class Software extends CommonDBTM
     {
         global $DB;
 
-        $checkpoint = \itsmng\Database\LifecycleModelJournal::state($this);
+        $checkpoint = LifecycleModelJournal::state($this);
         $checkpoint['fields'] = $storedFields;
         $checkpoint['updates'] = [];
         $checkpoint['oldvalues'] = [];
-        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateSoftware(
+        return (new SoftwareAssignmentService($DB))->mutateSoftware(
             $this,
             $checkpoint,
             fn () => parent::executePreparedUpdate($operation, $storedFields),
@@ -75,11 +85,11 @@ class Software extends CommonDBTM
     {
         global $DB;
 
-        $checkpoint = \itsmng\Database\LifecycleModelJournal::state($this);
+        $checkpoint = LifecycleModelJournal::state($this);
         $checkpoint['fields'] = $storedFields;
         $checkpoint['updates'] = [];
         $checkpoint['oldvalues'] = [];
-        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateSoftware(
+        return (new SoftwareAssignmentService($DB))->mutateSoftware(
             $this,
             $checkpoint,
             fn () => parent::executePreparedRestore($operation, $storedFields),
@@ -93,7 +103,7 @@ class Software extends CommonDBTM
 
         $database = $DB;
         if (!array_key_exists(static::getIndexName(), $input)
-            || !\itsmng\Domain\SoftwareMutation::loadForMutation(
+            || !SoftwareMutation::loadForMutation(
                 $database,
                 $this,
                 $input[static::getIndexName()],
@@ -101,9 +111,9 @@ class Software extends CommonDBTM
             )) {
             return false;
         }
-        return (new \itsmng\Domain\SoftwareAssignmentService($database))->mutateSoftware(
+        return (new SoftwareAssignmentService($database))->mutateSoftware(
             $this,
-            \itsmng\Database\LifecycleModelJournal::state($this),
+            LifecycleModelJournal::state($this),
             fn () => parent::delete($input, $force, $history),
             'delete'
         );
@@ -276,7 +286,7 @@ class Software extends CommonDBTM
     {
         global $DB;
 
-        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->refreshSoftwareValidity((int)$ID);
+        return (new SoftwareAssignmentService($DB))->refreshSoftwareValidity((int)$ID);
     }
 
 
@@ -832,7 +842,7 @@ class Software extends CommonDBTM
     {
         global $CFG_GLPI, $DB;
 
-        $rows = (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))
+        $rows = (new SoftwareRepository(Orm::create($DB)))
             ->withLicenses(getEntitiesRestrictCriteria('glpi_softwarelicenses', 'entities_id', $entity_restrict, true));
         $values = array_column($rows, 'name', 'id');
         $rand = Dropdown::showFromArray('softwares_id', $values, ['display_emptychoice' => true]);
@@ -935,7 +945,7 @@ class Software extends CommonDBTM
             $manufacturer_id = Dropdown::import('Manufacturer', ['name' => $manufacturer]);
         }
 
-        $rows = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+        $rows = (new RecordRepository(Orm::create($DB)))
             ->matching('glpi_softwares', [
                 'name' => stripslashes((string)$name),
                 'manufacturers_id' => $manufacturer_id ?: null,
@@ -1009,7 +1019,7 @@ class Software extends CommonDBTM
         if ($database->isSlave()) {
             return false;
         }
-        $loaded = \itsmng\Domain\SoftwareMutation::loadForMutation($database, $this, $ID);
+        $loaded = SoftwareMutation::loadForMutation($database, $this, $ID);
         if (!$loaded || (int)$this->getID() !== $ID || $this->isTemplate()) {
             return false;
         }
@@ -1020,14 +1030,14 @@ class Software extends CommonDBTM
             $input['softwarecategories_id'] = $CFG_GLPI['softwarecategories_id_ondelete'];
         }
         $input['comment'] = (($this->fields['comment'] != '') ? "\n" : '') . $comment;
-        return (new \itsmng\Domain\SoftwareAssignmentService($database))->mutateSoftware(
+        return (new SoftwareAssignmentService($database))->mutateSoftware(
             $this,
-            \itsmng\Database\LifecycleModelJournal::state($this),
+            LifecycleModelJournal::state($this),
             function () use ($database, $ID, $input): bool {
-                $assertOwner = \itsmng\Domain\SoftwareMutation::writerContinuity($database);
-                $manager = \itsmng\Database\Orm::create($database);
+                $assertOwner = SoftwareMutation::writerContinuity($database);
+                $manager = Orm::create($database);
                 try {
-                    $repository = new \itsmng\Database\Repository\SoftwareAssignmentRepository($manager);
+                    $repository = new SoftwareAssignmentRepository($manager);
                     $source = $repository->software($ID);
                     if ($source === null || $source->is_template) {
                         return false;
@@ -1041,7 +1051,7 @@ class Software extends CommonDBTM
                     return false;
                 }
                 if ((int)$this->getID() !== $ID) {
-                    throw new \itsmng\Domain\SoftwareAssignmentCancelled('Merged source delete changed its selected identity.');
+                    throw new SoftwareAssignmentCancelled('Merged source delete changed its selected identity.');
                 }
                 $updated = $this->update($input);
                 $assertOwner();
@@ -1049,15 +1059,15 @@ class Software extends CommonDBTM
                     return false;
                 }
                 if ((int)$this->getID() !== $ID) {
-                    throw new \itsmng\Domain\SoftwareAssignmentCancelled('Merged source update changed its selected identity.');
+                    throw new SoftwareAssignmentCancelled('Merged source update changed its selected identity.');
                 }
                 // Completion hooks may write on this same owner. Observe the
                 // actual selected source, never a callback-mutated model ID.
-                $manager = \itsmng\Database\Orm::create($database);
+                $manager = Orm::create($database);
                 try {
-                    $source = (new \itsmng\Database\Repository\SoftwareAssignmentRepository($manager))->software($ID);
+                    $source = (new SoftwareAssignmentRepository($manager))->software($ID);
                     if ($source === null || !$source->is_deleted || $source->is_template) {
-                        throw new \itsmng\Domain\SoftwareAssignmentCancelled('Merged source removal did not retain the deleted source.');
+                        throw new SoftwareAssignmentCancelled('Merged source removal did not retain the deleted source.');
                     }
                 } finally {
                     $manager->clear();
@@ -1110,7 +1120,7 @@ class Software extends CommonDBTM
         $rand = mt_rand();
 
         echo "<div class='center'>";
-        $rows = (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))
+        $rows = (new SoftwareRepository(Orm::create($DB)))
             ->mergeCandidates((int)$ID, (string)$this->fields['name'], getEntitiesRestrictCriteria(
                 'glpi_softwares',
                 'entities_id',
@@ -1183,12 +1193,12 @@ class Software extends CommonDBTM
             echo "</td></tr></table></div>\n";
         }
 
-        $accepted = \itsmng\Domain\SoftwareMutation::run(
+        $accepted = SoftwareMutation::run(
             $DB,
             $this,
-            \itsmng\Database\LifecycleModelJournal::state($this),
+            LifecycleModelJournal::state($this),
             function () use ($DB, $ID, $item, $html): bool {
-                (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))->merge(
+                (new SoftwareRepository(Orm::create($DB)))->merge(
                     (int)$ID,
                     (int)$this->getField('entities_id'),
                     array_keys($item),

@@ -4,15 +4,20 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\AllocationSubjectScope;
+use itsmng\Database\Mapping\AssetClassification;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Domain\AllocationSubject;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_phones')]
-class Phone implements \itsmng\Domain\AllocationSubject
+class Phone implements AllocationSubject
 {
-    use \itsmng\Database\Mapping\AllocationSubjectScope;
+    use AllocationSubjectScope;
 
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
@@ -28,8 +33,8 @@ class Phone implements \itsmng\Domain\AllocationSubject
     public ?string $name = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`contact`', type: 'string', length: 255, nullable: true)]
     public ?string $contact = null;
@@ -64,7 +69,7 @@ class Phone implements \itsmng\Domain\AllocationSubject
     #[ORM\ManyToOne(targetEntity: PhoneType::class)]
     #[ORM\JoinColumn(name: 'phonetypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
-    #[\itsmng\Database\Mapping\AssetClassification]
+    #[AssetClassification]
     public ?PhoneType $phonetypes = null;
 
     #[ORM\ManyToOne(targetEntity: PhoneModel::class)]
@@ -128,8 +133,8 @@ class Phone implements \itsmng\Domain\AllocationSubject
     public bool $is_dynamic = false;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_recursive = false;

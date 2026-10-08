@@ -11,25 +11,33 @@ use Doctrine\DBAL\Driver\Connection as DriverConnection;
 use Doctrine\DBAL\Driver\Middleware;
 use Doctrine\DBAL\Driver\Middleware\AbstractDriverMiddleware;
 use Doctrine\DBAL\DriverManager;
+use Doctrine\DBAL\Exception;
 use Doctrine\DBAL\ParameterType;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use InvalidArgumentException;
+use PDO;
+use Pdo\Mysql;
+use RuntimeException;
+use SensitiveParameter;
+use itsmng\Database\Driver\OwnedConnection;
 
 /** MySQL session integrity belongs to every physical connection, including reconnects. */
 final class MySQLConnection implements Middleware
 {
-    public static function create(#[\SensitiveParameter] array $parameters, ?Configuration $configuration = null): Connection
+    public static function create(#[SensitiveParameter] array $parameters, ?Configuration $configuration = null): Connection
     {
         return DriverManager::getConnection(self::parameters($parameters), self::configuration($configuration));
     }
 
     /** Validate the transport policy before a lazy driver can connect. */
-    public static function parameters(#[\SensitiveParameter] array $parameters): array
+    public static function parameters(#[SensitiveParameter] array $parameters): array
     {
         if (($parameters['driver'] ?? 'pdo_mysql') !== 'pdo_mysql' || isset($parameters['driverClass'])
             || (isset($parameters['wrapperClass']) && $parameters['wrapperClass'] !== MySQLManagedConnection::class)) {
-            throw new \InvalidArgumentException('MySQL ownership requires the canonical PDO driver and DBAL owner.');
+            throw new InvalidArgumentException('MySQL ownership requires the canonical PDO driver and DBAL owner.');
         }
         if (($parameters['persistent'] ?? false) !== false) {
-            throw new \InvalidArgumentException('MySQL ownership requires a distinct nonpersistent physical connection.');
+            throw new InvalidArgumentException('MySQL ownership requires a distinct nonpersistent physical connection.');
         }
         $parameters['driver'] = 'pdo_mysql';
         $parameters['wrapperClass'] = MySQLManagedConnection::class;
@@ -37,20 +45,20 @@ final class MySQLConnection implements Middleware
         $ssl = $parameters['ssl'] ?? false;
         $verify = $parameters['ssl_verify_server_cert'] ?? true;
         if (!is_bool($ssl) || !is_bool($verify)) {
-            throw new \InvalidArgumentException('MySQL TLS and certificate verification options must be boolean.');
+            throw new InvalidArgumentException('MySQL TLS and certificate verification options must be boolean.');
         }
         $options = $parameters['driverOptions'] ?? [];
         if (!is_array($options)) {
-            throw new \InvalidArgumentException('MySQL PDO driver options must be an array.');
+            throw new InvalidArgumentException('MySQL PDO driver options must be an array.');
         }
         $required = [
-            \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
-            \PDO::ATTR_EMULATE_PREPARES => false,
-            \PDO::ATTR_STRINGIFY_FETCHES => false,
-            \PDO::ATTR_PERSISTENT => false,
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_EMULATE_PREPARES => false,
+            PDO::ATTR_STRINGIFY_FETCHES => false,
+            PDO::ATTR_PERSISTENT => false,
         ];
-        $allowed = [...array_keys($required), \PDO::ATTR_TIMEOUT];
-        $tlsPrefix = class_exists(\Pdo\Mysql::class, false) ? 'Pdo\\Mysql::ATTR_SSL_' : 'PDO::MYSQL_ATTR_SSL_';
+        $allowed = [...array_keys($required), PDO::ATTR_TIMEOUT];
+        $tlsPrefix = class_exists(Mysql::class, false) ? 'Pdo\\Mysql::ATTR_SSL_' : 'PDO::MYSQL_ATTR_SSL_';
         $tls = [
             'ssl_key' => $tlsPrefix . 'KEY',
             'ssl_cert' => $tlsPrefix . 'CERT',
@@ -60,23 +68,23 @@ final class MySQLConnection implements Middleware
         ];
         foreach ($parameters as $name => $value) {
             if (str_starts_with((string)$name, 'ssl_') && $name !== 'ssl_verify_server_cert' && !array_key_exists($name, $tls)) {
-                throw new \InvalidArgumentException('Unknown MySQL TLS option.');
+                throw new InvalidArgumentException('Unknown MySQL TLS option.');
             }
         }
         foreach ($tls as $name => $constant) {
             $value = $parameters[$name] ?? null;
             if ($value !== null && !is_string($value)) {
-                throw new \InvalidArgumentException('MySQL TLS material and cipher options must be strings or null.');
+                throw new InvalidArgumentException('MySQL TLS material and cipher options must be strings or null.');
             }
             if (!$ssl && $value !== null && $value !== '') {
-                throw new \InvalidArgumentException('MySQL TLS material requires explicit TLS enablement.');
+                throw new InvalidArgumentException('MySQL TLS material requires explicit TLS enablement.');
             }
             if (defined($constant)) {
                 $allowed[] = constant($constant);
             }
             if ($ssl && $value !== null && $value !== '') {
                 if (!defined($constant)) {
-                    throw new \InvalidArgumentException('Configured MySQL TLS option requires pdo_mysql support.');
+                    throw new InvalidArgumentException('Configured MySQL TLS option requires pdo_mysql support.');
                 }
                 $required[constant($constant)] = $value;
             }
@@ -87,25 +95,25 @@ final class MySQLConnection implements Middleware
         }
         if ($ssl) {
             if (!defined($verifyConstant)) {
-                throw new \InvalidArgumentException('MySQL TLS certificate verification requires pdo_mysql support.');
+                throw new InvalidArgumentException('MySQL TLS certificate verification requires pdo_mysql support.');
             }
             $required[constant($verifyConstant)] = $verify;
         }
         foreach ($options as $name => $value) {
             if (!is_int($name) || !in_array($name, $allowed, true)) {
-                throw new \InvalidArgumentException('Unsupported MySQL PDO option; transport policy must be explicit.');
+                throw new InvalidArgumentException('Unsupported MySQL PDO option; transport policy must be explicit.');
             }
-            if ($ssl && $name !== \PDO::ATTR_TIMEOUT && !array_key_exists($name, $required)) {
-                throw new \InvalidArgumentException('MySQL TLS options must use the explicit named material policy.');
+            if ($ssl && $name !== PDO::ATTR_TIMEOUT && !array_key_exists($name, $required)) {
+                throw new InvalidArgumentException('MySQL TLS options must use the explicit named material policy.');
             }
             if (array_key_exists($name, $required) && $value !== $required[$name]) {
-                throw new \InvalidArgumentException('MySQL PDO option contradicts the canonical connection policy.');
+                throw new InvalidArgumentException('MySQL PDO option contradicts the canonical connection policy.');
             }
-            if ($name === \PDO::ATTR_TIMEOUT && (!is_int($value) || $value < 0)) {
-                throw new \InvalidArgumentException('MySQL PDO timeout must be a nonnegative integer.');
+            if ($name === PDO::ATTR_TIMEOUT && (!is_int($value) || $value < 0)) {
+                throw new InvalidArgumentException('MySQL PDO timeout must be a nonnegative integer.');
             }
-            if (!$ssl && !in_array($name, [...array_keys($required), \PDO::ATTR_TIMEOUT], true)) {
-                throw new \InvalidArgumentException('MySQL PDO TLS options require explicit TLS enablement.');
+            if (!$ssl && !in_array($name, [...array_keys($required), PDO::ATTR_TIMEOUT], true)) {
+                throw new InvalidArgumentException('MySQL PDO TLS options require explicit TLS enablement.');
             }
         }
         $parameters['ssl'] = $ssl;
@@ -142,7 +150,7 @@ final class MySQLConnection implements Middleware
         // Existing externally supplied strict transactional connections remain
         // valid for InnoDB core storage. Our own factory uses the stronger ALL.
         if (!array_intersect(['STRICT_ALL_TABLES', 'STRICT_TRANS_TABLES'], $modes)) {
-            throw new \RuntimeException('MySQL native value enforcement requires strict SESSION sql_mode (STRICT_ALL_TABLES or STRICT_TRANS_TABLES). Open application and installation connections through MySQLConnection; do not disable strict mode.');
+            throw new RuntimeException('MySQL native value enforcement requires strict SESSION sql_mode (STRICT_ALL_TABLES or STRICT_TRANS_TABLES). Open application and installation connections through MySQLConnection; do not disable strict mode.');
         }
     }
 
@@ -170,7 +178,7 @@ final class MySQLConnection implements Middleware
     public static function initializeCurrentReads(DriverConnection $connection): void
     {
         $native = $connection->getNativeConnection();
-        if ($native instanceof \PDO && $native->inTransaction()) {
+        if ($native instanceof PDO && $native->inTransaction()) {
             throw new CurrentReadUnavailable('Current locking-read policy cannot initialize an existing caller transaction.');
         }
         if (self::snapshotIsolation($connection) === true) {
@@ -188,7 +196,7 @@ final class MySQLConnection implements Middleware
     /** Read-only admission: never repair isolation inside a supplied caller frame. */
     public static function assertCurrentReads(Connection $connection): void
     {
-        if (!$connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\AbstractMySQLPlatform) {
+        if (!$connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
             return;
         }
         if ($connection->isTransactionActive()) {
@@ -202,7 +210,7 @@ final class MySQLConnection implements Middleware
     public function wrap(Driver $driver): Driver
     {
         return new class ($driver) extends AbstractDriverMiddleware {
-            public function connect(#[\SensitiveParameter] array $params): DriverConnection
+            public function connect(#[SensitiveParameter] array $params): DriverConnection
             {
                 $connection = parent::connect($params);
                 if ($params['ssl'] ?? false) {
@@ -210,7 +218,7 @@ final class MySQLConnection implements Middleware
                     try {
                         $row = $tls->fetchNumeric();
                         if (!is_array($row) || !is_string($row[1] ?? null) || $row[1] === '') {
-                            throw new \Doctrine\DBAL\Exception('Required MySQL TLS did not establish an encrypted session.');
+                            throw new Exception('Required MySQL TLS did not establish an encrypted session.');
                         }
                     } finally {
                         $tls->free();
@@ -223,7 +231,7 @@ final class MySQLConnection implements Middleware
                 $statement->bindValue(1, MySQLConnection::strictModes($configured), ParameterType::STRING);
                 $statement->execute()->free();
                 MySQLConnection::initializeCurrentReads($connection);
-                return new \itsmng\Database\Driver\OwnedConnection($connection);
+                return new OwnedConnection($connection);
             }
         };
     }

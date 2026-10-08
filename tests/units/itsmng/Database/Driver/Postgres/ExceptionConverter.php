@@ -7,16 +7,18 @@ namespace tests\units\itsmng\Database\Driver\Postgres;
 use Doctrine\DBAL\Driver\API\ExceptionConverter as Converter;
 use Doctrine\DBAL\Driver\Exception as NativeException;
 use Doctrine\DBAL\Driver\PDO\Exception as DbalPdoException;
+use Doctrine\DBAL\Driver\PDO\PgSQL\Driver as PgSQLDriver;
 use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use Doctrine\DBAL\ParameterType;
 use Doctrine\DBAL\Query;
+use atoum\atoum\test;
 use itsmng\Database\Driver\Postgres\Driver;
 use itsmng\Database\Driver\Postgres\ExceptionConverter as Policy;
 use PDOException;
 use RuntimeException;
 
-class ExceptionConverter extends \atoum\atoum\test
+class ExceptionConverter extends test
 {
     private function nativeError(?string $state, string $message = 'Native diagnostic'): DbalPdoException
     {
@@ -39,7 +41,7 @@ class ExceptionConverter extends \atoum\atoum\test
             $this->boolean($error->getPrevious() === $native && $error->getQuery() === $context)->isTrue('Original native exception and optional query are retained');
             foreach (['23503', '23502', '23505', '40001', '40P01', '42601', '23514', '23000', null] as $state) {
                 $native = $this->nativeError($state, 'RESTRICT text must not classify an unrelated state');
-                $stock = (new \Doctrine\DBAL\Driver\PDO\PgSQL\Driver())->getExceptionConverter();
+                $stock = (new PgSQLDriver())->getExceptionConverter();
                 $expected = $stock->convert($native, $context);
                 $spy = new class ($native, $context, $expected) implements Converter {
                     public int $calls = 0;

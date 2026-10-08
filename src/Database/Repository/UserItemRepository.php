@@ -6,9 +6,12 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
 use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\RecordCriteria;
+
+use function getTableForItemType;
 
 /** Inventory assignments and the related cleanup performed when a user is purged. */
 final class UserItemRepository
@@ -19,7 +22,7 @@ final class UserItemRepository
 
     public static function supports(string $type): bool
     {
-        return isset(EntityRegistry::tables()[\getTableForItemType($type)]);
+        return isset(EntityRegistry::tables()[getTableForItemType($type)]);
     }
 
     public function groups(int $user): array
@@ -34,12 +37,12 @@ final class UserItemRepository
     public function items(string $type, string $field, array $actors, array $scope): iterable
     {
         if (!in_array($field, ['users_id', 'users_id_tech', 'groups_id', 'groups_id_tech'], true)) {
-            throw new \InvalidArgumentException('Unsupported inventory assignment field');
+            throw new InvalidArgumentException('Unsupported inventory assignment field');
         }
         if (!$actors) {
             return;
         }
-        $class = EntityRegistry::tables()[\getTableForItemType($type)];
+        $class = EntityRegistry::tables()[getTableForItemType($type)];
         $metadata = $this->em->getClassMetadata($class);
         $criteria = [[$field => array_values($actors)], $scope];
         foreach (['is_deleted', 'is_template'] as $flag) {

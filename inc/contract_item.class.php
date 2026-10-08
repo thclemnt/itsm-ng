@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\DropdownChoiceContext;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ContractAssetRepository;
+use itsmng\Database\Repository\TransferBindingRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -303,7 +308,7 @@ class Contract_Item extends CommonDBRelation
             $newitemtype = $itemtype;
         }
 
-        $repository = \itsmng\Database\Repository\TransferBindingRepository::contracts(\itsmng\Database\Orm::create($DB));
+        $repository = TransferBindingRepository::contracts(Orm::create($DB));
         foreach ($repository->links($itemtype, (int)$oldid) as $data) {
             $contractitem = new self();
             $contractitem->add(['contracts_id' => $data["parent_id"],
@@ -487,7 +492,7 @@ class Contract_Item extends CommonDBRelation
                 if ($item->maybeTemplate()) {
                     $criteria['is_template'] = false;
                 }
-                $bindings = (new \itsmng\Database\Repository\ContractAssetRepository(\itsmng\Database\Orm::create($DB)))
+                $bindings = (new ContractAssetRepository(Orm::create($DB)))
                     ->assets(
                         (int)$instID,
                         $itemtype,
@@ -545,7 +550,7 @@ class Contract_Item extends CommonDBRelation
 
             $dropdownChoiceTokens = [];
             foreach (array_keys(array_unique($options)) as $kind) {
-                $dropdownChoiceTokens[$kind] = \itsmng\Database\DropdownChoiceContext::token($kind, []);
+                $dropdownChoiceTokens[$kind] = DropdownChoiceContext::token($kind, []);
             }
             $dropdownChoiceTokens = json_encode($dropdownChoiceTokens, JSON_THROW_ON_ERROR);
 

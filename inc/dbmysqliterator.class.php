@@ -229,7 +229,7 @@ class DBmysqlIterator implements Iterator, Countable
                     $this->sql .= "" . $this->quoter::quoteName($field);
                 } else {
                     if ($distinct) {
-                        throw new \InvalidArgumentException("With COUNT and DISTINCT, you must specify exactly one field, or use 'COUNT DISTINCT'");
+                        throw new InvalidArgumentException("With COUNT and DISTINCT, you must specify exactly one field, or use 'COUNT DISTINCT'");
                     }
                     $this->sql .= "*";
                 }
@@ -264,7 +264,7 @@ class DBmysqlIterator implements Iterator, Countable
                     $table = array_map($this->quoter::quoteName(...), $table);
                     $this->sql .= ' FROM ' . implode(", ", $table);
                 } else {
-                    throw new \InvalidArgumentException("Missing table name");
+                    throw new InvalidArgumentException("Missing table name");
                 }
             } elseif ($table) {
                 if ($table instanceof \AbstractQuery) {
@@ -280,7 +280,7 @@ class DBmysqlIterator implements Iterator, Countable
                  * TODO filter with if ($where || !empty($crit)) {
                  * but not usefull for now, as we CANNOT write somthing like "SELECT NOW()"
                  */
-                throw new \InvalidArgumentException("Missing table name");
+                throw new InvalidArgumentException("Missing table name");
             }
 
             // JOIN
@@ -307,7 +307,7 @@ class DBmysqlIterator implements Iterator, Countable
                     $groupby = array_map($this->quoter::quoteName(...), $groupby);
                     $this->sql .= ' GROUP BY ' . implode(", ", $groupby);
                 } else {
-                    throw new \InvalidArgumentException("Missing group by field");
+                    throw new InvalidArgumentException("Missing group by field");
                 }
             } elseif ($groupby) {
                 $groupby = $this->quoter::quoteName($groupby);
@@ -363,7 +363,7 @@ class DBmysqlIterator implements Iterator, Countable
             } elseif ($o instanceof QueryExpression) {
                 $cleanorderby[] = $o->getValue();
             } else {
-                throw new \InvalidArgumentException("Invalid order clause");
+                throw new InvalidArgumentException("Invalid order clause");
             }
         }
 
@@ -659,7 +659,7 @@ class DBmysqlIterator implements Iterator, Countable
             }
 
             if (!is_array($jointables)) {
-                throw new \InvalidArgumentException("BAD JOIN, value must be [ table => criteria ]");
+                throw new InvalidArgumentException("BAD JOIN, value must be [ table => criteria ]");
             }
 
             foreach ($jointables as $jointablekey => $jointablecrit) {
@@ -712,7 +712,7 @@ class DBmysqlIterator implements Iterator, Countable
                 return $fkey . ' ' . key($condition) . ' ' . $this->analyseCrit(current($condition));
             }
         }
-        throw new \InvalidArgumentException("BAD FOREIGN KEY, should be [ table1 => key1, table2 => key2 ] or [ table1 => key1, table2 => key2, [criteria]]");
+        throw new InvalidArgumentException("BAD FOREIGN KEY, should be [ table1 => key1, table2 => key2 ] or [ table1 => key1, table2 => key2, [criteria]]");
     }
 
     /**

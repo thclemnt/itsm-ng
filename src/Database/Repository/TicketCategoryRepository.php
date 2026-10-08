@@ -5,8 +5,11 @@
 namespace itsmng\Database\Repository;
 
 use Doctrine\ORM\EntityManager;
+use Ticket;
 use itsmng\Database\Entity\ITILCategory;
 use itsmng\Database\RecordCriteria;
+
+use function getEntitiesRestrictCriteria;
 
 /** Ticket-form choices retain recursive entity ownership and helpdesk visibility. */
 final class TicketCategoryRepository
@@ -22,10 +25,10 @@ final class TicketCategoryRepository
         }
         $query = $this->em->createQueryBuilder()->from(ITILCategory::class, 'r');
         $compiler = new RecordCriteria($query, $this->em->getClassMetadata(ITILCategory::class), legacyValues: false);
-        $criteria = \getEntitiesRestrictCriteria('glpi_itilcategories', '', $entities, true, true);
+        $criteria = getEntitiesRestrictCriteria('glpi_itilcategories', '', $entities, true, true);
         $flag = match ($type) {
-            \Ticket::INCIDENT_TYPE => 'is_incident',
-            \Ticket::DEMAND_TYPE => 'is_request',
+            Ticket::INCIDENT_TYPE => 'is_incident',
+            Ticket::DEMAND_TYPE => 'is_request',
             default => null,
         };
         if ($flag !== null) {

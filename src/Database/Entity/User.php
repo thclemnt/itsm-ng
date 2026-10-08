@@ -4,13 +4,20 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use InvalidArgumentException;
+use ReflectionClass;
+use ReflectionProperty;
 use itsmng\Database\AuthenticationType;
+use itsmng\Database\Mapping\ApplicationManaged;
 use itsmng\Database\Mapping\DiscriminatedBy;
 use itsmng\Database\Mapping\DiscriminatorKey;
 use itsmng\Database\Mapping\LegacyInput;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Type\FixedStringType;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_users')]
@@ -32,8 +39,8 @@ class User implements LegacyInput
     public ?string $password = null;
 
     #[ORM\Column(name: '`password_last_update`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $password_last_update = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $password_last_update = null;
 
     #[ORM\Column(name: '`phone`', type: 'string', length: 255, nullable: true)]
     public ?string $phone = null;
@@ -55,7 +62,7 @@ class User implements LegacyInput
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Location $locations = null;
 
-    #[ORM\Column(name: '`language`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 10, nullable: true)]
+    #[ORM\Column(name: '`language`', type: FixedStringType::NAME, length: 10, nullable: true)]
     public ?string $language = null;
 
     #[ORM\Column(name: '`use_mode`', type: 'integer', nullable: false, options: ['default' => '0'])]
@@ -73,7 +80,7 @@ class User implements LegacyInput
     #[ORM\ManyToOne(targetEntity: AuthLDAP::class)]
     #[ORM\JoinColumn(name: 'authldaps_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[DiscriminatedBy('authtype', 'auths_id', [AuthenticationType::Pending->value, AuthenticationType::Ldap->value, AuthenticationType::External->value, AuthenticationType::Cas->value, AuthenticationType::X509->value], emptyValue: 0)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?AuthLDAP $authldap = null;
 
     #[ORM\ManyToOne(targetEntity: AuthMail::class)]
@@ -94,16 +101,16 @@ class User implements LegacyInput
     public int $authtype = 0;
 
     #[ORM\Column(name: '`last_login`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $last_login = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $last_login = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date_sync`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_sync = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_sync = null;
 
     #[ORM\Column(name: '`is_deleted`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_deleted = false;
@@ -137,7 +144,7 @@ class User implements LegacyInput
     #[ORM\Column(name: '`names_format`', type: 'integer', nullable: true)]
     public ?int $names_format = null;
 
-    #[ORM\Column(name: '`csv_delimiter`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 1, nullable: true)]
+    #[ORM\Column(name: '`csv_delimiter`', type: FixedStringType::NAME, length: 1, nullable: true)]
     public ?string $csv_delimiter = null;
 
     #[ORM\Column(name: '`is_ids_visible`', type: 'boolean', nullable: true)]
@@ -149,22 +156,22 @@ class User implements LegacyInput
     #[ORM\Column(name: '`show_jobs_at_login`', type: 'smallint', nullable: true)]
     public ?int $show_jobs_at_login = null;
 
-    #[ORM\Column(name: '`priority_1`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 20, nullable: true)]
+    #[ORM\Column(name: '`priority_1`', type: FixedStringType::NAME, length: 20, nullable: true)]
     public ?string $priority_1 = null;
 
-    #[ORM\Column(name: '`priority_2`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 20, nullable: true)]
+    #[ORM\Column(name: '`priority_2`', type: FixedStringType::NAME, length: 20, nullable: true)]
     public ?string $priority_2 = null;
 
-    #[ORM\Column(name: '`priority_3`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 20, nullable: true)]
+    #[ORM\Column(name: '`priority_3`', type: FixedStringType::NAME, length: 20, nullable: true)]
     public ?string $priority_3 = null;
 
-    #[ORM\Column(name: '`priority_4`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 20, nullable: true)]
+    #[ORM\Column(name: '`priority_4`', type: FixedStringType::NAME, length: 20, nullable: true)]
     public ?string $priority_4 = null;
 
-    #[ORM\Column(name: '`priority_5`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 20, nullable: true)]
+    #[ORM\Column(name: '`priority_5`', type: FixedStringType::NAME, length: 20, nullable: true)]
     public ?string $priority_5 = null;
 
-    #[ORM\Column(name: '`priority_6`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 20, nullable: true)]
+    #[ORM\Column(name: '`priority_6`', type: FixedStringType::NAME, length: 20, nullable: true)]
     public ?string $priority_6 = null;
 
     #[ORM\Column(name: '`followup_private`', type: 'boolean', nullable: true)]
@@ -178,12 +185,12 @@ class User implements LegacyInput
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?RequestType $default_requesttypes = null;
 
-    #[ORM\Column(name: '`password_forget_token`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 40, nullable: true)]
+    #[ORM\Column(name: '`password_forget_token`', type: FixedStringType::NAME, length: 40, nullable: true)]
     public ?string $password_forget_token = null;
 
     #[ORM\Column(name: '`password_forget_token_date`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $password_forget_token_date = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $password_forget_token_date = null;
 
     #[ORM\Column(name: '`user_dn`', type: 'text', nullable: true)]
     public ?string $user_dn = null;
@@ -204,22 +211,22 @@ class User implements LegacyInput
     public ?string $personal_token = null;
 
     #[ORM\Column(name: '`personal_token_date`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $personal_token_date = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $personal_token_date = null;
 
     #[ORM\Column(name: '`api_token`', type: 'string', length: 255, nullable: true)]
     public ?string $api_token = null;
 
     #[ORM\Column(name: '`api_token_date`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $api_token_date = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $api_token_date = null;
 
     #[ORM\Column(name: '`cookie_token`', type: 'string', length: 255, nullable: true)]
     public ?string $cookie_token = null;
 
     #[ORM\Column(name: '`cookie_token_date`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $cookie_token_date = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $cookie_token_date = null;
 
     #[ORM\Column(name: '`display_count_on_home`', type: 'integer', nullable: true)]
     public ?int $display_count_on_home = null;
@@ -261,12 +268,12 @@ class User implements LegacyInput
     public ?string $picture = null;
 
     #[ORM\Column(name: '`begin_date`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $begin_date = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $begin_date = null;
 
     #[ORM\Column(name: '`end_date`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $end_date = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $end_date = null;
 
     #[ORM\Column(name: '`keep_devices_when_purging_item`', type: 'boolean', nullable: true)]
     public ?bool $keep_devices_when_purging_item = null;
@@ -280,10 +287,10 @@ class User implements LegacyInput
     #[ORM\Column(name: '`task_state`', type: 'integer', nullable: true)]
     public ?int $task_state = null;
 
-    #[ORM\Column(name: '`layout`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 20, nullable: true)]
+    #[ORM\Column(name: '`layout`', type: FixedStringType::NAME, length: 20, nullable: true)]
     public ?string $layout = null;
 
-    #[ORM\Column(name: '`palette`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 20, nullable: true)]
+    #[ORM\Column(name: '`palette`', type: FixedStringType::NAME, length: 20, nullable: true)]
     public ?string $palette = null;
 
     #[ORM\Column(name: '`set_default_requester`', type: 'smallint', nullable: true)]
@@ -296,8 +303,8 @@ class User implements LegacyInput
     public ?bool $lock_directunlock_notification = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 
     #[ORM\Column(name: '`highcontrast_css`', type: 'boolean', nullable: true, options: ['default' => false])]
     public ?bool $highcontrast_css = false;
@@ -392,19 +399,19 @@ class User implements LegacyInput
             return $values;
         }
         if (array_key_exists('auths_id', $values) && $values['auths_id'] !== null && !in_array($values['auths_id'], ['', false], true) && filter_var($values['auths_id'], FILTER_VALIDATE_INT) === false) {
-            throw new \InvalidArgumentException('Legacy authentication server requires an integer');
+            throw new InvalidArgumentException('Legacy authentication server requires an integer');
         }
         $property = self::authenticationReference((int)($values['authtype'] ?? $this->authtype));
         if ($property === null) {
             if (($values['authldaps_id'] ?? null) !== null || ($values['authmails_id'] ?? null) !== null) {
-                throw new \InvalidArgumentException('Authentication kind cannot select an LDAP or mail server');
+                throw new InvalidArgumentException('Authentication kind cannot select an LDAP or mail server');
             }
             $code = array_key_exists('auth_source_code', $values) ? $values['auth_source_code'] : ($values['auths_id'] ?? $this->auths_id);
             if (filter_var($code, FILTER_VALIDATE_INT) === false) {
-                throw new \InvalidArgumentException('Authentication source code requires an integer');
+                throw new InvalidArgumentException('Authentication source code requires an integer');
             }
             if (array_key_exists('auths_id', $values) && (int)$values['auths_id'] !== (int)$code) {
-                throw new \InvalidArgumentException('Legacy and canonical authentication source codes disagree');
+                throw new InvalidArgumentException('Legacy and canonical authentication source codes disagree');
             }
             $values['authldaps_id'] = $values['authmails_id'] = null;
             $values['auth_source_code'] = (int)$code;
@@ -412,18 +419,18 @@ class User implements LegacyInput
             $column = $property->getAttributes(ORM\JoinColumn::class)[0]->newInstance()->name;
             $other = $column === 'authldaps_id' ? 'authmails_id' : 'authldaps_id';
             if (($values[$other] ?? null) !== null || ($values['auth_source_code'] ?? null) !== null) {
-                throw new \InvalidArgumentException('Authentication kind cannot select another source branch');
+                throw new InvalidArgumentException('Authentication kind cannot select another source branch');
             }
             $selected = array_key_exists($column, $values) ? $values[$column] : ($values['auths_id'] ?? $this->auths_id);
             if ($selected !== null && !in_array($selected, ['', false], true) && filter_var($selected, FILTER_VALIDATE_INT) === false) {
-                throw new \InvalidArgumentException('Authentication server requires an integer');
+                throw new InvalidArgumentException('Authentication server requires an integer');
             }
             if (array_key_exists($column, $values) && (int)$selected < 0) {
-                throw new \InvalidArgumentException('Canonical authentication server cannot be negative');
+                throw new InvalidArgumentException('Canonical authentication server cannot be negative');
             }
             $selected = max(0, (int)$selected);
             if (array_key_exists($column, $values) && array_key_exists('auths_id', $values) && max(0, (int)$values['auths_id']) !== $selected) {
-                throw new \InvalidArgumentException('Legacy and canonical authentication servers disagree');
+                throw new InvalidArgumentException('Legacy and canonical authentication servers disagree');
             }
             $values[$column] = $selected === 0 ? null : $selected;
             $values[$other] = null;
@@ -441,9 +448,9 @@ class User implements LegacyInput
         return array_values(array_unique($columns));
     }
 
-    public static function authenticationReference(int $type): ?\ReflectionProperty
+    public static function authenticationReference(int $type): ?ReflectionProperty
     {
-        foreach ((new \ReflectionClass(self::class))->getProperties() as $property) {
+        foreach ((new ReflectionClass(self::class))->getProperties() as $property) {
             foreach ($property->getAttributes(DiscriminatedBy::class) as $attribute) {
                 $binding = $attribute->newInstance();
                 if ($binding->legacyColumn === 'auths_id' && in_array($type, $binding->values, true)) {
@@ -461,14 +468,14 @@ class User implements LegacyInput
         $property = self::authenticationReference($this->authtype);
         if ($property === null) {
             if ($this->authldap !== null || $this->authmail !== null || $this->auth_source_code === null) {
-                throw new \InvalidArgumentException('Non-server authentication requires its source code and no server association');
+                throw new InvalidArgumentException('Non-server authentication requires its source code and no server association');
             }
             return;
         }
         $selected = $this->{$property->getName()};
         $other = $property->getName() === 'authldap' ? $this->authmail : $this->authldap;
         if ($other !== null || ($selected !== null && $selected->id !== null && $selected->id <= 0)) {
-            throw new \InvalidArgumentException('Authentication kind cannot select another server association');
+            throw new InvalidArgumentException('Authentication kind cannot select another server association');
         }
         // A missing selected server preserves try-all-server and external-only authentication.
         $this->auth_source_code = null;

@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\LegacyValues;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DisplayPreferenceRepository;
+
 if (!defined('GLPI_ROOT')) {
     include('../../inc/includes.php');
 }
@@ -43,7 +47,7 @@ Session::checkLoginUser();
 global $DB, $CFG_GLPI;
 
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
-$itemtype = \itsmng\Database\LegacyValues::decode($_POST['itemtype'] ?? $_GET['itemtype'] ?? '');
+$itemtype = LegacyValues::decode($_POST['itemtype'] ?? $_GET['itemtype'] ?? '');
 $view = $_POST['view'] ?? $_GET['view'] ?? 'personal';
 
 if ($itemtype !== 'AllAssets' && !class_exists($itemtype)) {
@@ -69,7 +73,7 @@ if ($view !== 'global' && !$can_personal && $can_global) {
 }
 
 $users_id = ($view === 'global') ? $global_view : $personal_view;
-$preferences = new \itsmng\Database\Repository\DisplayPreferenceRepository(\itsmng\Database\Orm::create($DB));
+$preferences = new DisplayPreferenceRepository(Orm::create($DB));
 
 switch ($action) {
     case 'load':

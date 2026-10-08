@@ -39,6 +39,10 @@ use Glpi\CalDAV\Contracts\CalDAVCompatibleItemInterface;
 use Glpi\CalDAV\Traits\VobjectConverterTrait;
 use Sabre\VObject\Component\VCalendar;
 use Sabre\VObject\Component\VTodo;
+use itsmng\Database\LegacyValues;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\PlanningGuestRepository;
+use itsmng\Database\Repository\PlanningRepository;
 
 class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemInterface
 {
@@ -55,10 +59,10 @@ class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemIn
     private ?array $pendingGuests = null;
     private array $guestChanges = [];
 
-    private function guestsRepository(): \itsmng\Database\Repository\PlanningGuestRepository
+    private function guestsRepository(): PlanningGuestRepository
     {
         global $DB;
-        return new \itsmng\Database\Repository\PlanningGuestRepository(\itsmng\Database\Orm::create($DB));
+        return new PlanningGuestRepository(Orm::create($DB));
     }
 
     private function atomicGuests(callable $operation)
@@ -107,12 +111,12 @@ class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemIn
         if (array_key_exists('users_id_guests', $input)) {
             $values = $input['users_id_guests'];
             if (is_string($values)) {
-                $values = json_decode(\itsmng\Database\LegacyValues::decodeString($values), true, flags: JSON_THROW_ON_ERROR);
+                $values = json_decode(LegacyValues::decodeString($values), true, flags: JSON_THROW_ON_ERROR);
             }
             if (!is_array($values)) {
                 throw new InvalidArgumentException('Planning guests require an array');
             }
-            $this->pendingGuests = \itsmng\Database\Repository\PlanningGuestRepository::selections($values);
+            $this->pendingGuests = PlanningGuestRepository::selections($values);
             unset($input['users_id_guests']);
         }
         return $input;
@@ -501,8 +505,8 @@ class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemIn
 
         global $DB;
 
-        $event_iterator = (new \itsmng\Database\Repository\PlanningRepository(
-            \itsmng\Database\Orm::create($DB)
+        $event_iterator = (new PlanningRepository(
+            Orm::create($DB)
         ))->externalEvents($criteria);
 
         $vcalendars = [];

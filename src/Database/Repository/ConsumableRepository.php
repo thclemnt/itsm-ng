@@ -4,8 +4,11 @@
 
 namespace itsmng\Database\Repository;
 
+use DateTimeImmutable;
+use DateTimeInterface;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
 use itsmng\Database\Entity;
 use itsmng\Database\RecordCriteria;
 
@@ -38,14 +41,14 @@ final class ConsumableRepository
     {
         $association = Entity\Consumable::referenceAssociation($itemtype);
         if ($recipient <= 0) {
-            throw new \InvalidArgumentException('Consumable recipient requires a positive identifier');
+            throw new InvalidArgumentException('Consumable recipient requires a positive identifier');
         }
         $target = $this->em->getClassMetadata(Entity\Consumable::class)->getAssociationTargetClass($association);
         if ($this->em->getRepository($target)->find($recipient) === null) {
             return false;
         }
         $updated = $this->em->createQueryBuilder()->update(Entity\Consumable::class, 'c')
-            ->set('c.date_out', ':today')->setParameter('today', new \DateTimeImmutable('today'), Types::DATE_IMMUTABLE)
+            ->set('c.date_out', ':today')->setParameter('today', new DateTimeImmutable('today'), Types::DATE_IMMUTABLE)
             ->set('c.itemtype', ':type')->setParameter('type', $itemtype, Types::STRING)
             ->set('c.recipientUser', $association === 'recipientUser' ? ':recipient' : 'NULL')
             ->set('c.recipientGroup', $association === 'recipientGroup' ? ':recipient' : 'NULL')
@@ -97,7 +100,7 @@ final class ConsumableRepository
         return $query->getQuery()->getScalarResult();
     }
 
-    public function alertCandidates(int $entity, \DateTimeImmutable $before): array
+    public function alertCandidates(int $entity, DateTimeImmutable $before): array
     {
         $query = $this->em->createQueryBuilder()->select('r.id AS consID', 'IDENTITY(r.entities) AS entity', 'r.ref AS ref', 'r.name AS name', 'r.alarm_threshold AS threshold', 'a.id AS alertID', 'a.date AS date')
             ->from(Entity\ConsumableItem::class, 'r')->leftJoin(Entity\Alert::class, 'a', 'WITH', 'a.consumableItem = r')
@@ -109,7 +112,7 @@ final class ConsumableRepository
         $rows = $query->getQuery()->getScalarResult();
         foreach ($rows as &$row) {
             if ($row['date'] !== null) {
-                $date = $row['date'] instanceof \DateTimeInterface ? $row['date'] : new \DateTimeImmutable($row['date']);
+                $date = $row['date'] instanceof DateTimeInterface ? $row['date'] : new DateTimeImmutable($row['date']);
                 $row['date'] = $date->format('Y-m-d H:i:s');
             }
         }

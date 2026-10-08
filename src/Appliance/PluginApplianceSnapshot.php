@@ -4,6 +4,12 @@
 
 namespace itsmng\Appliance;
 
+use Appliance;
+use ApplianceEnvironment;
+use ApplianceType;
+use Appliance_Item;
+use Appliance_Item_Relation;
+
 /** The plugin export is historical input, never current core schema metadata. */
 final readonly class PluginApplianceSnapshot
 {
@@ -14,8 +20,8 @@ final readonly class PluginApplianceSnapshot
     /** Dependency order is part of the appliance aggregate's import operation. */
     public function records(): iterable
     {
-        foreach ([\ApplianceType::class => $this->types, \ApplianceEnvironment::class => $this->environments,
-            \Appliance::class => $this->appliances, \Appliance_Item::class => $this->items, \Appliance_Item_Relation::class => $this->relations] as $model => $rows) {
+        foreach ([ApplianceType::class => $this->types, ApplianceEnvironment::class => $this->environments,
+            Appliance::class => $this->appliances, Appliance_Item::class => $this->items, Appliance_Item_Relation::class => $this->relations] as $model => $rows) {
             foreach ($rows as $values) {
                 yield [$model, $values];
             }

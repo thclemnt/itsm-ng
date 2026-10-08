@@ -43,6 +43,9 @@ use Sabre\VObject\ParseException;
 use Sabre\VObject\Component\VEvent;
 use Sabre\VObject\Component\VTodo;
 use Sabre\VObject\Property\ICalendar\Recur;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\PlanningRepository;
+use itsmng\Database\Repository\UserRepository;
 
 /**
  * Planning Class
@@ -716,7 +719,7 @@ class Planning extends CommonGLPI
                     static fn ($key) => (int)explode('_', (string)$key)[1],
                     array_keys($planning['users'])
                 );
-                $names = $userIds ? (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+                $names = $userIds ? (new UserRepository(Orm::create($DB)))
                     ->friendlyNameData($userIds) : [];
                 foreach (array_keys($planning['users']) as $planning_id_user) {
                     $child_exploded = explode('_', (string) $planning_id_user);
@@ -738,7 +741,7 @@ class Planning extends CommonGLPI
                 $object = new $itemtype();
                 $users_id = (int) $exploded[1];
                 if ($itemtype === 'User') {
-                    $names = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+                    $names = (new UserRepository(Orm::create($DB)))
                         ->friendlyNameData([$users_id]);
                     $object->fields = $names[$users_id] ?? [];
                 } else {
@@ -1018,7 +1021,7 @@ class Planning extends CommonGLPI
                 // Re-read the credential for each rendered filter: an intervening
                 // callback may rotate it. Existing tokens need no full User record.
                 $loginId = Session::getLoginUserID(true);
-                $token = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+                $token = (new UserRepository(Orm::create($DB)))
                     ->tokenValue((int)$loginId, 'personal_token');
                 if (empty($token)) {
                     // Keep issuance, public update hooks and persisted-token checks
@@ -1210,7 +1213,7 @@ class Planning extends CommonGLPI
         global $DB;
         echo Group::getTypeName(1) . " : <br>";
 
-        $groups = (new \itsmng\Database\Repository\PlanningRepository(\itsmng\Database\Orm::create($DB)))
+        $groups = (new PlanningRepository(Orm::create($DB)))
             ->groupChoices((int)$_SESSION['glpiactive_entity']);
 
         echo "<select name='groups_id' id='dropdown_groups_id'>";
@@ -1330,7 +1333,7 @@ class Planning extends CommonGLPI
             }
         }
 
-        $groups = (new \itsmng\Database\Repository\PlanningRepository(\itsmng\Database\Orm::create($DB)))
+        $groups = (new PlanningRepository(Orm::create($DB)))
             ->groupChoices((int)$_SESSION['glpiactive_entity'], $memberships);
 
         echo "<select name='groups_id' id='dropdown_groups_id'>";

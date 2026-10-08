@@ -5,7 +5,11 @@
 namespace itsmng\Database\Repository;
 
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
+use ReflectionClass;
 use itsmng\Database\Mapping\CostParent;
+
+use function getItemTypeForTable;
 
 /** Cost history and totals for the five core parent/child associations. */
 final class CostRepository
@@ -24,7 +28,7 @@ final class CostRepository
         if (!preg_match('/^[A-Za-z][A-Za-z0-9]*$/D', $type) || !class_exists($class = 'itsmng\\Database\\Entity\\' . $type)) {
             return null;
         }
-        foreach ((new \ReflectionClass($class))->getProperties() as $property) {
+        foreach ((new ReflectionClass($class))->getProperties() as $property) {
             if ($property->getAttributes(CostParent::class)) {
                 return [$class, $property->name];
             }
@@ -34,7 +38,7 @@ final class CostRepository
 
     public function rows(string $type, int|array $parents, bool $last = false): array
     {
-        [$class, $association] = self::definition($type) ?? throw new \InvalidArgumentException('Unmapped cost type');
+        [$class, $association] = self::definition($type) ?? throw new InvalidArgumentException('Unmapped cost type');
         $query = $this->em->createQueryBuilder()->select('c')->from($class, 'c')
             ->where('c.' . $association . ' IN (:parents)')->setParameter('parents', (array)$parents ?: [-1]);
         $date = $last ? 'end_date' : 'begin_date';
@@ -73,7 +77,7 @@ final class CostRepository
             return null;
         }
         $parent = $this->em->getClassMetadata($cost->getAssociationTargetClass($parentProperty));
-        $parentType = \getItemTypeForTable($parent->getTableName());
+        $parentType = getItemTypeForTable($parent->getTableName());
         $connection = $this->em->getConnection();
         $platform = $connection->getDatabasePlatform();
         $quote = $this->em->getConfiguration()->getQuoteStrategy();
@@ -91,7 +95,7 @@ final class CostRepository
         [, $linkParent, , , , , $linkClass] = ITILStatisticsType::definition($this->em, $parentType);
         try {
             $assetProperty = $linkClass::referenceAssociation($subjectType);
-        } catch (\InvalidArgumentException) {
+        } catch (InvalidArgumentException) {
             // Other meta relationships (including plugin associations) are not
             // represented by the typed ITIL asset ownership being aggregated.
             return null;
@@ -118,9 +122,9 @@ final class CostRepository
 
     public function actionTime(string $type, int $parent): ?int
     {
-        [$class, $association] = self::definition($type) ?? throw new \InvalidArgumentException('Unmapped cost type');
+        [$class, $association] = self::definition($type) ?? throw new InvalidArgumentException('Unmapped cost type');
         if (!in_array($type, ['TicketCost', 'ProblemCost', 'ChangeCost'], true)) {
-            throw new \InvalidArgumentException('Cost type has no action time');
+            throw new InvalidArgumentException('Cost type has no action time');
         }
         $value = $this->em->createQueryBuilder()->select('SUM(c.actiontime)')->from($class, 'c')
             ->where('c.' . $association . ' = :parent')->setParameter('parent', $parent)

@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
 * */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NetworkNameRepository;
+use itsmng\Reporting\Criteria;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -592,14 +596,14 @@ class NetworkName extends FQDNLabel
         $options['createRow'] = false;
         $address              = new self();
 
-        $ids = (new \itsmng\Database\Repository\NetworkNameRepository(\itsmng\Database\Orm::create($DB)))
+        $ids = (new NetworkNameRepository(Orm::create($DB)))
             ->identifiersForItem(
                 $item->getType(),
                 (int)$item->getID(),
                 $options['order'] ?? 'name',
                 isset($options['limit']) ? (int)$options['limit'] : null,
                 (int)($options['offset'] ?? 0),
-                \itsmng\Reporting\Criteria::entities()
+                Criteria::entities()
             );
         foreach ($ids as $id) {
             if ($address->getFromDB($id)) {
@@ -825,8 +829,8 @@ class NetworkName extends FQDNLabel
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\NetworkNameRepository(\itsmng\Database\Orm::create($DB)))
-            ->countForItem($item->getType(), (int)$item->getID(), \itsmng\Reporting\Criteria::entities());
+        return (new NetworkNameRepository(Orm::create($DB)))
+            ->countForItem($item->getType(), (int)$item->getID(), Criteria::entities());
     }
 
 

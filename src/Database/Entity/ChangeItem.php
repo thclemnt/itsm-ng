@@ -5,20 +5,26 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\ITILAssetAssociations;
+use itsmng\Database\Mapping\ITILStatisticsRelation;
+use itsmng\Database\Mapping\ITILStatisticsRole;
+use itsmng\Database\Mapping\LegacyInput;
+use itsmng\Database\Mapping\RequiredItemReference;
 
 #[ORM\Entity]
 #[ORM\HasLifecycleCallbacks]
 #[ORM\Table(name: 'glpi_changes_items')]
 #[ORM\UniqueConstraint(name: 'changes_items_unicity', columns: ['changes_id', 'itemtype', 'items_id'])]
-class ChangeItem implements \itsmng\Database\Mapping\LegacyInput
+class ChangeItem implements LegacyInput
 {
-    use \itsmng\Database\Mapping\RequiredItemReference;
-    use \itsmng\Database\Mapping\ITILAssetAssociations;
+    use RequiredItemReference;
+    use ITILAssetAssociations;
 
     #[ORM\ManyToOne(targetEntity: Change::class)]
     #[ORM\JoinColumn(name: 'changes_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ITILStatisticsRelation(\itsmng\Database\Mapping\ITILStatisticsRole::Items)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ITILStatisticsRelation(ITILStatisticsRole::Items)]
+    #[ApplicationManaged]
     public ?Change $changes = null;
 
     #[ORM\Id]

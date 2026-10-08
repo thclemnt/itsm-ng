@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\TreeRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -129,7 +132,7 @@ class CommonImplicitTreeDropdown extends CommonTreeDropdown
     {
         global $DB, $GLPI_CACHE;
 
-        $repository = new \itsmng\Database\Repository\TreeRepository(\itsmng\Database\Orm::create($DB));
+        $repository = new TreeRepository(Orm::create($DB));
         $table = $this->getTable();
         $column = $this->getForeignKeyField();
         $repository->updateDerived($table, [(int)$this->getID()], ['sons_cache' => null]);

@@ -4,6 +4,8 @@
 
 namespace itsmng\Domain;
 
+use DBAdapter;
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\NotificationRepository;
 use itsmng\Database\Repository\RecordRepository;
@@ -11,7 +13,7 @@ use itsmng\Database\Repository\RecordRepository;
 /** Build an event plan before public event callbacks may change rules or bindings. */
 final class NotificationDeliveryService
 {
-    public function __construct(private \DBAdapter $database)
+    public function __construct(private DBAdapter $database)
     {
     }
 
@@ -46,7 +48,7 @@ final class NotificationDeliveryService
         return $this->bindingRows($em, (new NotificationRepository($em))->bindingsForTemplate($template));
     }
 
-    private function bindingRows(\Doctrine\ORM\EntityManager $em, array $bindings): array
+    private function bindingRows(EntityManager $em, array $bindings): array
     {
         $records = new RecordRepository($em);
         return array_map($records->toRow(...), $bindings);

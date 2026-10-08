@@ -4,9 +4,12 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Type\FixedStringType;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_documents')]
@@ -43,8 +46,8 @@ class Document
     public ?string $mime = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
     public ?string $comment = null;
@@ -65,7 +68,7 @@ class Document
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Ticket $tickets = null;
 
-    #[ORM\Column(name: '`sha1sum`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 40, nullable: true)]
+    #[ORM\Column(name: '`sha1sum`', type: FixedStringType::NAME, length: 40, nullable: true)]
     public ?string $sha1sum = null;
 
     #[ORM\Column(name: '`is_blacklisted`', type: 'boolean', nullable: false, options: ['default' => false])]
@@ -75,6 +78,6 @@ class Document
     public ?string $tag = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 }

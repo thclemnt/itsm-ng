@@ -6,6 +6,7 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
 use itsmng\Database\Entity;
 use itsmng\Database\RecordCriteria;
 
@@ -34,7 +35,7 @@ final class ContentRepository
     {
         try {
             $association = Entity\DocumentItem::referenceAssociation($type);
-        } catch (\InvalidArgumentException) {
+        } catch (InvalidArgumentException) {
             return [];
         }
         $rows = $this->em->createQueryBuilder()->select('IDENTITY(a.documents) AS id')->from(Entity\DocumentItem::class, 'a')
@@ -61,11 +62,11 @@ final class ContentRepository
         $columns = ['name' => 'r.name', 'entity' => 'e.completename', 'filename' => 'r.filename', 'link' => 'r.link',
             'headings' => 'c.completename', 'mime' => 'r.mime', 'tag' => 'r.tag', 'assocdate' => 'a.date_creation'];
         if (!isset($columns[$sort]) || !in_array($order, ['ASC', 'DESC'], true)) {
-            throw new \InvalidArgumentException('Unsupported document ordering');
+            throw new InvalidArgumentException('Unsupported document ordering');
         }
         try {
             $association = Entity\DocumentItem::referenceAssociation($type);
-        } catch (\InvalidArgumentException) {
+        } catch (InvalidArgumentException) {
             return [];
         }
         $subject = 'IDENTITY(a.' . $association . ')';

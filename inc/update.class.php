@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Upgrade;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -154,7 +156,7 @@ class Update extends CommonGLPI
     {
         // Retain the public facade used by the web updater. Release strings no
         // longer select historical scripts; the canonical ledger owns replay.
-        (new \itsmng\Database\Upgrade($this->DB))->apply(
+        (new Upgrade($this->DB))->apply(
             $this->migration === null ? null : fn (string $message) => $this->migration->displayMessage($message)
         );
     }
@@ -249,7 +251,7 @@ class Update extends CommonGLPI
      */
     public function isExpectedSecurityKeyFileMissing(): bool
     {
-        return (new \itsmng\Database\Upgrade($this->DB))->isSecurityKeyMissing();
+        return (new Upgrade($this->DB))->isSecurityKeyMissing();
     }
 
     /**
@@ -260,6 +262,6 @@ class Update extends CommonGLPI
      */
     public function getExpectedSecurityKeyFilePath(): ?string
     {
-        return (new \itsmng\Database\Upgrade($this->DB))->expectedSecurityKeyPath();
+        return (new Upgrade($this->DB))->expectedSecurityKeyPath();
     }
 }

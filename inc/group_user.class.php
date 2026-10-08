@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\GroupMembershipRepository;
+use itsmng\Database\Repository\PlanningRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -49,10 +54,10 @@ class Group_User extends CommonDBRelation
     public static $itemtype_2                 = 'Group';
     public static $items_id_2                 = 'groups_id';
 
-    private static function repository(): \itsmng\Database\Repository\GroupMembershipRepository
+    private static function repository(): GroupMembershipRepository
     {
         global $DB;
-        return new \itsmng\Database\Repository\GroupMembershipRepository(\itsmng\Database\Orm::create($DB));
+        return new GroupMembershipRepository(Orm::create($DB));
     }
 
     /**
@@ -325,7 +330,7 @@ class Group_User extends CommonDBRelation
             $restrict = $group->getID();
         }
 
-        $iterator = new \itsmng\Database\RowIterator(self::repository()->members(
+        $iterator = new RowIterator(self::repository()->members(
             (array)$restrict,
             getEntitiesRestrictCriteria(Profile_User::getTable(), '', $entityrestrict, true)
         )['rows']);
@@ -424,7 +429,7 @@ class Group_User extends CommonDBRelation
             (bool)$tree,
             $withLinkFields
         );
-        $iterator = new \itsmng\Database\RowIterator($page['rows']);
+        $iterator = new RowIterator($page['rows']);
         $rows     = [];
 
         while ($data = $iterator->next()) {
@@ -764,9 +769,9 @@ class Group_User extends CommonDBRelation
         global $DB;
 
         $member = 'user_' . $this->fields['users_id'];
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            $session = (new \itsmng\Database\Repository\PlanningRepository($em))->updateGroupSubscriptions(
+            $session = (new PlanningRepository($em))->updateGroupSubscriptions(
                 (int)$this->fields['groups_id'],
                 (int)Session::getLoginUserID(),
                 static function (array $settings, string $key) use ($add, $member): array {

@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Domain\NotificationTemplateService;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -227,7 +229,7 @@ class NotificationTemplateTranslation extends CommonDBChild
         $massiveActionValues = [];
 
         foreach (
-            (new \itsmng\Domain\NotificationTemplateService($DB))->translations((int)$nID) as $translation
+            (new NotificationTemplateService($DB))->translations((int)$nID) as $translation
         ) {
             $data = $translation->legacyRow();
             $link = '';
@@ -349,7 +351,7 @@ class NotificationTemplateTranslation extends CommonDBChild
 
         global $DB;
 
-        return (new \itsmng\Domain\NotificationTemplateService($DB))->usedLanguages((int)$language_id);
+        return (new NotificationTemplateService($DB))->usedLanguages((int)$language_id);
     }
 
 

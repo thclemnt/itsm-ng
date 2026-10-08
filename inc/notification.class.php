@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\LegacyValues;
+use itsmng\Database\RowIterator;
+use itsmng\Domain\NotificationDeliveryPlan;
+use itsmng\Domain\NotificationDeliveryService;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -674,15 +679,15 @@ class Notification extends CommonDBTM
     {
         // Public legacy callers supply values escaped for the old SQL builder.
         // The actual event producer uses the raw typed plan API below.
-        return new \itsmng\Database\RowIterator(self::getDeliveryPlan(
-            \itsmng\Database\LegacyValues::decodeString($event),
-            \itsmng\Database\LegacyValues::decodeString($itemtype),
+        return new RowIterator(self::getDeliveryPlan(
+            LegacyValues::decodeString($event),
+            LegacyValues::decodeString($itemtype),
             $entity
         )->legacyRows());
     }
 
     /** The caller owns entity scope and the existing registered-mode policy. */
-    public static function getDeliveryPlan($event, $itemtype, $entity): \itsmng\Domain\NotificationDeliveryPlan
+    public static function getDeliveryPlan($event, $itemtype, $entity): NotificationDeliveryPlan
     {
         global $DB, $CFG_GLPI;
 
@@ -692,7 +697,7 @@ class Notification extends CommonDBTM
                 $enabledModes[] = $mode;
             }
         }
-        return (new \itsmng\Domain\NotificationDeliveryService($DB))->plan(
+        return (new NotificationDeliveryService($DB))->plan(
             $event,
             $itemtype,
             getEntitiesRestrictCriteria(self::getTable(), 'entities_id', $entity, true),

@@ -4,7 +4,10 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\CostParent;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
@@ -14,8 +17,8 @@ class ProjectCost
 {
     #[ORM\ManyToOne(targetEntity: Project::class)]
     #[ORM\JoinColumn(name: 'projects_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\CostParent]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[CostParent]
+    #[ApplicationManaged]
     public ?Project $projects = null;
 
     #[ORM\Id]
@@ -30,10 +33,10 @@ class ProjectCost
     public ?string $comment = null;
 
     #[ORM\Column(name: '`begin_date`', type: 'date', nullable: true)]
-    public ?\DateTimeInterface $begin_date = null;
+    public ?DateTimeInterface $begin_date = null;
 
     #[ORM\Column(name: '`end_date`', type: 'date', nullable: true)]
-    public ?\DateTimeInterface $end_date = null;
+    public ?DateTimeInterface $end_date = null;
 
     #[ORM\Column(name: '`cost`', type: 'decimal', precision: 20, scale: 4, nullable: false, options: ['default' => '0.0000'])]
     public string $cost = '0.0000';
@@ -46,7 +49,7 @@ class ProjectCost
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
     #[ReferencePolicy(ReferenceKind::RootEntity)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]

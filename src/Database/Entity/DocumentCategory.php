@@ -4,13 +4,17 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\ReferenceKey;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\SchemaIndex;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_documentcategories')]
-#[\itsmng\Database\Mapping\SchemaIndex('unicity', ['parent_key', 'name'], unique: true, postgresqlName: 'glpi_documentcategories_unicity')]
+#[SchemaIndex('unicity', ['parent_key', 'name'], unique: true, postgresqlName: 'glpi_documentcategories_unicity')]
 class DocumentCategory
 {
     #[ORM\Id]
@@ -42,13 +46,13 @@ class DocumentCategory
     public ?string $sons_cache = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
-    #[\itsmng\Database\Mapping\ReferenceKey('documentcategories_id')]
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
+    #[ReferenceKey('documentcategories_id')]
     #[ORM\Column(name: '`parent_key`', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS')]
     public ?int $parent_key = null;
 }

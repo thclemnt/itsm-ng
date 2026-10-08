@@ -8,9 +8,10 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\MySQL80Platform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use atoum\atoum\test;
 use itsmng\Database\Migration\V220\IncomingProjectionReferences as Capture;
 
-class IncomingProjectionReferences extends \atoum\atoum\test
+class IncomingProjectionReferences extends test
 {
     public function platforms(): array
     {

@@ -31,6 +31,15 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Entity\Contract as ContractEntity;
+use itsmng\Database\Entity\ContractItem;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ContractRepository;
+use itsmng\Database\Repository\TransferBindingRepository;
+use itsmng\Domain\ContractAlertOutcome;
+use itsmng\Domain\ContractAlertPublisher;
+use itsmng\Domain\ContractSchedule;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -64,16 +73,16 @@ class Contract extends CommonDBTM
 
 
 
-    private static function repository(): \itsmng\Database\Repository\ContractRepository
+    private static function repository(): ContractRepository
     {
         global $DB;
-        return \itsmng\Database\Orm::create($DB)->getRepository(\itsmng\Database\Entity\Contract::class);
+        return Orm::create($DB)->getRepository(ContractEntity::class);
     }
 
     /** Contract calendar labels use the same dates as selection and periodic scheduling. */
     public static function formatDeadline(array $fields, bool $notice = false, bool $color = false, bool $automaticRenewal = false): string
     {
-        $deadline = \itsmng\Domain\ContractSchedule::fromFields($fields)->deadline($notice, $automaticRenewal);
+        $deadline = ContractSchedule::fromFields($fields)->deadline($notice, $automaticRenewal);
         if ($deadline === null) {
             return '';
         }
@@ -150,10 +159,10 @@ class Contract extends CommonDBTM
         global $DB;
 
         Toolbox::deprecated('Use clone');
-        $repository = \itsmng\Database\Repository\TransferBindingRepository::contracts(\itsmng\Database\Orm::create($DB));
+        $repository = TransferBindingRepository::contracts(Orm::create($DB));
         foreach ($repository->links($itemtype, (int)$oldid) as $link) {
             $cd = new Contract_Item();
-            $data = \itsmng\Database\Entity\ContractItem::withReference(['contracts_id' => $link['parent_id']], $itemtype, (int)$newid);
+            $data = ContractItem::withReference(['contracts_id' => $link['parent_id']], $itemtype, (int)$newid);
             $data = self::checkTemplateEntity($data, $data['items_id'], $data['itemtype']);
             $data             = Toolbox::addslashes_deep($data);
 
@@ -1186,7 +1195,7 @@ class Contract extends CommonDBTM
         $contract_messages = [];
 
         $repository = self::repository();
-        $publisher = new \itsmng\Domain\ContractAlertPublisher($DB);
+        $publisher = new ContractAlertPublisher($DB);
         foreach (Entity::getEntitiesToNotify('use_contracts_alert') as $entity => $value) {
             $before       = Entity::getUsedConfig('send_contracts_alert_before_delay', $entity);
 
@@ -1219,7 +1228,7 @@ class Contract extends CommonDBTM
             }
 
             foreach ($repository->periodicContracts((int)$entity) as $data) {
-                $schedule = \itsmng\Domain\ContractSchedule::fromFields($data);
+                $schedule = ContractSchedule::fromFields($data);
                 $todo = ['periodicity' => Alert::PERIODICITY];
                 if ($data['alert'] & (1 << Alert::NOTICE)) {
                     $todo['periodicitynotice'] = Alert::NOTICE;
@@ -1250,10 +1259,10 @@ class Contract extends CommonDBTM
             if (isset($contract_infos[$event]) && count($contract_infos[$event])) {
                 foreach ($contract_infos[$event] as $entity => $contracts) {
                     $outcome = $publisher->publish($event, $type, (int)$entity, $contracts, in_array($event, ['periodicity', 'periodicitynotice'], true));
-                    if ($outcome === \itsmng\Domain\ContractAlertOutcome::Skipped) {
+                    if ($outcome === ContractAlertOutcome::Skipped) {
                         continue;
                     }
-                    if ($outcome === \itsmng\Domain\ContractAlertOutcome::Published) {
+                    if ($outcome === ContractAlertOutcome::Published) {
                         $message     = $contract_messages[$event][$entity];
                         $cron_status = 1;
                         $entityname  = Dropdown::getDropdownName("glpi_entities", $entity);

@@ -33,14 +33,57 @@
 
 namespace tests\units;
 
+use Calendar;
+use CalendarSegment;
+use Certificate;
+use Certificate_Item;
+use CommonDBConnexity;
+use CommonDBConnexityItemNotFound;
+use CommonDBTM as LegacyCommonDBTM;
+use CommonITILActor;
+use Computer;
 use DBAdapter;
+use DBmysql as LegacyDBmysql;
 use DbTestCase;
 use Doctrine\DBAL\Connection;
+use Doctrine\ORM\Configuration;
+use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use Doctrine\ORM\Event\PostLoadEventArgs;
+use Doctrine\ORM\Events;
+use Doctrine\ORM\Id\AssignedGenerator;
+use Doctrine\ORM\Internal\Hydration\AbstractHydrator;
+use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\ORM\Query;
 use DomainType;
 use Doctrine\DBAL\TransactionIsolationLevel;
 use Doctrine\ORM\EntityManager;
+use Entity;
+use ITILFollowup;
+use Infocom;
+use Item_Disk;
+use Log;
+use NetworkEquipment;
+use NetworkPort as LegacyNetworkPort;
+use NetworkPortAggregate;
+use NetworkPortLocal as LegacyNetworkPortLocal;
+use NetworkPort_Vlan;
+use RuntimeException;
+use SavedSearch;
+use Session;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Ticket;
+use TicketSatisfaction;
+use Toolbox;
+use User;
+use itsmng\Database\CurrentReadUnavailable;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Entity\Computer as ComputerEntity;
 use itsmng\Database\Entity\DomainType as DomainTypeRecord;
 use itsmng\Database\Entity\Entity as EntityRecord;
+use itsmng\Database\Entity\Infocom as InfocomEntity;
+use itsmng\Database\Entity\NetworkPort;
+use itsmng\Database\Entity\NetworkPortLocal;
+use itsmng\Database\Entity\Ticket as TicketEntity;
 use itsmng\Database\MutationCleanupFailure;
 use itsmng\Database\MySQLConnection;
 use itsmng\Database\PostgresConnection;
@@ -48,12 +91,18 @@ use itsmng\Database\Orm;
 use LogicException;
 use itsmng\Database\OwnedMutationFrame;
 use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\DeletionRepository;
+use itsmng\Database\Repository\InfocomRepository;
+use itsmng\Database\Repository\NetworkPortAggregateRepository;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\RecordWriter;
 use itsmng\Database\TransactionOwnershipMismatch;
 use Plugin;
 use ReflectionProperty;
 use Software;
 use Throwable;
 use TicketTask;
+use mock\DBmysql;
 
 /* Test for inc/commondbtm.class.php */
 
@@ -348,18 +397,18 @@ class CommonDBTM extends DbTestCase
         global $DB;
         $this->login();
         $this->setEntity(0, true);
-        $entity = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
-        $computer = $this->createItem(\Computer::class, ['name' => 'Reference metadata before', 'entities_id' => $entity->getID()]);
+        $entity = $this->createItem(Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $computer = $this->createItem(Computer::class, ['name' => 'Reference metadata before', 'entities_id' => $entity->getID()]);
         $connection = $DB->getDoctrineConnection();
-        $cache = new \Symfony\Component\Cache\Adapter\ArrayAdapter(storeSerialized: true);
-        $configuration = static function () use ($connection, $cache): \Doctrine\ORM\Configuration {
-            $config = \itsmng\Database\Orm::configuration($connection->getDatabasePlatform());
-            $config->setMetadataCache(new \Symfony\Component\Cache\Adapter\ArrayAdapter(storeSerialized: true));
+        $cache = new ArrayAdapter(storeSerialized: true);
+        $configuration = static function () use ($connection, $cache): Configuration {
+            $config = Orm::configuration($connection->getDatabasePlatform());
+            $config->setMetadataCache(new ArrayAdapter(storeSerialized: true));
             $config->setQueryCache($cache);
             return $config;
         };
-        $oracle = new \Doctrine\ORM\EntityManager($connection, $configuration());
-        $metadata = $oracle->getClassMetadata(\itsmng\Database\Entity\Computer::class);
+        $oracle = new EntityManager($connection, $configuration());
+        $metadata = $oracle->getClassMetadata(ComputerEntity::class);
         // Independent current provider declarations are the reference-type oracle.
         $declarations = [$metadata->name => $metadata];
         foreach ($metadata->associationMappings as $mapping) {
@@ -375,27 +424,27 @@ class CommonDBTM extends DbTestCase
                 'type' => $declaration->getTypeOfField($property)];
         }
         $read = static function (?array $facts, bool $custom = false) use ($connection, $configuration, $computer): array {
-            $manager = new class ($connection, $configuration()) extends \Doctrine\ORM\EntityManager {
+            $manager = new class ($connection, $configuration()) extends EntityManager {
                 public array $metadataCalls = [];
-                public function getClassMetadata(string $className): \Doctrine\ORM\Mapping\ClassMetadata
+                public function getClassMetadata(string $className): ClassMetadata
                 {
                     $this->metadataCalls[] = $className;
                     return parent::getClassMetadata($className);
                 }
             };
             if ($custom) {
-                $manager->getEventManager()->addEventListener(\Doctrine\ORM\Events::loadClassMetadata, new class () {
-                    public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+                $manager->getEventManager()->addEventListener(Events::loadClassMetadata, new class () {
+                    public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
                     {
-                        if ($event->getClassMetadata()->name === \itsmng\Database\Entity\Entity::class) {
+                        if ($event->getClassMetadata()->name === EntityRecord::class) {
                             $event->getClassMetadata()->fieldMappings['id']->type = 'decimal';
                         }
                     }
                 });
             }
             try {
-                $row = (new \itsmng\Database\Repository\RecordRepository($manager))->scalarRow(
-                    \itsmng\Database\Entity\Computer::class,
+                $row = (new RecordRepository($manager))->scalarRow(
+                    ComputerEntity::class,
                     (int)$computer->getID(),
                     $facts,
                 );
@@ -409,8 +458,8 @@ class CommonDBTM extends DbTestCase
             $this->integer(count($originalMetadata))->isGreaterThan(1);
             [$actual, $loaded, $calls] = $read($identifiers);
             $this->array($actual)->isIdenticalTo($expected);
-            $this->array($loaded)->isIdenticalTo([\itsmng\Database\Entity\Computer::class]);
-            $this->array(array_values(array_unique($calls)))->isIdenticalTo([\itsmng\Database\Entity\Computer::class]);
+            $this->array($loaded)->isIdenticalTo([ComputerEntity::class]);
+            $this->array(array_values(array_unique($calls)))->isIdenticalTo([ComputerEntity::class]);
             $connection->update('glpi_computers', ['name' => 'Reference metadata after'], ['id' => $computer->getID()]);
             $this->string($read($identifiers)[0]['name'])->isIdenticalTo('Reference metadata after');
             [$custom, $customMetadata] = $read(null, true);
@@ -430,54 +479,54 @@ class CommonDBTM extends DbTestCase
         global $DB;
         $this->login();
         $this->setEntity(0, true);
-        $entity = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
-        $computer = $this->createItem(\Computer::class, ['name' => 'Before scalar read', 'entities_id' => $entity->getID()]);
-        $user = $this->createItem(\User::class, ['name' => $this->getUniqueString()]);
-        $ticket = $this->createItem(\Ticket::class, ['name' => $this->getUniqueString(),
+        $entity = $this->createItem(Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $computer = $this->createItem(Computer::class, ['name' => 'Before scalar read', 'entities_id' => $entity->getID()]);
+        $user = $this->createItem(User::class, ['name' => $this->getUniqueString()]);
+        $ticket = $this->createItem(Ticket::class, ['name' => $this->getUniqueString(),
             'content' => 'Complete ticket fields', 'entities_id' => 0, '_disablenotif' => true]);
         $json = json_encode(['quoted' => 'A "label" / path', 'enabled' => true, 'nested' => [1, null]], JSON_THROW_ON_ERROR);
-        $this->boolean($DB->update('glpi_users', \Toolbox::addslashes_deep([
+        $this->boolean($DB->update('glpi_users', Toolbox::addslashes_deep([
             'is_active' => false, 'firstname' => null, 'last_login' => '2020-02-03 04:05:06',
             'access_custom_shortcuts' => $json,
         ]), ['id' => $user->getID()]))->isTrue();
         $this->boolean($DB->update('glpi_computers', ['ticket_tco' => '12.3456'], ['id' => $computer->getID()]))->isTrue();
-        $certificate = $this->createItem(\Certificate::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity->getID()]);
-        $binding = $this->createItem(\Certificate_Item::class, ['certificates_id' => $certificate->getID(),
+        $certificate = $this->createItem(Certificate::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity->getID()]);
+        $binding = $this->createItem(Certificate_Item::class, ['certificates_id' => $certificate->getID(),
             'itemtype' => 'Computer', 'items_id' => $computer->getID()]);
-        $calendar = $this->createItem(\Calendar::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
-        $segment = $this->createItem(\CalendarSegment::class, ['calendars_id' => $calendar->getID(),
+        $calendar = $this->createItem(Calendar::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $segment = $this->createItem(CalendarSegment::class, ['calendars_id' => $calendar->getID(),
             'day' => 1, 'begin' => '00:00:00', 'end' => '24:00:00']);
         $connection = $DB->getDoctrineConnection();
-        $manager = new class ($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+        $manager = new class ($connection, Orm::configuration($connection->getDatabasePlatform())) extends EntityManager {
             public array $queries = [];
             public array $hydrationModes = [];
-            public function newHydrator(string|int $hydrationMode): \Doctrine\ORM\Internal\Hydration\AbstractHydrator
+            public function newHydrator(string|int $hydrationMode): AbstractHydrator
             {
                 $this->hydrationModes[] = $hydrationMode;
                 return parent::newHydrator($hydrationMode);
             }
-            public function createQuery(string $dql = ''): \Doctrine\ORM\Query
+            public function createQuery(string $dql = ''): Query
             {
                 $this->queries[] = $dql;
                 return parent::createQuery($dql);
             }
         };
-        $oracle = \itsmng\Database\Orm::create($DB);
-        $records = new \itsmng\Database\Repository\RecordRepository($manager);
+        $oracle = Orm::create($DB);
+        $records = new RecordRepository($manager);
         try {
             foreach ([['glpi_entities', 0], ['glpi_entities', (int)$entity->getID()],
                 ['glpi_tickets', (int)$ticket->getID()], ['glpi_users', (int)$user->getID()],
                 ['glpi_computers', (int)$computer->getID()], ['glpi_certificates_items', (int)$binding->getID()],
                 ['glpi_calendarsegments', (int)$segment->getID()]] as [$table, $id]) {
-                $class = \itsmng\Database\EntityRegistry::tables()[$table];
+                $class = EntityRegistry::tables()[$table];
                 // An independent ordinary entity load retains the previous conversion oracle.
                 $managed = $oracle->getRepository($class)->findOneBy(['id' => $id]);
-                $expected = (new \itsmng\Database\Repository\RecordRepository($oracle))->toRow($managed);
+                $expected = (new RecordRepository($oracle))->toRow($managed);
                 $row = $records->find($table, 'id', $id);
                 $this->array($row)->isIdenticalTo($expected);
                 $manager->hydrationModes = [];
                 $this->array($records->matching($table, ['id' => $id], ['id']))->isIdenticalTo([$expected]);
-                $this->array($manager->hydrationModes)->isIdenticalTo([\Doctrine\ORM\Query::HYDRATE_ARRAY]);
+                $this->array($manager->hydrationModes)->isIdenticalTo([Query::HYDRATE_ARRAY]);
                 $this->array($records->matching($table, ['id' => PHP_INT_MAX]))->isEmpty();
                 $connection = $DB->getDoctrineConnection();
                 $physical = $connection->fetchAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table)
@@ -513,7 +562,7 @@ class CommonDBTM extends DbTestCase
                 $this->string($query)->contains(' AS value0')->notContains('SELECT r FROM');
             }
 
-            $second = $this->createItem(\Computer::class, ['name' => 'Second matching row', 'entities_id' => 0]);
+            $second = $this->createItem(Computer::class, ['name' => 'Second matching row', 'entities_id' => 0]);
             $ids = [(int)$computer->getID(), (int)$second->getID()];
             $this->array(array_column($records->matching('glpi_computers', ['id' => $ids], ['id DESC']), 'id'))
                 ->isIdenticalTo(array_reverse($ids));
@@ -526,7 +575,7 @@ class CommonDBTM extends DbTestCase
             // Nonidentifier owning-reference indexes retain the original entity lookup.
             $indexed = $records->find('glpi_computers', 'entities_id', (int)$entity->getID());
             $this->integer((int)$indexed['id'])->isIdenticalTo((int)$computer->getID());
-            $managed = $manager->find(\itsmng\Database\Entity\Computer::class, (int)$computer->getID());
+            $managed = $manager->find(ComputerEntity::class, (int)$computer->getID());
             $this->boolean($DB->update('glpi_computers', ['name' => 'After legacy update'], ['id' => $computer->getID()]))->isTrue();
             $this->string($records->find('glpi_computers', 'id', (int)$computer->getID())['name'])->isIdenticalTo('After legacy update');
             $this->string($managed->name)->isIdenticalTo('Before scalar read');
@@ -535,32 +584,32 @@ class CommonDBTM extends DbTestCase
             $manager->hydrationModes = [];
             $this->string($records->matching('glpi_computers', ['id' => $computer->getID()])[0]['name'])
                 ->isIdenticalTo('Before scalar read');
-            $this->array($manager->hydrationModes)->isIdenticalTo([\Doctrine\ORM\Query::HYDRATE_OBJECT]);
+            $this->array($manager->hydrationModes)->isIdenticalTo([Query::HYDRATE_OBJECT]);
             $this->boolean($manager->contains($managed))->isFalse();
             $this->string($records->matching('glpi_computers', ['id' => $computer->getID()])[0]['name'])
                 ->isIdenticalTo('After legacy update');
 
-            $observed = \itsmng\Database\Orm::create($DB);
+            $observed = Orm::create($DB);
             try {
                 $loads = new class () {
                     public int $count = 0;
-                    public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
+                    public function postLoad(PostLoadEventArgs $event): void
                     {
                         ++$this->count;
-                        if ($event->getObject() instanceof \itsmng\Database\Entity\Computer) {
+                        if ($event->getObject() instanceof ComputerEntity) {
                             $event->getObject()->name = 'Listener transformed row';
                         }
                     }
                 };
-                $observed->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
-                $transformed = (new \itsmng\Database\Repository\RecordRepository($observed))
+                $observed->getEventManager()->addEventListener([Events::postLoad], $loads);
+                $transformed = (new RecordRepository($observed))
                     ->find('glpi_computers', 'id', (int)$computer->getID());
                 $this->string($transformed['name'])->isIdenticalTo('Listener transformed row');
                 $this->integer($loads->count)->isGreaterThan(0);
                 $this->array($observed->getUnitOfWork()->getIdentityMap())->isNotEmpty();
                 $observed->clear();
                 $loads->count = 0;
-                $transformedRows = (new \itsmng\Database\Repository\RecordRepository($observed))
+                $transformedRows = (new RecordRepository($observed))
                     ->matching('glpi_computers', ['id' => $computer->getID()]);
                 $this->string($transformedRows[0]['name'])->isIdenticalTo('Listener transformed row');
                 $this->integer($loads->count)->isGreaterThan(0);
@@ -583,16 +632,16 @@ class CommonDBTM extends DbTestCase
         try {
             $this->login();
             $this->setEntity(0, true);
-            $first = $this->createItem(\User::class, ['name' => $this->getUniqueString()]);
-            $second = $this->createItem(\User::class, ['name' => $this->getUniqueString()]);
-            $ticket = new \Ticket();
+            $first = $this->createItem(User::class, ['name' => $this->getUniqueString()]);
+            $second = $this->createItem(User::class, ['name' => $this->getUniqueString()]);
+            $ticket = new Ticket();
             $this->integer((int)$ticket->add(['name' => $this->getUniqueString(),
                 'content' => 'Before public hook', 'entities_id' => 0,
                 '_users_id_requester' => $first->getID(), '_disablenotif' => true]))->isGreaterThan(0);
             $id = (int)$ticket->getID();
             $this->boolean($ticket->getFromDB($id))->isTrue();
             $this->string($ticket->fields['content'])->isIdenticalTo('Before public hook');
-            $model = new class () extends \Ticket {
+            $model = new class () extends Ticket {
                 public array $loadedRows = [];
                 public static function getType()
                 {
@@ -609,26 +658,26 @@ class CommonDBTM extends DbTestCase
                     $this->fields['_public_hook'] = count($this->loadedRows);
                 }
             };
-            $oracle = \itsmng\Database\Orm::create($DB);
-            $expected = (new \itsmng\Database\Repository\RecordRepository($oracle))
-                ->toRow($oracle->find(\itsmng\Database\Entity\Ticket::class, $id));
+            $oracle = Orm::create($DB);
+            $expected = (new RecordRepository($oracle))
+                ->toRow($oracle->find(TicketEntity::class, $id));
             $this->boolean($model->getFromDB($id))->isTrue();
             $this->array($model->loadedRows)->isIdenticalTo([$expected]);
             $this->integer($model->fields['_public_hook'])->isIdenticalTo(1);
-            $this->array(array_map('intval', array_column($model->getUsers(\CommonITILActor::REQUESTER), 'users_id')))
+            $this->array(array_map('intval', array_column($model->getUsers(CommonITILActor::REQUESTER), 'users_id')))
                 ->contains((int)$first->getID());
             $this->boolean($model->can($id, READ))->isTrue();
             $this->boolean($DB->update('glpi_tickets', ['content' => 'After public hook'], ['id' => $id]))->isTrue();
             $this->boolean($DB->update(
                 'glpi_tickets_users',
                 ['users_id' => $second->getID()],
-                ['tickets_id' => $id, 'users_id' => $first->getID(), 'type' => \CommonITILActor::REQUESTER]
+                ['tickets_id' => $id, 'users_id' => $first->getID(), 'type' => CommonITILActor::REQUESTER]
             ))->isTrue();
             $this->boolean($model->getFromDB($id))->isTrue();
             $this->integer($model->fields['_public_hook'])->isIdenticalTo(2);
             $this->string($model->loadedRows[1]['content'])->isIdenticalTo('After public hook');
             $this->array($model->loadedRows[1])->notHasKey('_public_hook');
-            $this->array(array_map('intval', array_column($model->getUsers(\CommonITILActor::REQUESTER), 'users_id')))
+            $this->array(array_map('intval', array_column($model->getUsers(CommonITILActor::REQUESTER), 'users_id')))
                 ->contains((int)$second->getID())->notContains((int)$first->getID());
             $_SESSION['glpiactiveprofile']['ticket'] = 0;
             $_SESSION['glpiactiveprofile']['ticketvalidation'] = 0;
@@ -641,7 +690,7 @@ class CommonDBTM extends DbTestCase
             }
             $connection = $DB->getDoctrineConnection();
             $this->mockGenerator->orphanize('__construct');
-            $routed = new \mock\DBmysql();
+            $routed = new DBmysql();
             $routes = 0;
             $this->calling($routed)->getDoctrineConnection = static function () use ($connection, &$routes) {
                 ++$routes;
@@ -662,30 +711,30 @@ class CommonDBTM extends DbTestCase
     {
         global $DB;
         $this->login();
-        $source = $this->createItem(\DomainType::class, ['name' => 'current-model-' . $this->getUniqueString(), 'entities_id' => 0]);
-        $target = $this->createItem(\DomainType::class, ['name' => 'current-model-target-' . $this->getUniqueString(), 'entities_id' => 0]);
+        $source = $this->createItem(DomainType::class, ['name' => 'current-model-' . $this->getUniqueString(), 'entities_id' => 0]);
+        $target = $this->createItem(DomainType::class, ['name' => 'current-model-target-' . $this->getUniqueString(), 'entities_id' => 0]);
         $connection = $DB->getDoctrineConnection();
         $scope = $connection->captureManagedTransactionScope();
         $level = $connection->getTransactionNestingLevel();
-        $policy = new \ReflectionProperty(\CommonDBTM::class, 'currentRead');
+        $policy = new ReflectionProperty(LegacyCommonDBTM::class, 'currentRead');
         // A public adapter can route factory construction while retaining the
         // original connection at operation boundaries. Reject before any query.
         $original = $DB;
         $alternate = $DB->getProvider() === 'pgsql'
-            ? \itsmng\Database\PostgresConnection::create(['driver' => 'pdo_pgsql', 'serverVersion' => '14.0'])
-            : \itsmng\Database\MySQLConnection::create(['driver' => 'pdo_mysql', 'serverVersion' => '8.0.0']);
-        $routed = new class ($connection, $alternate) extends \DBmysql {
-            public function __construct(private \Doctrine\DBAL\Connection $current, private \Doctrine\DBAL\Connection $alternate)
+            ? PostgresConnection::create(['driver' => 'pdo_pgsql', 'serverVersion' => '14.0'])
+            : MySQLConnection::create(['driver' => 'pdo_mysql', 'serverVersion' => '8.0.0']);
+        $routed = new class ($connection, $alternate) extends LegacyDBmysql {
+            public function __construct(private Connection $current, private Connection $alternate)
             {
             }
-            public function getDoctrineConnection(): \Doctrine\DBAL\Connection
+            public function getDoctrineConnection(): Connection
             {
                 $caller = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2)[1]['class'] ?? null;
-                return $caller === \itsmng\Database\Orm::class ? $this->alternate : $this->current;
+                return $caller === Orm::class ? $this->alternate : $this->current;
             }
         };
         $observer = (object)['posts' => 0];
-        $model = new class ($observer) extends \DomainType {
+        $model = new class ($observer) extends DomainType {
             public function __construct(private object $observer)
             {
             }
@@ -703,14 +752,14 @@ class CommonDBTM extends DbTestCase
             $DB = $routed;
             try {
                 $model->getFromDBForUpdate($source->getID(), $connection);
-            } catch (\Throwable $failure) {
+            } catch (Throwable $failure) {
                 $error = $failure;
             }
         } finally {
             $DB = $original;
         }
         try {
-            $this->object($error)->isInstanceOf(\itsmng\Database\TransactionOwnershipMismatch::class);
+            $this->object($error)->isInstanceOf(TransactionOwnershipMismatch::class);
             $this->integer($observer->posts)->isIdenticalTo(0);
             $this->boolean($alternate->isConnected())->isFalse('Reject a different manager before it opens a native connection');
             $this->variable($policy->getValue($model))->isNull();
@@ -719,11 +768,11 @@ class CommonDBTM extends DbTestCase
         } finally {
             $alternate->close();
         }
-        $marker = new \RuntimeException('Original public load failure');
+        $marker = new RuntimeException('Original public load failure');
         foreach (['false', 'throw', 'bypass', 'scope', 'recursive', 'throw-replace'] as $mode) {
             $observed = (object)['calls' => 0, 'posts' => 0, 'mode' => $mode, 'marker' => $marker,
                 'connection' => $connection, 'replacement' => null];
-            $model = new class ($observed) extends \DomainType {
+            $model = new class ($observed) extends DomainType {
                 public function __construct(private object $observed)
                 {
                 }
@@ -743,7 +792,7 @@ class CommonDBTM extends DbTestCase
                     }
                     if ($this->observed->mode === 'throw-replace') {
                         $this->observed->connection->rollBack();
-                        $this->observed->replacement = \itsmng\Database\OwnedMutationFrame::begin($this->observed->connection);
+                        $this->observed->replacement = OwnedMutationFrame::begin($this->observed->connection);
                         throw $this->observed->marker;
                     }
                     if ($this->observed->mode === 'throw') {
@@ -777,11 +826,11 @@ class CommonDBTM extends DbTestCase
                         ->isFalse('A delegated post-load hook cannot substitute mapped ' . $mode . ' authority');
                 } else {
                     if ($mode === 'throw-replace') {
-                        $owned = \itsmng\Database\OwnedMutationFrame::begin($connection);
+                        $owned = OwnedMutationFrame::begin($connection);
                     }
                     try {
                         $result = $model->getFromDBForUpdate($source->getID(), $connection);
-                    } catch (\Throwable $failure) {
+                    } catch (Throwable $failure) {
                         $error = $failure;
                     }
                     if ($mode === 'false') {
@@ -790,11 +839,11 @@ class CommonDBTM extends DbTestCase
                     } elseif ($mode === 'throw') {
                         $this->object($error)->isIdenticalTo($marker);
                     } elseif ($mode === 'bypass') {
-                        $this->object($error)->isInstanceOf(\itsmng\Database\CurrentReadUnavailable::class);
+                        $this->object($error)->isInstanceOf(CurrentReadUnavailable::class);
                     } else {
-                        $this->object($error)->isInstanceOf(\itsmng\Database\MutationCleanupFailure::class);
+                        $this->object($error)->isInstanceOf(MutationCleanupFailure::class);
                         $this->object($error->primary)->isIdenticalTo($marker);
-                        $this->object($error->cleanup)->isInstanceOf(\itsmng\Database\TransactionOwnershipMismatch::class);
+                        $this->object($error->cleanup)->isInstanceOf(TransactionOwnershipMismatch::class);
                         $this->boolean($error->rollbackUnproven)->isTrue();
                         $observed->replacement->assertActive();
                         $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level + 1);
@@ -803,7 +852,7 @@ class CommonDBTM extends DbTestCase
                 $this->variable($policy->getValue($model))->isNull($mode . ': private read policy restored');
                 $this->integer($observed->calls)->isIdenticalTo(1, $mode . ': public override invoked once');
                 $this->integer($observed->posts)->isIdenticalTo(in_array($mode, ['bypass', 'scope', 'recursive'], true) ? 1 : 0);
-            } catch (\Throwable $failure) {
+            } catch (Throwable $failure) {
                 $primary = $failure;
                 throw $failure;
             } finally {
@@ -813,8 +862,8 @@ class CommonDBTM extends DbTestCase
                     } elseif ($owned !== null) {
                         $owned->rollBack();
                     }
-                } catch (\Throwable $cleanup) {
-                    throw $primary === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($primary, $cleanup);
+                } catch (Throwable $cleanup) {
+                    throw $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
                 }
             }
             $scope->assertActive();
@@ -823,13 +872,13 @@ class CommonDBTM extends DbTestCase
             $this->integer((int)$source->fields['entities_id'])->isIdenticalTo(0);
             $this->integer((int)$source->fields['is_recursive'])->isIdenticalTo(0);
         }
-        $computer = $this->createItem(\Computer::class, ['name' => 'current-disk-owner-' . $this->getUniqueString(), 'entities_id' => 0]);
-        $dynamic = $this->createItem(\Item_Disk::class, ['name' => 'current-dynamic-' . $this->getUniqueString(),
+        $computer = $this->createItem(Computer::class, ['name' => 'current-disk-owner-' . $this->getUniqueString(), 'entities_id' => 0]);
+        $dynamic = $this->createItem(Item_Disk::class, ['name' => 'current-dynamic-' . $this->getUniqueString(),
             'entities_id' => 0, 'itemtype' => 'Computer', 'items_id' => $computer->getID(), 'is_dynamic' => 1]);
         $this->boolean($dynamic->useDeletedToLockIfDynamic())->isTrue();
         foreach (['is_dynamic' => 0, 'is_deleted' => 1, 'itemtype' => 'Monitor'] as $column => $value) {
             $posts = (object)['count' => 0];
-            $model = new class ($posts, $column, $value) extends \Item_Disk {
+            $model = new class ($posts, $column, $value) extends Item_Disk {
                 public function __construct(private object $posts, private string $column, private mixed $value)
                 {
                 }
@@ -861,7 +910,7 @@ class CommonDBTM extends DbTestCase
         // Computer's allocation trait retains its ordinary preliminary load;
         // selected mutation authority must be consumed exactly once afterward.
         $posts = (object)['ordinary' => 0, 'current' => 0, 'policy' => $policy];
-        $template = new class ($posts) extends \Computer {
+        $template = new class ($posts) extends Computer {
             public function __construct(private object $posts)
             {
             }
@@ -891,7 +940,7 @@ class CommonDBTM extends DbTestCase
         $this->integer((int)$computer->fields['is_deleted'])->isIdenticalTo(0);
         $scope->assertActive();
         $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
-        $semanticBoolean = new class () extends \DomainType {
+        $semanticBoolean = new class () extends DomainType {
             public static function getTable($classname = null)
             {
                 return 'glpi_domaintypes';
@@ -921,23 +970,23 @@ class CommonDBTM extends DbTestCase
         $savedDb = $DB;
         $savedSession = $_SESSION;
         $savedHooks = $PLUGIN_HOOKS;
-        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
         $savedPlugins = $plugins->getValue();
         $manager = null;
         try {
             $this->login();
             $this->setEntity(0, true);
-            $computer = $this->createItem(\Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $computer = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
             $id = (int)$computer->getID();
-            $existing = new \Infocom();
+            $existing = new Infocom();
             if ($existing->getFromDBforDevice('Computer', $id)) {
                 $this->boolean($existing->delete(['id' => $existing->getID()], true))->isTrue();
             }
             $emptyFields = [];
             $emptyModels = [];
             $plugins->setValue(null, [...$savedPlugins, 'financial_presence_fixture']);
-            $PLUGIN_HOOKS['item_empty']['financial_presence_fixture'][\Infocom::class] =
-                static function (\Infocom $model) use (&$emptyFields, &$emptyModels, $computer): void {
+            $PLUGIN_HOOKS['item_empty']['financial_presence_fixture'][Infocom::class] =
+                static function (Infocom $model) use (&$emptyFields, &$emptyModels, $computer): void {
                     $emptyFields[] = $model->fields;
                     $emptyModels[] = $model;
                     $model->fields['comment'] = 'Plugin empty default';
@@ -955,7 +1004,7 @@ class CommonDBTM extends DbTestCase
             $computer->fields['id'] = $id;
             $fixtureHooks = $PLUGIN_HOOKS;
             $PLUGIN_HOOKS = $savedHooks;
-            $financial = $this->createItem(\Infocom::class, ['itemtype' => 'Computer', 'items_id' => $id]);
+            $financial = $this->createItem(Infocom::class, ['itemtype' => 'Computer', 'items_id' => $id]);
             $PLUGIN_HOOKS = $fixtureHooks;
             $emptyFields = [];
             $emptyModels = [];
@@ -964,8 +1013,8 @@ class CommonDBTM extends DbTestCase
             $this->array($emptyModels)->isEmpty();
 
             $connection = $DB->getDoctrineConnection();
-            $manager = \itsmng\Database\Orm::create($DB);
-            $repository = new \itsmng\Database\Repository\InfocomRepository($manager);
+            $manager = Orm::create($DB);
+            $repository = new InfocomRepository($manager);
             $loads = new class () {
                 public int $count = 0;
                 public function postLoad(): void
@@ -973,15 +1022,15 @@ class CommonDBTM extends DbTestCase
                     ++$this->count;
                 }
             };
-            $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+            $manager->getEventManager()->addEventListener([Events::postLoad], $loads);
             $this->boolean($repository->isActivatedFor('Computer', $id))->isTrue();
             $this->boolean($repository->isActivatedFor('Peripheral', $id))->isFalse();
             $this->boolean($repository->isActivatedFor('Computer', PHP_INT_MAX))->isFalse();
             $this->integer($loads->count)->isIdenticalTo(0);
             $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
             // The listener is live: ordinary complete model hydration does call it.
-            $managed = $manager->find(\itsmng\Database\Entity\Infocom::class, $financial->getID());
-            $this->object($managed)->isInstanceOf(\itsmng\Database\Entity\Infocom::class);
+            $managed = $manager->find(InfocomEntity::class, $financial->getID());
+            $this->object($managed)->isInstanceOf(InfocomEntity::class);
             $this->integer($loads->count)->isIdenticalTo(1);
             // A legacy write must win even while a stale entity remains managed.
             $this->boolean($financial->delete(['id' => $financial->getID()], true))->isTrue();
@@ -990,7 +1039,7 @@ class CommonDBTM extends DbTestCase
             $this->integer($loads->count)->isIdenticalTo(1);
 
             // Subclasses retain their complete custom model-loading boundary.
-            $custom = new class () extends \Infocom {
+            $custom = new class () extends Infocom {
                 public array $calls = [];
                 public function getFromDBforDevice($itemtype, $ID)
                 {
@@ -1005,7 +1054,7 @@ class CommonDBTM extends DbTestCase
 
             // Resolve the actual current adapter at each caller operation.
             $this->mockGenerator->orphanize('__construct');
-            $routed = new \mock\DBmysql();
+            $routed = new DBmysql();
             $routes = 0;
             $this->calling($routed)->getDoctrineConnection = static function () use ($connection, &$routes) {
                 ++$routes;
@@ -1028,9 +1077,9 @@ class CommonDBTM extends DbTestCase
         $session = $_SESSION;
         try {
             $this->login();
-            $ticket = $this->createItem(\Ticket::class, ['name' => 'Connexity owner ' . $this->getUniqueString(),
+            $ticket = $this->createItem(Ticket::class, ['name' => 'Connexity owner ' . $this->getUniqueString(),
                 'content' => 'Complete parent fields', 'entities_id' => $_SESSION['glpiactive_entity']]);
-            $child = new class () extends \ITILFollowup {
+            $child = new class () extends ITILFollowup {
                 public int $loads = 0;
                 public mixed $loaded = null;
                 public function getConnexityItem($itemtype, $items_id, $getFromDB = true, $getEmpty = true, $getFromDBOrEmpty = false)
@@ -1045,7 +1094,7 @@ class CommonDBTM extends DbTestCase
             $this->boolean($child->canConnexityItem(
                 'canViewItem',
                 'canView',
-                \CommonDBConnexity::HAVE_VIEW_RIGHT_ON_ITEM,
+                CommonDBConnexity::HAVE_VIEW_RIGHT_ON_ITEM,
                 'itemtype',
                 'items_id',
                 $owner
@@ -1058,7 +1107,7 @@ class CommonDBTM extends DbTestCase
             $this->boolean($child->canConnexityItem(
                 'canViewItem',
                 'canView',
-                \CommonDBConnexity::HAVE_VIEW_RIGHT_ON_ITEM,
+                CommonDBConnexity::HAVE_VIEW_RIGHT_ON_ITEM,
                 'itemtype',
                 'items_id',
                 $owner
@@ -1067,11 +1116,11 @@ class CommonDBTM extends DbTestCase
             $this->string($owner->fields['content'])->isIdenticalTo('Supplied owner content');
             $_SESSION['glpiactiveprofile']['ticket'] = 0;
             $_SESSION['glpiactiveprofile']['ticketvalidation'] = 0;
-            $this->boolean(\Ticket::canView())->isFalse();
+            $this->boolean(Ticket::canView())->isFalse();
             $this->boolean($child->canConnexityItem(
                 'canViewItem',
                 'canView',
-                \CommonDBConnexity::HAVE_VIEW_RIGHT_ON_ITEM,
+                CommonDBConnexity::HAVE_VIEW_RIGHT_ON_ITEM,
                 'itemtype',
                 'items_id',
                 $owner
@@ -1082,7 +1131,7 @@ class CommonDBTM extends DbTestCase
             $this->boolean($child->canConnexityItem(
                 'canViewItem',
                 'canView',
-                \CommonDBConnexity::DONT_CHECK_ITEM_RIGHTS,
+                CommonDBConnexity::DONT_CHECK_ITEM_RIGHTS,
                 'itemtype',
                 'items_id',
                 $owner
@@ -1093,10 +1142,10 @@ class CommonDBTM extends DbTestCase
             $this->exception(fn () => $child->canConnexityItem(
                 'canViewItem',
                 'canView',
-                \CommonDBConnexity::DONT_CHECK_ITEM_RIGHTS,
+                CommonDBConnexity::DONT_CHECK_ITEM_RIGHTS,
                 'itemtype',
                 'items_id'
-            ))->isInstanceOf(\CommonDBConnexityItemNotFound::class);
+            ))->isInstanceOf(CommonDBConnexityItemNotFound::class);
         } finally {
             $_SESSION = $session;
         }
@@ -1108,7 +1157,7 @@ class CommonDBTM extends DbTestCase
 
         $savedSession = $_SESSION;
         $savedHooks = $PLUGIN_HOOKS;
-        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
         $savedPlugins = $plugins->getValue();
         try {
             $this->login();
@@ -1128,19 +1177,19 @@ class CommonDBTM extends DbTestCase
             $before = $rows();
             $decision = null;
             $calls = [];
-            $callback = static function (\CommonDBTM $model) use (&$decision, &$calls): void {
+            $callback = static function (LegacyCommonDBTM $model) use (&$decision, &$calls): void {
                 $calls[] = ['right' => $model->right, 'fields' => $model->fields, 'input' => $model->input];
                 if ($decision !== null) {
                     $model->right = $decision;
                 }
             };
             $plugins->setValue(null, [...$savedPlugins, 'new_item_permission_fixture']);
-            foreach ([\Computer::class, \NetworkPort_Vlan::class, \SavedSearch::class] as $type) {
+            foreach ([Computer::class, NetworkPort_Vlan::class, SavedSearch::class] as $type) {
                 $PLUGIN_HOOKS['item_can']['new_item_permission_fixture'][$type] = $callback;
             }
             foreach ([
-                [\Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]],
-                [\NetworkPort_Vlan::class, ['networkports_id' => $port->getID(), 'vlans_id' => $vlan->getID(), 'tagged' => 0]],
+                [Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]],
+                [NetworkPort_Vlan::class, ['networkports_id' => $port->getID(), 'vlans_id' => $vlan->getID(), 'tagged' => 0]],
             ] as [$type, $input]) {
                 foreach ([null, false, UPDATE] as $decision) {
                     $calls = [];
@@ -1159,18 +1208,18 @@ class CommonDBTM extends DbTestCase
             $decision = CREATE;
             $_SESSION['glpiactiveprofile']['computer'] = READ;
             $input = ['name' => $this->getUniqueString(), 'entities_id' => 0];
-            $this->boolean((new \Computer())->can(-1, CREATE, $input))->isFalse();
+            $this->boolean((new Computer())->can(-1, CREATE, $input))->isFalse();
             $input = ['networkports_id' => $port->getID(), 'vlans_id' => $vlan->getID(), 'tagged' => 0];
-            $this->boolean((new \NetworkPort_Vlan())->can(-1, CREATE, $input))->isFalse();
+            $this->boolean((new NetworkPort_Vlan())->can(-1, CREATE, $input))->isFalse();
 
             // Restrictive callbacks also precede the new personal-item shortcut.
             $_SESSION['glpiactiveprofile']['bookmark_public'] = 0;
             $input = ['name' => $this->getUniqueString(), 'itemtype' => 'Computer',
-                'users_id' => (int)\Session::getLoginUserID(), 'is_private' => 1];
+                'users_id' => (int)Session::getLoginUserID(), 'is_private' => 1];
             $decision = false;
-            $this->boolean((new \SavedSearch())->can(-1, CREATE, $input))->isFalse();
+            $this->boolean((new SavedSearch())->can(-1, CREATE, $input))->isFalse();
             $decision = null;
-            $this->boolean((new \SavedSearch())->can(-1, CREATE, $input))->isTrue();
+            $this->boolean((new SavedSearch())->can(-1, CREATE, $input))->isTrue();
             $this->array($rows())->isIdenticalTo($before);
         } finally {
             $_SESSION = $savedSession;
@@ -1262,23 +1311,23 @@ class CommonDBTM extends DbTestCase
             'SELECT COUNT(*) FROM glpi_networkportlocals WHERE id IN (?, ?)',
             [$port2, $port2 + 1]
         ))->isIdenticalTo(0, 'Custom-index fixtures must never adopt existing rows');
-        $manager = \itsmng\Database\Orm::create($GLOBALS['DB']);
+        $manager = Orm::create($GLOBALS['DB']);
         try {
-            $metadata = $manager->getClassMetadata(\itsmng\Database\Entity\NetworkPortLocal::class);
-            $metadata->setIdGeneratorType(\Doctrine\ORM\Mapping\ClassMetadata::GENERATOR_TYPE_NONE);
-            $metadata->setIdGenerator(new \Doctrine\ORM\Id\AssignedGenerator());
+            $metadata = $manager->getClassMetadata(NetworkPortLocal::class);
+            $metadata->setIdGeneratorType(ClassMetadata::GENERATOR_TYPE_NONE);
+            $metadata->setIdGenerator(new AssignedGenerator());
             foreach ([[$port2, $port1], [$port2 + 1, $port2]] as [$physical, $logical]) {
-                $record = new \itsmng\Database\Entity\NetworkPortLocal();
+                $record = new NetworkPortLocal();
                 $record->id = $physical;
-                $record->networkports_id = $manager->getReference(\itsmng\Database\Entity\NetworkPort::class, $logical);
+                $record->networkports_id = $manager->getReference(NetworkPort::class, $logical);
                 $manager->persist($record);
             }
             $manager->flush();
-            $source = new \NetworkPortLocal();
+            $source = new LegacyNetworkPortLocal();
             $this->boolean($source->getFromDB($port1))->isTrue();
             $this->integer((int)$source->fields['id'])->isIdenticalTo($port2);
             $this->integer((int)$source->getID())->isIdenticalTo($port1);
-            $repository = new \itsmng\Database\Repository\DeletionRepository($manager);
+            $repository = new DeletionRepository($manager);
             $this->boolean($repository->validateReplacement($source, ['_replace_by' => $port2]))
                 ->isTrue('A distinct public key may equal the source physical identity');
             $this->boolean($repository->validateReplacement($source, ['_replace_by' => $port1]))
@@ -2024,7 +2073,7 @@ class CommonDBTM extends DbTestCase
             ) + 100;
             $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
             foreach (range(0, 3) as $offset) {
-                $ticket = new \Ticket();
+                $ticket = new Ticket();
                 $this->integer((int)$ticket->addWithAssignedIdentifier($base + $offset, [
                     'name' => 'Custom index reload ' . $this->getUniqueString(), 'content' => 'Reload ownership fixture',
                     'entities_id' => $entity, '_disablenotif' => true,
@@ -2033,8 +2082,8 @@ class CommonDBTM extends DbTestCase
             $connection->insert('glpi_ticketsatisfactions', ['id' => $base + 10, 'tickets_id' => $base,
                 'type' => 1, 'comment' => 'Existing survey']);
             $peer = $connection->fetchAssociative('SELECT * FROM glpi_ticketsatisfactions WHERE id = ?', [$base + 10]);
-            $model = static function (int $physical): \TicketSatisfaction {
-                $item = new class () extends \TicketSatisfaction {
+            $model = static function (int $physical): TicketSatisfaction {
+                $item = new class () extends TicketSatisfaction {
                     public int $insertIdentity;
                     public ?int $callbackPhysicalIdentity = null;
                     public ?int $historyLogicalIdentity = null;
@@ -2097,7 +2146,7 @@ class CommonDBTM extends DbTestCase
                 $this->string($survey->fields['comment'])->isIdenticalTo('New source survey');
                 $this->integer((int)$connection->fetchOne(
                     'SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ? AND linked_action = ?',
-                    ['TicketSatisfaction', $physical, \Log::HISTORY_CREATE_ITEM]
+                    ['TicketSatisfaction', $physical, Log::HISTORY_CREATE_ITEM]
                 ))->isIdenticalTo(1);
                 $this->array($connection->fetchAssociative('SELECT * FROM glpi_ticketsatisfactions WHERE id = ?', [$base + 10]))->isIdenticalTo($peer);
                 $survey->events = [];
@@ -2152,7 +2201,7 @@ class CommonDBTM extends DbTestCase
             }
             $this->integer((int)$connection->fetchOne(
                 'SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ? AND linked_action = ?',
-                ['TicketSatisfaction', $base + 10, \Log::HISTORY_CREATE_ITEM]
+                ['TicketSatisfaction', $base + 10, Log::HISTORY_CREATE_ITEM]
             ))->isIdenticalTo(0, 'The collision peer receives no creation history');
             // Public callback mutation must not change the producer-owned return value.
             $survey = $model($base + 12);
@@ -2179,19 +2228,19 @@ class CommonDBTM extends DbTestCase
                 (int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) FROM glpi_networkportaggregates')
             ) + 100;
             $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
-            $equipment = $this->createItem(\NetworkEquipment::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+            $equipment = $this->createItem(NetworkEquipment::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
             foreach (range(0, 3) as $offset) {
-                $port = new \NetworkPort();
+                $port = new LegacyNetworkPort();
                 $this->integer((int)$port->addWithAssignedIdentifier($base + $offset, ['name' => 'Reload port ' . $offset,
                     'items_id' => $equipment->getID(), 'itemtype' => 'NetworkEquipment', 'entities_id' => $entity]))->isIdenticalTo($base + $offset);
             }
-            $manager = \itsmng\Database\Orm::create($DB);
+            $manager = Orm::create($DB);
             try {
-                $writer = new \itsmng\Database\Repository\RecordWriter($manager);
+                $writer = new RecordWriter($manager);
                 $this->integer($writer->insert('glpi_networkportaggregates', ['id' => $base + 10, 'networkports_id' => $base]))->isIdenticalTo($base + 10);
-                $origins = new \itsmng\Database\Repository\NetworkPortAggregateRepository($manager);
+                $origins = new NetworkPortAggregateRepository($manager);
                 $origins->replaceOrigins($base + 10, [$base + 2]);
-                $aggregate = new class () extends \NetworkPortAggregate {
+                $aggregate = new class () extends NetworkPortAggregate {
                     public int $insertIdentity;
                     public static function getType()
                     {

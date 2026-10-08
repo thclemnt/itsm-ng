@@ -4,12 +4,14 @@
 
 namespace itsmng\Database;
 
+use Session;
+
 /** Component-issued query options are scalar-bound; array subset matching is insufficient. */
 final class DropdownChoiceContext
 {
     public static function token(string $kind, array $options): string
     {
-        return \Session::getNewIDORToken($kind, ['_dropdown_choice_context' => self::encode($options)]);
+        return Session::getNewIDORToken($kind, ['_dropdown_choice_context' => self::encode($options)]);
     }
 
     public static function encode(array $options): string

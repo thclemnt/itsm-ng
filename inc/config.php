@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Csrf;
+use itsmng\Database\Migration\History;
+use itsmng\Database\OidcRefreshReadOperation;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -107,7 +111,7 @@ if (!file_exists(GLPI_CONFIG_DIR . "/config_db.php")) {
     // Restore's donotcheckversion option only bypasses the old release check.
     $historyError = null;
     try {
-        $pendingHistory = \itsmng\Database\Migration\History::pendingVersions($DB->getDoctrineConnection());
+        $pendingHistory = History::pendingVersions($DB->getDoctrineConnection());
     } catch (Throwable $error) {
         $pendingHistory = [];
         $historyError = 'Canonical migration ledger could not be validated: ' . $error->getMessage();
@@ -124,7 +128,7 @@ if (!file_exists(GLPI_CONFIG_DIR . "/config_db.php")) {
             if ($historyError === null && Session::getLoginUserID() > 0 && Config::canUpdate()) {
                 $_SESSION['can_process_update'] = true;
                 if (empty($_SESSION['csrf_token_time']) || time() >= $_SESSION['csrf_token_time']) {
-                    \itsmng\Csrf::generate();
+                    Csrf::generate();
                 }
                 echo '<form method="post" action="' . htmlspecialchars($CFG_GLPI['root_doc'] . '/install/update.php', ENT_QUOTES, 'UTF-8') . '">';
                 echo '<button type="submit" name="from_update" value="1">' . __('Upgrade') . '</button>';
@@ -339,7 +343,7 @@ if (!file_exists(GLPI_CONFIG_DIR . "/config_db.php")) {
     //set Status session var
     SpecialStatus::oldStatusOrder();
 
-    if (isset($_SESSION['glpiID']) && (new \itsmng\Database\OidcRefreshReadOperation($DB->getDoctrineConnection()))->needsRefresh((int)$_SESSION['glpiID'])) {
+    if (isset($_SESSION['glpiID']) && (new OidcRefreshReadOperation($DB->getDoctrineConnection()))->needsRefresh((int)$_SESSION['glpiID'])) {
         Oidc::auth();
     }
 }

@@ -32,6 +32,9 @@
  */
 
 use Glpi\Toolbox\URL;
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DomainRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -69,7 +72,7 @@ class Domain extends CommonDropdown
 
         $record = new DomainRecord();
 
-        $ids = \itsmng\Database\MappedReads::identifiers($DB, $record->getTable(), 'id', ['domains_id' => $this->fields['id']]);
+        $ids = MappedReads::identifiers($DB, $record->getTable(), 'id', ['domains_id' => $this->fields['id']]);
         foreach ($ids as $id) {
             $row = ['id' => $id];
             $row['_linked_purge'] = 1; //flag call when we remove a record from a domain
@@ -101,9 +104,9 @@ class Domain extends CommonDropdown
         if ($supplier->isNewItem() || !Session::haveRight('domain', READ) || !$supplier->can($supplier->getID(), READ)) {
             return [];
         }
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            return (new \itsmng\Database\Repository\DomainRepository($em))->forSupplier(
+            return (new DomainRepository($em))->forSupplier(
                 (int)$supplier->getID(),
                 getEntitiesRestrictCriteria(self::getTable(), '', '', true)
             );
@@ -119,9 +122,9 @@ class Domain extends CommonDropdown
         if ($supplier->isNewItem() || !Session::haveRight('domain', READ) || !$supplier->can($supplier->getID(), READ)) {
             return 0;
         }
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            return (new \itsmng\Database\Repository\DomainRepository($em))->countForSupplier(
+            return (new DomainRepository($em))->countForSupplier(
                 (int)$supplier->getID(),
                 getEntitiesRestrictCriteria(self::getTable(), '', '', true)
             );
@@ -388,13 +391,13 @@ class Domain extends CommonDropdown
     {
         global $DB;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            (new \itsmng\Database\Repository\DomainRepository($em))->assertCommercialSupplierAssignment(
+            (new DomainRepository($em))->assertCommercialSupplierAssignment(
                 $input,
                 $updating && !$this->isNewItem() ? (int)$this->getID() : null
             );
-        } catch (\InvalidArgumentException $error) {
+        } catch (InvalidArgumentException $error) {
             Session::addMessageAfterRedirect($error->getMessage(), ERROR, true);
             return false;
         } finally {
@@ -415,9 +418,9 @@ class Domain extends CommonDropdown
     {
         global $DB;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            (new \itsmng\Database\Repository\DomainRepository($em))->assertCommercialSupplierAssignment(
+            (new DomainRepository($em))->assertCommercialSupplierAssignment(
                 ['entities_id' => $destination],
                 (int)$this->getID()
             );
@@ -558,7 +561,7 @@ class Domain extends CommonDropdown
             $where['NOT'] = ['id' => $p['used']];
         }
 
-        $rows = \itsmng\Database\MappedReads::matching($DB, self::getTable(), $where);
+        $rows = MappedReads::matching($DB, self::getTable(), $where);
         $values = [0 => Dropdown::EMPTY_VALUE];
         foreach ($rows as $data) {
             $values[$data['id']] = $data['name'];
@@ -796,7 +799,7 @@ class Domain extends CommonDropdown
 
             foreach ($querys as $type => $query) {
                 $domain_infos[$type] = [];
-                $rows = \itsmng\Database\MappedReads::matching($DB, self::getTable(), $query['WHERE']);
+                $rows = MappedReads::matching($DB, self::getTable(), $query['WHERE']);
                 foreach ($rows as $data) {
                     $message                        = $data["name"] . ": " .
                        Html::convDate($data["date_expiration"]) . "<br>\n";
@@ -897,7 +900,7 @@ class Domain extends CommonDropdown
         if (!$used) {
             return [];
         }
-        $ids = \itsmng\Database\MappedReads::identifiers($DB, self::getTable(), 'id', [
+        $ids = MappedReads::identifiers($DB, self::getTable(), 'id', [
             'id' => $used, 'domaintypes_id' => $domaintype,
         ]);
         return array_combine($ids, $ids);

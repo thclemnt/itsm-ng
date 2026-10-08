@@ -4,6 +4,15 @@
 
 namespace tests\units\itsmng\Database\Mapping;
 
+use Doctrine\DBAL\Platforms\MariaDBPlatform;
+use Doctrine\DBAL\Platforms\MySQLPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Types\Type;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\ORM\Tools\SchemaTool;
+use ReflectionClass;
+use atoum\atoum\test;
 use itsmng\Database\BaselineSchema;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\Mapping\SchemaIndex as OwnedIndex;
@@ -15,7 +24,7 @@ use tests\fixtures\DisconnectedSchemaConnection;
 
 require_once dirname(__DIR__, 4) . '/fixtures/DisconnectedSchemaConnection.php';
 
-class SchemaIndex extends \atoum\atoum\test
+class SchemaIndex extends test
 {
     public function testActorAndTreeGeneratedKeysRetainFrozenOwnershipAcrossPlatforms(): void
     {
@@ -28,26 +37,26 @@ class SchemaIndex extends \atoum\atoum\test
             $expectedGeneratedKeys[] = $table . '.parent_key';
         }
         sort($expectedGeneratedKeys, SORT_STRING);
-        foreach ([new \Doctrine\DBAL\Platforms\MySQLPlatform(), new \Doctrine\DBAL\Platforms\MariaDBPlatform(),
-            new \Doctrine\DBAL\Platforms\PostgreSQLPlatform(), new \Doctrine\DBAL\Platforms\MySQLPlatform()] as $schemaPlatform) {
+        foreach ([new MySQLPlatform(), new MariaDBPlatform(),
+            new PostgreSQLPlatform(), new MySQLPlatform()] as $schemaPlatform) {
             $offlineConnection = new DisconnectedSchemaConnection($schemaPlatform);
             $this->object($offlineConnection->getDatabasePlatform())->isIdenticalTo($schemaPlatform);
             try {
-                $schemaEm = new \Doctrine\ORM\EntityManager($offlineConnection, Orm::configuration($schemaPlatform));
+                $schemaEm = new EntityManager($offlineConnection, Orm::configuration($schemaPlatform));
                 $metadata = $schemaEm->getMetadataFactory()->getAllMetadata();
-                $mapped = (new \Doctrine\ORM\Tools\SchemaTool($schemaEm))->getSchemaFromMetadata($metadata);
+                $mapped = (new SchemaTool($schemaEm))->getSchemaFromMetadata($metadata);
                 $required = (new BaselineSchema())->build($schemaPlatform, false);
                 $historical = (new Baseline())->build($schemaPlatform);
                 $ownedGeneratedKeys = [];
                 foreach ($metadata as $entity) {
                     $ownedColumns = [];
-                    foreach ((new \ReflectionClass($entity->name))->getAttributes(OwnedIndex::class) as $attribute) {
+                    foreach ((new ReflectionClass($entity->name))->getAttributes(OwnedIndex::class) as $attribute) {
                         array_push($ownedColumns, ...$attribute->newInstance()->columns);
                     }
                     foreach ($entity->fieldMappings as $field) {
                         $column = trim($field->columnName, '`"');
                         if (in_array($column, $ownedColumns, true) && $field->notInsertable && $field->notUpdatable
-                            && $field->generated === \Doctrine\ORM\Mapping\ClassMetadata::GENERATED_ALWAYS && $field->columnDefinition !== null) {
+                            && $field->generated === ClassMetadata::GENERATED_ALWAYS && $field->columnDefinition !== null) {
                             $ownedGeneratedKeys[] = $entity->getTableName() . '.' . $column;
                         }
                     }
@@ -56,7 +65,7 @@ class SchemaIndex extends \atoum\atoum\test
                 $this->boolean($ownedGeneratedKeys === $expectedGeneratedKeys)->isTrue('Only twelve actor identity properties and five existing tree keys own generated index columns');
                 foreach (ActorUniqueness::TABLES as $table => [$parentKey, $actorKey]) {
                     $entity = $schemaEm->getClassMetadata(EntityRegistry::tables()[$table]);
-                    $attributes = (new \ReflectionClass($entity->name))->getAttributes(OwnedIndex::class);
+                    $attributes = (new ReflectionClass($entity->name))->getAttributes(OwnedIndex::class);
                     $this->boolean(count($attributes) === 2)->isTrue('Each actor entity owns its unique and supporting physical indexes: ' . $table);
                     $oracle = clone $historical->getTable($table);
                     ActorUniqueness::addToTable($oracle, $schemaPlatform);
@@ -72,7 +81,7 @@ class SchemaIndex extends \atoum\atoum\test
                         foreach (['actor_key', 'actor_email_key'] as $key) {
                             $column = $schemaTable->getColumn($key);
                             $frozen = $oracle->getColumn($key);
-                            $this->boolean(\Doctrine\DBAL\Types\Type::lookupName($column->getType()) === \Doctrine\DBAL\Types\Type::lookupName($frozen->getType())
+                            $this->boolean(Type::lookupName($column->getType()) === Type::lookupName($frozen->getType())
                                 && $column->getNotnull() === $frozen->getNotnull() && $column->getDefault() === $frozen->getDefault()
                                 && $column->getLength() === $frozen->getLength() && $column->getComment() === $frozen->getComment()
                                 && $column->getColumnDefinition() === $frozen->getColumnDefinition())->isTrue('Generated property storage and expression equal the frozen adoption definition: ' . $table . '.' . $key);
@@ -80,7 +89,7 @@ class SchemaIndex extends \atoum\atoum\test
                     }
                     foreach (['actor_key', 'actor_email_key'] as $key) {
                         $field = $entity->getFieldMapping($key);
-                        $this->boolean($field->notInsertable && $field->notUpdatable && $field->generated === \Doctrine\ORM\Mapping\ClassMetadata::GENERATED_ALWAYS
+                        $this->boolean($field->notInsertable && $field->notUpdatable && $field->generated === ClassMetadata::GENERATED_ALWAYS
                             && $field->nullable && $field->columnDefinition === $oracle->getColumn($key)->getColumnDefinition())->isTrue('Actor generated property remains nullable, always generated and excluded from writes: ' . $table . '.' . $key);
                     }
                 }

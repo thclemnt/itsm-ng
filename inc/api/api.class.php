@@ -45,12 +45,15 @@ use CommonGLPI;
 use CommonITILObject;
 use Config;
 use Contract;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Document;
 use Dropdown;
 use Glpi\Exception\ForgetPasswordException;
 use Glpi\Exception\PasswordTooWeakException;
 use Html;
 use Infocom;
+use InvalidArgumentException;
+use Item_DeviceHardDrive;
 use Item_Devices;
 use Log;
 use Michelf\MarkdownExtra;
@@ -65,6 +68,15 @@ use Software;
 use Ticket;
 use Toolbox;
 use User;
+use itsmng\Database\BooleanValue;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NetworkNameRepository;
+use itsmng\Database\Repository\SoftwareInstallationRepository;
+use itsmng\Database\Repository\TicketCollectionRepository;
+use itsmng\Database\Repository\TicketVisibility;
+use itsmng\Database\Repository\UserRepository;
+use itsmng\Database\UnsupportedCriteria;
 
 abstract class API extends CommonGLPI
 {
@@ -655,7 +667,7 @@ abstract class API extends CommonGLPI
         if (
             isset($params['with_disks'])
             && $params['with_disks']
-            && in_array($itemtype, \Item_DeviceHardDrive::itemAffinity(), true)
+            && in_array($itemtype, Item_DeviceHardDrive::itemAffinity(), true)
         ) {
             // build query to retrive filesystems
             $fs_iterator = $DB->request([
@@ -696,7 +708,7 @@ abstract class API extends CommonGLPI
             if (!Software::canView()) {
                 $fields['_softwares'] = $this->arrayRightError();
             } else {
-                $fields['_softwares'] = (new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB)))
+                $fields['_softwares'] = (new SoftwareInstallationRepository(Orm::create($DB)))
                     ->apiForSubject($itemtype, (int)$id);
             }
         }
@@ -796,9 +808,9 @@ abstract class API extends CommonGLPI
                     }
                 }
                 if ($ports !== []) {
-                    $em = \itsmng\Database\Orm::create($DB);
+                    $em = Orm::create($DB);
                     try {
-                        $names = (new \itsmng\Database\Repository\NetworkNameRepository($em))->apiDetailsForPorts($ports);
+                        $names = (new NetworkNameRepository($em))->apiDetailsForPorts($ports);
                         foreach ($fields['_networkports'] as &$instantiations) {
                             foreach ($instantiations as &$port) {
                                 if (isset($port['netport_id'], $names[(int)$port['netport_id']])) {
@@ -1185,28 +1197,28 @@ abstract class API extends CommonGLPI
         }
         $add_keys_names = count($params['add_keys_names']) > 0;
         if ($item instanceof Ticket) {
-            $em = \itsmng\Database\Orm::create($DB);
+            $em = Orm::create($DB);
             try {
                 $parent = $parent_item === null ? null : [
                     'table' => $parent_item::getTable(),
                     'id' => (int)$this->parameters['parent_id'],
                 ];
-                $page = (new \itsmng\Database\Repository\TicketCollectionRepository($em))->page(
-                    \itsmng\Database\Repository\TicketVisibility::fromSession(),
+                $page = (new TicketCollectionRepository($em))->page(
+                    TicketVisibility::fromSession(),
                     $params,
                     $parent
                 );
                 $found = $page['rows'];
                 $totalcount = $page['total'];
-            } catch (\InvalidArgumentException | \itsmng\Database\UnsupportedCriteria $error) {
+            } catch (InvalidArgumentException | UnsupportedCriteria $error) {
                 $this->returnError($error->getMessage());
             } finally {
                 $em->clear();
             }
         } elseif ($itemtype === User::class
-            && ($parent_item === null || isset(\itsmng\Database\EntityRegistry::tables()[$parent_item::getTable()]))
+            && ($parent_item === null || isset(EntityRegistry::tables()[$parent_item::getTable()]))
         ) {
-            $em = \itsmng\Database\Orm::create($DB);
+            $em = Orm::create($DB);
             try {
                 $entities = $_SESSION['glpiactiveentities'] ?? [0];
                 $scope = $entities !== [] && (Session::canViewAllEntities() || !empty($_SESSION['glpishowallentities'])) ? null : [
@@ -1220,10 +1232,10 @@ abstract class API extends CommonGLPI
                     'userForeignKey' => getForeignKeyFieldForItemType($itemtype),
                     'kind' => $itemtype,
                 ];
-                $page = (new \itsmng\Database\Repository\UserRepository($em))->apiPage($params, $scope, $parent);
+                $page = (new UserRepository($em))->apiPage($params, $scope, $parent);
                 $found = $page['rows'];
                 $totalcount = $page['total'];
-            } catch (\InvalidArgumentException | \itsmng\Database\UnsupportedCriteria $error) {
+            } catch (InvalidArgumentException | UnsupportedCriteria $error) {
                 return $this->returnError($error->getMessage());
             } finally {
                 $em->clear();
@@ -1238,10 +1250,10 @@ abstract class API extends CommonGLPI
             }
             if ($item->maybeDeleted()) {
                 $deleted = (int)$params['is_deleted'];
-                if (\itsmng\Database\EntityRegistry::isBoolean($table, 'is_deleted')) {
+                if (EntityRegistry::isBoolean($table, 'is_deleted')) {
                     try {
-                        $deleted = \itsmng\Database\BooleanValue::normalize($params['is_deleted'], false, 'is_deleted');
-                    } catch (\InvalidArgumentException $error) {
+                        $deleted = BooleanValue::normalize($params['is_deleted'], false, 'is_deleted');
+                    } catch (InvalidArgumentException $error) {
                         return $this->returnError($error->getMessage());
                     }
                     $deleted = $DB->getDoctrineConnection()->getDatabasePlatform()->convertBooleansToDatabaseValue($deleted);
@@ -1302,7 +1314,7 @@ abstract class API extends CommonGLPI
                     if (!empty($filter_value)) {
                         $search_value = Search::makeTextSearch($DB->escape($filter_value));
                         $field = $DB->quoteName("$table.$filter_field");
-                        if ($DB->getDoctrineConnection()->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform) {
+                        if ($DB->getDoctrineConnection()->getDatabasePlatform() instanceof PostgreSQLPlatform) {
                             // API searchText is textual even when a selected field is an owning identifier.
                             $field = "CAST($field AS TEXT)";
                         }

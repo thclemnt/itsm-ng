@@ -8,6 +8,10 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Schema\AbstractSchemaManager;
 use Doctrine\DBAL\Schema\Table;
+use InvalidArgumentException;
+use LogicException;
+use ReflectionMethod;
+use atoum\atoum\test;
 use itsmng\Database\Migration\V220\ComponentData as HistoricalComponents;
 use itsmng\Database\Migration\V220\HardDriveSubjects;
 use itsmng\Database\Migration\V220\MemorySubjects;
@@ -17,7 +21,7 @@ use itsmng\Database\Migration\V220\PowerSupplySubjects;
 use itsmng\Database\Migration\V220\StagedTypedItemMigration;
 use itsmng\Database\Migration\V220\TypedItemMigration;
 
-class ComponentData extends \atoum\atoum\test
+class ComponentData extends test
 {
     public function foreignInspections(): array
     {
@@ -48,7 +52,7 @@ class ComponentData extends \atoum\atoum\test
             'typed' => static fn () => (new ComponentPlanningTypedFixture())->inspect($connection, $table),
             'staged' => static fn () => (new ComponentPlanningStagedFixture())->inspect($connection, $table),
         };
-        $this->exception($plan)->isInstanceOf(\InvalidArgumentException::class)->hasMessage($diagnostic);
+        $this->exception($plan)->isInstanceOf(InvalidArgumentException::class)->hasMessage($diagnostic);
         $this->integer($connection->reads)->isIdenticalTo(0);
         $this->string($table->getName())->isIdenticalTo($name);
         $this->boolean($table->hasColumn('items_id'))->isTrue();
@@ -69,7 +73,7 @@ class ComponentData extends \atoum\atoum\test
      */
     public function testPublicPlannerKeepsItsOptionalIncomingContext(string $class): void
     {
-        $method = new \ReflectionMethod($class, 'plan');
+        $method = new ReflectionMethod($class, 'plan');
         $parameters = $method->getParameters();
         $this->boolean($method->isPublic())->isTrue();
         $this->array($parameters)->hasSize(2);
@@ -81,7 +85,7 @@ class ComponentData extends \atoum\atoum\test
     public function testInspectedTablePlanningRemainsAnInternalExtensionBoundary(): void
     {
         foreach ([TypedItemMigration::class, StagedTypedItemMigration::class] as $class) {
-            $this->boolean((new \ReflectionMethod($class, 'planInspectedTable'))->isProtected())->isTrue();
+            $this->boolean((new ReflectionMethod($class, 'planInspectedTable'))->isProtected())->isTrue();
         }
     }
 }
@@ -98,13 +102,13 @@ final class ComponentPlanningUnreadConnection extends Connection
     public function getDatabasePlatform(): AbstractPlatform
     {
         ++$this->reads;
-        throw new \LogicException('Wrong-owner planning acquired a platform.');
+        throw new LogicException('Wrong-owner planning acquired a platform.');
     }
 
     public function createSchemaManager(): AbstractSchemaManager
     {
         ++$this->reads;
-        throw new \LogicException('Wrong-owner planning acquired a catalogue.');
+        throw new LogicException('Wrong-owner planning acquired a catalogue.');
     }
 }
 

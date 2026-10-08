@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NetworkConnectionRepository;
+use itsmng\Database\Repository\NetworkPortAggregateRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -54,9 +59,9 @@ class NetworkPort extends CommonDBChild
     {
         global $DB;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            $peers = (new \itsmng\Database\Repository\NetworkConnectionRepository($em))->peers($itemtype, $id);
+            $peers = (new NetworkConnectionRepository($em))->peers($itemtype, $id);
         } finally {
             $em->clear();
         }
@@ -454,7 +459,7 @@ class NetworkPort extends CommonDBChild
     public function cleanDBonPurge()
     {
         global $DB;
-        $origins = new \itsmng\Database\Repository\NetworkPortAggregateRepository(\itsmng\Database\Orm::create($DB));
+        $origins = new NetworkPortAggregateRepository(Orm::create($DB));
         if (!empty($this->input['_replace_by'])) {
             $origins->replacePort((int)$this->getID(), (int)$this->input['_replace_by']);
         } else {
@@ -795,7 +800,7 @@ class NetworkPort extends CommonDBChild
             }
 
             $iterator = $itemtype === 'NetworkPort' && $portType === 'NetworkPortAggregate'
-                ? new \itsmng\Database\RowIterator((new \itsmng\Database\Repository\NetworkPortAggregateRepository(\itsmng\Database\Orm::create($DB)))->aggregatesForPort((int)$items_id))
+                ? new RowIterator((new NetworkPortAggregateRepository(Orm::create($DB)))->aggregatesForPort((int)$items_id))
                 : $DB->request($criteria);
             $number_port = count($iterator);
 
@@ -1305,7 +1310,7 @@ class NetworkPort extends CommonDBChild
             } else {
                 $aliases = '';
             }
-            $nbAggregates = count((new \itsmng\Database\Repository\NetworkPortAggregateRepository(\itsmng\Database\Orm::create($DB)))->aggregatesForPort((int)$item->getField('id')));
+            $nbAggregates = count((new NetworkPortAggregateRepository(Orm::create($DB)))->aggregatesForPort((int)$item->getField('id')));
             if ($nbAggregates > 0) {
                 $aggregates = self::createTabEntry(
                     NetworkPortAggregate::getTypeName(Session::getPluralNumber()),

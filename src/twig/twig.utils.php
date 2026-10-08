@@ -1,5 +1,9 @@
 <?php
 
+use itsmng\Database\DropdownChoiceContext;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DocumentRepository;
+
 function expandSelect(&$select, $fields = [])
 {
     global $CFG_GLPI;
@@ -47,7 +51,7 @@ function expandSelect(&$select, $fields = [])
                 $select["used"] ?? [],
                 $ajaxData,
             );
-        $ajaxData["_idor_token"] = \itsmng\Database\DropdownChoiceContext::token(
+        $ajaxData["_idor_token"] = DropdownChoiceContext::token(
             $select["itemtype"],
             $ajaxData,
         );
@@ -256,7 +260,7 @@ function getLinkedDocumentsForItem($itemType, $items_id)
 {
     global $DB;
 
-    $bindings = (new \itsmng\Database\Repository\DocumentRepository(\itsmng\Database\Orm::create($DB)))
+    $bindings = (new DocumentRepository(Orm::create($DB)))
         ->bindingsForItem($itemType, (int)$items_id);
 
     $options = [];

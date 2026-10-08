@@ -34,9 +34,48 @@
 
 namespace itsmng\Search\Output;
 
+use Auth;
+use Calendar;
+use Cartridge;
+use Change;
+use CommonITILObject;
+use Consumable;
+use CronTask;
+use DisplayPreference;
+use Document;
+use Dropdown;
+use Entity;
+use GLPIPDF;
+use Glpi\Toolbox\URL;
+use Html;
+use Link;
+use Plugin;
+use Problem;
+use ProjectState;
+use ProjectTask;
+use ReservationItem;
+use Search;
+use Session;
+use Ticket;
+use TicketSatisfaction;
+use TicketValidation;
+use Toolbox;
 use itsmng\Search\Input\QueryBuilder;
 use itsmng\Search\SearchEngine;
 use itsmng\Search\SearchOption;
+
+use function formatUserName;
+use function getItemForItemtype;
+use function getItemTypeForTable;
+use function getUserName;
+use function isPluginItemType;
+use function renderTwigTemplate;
+
+use const DAY_TIMESTAMP;
+use const HOUR_TIMESTAMP;
+use const NOT_AVAILABLE;
+use const READ;
+use const UPDATE;
 
 final class LegacyOutput
 {
@@ -97,19 +136,19 @@ final class LegacyOutput
         $data = SearchEngine::getDatas($itemtype, $params);
         LegacyOutput::displayData($data);
         if ($data['data']['totalcount'] > 0) {
-            $target = \Glpi\Toolbox\URL::sanitizeURL($data['search']['target']);
+            $target = URL::sanitizeURL($data['search']['target']);
             $criteria = $data['search']['criteria'];
             array_pop($criteria);
             array_pop($criteria);
             $criteria[] = ['link' => 'AND', 'field' => $itemtype == 'Location' || $itemtype == 'Entity' ? 1 : ($itemtype == 'Ticket' ? 83 : 3), 'searchtype' => 'equals', 'value' => 'CURLOCATION'];
-            $globallinkto = \Toolbox::append_params(['criteria' => \Toolbox::stripslashes_deep($criteria), 'metacriteria' => \Toolbox::stripslashes_deep($data['search']['metacriteria'])], '&amp;');
+            $globallinkto = Toolbox::append_params(['criteria' => Toolbox::stripslashes_deep($criteria), 'metacriteria' => Toolbox::stripslashes_deep($data['search']['metacriteria'])], '&amp;');
             $parameters = "as_map=0&amp;sort=" . $data['search']['sort'] . "&amp;order=" . $data['search']['order'] . '&amp;' . $globallinkto;
             if (strpos($target, '?') == false) {
                 $fulltarget = $target . "?" . $parameters;
             } else {
                 $fulltarget = $target . "&" . $parameters;
             }
-            $fulltarget = \Glpi\Toolbox\URL::sanitizeURL($fulltarget);
+            $fulltarget = URL::sanitizeURL($fulltarget);
             $typename = class_exists($itemtype) ? $itemtype::getTypeName($data['data']['totalcount']) : ($itemtype == 'AllAssets' ? __('assets') : $itemtype);
             echo "<div class='center'><p>" . __('Search results for localized items only') . "</p>";
             $js = "\$(function() {
@@ -245,7 +284,7 @@ final class LegacyOutput
          }
 
          ";
-            echo \Html::scriptBlock($js);
+            echo Html::scriptBlock($js);
             echo "</div>";
         }
     }
@@ -260,7 +299,7 @@ final class LegacyOutput
     {
         global $CFG_GLPI;
         $display_type = (int) $data['display_type'];
-        if (in_array($display_type, [\Search::SYLK_OUTPUT, \Search::PDF_OUTPUT_LANDSCAPE, \Search::CSV_OUTPUT, \Search::PDF_OUTPUT_PORTRAIT], true)) {
+        if (in_array($display_type, [Search::SYLK_OUTPUT, Search::PDF_OUTPUT_LANDSCAPE, Search::CSV_OUTPUT, Search::PDF_OUTPUT_PORTRAIT], true)) {
             if ($data['data']['count'] > 0) {
                 $begin_display = $data['data']['begin'];
                 $end_display = $data['data']['end'];
@@ -285,7 +324,7 @@ final class LegacyOutput
                     }
                     if ($data['itemtype'] != $val['itemtype']) {
                         if (!isset($metanames[$val['itemtype']])) {
-                            if ($metaitem = \getItemForItemtype($val['itemtype'])) {
+                            if ($metaitem = getItemForItemtype($val['itemtype'])) {
                                 $metanames[$val['itemtype']] = $metaitem->getTypeName();
                             }
                         }
@@ -311,7 +350,7 @@ final class LegacyOutput
                     }
                     if (isset($CFG_GLPI["union_search_type"][$data['itemtype']])) {
                         if (!isset($typenames[$row["TYPE"]])) {
-                            if ($itemtmp = \getItemForItemtype($row["TYPE"])) {
+                            if ($itemtmp = getItemForItemtype($row["TYPE"])) {
                                 $typenames[$row["TYPE"]] = $itemtmp->getTypeName();
                             }
                         }
@@ -320,7 +359,7 @@ final class LegacyOutput
                     echo LegacyOutput::showEndLine($display_type);
                 }
                 $title = '';
-                if ($display_type == \Search::PDF_OUTPUT_LANDSCAPE || $display_type == \Search::PDF_OUTPUT_PORTRAIT) {
+                if ($display_type == Search::PDF_OUTPUT_LANDSCAPE || $display_type == Search::PDF_OUTPUT_PORTRAIT) {
                     $title = LegacyOutput::computeTitle($data);
                 }
                 echo LegacyOutput::showFooter($display_type, $title, $data['data']['count']);
@@ -330,15 +369,15 @@ final class LegacyOutput
             return;
         }
         // Init list of items displayed
-        if ($data['display_type'] == \Search::HTML_OUTPUT) {
-            \Session::initNavigateListItems($data['itemtype']);
+        if ($data['display_type'] == Search::HTML_OUTPUT) {
+            Session::initNavigateListItems($data['itemtype']);
         }
         $fields = array_combine(array_column($data['data']['cols'], 'id'), array_column($data['data']['cols'], 'name'));
         $values = [];
         $row_num = 0;
         $massiveActionValues = [];
         foreach ($data['data']['rows'] as $row) {
-            \Session::addToNavigateListItems($data['itemtype'], $row["id"]);
+            Session::addToNavigateListItems($data['itemtype'], $row["id"]);
             $row_num++;
             $col_num = 0;
             $value[$row_num] = [];
@@ -367,16 +406,16 @@ final class LegacyOutput
                 $item->title();
             }
         }
-        \Html::showMassiveActions($massiveactionparams);
-        $can_edit_columns = \Session::haveRight(\DisplayPreference::$rightname, \DisplayPreference::PERSONAL) || \Session::haveRight(\DisplayPreference::$rightname, \DisplayPreference::GENERAL);
+        Html::showMassiveActions($massiveactionparams);
+        $can_edit_columns = Session::haveRight(DisplayPreference::$rightname, DisplayPreference::PERSONAL) || Session::haveRight(DisplayPreference::$rightname, DisplayPreference::GENERAL);
         if ($can_edit_columns) {
-            \Html::requireJs('displaypreferences');
+            Html::requireJs('displaypreferences');
         }
         $export_params = ['item_type' => $data['itemtype'], 'criteria' => $data['search']['criteria'], 'sort' => $data['search']['sort'], 'order' => $data['search']['order'], 'is_deleted' => $data['search']['is_deleted']];
         if (!empty($data['search']['metacriteria'])) {
             $export_params['metacriteria'] = $data['search']['metacriteria'];
         }
-        \renderTwigTemplate('table.twig', ['id' => 'SearchTableFor' . $data['itemtype'], 'fields' => $fields, 'url' => $url, 'can_trash' => $can_trash, 'is_trash' => $data['search']['is_deleted'], 'massive_action' => $massiveActionValues, 'itemtype' => $data['itemtype'], 'column_edit' => $can_edit_columns, 'export_target' => $CFG_GLPI['root_doc'] . '/front/report.dynamic.php', 'export_params' => $export_params]);
+        renderTwigTemplate('table.twig', ['id' => 'SearchTableFor' . $data['itemtype'], 'fields' => $fields, 'url' => $url, 'can_trash' => $can_trash, 'is_trash' => $data['search']['is_deleted'], 'massive_action' => $massiveActionValues, 'itemtype' => $data['itemtype'], 'column_edit' => $can_edit_columns, 'export_target' => $CFG_GLPI['root_doc'] . '/front/report.dynamic.php', 'export_params' => $export_params]);
     }
     /**
      * @since 0.90
@@ -447,12 +486,12 @@ final class LegacyOutput
                                     $searchoptname = $searchopt[$criteria['field']]["name"];
                                 }
                                 $titlecontain = sprintf(__('%1$s %2$s'), $titlecontain, $searchoptname);
-                                $itemtype = \getItemTypeForTable($searchopt[$criteria['field']]["table"]);
+                                $itemtype = getItemTypeForTable($searchopt[$criteria['field']]["table"]);
                                 $valuename = '';
-                                if ($item = \getItemForItemtype($itemtype)) {
+                                if ($item = getItemForItemtype($itemtype)) {
                                     $valuename = $item->getValueToDisplay($searchopt[$criteria['field']], $criteria['value']);
                                 }
-                                $gdname = \Dropdown::getDropdownName($searchopt[$criteria['field']]["table"], $criteria['value']);
+                                $gdname = Dropdown::getDropdownName($searchopt[$criteria['field']]["table"], $criteria['value']);
                         }
                         if (empty($valuename)) {
                             $valuename = $criteria['value'];
@@ -504,7 +543,7 @@ final class LegacyOutput
             foreach ($data['search']['metacriteria'] as $metacriteria) {
                 $searchopt = & SearchOption::getOptions($metacriteria['itemtype']);
                 if (!isset($metanames[$metacriteria['itemtype']])) {
-                    if ($metaitem = \getItemForItemtype($metacriteria['itemtype'])) {
+                    if ($metaitem = getItemForItemtype($metacriteria['itemtype'])) {
                         $metanames[$metacriteria['itemtype']] = $metaitem->getTypeName();
                     }
                 }
@@ -514,7 +553,7 @@ final class LegacyOutput
                         $titlecontain2 = sprintf(__('%1$s %2$s'), $titlecontain2, $metacriteria['link']);
                     }
                     $titlecontain2 = sprintf(__('%1$s %2$s'), $titlecontain2, sprintf(__('%1$s / %2$s'), $metanames[$metacriteria['itemtype']], $searchopt[$metacriteria['field']]["name"]));
-                    $gdname2 = \Dropdown::getDropdownName($searchopt[$metacriteria['field']]["table"], $metacriteria['value']);
+                    $gdname2 = Dropdown::getDropdownName($searchopt[$metacriteria['field']]["table"], $metacriteria['value']);
                     switch ($metacriteria['searchtype']) {
                         case "equals":
                             if (in_array($searchopt[$metacriteria['link']]["field"], ['name', 'completename'])) {
@@ -575,8 +614,8 @@ final class LegacyOutput
         $table = $searchopt[$ID]["table"];
         $field = $searchopt[$ID]["field"];
         // Plugin can override core definition for its type
-        if ($plug = \isPluginItemType($itemtype)) {
-            $out = \Plugin::doOneHook($plug['plugin'], 'displayConfigItem', $itemtype, $ID, $data, "{$itemtype}_{$ID}");
+        if ($plug = isPluginItemType($itemtype)) {
+            $out = Plugin::doOneHook($plug['plugin'], 'displayConfigItem', $itemtype, $ID, $data, "{$itemtype}_{$ID}");
             if (!empty($out)) {
                 return $out;
             }
@@ -590,7 +629,7 @@ final class LegacyOutput
             case "glpi_changes.time_to_resolve":
             case "glpi_tickets.time_to_own":
             case "glpi_tickets.internal_time_to_own":
-                if (!in_array($ID, [151, 158, 181, 186]) && !empty($data[$NAME][0]['name']) && $data[$NAME][0]['status'] != \CommonITILObject::WAITING && $data[$NAME][0]['name'] < $_SESSION['glpi_currenttime']) {
+                if (!in_array($ID, [151, 158, 181, 186]) && !empty($data[$NAME][0]['name']) && $data[$NAME][0]['status'] != CommonITILObject::WAITING && $data[$NAME][0]['name'] < $_SESSION['glpi_currenttime']) {
                     $out = " style=\"background-color: #cf9b9b\" ";
                 }
                 break;
@@ -644,8 +683,8 @@ final class LegacyOutput
             $so = array_merge($so, $addobjectparams);
         }
         // Plugin can override core definition for its type
-        if ($plug = \isPluginItemType($itemtype)) {
-            $out = \Plugin::doOneHook($plug['plugin'], 'giveItem', $itemtype, $orig_id, $data, $ID);
+        if ($plug = isPluginItemType($itemtype)) {
+            $out = Plugin::doOneHook($plug['plugin'], 'giveItem', $itemtype, $orig_id, $data, $ID);
             if (!empty($out)) {
                 return $out;
             }
@@ -657,7 +696,7 @@ final class LegacyOutput
             /// TODO try to clean all specific cases using SpecificToDisplay
             switch ($table . '.' . $field) {
                 case "glpi_users.name":
-                    if ($itemtype == 'Ticket' && \Session::getCurrentInterface() == 'helpdesk' && $orig_id == 5 && \Entity::getUsedConfig('anonymize_support_agents', $itemtype::getById($data['id'])->getEntityId())) {
+                    if ($itemtype == 'Ticket' && Session::getCurrentInterface() == 'helpdesk' && $orig_id == 5 && Entity::getUsedConfig('anonymize_support_agents', $itemtype::getById($data['id'])->getEntityId())) {
                         return __("Helpdesk");
                     }
                     // USER search case
@@ -666,36 +705,36 @@ final class LegacyOutput
                         $count_display = 0;
                         $added = [];
                         $showuserlink = 0;
-                        if (\Session::haveRight('user', \READ)) {
+                        if (Session::haveRight('user', READ)) {
                             $showuserlink = 1;
                         }
                         for ($k = 0; $k < $data[$ID]['count']; $k++) {
                             if (isset($data[$ID][$k]['name']) && $data[$ID][$k]['name'] > 0 || isset($data[$ID][$k][2]) && $data[$ID][$k][2] != '') {
                                 if ($count_display) {
-                                    $out .= \Search::LBBR;
+                                    $out .= Search::LBBR;
                                 }
                                 if ($itemtype == 'Ticket') {
                                     if (isset($data[$ID][$k]['name']) && $data[$ID][$k]['name'] > 0) {
-                                        $userdata = \getUserName($data[$ID][$k]['name'], 2);
+                                        $userdata = getUserName($data[$ID][$k]['name'], 2);
                                         $tooltip = "";
-                                        if (\Session::haveRight('user', \READ)) {
-                                            $tooltip = \Html::showToolTip($userdata["comment"], ['link' => $userdata["link"], 'display' => false]);
+                                        if (Session::haveRight('user', READ)) {
+                                            $tooltip = Html::showToolTip($userdata["comment"], ['link' => $userdata["link"], 'display' => false]);
                                         }
                                         $out .= sprintf(__('%1$s %2$s'), $userdata['name'], $tooltip);
                                         $count_display++;
                                     }
                                 } else {
-                                    $out .= \getUserName($data[$ID][$k]['name'], $showuserlink);
+                                    $out .= getUserName($data[$ID][$k]['name'], $showuserlink);
                                     $count_display++;
                                 }
                                 // Manage alternative_email for tickets_users
                                 if ($itemtype == 'Ticket' && isset($data[$ID][$k][2])) {
-                                    $split = explode(\Search::LONGSEP, $data[$ID][$k][2]);
+                                    $split = explode(Search::LONGSEP, $data[$ID][$k][2]);
                                     for ($l = 0; $l < count($split); $l++) {
                                         $split2 = explode(" ", $split[$l]);
                                         if (count($split2) == 2 && $split2[0] == 0 && !empty($split2[1])) {
                                             if ($count_display) {
-                                                $out .= \Search::LBBR;
+                                                $out .= Search::LBBR;
                                             }
                                             $count_display++;
                                             $out .= "<a href='mailto:" . $split2[1] . "'>" . $split2[1] . "</a>";
@@ -709,10 +748,10 @@ final class LegacyOutput
                     if ($itemtype != 'User') {
                         $toadd = '';
                         if ($itemtype == 'Ticket' && $data[$ID][0]['id'] > 0) {
-                            $userdata = \getUserName($data[$ID][0]['id'], 2);
-                            $toadd = \Html::showToolTip($userdata["comment"], ['link' => $userdata["link"], 'display' => false]);
+                            $userdata = getUserName($data[$ID][0]['id'], 2);
+                            $toadd = Html::showToolTip($userdata["comment"], ['link' => $userdata["link"], 'display' => false]);
                         }
-                        $usernameformat = \formatUserName($data[$ID][0]['id'], $data[$ID][0]['name'], $data[$ID][0]['realname'], $data[$ID][0]['firstname'], 1);
+                        $usernameformat = formatUserName($data[$ID][0]['id'], $data[$ID][0]['name'], $data[$ID][0]['realname'], $data[$ID][0]['firstname'], 1);
                         return sprintf(__('%1$s %2$s'), $usernameformat, $toadd);
                     }
                     break;
@@ -723,7 +762,7 @@ final class LegacyOutput
                         $added = [];
                         for ($k = 0; $k < $data[$ID]['count']; $k++) {
                             if (strlen(trim((string) ($data[$ID][$k]['name'] ?? ''))) > 0 && !in_array($data[$ID][$k]['name'] . "-" . $data[$ID][$k]['entities_id'], $added)) {
-                                $text = sprintf(__('%1$s - %2$s'), $data[$ID][$k]['name'], \Dropdown::getDropdownName('glpi_entities', $data[$ID][$k]['entities_id']));
+                                $text = sprintf(__('%1$s - %2$s'), $data[$ID][$k]['name'], Dropdown::getDropdownName('glpi_entities', $data[$ID][$k]['entities_id']));
                                 $comp = '';
                                 if ($data[$ID][$k]['is_recursive']) {
                                     $comp = __('R');
@@ -738,7 +777,7 @@ final class LegacyOutput
                                     $text = sprintf(__('%1$s %2$s'), $text, "(" . $comp . ")");
                                 }
                                 if ($count_display) {
-                                    $out .= \Search::LBBR;
+                                    $out .= Search::LBBR;
                                 }
                                 $count_display++;
                                 $out .= $text;
@@ -755,7 +794,7 @@ final class LegacyOutput
                         $count_display = 0;
                         for ($k = 0; $k < $data[$ID]['count']; $k++) {
                             if (isset($data[$ID][$k]['name']) && strlen(trim((string) ($data[$ID][$k]['name'] ?? ''))) > 0 && !in_array($data[$ID][$k]['name'] . "-" . $data[$ID][$k]['profiles_id'], $added)) {
-                                $text = sprintf(__('%1$s - %2$s'), $data[$ID][$k]['name'], \Dropdown::getDropdownName('glpi_profiles', $data[$ID][$k]['profiles_id']));
+                                $text = sprintf(__('%1$s - %2$s'), $data[$ID][$k]['name'], Dropdown::getDropdownName('glpi_profiles', $data[$ID][$k]['profiles_id']));
                                 $comp = '';
                                 if ($data[$ID][$k]['is_recursive']) {
                                     $comp = __('R');
@@ -770,7 +809,7 @@ final class LegacyOutput
                                     $text = sprintf(__('%1$s %2$s'), $text, "(" . $comp . ")");
                                 }
                                 if ($count_display) {
-                                    $out .= \Search::LBBR;
+                                    $out .= Search::LBBR;
                                 }
                                 $count_display++;
                                 $out .= $text;
@@ -786,11 +825,11 @@ final class LegacyOutput
                     }
                     return "&nbsp;";
                 case "glpi_documents.filename":
-                    $doc = new \Document();
+                    $doc = new Document();
                     if ($doc->getFromDB($data['id'])) {
                         return $doc->getDownloadLink();
                     }
-                    return \NOT_AVAILABLE;
+                    return NOT_AVAILABLE;
                 case "glpi_tickets_tickets.tickets_id_1":
                     $out = "";
                     $displayed = [];
@@ -798,10 +837,10 @@ final class LegacyOutput
                         $linkid = $data[$ID][$k]['tickets_id_2'] == $data['id'] ? $data[$ID][$k]['name'] : $data[$ID][$k]['tickets_id_2'];
                         if ($linkid > 0 && !isset($displayed[$linkid])) {
                             $text = "<a ";
-                            $text .= "href=\"" . \Ticket::getFormURLWithID($linkid) . "\">";
-                            $text .= \Dropdown::getDropdownName('glpi_tickets', $linkid) . "</a>";
+                            $text .= "href=\"" . Ticket::getFormURLWithID($linkid) . "\">";
+                            $text .= Dropdown::getDropdownName('glpi_tickets', $linkid) . "</a>";
                             if (count($displayed)) {
-                                $out .= \Search::LBBR;
+                                $out .= Search::LBBR;
                             }
                             $displayed[$linkid] = $linkid;
                             $out .= $text;
@@ -810,7 +849,7 @@ final class LegacyOutput
                     return $out;
                 case "glpi_problems.id":
                     if ($so["datatype"] == 'count') {
-                        if ($data[$ID][0]['name'] > 0 && \Session::haveRight("problem", \Problem::READALL)) {
+                        if ($data[$ID][0]['name'] > 0 && Session::haveRight("problem", Problem::READALL)) {
                             if ($itemtype == 'ITILCategory') {
                                 $options['criteria'][0]['field'] = 7;
                                 $options['criteria'][0]['searchtype'] = 'equals';
@@ -829,7 +868,7 @@ final class LegacyOutput
                             }
                             $options['reset'] = 'reset';
                             $out = "<a id='problem{$itemtype}" . $data['id'] . "' ";
-                            $out .= "href=\"" . $CFG_GLPI["root_doc"] . "/front/problem.php?" . \Toolbox::append_params($options, '&amp;') . "\">";
+                            $out .= "href=\"" . $CFG_GLPI["root_doc"] . "/front/problem.php?" . Toolbox::append_params($options, '&amp;') . "\">";
                             $out .= $data[$ID][0]['name'] . "</a>";
                             return $out;
                         }
@@ -837,7 +876,7 @@ final class LegacyOutput
                     break;
                 case "glpi_tickets.id":
                     if ($so["datatype"] == 'count') {
-                        if ($data[$ID][0]['name'] > 0 && \Session::haveRight("ticket", \Ticket::READALL)) {
+                        if ($data[$ID][0]['name'] > 0 && Session::haveRight("ticket", Ticket::READALL)) {
                             if ($itemtype == 'User') {
                                 // Requester
                                 if ($ID == 'User_60') {
@@ -878,7 +917,7 @@ final class LegacyOutput
                             }
                             $options['reset'] = 'reset';
                             $out = "<a id='ticket{$itemtype}" . $data['id'] . "' ";
-                            $out .= "href=\"" . $CFG_GLPI["root_doc"] . "/front/ticket.php?" . \Toolbox::append_params($options, '&amp;') . "\">";
+                            $out .= "href=\"" . $CFG_GLPI["root_doc"] . "/front/ticket.php?" . Toolbox::append_params($options, '&amp;') . "\">";
                             $out .= $data[$ID][0]['name'] . "</a>";
                             return $out;
                         }
@@ -892,18 +931,18 @@ final class LegacyOutput
                 case "glpi_tickets.internal_time_to_resolve":
                     // Due date + progress
                     if (in_array($orig_id, [151, 158, 181, 186])) {
-                        $out = \Html::convDateTime($data[$ID][0]['name']);
+                        $out = Html::convDateTime($data[$ID][0]['name']);
                         // No due date in waiting status
-                        if ($data[$ID][0]['status'] == \CommonITILObject::WAITING) {
+                        if ($data[$ID][0]['status'] == CommonITILObject::WAITING) {
                             return '';
                         }
                         if (empty($data[$ID][0]['name'])) {
                             return '';
                         }
-                        if ($data[$ID][0]['status'] == \Ticket::SOLVED || $data[$ID][0]['status'] == \Ticket::CLOSED) {
+                        if ($data[$ID][0]['status'] == Ticket::SOLVED || $data[$ID][0]['status'] == Ticket::CLOSED) {
                             return $out;
                         }
-                        $itemtype = \getItemTypeForTable($table);
+                        $itemtype = getItemTypeForTable($table);
                         $item = new $itemtype();
                         $item->getFromDB($data['id']);
                         $percentage = 0;
@@ -945,10 +984,10 @@ final class LegacyOutput
                             $currenttime = $sla->getActiveTimeBetween($item->fields['date'], date('Y-m-d H:i:s'));
                             $totaltime = $sla->getActiveTimeBetween($item->fields['date'], $data[$ID][0]['name']);
                         } else {
-                            $calendars_id = \Entity::getUsedConfig('calendars_id', $item->fields['entities_id']);
+                            $calendars_id = Entity::getUsedConfig('calendars_id', $item->fields['entities_id']);
                             if ($calendars_id != 0) {
                                 // Ticket entity have calendar
-                                $calendar = new \Calendar();
+                                $calendar = new Calendar();
                                 $calendar->getFromDB($calendars_id);
                                 $currenttime = $calendar->getActiveTimeBetween($item->fields['date'], date('Y-m-d H:i:s'));
                                 $totaltime = $calendar->getActiveTimeBetween($item->fields['date'], $data[$ID][0]['name']);
@@ -972,20 +1011,20 @@ final class LegacyOutput
                             $less_warn_limit = $_SESSION['glpiduedatewarning_less'];
                             $less_warn = 100 - $percentage;
                         } elseif ($_SESSION['glpiduedatewarning_unit'] == 'hour') {
-                            $less_warn_limit = $_SESSION['glpiduedatewarning_less'] * \HOUR_TIMESTAMP;
+                            $less_warn_limit = $_SESSION['glpiduedatewarning_less'] * HOUR_TIMESTAMP;
                             $less_warn = $totaltime - $currenttime;
                         } elseif ($_SESSION['glpiduedatewarning_unit'] == 'day') {
-                            $less_warn_limit = $_SESSION['glpiduedatewarning_less'] * \DAY_TIMESTAMP;
+                            $less_warn_limit = $_SESSION['glpiduedatewarning_less'] * DAY_TIMESTAMP;
                             $less_warn = $totaltime - $currenttime;
                         }
                         if ($_SESSION['glpiduedatecritical_unit'] == '%') {
                             $less_crit_limit = $_SESSION['glpiduedatecritical_less'];
                             $less_crit = 100 - $percentage;
                         } elseif ($_SESSION['glpiduedatecritical_unit'] == 'hour') {
-                            $less_crit_limit = $_SESSION['glpiduedatecritical_less'] * \HOUR_TIMESTAMP;
+                            $less_crit_limit = $_SESSION['glpiduedatecritical_less'] * HOUR_TIMESTAMP;
                             $less_crit = $totaltime - $currenttime;
                         } elseif ($_SESSION['glpiduedatecritical_unit'] == 'day') {
-                            $less_crit_limit = $_SESSION['glpiduedatecritical_less'] * \DAY_TIMESTAMP;
+                            $less_crit_limit = $_SESSION['glpiduedatecritical_less'] * DAY_TIMESTAMP;
                             $less_crit = $totaltime - $currenttime;
                         }
                         $color = $_SESSION['glpiduedateok_color'];
@@ -997,7 +1036,7 @@ final class LegacyOutput
                         if (!isset($so['datatype'])) {
                             $so['datatype'] = 'progressbar';
                         }
-                        $progressbar_data = ['text' => \Html::convDateTime($data[$ID][0]['name']), 'percent' => $percentage, 'percent_text' => $percentage_text, 'color' => $color];
+                        $progressbar_data = ['text' => Html::convDateTime($data[$ID][0]['name']), 'percent' => $percentage, 'percent_text' => $percentage_text, 'color' => $color];
                     }
                     break;
                 case "glpi_softwarelicenses.number":
@@ -1009,34 +1048,34 @@ final class LegacyOutput
                     }
                     return $data[$ID][0]['name'];
                 case "glpi_auth_tables.name":
-                    return \Auth::getMethodName($data[$ID][0]['name'], $data[$ID][0]['auths_id'], 1, $data[$ID][0]['ldapname'] . $data[$ID][0]['mailname']);
+                    return Auth::getMethodName($data[$ID][0]['name'], $data[$ID][0]['auths_id'], 1, $data[$ID][0]['ldapname'] . $data[$ID][0]['mailname']);
                 case "glpi_reservationitems.comment":
                     if (empty($data[$ID][0]['name'])) {
                         $text = __('None');
                     } else {
-                        $text = \Html::resume_text($data[$ID][0]['name']);
+                        $text = Html::resume_text($data[$ID][0]['name']);
                     }
-                    if (\Session::haveRight('reservation', \UPDATE)) {
+                    if (Session::haveRight('reservation', UPDATE)) {
                         return "<a title=\"" . __s('Modify the comment') . "\"
-                           href='" . \ReservationItem::getFormURLWithID($data['refID']) . "' >" . $text . "</a>";
+                           href='" . ReservationItem::getFormURLWithID($data['refID']) . "' >" . $text . "</a>";
                     }
                     return $text;
                 case 'glpi_crontasks.description':
-                    $tmp = new \CronTask();
+                    $tmp = new CronTask();
                     return $tmp->getDescription($data[$ID][0]['name']);
                 case 'glpi_changes.status':
-                    $status = \Change::getStatus($data[$ID][0]['name']);
-                    return "<span class='no-wrap'>" . \Change::getStatusIcon($data[$ID][0]['name']) . "&nbsp;{$status}" . "</span>";
+                    $status = Change::getStatus($data[$ID][0]['name']);
+                    return "<span class='no-wrap'>" . Change::getStatusIcon($data[$ID][0]['name']) . "&nbsp;{$status}" . "</span>";
                 case 'glpi_problems.status':
-                    $status = \Problem::getStatus($data[$ID][0]['name']);
-                    return "<span class='no-wrap'>" . \Problem::getStatusIcon($data[$ID][0]['name']) . "&nbsp;{$status}" . "</span>";
+                    $status = Problem::getStatus($data[$ID][0]['name']);
+                    return "<span class='no-wrap'>" . Problem::getStatusIcon($data[$ID][0]['name']) . "&nbsp;{$status}" . "</span>";
                 case 'glpi_tickets.status':
                     if ($ticketStatuses !== null) {
-                        $presentation = \Ticket::getStatusPresentationFromCatalogue($data[$ID][0]['name'], $ticketStatuses());
+                        $presentation = Ticket::getStatusPresentationFromCatalogue($data[$ID][0]['name'], $ticketStatuses());
                         return "<span class='no-wrap'>" . $presentation['icon'] . "&nbsp;{$presentation['label']}</span>";
                     }
-                    $status = \Ticket::getStatus($data[$ID][0]['name']);
-                    return "<span class='no-wrap'>" . \Ticket::getStatusIcon($data[$ID][0]['name']) . "&nbsp;{$status}" . "</span>";
+                    $status = Ticket::getStatus($data[$ID][0]['name']);
+                    return "<span class='no-wrap'>" . Ticket::getStatusIcon($data[$ID][0]['name']) . "&nbsp;{$status}" . "</span>";
                 case 'glpi_projectstates.name':
                     $out = '';
                     $name = $data[$ID][0]['name'];
@@ -1044,7 +1083,7 @@ final class LegacyOutput
                         $name = $data[$ID][0]['trans'];
                     }
                     if ($itemtype == 'ProjectState') {
-                        $out = "<a href='" . \ProjectState::getFormURLWithID($data[$ID][0]["id"]) . "'>" . $name . "</a></div>";
+                        $out = "<a href='" . ProjectState::getFormURLWithID($data[$ID][0]["id"]) . "'>" . $name . "</a></div>";
                     } else {
                         $out = $name;
                     }
@@ -1058,7 +1097,7 @@ final class LegacyOutput
                         $items = [];
                         foreach ($data[$ID] as $key => $val) {
                             if (is_numeric($key)) {
-                                if (!empty($val['itemtype']) && ($item = \getItemForItemtype($val['itemtype']))) {
+                                if (!empty($val['itemtype']) && ($item = getItemForItemtype($val['itemtype']))) {
                                     if ($item->getFromDB($val['name'])) {
                                         $items[] = $item->getLink(['comments' => true]);
                                     }
@@ -1076,7 +1115,7 @@ final class LegacyOutput
                         $itemtypes = [];
                         foreach ($data[$ID] as $key => $val) {
                             if (is_numeric($key)) {
-                                if (!empty($val['name']) && ($item = \getItemForItemtype($val['name']))) {
+                                if (!empty($val['name']) && ($item = getItemForItemtype($val['name']))) {
                                     $item = new $val['name']();
                                     $name = $item->getTypeName();
                                     $itemtypes[] = __($name);
@@ -1095,7 +1134,7 @@ final class LegacyOutput
                         $link = $itemtype::getFormURLWithID($data[$ID][0]['id']);
                         $out = "<a id='{$itemtype}" . $data[$ID][0]['id'] . "' href=\"" . $link;
                         // Force solution tab if solved
-                        if ($item = \getItemForItemtype($itemtype)) {
+                        if ($item = getItemForItemtype($itemtype)) {
                             if (in_array($data[$ID][0]['status'], $item->getSolvedStatusArray())) {
                                 $out .= "&amp;forcetab={$itemtype}\$2";
                             }
@@ -1106,9 +1145,9 @@ final class LegacyOutput
                             $name = sprintf(__('%1$s (%2$s)'), $name, $data[$ID][0]['id']);
                         }
                         $out .= $name . "</a>";
-                        $hdecode = \Html::entity_decode_deep($data[$ID][0]['content']);
-                        $content = \Toolbox::unclean_cross_side_scripting_deep($hdecode);
-                        $out = sprintf(__('%1$s %2$s'), $out, \Html::showToolTip(nl2br(\Html::Clean($content)), ['applyto' => $itemtype . $data[$ID][0]['id'], 'display' => false]));
+                        $hdecode = Html::entity_decode_deep($data[$ID][0]['content']);
+                        $content = Toolbox::unclean_cross_side_scripting_deep($hdecode);
+                        $out = sprintf(__('%1$s %2$s'), $out, Html::showToolTip(nl2br(Html::Clean($content)), ['applyto' => $itemtype . $data[$ID][0]['id'], 'display' => false]));
                         return $out;
                     }
                     // no break
@@ -1116,38 +1155,38 @@ final class LegacyOutput
                     $out = '';
                     for ($k = 0; $k < $data[$ID]['count']; $k++) {
                         if ($data[$ID][$k]['name']) {
-                            $status = \TicketValidation::getStatus($data[$ID][$k]['name']);
-                            $bgcolor = \TicketValidation::getStatusColor($data[$ID][$k]['name']);
-                            $out .= (empty($out) ? '' : \Search::LBBR) . "<div style=\"background-color:" . $bgcolor . ";\">" . $status . '</div>';
+                            $status = TicketValidation::getStatus($data[$ID][$k]['name']);
+                            $bgcolor = TicketValidation::getStatusColor($data[$ID][$k]['name']);
+                            $out .= (empty($out) ? '' : Search::LBBR) . "<div style=\"background-color:" . $bgcolor . ";\">" . $status . '</div>';
                         }
                     }
                     return $out;
                 case 'glpi_ticketsatisfactions.satisfaction':
-                    if (\Search::$output_type == \Search::HTML_OUTPUT) {
-                        return \TicketSatisfaction::displaySatisfaction($data[$ID][0]['name']);
+                    if (Search::$output_type == Search::HTML_OUTPUT) {
+                        return TicketSatisfaction::displaySatisfaction($data[$ID][0]['name']);
                     }
                     break;
                 case 'glpi_projects._virtual_planned_duration':
-                    return \Html::timestampToString(\ProjectTask::getTotalPlannedDurationForProject($data["id"]), false);
+                    return Html::timestampToString(ProjectTask::getTotalPlannedDurationForProject($data["id"]), false);
                 case 'glpi_projects._virtual_effective_duration':
-                    return \Html::timestampToString(\ProjectTask::getTotalEffectiveDurationForProject($data["id"]), false);
+                    return Html::timestampToString(ProjectTask::getTotalEffectiveDurationForProject($data["id"]), false);
                 case 'glpi_cartridgeitems._virtual':
-                    return \Cartridge::getCount($data["id"], $data[$ID][0]['alarm_threshold'], true);
+                    return Cartridge::getCount($data["id"], $data[$ID][0]['alarm_threshold'], true);
                 case 'glpi_printers._virtual':
-                    return \Cartridge::getCountForPrinter($data["id"], \Search::$output_type != \Search::HTML_OUTPUT);
+                    return Cartridge::getCountForPrinter($data["id"], Search::$output_type != Search::HTML_OUTPUT);
                 case 'glpi_consumableitems._virtual':
-                    return \Consumable::getCount($data["id"], $data[$ID][0]['alarm_threshold'], \Search::$output_type != \Search::HTML_OUTPUT);
+                    return Consumable::getCount($data["id"], $data[$ID][0]['alarm_threshold'], Search::$output_type != Search::HTML_OUTPUT);
                 case 'glpi_links._virtual':
                     $out = '';
-                    $link = new \Link();
-                    if (($item = \getItemForItemtype($itemtype)) && $item->getFromDB($data['id'])) {
-                        $data = \Link::getLinksDataForItem($item);
+                    $link = new Link();
+                    if (($item = getItemForItemtype($itemtype)) && $item->getFromDB($data['id'])) {
+                        $data = Link::getLinksDataForItem($item);
                         $count_display = 0;
                         foreach ($data as $val) {
-                            $links = \Link::getAllLinksFor($item, $val);
+                            $links = Link::getAllLinksFor($item, $val);
                             foreach ($links as $link) {
                                 if ($count_display) {
-                                    $out .= \Search::LBBR;
+                                    $out .= Search::LBBR;
                                 }
                                 $out .= $link;
                                 $count_display++;
@@ -1168,14 +1207,14 @@ final class LegacyOutput
                 case "glpi_projects.priority":
                     $index = $data[$ID][0]['name'];
                     $color = $_SESSION["glpipriority_{$index}"];
-                    $name = \CommonITILObject::getPriorityName($index);
+                    $name = CommonITILObject::getPriorityName($index);
                     return "<div class='priority_block' style='border-color: {$color}'>
                         <span style='background: {$color}'></span>&nbsp;{$name}
                        </div>";
             }
         }
         //// Default case
-        if ($itemtype == 'Ticket' && \Session::getCurrentInterface() == 'helpdesk' && $orig_id == 8 && \Entity::getUsedConfig('anonymize_support_agents', $itemtype::getById($data['id'])->getEntityId())) {
+        if ($itemtype == 'Ticket' && Session::getCurrentInterface() == 'helpdesk' && $orig_id == 8 && Entity::getUsedConfig('anonymize_support_agents', $itemtype::getById($data['id'])->getEntityId())) {
             // Assigned groups
             return __("Helpdesk group");
         }
@@ -1184,7 +1223,7 @@ final class LegacyOutput
             if (preg_match("/^glpi_plugin_([a-z0-9]+)/", $table . '.' . $field, $matches)) {
                 if (count($matches) == 2) {
                     $plug = $matches[1];
-                    $out = \Plugin::doOneHook($plug, 'giveItem', $itemtype, $orig_id, $data, $ID);
+                    $out = Plugin::doOneHook($plug, 'giveItem', $itemtype, $orig_id, $data, $ID);
                     if (!empty($out)) {
                         return $out;
                     }
@@ -1199,12 +1238,12 @@ final class LegacyOutput
         if (isset($so["datatype"])) {
             switch ($so["datatype"]) {
                 case "itemlink":
-                    $linkitemtype = \getItemTypeForTable($so["table"]);
+                    $linkitemtype = getItemTypeForTable($so["table"]);
                     $out = "";
                     $count_display = 0;
-                    $separate = \Search::LBBR;
+                    $separate = Search::LBBR;
                     if (isset($so['splititems']) && $so['splititems']) {
-                        $separate = \Search::LBHR;
+                        $separate = Search::LBHR;
                     }
                     for ($k = 0; $k < $data[$ID]['count']; $k++) {
                         if (isset($data[$ID][$k]['id'])) {
@@ -1222,9 +1261,9 @@ final class LegacyOutput
                     }
                     return $out;
                 case "text":
-                    $separate = \Search::LBBR;
+                    $separate = Search::LBBR;
                     if (isset($so['splititems']) && $so['splititems']) {
-                        $separate = \Search::LBHR;
+                        $separate = Search::LBHR;
                     }
                     $out = '';
                     $count_display = 0;
@@ -1236,19 +1275,19 @@ final class LegacyOutput
                             $count_display++;
                             $text = "";
                             if (isset($so['htmltext']) && $so['htmltext']) {
-                                $text = \Html::clean(\Toolbox::unclean_cross_side_scripting_deep(nl2br((string) $data[$ID][$k]['name'])));
+                                $text = Html::clean(Toolbox::unclean_cross_side_scripting_deep(nl2br((string) $data[$ID][$k]['name'])));
                             } else {
                                 $text = nl2br((string) $data[$ID][$k]['name']);
                             }
-                            if (\Search::$output_type == \Search::HTML_OUTPUT && \Toolbox::strlen($text) > $CFG_GLPI['cut']) {
+                            if (Search::$output_type == Search::HTML_OUTPUT && Toolbox::strlen($text) > $CFG_GLPI['cut']) {
                                 $rand = mt_rand();
                                 $popup_params = ['display' => false];
-                                if (\Toolbox::strlen($text) > $CFG_GLPI['cut']) {
+                                if (Toolbox::strlen($text) > $CFG_GLPI['cut']) {
                                     $popup_params += ['awesome-class' => 'fa-comments', 'autoclose' => false, 'onclick' => true];
                                 } else {
                                     $popup_params += ['applyto' => "text{$rand}"];
                                 }
-                                $out .= sprintf(__('%1$s %2$s'), "<span id='text{$rand}'>" . \Html::resume_text($text, $CFG_GLPI['cut']) . '</span>', \Html::showToolTip('<div class="fup-popup">' . $text . '</div>', $popup_params));
+                                $out .= sprintf(__('%1$s %2$s'), "<span id='text{$rand}'>" . Html::resume_text($text, $CFG_GLPI['cut']) . '</span>', Html::showToolTip('<div class="fup-popup">' . $text . '</div>', $popup_params));
                             } else {
                                 $out .= $text;
                             }
@@ -1260,9 +1299,9 @@ final class LegacyOutput
                     $out = '';
                     for ($k = 0; $k < $data[$ID]['count']; $k++) {
                         if (is_null($data[$ID][$k]['name']) && isset($so['emptylabel']) && $so['emptylabel']) {
-                            $out .= (empty($out) ? '' : \Search::LBBR) . $so['emptylabel'];
+                            $out .= (empty($out) ? '' : Search::LBBR) . $so['emptylabel'];
                         } else {
-                            $out .= (empty($out) ? '' : \Search::LBBR) . \Html::convDate($data[$ID][$k]['name']);
+                            $out .= (empty($out) ? '' : Search::LBBR) . Html::convDate($data[$ID][$k]['name']);
                         }
                     }
                     return $out;
@@ -1270,9 +1309,9 @@ final class LegacyOutput
                     $out = '';
                     for ($k = 0; $k < $data[$ID]['count']; $k++) {
                         if (is_null($data[$ID][$k]['name']) && isset($so['emptylabel']) && $so['emptylabel']) {
-                            $out .= (empty($out) ? '' : \Search::LBBR) . $so['emptylabel'];
+                            $out .= (empty($out) ? '' : Search::LBBR) . $so['emptylabel'];
                         } else {
-                            $out .= (empty($out) ? '' : \Search::LBBR) . \Html::convDateTime($data[$ID][$k]['name']);
+                            $out .= (empty($out) ? '' : Search::LBBR) . Html::convDateTime($data[$ID][$k]['name']);
                         }
                     }
                     return $out;
@@ -1287,7 +1326,7 @@ final class LegacyOutput
                     }
                     $out = '';
                     for ($k = 0; $k < $data[$ID]['count']; $k++) {
-                        $out .= (empty($out) ? '' : '<br>') . \Html::timestampToString($data[$ID][$k]['name'], $withseconds, $withdays);
+                        $out .= (empty($out) ? '' : '<br>') . Html::timestampToString($data[$ID][$k]['name'], $withseconds, $withdays);
                     }
                     return $out;
                 case "email":
@@ -1295,26 +1334,26 @@ final class LegacyOutput
                     $count_display = 0;
                     for ($k = 0; $k < $data[$ID]['count']; $k++) {
                         if ($count_display) {
-                            $out .= \Search::LBBR;
+                            $out .= Search::LBBR;
                         }
                         $count_display++;
                         if (!empty($data[$ID][$k]['name'])) {
-                            $out .= empty($out) ? '' : \Search::LBBR;
-                            $out .= "<a href='mailto:" . \Html::entities_deep($data[$ID][$k]['name']) . "'>" . $data[$ID][$k]['name'];
+                            $out .= empty($out) ? '' : Search::LBBR;
+                            $out .= "<a href='mailto:" . Html::entities_deep($data[$ID][$k]['name']) . "'>" . $data[$ID][$k]['name'];
                             $out .= "</a>";
                         }
                     }
                     return empty($out) ? "&nbsp;" : $out;
                 case "weblink":
                     $orig_link = trim($data[$ID][0]['name'] ?? '');
-                    if (!empty($orig_link) && \Toolbox::isValidWebUrl($orig_link)) {
+                    if (!empty($orig_link) && Toolbox::isValidWebUrl($orig_link)) {
                         // strip begin of link
                         $link = preg_replace('/https?:\\/\\/(www[^\\.]*\\.)?/', '', $orig_link);
                         $link = preg_replace('/\\/$/', '', (string) $link);
-                        if (\Toolbox::strlen($link) > $CFG_GLPI["url_maxlength"]) {
-                            $link = \Toolbox::substr($link, 0, $CFG_GLPI["url_maxlength"]) . "...";
+                        if (Toolbox::strlen($link) > $CFG_GLPI["url_maxlength"]) {
+                            $link = Toolbox::substr($link, 0, $CFG_GLPI["url_maxlength"]) . "...";
                         }
-                        return "<a href=\"" . \Toolbox::formatOutputWebLink($orig_link) . "\" target='_blank'>{$link}</a>";
+                        return "<a href=\"" . Toolbox::formatOutputWebLink($orig_link) . "\" target='_blank'>{$link}</a>";
                     }
                     return "&nbsp;";
                 case "count":
@@ -1324,13 +1363,13 @@ final class LegacyOutput
                     for ($k = 0; $k < $data[$ID]['count']; $k++) {
                         if (strlen(trim((string) ($data[$ID][$k]['name'] ?? ''))) > 0) {
                             if ($count_display) {
-                                $out .= \Search::LBBR;
+                                $out .= Search::LBBR;
                             }
                             $count_display++;
                             if (isset($so['toadd']) && isset($so['toadd'][$data[$ID][$k]['name']])) {
                                 $out .= $so['toadd'][$data[$ID][$k]['name']];
                             } else {
-                                $out .= \Dropdown::getValueWithUnit($data[$ID][$k]['name'], $unit);
+                                $out .= Dropdown::getValueWithUnit($data[$ID][$k]['name'], $unit);
                             }
                         }
                     }
@@ -1341,13 +1380,13 @@ final class LegacyOutput
                     for ($k = 0; $k < $data[$ID]['count']; $k++) {
                         if (strlen(trim((string) ($data[$ID][$k]['name'] ?? ''))) > 0) {
                             if ($count_display) {
-                                $out .= \Search::LBBR;
+                                $out .= Search::LBBR;
                             }
                             $count_display++;
                             if (isset($so['toadd']) && isset($so['toadd'][$data[$ID][$k]['name']])) {
                                 $out .= $so['toadd'][$data[$ID][$k]['name']];
                             } else {
-                                $out .= \Dropdown::getValueWithUnit($data[$ID][$k]['name'], $unit, $CFG_GLPI["decimal_number"]);
+                                $out .= Dropdown::getValueWithUnit($data[$ID][$k]['name'], $unit, $CFG_GLPI["decimal_number"]);
                             }
                         }
                     }
@@ -1358,15 +1397,15 @@ final class LegacyOutput
                     for ($k = 0; $k < $data[$ID]['count']; $k++) {
                         if (strlen(trim((string) ($data[$ID][$k]['name'] ?? ''))) > 0) {
                             if ($count_display) {
-                                $out .= \Search::LBBR;
+                                $out .= Search::LBBR;
                             }
                             $count_display++;
-                            $out .= \Dropdown::getYesNo($data[$ID][$k]['name']);
+                            $out .= Dropdown::getYesNo($data[$ID][$k]['name']);
                         }
                     }
                     return $out;
                 case "itemtypename":
-                    if ($obj = \getItemForItemtype($data[$ID][0]['name'])) {
+                    if ($obj = getItemForItemtype($data[$ID][0]['name'])) {
                         return $obj->getTypeName();
                     }
                     return "";
@@ -1393,9 +1432,9 @@ final class LegacyOutput
         // Manage items with need group by / group_concat
         $out = "";
         $count_display = 0;
-        $separate = \Search::LBBR;
+        $separate = Search::LBBR;
         if (isset($so['splititems']) && $so['splititems']) {
-            $separate = \Search::LBHR;
+            $separate = Search::LBHR;
         }
         for ($k = 0; $k < $data[$ID]['count']; $k++) {
             if (strlen(trim((string) ($data[$ID][$k]['name'] ?? ''))) > 0) {
@@ -1405,8 +1444,8 @@ final class LegacyOutput
                 $count_display++;
                 // Get specific display if available
                 if (isset($table)) {
-                    $itemtype = \getItemTypeForTable($table);
-                    if ($item = \getItemForItemtype($itemtype)) {
+                    $itemtype = getItemTypeForTable($table);
+                    if ($item = getItemForItemtype($itemtype)) {
                         $tmpdata = $data[$ID][$k];
                         // Copy name to real field
                         $tmpdata[$field] = $data[$ID][$k]['name'];
@@ -1453,22 +1492,22 @@ final class LegacyOutput
     {
         $out = "";
         switch ($type) {
-            case \Search::PDF_OUTPUT_LANDSCAPE:
+            case Search::PDF_OUTPUT_LANDSCAPE:
                 //pdf
-            case \Search::PDF_OUTPUT_PORTRAIT:
+            case Search::PDF_OUTPUT_PORTRAIT:
                 global $PDF_TABLE;
                 $PDF_TABLE .= "<th {$options}>";
-                $PDF_TABLE .= \Html::clean($value);
+                $PDF_TABLE .= Html::clean($value);
                 $PDF_TABLE .= "</th>
 ";
                 break;
-            case \Search::SYLK_OUTPUT:
+            case Search::SYLK_OUTPUT:
                 //sylk
                 global $SYLK_HEADER, $SYLK_SIZE;
                 $SYLK_HEADER[$num] = LegacyOutput::sylk_clean($value);
-                $SYLK_SIZE[$num] = \Toolbox::strlen($SYLK_HEADER[$num]);
+                $SYLK_SIZE[$num] = Toolbox::strlen($SYLK_HEADER[$num]);
                 break;
-            case \Search::CSV_OUTPUT:
+            case Search::CSV_OUTPUT:
                 //CSV
                 $out = "\"" . LegacyOutput::csv_clean($value) . "\"" . $_SESSION["glpicsv_delimiter"];
                 break;
@@ -1506,56 +1545,56 @@ final class LegacyOutput
     {
         $out = "";
         switch ($type) {
-            case \Search::PDF_OUTPUT_LANDSCAPE:
+            case Search::PDF_OUTPUT_LANDSCAPE:
                 //pdf
-            case \Search::PDF_OUTPUT_PORTRAIT:
+            case Search::PDF_OUTPUT_PORTRAIT:
                 global $PDF_TABLE;
-                $value = preg_replace('/' . \Search::LBBR . '/', '<br>', $value);
-                $value = preg_replace('/' . \Search::LBHR . '/', '<hr>', (string) $value);
+                $value = preg_replace('/' . Search::LBBR . '/', '<br>', $value);
+                $value = preg_replace('/' . Search::LBHR . '/', '<hr>', (string) $value);
                 $PDF_TABLE .= "<td {$extraparam} valign='top'>";
-                $PDF_TABLE .= \Html::weblink_extract(\Html::clean($value));
+                $PDF_TABLE .= Html::weblink_extract(Html::clean($value));
                 $PDF_TABLE .= "</td>
 ";
                 break;
-            case \Search::SYLK_OUTPUT:
+            case Search::SYLK_OUTPUT:
                 //sylk
                 global $SYLK_ARRAY, $SYLK_SIZE;
-                $value = \Html::weblink_extract(\Html::clean($value));
-                $value = preg_replace('/' . \Search::LBBR . '/', '<br>', $value);
-                $value = preg_replace('/' . \Search::LBHR . '/', '<hr>', (string) $value);
+                $value = Html::weblink_extract(Html::clean($value));
+                $value = preg_replace('/' . Search::LBBR . '/', '<br>', $value);
+                $value = preg_replace('/' . Search::LBHR . '/', '<hr>', (string) $value);
                 $SYLK_ARRAY[$row][$num] = LegacyOutput::sylk_clean($value);
-                $SYLK_SIZE[$num] = max($SYLK_SIZE[$num], \Toolbox::strlen($SYLK_ARRAY[$row][$num]));
+                $SYLK_SIZE[$num] = max($SYLK_SIZE[$num], Toolbox::strlen($SYLK_ARRAY[$row][$num]));
                 break;
-            case \Search::CSV_OUTPUT:
+            case Search::CSV_OUTPUT:
                 //csv
-                $value = preg_replace('/' . \Search::LBBR . '/', '<br>', $value);
-                $value = preg_replace('/' . \Search::LBHR . '/', '<hr>', (string) $value);
-                $value = \Html::weblink_extract(\Html::clean($value));
+                $value = preg_replace('/' . Search::LBBR . '/', '<br>', $value);
+                $value = preg_replace('/' . Search::LBHR . '/', '<hr>', (string) $value);
+                $value = Html::weblink_extract(Html::clean($value));
                 $out = "\"" . LegacyOutput::csv_clean($value) . "\"" . $_SESSION["glpicsv_delimiter"];
                 break;
             default:
                 global $CFG_GLPI;
                 $out = "<td {$extraparam} valign='top'>";
-                if (!preg_match('/' . \Search::LBHR . '/', $value)) {
-                    $values = preg_split('/' . \Search::LBBR . '/i', $value);
+                if (!preg_match('/' . Search::LBHR . '/', $value)) {
+                    $values = preg_split('/' . Search::LBBR . '/i', $value);
                     $line_delimiter = '<br>';
                 } else {
-                    $values = preg_split('/' . \Search::LBHR . '/i', $value);
+                    $values = preg_split('/' . Search::LBHR . '/i', $value);
                     $line_delimiter = '<hr>';
                 }
-                if (count($values) > 1 && \Toolbox::strlen($value) > $CFG_GLPI['cut']) {
+                if (count($values) > 1 && Toolbox::strlen($value) > $CFG_GLPI['cut']) {
                     $value = '';
                     foreach ($values as $v) {
                         $value .= $v . $line_delimiter;
                     }
-                    $value = preg_replace('/' . \Search::LBBR . '/', '<br>', $value);
-                    $value = preg_replace('/' . \Search::LBHR . '/', '<hr>', (string) $value);
+                    $value = preg_replace('/' . Search::LBBR . '/', '<br>', $value);
+                    $value = preg_replace('/' . Search::LBHR . '/', '<hr>', (string) $value);
                     $value = '<div class="fup-popup">' . $value . '</div>';
-                    $valTip = "&nbsp;" . \Html::showToolTip($value, ['awesome-class' => 'fa-comments', 'display' => false, 'autoclose' => false, 'onclick' => true]);
+                    $valTip = "&nbsp;" . Html::showToolTip($value, ['awesome-class' => 'fa-comments', 'display' => false, 'autoclose' => false, 'onclick' => true]);
                     $out .= $values[0] . $valTip;
                 } else {
-                    $value = preg_replace('/' . \Search::LBBR . '/', '<br>', $value);
-                    $value = preg_replace('/' . \Search::LBHR . '/', '<hr>', (string) $value);
+                    $value = preg_replace('/' . Search::LBBR . '/', '<br>', $value);
+                    $value = preg_replace('/' . Search::LBHR . '/', '<hr>', (string) $value);
                     $out .= $value;
                 }
                 $out .= "</td>
@@ -1579,12 +1618,12 @@ final class LegacyOutput
         }
         $out = "";
         switch ($type) {
-            case \Search::PDF_OUTPUT_LANDSCAPE:
+            case Search::PDF_OUTPUT_LANDSCAPE:
                 //pdf
-            case \Search::PDF_OUTPUT_PORTRAIT:
-            case \Search::SYLK_OUTPUT:
+            case Search::PDF_OUTPUT_PORTRAIT:
+            case Search::SYLK_OUTPUT:
                 //sylk
-            case \Search::CSV_OUTPUT:
+            case Search::CSV_OUTPUT:
                 //csv
                 break;
             default:
@@ -1606,14 +1645,14 @@ final class LegacyOutput
     {
         $out = "";
         switch ($type) {
-            case \Search::PDF_OUTPUT_LANDSCAPE:
+            case Search::PDF_OUTPUT_LANDSCAPE:
                 //pdf
-            case \Search::PDF_OUTPUT_PORTRAIT:
+            case Search::PDF_OUTPUT_PORTRAIT:
                 global $PDF_TABLE;
-                if ($type == \Search::PDF_OUTPUT_LANDSCAPE) {
-                    $pdf = new \GLPIPDF('L', 'mm', 'A4', true, 'UTF-8', false);
+                if ($type == Search::PDF_OUTPUT_LANDSCAPE) {
+                    $pdf = new GLPIPDF('L', 'mm', 'A4', true, 'UTF-8', false);
                 } else {
-                    $pdf = new \GLPIPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+                    $pdf = new GLPIPDF('P', 'mm', 'A4', true, 'UTF-8', false);
                 }
                 if ($count !== null) {
                     $pdf->setTotalCount($count);
@@ -1646,7 +1685,7 @@ final class LegacyOutput
                 $pdf->writeHTML($PDF_TABLE, true, false, true, false, '');
                 $pdf->Output('glpi.pdf', 'I');
                 break;
-            case \Search::SYLK_OUTPUT:
+            case Search::SYLK_OUTPUT:
                 //sylk
                 global $SYLK_HEADER, $SYLK_ARRAY, $SYLK_SIZE;
                 // largeurs des colonnes
@@ -1677,7 +1716,7 @@ final class LegacyOutput
                 $out .= "E
 ";
                 break;
-            case \Search::CSV_OUTPUT:
+            case Search::CSV_OUTPUT:
                 //csv
                 break;
             default:
@@ -1700,13 +1739,13 @@ final class LegacyOutput
     {
         $out = "";
         switch ($type) {
-            case \Search::PDF_OUTPUT_LANDSCAPE:
+            case Search::PDF_OUTPUT_LANDSCAPE:
                 //pdf
-            case \Search::PDF_OUTPUT_PORTRAIT:
+            case Search::PDF_OUTPUT_PORTRAIT:
                 global $PDF_TABLE;
                 $PDF_TABLE = "<table cellspacing=\"0\" cellpadding=\"1\" border=\"1\" aria-label='Exported PDF Table'>";
                 break;
-            case \Search::SYLK_OUTPUT:
+            case Search::SYLK_OUTPUT:
                 // Sylk
                 global $SYLK_ARRAY, $SYLK_HEADER, $SYLK_SIZE;
                 $SYLK_ARRAY = [];
@@ -1759,7 +1798,7 @@ final class LegacyOutput
                 echo "
 ";
                 break;
-            case \Search::CSV_OUTPUT:
+            case Search::CSV_OUTPUT:
                 // csv
                 header("Expires: Mon, 26 Nov 1962 00:00:00 GMT");
                 header('Pragma: private');
@@ -1795,15 +1834,15 @@ final class LegacyOutput
     {
         $out = "";
         switch ($type) {
-            case \Search::PDF_OUTPUT_LANDSCAPE:
+            case Search::PDF_OUTPUT_LANDSCAPE:
                 //pdf
-            case \Search::PDF_OUTPUT_PORTRAIT:
+            case Search::PDF_OUTPUT_PORTRAIT:
                 global $PDF_TABLE;
                 $PDF_TABLE .= "<thead>";
                 break;
-            case \Search::SYLK_OUTPUT:
+            case Search::SYLK_OUTPUT:
                 //sylk
-            case \Search::CSV_OUTPUT:
+            case Search::CSV_OUTPUT:
                 //csv
                 break;
             default:
@@ -1824,15 +1863,15 @@ final class LegacyOutput
     {
         $out = "";
         switch ($type) {
-            case \Search::PDF_OUTPUT_LANDSCAPE:
+            case Search::PDF_OUTPUT_LANDSCAPE:
                 //pdf
-            case \Search::PDF_OUTPUT_PORTRAIT:
+            case Search::PDF_OUTPUT_PORTRAIT:
                 global $PDF_TABLE;
                 $PDF_TABLE .= "</thead>";
                 break;
-            case \Search::SYLK_OUTPUT:
+            case Search::SYLK_OUTPUT:
                 //sylk
-            case \Search::CSV_OUTPUT:
+            case Search::CSV_OUTPUT:
                 //csv
                 break;
             default:
@@ -1853,9 +1892,9 @@ final class LegacyOutput
     {
         $out = "";
         switch ($type) {
-            case \Search::PDF_OUTPUT_LANDSCAPE:
+            case Search::PDF_OUTPUT_LANDSCAPE:
                 //pdf
-            case \Search::PDF_OUTPUT_PORTRAIT:
+            case Search::PDF_OUTPUT_PORTRAIT:
                 global $PDF_TABLE;
                 $style = "";
                 if ($odd) {
@@ -1863,9 +1902,9 @@ final class LegacyOutput
                 }
                 $PDF_TABLE .= "<tr {$style} nobr=\"true\">";
                 break;
-            case \Search::SYLK_OUTPUT:
+            case Search::SYLK_OUTPUT:
                 //sylk
-            case \Search::CSV_OUTPUT:
+            case Search::CSV_OUTPUT:
                 //csv
                 break;
             default:
@@ -1888,16 +1927,16 @@ final class LegacyOutput
     {
         $out = "";
         switch ($type) {
-            case \Search::PDF_OUTPUT_LANDSCAPE:
+            case Search::PDF_OUTPUT_LANDSCAPE:
                 //pdf
-            case \Search::PDF_OUTPUT_PORTRAIT:
+            case Search::PDF_OUTPUT_PORTRAIT:
                 global $PDF_TABLE;
                 $PDF_TABLE .= '</tr>';
                 break;
-            case \Search::SYLK_OUTPUT:
+            case Search::SYLK_OUTPUT:
                 //sylk
                 break;
-            case \Search::CSV_OUTPUT:
+            case Search::CSV_OUTPUT:
                 //csv
                 $out = "
 ";
@@ -1917,7 +1956,7 @@ final class LegacyOutput
     public static function csv_clean($value)
     {
         $value = str_replace("\"", "''", $value);
-        $value = \Html::clean($value, true, 2, false);
+        $value = Html::clean($value, true, 2, false);
         $value = str_replace("&gt;", ">", $value);
         $value = str_replace("&lt;", "<", $value);
         return $value;
@@ -1934,7 +1973,7 @@ final class LegacyOutput
         $value = preg_replace('/\\x0A/', ' ', $value);
         $value = preg_replace('/\\x0D/', '', (string) $value);
         $value = str_replace("\"", "''", $value);
-        $value = \Html::clean($value);
+        $value = Html::clean($value);
         $value = str_replace("
 ", " | ", $value);
         $value = str_replace("&gt;", ">", $value);
@@ -1960,7 +1999,7 @@ final class LegacyOutput
             }
         }
         // Manage NULL value
-        if ($tab[0] == \Search::NULLVALUE) {
+        if ($tab[0] == Search::NULLVALUE) {
             $tab[0] = null;
         }
         return $tab;

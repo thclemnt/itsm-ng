@@ -34,6 +34,14 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Events;
+use Doctrine\ORM\Query;
+use NotificationTemplateTranslation as LegacyNotificationTemplateTranslation;
+use itsmng\Database\Entity\NotificationTemplate;
+use itsmng\Database\Entity\NotificationTemplateTranslation as NotificationTemplateTranslationEntity;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NotificationTemplateRepository;
 
 /* Test for inc/notificationtemplatetranslation.class.php */
 
@@ -45,10 +53,10 @@ class NotificationTemplateTranslation extends DbTestCase
 
         $connection = $DB->getDoctrineConnection();
         $level = $connection->getTransactionNestingLevel();
-        $em = new class ($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
+        $em = new class ($connection, Orm::configuration($connection->getDatabasePlatform())) extends EntityManager {
             public array $queries = [];
 
-            public function createQuery(string $dql = ''): \Doctrine\ORM\Query
+            public function createQuery(string $dql = ''): Query
             {
                 return $this->queries[] = parent::createQuery($dql);
             }
@@ -61,19 +69,19 @@ class NotificationTemplateTranslation extends DbTestCase
                 ++$this->loaded;
             }
         };
-        $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+        $em->getEventManager()->addEventListener([Events::postLoad], $listener);
         try {
-            $template = new \itsmng\Database\Entity\NotificationTemplate();
+            $template = new NotificationTemplate();
             $template->name = 'Language projection ' . $this->getUniqueString();
             $template->itemtype = 'Ticket';
-            $other = new \itsmng\Database\Entity\NotificationTemplate();
+            $other = new NotificationTemplate();
             $other->name = 'Other language projection ' . $this->getUniqueString();
             $other->itemtype = 'Ticket';
             $em->persist($template);
             $em->persist($other);
             $translations = [];
             foreach (['', 'fr_FR', 'fr_FR', 'FR_fr', 'ja_JP'] as $language) {
-                $translation = new \itsmng\Database\Entity\NotificationTemplateTranslation();
+                $translation = new NotificationTemplateTranslationEntity();
                 $translation->notificationtemplates = $template;
                 $translation->language = $language;
                 $translation->subject = 'Untouched subject';
@@ -82,7 +90,7 @@ class NotificationTemplateTranslation extends DbTestCase
                 $translations[] = $translation;
                 $em->persist($translation);
             }
-            $otherTranslation = new \itsmng\Database\Entity\NotificationTemplateTranslation();
+            $otherTranslation = new NotificationTemplateTranslationEntity();
             $otherTranslation->notificationtemplates = $other;
             $otherTranslation->language = 'en_GB';
             $em->persist($otherTranslation);
@@ -90,7 +98,7 @@ class NotificationTemplateTranslation extends DbTestCase
             $templateId = $template->id;
             $japaneseId = $translations[4]->id;
             $em->clear();
-            $repository = new \itsmng\Database\Repository\NotificationTemplateRepository($em);
+            $repository = new NotificationTemplateRepository($em);
 
             $languages = $repository->usedLanguages($templateId);
             $this->array($languages)->hasSize(4)->hasKey('')->hasKey('fr_FR')->hasKey('FR_fr')->hasKey('ja_JP');
@@ -122,9 +130,9 @@ class NotificationTemplateTranslation extends DbTestCase
             $assertLanguages($languages, $fullLanguages);
             $this->string($full[0]->subject)->isIdenticalTo('Untouched subject');
             $this->string($full[0]->content_text)->contains('Text body');
-            $assertLanguages(\NotificationTemplateTranslation::getAllUsedLanguages($templateId), $languages);
+            $assertLanguages(LegacyNotificationTemplateTranslation::getAllUsedLanguages($templateId), $languages);
 
-            $managed = $em->find(\itsmng\Database\Entity\NotificationTemplateTranslation::class, $japaneseId);
+            $managed = $em->find(NotificationTemplateTranslationEntity::class, $japaneseId);
             $before = $listener->loaded;
             $connection->update('glpi_notificationtemplatetranslations', ['language' => 'de_DE'], ['id' => $japaneseId]);
             $expected = $languages;
@@ -133,7 +141,7 @@ class NotificationTemplateTranslation extends DbTestCase
             $assertLanguages($repository->usedLanguages($templateId), $expected);
             $this->integer($listener->loaded)->isIdenticalTo($before);
             $this->string($managed->language)->isIdenticalTo('ja_JP');
-            $assertLanguages(\NotificationTemplateTranslation::getAllUsedLanguages($templateId), $expected);
+            $assertLanguages(LegacyNotificationTemplateTranslation::getAllUsedLanguages($templateId), $expected);
             $this->object($em->getConnection())->isIdenticalTo($connection);
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
         } finally {

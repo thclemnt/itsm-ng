@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ServiceLevelRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -66,10 +69,10 @@ abstract class LevelAgreement extends CommonDBChild
      */
     abstract public function getAddConfirmation();
 
-    protected static function serviceRepository(): \itsmng\Database\Repository\ServiceLevelRepository
+    protected static function serviceRepository(): ServiceLevelRepository
     {
         global $DB;
-        return new \itsmng\Database\Repository\ServiceLevelRepository(\itsmng\Database\Orm::create($DB), static::$prefix);
+        return new ServiceLevelRepository(Orm::create($DB), static::$prefix);
     }
 
     /**

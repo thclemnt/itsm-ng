@@ -14,6 +14,8 @@ use Doctrine\ORM\Query\AST\Subselect;
 use Doctrine\ORM\Query\Parser;
 use Doctrine\ORM\Query\SqlWalker;
 use Doctrine\ORM\Query\TokenType;
+use InvalidArgumentException;
+use LogicException;
 
 /** KB_MATCH/KB_SCORE use the article and translation indexes without loading either model. */
 final class KnowledgeBaseFullText extends FunctionNode
@@ -60,7 +62,7 @@ final class KnowledgeBaseFullText extends FunctionNode
         return match (strtoupper($this->name)) {
             'KB_MATCH' => false,
             'KB_SCORE' => true,
-            default => throw new \LogicException('Unknown knowledge-base full-text operation.'),
+            default => throw new LogicException('Unknown knowledge-base full-text operation.'),
         };
     }
 
@@ -74,7 +76,7 @@ final class KnowledgeBaseFullText extends FunctionNode
     public static function sql(AbstractPlatform $platform, array $columns, string $query, bool $score = false): string
     {
         if (count($columns) < 1 || count($columns) > 2) {
-            throw new \InvalidArgumentException('Knowledge-base full-text search requires one or two fields.');
+            throw new InvalidArgumentException('Knowledge-base full-text search requires one or two fields.');
         }
         if ($platform instanceof PostgreSQLPlatform) {
             // This expression matches the frozen article/translation GIN index definitions.
@@ -87,6 +89,6 @@ final class KnowledgeBaseFullText extends FunctionNode
             $match = 'MATCH(' . implode(', ', $columns) . ') AGAINST(' . $query . ' IN BOOLEAN MODE)';
             return $score ? $match : '(' . $match . ' > 0)';
         }
-        throw new \LogicException('Unsupported knowledge-base full-text platform.');
+        throw new LogicException('Unsupported knowledge-base full-text platform.');
     }
 }

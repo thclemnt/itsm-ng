@@ -34,6 +34,17 @@
 namespace test\units;
 
 use DbTestCase;
+use Doctrine\ORM\Event\PostLoadEventArgs;
+use Entity_KnowbaseItem;
+use Knowbase as LegacyKnowbase;
+use KnowbaseItem;
+use KnowbaseItemCategory;
+use Session;
+use itsmng\Database\Entity\DropdownTranslation;
+use itsmng\Database\Entity\KnowbaseItemCategory as KnowbaseItemCategoryEntity;
+use itsmng\Database\KnowledgeBaseAccess;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\KnowledgeBaseRepository;
 
 /* Test for inc/knowbase.class.php */
 
@@ -51,21 +62,21 @@ class Knowbase extends DbTestCase
             $author = (int)getItemByTypeName('User', 'itsm', true);
             $this->integer($entity)->isGreaterThan(0);
             $this->integer($author)->isGreaterThan(0);
-            $this->boolean($author !== (int)\Session::getLoginUserID())->isTrue();
+            $this->boolean($author !== (int)Session::getLoginUserID())->isTrue();
             $this->boolean(in_array(0, $_SESSION['glpiactiveentities'], false))->isFalse();
-            $parent = $this->createItem(\KnowbaseItemCategory::class, ['name' => 'Projected parent']);
+            $parent = $this->createItem(KnowbaseItemCategory::class, ['name' => 'Projected parent']);
             $children = [];
             foreach (['Alpha child', 'Beta fallback', 'Hidden child'] as $name) {
-                $children[] = $this->createItem(\KnowbaseItemCategory::class, [
+                $children[] = $this->createItem(KnowbaseItemCategory::class, [
                     'name' => $name, 'knowbaseitemcategories_id' => $parent->getID(),
                 ]);
             }
             foreach ($children as $index => $child) {
-                $article = $this->createItem(\KnowbaseItem::class, [
+                $article = $this->createItem(KnowbaseItem::class, [
                     'name' => 'Tree article ' . $index, 'users_id' => $author,
                     'knowbaseitemcategories_id' => $child->getID(), 'is_faq' => 0,
                 ]);
-                $this->createItem(\Entity_KnowbaseItem::class, [
+                $this->createItem(Entity_KnowbaseItem::class, [
                     'knowbaseitems_id' => $article->getID(), 'entities_id' => $index === 2 ? 0 : $entity,
                     'is_recursive' => 0,
                 ]);
@@ -86,7 +97,7 @@ class Knowbase extends DbTestCase
             $owned = array_map(static fn ($item): string => (string)$item->getID(), [$parent, ...$children]);
             $nodes = static function () use ($owned): array {
                 return array_values(array_filter(
-                    \Knowbase::getJstreeCategoryList(),
+                    LegacyKnowbase::getJstreeCategoryList(),
                     static fn (array $node): bool => in_array($node['id'], $owned, true)
                 ));
             };
@@ -100,7 +111,7 @@ class Knowbase extends DbTestCase
             $this->string($tree[0]['parent'])->isIdenticalTo((string)$parent->getID());
             $this->string($tree[2]['parent'])->isIdenticalTo('0');
             $root = array_values(array_filter(
-                \Knowbase::getJstreeCategoryList(),
+                LegacyKnowbase::getJstreeCategoryList(),
                 static fn (array $node): bool => $node['id'] === '0'
             ));
             $this->array($root)->hasSize(1);
@@ -115,20 +126,20 @@ class Knowbase extends DbTestCase
             $this->string($nodes()[0]['text'])->contains('Alpha child')->notContains('Zulu');
             $_SESSION['glpi_dropdowntranslations']['KnowbaseItemCategory']['name'] = 'name';
 
-            $manager = \itsmng\Database\Orm::create($DB);
-            $repository = new \itsmng\Database\Repository\KnowledgeBaseRepository($manager);
+            $manager = Orm::create($DB);
+            $repository = new KnowledgeBaseRepository($manager);
             $loads = new class () {
                 public int $count = 0;
-                public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
+                public function postLoad(PostLoadEventArgs $event): void
                 {
-                    if ($event->getObject() instanceof \itsmng\Database\Entity\KnowbaseItemCategory
-                        || $event->getObject() instanceof \itsmng\Database\Entity\DropdownTranslation) {
+                    if ($event->getObject() instanceof KnowbaseItemCategoryEntity
+                        || $event->getObject() instanceof DropdownTranslation) {
                         ++$this->count;
                     }
                 }
             };
             $manager->getEventManager()->addEventListener(['postLoad'], $loads);
-            $access = \itsmng\Database\KnowledgeBaseAccess::current();
+            $access = KnowledgeBaseAccess::current();
             $rows = array_column($repository->categoryTree($access, 'fr_FR')['categories'], null, 'id');
             $this->integer($rows[$children[0]->getID()]['knowbaseitemcategories_id'])->isIdenticalTo((int)$parent->getID());
             $this->variable($rows[$parent->getID()]['knowbaseitemcategories_id'])->isNull();
@@ -136,7 +147,7 @@ class Knowbase extends DbTestCase
             $this->integer($rows[$children[2]->getID()]['items_count'])->isIdenticalTo(0);
             $this->integer($loads->count)->isIdenticalTo(0);
             $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
-            $managed = $manager->find(\itsmng\Database\Entity\KnowbaseItemCategory::class, (int)$children[0]->getID());
+            $managed = $manager->find(KnowbaseItemCategoryEntity::class, (int)$children[0]->getID());
             $this->integer($loads->count)->isIdenticalTo(1, 'The observer detects a real category load');
             $this->boolean($DB->update(
                 'glpi_knowbaseitemcategories',

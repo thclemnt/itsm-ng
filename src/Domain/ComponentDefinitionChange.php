@@ -4,6 +4,9 @@
 
 namespace itsmng\Domain;
 
+use Item_Devices;
+use itsmng\Database\DeletionCancelled;
+
 /** One child write delegated by its actual definition owner, never an asset edit. */
 final class ComponentDefinitionChange
 {
@@ -14,7 +17,7 @@ final class ComponentDefinitionChange
 
     public function __construct(
         private readonly ComponentDefinitionReplacement $command,
-        private readonly \Item_Devices $model,
+        private readonly Item_Devices $model,
         private readonly string $column,
         public readonly array $stored,
         private readonly array $scope,
@@ -30,11 +33,11 @@ final class ComponentDefinitionChange
         $this->command->assertActive();
     }
 
-    public function didPersist(\Item_Devices $model): void
+    public function didPersist(Item_Devices $model): void
     {
         $this->persisted = true;
         if (!$this->verify($model)) {
-            throw new \itsmng\Database\DeletionCancelled('The component producer changed its delegated write.');
+            throw new DeletionCancelled('The component producer changed its delegated write.');
         }
     }
 
@@ -43,7 +46,7 @@ final class ComponentDefinitionChange
         return array_replace($input, $this->scope);
     }
 
-    public function enter(\Item_Devices $model): bool
+    public function enter(Item_Devices $model): bool
     {
         $this->command->assertActive();
         if ($model !== $this->model || $this->updating) {
@@ -58,7 +61,7 @@ final class ComponentDefinitionChange
         $this->updating = false;
     }
 
-    public function load(\Item_Devices $model, int $id): ?array
+    public function load(Item_Devices $model, int $id): ?array
     {
         if ($model::class !== $this->model::class || $id !== (int)$this->stored['id']) {
             return null;
@@ -75,7 +78,7 @@ final class ComponentDefinitionChange
     }
 
     /** The final canonical normalizer also calls this on its pure cloned probe. */
-    public function authorize(\Item_Devices $model, array $input): bool
+    public function authorize(Item_Devices $model, array $input): bool
     {
         $this->command->assertActive();
         if ($model::class !== $this->model::class || (int)$model->getID() !== (int)$this->stored['id']) {
@@ -85,7 +88,7 @@ final class ComponentDefinitionChange
         return $this->matches($values, prepared: true);
     }
 
-    public function verify(\Item_Devices $model): bool
+    public function verify(Item_Devices $model): bool
     {
         $this->command->assertActive();
         if ($model !== $this->model || !is_array($model->input)
@@ -101,7 +104,7 @@ final class ComponentDefinitionChange
         return $row !== null && $this->matches($row, prepared: false);
     }
 
-    public function ready(\Item_Devices $model): bool
+    public function ready(Item_Devices $model): bool
     {
         if ($model !== $this->model || !$this->authorize($model, $model->fields)) {
             return false;

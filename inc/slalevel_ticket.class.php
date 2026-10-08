@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ServiceLevelRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -38,10 +41,10 @@ if (!defined('GLPI_ROOT')) {
 /// Class SLALevel
 class SlaLevel_Ticket extends CommonDBTM
 {
-    private static function serviceRepository(): \itsmng\Database\Repository\ServiceLevelRepository
+    private static function serviceRepository(): ServiceLevelRepository
     {
         global $DB;
-        return new \itsmng\Database\Repository\ServiceLevelRepository(\itsmng\Database\Orm::create($DB), 'sla');
+        return new ServiceLevelRepository(Orm::create($DB), 'sla');
     }
 
     public static function getTypeName($nb = 0)
@@ -112,7 +115,7 @@ class SlaLevel_Ticket extends CommonDBTM
     **/
     public static function cronSlaTicket(CronTask $task)
     {
-        $rows = self::serviceRepository()->scheduled(before: new \DateTimeImmutable());
+        $rows = self::serviceRepository()->scheduled(before: new DateTimeImmutable());
         foreach ($rows as $row) {
             self::doLevelForTicket($row, $row['type']);
         }
@@ -241,7 +244,7 @@ class SlaLevel_Ticket extends CommonDBTM
     {
         $repository = self::serviceRepository();
         do {
-            $rows = $repository->scheduled((int)$tickets_id, (int)$slaType, new \DateTimeImmutable(), 2);
+            $rows = $repository->scheduled((int)$tickets_id, (int)$slaType, new DateTimeImmutable(), 2);
             if (count($rows) === 1) {
                 self::doLevelForTicket($rows[0], $slaType);
             }

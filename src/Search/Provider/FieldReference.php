@@ -4,6 +4,9 @@
 
 namespace itsmng\Search\Provider;
 
+use function getForeignKeyFieldForTable;
+use function getTableNameForForeignKeyField;
+
 /** Identifiers for an option, including composite foreign keys and meta joins. */
 final class FieldReference
 {
@@ -25,9 +28,9 @@ final class FieldReference
         if (isset($option['joinparams'])) {
             $complexjoin = JoinBuilder::computeComplexJoinID($option['joinparams']);
         }
-        $is_fkey_composite_on_self = \getTableNameForForeignKeyField($option["linkfield"]) == $table && $option["linkfield"] != \getForeignKeyFieldForTable($table);
+        $is_fkey_composite_on_self = getTableNameForForeignKeyField($option["linkfield"]) == $table && $option["linkfield"] != getForeignKeyFieldForTable($table);
         $orig_table = JoinBuilder::getOrigTableName($itemtype);
-        if ((($is_fkey_composite_on_self || $table != $orig_table) && (!isset($CFG_GLPI["union_search_type"][$itemtype]) || $CFG_GLPI["union_search_type"][$itemtype] != $table) || !empty($complexjoin)) && $option["linkfield"] != \getForeignKeyFieldForTable($table)) {
+        if ((($is_fkey_composite_on_self || $table != $orig_table) && (!isset($CFG_GLPI["union_search_type"][$itemtype]) || $CFG_GLPI["union_search_type"][$itemtype] != $table) || !empty($complexjoin)) && $option["linkfield"] != getForeignKeyFieldForTable($table)) {
             $addtable .= "_" . $option["linkfield"];
         }
         if (!empty($complexjoin)) {

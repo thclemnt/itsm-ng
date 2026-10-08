@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ProfileRightRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -149,10 +152,10 @@ class ProfileRight extends CommonDBChild
         self::repository()->fill((int)$profiles_id);
     }
 
-    private static function repository(): \itsmng\Database\Repository\ProfileRightRepository
+    private static function repository(): ProfileRightRepository
     {
         global $DB;
-        return new \itsmng\Database\Repository\ProfileRightRepository(\itsmng\Database\Orm::create($DB));
+        return new ProfileRightRepository(Orm::create($DB));
     }
 
 

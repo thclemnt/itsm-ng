@@ -1,5 +1,9 @@
 <?php
 
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\PlacementRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access directly to this file");
 }
@@ -94,7 +98,7 @@ class Item_Cluster extends CommonDBRelation
         }
         $canedit = $cluster->canEdit($ID);
 
-        $items = \itsmng\Database\MappedReads::matching($DB, self::getTable(), ['clusters_id' => $ID]);
+        $items = MappedReads::matching($DB, self::getTable(), ['clusters_id' => $ID]);
 
         Session::initNavigateListItems(
             self::getType(),
@@ -175,7 +179,7 @@ class Item_Cluster extends CommonDBRelation
     {
         global $DB, $CFG_GLPI;
 
-        $used = (new \itsmng\Database\Repository\PlacementRepository(\itsmng\Database\Orm::create($DB)))->clusterSelection();
+        $used = (new PlacementRepository(Orm::create($DB)))->clusterSelection();
         $jsUsed = json_encode($used);
 
         $loadItemDropdownScript = <<<JS

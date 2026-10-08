@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\DropdownChoiceContext;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ProjectRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -1457,9 +1461,9 @@ class Project extends CommonDBTM implements ExtraVisibilityCriteria
         $rand = mt_rand();
 
         if (get_class($this) === self::class) {
-            $em = \itsmng\Database\Orm::create($DB);
+            $em = Orm::create($DB);
             try {
-                $children = (new \itsmng\Database\Repository\ProjectRepository($em))->childIds((int)$ID);
+                $children = (new ProjectRepository($em))->childIds((int)$ID);
             } finally {
                 $em->clear();
             }
@@ -1750,7 +1754,7 @@ class Project extends CommonDBTM implements ExtraVisibilityCriteria
             $choiceTokens = [];
             foreach ($itemtypes as $itemtype) {
                 $options[$itemtype] = $itemtype::getTypeName(1);
-                $choiceTokens[$itemtype] = \itsmng\Database\DropdownChoiceContext::token($itemtype, []);
+                $choiceTokens[$itemtype] = DropdownChoiceContext::token($itemtype, []);
             }
             $choiceTokensJson = json_encode($choiceTokens, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 
@@ -2113,9 +2117,9 @@ class Project extends CommonDBTM implements ExtraVisibilityCriteria
         }
         $scope = getEntitiesRestrictCriteria(self::getTable(), '', '', 'auto');
         // Keep caller predicates and entity restrictions as separate conjunctions.
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            return (new \itsmng\Database\Repository\ProjectRepository($em))->visibleProjects(
+            return (new ProjectRepository($em))->visibleProjects(
                 ['AND' => [$scope, $criteria]],
                 Session::haveRight('project', self::READALL),
                 (int)Session::getLoginUserID(),
@@ -2235,9 +2239,9 @@ class Project extends CommonDBTM implements ExtraVisibilityCriteria
                 return ($e['itemtype'] === $itemtype);
             }));
             if (count($all_ids)) {
-                $em = \itsmng\Database\Orm::create($DB);
+                $em = Orm::create($DB);
                 try {
-                    $all_members[$itemtype] = (new \itsmng\Database\Repository\ProjectRepository($em))->teamMembers($itemtype::getTable(), $all_ids, $fields);
+                    $all_members[$itemtype] = (new ProjectRepository($em))->teamMembers($itemtype::getTable(), $all_ids, $fields);
                 } finally {
                     $em->clear();
                 }
@@ -2637,9 +2641,9 @@ JAVASCRIPT;
             return false;
         }
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            $percent_done = (new \itsmng\Database\Repository\ProjectRepository($em))->projectProgress((int)$ID);
+            $percent_done = (new ProjectRepository($em))->projectProgress((int)$ID);
         } finally {
             $em->clear();
         }

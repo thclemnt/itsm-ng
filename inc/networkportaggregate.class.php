@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\LegacyValues;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NetworkPortAggregateRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -43,10 +48,10 @@ class NetworkPortAggregate extends NetworkPortInstantiation
 {
     private ?array $pendingOrigins = null;
 
-    private function originsRepository(): \itsmng\Database\Repository\NetworkPortAggregateRepository
+    private function originsRepository(): NetworkPortAggregateRepository
     {
         global $DB;
-        return new \itsmng\Database\Repository\NetworkPortAggregateRepository(\itsmng\Database\Orm::create($DB));
+        return new NetworkPortAggregateRepository(Orm::create($DB));
     }
 
     private function atomic(callable $operation)
@@ -142,12 +147,12 @@ class NetworkPortAggregate extends NetworkPortInstantiation
         if (array_key_exists('networkports_id_list', $input)) {
             $values = $input['networkports_id_list'];
             if (is_string($values)) {
-                $values = json_decode(\itsmng\Database\LegacyValues::decodeString($values), true, flags: JSON_THROW_ON_ERROR);
+                $values = json_decode(LegacyValues::decodeString($values), true, flags: JSON_THROW_ON_ERROR);
             }
             if (!is_array($values)) {
                 throw new InvalidArgumentException('Aggregate origin selection requires an array');
             }
-            $this->pendingOrigins = \itsmng\Database\Repository\NetworkPortAggregateRepository::origins($values);
+            $this->pendingOrigins = NetworkPortAggregateRepository::origins($values);
             unset($input['networkports_id_list']);
         }
         return $input;
@@ -168,7 +173,7 @@ class NetworkPortAggregate extends NetworkPortInstantiation
         $possible_ports = [];
         $netport_types = ['NetworkPortEthernet', 'NetworkPortWifi'];
         foreach ($netport_types as $netport_type) {
-            $iterator = new \itsmng\Database\RowIterator($this->originsRepository()->availablePorts($lastItem->getType(), (int)$lastItem->getID(), $netport_type));
+            $iterator = new RowIterator($this->originsRepository()->availablePorts($lastItem->getType(), (int)$lastItem->getID(), $netport_type));
 
             if (count($iterator)) {
                 $array_element_name = call_user_func(

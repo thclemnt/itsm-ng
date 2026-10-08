@@ -5,6 +5,7 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_authldapreplicates')]
@@ -17,7 +18,7 @@ class AuthLdapReplicate
 
     #[ORM\ManyToOne(targetEntity: AuthLDAP::class)]
     #[ORM\JoinColumn(name: 'authldaps_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public AuthLDAP $authldaps;
 
     #[ORM\Column(name: '`host`', type: 'string', length: 255, nullable: true)]

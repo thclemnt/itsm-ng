@@ -34,8 +34,36 @@
 
 namespace itsmng\Search\Provider;
 
+use Change;
+use CommonITILObject;
+use CommonITILTask;
+use CommonITILValidation;
+use Config;
+use Html;
+use ITILFollowup;
+use Plugin;
+use Problem;
+use Project;
+use RSSFeed;
+use Reminder;
+use SavedSearch;
+use Search;
+use Session;
+use Ticket;
+use TicketTask;
+use TicketValidation;
+use Toolbox;
+use User;
 use itsmng\Search\Input\QueryBuilder;
 use itsmng\Search\SearchOption;
+
+use function getEntitiesRestrictRequest;
+use function getForeignKeyFieldForTable;
+use function getItemForItemtype;
+use function getItemTypeForTable;
+use function getSonsOf;
+use function getTableNameForForeignKeyField;
+use function isPluginItemType;
 
 final class CriteriaBuilder
 {
@@ -281,8 +309,8 @@ final class CriteriaBuilder
         $table = $searchopt[$ID]["table"];
         $NAME = "ITEM_{$itemtype}_{$ID}";
         // Plugin can override core definition for its type
-        if ($plug = \isPluginItemType($itemtype)) {
-            $out = \Plugin::doOneHook($plug['plugin'], 'addHaving', $LINK, $NOT, $itemtype, $ID, $val, "{$itemtype}_{$ID}");
+        if ($plug = isPluginItemType($itemtype)) {
+            $out = Plugin::doOneHook($plug['plugin'], 'addHaving', $LINK, $NOT, $itemtype, $ID, $val, "{$itemtype}_{$ID}");
             if (!empty($out)) {
                 return $out;
             }
@@ -292,7 +320,7 @@ final class CriteriaBuilder
         if (preg_match("/^glpi_plugin_([a-z0-9]+)/", (string) $table, $matches)) {
             if (count($matches) == 2) {
                 $plug = $matches[1];
-                $out = \Plugin::doOneHook($plug, 'addHaving', $LINK, $NOT, $itemtype, $ID, $val, "{$itemtype}_{$ID}");
+                $out = Plugin::doOneHook($plug, 'addHaving', $LINK, $NOT, $itemtype, $ID, $val, "{$itemtype}_{$ID}");
                 if (!empty($out)) {
                     return $out;
                 }
@@ -305,7 +333,7 @@ final class CriteriaBuilder
     public static function rootScalarHaving(string $itemtype, int $ID, $searchtype, $val, string $operand): ?string
     {
         // The normal HAVING path must invoke plugin hooks with their aliases.
-        if (\isPluginItemType($itemtype)) {
+        if (isPluginItemType($itemtype)) {
             return null;
         }
         $options = SearchOption::getOptions($itemtype);
@@ -335,7 +363,7 @@ final class CriteriaBuilder
                     if ($option["datatype"] === 'datetime' && (strstr($val, 'BEGIN') || strstr($val, 'LAST') || strstr($val, 'DAY'))) {
                         $force_day = true;
                     }
-                    $val = \Html::computeGenericDateTimeSearch($val, $force_day);
+                    $val = Html::computeGenericDateTimeSearch($val, $force_day);
                     $operator = '';
                     switch ($searchtype) {
                         case 'equals':
@@ -420,9 +448,9 @@ final class CriteriaBuilder
         $table = $searchopt[$ID]["table"];
         $field = $searchopt[$ID]["field"];
         $addtable = '';
-        $is_fkey_composite_on_self = \getTableNameForForeignKeyField($searchopt[$ID]["linkfield"]) == $table && $searchopt[$ID]["linkfield"] != \getForeignKeyFieldForTable($table);
+        $is_fkey_composite_on_self = getTableNameForForeignKeyField($searchopt[$ID]["linkfield"]) == $table && $searchopt[$ID]["linkfield"] != getForeignKeyFieldForTable($table);
         $orig_table = JoinBuilder::getOrigTableName($itemtype);
-        if (($is_fkey_composite_on_self || $table != $orig_table) && $searchopt[$ID]["linkfield"] != \getForeignKeyFieldForTable($table)) {
+        if (($is_fkey_composite_on_self || $table != $orig_table) && $searchopt[$ID]["linkfield"] != getForeignKeyFieldForTable($table)) {
             $addtable .= "_" . $searchopt[$ID]["linkfield"];
         }
         if (isset($searchopt[$ID]['joinparams'])) {
@@ -435,8 +463,8 @@ final class CriteriaBuilder
             return " ORDER BY `ITEM_{$itemtype}_{$ID}` {$order} ";
         }
         // Plugin can override core definition for its type
-        if ($plug = \isPluginItemType($itemtype)) {
-            $out = \Plugin::doOneHook($plug['plugin'], 'addOrderBy', $itemtype, $ID, $order, "{$itemtype}_{$ID}");
+        if ($plug = isPluginItemType($itemtype)) {
+            $out = Plugin::doOneHook($plug['plugin'], 'addOrderBy', $itemtype, $ID, $order, "{$itemtype}_{$ID}");
             if (!empty($out)) {
                 return $out;
             }
@@ -451,7 +479,7 @@ final class CriteriaBuilder
                                  `name` {$order} ";
             case "glpi_users.name":
                 if ($itemtype != 'User') {
-                    if ($_SESSION["glpinames_format"] == \User::FIRSTNAME_BEFORE) {
+                    if ($_SESSION["glpinames_format"] == User::FIRSTNAME_BEFORE) {
                         $name1 = 'firstname';
                         $name2 = 'realname';
                     } else {
@@ -472,7 +500,7 @@ final class CriteriaBuilder
         if (preg_match("/^glpi_plugin_([a-z0-9]+)/", (string) $table, $matches)) {
             if (count($matches) == 2) {
                 $plug = $matches[1];
-                $out = \Plugin::doOneHook($plug, 'addOrderBy', $itemtype, $ID, $order, "{$itemtype}_{$ID}");
+                $out = Plugin::doOneHook($plug, 'addOrderBy', $itemtype, $ID, $order, "{$itemtype}_{$ID}");
                 if (!empty($out)) {
                     return $out;
                 }
@@ -509,21 +537,21 @@ final class CriteriaBuilder
         $condition = '';
         switch ($itemtype) {
             case 'Reminder':
-                $condition = \Reminder::addVisibilityRestrict();
+                $condition = Reminder::addVisibilityRestrict();
                 break;
             case 'RSSFeed':
-                $condition = \RSSFeed::addVisibilityRestrict();
+                $condition = RSSFeed::addVisibilityRestrict();
                 break;
             case 'Notification':
-                if (!\Config::canView()) {
+                if (!Config::canView()) {
                     $condition = " `glpi_notifications`.`itemtype` NOT IN ('CronTask', 'DBConnection') ";
                 }
                 break;
                 // No link
             case 'User':
                 // View all entities
-                if (!\Session::canViewAllEntities()) {
-                    $condition = \getEntitiesRestrictRequest("", "glpi_profiles_users", '', '', true);
+                if (!Session::canViewAllEntities()) {
+                    $condition = getEntitiesRestrictRequest("", "glpi_profiles_users", '', '', true);
                 }
                 break;
             case 'ProjectTask':
@@ -531,7 +559,7 @@ final class CriteriaBuilder
                 $teamtable = 'glpi_projecttaskteams';
                 $condition .= "`glpi_projects`.`is_template` = '0'";
                 $condition .= " AND ((`{$teamtable}`.`itemtype` = 'User'
-                             AND `{$teamtable}`.`items_id` = '" . \Session::getLoginUserID() . "')";
+                             AND `{$teamtable}`.`items_id` = '" . Session::getLoginUserID() . "')";
                 if (count($_SESSION['glpigroups'])) {
                     $condition .= " OR (`{$teamtable}`.`itemtype` = 'Group'
                                     AND `{$teamtable}`.`items_id`
@@ -541,11 +569,11 @@ final class CriteriaBuilder
                 break;
             case 'Project':
                 $condition = '';
-                if (!\Session::haveRight("project", \Project::READALL)) {
+                if (!Session::haveRight("project", Project::READALL)) {
                     $teamtable = 'glpi_projectteams';
-                    $condition .= "(`glpi_projects`.users_id = '" . \Session::getLoginUserID() . "'
+                    $condition .= "(`glpi_projects`.users_id = '" . Session::getLoginUserID() . "'
                                OR (`{$teamtable}`.`itemtype` = 'User'
-                                   AND `{$teamtable}`.`items_id` = '" . \Session::getLoginUserID() . "')";
+                                   AND `{$teamtable}`.`items_id` = '" . Session::getLoginUserID() . "')";
                     if (count($_SESSION['glpigroups'])) {
                         $condition .= " OR (`glpi_projects`.`groups_id`
                                        IN (" . implode(",", $_SESSION['glpigroups']) . "))";
@@ -559,7 +587,7 @@ final class CriteriaBuilder
             case 'Ticket':
                 // Same structure in addDefaultJoin
                 $condition = '';
-                if (!\Session::haveRight("ticket", \Ticket::READALL)) {
+                if (!Session::haveRight("ticket", Ticket::READALL)) {
                     $searchopt = & SearchOption::getOptions($itemtype);
                     $requester_table = '`glpi_tickets_users_' . JoinBuilder::computeComplexJoinID($searchopt[4]['joinparams']['beforejoin']['joinparams']) . '`';
                     $requestergroup_table = '`glpi_groups_tickets_' . JoinBuilder::computeComplexJoinID($searchopt[71]['joinparams']['beforejoin']['joinparams']) . '`';
@@ -568,14 +596,14 @@ final class CriteriaBuilder
                     $observer_table = '`glpi_tickets_users_' . JoinBuilder::computeComplexJoinID($searchopt[66]['joinparams']['beforejoin']['joinparams']) . '`';
                     $observergroup_table = '`glpi_groups_tickets_' . JoinBuilder::computeComplexJoinID($searchopt[65]['joinparams']['beforejoin']['joinparams']) . '`';
                     $condition = "(";
-                    if (\Session::haveRight("ticket", \Ticket::READMY)) {
-                        $condition .= " {$requester_table}.users_id = '" . \Session::getLoginUserID() . "'
-                                    OR {$observer_table}.users_id = '" . \Session::getLoginUserID() . "'
-                                    OR `glpi_tickets`.`users_id_recipient` = '" . \Session::getLoginUserID() . "'";
+                    if (Session::haveRight("ticket", Ticket::READMY)) {
+                        $condition .= " {$requester_table}.users_id = '" . Session::getLoginUserID() . "'
+                                    OR {$observer_table}.users_id = '" . Session::getLoginUserID() . "'
+                                    OR `glpi_tickets`.`users_id_recipient` = '" . Session::getLoginUserID() . "'";
                     } else {
                         $condition .= "0=1";
                     }
-                    if (\Session::haveRight("ticket", \Ticket::READGROUP)) {
+                    if (Session::haveRight("ticket", Ticket::READGROUP)) {
                         if (count($_SESSION['glpigroups'])) {
                             $condition .= " OR {$requestergroup_table}.`groups_id`
                                              IN (" . implode(",", $_SESSION['glpigroups']) . ")";
@@ -583,24 +611,24 @@ final class CriteriaBuilder
                                              IN (" . implode(",", $_SESSION['glpigroups']) . ")";
                         }
                     }
-                    if (\Session::haveRight("ticket", \Ticket::OWN)) {
+                    if (Session::haveRight("ticket", Ticket::OWN)) {
                         // Can own ticket : show assign to me
-                        $condition .= " OR {$assign_table}.users_id = '" . \Session::getLoginUserID() . "' ";
+                        $condition .= " OR {$assign_table}.users_id = '" . Session::getLoginUserID() . "' ";
                     }
-                    if (\Session::haveRight("ticket", \Ticket::READASSIGN)) {
+                    if (Session::haveRight("ticket", Ticket::READASSIGN)) {
                         // assign to me
-                        $condition .= " OR {$assign_table}.`users_id` = '" . \Session::getLoginUserID() . "'";
+                        $condition .= " OR {$assign_table}.`users_id` = '" . Session::getLoginUserID() . "'";
                         if (count($_SESSION['glpigroups'])) {
                             $condition .= " OR {$assigngroup_table}.`groups_id`
                                              IN (" . implode(",", $_SESSION['glpigroups']) . ")";
                         }
-                        if (\Session::haveRight('ticket', \Ticket::ASSIGN)) {
-                            $condition .= " OR `glpi_tickets`.`status`='" . \CommonITILObject::INCOMING . "'";
+                        if (Session::haveRight('ticket', Ticket::ASSIGN)) {
+                            $condition .= " OR `glpi_tickets`.`status`='" . CommonITILObject::INCOMING . "'";
                         }
                     }
-                    if (\Session::haveRightsOr('ticketvalidation', [\TicketValidation::VALIDATEINCIDENT, \TicketValidation::VALIDATEREQUEST])) {
+                    if (Session::haveRightsOr('ticketvalidation', [TicketValidation::VALIDATEINCIDENT, TicketValidation::VALIDATEREQUEST])) {
                         $condition .= " OR `glpi_ticketvalidations`.`users_id_validate`
-                                          = '" . \Session::getLoginUserID() . "'";
+                                          = '" . Session::getLoginUserID() . "'";
                     }
                     $condition .= ") ";
                 }
@@ -618,9 +646,9 @@ final class CriteriaBuilder
                 }
                 // Same structure in addDefaultJoin
                 $condition = '';
-                if (!\Session::haveRight("{$right}", $itemtype::READALL)) {
+                if (!Session::haveRight("{$right}", $itemtype::READALL)) {
                     $searchopt = & SearchOption::getOptions($itemtype);
-                    if (\Session::haveRight("{$right}", $itemtype::READMY)) {
+                    if (Session::haveRight("{$right}", $itemtype::READMY)) {
                         $requester_table = '`glpi_' . $table . '_users_' . JoinBuilder::computeComplexJoinID($searchopt[4]['joinparams']['beforejoin']['joinparams']) . '`';
                         $requestergroup_table = $groupetable . JoinBuilder::computeComplexJoinID($searchopt[71]['joinparams']['beforejoin']['joinparams']) . '`';
                         $observer_table = '`glpi_' . $table . '_users_' . JoinBuilder::computeComplexJoinID($searchopt[66]['joinparams']['beforejoin']['joinparams']) . '`';
@@ -629,11 +657,11 @@ final class CriteriaBuilder
                         $assigngroup_table = $groupetable . JoinBuilder::computeComplexJoinID($searchopt[8]['joinparams']['beforejoin']['joinparams']) . '`';
                     }
                     $condition = "(";
-                    if (\Session::haveRight("{$right}", $itemtype::READMY)) {
-                        $condition .= " {$requester_table}.users_id = '" . \Session::getLoginUserID() . "'
-                                 OR {$observer_table}.users_id = '" . \Session::getLoginUserID() . "'
-                                 OR {$assign_table}.users_id = '" . \Session::getLoginUserID() . "'
-                                 OR `glpi_" . $table . "`.`users_id_recipient` = '" . \Session::getLoginUserID() . "'";
+                    if (Session::haveRight("{$right}", $itemtype::READMY)) {
+                        $condition .= " {$requester_table}.users_id = '" . Session::getLoginUserID() . "'
+                                 OR {$observer_table}.users_id = '" . Session::getLoginUserID() . "'
+                                 OR {$assign_table}.users_id = '" . Session::getLoginUserID() . "'
+                                 OR `glpi_" . $table . "`.`users_id_recipient` = '" . Session::getLoginUserID() . "'";
                         if (count($_SESSION['glpigroups'])) {
                             $my_groups_keys = "'" . implode("','", $_SESSION['glpigroups']) . "'";
                             $condition .= " OR {$requestergroup_table}.groups_id IN ({$my_groups_keys})
@@ -647,20 +675,20 @@ final class CriteriaBuilder
                 }
                 break;
             case 'Config':
-                $availableContexts = ['core'] + \Plugin::getPlugins();
+                $availableContexts = ['core'] + Plugin::getPlugins();
                 $availableContexts = implode("', '", $availableContexts);
                 $condition = "`context` IN ('{$availableContexts}')";
                 break;
             case 'SavedSearch':
-                $condition = \SavedSearch::addVisibilityRestrict();
+                $condition = SavedSearch::addVisibilityRestrict();
                 break;
             case 'TicketTask':
                 // Filter on is_private
                 $allowed_is_private = [];
-                if (\Session::haveRight(\TicketTask::$rightname, \CommonITILTask::SEEPRIVATE)) {
+                if (Session::haveRight(TicketTask::$rightname, CommonITILTask::SEEPRIVATE)) {
                     $allowed_is_private[] = 1;
                 }
-                if (\Session::haveRight(\TicketTask::$rightname, \CommonITILTask::SEEPUBLIC)) {
+                if (Session::haveRight(TicketTask::$rightname, CommonITILTask::SEEPUBLIC)) {
                     $allowed_is_private[] = 0;
                 }
                 // If the user can't see public and private
@@ -671,22 +699,22 @@ final class CriteriaBuilder
                 $in = "IN ('" . implode("','", $allowed_is_private) . "')";
                 $condition = "(`glpi_tickettasks`.`is_private` {$in} ";
                 // Check for assigned or created tasks
-                $condition .= "OR `glpi_tickettasks`.`users_id` = " . \Session::getLoginUserID() . " ";
-                $condition .= "OR `glpi_tickettasks`.`users_id_tech` = " . \Session::getLoginUserID() . " ";
+                $condition .= "OR `glpi_tickettasks`.`users_id` = " . Session::getLoginUserID() . " ";
+                $condition .= "OR `glpi_tickettasks`.`users_id_tech` = " . Session::getLoginUserID() . " ";
                 // Check for parent item visibility unless the user can see all the
                 // possible parents
-                if (!\Session::haveRight('ticket', \Ticket::READALL)) {
-                    $condition .= "AND " . \TicketTask::buildParentCondition();
+                if (!Session::haveRight('ticket', Ticket::READALL)) {
+                    $condition .= "AND " . TicketTask::buildParentCondition();
                 }
                 $condition .= ")";
                 break;
             case 'ITILFollowup':
                 // Filter on is_private
                 $allowed_is_private = [];
-                if (\Session::haveRight(\ITILFollowup::$rightname, \ITILFollowup::SEEPRIVATE)) {
+                if (Session::haveRight(ITILFollowup::$rightname, ITILFollowup::SEEPRIVATE)) {
                     $allowed_is_private[] = 1;
                 }
-                if (\Session::haveRight(\ITILFollowup::$rightname, \ITILFollowup::SEEPUBLIC)) {
+                if (Session::haveRight(ITILFollowup::$rightname, ITILFollowup::SEEPUBLIC)) {
                     $allowed_is_private[] = 0;
                 }
                 // If the user can't see public and private
@@ -699,24 +727,24 @@ final class CriteriaBuilder
                 // Now filter on parent item visiblity
                 $condition .= "AND (";
                 // Filter for "ticket" parents
-                $condition .= \ITILFollowup::buildParentCondition(\Ticket::getType());
+                $condition .= ITILFollowup::buildParentCondition(Ticket::getType());
                 $condition .= "OR ";
                 // Filter for "change" parents
-                $condition .= \ITILFollowup::buildParentCondition(\Change::getType(), 'changes_id', "glpi_changes_users", "glpi_changes_groups");
+                $condition .= ITILFollowup::buildParentCondition(Change::getType(), 'changes_id', "glpi_changes_users", "glpi_changes_groups");
                 $condition .= "OR ";
                 // Fitler for "problem" parents
-                $condition .= \ITILFollowup::buildParentCondition(\Problem::getType(), 'problems_id', "glpi_problems_users", "glpi_groups_problems");
+                $condition .= ITILFollowup::buildParentCondition(Problem::getType(), 'problems_id', "glpi_problems_users", "glpi_groups_problems");
                 $condition .= "))";
                 break;
             default:
                 // Plugin can override core definition for its type
-                if ($plug = \isPluginItemType($itemtype)) {
-                    $condition = \Plugin::doOneHook($plug['plugin'], 'addDefaultWhere', $itemtype);
+                if ($plug = isPluginItemType($itemtype)) {
+                    $condition = Plugin::doOneHook($plug['plugin'], 'addDefaultWhere', $itemtype);
                 }
                 break;
         }
         /* Hook to restrict user right on current itemtype */
-        list($itemtype, $condition) = \Plugin::doHookFunction('add_default_where', [$itemtype, $condition]);
+        list($itemtype, $condition) = Plugin::doHookFunction('add_default_where', [$itemtype, $condition]);
         return $condition;
     }
     /**
@@ -743,9 +771,9 @@ final class CriteriaBuilder
         $field = $searchopt[$ID]["field"];
         $inittable = $table;
         $addtable = '';
-        $is_fkey_composite_on_self = \getTableNameForForeignKeyField($searchopt[$ID]["linkfield"]) == $table && $searchopt[$ID]["linkfield"] != \getForeignKeyFieldForTable($table);
+        $is_fkey_composite_on_self = getTableNameForForeignKeyField($searchopt[$ID]["linkfield"]) == $table && $searchopt[$ID]["linkfield"] != getForeignKeyFieldForTable($table);
         $orig_table = JoinBuilder::getOrigTableName($itemtype);
-        if ($table != 'asset_types' && ($is_fkey_composite_on_self || $table != $orig_table) && $searchopt[$ID]["linkfield"] != \getForeignKeyFieldForTable($table)) {
+        if ($table != 'asset_types' && ($is_fkey_composite_on_self || $table != $orig_table) && $searchopt[$ID]["linkfield"] != getForeignKeyFieldForTable($table)) {
             $addtable = "_" . $searchopt[$ID]["linkfield"];
             $table .= $addtable;
         }
@@ -774,7 +802,7 @@ final class CriteriaBuilder
                     if ($searchopt[$ID]["datatype"] == 'datetime' && !(strstr($val, 'BEGIN') || strstr($val, 'LAST') || strstr($val, 'DAY'))) {
                         $force_day = false;
                     }
-                    $val = \Html::computeGenericDateTimeSearch($val, $force_day);
+                    $val = Html::computeGenericDateTimeSearch($val, $force_day);
                     break;
             }
         }
@@ -801,16 +829,16 @@ final class CriteriaBuilder
                 break;
             case "under":
                 if ($nott) {
-                    $SEARCH = " NOT IN ('" . implode("','", \getSonsOf($inittable, $val)) . "')";
+                    $SEARCH = " NOT IN ('" . implode("','", getSonsOf($inittable, $val)) . "')";
                 } else {
-                    $SEARCH = " IN ('" . implode("','", \getSonsOf($inittable, $val)) . "')";
+                    $SEARCH = " IN ('" . implode("','", getSonsOf($inittable, $val)) . "')";
                 }
                 break;
             case "notunder":
                 if ($nott) {
-                    $SEARCH = " IN ('" . implode("','", \getSonsOf($inittable, $val)) . "')";
+                    $SEARCH = " IN ('" . implode("','", getSonsOf($inittable, $val)) . "')";
                 } else {
-                    $SEARCH = " NOT IN ('" . implode("','", \getSonsOf($inittable, $val)) . "')";
+                    $SEARCH = " NOT IN ('" . implode("','", getSonsOf($inittable, $val)) . "')";
                 }
                 break;
         }
@@ -822,8 +850,8 @@ final class CriteriaBuilder
             }
         }
         // Plugin can override core definition for its type
-        if ($plug = \isPluginItemType($itemtype)) {
-            $out = \Plugin::doOneHook($plug['plugin'], 'addWhere', $link, $nott, $itemtype, $ID, $val, $searchtype);
+        if ($plug = isPluginItemType($itemtype)) {
+            $out = Plugin::doOneHook($plug['plugin'], 'addWhere', $link, $nott, $itemtype, $ID, $val, $searchtype);
             if (!empty($out)) {
                 return $out;
             }
@@ -847,7 +875,7 @@ final class CriteriaBuilder
                     }
                     return CriteriaBuilder::makeTextCriteria("`{$table}`.`{$field}`", $val, $nott, $link);
                 }
-                if ($_SESSION["glpinames_format"] == \User::FIRSTNAME_BEFORE) {
+                if ($_SESSION["glpinames_format"] == User::FIRSTNAME_BEFORE) {
                     $name1 = 'firstname';
                     $name2 = 'realname';
                 } else {
@@ -862,7 +890,7 @@ final class CriteriaBuilder
                 if ($nott) {
                     $tmplink = 'AND';
                 }
-                if (is_a($itemtype, \CommonITILObject::class, true)) {
+                if (is_a($itemtype, CommonITILObject::class, true)) {
                     if (isset($searchopt[$ID]["joinparams"]["beforejoin"]["table"]) && isset($searchopt[$ID]["joinparams"]["beforejoin"]["joinparams"]) && ($searchopt[$ID]["joinparams"]["beforejoin"]["table"] == 'glpi_tickets_users' || $searchopt[$ID]["joinparams"]["beforejoin"]["table"] == 'glpi_problems_users' || $searchopt[$ID]["joinparams"]["beforejoin"]["table"] == 'glpi_changes_users')) {
                         $bj = $searchopt[$ID]["joinparams"]["beforejoin"];
                         $linktable = $bj['table'] . '_' . JoinBuilder::computeComplexJoinID($bj['joinparams']) . $addmeta;
@@ -893,14 +921,14 @@ final class CriteriaBuilder
                         case 'under':
                             $groups = $_SESSION['glpigroups'];
                             foreach ($_SESSION['glpigroups'] as $g) {
-                                $groups += \getSonsOf($inittable, $g);
+                                $groups += getSonsOf($inittable, $g);
                             }
                             $groups = array_unique($groups);
                             return " {$link} (`{$table}`.`id` IN ('" . implode("','", $groups) . "')) ";
                         case 'notunder':
                             $groups = $_SESSION['glpigroups'];
                             foreach ($_SESSION['glpigroups'] as $g) {
-                                $groups += \getSonsOf($inittable, $g);
+                                $groups += getSonsOf($inittable, $g);
                             }
                             $groups = array_unique($groups);
                             return " {$link} (`{$table}`.`id` NOT IN ('" . implode("','", $groups) . "')) ";
@@ -937,7 +965,7 @@ final class CriteriaBuilder
             case "glpi_problems.status":
             case "glpi_changes.status":
                 $tocheck = [];
-                if ($item = \getItemForItemtype($itemtype)) {
+                if ($item = getItemForItemtype($itemtype)) {
                     switch ($val) {
                         case 'process':
                             $tocheck = $item->getProcessStatusArray();
@@ -1024,10 +1052,10 @@ final class CriteriaBuilder
                 $tocheck = [];
                 switch ($val) {
                     case 'can':
-                        $tocheck = \CommonITILValidation::getCanValidationStatusArray();
+                        $tocheck = CommonITILValidation::getCanValidationStatusArray();
                         break;
                     case 'all':
-                        $tocheck = \CommonITILValidation::getAllValidationStatusArray();
+                        $tocheck = CommonITILValidation::getAllValidationStatusArray();
                         break;
                 }
                 if (count($tocheck) == 0) {
@@ -1041,9 +1069,9 @@ final class CriteriaBuilder
                 }
                 break;
             case "glpi_notifications.event":
-                if (in_array($searchtype, ['equals', 'notequals']) && strpos($val, \Search::SHORTSEP)) {
+                if (in_array($searchtype, ['equals', 'notequals']) && strpos($val, Search::SHORTSEP)) {
                     $not = 'notequals' === $searchtype ? 'NOT' : '';
-                    list($itemtype_val, $event_val) = explode(\Search::SHORTSEP, $val);
+                    list($itemtype_val, $event_val) = explode(Search::SHORTSEP, $val);
                     return " {$link} {$not}(`{$table}`.`event` = '{$event_val}'
                                AND `{$table}`.`itemtype` = '{$itemtype_val}')";
                 }
@@ -1054,7 +1082,7 @@ final class CriteriaBuilder
         if (preg_match("/^glpi_plugin_([a-z0-9]+)/", (string) $inittable, $matches)) {
             if (count($matches) == 2) {
                 $plug = $matches[1];
-                $out = \Plugin::doOneHook($plug, 'addWhere', $link, $nott, $itemtype, $ID, $val, $searchtype);
+                $out = Plugin::doOneHook($plug, 'addWhere', $link, $nott, $itemtype, $ID, $val, $searchtype);
                 if (!empty($out)) {
                     return $out;
                 }
@@ -1235,8 +1263,8 @@ final class CriteriaBuilder
             $out .= ')';
             return $out;
         }
-        $transitemtype = \getItemTypeForTable($inittable);
-        if (\Session::haveTranslations($transitemtype, $field)) {
+        $transitemtype = getItemTypeForTable($inittable);
+        if (Session::haveTranslations($transitemtype, $field)) {
             return " {$link} (" . CriteriaBuilder::makeTextCriteria($tocompute, $val, $nott, '') . "
                           OR " . CriteriaBuilder::makeTextCriteria($tocomputetrans, $val, $nott, '') . ")";
         }
@@ -1283,7 +1311,7 @@ final class CriteriaBuilder
     public static function makeTextSearchValue($val)
     {
         // Unclean to permit < and > search
-        $val = \Toolbox::unclean_cross_side_scripting_deep($val);
+        $val = Toolbox::unclean_cross_side_scripting_deep($val);
         // escape _ char used as wildcard in mysql likes
         $val = str_replace('_', '\\_', $val);
         if ($val === 'NULL' || $val === 'null') {

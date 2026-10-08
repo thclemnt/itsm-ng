@@ -33,7 +33,11 @@
 
 namespace tests\units;
 
+use AuthLDAP;
+use Computer;
 use DbTestCase;
+use Entity;
+use Log as LegacyLog;
 
 /* Test for inc/log.class.php */
 
@@ -45,8 +49,8 @@ class Log extends DbTestCase
         $previous = $_SESSION['glpishow_count_on_tabs'] ?? null;
         $_SESSION['glpishow_count_on_tabs'] = 1;
         try {
-            $history = new \Log();
-            foreach ([new \AuthLDAP(), new \Computer()] as $item) {
+            $history = new LegacyLog();
+            foreach ([new AuthLDAP(), new Computer()] as $item) {
                 foreach (['', -1] as $id) {
                     $item->fields['id'] = $id;
                     $this->string($history->getTabNameForItem($item))->isIdenticalTo('Historical');
@@ -58,7 +62,7 @@ class Log extends DbTestCase
             $this->string($history->getTabNameForItem($computer))
                 ->isIdenticalTo("Historical <sup class='tab_nb'>1</sup>");
 
-            $root = new \Entity();
+            $root = new Entity();
             $this->boolean($root->getFromDB(0))->isTrue();
             $count = (int)$DB->getDoctrineConnection()->fetchOne(
                 'SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ?',

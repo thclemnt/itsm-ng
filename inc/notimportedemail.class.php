@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\MailCollectorRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -220,7 +223,7 @@ class NotImportedEmail extends CommonDBTM
     {
         global $DB;
 
-        (new \itsmng\Database\Repository\MailCollectorRepository(\itsmng\Database\Orm::create($DB)))->clearRejectedEmails();
+        (new MailCollectorRepository(Orm::create($DB)))->clearRejectedEmails();
     }
 
 

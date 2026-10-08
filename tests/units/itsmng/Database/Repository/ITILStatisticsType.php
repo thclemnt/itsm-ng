@@ -7,12 +7,21 @@ namespace tests\units\itsmng\Database\Repository;
 use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
+use Doctrine\DBAL\Driver\Connection as DriverConnection;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\Mapping as Mapping;
 use Doctrine\Persistence\Mapping\ClassMetadata;
 use Doctrine\Persistence\Mapping\Driver\MappingDriver;
+use InvalidArgumentException;
+use LogicException;
+use Throwable;
+use WeakReference;
+use atoum\atoum\test;
 use itsmng\Database\Entity;
+use itsmng\Database\Mapping\AttributeDriver;
 use itsmng\Database\Mapping\ITILStatisticsRelation;
 use itsmng\Database\Mapping\ITILStatisticsRole;
 use itsmng\Database\Orm;
@@ -20,7 +29,7 @@ use itsmng\Database\Repository\ITILStatisticsType as StatisticsType;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 
 /** No application bootstrap, database, session, or GLPITestCase data hooks. */
-class ITILStatisticsType extends \atoum\atoum\test
+class ITILStatisticsType extends test
 {
     private function manager(?MappingDriver $driver = null, ?EventManager $events = null): EntityManager
     {
@@ -36,9 +45,9 @@ class ITILStatisticsType extends \atoum\atoum\test
         return new EntityManager($connection, $configuration, $events);
     }
 
-    private function canonicalDriver(): \itsmng\Database\Mapping\AttributeDriver
+    private function canonicalDriver(): AttributeDriver
     {
-        return Orm::configuration(new \Doctrine\DBAL\Platforms\PostgreSQLPlatform())->getMetadataDriverImpl();
+        return Orm::configuration(new PostgreSQLPlatform())->getMetadataDriverImpl();
     }
 
     public function testCanonicalDiscoveryLeavesUnrelatedMetadataUnloaded(): void
@@ -62,7 +71,7 @@ class ITILStatisticsType extends \atoum\atoum\test
         $this->array(StatisticsType::definition($manager, 'Ticket'))->hasSize(7);
         unset($manager->getClassMetadata(Entity\TicketTask::class)->associationMappings['tickets']);
         $this->exception(static fn () => StatisticsType::definition($manager, 'Ticket'))
-            ->isInstanceOf(\LogicException::class)->hasMessage('Missing ITIL statistics association: Ticket.Tasks');
+            ->isInstanceOf(LogicException::class)->hasMessage('Missing ITIL statistics association: Ticket.Tasks');
         $this->boolean($manager->getConnection()->isConnected())->isFalse();
     }
 
@@ -70,7 +79,7 @@ class ITILStatisticsType extends \atoum\atoum\test
     {
         $events = new EventManager();
         $events->addEventListener(Events::loadClassMetadata, new class () {
-            public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+            public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
             {
                 $metadata = $event->getClassMetadata();
                 if ($metadata->name === Entity\TicketTask::class) {
@@ -80,7 +89,7 @@ class ITILStatisticsType extends \atoum\atoum\test
         });
         $manager = $this->manager($this->canonicalDriver(), $events);
         $this->exception(static fn () => StatisticsType::definition($manager, 'Ticket'))
-            ->isInstanceOf(\LogicException::class)->hasMessage('Missing ITIL statistics association: Ticket.Tasks');
+            ->isInstanceOf(LogicException::class)->hasMessage('Missing ITIL statistics association: Ticket.Tasks');
         $this->boolean(isset($manager->getMetadataFactory()->getLoadedMetadata()[Entity\Software::class]))->isTrue();
         $this->boolean($manager->getConnection()->isConnected())->isFalse();
     }
@@ -118,9 +127,9 @@ class ITILStatisticsType extends \atoum\atoum\test
                 . '#[\\Doctrine\\ORM\\Mapping\\Entity] class Child' . $suffix . ' extends Parent' . $suffix . ' {}';
             file_put_contents($file, $declarations);
             try {
-                $canonical = new \itsmng\Database\Mapping\AttributeDriver(
+                $canonical = new AttributeDriver(
                     [...$this->canonicalDriver()->getPaths(), $directory],
-                    new \Doctrine\DBAL\Platforms\PostgreSQLPlatform(),
+                    new PostgreSQLPlatform(),
                 );
                 $classes = $canonical->getAllClassNames();
                 $this->boolean(in_array('tests\\fixtures\\StatisticsDiscovery\\Parent' . $suffix, $classes, true))->isTrue();
@@ -128,7 +137,7 @@ class ITILStatisticsType extends \atoum\atoum\test
                 $outcome = static function (EntityManager $manager): array {
                     try {
                         return ['definition' => StatisticsType::definition($manager, 'Ticket')];
-                    } catch (\Throwable $error) {
+                    } catch (Throwable $error) {
                         return ['error' => $error::class, 'message' => $error->getMessage()];
                     }
                 };
@@ -179,15 +188,15 @@ class ITILStatisticsType extends \atoum\atoum\test
         $delegate = $complete->getConfiguration()->getMetadataDriverImpl()->delegate;
         $missing = $this->manager(new StatisticsMappingDriver($delegate, Entity\TicketTask::class));
         $this->exception(static fn () => StatisticsType::definition($missing, 'Ticket'))
-            ->isInstanceOf(\LogicException::class)->hasMessage('Missing ITIL statistics association: Ticket.Tasks');
+            ->isInstanceOf(LogicException::class)->hasMessage('Missing ITIL statistics association: Ticket.Tasks');
         // An invalid Ticket mapping cannot newly reject an independent family.
         $this->array(StatisticsType::definition($missing, 'Problem'))->hasSize(7);
         $duplicate = $this->manager(new StatisticsMappingDriver($delegate, null, true));
         $this->exception(static fn () => StatisticsType::definition($duplicate, 'Ticket'))
-            ->isInstanceOf(\LogicException::class)->hasMessage('Ambiguous ITIL statistics association: Ticket.Tasks');
+            ->isInstanceOf(LogicException::class)->hasMessage('Ambiguous ITIL statistics association: Ticket.Tasks');
         $this->array(StatisticsType::definition($complete, 'Ticket'))->hasSize(7);
         $this->exception(static fn () => StatisticsType::definition($complete, 'Computer'))
-            ->isInstanceOf(\InvalidArgumentException::class);
+            ->isInstanceOf(InvalidArgumentException::class);
     }
 
     public function testMetadataListenersDoNotReuseCanonicalDefinitions(): void
@@ -196,7 +205,7 @@ class ITILStatisticsType extends \atoum\atoum\test
         StatisticsType::definition($canonical, 'Ticket');
         $events = new EventManager();
         $events->addEventListener(Events::loadClassMetadata, new class () {
-            public function loadClassMetadata(\Doctrine\ORM\Event\LoadClassMetadataEventArgs $event): void
+            public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
             {
                 $metadata = $event->getClassMetadata();
                 if ($metadata->name === Entity\TicketTask::class) {
@@ -206,7 +215,7 @@ class ITILStatisticsType extends \atoum\atoum\test
         });
         $custom = $this->manager($canonical->getConfiguration()->getMetadataDriverImpl(), $events);
         $this->exception(static fn () => StatisticsType::definition($custom, 'Ticket'))
-            ->isInstanceOf(\LogicException::class)->hasMessage('Missing ITIL statistics association: Ticket.Tasks');
+            ->isInstanceOf(LogicException::class)->hasMessage('Missing ITIL statistics association: Ticket.Tasks');
         $this->array(StatisticsType::definition($canonical, 'Ticket'))->hasSize(7);
     }
 
@@ -215,8 +224,8 @@ class ITILStatisticsType extends \atoum\atoum\test
         $manager = $this->manager();
         $driver = $manager->getConfiguration()->getMetadataDriverImpl();
         StatisticsType::definition($manager, 'Ticket');
-        $managerReference = \WeakReference::create($manager);
-        $driverReference = \WeakReference::create($driver);
+        $managerReference = WeakReference::create($manager);
+        $driverReference = WeakReference::create($driver);
         unset($manager, $driver);
         gc_collect_cycles();
         $this->variable($managerReference->get())->isNull();
@@ -246,7 +255,7 @@ final class StatisticsMappingDriver implements MappingDriver
     public function loadMetadataForClass(string $className, ClassMetadata $metadata): void
     {
         if ($className === DuplicateStatisticsTask::class) {
-            (new \Doctrine\ORM\Mapping\Driver\AttributeDriver([]))->loadMetadataForClass($className, $metadata);
+            (new Mapping\Driver\AttributeDriver([]))->loadMetadataForClass($className, $metadata);
         } else {
             $this->delegate->loadMetadataForClass($className, $metadata);
         }
@@ -273,8 +282,8 @@ class DuplicateStatisticsTask
 
 final class StatisticsMetadataConnection extends Connection
 {
-    protected function connect(): \Doctrine\DBAL\Driver\Connection
+    protected function connect(): DriverConnection
     {
-        throw new \LogicException('Statistics metadata unit tests cannot open a database connection.');
+        throw new LogicException('Statistics metadata unit tests cannot open a database connection.');
     }
 }

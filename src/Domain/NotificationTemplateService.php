@@ -4,6 +4,8 @@
 
 namespace itsmng\Domain;
 
+use DBAdapter;
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Entity\NotificationTemplateTranslation;
 use itsmng\Database\Repository\NotificationTemplateRepository;
@@ -12,7 +14,7 @@ use itsmng\Database\Repository\RecordRepository;
 /** Locale fallback selects content without changing nullable bodies or rendering state. */
 final class NotificationTemplateService
 {
-    public function __construct(private \DBAdapter $database)
+    public function __construct(private DBAdapter $database)
     {
     }
 
@@ -43,7 +45,7 @@ final class NotificationTemplateService
         }
     }
 
-    private function content(\Doctrine\ORM\EntityManager $em, NotificationTemplateTranslation $translation): NotificationTemplateContent
+    private function content(EntityManager $em, NotificationTemplateTranslation $translation): NotificationTemplateContent
     {
         $row = (new RecordRepository($em))->toRow($translation);
         return new NotificationTemplateContent(

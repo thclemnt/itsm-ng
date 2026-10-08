@@ -4,7 +4,9 @@
 
 namespace itsmng\Database\Repository;
 
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
 use itsmng\Database\Entity\Log;
 use itsmng\Database\RecordCriteria;
 
@@ -57,7 +59,7 @@ final class HistoryRepository
     {
         $allowed = ['user_name', 'linked_action', 'itemtype_link', 'id_search_option'];
         if (!$fields || array_diff($fields, $allowed)) {
-            throw new \InvalidArgumentException('Invalid history facet');
+            throw new InvalidArgumentException('Invalid history facet');
         }
         $columns = array_map(static fn ($field) => 'l.' . $field, $fields);
         return $this->em->createQueryBuilder()->select(...$columns)->addSelect('MAX(l.id) AS HIDDEN latest')
@@ -75,12 +77,12 @@ final class HistoryRepository
     }
 
     /** Calendar-month subtraction clamps the day, matching SQL retention semantics. */
-    public static function cutoff(int $months, ?\DateTimeImmutable $now = null): \DateTimeImmutable
+    public static function cutoff(int $months, ?DateTimeImmutable $now = null): DateTimeImmutable
     {
         if ($months <= 0) {
-            throw new \InvalidArgumentException('Retention months must be positive');
+            throw new InvalidArgumentException('Retention months must be positive');
         }
-        $now ??= new \DateTimeImmutable();
+        $now ??= new DateTimeImmutable();
         $target = $now->setDate((int)$now->format('Y'), (int)$now->format('m'), 1)->modify('-' . $months . ' months');
         return $target->setDate((int)$target->format('Y'), (int)$target->format('m'), min((int)$now->format('d'), (int)$target->format('t')));
     }

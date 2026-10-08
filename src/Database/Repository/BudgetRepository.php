@@ -7,8 +7,15 @@ namespace itsmng\Database\Repository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
+use Infocom;
+use InvalidArgumentException;
+use Item_Devices;
 use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
+
+use function getTableForItemType;
+
+use const HOUR_TIMESTAMP;
 
 /** Budget spending projections; callers retain budget and item-type rights checks. */
 final class BudgetRepository
@@ -19,7 +26,7 @@ final class BudgetRepository
 
     public static function supports(string $itemtype): bool
     {
-        return isset(EntityRegistry::tables()[\getTableForItemType($itemtype)]);
+        return isset(EntityRegistry::tables()[getTableForItemType($itemtype)]);
     }
 
     /** Type discovery deliberately retains the existing infocom-entity scope for totals. */
@@ -28,7 +35,7 @@ final class BudgetRepository
         $query = $this->em->createQueryBuilder()->select('DISTINCT i.itemtype AS itemtype')
             ->from(Entity\Infocom::class, 'i')->where('i.budgets = :budget')
             ->setParameter('budget', $budget, Types::INTEGER)
-            ->andWhere('i.itemtype NOT IN (:excluded)')->setParameter('excluded', \Infocom::getExcludedTypes())
+            ->andWhere('i.itemtype NOT IN (:excluded)')->setParameter('excluded', Infocom::getExcludedTypes())
             ->orderBy('i.itemtype');
         $this->scope($query, 'i', $entities);
         return array_column($query->getQuery()->getScalarResult(), 'itemtype');
@@ -49,7 +56,7 @@ final class BudgetRepository
         if (in_array($itemtype, ['Cartridge', 'Consumable'], true)) {
             $query->innerJoin('a.' . strtolower($itemtype) . 'items', 'model')->addSelect('model.name AS name')->addOrderBy('model.name');
         } else {
-            $query->addOrderBy('a.' . (is_a($itemtype, \Item_Devices::class, true) ? 'itemtype' : 'name'));
+            $query->addOrderBy('a.' . (is_a($itemtype, Item_Devices::class, true) ? 'itemtype' : 'name'));
         }
         $query->addOrderBy('a.id');
         $records = new RecordRepository($this->em);
@@ -78,7 +85,7 @@ final class BudgetRepository
 
     private function costs(string $itemtype, int $budget, ?array $entities): QueryBuilder
     {
-        [$class, $association] = CostRepository::definition($itemtype . 'Cost') ?? throw new \InvalidArgumentException('Unmapped budget cost type');
+        [$class, $association] = CostRepository::definition($itemtype . 'Cost') ?? throw new InvalidArgumentException('Unmapped budget cost type');
         $query = $this->em->createQueryBuilder()->from($class, 'c')->innerJoin('c.' . $association, 'a')
             ->where('c.budgets = :budget')->setParameter('budget', $budget, Types::INTEGER);
         $this->scope($query, 'a', $entities);
@@ -89,12 +96,12 @@ final class BudgetRepository
     {
         return in_array($itemtype, ['Contract', 'Project'], true)
             ? 'SUM(c.cost)'
-            : 'SUM(c.actiontime * c.cost_time / ' . \HOUR_TIMESTAMP . ' + c.cost_fixed + c.cost_material)';
+            : 'SUM(c.actiontime * c.cost_time / ' . HOUR_TIMESTAMP . ' + c.cost_fixed + c.cost_material)';
     }
 
     private function infocoms(string $itemtype, int $budget, ?array $entities): QueryBuilder
     {
-        $class = EntityRegistry::tables()[\getTableForItemType($itemtype)] ?? throw new \InvalidArgumentException('Unmapped budget item type');
+        $class = EntityRegistry::tables()[getTableForItemType($itemtype)] ?? throw new InvalidArgumentException('Unmapped budget item type');
         $query = $this->em->createQueryBuilder()->from(Entity\Infocom::class, 'i')
             ->innerJoin($class, 'a', 'WITH', 'a.id = i.items_id')
             ->where('i.itemtype = :type AND i.budgets = :budget')

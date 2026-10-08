@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILTaskRepository;
+use itsmng\Database\Repository\ItilProjectRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -138,7 +142,7 @@ class Itil_Project extends CommonDBRelation
         foreach ([Change::class, Problem::class, Ticket::class] as $itemtype) {
             $rand    = mt_rand();
 
-            $rows = (new \itsmng\Database\Repository\ItilProjectRepository(\itsmng\Database\Orm::create($DB)))->subjects($itemtype, (int)$ID);
+            $rows = (new ItilProjectRepository(Orm::create($DB)))->subjects($itemtype, (int)$ID);
             $numrows = count($rows);
 
             $items = [];
@@ -322,7 +326,7 @@ class Itil_Project extends CommonDBRelation
                 $tasktype      = $item->getType() . "Task";
                 $plannedItems  = [];
 
-                $result = (new \itsmng\Database\Repository\ITILTaskRepository(\itsmng\Database\Orm::create($DB)))->parentTasks($tasktype, (int)$item->fields['id']);
+                $result = (new ITILTaskRepository(Orm::create($DB)))->parentTasks($tasktype, (int)$item->fields['id']);
                 foreach ($result as $plan) {
                     if (isset($plan['begin']) && $plan['begin']) {
                         $plannedItems[$plan['id']] = $plan['id'];
@@ -404,7 +408,7 @@ class Itil_Project extends CommonDBRelation
         $canedit = $itil->canEdit($ID);
         $rand    = mt_rand();
 
-        $rows = (new \itsmng\Database\Repository\ItilProjectRepository(\itsmng\Database\Orm::create($DB)))->projects($itil->getType(), (int)$ID);
+        $rows = (new ItilProjectRepository(Orm::create($DB)))->projects($itil->getType(), (int)$ID);
         $numrows = count($rows);
 
         $projects = [];

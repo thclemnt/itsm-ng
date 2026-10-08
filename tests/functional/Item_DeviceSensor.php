@@ -33,7 +33,13 @@
 
 namespace tests\units;
 
+use Computer;
 use DbTestCase;
+use InvalidArgumentException;
+use Item_Devices;
+use itsmng\Database\Entity\ItemDeviceSensor;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ComponentRepository;
 
 class Item_DeviceSensor extends DbTestCase
 {
@@ -60,7 +66,7 @@ class Item_DeviceSensor extends DbTestCase
                 $this->integer((int)$link->fields['is_recursive'])->isIdenticalTo(1, 'Assignment scope is inherited from the definition');
                 $links[$kind] = $link;
             }
-            $repository = new \itsmng\Database\Repository\ComponentRepository(\itsmng\Database\Orm::create($DB));
+            $repository = new ComponentRepository(Orm::create($DB));
             $arguments = ['glpi_items_devicesensors', 'devicesensors_id', (int)$definition->getID(), 'Computer', 'glpi_computers'];
             $this->array($repository->forDevice(...[...$arguments, []]))->isEmpty();
             $this->array($repository->forDevice(...[...$arguments, [0]]))->hasSize(1);
@@ -68,28 +74,28 @@ class Item_DeviceSensor extends DbTestCase
             $this->boolean($computer->getFromDB($computer->getID()))->isTrue();
             $destinationId = $computer->clone(['name' => $name . '-clone']);
             $this->integer($destinationId)->isGreaterThan(0)->isNotEqualTo((int)$computer->getID());
-            $destination = new \Computer();
+            $destination = new Computer();
             $this->boolean($destination->getFromDB($destinationId))->isTrue();
             $copies = $links['Computer']->find(['itemtype' => 'Computer', 'items_id' => $destination->getID()]);
             $this->array($copies)->hasSize(1);
             $copy = reset($copies);
             $this->integer((int)$copy['computers_id'])->isIdenticalTo((int)$destination->getID());
             $this->string($copy['serial'])->isIdenticalTo($name);
-            \Item_Devices::cleanItemDeviceDBOnItemDelete('Computer', (int)$computer->getID(), true);
+            Item_Devices::cleanItemDeviceDBOnItemDelete('Computer', (int)$computer->getID(), true);
             $this->boolean($links['Computer']->getFromDB($links['Computer']->getID()))->isTrue();
             $this->variable($links['Computer']->fields['itemtype'])->isNull();
             $this->variable($links['Computer']->fields['computers_id'])->isNull();
             $this->integer((int)$links['Computer']->fields['items_id'])->isIdenticalTo(0);
             $this->string($links['Computer']->fields['serial'])->isIdenticalTo($name);
-            \Item_Devices::cleanItemDeviceDBOnItemDelete('Computer', (int)$destination->getID(), false);
+            Item_Devices::cleanItemDeviceDBOnItemDelete('Computer', (int)$destination->getID(), false);
             $this->array($links['Computer']->find(['itemtype' => 'Computer', 'items_id' => $destination->getID()]))->isEmpty();
             $this->boolean($links['Peripheral']->getFromDB($links['Peripheral']->getID()))->isTrue();
             $this->array($repository->forDevice('glpi_items_devicesensors', 'devicesensors_id', (int)$definition->getID(), '', null, null))->hasSize(1);
-            $entity = new \itsmng\Database\Entity\ItemDeviceSensor();
+            $entity = new ItemDeviceSensor();
             foreach ([['itemtype' => 'computer', 'items_id' => $computer->getID()],
                 ['itemtype' => 'Computer', 'items_id' => 0],
                 ['itemtype' => 'Computer', 'items_id' => $computer->getID(), 'peripherals_id' => $peripheral->getID()]] as $invalid) {
-                $this->exception(static fn () => $entity->normalizeInput($invalid))->isInstanceOf(\InvalidArgumentException::class);
+                $this->exception(static fn () => $entity->normalizeInput($invalid))->isInstanceOf(InvalidArgumentException::class);
             }
             $this->boolean($repository->hasSelectedSubject('glpi_items_devicesensors', ['itemtype' => 'Computer', 'computers_id' => PHP_INT_MAX]))->isFalse();
             $stock = $entity->normalizeInput(['itemtype' => '', 'items_id' => 0]);

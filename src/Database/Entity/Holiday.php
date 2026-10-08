@@ -4,7 +4,9 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
@@ -32,24 +34,24 @@ class Holiday
     public ?string $comment = null;
 
     #[ORM\Column(name: '`begin_date`', type: 'date', nullable: true)]
-    public ?\DateTimeInterface $begin_date = null;
+    public ?DateTimeInterface $begin_date = null;
 
     #[ORM\Column(name: '`end_date`', type: 'date', nullable: true)]
-    public ?\DateTimeInterface $end_date = null;
+    public ?DateTimeInterface $end_date = null;
 
     #[ORM\Column(name: '`is_perpetual`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_perpetual = false;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 
     /** Inclusive calendar dates; an annual period can cross New Year. */
-    public function containsDay(\DateTimeInterface $day): bool
+    public function containsDay(DateTimeInterface $day): bool
     {
         if ($this->begin_date === null || $this->end_date === null) {
             return false;

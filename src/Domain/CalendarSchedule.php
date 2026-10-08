@@ -4,6 +4,8 @@
 
 namespace itsmng\Domain;
 
+use DateTimeImmutable;
+use LogicException;
 use itsmng\Database\Entity\Holiday;
 
 /** Calendar values owned by one scheduling calculation, without a connection or shared cache. */
@@ -76,11 +78,11 @@ final class CalendarSchedule
     public function nextWorkingOccurrence(int $time): int
     {
         if (!$this->hasAWorkingDay()) {
-            throw new \LogicException('A recurrence calendar requires positive working duration.');
+            throw new LogicException('A recurrence calendar requires positive working duration.');
         }
         while (true) {
             $day = (int)date('w', $time);
-            $date = new \DateTimeImmutable(date('Y-m-d', $time));
+            $date = new DateTimeImmutable(date('Y-m-d', $time));
             $closed = false;
             foreach ($this->holidays as $holiday) {
                 if ($holiday->containsDay($date)) {

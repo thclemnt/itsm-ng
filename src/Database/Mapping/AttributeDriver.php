@@ -5,10 +5,14 @@
 namespace itsmng\Database\Mapping;
 
 use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\ORM\Events;
+use Doctrine\ORM\Mapping\Driver\AttributeDriver as DriverAttributeDriver;
 use Doctrine\Persistence\Mapping\ClassMetadata;
+use LogicException;
+use ReflectionClass;
 
 /** Resolve property-owned native storage and generated references for the provider. */
-final class AttributeDriver extends \Doctrine\ORM\Mapping\Driver\AttributeDriver
+final class AttributeDriver extends DriverAttributeDriver
 {
     public function __construct(array $paths, private AbstractPlatform $platform)
     {
@@ -19,7 +23,7 @@ final class AttributeDriver extends \Doctrine\ORM\Mapping\Driver\AttributeDriver
     {
         parent::loadMetadataForClass($className, $metadata);
         $writableClock = false;
-        $entity = new \ReflectionClass($className);
+        $entity = new ReflectionClass($className);
         $metadata->table['options'] = array_replace(
             $metadata->table['options'] ?? [],
             PlatformOptions::forDeclaration($entity, $this->platform),
@@ -36,7 +40,7 @@ final class AttributeDriver extends \Doctrine\ORM\Mapping\Driver\AttributeDriver
                     $association = $metadata->associationMappings[$property->name] ?? null;
                     if ($association === null || !$association->isToOneOwningSide()
                         || count($association->joinColumns) !== 1) {
-                        throw new \LogicException(sprintf(
+                        throw new LogicException(sprintf(
                             'Provider column options require a scalar field or a single-column owning to-one association: %s::$%s.',
                             $className,
                             $property->name,
@@ -60,8 +64,8 @@ final class AttributeDriver extends \Doctrine\ORM\Mapping\Driver\AttributeDriver
             }
         }
         if ($writableClock) {
-            $metadata->addEntityListener(\Doctrine\ORM\Events::postPersist, NativeTimestampOutcome::class, 'synchronize');
-            $metadata->addEntityListener(\Doctrine\ORM\Events::postUpdate, NativeTimestampOutcome::class, 'synchronize');
+            $metadata->addEntityListener(Events::postPersist, NativeTimestampOutcome::class, 'synchronize');
+            $metadata->addEntityListener(Events::postUpdate, NativeTimestampOutcome::class, 'synchronize');
         }
     }
 }

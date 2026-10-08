@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ServiceLevelRepository;
+
 /**
  * @since 9.2
  */
@@ -42,10 +45,10 @@ if (!defined('GLPI_ROOT')) {
 /// Class OLALevel
 class OlaLevel_Ticket extends CommonDBTM
 {
-    private static function serviceRepository(): \itsmng\Database\Repository\ServiceLevelRepository
+    private static function serviceRepository(): ServiceLevelRepository
     {
         global $DB;
-        return new \itsmng\Database\Repository\ServiceLevelRepository(\itsmng\Database\Orm::create($DB), 'ola');
+        return new ServiceLevelRepository(Orm::create($DB), 'ola');
     }
 
     public static function getTypeName($nb = 0)
@@ -116,7 +119,7 @@ class OlaLevel_Ticket extends CommonDBTM
     **/
     public static function cronOlaTicket(CronTask $task)
     {
-        $rows = self::serviceRepository()->scheduled(before: new \DateTimeImmutable());
+        $rows = self::serviceRepository()->scheduled(before: new DateTimeImmutable());
         foreach ($rows as $row) {
             self::doLevelForTicket($row, $row['type']);
         }
@@ -247,7 +250,7 @@ class OlaLevel_Ticket extends CommonDBTM
     {
         $repository = self::serviceRepository();
         do {
-            $rows = $repository->scheduled((int)$tickets_id, (int)$olaType, new \DateTimeImmutable(), 2);
+            $rows = $repository->scheduled((int)$tickets_id, (int)$olaType, new DateTimeImmutable(), 2);
             if (count($rows) === 1) {
                 self::doLevelForTicket($rows[0], $olaType);
             }

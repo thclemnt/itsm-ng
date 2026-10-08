@@ -4,14 +4,17 @@
 
 namespace itsmng\Database\Mapping;
 
+use itsmng\Domain\EntityScope;
+use itsmng\Domain\SoftwareAssignmentCancelled;
+
 /** Used on the entities whose owning properties define allocation scope. */
 trait AllocationSubjectScope
 {
-    public function allocationEntityScope(): \itsmng\Domain\EntityScope
+    public function allocationEntityScope(): EntityScope
     {
         if ($this->entities === null) {
-            throw new \itsmng\Domain\SoftwareAssignmentCancelled('An allocation subject has no owning entity.');
+            throw new SoftwareAssignmentCancelled('An allocation subject has no owning entity.');
         }
-        return new \itsmng\Domain\EntityScope($this->entities->id, $this->is_recursive);
+        return new EntityScope($this->entities->id, $this->is_recursive);
     }
 }

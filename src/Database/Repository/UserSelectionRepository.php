@@ -6,6 +6,7 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\QueryBuilder;
 use itsmng\Database\Entity\Group;
 use itsmng\Database\Entity\GroupMembership;
 use itsmng\Database\Entity\Profile;
@@ -157,7 +158,7 @@ final class UserSelectionRepository
         return false;
     }
 
-    private function restrictActive(\Doctrine\ORM\QueryBuilder $query): void
+    private function restrictActive(QueryBuilder $query): void
     {
         $query->andWhere('r.is_active = :active AND r.is_deleted = :deleted')
             ->andWhere('(r.begin_date IS NULL OR r.begin_date < CURRENT_TIMESTAMP())')

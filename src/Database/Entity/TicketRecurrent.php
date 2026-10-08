@@ -4,7 +4,9 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
@@ -40,8 +42,8 @@ class TicketRecurrent
     public ?TicketTemplate $tickettemplates_id = null;
 
     #[ORM\Column(name: '`begin_date`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $begin_date = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $begin_date = null;
 
     #[ORM\Column(name: '`periodicity`', type: 'string', length: 255, nullable: true)]
     public ?string $periodicity = null;
@@ -50,8 +52,8 @@ class TicketRecurrent
     public int $create_before = 0;
 
     #[ORM\Column(name: '`next_creation_date`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $next_creation_date = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $next_creation_date = null;
 
     #[ORM\ManyToOne(targetEntity: Calendar::class)]
     #[ORM\JoinColumn(name: 'calendars_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
@@ -59,6 +61,6 @@ class TicketRecurrent
     public ?Calendar $calendars_id = null;
 
     #[ORM\Column(name: '`end_date`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $end_date = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $end_date = null;
 }

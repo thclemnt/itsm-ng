@@ -31,6 +31,13 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NotificationRecipientRepository;
+use itsmng\Database\Repository\ProfileRepository;
+use itsmng\Database\Repository\ProfileRightRepository;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\UserRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -210,7 +217,7 @@ class Profile extends CommonDBTM
         }
 
         if (in_array('is_default', $this->updates) && ($this->input["is_default"] == 1)) {
-            (new \itsmng\Database\Repository\ProfileRepository(\itsmng\Database\Orm::create($DB)))->clearOtherDefaults((int)$this->input['id']);
+            (new ProfileRepository(Orm::create($DB)))->clearOtherDefaults((int)$this->input['id']);
         }
 
         // To avoid log out and login when rights change (very useful in debug mode)
@@ -219,7 +226,7 @@ class Profile extends CommonDBTM
             && $_SESSION['glpiactiveprofile']['id'] == $this->input['id']
         ) {
             if (in_array('helpdesk_item_type', $this->updates)) {
-                $_SESSION['glpiactiveprofile']['helpdesk_item_type'] = (new \itsmng\Database\Repository\ProfileRepository(\itsmng\Database\Orm::create($DB)))
+                $_SESSION['glpiactiveprofile']['helpdesk_item_type'] = (new ProfileRepository(Orm::create($DB)))
                     ->helpdeskItemTypes((int)$this->input['id']);
             }
 
@@ -241,7 +248,7 @@ class Profile extends CommonDBTM
         unset($this->profileRight);
 
         if (isset($this->fields['is_default']) && ($this->fields["is_default"] == 1)) {
-            (new \itsmng\Database\Repository\ProfileRepository(\itsmng\Database\Orm::create($DB)))->clearOtherDefaults((int)$this->fields['id']);
+            (new ProfileRepository(Orm::create($DB)))->clearOtherDefaults((int)$this->fields['id']);
         }
     }
 
@@ -270,11 +277,11 @@ class Profile extends CommonDBTM
         (new Dashboard())->deleteByCriteria(['profileId' => $this->getID()]);
         global $DB;
 
-        (new \itsmng\Database\Repository\NotificationRecipientRepository(\itsmng\Database\Orm::create($DB)))->replaceProfile(
+        (new NotificationRecipientRepository(Orm::create($DB)))->replaceProfile(
             (int)$this->getID(),
             (int)($this->input['_replace_by'] ?? 0)
         );
-        $repository = new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB));
+        $repository = new UserRepository(Orm::create($DB));
         foreach ($repository->defaultProfileReplacements((int)$this->getID(), (int)($this->input['_replace_by'] ?? 0)) as $row) {
             $user = new User();
             $user->update(['id' => $row['id'], 'profiles_id' => $row['profiles_id'] ?? 0, '_disablenotif' => true]);
@@ -467,7 +474,7 @@ class Profile extends CommonDBTM
     public function replaceHelpdeskItemType(string $previous, string $replacement): bool
     {
         if (!$this->getFromDB($this->getID())) {
-            throw new \RuntimeException('Profile no longer exists.');
+            throw new RuntimeException('Profile no longer exists.');
         }
         $values = importArrayFromDB($this->fields['helpdesk_item_type']);
         $changed = false;
@@ -603,7 +610,7 @@ class Profile extends CommonDBTM
         if (Profile::canCreate()) {
             return [];
         }
-        $ids = (new \itsmng\Database\Repository\ProfileRepository(\itsmng\Database\Orm::create($DB)))->manageableIds(
+        $ids = (new ProfileRepository(Orm::create($DB)))->manageableIds(
             self::activeRights(),
             Session::getCurrentInterface()
         );
@@ -643,7 +650,7 @@ class Profile extends CommonDBTM
         }
         $rights = self::activeRights();
         $interface = Session::getCurrentInterface();
-        return (new \itsmng\Database\Repository\ProfileRepository(\itsmng\Database\Orm::create($DB)))
+        return (new ProfileRepository(Orm::create($DB)))
             ->canManage($IDs, $rights, $interface, Profile::canCreate());
     }
 
@@ -3393,7 +3400,7 @@ class Profile extends CommonDBTM
             }
         }
 
-        $profiles = array_column((new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+        $profiles = array_column((new RecordRepository(Orm::create($DB)))
             ->matching(self::getTable(), self::getUnderActiveProfileRestrictCriteria(), ['name']), 'name', 'id');
         Dropdown::showFromArray(
             $p['name'],
@@ -3415,7 +3422,7 @@ class Profile extends CommonDBTM
     public static function getDefault()
     {
         global $DB;
-        return (new \itsmng\Database\Repository\ProfileRepository(\itsmng\Database\Orm::create($DB)))->defaultId();
+        return (new ProfileRepository(Orm::create($DB)))->defaultId();
     }
 
 
@@ -3515,7 +3522,7 @@ class Profile extends CommonDBTM
     {
         global $DB;
 
-        return array_column((new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+        return array_column((new RecordRepository(Orm::create($DB)))
             ->matching(DomainRecordType::getTable()), 'name', 'id');
     }
 
@@ -3568,7 +3575,7 @@ class Profile extends CommonDBTM
     public static function haveUserRight($user_id, $rightname, $rightvalue, $entity_id)
     {
         global $DB;
-        return (new \itsmng\Database\Repository\ProfileRightRepository(\itsmng\Database\Orm::create($DB)))->userHas(
+        return (new ProfileRightRepository(Orm::create($DB)))->userHas(
             (int)$user_id,
             $rightname,
             (int)$rightvalue,

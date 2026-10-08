@@ -33,8 +33,39 @@
 
 namespace tests\units;
 
+use Appliance;
+use Appliance_Item;
+use Change;
+use ChangeCost;
+use Change_Item;
 use CommonDBTM;
+use CommonITILActor;
+use Computer;
 use DbTestCase;
+use Doctrine\DBAL\Types\BigIntType;
+use Doctrine\DBAL\Types\BooleanType;
+use Doctrine\DBAL\Types\DecimalType;
+use Doctrine\DBAL\Types\FloatType;
+use Doctrine\DBAL\Types\IntegerType;
+use Doctrine\DBAL\Types\SmallIntType;
+use Item_Disk;
+use NetworkEquipment;
+use QueryExpression;
+use ReservationItem;
+use Search as LegacySearch;
+use Session;
+use Software;
+use Ticket;
+use itsmng\Search\Output\LegacyOutput;
+use itsmng\Search\Provider\CriteriaBuilder;
+use itsmng\Search\Provider\FieldReference;
+use itsmng\Search\Provider\JoinBuilder;
+use itsmng\Search\Provider\ProjectionBuilder;
+use itsmng\Search\Provider\SelectList;
+use itsmng\Search\Provider\UnionMember;
+use itsmng\Search\SearchOption;
+
+use function getEntitiesRestrictRequest;
 
 /* Test for inc/search.class.php */
 
@@ -89,26 +120,26 @@ class Search extends DbTestCase
     {
         global $DB;
         $this->login();
-        $catalogue = \Ticket::getAllStatusArray(true, true);
+        $catalogue = Ticket::getAllStatusArray(true, true);
         $customStatus = (int)$_SESSION['INCOMING'];
         $this->boolean($DB->update('glpi_specialstatuses', [
             'name' => 'Custom catalogue status', 'color' => '#123abc',
         ], ['id' => $catalogue['id'][$customStatus]]))->isTrue();
-        $catalogue = \Ticket::getAllStatusArray(true, true);
+        $catalogue = Ticket::getAllStatusArray(true, true);
         foreach ([...array_keys($catalogue['name_translate']), PHP_INT_MAX] as $status) {
-            $presentation = \Ticket::getStatusPresentationFromCatalogue($status, $catalogue);
-            $this->variable($presentation['label'])->isIdenticalTo(\Ticket::getStatus($status));
-            $this->string($presentation['icon'])->isIdenticalTo(\Ticket::getStatusIcon($status));
+            $presentation = Ticket::getStatusPresentationFromCatalogue($status, $catalogue);
+            $this->variable($presentation['label'])->isIdenticalTo(Ticket::getStatus($status));
+            $this->string($presentation['icon'])->isIdenticalTo(Ticket::getStatusIcon($status));
         }
-        $custom = \Ticket::getStatusPresentationFromCatalogue($customStatus, $catalogue);
+        $custom = Ticket::getStatusPresentationFromCatalogue($customStatus, $catalogue);
         $this->string($custom['label'])->isIdenticalTo('Custom catalogue status');
         $this->string($custom['icon'])->contains("style='color:#123abc'");
         // Catalogue labels are already translated; formatting must not translate them again.
         $catalogue['name_translate'][$customStatus] = 'Translated catalogue label';
-        $translated = \Ticket::getStatusPresentationFromCatalogue($customStatus, $catalogue);
+        $translated = Ticket::getStatusPresentationFromCatalogue($customStatus, $catalogue);
         $this->string($translated['label'])->isIdenticalTo('Translated catalogue label');
         $this->string($translated['icon'])->contains("title='Translated catalogue label'");
-        $subclass = new class () extends \Ticket {
+        $subclass = new class () extends Ticket {
             public static function getStatus($status)
             {
                 return 'Subclass label';
@@ -127,13 +158,13 @@ class Search extends DbTestCase
         global $DB;
         $this->login();
         $this->setEntity('_test_root_entity', true);
-        $entity = (int)\Session::getActiveEntity();
+        $entity = (int)Session::getActiveEntity();
         $name = 'Catalogue scope ' . $this->getUniqueString();
-        $ticket = new \Ticket();
+        $ticket = new Ticket();
         for ($i = 0; $i < 2; $i++) {
             $id = (int)$ticket->add([
                 'name' => $name . ' ' . $i, 'content' => $name, 'entities_id' => $entity,
-                '_users_id_requester' => \Session::getLoginUserID(),
+                '_users_id_requester' => Session::getLoginUserID(),
             ]);
             $this->integer($id)->isGreaterThan(0);
             $this->boolean($ticket->getFromDB($id))->isTrue();
@@ -148,11 +179,11 @@ class Search extends DbTestCase
         $this->integer($before['data']['count'])->isIdenticalTo(2);
         foreach ($before['data']['rows'] as $row) {
             $this->string($row['Ticket_12']['displayname'])->isIdenticalTo(
-                \itsmng\Search\Output\LegacyOutput::giveItem('Ticket', 12, $row)
+                LegacyOutput::giveItem('Ticket', 12, $row)
             );
         }
         $status = $before['data']['rows'][0]['Ticket_12'][0]['name'];
-        $catalogue = \Ticket::getAllStatusArray(true, true);
+        $catalogue = Ticket::getAllStatusArray(true, true);
         $this->boolean($DB->update('glpi_specialstatuses', [
             'name' => 'Changed catalogue status', 'color' => '#abc123',
         ], ['id' => $catalogue['id'][$status]]))->isTrue();
@@ -161,7 +192,7 @@ class Search extends DbTestCase
         $this->integer($after['data']['count'])->isIdenticalTo(2);
         foreach ($after['data']['rows'] as $row) {
             $this->string($row['Ticket_12']['displayname'])
-                ->isIdenticalTo(\itsmng\Search\Output\LegacyOutput::giveItem('Ticket', 12, $row))
+                ->isIdenticalTo(LegacyOutput::giveItem('Ticket', 12, $row))
                 ->contains('Changed catalogue status')->contains("style='color:#abc123'");
         }
     }
@@ -170,20 +201,20 @@ class Search extends DbTestCase
     {
         $this->login();
         $this->setEntity('_test_root_entity', true);
-        $entity = (int)\Session::getActiveEntity();
+        $entity = (int)Session::getActiveEntity();
         $prefix = 'Cost duration ' . $this->getUniqueString();
-        $appliance = new \Appliance();
+        $appliance = new Appliance();
         $applianceId = (int)$appliance->add(['name' => $prefix, 'entities_id' => $entity]);
         $this->integer($applianceId)->isGreaterThan(0);
-        $change = new \Change();
+        $change = new Change();
         $changeId = (int)$change->add(['name' => $prefix, 'content' => $prefix, 'entities_id' => $entity]);
         $this->integer($changeId)->isGreaterThan(0);
         $this->boolean($change->can($changeId, READ))->isTrue();
-        $link = new \Change_Item();
+        $link = new Change_Item();
         $this->integer((int)$link->add([
             'changes_id' => $changeId, 'itemtype' => 'Appliance', 'items_id' => $applianceId,
         ]))->isGreaterThan(0);
-        $cost = new \ChangeCost();
+        $cost = new ChangeCost();
         // Equal durations are separate costs, not values to deduplicate.
         $costIds = [];
         foreach ([1800, 1800, 0] as $i => $seconds) {
@@ -230,11 +261,11 @@ class Search extends DbTestCase
         global $DB;
         $this->login();
         $this->setEntity('_test_root_entity', true);
-        $entity = (int)\Session::getActiveEntity();
+        $entity = (int)Session::getActiveEntity();
         $prefix = 'Root cost predicate ' . $this->getUniqueString();
         $ids = ['Change' => [], 'Appliance' => []];
         foreach (['missing' => null, 'zero' => 0, 'positive' => 20, 'outside' => 900] as $label => $seconds) {
-            $change = new \Change();
+            $change = new Change();
             $id = (int)$change->add([
                 'name' => $prefix . ' ' . $label, 'content' => $prefix,
                 'entities_id' => $label === 'outside' ? 0 : $entity,
@@ -242,7 +273,7 @@ class Search extends DbTestCase
             $this->integer($id)->isGreaterThan(0);
             $ids['Change'][$label] = $id;
             if ($seconds !== null) {
-                $cost = new \ChangeCost();
+                $cost = new ChangeCost();
                 $this->integer((int)$cost->add([
                     'changes_id' => $id, 'name' => $prefix . ' ' . $label,
                     'actiontime' => $seconds, 'cost_time' => 0, 'cost_fixed' => 0, 'cost_material' => 0,
@@ -253,12 +284,12 @@ class Search extends DbTestCase
                 $assetId = $ids['Appliance']['positive'];
             } else {
                 $this->boolean($change->can($id, READ))->isTrue();
-                $asset = new \Appliance();
+                $asset = new Appliance();
                 $assetId = (int)$asset->add(['name' => $prefix . ' ' . $label, 'entities_id' => $entity]);
                 $this->integer($assetId)->isGreaterThan(0);
                 $ids['Appliance'][$label] = $assetId;
             }
-            $relation = new \Change_Item();
+            $relation = new Change_Item();
             $this->integer((int)$relation->add([
                 'changes_id' => $id, 'itemtype' => 'Appliance', 'items_id' => $assetId,
             ]))->isGreaterThan(0);
@@ -315,9 +346,9 @@ class Search extends DbTestCase
         }
 
         // A join-free custom aggregate is not automatically a root predicate.
-        $unowned = (new \itsmng\Search\Provider\SelectList())->add('SUM(1)', 'value', true)->withoutFieldJoin();
+        $unowned = (new SelectList())->add('SUM(1)', 'value', true)->withoutFieldJoin();
         $this->variable($unowned->rootScalar('value'))->isNull();
-        $this->variable(\itsmng\Search\Provider\CriteriaBuilder::rootScalarHaving(
+        $this->variable(CriteriaBuilder::rootScalarHaving(
             'PluginCostprobeItem',
             49,
             'contains',
@@ -330,11 +361,11 @@ class Search extends DbTestCase
     public function testUnionReusesUnrelatedHooksByCriterionOccurrence(): void
     {
         $this->login();
-        $probe = new class () extends \Computer {
+        $probe = new class () extends Computer {
             public static int $calls = 0;
             public static function getTable($classname = null)
             {
-                return \Computer::getTable();
+                return Computer::getTable();
             }
             public static function addWhere($link, $not, $itemtype, $id, $searchtype, $value)
             {
@@ -350,10 +381,10 @@ class Search extends DbTestCase
             ['field' => 6, 'searchtype' => 'contains', 'value' => 'inventory', 'link' => 'AND'],
         ];
         $data = ['itemtype' => 'ReservationItem'];
-        $options = \itsmng\Search\SearchOption::getOptions('ReservationItem');
+        $options = SearchOption::getOptions('ReservationItem');
         $predicates = [];
         try {
-            $original = \itsmng\Search\Provider\CriteriaBuilder::constructCriteriaSQL(
+            $original = CriteriaBuilder::constructCriteriaSQL(
                 $criteria,
                 $data,
                 $options,
@@ -363,9 +394,9 @@ class Search extends DbTestCase
             );
             $this->integer($probe::$calls)->isIdenticalTo(2);
             $this->string($original)->contains('(1 = 1)')->contains('(2 = 2)');
-            foreach ([new \Computer(), new \Software()] as $asset) {
-                $member = new \itsmng\Search\Provider\UnionMember('reservation_types', $asset);
-                $sql = \itsmng\Search\Provider\CriteriaBuilder::constructCriteriaSQL(
+            foreach ([new Computer(), new Software()] as $asset) {
+                $member = new UnionMember('reservation_types', $asset);
+                $sql = CriteriaBuilder::constructCriteriaSQL(
                     $criteria,
                     $data,
                     $options,
@@ -378,7 +409,7 @@ class Search extends DbTestCase
                 $this->string($sql)->contains('(1 = 1)')->contains('(2 = 2)');
             }
         } finally {
-            unset(\Search::$search[$type]);
+            unset(LegacySearch::$search[$type]);
         }
     }
 
@@ -387,7 +418,7 @@ class Search extends DbTestCase
     {
         $this->login();
         $this->setEntity('_test_root_entity', true);
-        $entity = (int)\Session::getActiveEntity();
+        $entity = (int)Session::getActiveEntity();
         $prefix = 'Reservation inventory ' . $this->getUniqueString();
         $inventory = 'inventory-' . $this->getUniqueString();
         $reservationIds = [];
@@ -400,7 +431,7 @@ class Search extends DbTestCase
             $id = (int)$asset->add($input);
             $this->integer($id)->isGreaterThan(0);
             $this->boolean($asset->can($id, READ))->isTrue();
-            $reservation = new \ReservationItem();
+            $reservation = new ReservationItem();
             $reservationId = (int)$reservation->add([
                 'itemtype' => $type, 'items_id' => $id, 'entities_id' => $entity, 'is_active' => 1,
             ]);
@@ -444,21 +475,21 @@ class Search extends DbTestCase
     {
         $this->login();
         $this->setEntity('_test_root_entity', true);
-        $entity = (int)\Session::getActiveEntity();
+        $entity = (int)Session::getActiveEntity();
         $prefix = 'Volume capacity ' . $this->getUniqueString();
-        $computer = new \Computer();
+        $computer = new Computer();
         $computerId = (int)$computer->add(['name' => $prefix, 'entities_id' => $entity]);
         $this->integer($computerId)->isGreaterThan(0);
         $this->boolean($computer->can($computerId, READ))->isTrue();
-        $appliance = new \Appliance();
+        $appliance = new Appliance();
         $applianceId = (int)$appliance->add(['name' => $prefix, 'entities_id' => $entity]);
         $this->integer($applianceId)->isGreaterThan(0);
         $this->boolean($appliance->can($applianceId, READ))->isTrue();
-        $link = new \Appliance_Item();
+        $link = new Appliance_Item();
         $this->integer((int)$link->add([
             'appliances_id' => $applianceId, 'itemtype' => 'Computer', 'items_id' => $computerId,
         ]))->isGreaterThan(0);
-        $disk = new \Item_Disk();
+        $disk = new Item_Disk();
         foreach ([0, 1000, 4000] as $index => $size) {
             $this->integer((int)$disk->add([
                 'itemtype' => 'Computer', 'items_id' => $computerId, 'entities_id' => $entity,
@@ -503,26 +534,26 @@ class Search extends DbTestCase
     {
         $this->login();
         $this->setEntity('_test_root_entity', true);
-        $entity = (int)\Session::getActiveEntity();
+        $entity = (int)Session::getActiveEntity();
         $prefix = 'Volume negatives ' . $this->getUniqueString();
         $owners = [];
         foreach (['mixed' => [0, 1000, 4000], 'known' => [1000, 4000], 'zero' => [0], 'empty' => []] as $kind => $sizes) {
-            $computer = new \Computer();
+            $computer = new Computer();
             $computerId = (int)$computer->add(['name' => $prefix . ' ' . $kind, 'entities_id' => $entity]);
             $this->integer($computerId)->isGreaterThan(0);
             $this->boolean($computer->can($computerId, READ))->isTrue();
-            $appliance = new \Appliance();
+            $appliance = new Appliance();
             $applianceId = (int)$appliance->add(['name' => $prefix . ' ' . $kind, 'entities_id' => $entity]);
             $this->integer($applianceId)->isGreaterThan(0);
             $this->boolean($appliance->can($applianceId, READ))->isTrue();
-            $link = new \Appliance_Item();
+            $link = new Appliance_Item();
             $this->integer((int)$link->add([
                 'appliances_id' => $applianceId, 'itemtype' => 'Computer', 'items_id' => $computerId,
             ]))->isGreaterThan(0);
             $owners['Computer'][$kind] = $computerId;
             $owners['Appliance'][$kind] = $applianceId;
             foreach ($sizes as $index => $size) {
-                $disk = new \Item_Disk();
+                $disk = new Item_Disk();
                 $this->integer((int)$disk->add([
                     'itemtype' => 'Computer', 'items_id' => $computerId, 'entities_id' => $entity,
                     'name' => $prefix . ' ' . $kind . ' ' . $index, 'mountpoint' => '/' . $index,
@@ -533,7 +564,7 @@ class Search extends DbTestCase
         // Direct/fallback callers have not normalized notequals like the
         // two-phase planner does. Both negative operators must reject NULL.
         foreach (['notequals', 'notcontains'] as $operator) {
-            $predicate = \itsmng\Search\Provider\CriteriaBuilder::addWhere('', false, 'Computer', 150, $operator, 'NULL');
+            $predicate = CriteriaBuilder::addWhere('', false, 'Computer', 150, $operator, 'NULL');
             $this->string($predicate)->contains(' IS NOT NULL');
         }
         foreach (['Computer', 'Appliance'] as $type) {
@@ -573,7 +604,7 @@ class Search extends DbTestCase
 
         $this->login();
         $this->setEntity('_test_root_entity', true);
-        $entity = (int)\Session::getActiveEntity();
+        $entity = (int)Session::getActiveEntity();
         $prefix = 'Cost identities ' . $this->getUniqueString();
         $users = [
             (int)getItemByTypeName('User', 'itsm', true),
@@ -582,13 +613,13 @@ class Search extends DbTestCase
         foreach ($users as $user) {
             $this->integer($user)->isGreaterThan(0);
         }
-        $appliance = new \Appliance();
+        $appliance = new Appliance();
         $applianceId = (int)$appliance->add(['name' => $prefix, 'entities_id' => $entity]);
         $this->integer($applianceId)->isGreaterThan(0);
         $this->boolean($appliance->can($applianceId, READ))->isTrue();
         $changes = [];
         foreach ([10, 100] as $index => $seconds) {
-            $change = new \Change();
+            $change = new Change();
             $changeId = (int)$change->add([
                 'name' => $prefix . ' ' . $index, 'content' => $prefix, 'entities_id' => $entity,
                 '_users_id_requester' => array_slice($users, 0, $index + 1),
@@ -597,13 +628,13 @@ class Search extends DbTestCase
             $changes[] = $changeId;
             $this->boolean($change->can($changeId, READ))->isTrue();
             $this->integer(countElementsInTable('glpi_changes_users', [
-                'changes_id' => $changeId, 'type' => \CommonITILActor::REQUESTER,
+                'changes_id' => $changeId, 'type' => CommonITILActor::REQUESTER,
             ]))->isIdenticalTo($index + 1);
-            $link = new \Change_Item();
+            $link = new Change_Item();
             $this->integer((int)$link->add([
                 'changes_id' => $changeId, 'itemtype' => 'Appliance', 'items_id' => $applianceId,
             ]))->isGreaterThan(0);
-            $cost = new \ChangeCost();
+            $cost = new ChangeCost();
             $this->integer((int)$cost->add([
                 'changes_id' => $changeId, 'name' => $prefix . ' cost ' . $index,
                 'actiontime' => $seconds, 'cost_time' => 0, 'cost_fixed' => 0, 'cost_material' => 0,
@@ -631,8 +662,8 @@ class Search extends DbTestCase
         $fallback['criteria'][2]['value'] = (string)$users[1];
         $this->integer($this->doSearch('Appliance', $fallback)['data']['count'])->isIdenticalTo(0);
         $fallback['disable_two_phase_search'] = true;
-        $joined = \Search::prepareDatasForSearch('Appliance', $fallback);
-        \Search::constructSQL($joined);
+        $joined = LegacySearch::prepareDatasForSearch('Appliance', $fallback);
+        LegacySearch::constructSQL($joined);
         $this->string($joined['sql']['search'])->notContains('cost_duration');
         if ($DB->getProvider() !== 'pgsql') {
             // The retained MySQL joined path owns its HAVING aliases; it is
@@ -645,12 +676,12 @@ class Search extends DbTestCase
 
         // Plugins can customize a computation without replacing the owning
         // relation. Only the canonical duration expression may be optimized.
-        $options = & \itsmng\Search\SearchOption::getOptions('Change');
+        $options = & SearchOption::getOptions('Change');
         $canonical = $options[49]['computation'];
         try {
             $options[49]['computation'] = '(2 * SUM(' . $DB->quoteName('TABLE.actiontime') . '))';
-            $projection = \itsmng\Search\Provider\ProjectionBuilder::fields('Change', 49);
-            $reference = new \itsmng\Search\Provider\FieldReference('Change', $options[49]);
+            $projection = ProjectionBuilder::fields('Change', 49);
+            $reference = new FieldReference('Change', $options[49]);
             $this->string($projection->get('ITEM_Change_49')->sql)->isIdenticalTo(
                 '(2 * SUM(' . $DB->quoteName($reference->alias . '.actiontime') . '))'
             );
@@ -666,7 +697,7 @@ class Search extends DbTestCase
 
         // Equal durations are distinct costs; SUM(DISTINCT actiontime) would
         // silently lose the second ten-second row.
-        $duplicateDuration = new \ChangeCost();
+        $duplicateDuration = new ChangeCost();
         $this->integer((int)$duplicateDuration->add([
             'changes_id' => $changes[0], 'name' => $prefix . ' second ten seconds',
             'actiontime' => 10, 'cost_time' => 0, 'cost_fixed' => 0, 'cost_material' => 0,
@@ -1132,7 +1163,7 @@ class Search extends DbTestCase
         $prefix = 'Memory label ' . bin2hex(random_bytes(6));
         $ids = [];
         foreach (['8 GiB', '128', '', null, '1280'] as $index => $memory) {
-            $equipment = new \NetworkEquipment();
+            $equipment = new NetworkEquipment();
             $id = $equipment->add([
                 'name' => $prefix . ' ' . $index,
                 'entities_id' => $entity,
@@ -1143,7 +1174,7 @@ class Search extends DbTestCase
             $this->variable($equipment->fields['ram'])->isIdenticalTo($memory);
             $ids[] = $id;
         }
-        $this->string(\itsmng\Search\SearchOption::getOptions('NetworkEquipment')[14]['datatype'])
+        $this->string(SearchOption::getOptions('NetworkEquipment')[14]['datatype'])
             ->isIdenticalTo('string');
         foreach ([
             ['contains', 'GiB', [$ids[0]]],
@@ -1337,12 +1368,12 @@ class Search extends DbTestCase
                         : null;
                     // Use the actual core or plugin column type, independent of
                     // provider-specific names such as MySQL int / PostgreSQL integer.
-                    if ($type instanceof \Doctrine\DBAL\Types\IntegerType
-                        || $type instanceof \Doctrine\DBAL\Types\SmallIntType
-                        || $type instanceof \Doctrine\DBAL\Types\BigIntType
-                        || $type instanceof \Doctrine\DBAL\Types\BooleanType
-                        || $type instanceof \Doctrine\DBAL\Types\FloatType
-                        || $type instanceof \Doctrine\DBAL\Types\DecimalType) {
+                    if ($type instanceof IntegerType
+                        || $type instanceof SmallIntType
+                        || $type instanceof BigIntType
+                        || $type instanceof BooleanType
+                        || $type instanceof FloatType
+                        || $type instanceof DecimalType) {
                         $val = 1;
                         break;
                     }
@@ -2246,7 +2277,7 @@ class Search extends DbTestCase
             // PostgreSQL must not fold it to a lower-case, unknown item type.
             $this->array($row['raw'])->hasKey('TYPE');
             $this->string($row['TYPE'])->isIdenticalTo($row['raw']['TYPE']);
-            $this->boolean(is_a($row['TYPE'], \CommonDBTM::class, true))->isTrue();
+            $this->boolean(is_a($row['TYPE'], CommonDBTM::class, true))->isTrue();
         }
         $this->string($data['sql']['search'])
            ->contains(' AS ' . $DB->quoteName('TYPE'))
@@ -2294,8 +2325,8 @@ class Search extends DbTestCase
     public function testGroupParamAfterMeta()
     {
         $this->login();
-        $computerOptions = \itsmng\Search\SearchOption::getOptions('Computer');
-        $ticketOptions = \itsmng\Search\SearchOption::getOptions('Ticket');
+        $computerOptions = SearchOption::getOptions('Computer');
+        $ticketOptions = SearchOption::getOptions('Ticket');
         $params = [
            'reset'      => 'reset',
            'is_deleted' => 0,
@@ -2335,9 +2366,9 @@ class Search extends DbTestCase
         foreach ([$params['criteria'], array_reverse($params['criteria'])] as $criteria) {
             $params['criteria'] = $criteria;
             $data = $this->doSearch('Ticket', $params);
-            $this->array(\itsmng\Search\SearchOption::getOptions('Computer'))
+            $this->array(SearchOption::getOptions('Computer'))
                 ->isIdenticalTo($computerOptions);
-            $this->array(\itsmng\Search\SearchOption::getOptions('Ticket'))
+            $this->array(SearchOption::getOptions('Ticket'))
                 ->isIdenticalTo($ticketOptions);
             $this->string($data['sql']['search'])
                 ->notContains('`glpi_tickets_name_Computer`');
@@ -2353,15 +2384,15 @@ class Search extends DbTestCase
             'AND NEWTABLE.id = REFTABLE.entities_id',
             'AND `NEWTABLE`.`id` = `REFTABLE`.`entities_id`',
             'AND "NEWTABLE".`id` = "REFTABLE".`entities_id`',
-            \getEntitiesRestrictRequest('AND', 'NEWTABLE', 'id', [$_SESSION['glpiactive_entity']]),
+            getEntitiesRestrictRequest('AND', 'NEWTABLE', 'id', [$_SESSION['glpiactive_entity']]),
             [
-                new \QueryExpression('AND 1 = 1'),
-                'NEWTABLE.id' => new \QueryExpression($DB->quoteName('REFTABLE.entities_id')),
+                new QueryExpression('AND 1 = 1'),
+                'NEWTABLE.id' => new QueryExpression($DB->quoteName('REFTABLE.entities_id')),
             ],
         ];
         foreach ($conditions as $condition) {
             $links = [];
-            $join = \itsmng\Search\Provider\JoinBuilder::addLeftJoin(
+            $join = JoinBuilder::addLeftJoin(
                 'Computer',
                 'glpi_computers',
                 $links,

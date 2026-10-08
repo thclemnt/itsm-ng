@@ -4,14 +4,21 @@
 
 namespace itsmng\Domain;
 
+use Closure;
+use DBAdapter;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use LogicException;
+use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\TransactionOwnershipMismatch;
+
 /** Own the database frame for one transfer, including its recursive public hooks. */
 final class TransferCoordinator
 {
     /** @var array<string, true> Tables inspected during this operation only. */
     private array $transactionalTables = [];
-    private ?\Closure $guard = null;
+    private ?Closure $guard = null;
 
-    public function __construct(private \DBAdapter $database)
+    public function __construct(private DBAdapter $database)
     {
     }
 
@@ -23,17 +30,17 @@ final class TransferCoordinator
         }
         $this->database->assertManagedTransaction();
         $connection = $this->database->getDoctrineConnection();
-        return \itsmng\Database\OwnedMutationFrame::run($connection, function () use ($connection, $operation): mixed {
+        return OwnedMutationFrame::run($connection, function () use ($connection, $operation): mixed {
             $scope = $connection->captureManagedTransactionScope();
             $level = $connection->getTransactionNestingLevel();
             $this->guard = function () use ($connection, $scope, $level): void {
                 if (($GLOBALS['DB'] ?? null) !== $this->database || $this->database->isSlave()
                     || $this->database->getDoctrineConnection() !== $connection) {
-                    throw new \itsmng\Database\TransactionOwnershipMismatch('A transfer callback replaced its active writer.');
+                    throw new TransactionOwnershipMismatch('A transfer callback replaced its active writer.');
                 }
                 $scope->assertActive();
                 if ($connection->getTransactionNestingLevel() !== $level) {
-                    throw new \itsmng\Database\TransactionOwnershipMismatch('A transfer callback changed its owned frame depth.');
+                    throw new TransactionOwnershipMismatch('A transfer callback changed its owned frame depth.');
                 }
             };
             try {
@@ -50,7 +57,7 @@ final class TransferCoordinator
     public function assertActive(): void
     {
         if ($this->guard === null) {
-            throw new \LogicException('Transfer has no active owned frame.');
+            throw new LogicException('Transfer has no active owned frame.');
         }
         ($this->guard)();
     }
@@ -60,7 +67,7 @@ final class TransferCoordinator
     {
         $connection = $this->database->getDoctrineConnection();
         if (isset($this->transactionalTables[$table])
-            || !$connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\AbstractMySQLPlatform) {
+            || !$connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
             return;
         }
         $engine = $connection->fetchOne(

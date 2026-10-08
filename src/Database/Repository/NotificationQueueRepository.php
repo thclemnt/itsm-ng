@@ -4,10 +4,14 @@
 
 namespace itsmng\Database\Repository;
 
+use DateTimeImmutable;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\DBAL\LockMode;
+use Doctrine\ORM\QueryBuilder;
+use InvalidArgumentException;
 use itsmng\Database\Entity;
+use itsmng\Database\MySQLConnection;
 use itsmng\Database\RecordCriteria;
 
 /** Queue persistence only: delivery and channel policy remain in their services. */
@@ -50,12 +54,12 @@ final class NotificationQueueRepository
         if ($id <= 0 || $recipient <= 0) {
             return null;
         }
-        \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
+        MySQLConnection::assertCurrentReads($this->em->getConnection());
         return $this->browserSelection($recipient)->andWhere('r.id = :id')->setParameter('id', $id, Types::BIGINT)
             ->getQuery()->setLockMode(LockMode::PESSIMISTIC_WRITE)->getOneOrNullResult();
     }
 
-    private function browserSelection(int $recipient): \Doctrine\ORM\QueryBuilder
+    private function browserSelection(int $recipient): QueryBuilder
     {
         return $this->em->createQueryBuilder()->select('r')->from(Entity\QueuedNotification::class, 'r')
             ->where('r.mode = :mode AND r.recipient = :recipient AND r.is_deleted = :deleted')
@@ -63,7 +67,7 @@ final class NotificationQueueRepository
             ->setParameter('deleted', false, Types::BOOLEAN);
     }
 
-    public function pending(string $kind, string $mode, \DateTimeImmutable $before, int $limit, array $extra = []): array
+    public function pending(string $kind, string $mode, DateTimeImmutable $before, int $limit, array $extra = []): array
     {
         $class = $this->entityClass($kind);
         $query = $this->em->createQueryBuilder()->select('r')->from($class, 'r')
@@ -87,7 +91,7 @@ final class NotificationQueueRepository
         return $rows;
     }
 
-    public function purgeExpired(string $kind, \DateTimeImmutable $before): int
+    public function purgeExpired(string $kind, DateTimeImmutable $before): int
     {
         return $this->em->createQueryBuilder()->delete($this->entityClass($kind), 'r')
             ->where('r.is_deleted = :deleted AND r.send_time < :before')->setParameter('deleted', true, Types::BOOLEAN)
@@ -106,6 +110,6 @@ final class NotificationQueueRepository
 
     private function entityClass(string $kind): string
     {
-        return self::KINDS[$kind] ?? throw new \InvalidArgumentException('Unsupported notification queue');
+        return self::KINDS[$kind] ?? throw new InvalidArgumentException('Unsupported notification queue');
     }
 }

@@ -4,6 +4,8 @@
 
 namespace itsmng\Database;
 
+use InvalidArgumentException;
+
 /** A mapped flag is a boolean value, not an arbitrary truthy legacy scalar. */
 final class BooleanValue
 {
@@ -18,7 +20,7 @@ final class BooleanValue
         if (in_array($value, [true, 1, '1'], true)) {
             return true;
         }
-        throw new \InvalidArgumentException('Invalid boolean value: ' . $field . '. Expected zero or one'
+        throw new InvalidArgumentException('Invalid boolean value: ' . $field . '. Expected zero or one'
             . ($nullable ? ', or NULL' : '') . '; received ' . get_debug_type($value) . '.');
     }
 

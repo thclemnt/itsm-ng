@@ -34,7 +34,22 @@
 
 namespace itsmng\Search\Input;
 
+use Ajax;
+use Dropdown;
+use Glpi\Toolbox\URL;
+use Html;
+use Plugin;
+use RuntimeException;
+use SavedSearch;
+use SavedSearch_User;
+use Session;
+use Toolbox;
 use itsmng\Search\SearchOption;
+
+use function getItemForItemtype;
+use function getItemTypeForTable;
+use function isPluginItemType;
+use function renderTwigTemplate;
 
 final class QueryBuilder
 {
@@ -44,7 +59,7 @@ final class QueryBuilder
     public static function getLogicalOperators($only_not = false)
     {
         if ($only_not) {
-            return ['AND' => \Dropdown::EMPTY_VALUE, 'AND NOT' => __("NOT")];
+            return ['AND' => Dropdown::EMPTY_VALUE, 'AND NOT' => __("NOT")];
         }
         return ['AND' => __('AND'), 'OR' => __('OR'), 'AND NOT' => __('AND NOT'), 'OR NOT' => __('OR NOT')];
     }
@@ -71,7 +86,7 @@ final class QueryBuilder
         if (class_exists($itemtype)) {
             $p['target'] = $itemtype::getSearchURL();
         } else {
-            $p['target'] = \Toolbox::getItemTypeSearchURL($itemtype);
+            $p['target'] = Toolbox::getItemTypeSearchURL($itemtype);
         }
         $p['showreset'] = true;
         $p['showbookmark'] = true;
@@ -84,7 +99,7 @@ final class QueryBuilder
         foreach ($params as $key => $val) {
             $p[$key] = $val;
         }
-        $p['target'] = \Glpi\Toolbox\URL::sanitizeURL($p['target']);
+        $p['target'] = URL::sanitizeURL($p['target']);
         $main_block_class = '';
         $main_block_width_class = 'w-100 w-md-50 mx-auto';
         if ($p['mainform']) {
@@ -97,7 +112,7 @@ final class QueryBuilder
         $nbsearchcountvar = 'nbcriteria' . strtolower($itemtype) . mt_rand();
         $searchcriteriatableid = 'criteriatable' . strtolower($itemtype) . mt_rand();
         // init criteria count
-        echo \Html::scriptBlock("
+        echo Html::scriptBlock("
          var {$nbsearchcountvar} = " . count($p['criteria']) . ";
       ");
         echo "<ul id='{$searchcriteriatableid}'>";
@@ -134,8 +149,8 @@ final class QueryBuilder
             if ($p['showbookmark'] || $p['showreset']) {
                 if ($p['showbookmark']) {
                     //TODO: change that!
-                    \Ajax::createIframeModalWindow('loadbookmark', \SavedSearch::getSearchURL() . "?action=load&type=" . \SavedSearch::SEARCH, ['title' => __('Load a saved search')]);
-                    \SavedSearch::showSaveButton(\SavedSearch::SEARCH, $itemtype);
+                    Ajax::createIframeModalWindow('loadbookmark', SavedSearch::getSearchURL() . "?action=load&type=" . SavedSearch::SEARCH, ['title' => __('Load a saved search')]);
+                    SavedSearch::showSaveButton(SavedSearch::SEARCH, $itemtype);
                 }
                 if ($p['showreset']) {
                     echo "<a class='fa fa-undo reset-search' href='" . $p['target'] . (strpos($p['target'], '?') ? '&amp;' : '?') . "reset=reset' title=\"" . __s('Blank') . "\"
@@ -151,9 +166,9 @@ final class QueryBuilder
         echo "</div>";
         //.search_actions
         // idor checks
-        $idor_display_criteria = \Session::getNewIDORToken($itemtype);
-        $idor_display_meta_criteria = \Session::getNewIDORToken($itemtype);
-        $idor_display_criteria_group = \Session::getNewIDORToken($itemtype);
+        $idor_display_criteria = Session::getNewIDORToken($itemtype);
+        $idor_display_meta_criteria = Session::getNewIDORToken($itemtype);
+        $idor_display_criteria_group = Session::getNewIDORToken($itemtype);
         $JS = <<<JAVASCRIPT
          \$('#addsearchcriteria{$rand_criteria}').on('click', function(event) {
             event.preventDefault();
@@ -231,21 +246,21 @@ JAVASCRIPT;
          });
 JAVASCRIPT;
         }
-        echo \Html::scriptBlock($JS);
+        echo Html::scriptBlock($JS);
         if (count($p['addhidden'])) {
             foreach ($p['addhidden'] as $key => $val) {
-                echo \Html::hidden($key, ['value' => $val]);
+                echo Html::hidden($key, ['value' => $val]);
             }
         }
         if ($p['mainform']) {
             // For dropdown
-            echo \Html::hidden('itemtype', ['value' => $itemtype]);
+            echo Html::hidden('itemtype', ['value' => $itemtype]);
             // Reset to start when submit new search
-            echo \Html::hidden('start', ['value' => 0]);
+            echo Html::hidden('start', ['value' => 0]);
         }
         echo "</div>";
         if ($p['mainform']) {
-            \Html::closeForm();
+            Html::closeForm();
         }
     }
     /**
@@ -319,12 +334,12 @@ JAVASCRIPT;
             $value = $criteria['field'];
         }
         $subValue = $criteria['value'] ?? '';
-        $spanid = \Html::cleanId('SearchSpan' . $request["itemtype"] . $prefix . $num);
+        $spanid = Html::cleanId('SearchSpan' . $request["itemtype"] . $prefix . $num);
         $json_p = json_encode($p);
-        $idor_display_criteria = \Session::getNewIDORToken($request["itemtype"]);
+        $idor_display_criteria = Session::getNewIDORToken($request["itemtype"]);
         $searchtype = isset($criteria['searchtype']) ? $criteria['searchtype'] : '';
-        $field_id = \Html::cleanId("dropdown_criteria{$prefix}_{$num}_field_{$randrow}");
-        \renderTwigTemplate('search/searchCriteria.twig', ['is_deleted' => $p['is_deleted'], 'as_map' => $p['as_map'], 'rowid' => $rowid, 'addclass' => $addclass, 'spanid' => $spanid, 'from_meta' => $from_meta, 'inputs' => [$from_meta ? [] : ['type' => 'select', 'name' => "criteria{$prefix}[{$num}][link]", 'values' => QueryBuilder::getLogicalOperators($num == 0), 'value' => isset($criteria["link"]) ? $criteria["link"] : '', 'noLib' => true], ['type' => 'select', 'id' => $field_id, 'name' => "criteria{$prefix}[{$num}][field]", 'values' => $values, 'value' => $value, 'noLib' => true, 'hooks' => ['change' => <<<JS
+        $field_id = Html::cleanId("dropdown_criteria{$prefix}_{$num}_field_{$randrow}");
+        renderTwigTemplate('search/searchCriteria.twig', ['is_deleted' => $p['is_deleted'], 'as_map' => $p['as_map'], 'rowid' => $rowid, 'addclass' => $addclass, 'spanid' => $spanid, 'from_meta' => $from_meta, 'inputs' => [$from_meta ? [] : ['type' => 'select', 'name' => "criteria{$prefix}[{$num}][link]", 'values' => QueryBuilder::getLogicalOperators($num == 0), 'value' => isset($criteria["link"]) ? $criteria["link"] : '', 'noLib' => true], ['type' => 'select', 'id' => $field_id, 'name' => "criteria{$prefix}[{$num}][field]", 'values' => $values, 'value' => $value, 'noLib' => true, 'hooks' => ['change' => <<<JS
            const \$select = \$(this);
            const \$container = \$select.closest('[data-search-container]');
            const containerKey = \$container.data('search-container');
@@ -434,7 +449,7 @@ JS
         $values = [];
         if (count($linked)) {
             foreach ($linked as $type) {
-                if ($item = \getItemForItemtype($type)) {
+                if ($item = getItemForItemtype($type)) {
                     $values[$type] = $item->getTypeName(1);
                 }
             }
@@ -442,7 +457,7 @@ JS
         asort($values);
         $value = isset($metacriteria['itemtype']) ? $metacriteria['itemtype'] : '';
         $randrow = mt_rand();
-        $spanid = \Html::cleanId("show_" . $request["itemtype"] . "_" . $prefix . $num . "_{$rand}");
+        $spanid = Html::cleanId("show_" . $request["itemtype"] . "_" . $prefix . $num . "_{$rand}");
         $rowid = 'metasearchrow' . $request['itemtype'] . $rand;
         $json_p = json_encode($request["p"]);
         $used_itemtype = $request["itemtype"];
@@ -450,7 +465,7 @@ JS
         if ($request["itemtype"] == 'AllAssets') {
             $used_itemtype = 'Computer';
         }
-        $idor_display_criteria = \Session::getNewIDORToken("", ['parent_itemtype' => $request['itemtype']]);
+        $idor_display_criteria = Session::getNewIDORToken("", ['parent_itemtype' => $request['itemtype']]);
         // $params = [
         //    'action'          => 'display_criteria',
         //    'itemtype'        => '__VALUE__',
@@ -462,8 +477,8 @@ JS
         //       'parent_itemtype' => $request['itemtype']
         //    ])
         // ];
-        $field_id = \Html::cleanId("dropdown_criteria{$prefix}_{$num}_field_{$randrow}");
-        \renderTwigTemplate('search/searchCriteria.twig', ['is_deleted' => $p['is_deleted'], 'as_map' => $p['as_map'], 'rowid' => $rowid, 'spanid' => $spanid, 'noLib' => true, 'meta' => true, 'inputs' => [['type' => 'hidden', 'name' => "criteria{$prefix}[{$num}][meta]", 'value' => true], ['type' => 'select', 'name' => "criteria{$prefix}[{$num}][link]", 'values' => QueryBuilder::getLogicalOperators($num == 0), 'value' => isset($criteria["link"]) ? $criteria["link"] : '', 'noLib' => true], ['type' => 'select', 'id' => $field_id, 'name' => "criteria{$prefix}[{$num}][itemtype]", 'values' => $values, 'value' => $value, 'noLib' => true, 'hooks' => ['change' => <<<JS
+        $field_id = Html::cleanId("dropdown_criteria{$prefix}_{$num}_field_{$randrow}");
+        renderTwigTemplate('search/searchCriteria.twig', ['is_deleted' => $p['is_deleted'], 'as_map' => $p['as_map'], 'rowid' => $rowid, 'spanid' => $spanid, 'noLib' => true, 'meta' => true, 'inputs' => [['type' => 'hidden', 'name' => "criteria{$prefix}[{$num}][meta]", 'value' => true], ['type' => 'select', 'name' => "criteria{$prefix}[{$num}][link]", 'values' => QueryBuilder::getLogicalOperators($num == 0), 'value' => isset($criteria["link"]) ? $criteria["link"] : '', 'noLib' => true], ['type' => 'select', 'id' => $field_id, 'name' => "criteria{$prefix}[{$num}][itemtype]", 'values' => $values, 'value' => $value, 'noLib' => true, 'hooks' => ['change' => <<<JS
    \$.ajax({
       url: '{$CFG_GLPI['root_doc']}/ajax/search.php',
       type: 'POST',
@@ -528,7 +543,7 @@ JS
         echo "<div class='input-container d-flex flex-row align-items-start gap-3'>";
         echo "<div class='input-group flex-nowrap align-items-stretch w-auto'>";
         echo "<i class='far fa-minus-square remove-search-criteria input-group-text' role='button' alt='-' title=\"" . __s('Delete a rule') . "\" data-rowid='{$rowid}'></i>";
-        \Dropdown::showFromArray("criteria{$prefix}[{$num}][link]", QueryBuilder::getLogicalOperators(), ['value' => isset($criteria["link"]) ? $criteria["link"] : '', 'width' => '80px']);
+        Dropdown::showFromArray("criteria{$prefix}[{$num}][link]", QueryBuilder::getLogicalOperators(), ['value' => isset($criteria["link"]) ? $criteria["link"] : '', 'width' => '80px']);
         echo "</div>";
         $parents_num = isset($p['parents_num']) ? $p['parents_num'] : [];
         array_push($parents_num, $num);
@@ -620,7 +635,7 @@ JS
         $prefix = isset($p['prefix_crit']) ? $p['prefix_crit'] : '';
         $itemtype = $request['itemtype'];
         if (!is_subclass_of($itemtype, 'CommonDBTM') && !isset($CFG_GLPI['union_search_type'][$itemtype])) {
-            throw new \RuntimeException('Invalid itemtype provided!');
+            throw new RuntimeException('Invalid itemtype provided!');
         }
         if (isset($request['meta']) && $request['meta']) {
             $fieldname = 'metacriteria';
@@ -637,7 +652,7 @@ JS
             unset($tmp);
         }
         $rands = -1;
-        $dropdownname = \Html::cleanId("spansearchtype{$fieldname}" . $request["itemtype"] . $prefix . $num);
+        $dropdownname = Html::cleanId("spansearchtype{$fieldname}" . $request["itemtype"] . $prefix . $num);
         $searchopt = [];
         if (count($actions) > 0) {
             // get already get search options
@@ -648,11 +663,11 @@ JS
                 unset($actions['searchopt']);
             }
             $searchtype_name = "{$fieldname}{$prefix}[{$num}][searchtype]";
-            $rands = \Dropdown::showFromArray($searchtype_name, $actions, ['value' => $request["searchtype"]]);
-            $fieldsearch_id = \Html::cleanId("dropdown_{$searchtype_name}{$rands}");
+            $rands = Dropdown::showFromArray($searchtype_name, $actions, ['value' => $request["searchtype"]]);
+            $fieldsearch_id = Html::cleanId("dropdown_{$searchtype_name}{$rands}");
         }
-        $params = ['value' => rawurlencode(stripslashes((string) $request['value'])), 'searchopt' => $searchopt, 'searchtype' => $request["searchtype"], 'num' => $num, 'itemtype' => $request["itemtype"], '_idor_token' => \Session::getNewIDORToken($request["itemtype"]), 'from_meta' => isset($request['from_meta']) ? $request['from_meta'] : false, 'field' => $request["field"], 'p' => $p];
-        \Ajax::updateItemOnSelectEvent($fieldsearch_id, $dropdownname, $CFG_GLPI["root_doc"] . "/ajax/search.php", ['action' => 'display_searchoption_value', 'searchtype' => '__VALUE__'] + $params);
+        $params = ['value' => rawurlencode(stripslashes((string) $request['value'])), 'searchopt' => $searchopt, 'searchtype' => $request["searchtype"], 'num' => $num, 'itemtype' => $request["itemtype"], '_idor_token' => Session::getNewIDORToken($request["itemtype"]), 'from_meta' => isset($request['from_meta']) ? $request['from_meta'] : false, 'field' => $request["field"], 'p' => $p];
+        Ajax::updateItemOnSelectEvent($fieldsearch_id, $dropdownname, $CFG_GLPI["root_doc"] . "/ajax/search.php", ['action' => 'display_searchoption_value', 'searchtype' => '__VALUE__'] + $params);
         echo "<span id=\"{$dropdownname}\">";
         QueryBuilder::displaySearchoptionValue($params);
         echo "</span>";
@@ -680,7 +695,7 @@ JS
         $fieldname = isset($request['meta']) && $request['meta'] ? 'metacriteria' : 'criteria';
         $inputname = $fieldname . $prefix . '[' . $request['num'] . '][value]';
         $display = false;
-        $item = \getItemForItemtype($request['itemtype']);
+        $item = getItemForItemtype($request['itemtype']);
         $options2 = [];
         $options2['value'] = $request['value'];
         //$options2['width'] = '100%';
@@ -744,14 +759,14 @@ JS
                         $display = true;
                     }
                     //Could display be handled by a plugin ?
-                    if (!$display && ($plug = \isPluginItemType(\getItemTypeForTable($searchopt['table'])))) {
-                        $display = \Plugin::doOneHook($plug['plugin'], 'searchOptionsValues', ['name' => $inputname, 'searchtype' => $request['searchtype'], 'searchoption' => $searchopt, 'value' => $request['value']]);
+                    if (!$display && ($plug = isPluginItemType(getItemTypeForTable($searchopt['table'])))) {
+                        $display = Plugin::doOneHook($plug['plugin'], 'searchOptionsValues', ['name' => $inputname, 'searchtype' => $request['searchtype'], 'searchoption' => $searchopt, 'value' => $request['value']]);
                     }
                 }
                 break;
             default:
                 if (!$display) {
-                    echo "<input type='text' size='13' name='{$inputname}' class='form-control' value=\"" . \Html::cleanInputText($request['value']) . "\">";
+                    echo "<input type='text' size='13' name='{$inputname}' class='form-control' value=\"" . Html::cleanInputText($request['value']) . "\">";
                 }
                 break;
         }
@@ -812,7 +827,7 @@ JS
                 $itemtype_default_values = call_user_func([$itemtype, 'getDefaultSearchRequest']);
             }
             // retrieve default values for the current user
-            $user_default_values = \SavedSearch_User::getDefault(\Session::getLoginUserID(), $itemtype);
+            $user_default_values = SavedSearch_User::getDefault(Session::getLoginUserID(), $itemtype);
             if ($user_default_values === false) {
                 $user_default_values = [];
             }
@@ -827,14 +842,14 @@ JS
         }
         // First view of the page or force bookmark : try to load a bookmark
         if ($forcebookmark || $usesession && !isset($params["reset"]) && !isset($_SESSION['glpisearch'][$itemtype])) {
-            $user_default_values = \SavedSearch_User::getDefault(\Session::getLoginUserID(), $itemtype);
+            $user_default_values = SavedSearch_User::getDefault(Session::getLoginUserID(), $itemtype);
             if ($user_default_values) {
                 $_SESSION['glpisearch'][$itemtype] = [];
                 // Only get datas for bookmarks
                 if ($forcebookmark) {
                     $params = $user_default_values;
                 } else {
-                    $bookmark = new \SavedSearch();
+                    $bookmark = new SavedSearch();
                     $bookmark->load($user_default_values['savedsearches_id'], false);
                 }
             }

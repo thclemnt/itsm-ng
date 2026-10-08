@@ -7,6 +7,8 @@ namespace itsmng\Database\Repository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
+use InvalidArgumentException;
+use RuntimeException;
 use itsmng\Database\Entity;
 use itsmng\Domain\DictionaryMutation;
 
@@ -85,7 +87,7 @@ final class PrinterDictionaryRepository
             $count = $this->em->createQueryBuilder()->select('COUNT(p.id)')->from(Entity\Printer::class, 'p')
                 ->where('p.id IN (:ids)')->setParameter('ids', $ids)->getQuery()->getSingleScalarResult();
             if ((int)$count !== count($ids)) {
-                throw new \InvalidArgumentException('Printer connection move requires existing printers.');
+                throw new InvalidArgumentException('Printer connection move requires existing printers.');
             }
             if ($source === $target) {
                 return;
@@ -109,7 +111,7 @@ final class PrinterDictionaryRepository
                 $changed = $duplicate ? $remove($link) : $move((int)$link['id'], $target);
                 $assertActive();
                 if (!$changed) {
-                    throw new \RuntimeException('Unable to move printer direct connection.');
+                    throw new RuntimeException('Unable to move printer direct connection.');
                 }
             }
         });

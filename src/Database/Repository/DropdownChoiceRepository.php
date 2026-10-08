@@ -9,7 +9,9 @@ use Doctrine\ORM\EntityRepository;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\Query;
 use Doctrine\ORM\QueryBuilder;
+use ReflectionMethod;
 use itsmng\Database\Entity\DropdownTranslation;
+use itsmng\Database\ReadQueryOwner;
 use itsmng\Database\RecordCriteria;
 use itsmng\Database\MappedRowProjection;
 
@@ -22,13 +24,13 @@ class DropdownChoiceRepository extends EntityRepository
     }
 
     /** Internal scalar entry; the operation admits repository implementations first. */
-    public function ownedChoices(array $criteria, array $order, array $translations, string $kind, string $language, int $limit, int $offset, ?array $defaultIdentifiers, \itsmng\Database\ReadQueryOwner $operation): array
+    public function ownedChoices(array $criteria, array $order, array $translations, string $kind, string $language, int $limit, int $offset, ?array $defaultIdentifiers, ReadQueryOwner $operation): array
     {
         return $this->readChoices($criteria, $order, $translations, $kind, $language, $limit, $offset, $defaultIdentifiers, $operation);
     }
 
     /** Translation roles are local to this request, bound to its exact kind/field/language. */
-    private function readChoices(array $criteria, array $order, array $translations, string $kind, string $language, int $limit, int $offset, ?array $defaultIdentifiers = null, ?\itsmng\Database\ReadQueryOwner $operation = null): array
+    private function readChoices(array $criteria, array $order, array $translations, string $kind, string $language, int $limit, int $offset, ?array $defaultIdentifiers = null, ?ReadQueryOwner $operation = null): array
     {
         $query = $this->choiceQuery();
         $compiler = $this->choiceCriteria($query);
@@ -42,7 +44,7 @@ class DropdownChoiceRepository extends EntityRepository
             && !$metadata->hasLifecycleCallbacks(Events::postLoad)
             && empty($metadata->entityListeners[Events::postLoad])
             && !$this->getEntityManager()->getEventManager()->hasListeners(Events::postLoad)
-            && (new \ReflectionMethod($this, 'presentChoice'))->getDeclaringClass()->getName() === self::class
+            && (new ReflectionMethod($this, 'presentChoice'))->getDeclaringClass()->getName() === self::class
             && $query->getRootAliases() === ['r']
             && $query->getRootEntities() === [$metadata->name]
             && array_map('strval', $query->getDQLPart('select')) === ['r']

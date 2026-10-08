@@ -31,6 +31,15 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\LifecycleModelJournal;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\SoftwareRepository;
+use itsmng\Domain\SoftwareAssignmentCancelled;
+use itsmng\Domain\SoftwareAssignmentService;
+use itsmng\Domain\SoftwareLifecycleAdmission;
+use itsmng\Domain\SoftwareMutation;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -40,7 +49,7 @@ if (!defined('GLPI_ROOT')) {
 **/
 class SoftwareLicense extends CommonTreeDropdown
 {
-    use \itsmng\Domain\SoftwareLifecycleAdmission;
+    use SoftwareLifecycleAdmission;
 
     use Glpi\Features\Clonable;
 
@@ -48,7 +57,7 @@ class SoftwareLicense extends CommonTreeDropdown
     {
         global $DB;
 
-        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateLicense(
+        return (new SoftwareAssignmentService($DB))->mutateLicense(
             $this,
             $priorState,
             fn () => parent::executePreparedAdd($operation, $priorState),
@@ -60,11 +69,11 @@ class SoftwareLicense extends CommonTreeDropdown
     {
         global $DB;
 
-        $checkpoint = \itsmng\Database\LifecycleModelJournal::state($this);
+        $checkpoint = LifecycleModelJournal::state($this);
         $checkpoint['fields'] = $storedFields;
         $checkpoint['updates'] = [];
         $checkpoint['oldvalues'] = [];
-        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateLicense(
+        return (new SoftwareAssignmentService($DB))->mutateLicense(
             $this,
             $checkpoint,
             fn () => parent::executePreparedUpdate($operation, $storedFields),
@@ -76,11 +85,11 @@ class SoftwareLicense extends CommonTreeDropdown
     {
         global $DB;
 
-        $checkpoint = \itsmng\Database\LifecycleModelJournal::state($this);
+        $checkpoint = LifecycleModelJournal::state($this);
         $checkpoint['fields'] = $storedFields;
         $checkpoint['updates'] = [];
         $checkpoint['oldvalues'] = [];
-        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateLicense(
+        return (new SoftwareAssignmentService($DB))->mutateLicense(
             $this,
             $checkpoint,
             fn () => parent::executePreparedRestore($operation, $storedFields),
@@ -94,7 +103,7 @@ class SoftwareLicense extends CommonTreeDropdown
 
         $database = $DB;
         if (!array_key_exists(static::getIndexName(), $input)
-            || !\itsmng\Domain\SoftwareMutation::loadForMutation(
+            || !SoftwareMutation::loadForMutation(
                 $database,
                 $this,
                 $input[static::getIndexName()],
@@ -102,9 +111,9 @@ class SoftwareLicense extends CommonTreeDropdown
             )) {
             return false;
         }
-        return (new \itsmng\Domain\SoftwareAssignmentService($database))->mutateLicense(
+        return (new SoftwareAssignmentService($database))->mutateLicense(
             $this,
-            \itsmng\Database\LifecycleModelJournal::state($this),
+            LifecycleModelJournal::state($this),
             fn () => parent::delete($input, $force, $history),
             'delete'
         );
@@ -262,7 +271,7 @@ class SoftwareLicense extends CommonTreeDropdown
     {
         global $DB;
 
-        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->refreshLicenseValidity((int)$ID);
+        return (new SoftwareAssignmentService($DB))->refreshLicenseValidity((int)$ID);
     }
 
 
@@ -301,7 +310,7 @@ class SoftwareLicense extends CommonTreeDropdown
             $override_input['items_id'] = $this->getID();
             $infocoms[0]->clone($override_input);
         }
-        \itsmng\Domain\SoftwareAssignmentCancelled::requireSuccess(
+        SoftwareAssignmentCancelled::requireSuccess(
             Software::updateValidityIndicator($this->fields['softwares_id']),
             'Owning software validity update'
         );
@@ -323,7 +332,7 @@ class SoftwareLicense extends CommonTreeDropdown
             $softwareIds = [$this->fields['softwares_id']];
         }
         foreach (array_unique($softwareIds) as $softwareId) {
-            \itsmng\Domain\SoftwareAssignmentCancelled::requireSuccess(
+            SoftwareAssignmentCancelled::requireSuccess(
                 Software::updateValidityIndicator($softwareId),
                 'Owning software validity update'
             );
@@ -337,7 +346,7 @@ class SoftwareLicense extends CommonTreeDropdown
     **/
     public function post_deleteFromDB()
     {
-        \itsmng\Domain\SoftwareAssignmentCancelled::requireSuccess(
+        SoftwareAssignmentCancelled::requireSuccess(
             Software::updateValidityIndicator($this->fields['softwares_id']),
             'Owning software validity update'
         );
@@ -994,7 +1003,7 @@ class SoftwareLicense extends CommonTreeDropdown
         $tonotify = Entity::getEntitiesToNotify('use_licenses_alert');
         foreach (array_keys($tonotify) as $entity) {
             $before = Entity::getUsedConfig('send_licenses_alert_before_delay', $entity);
-            $iterator = (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))
+            $iterator = (new SoftwareRepository(Orm::create($DB)))
                 ->expiringLicenses((int)$entity, (int)$before);
 
             $message = "";
@@ -1068,7 +1077,7 @@ class SoftwareLicense extends CommonTreeDropdown
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+        return (new RecordRepository(Orm::create($DB)))
             ->countMatching('glpi_softwarelicenses', [
                 'softwareversions_id_buy' => $softwareversions_id,
             ] + getEntitiesRestrictCriteria('glpi_softwarelicenses', '', $entity));
@@ -1086,7 +1095,7 @@ class SoftwareLicense extends CommonTreeDropdown
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))
+        return (new SoftwareRepository(Orm::create($DB)))
             ->licenseQuantity((int)$softwares_id, getEntitiesRestrictCriteria('glpi_softwarelicenses', '', '', true));
     }
 
@@ -1186,7 +1195,7 @@ class SoftwareLicense extends CommonTreeDropdown
         }
 
         $rand  = mt_rand();
-        $iterator = (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))
+        $iterator = (new SoftwareRepository(Orm::create($DB)))
             ->licenses(
                 (int)$softwares_id,
                 getEntitiesRestrictCriteria('glpi_softwarelicenses', '', '', true),
@@ -1443,7 +1452,7 @@ class SoftwareLicense extends CommonTreeDropdown
         }
         $nb = 0;
 
-        foreach ((new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+        foreach ((new RecordRepository(Orm::create($DB)))
             ->matching($item->getTable(), $crit, ['name', 'id']) as $data) {
             $nb++;
             echo "<tr class='tab_bg_1'>";

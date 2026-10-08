@@ -4,9 +4,15 @@
 
 namespace itsmng\Database\Entity;
 
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\AssetClassification;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Domain\EntityScope;
+use itsmng\Domain\SoftwareAssignmentCancelled;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_softwarelicenses')]
@@ -14,7 +20,7 @@ class SoftwareLicense
 {
     #[ORM\ManyToOne(targetEntity: Software::class)]
     #[ORM\JoinColumn(name: 'softwares_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Software $softwares = null;
 
     #[ORM\Id]
@@ -25,7 +31,7 @@ class SoftwareLicense
     #[ORM\ManyToOne(targetEntity: SoftwareLicense::class)]
     #[ORM\JoinColumn(name: 'softwarelicenses_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?SoftwareLicense $parent = null;
 
     #[ORM\Column(name: '`completename`', type: 'text', nullable: true)]
@@ -52,12 +58,12 @@ class SoftwareLicense
     }
 
     /** A licence inherits recursion capability from its actual owning Software. */
-    public function allocationEntityScope(Software $software): \itsmng\Domain\EntityScope
+    public function allocationEntityScope(Software $software): EntityScope
     {
         if ($this->entities === null || $this->softwares === null || $software->id !== $this->softwares->id) {
-            throw new \itsmng\Domain\SoftwareAssignmentCancelled('Allocation licence requires its current owning Software and entity.');
+            throw new SoftwareAssignmentCancelled('Allocation licence requires its current owning Software and entity.');
         }
-        return new \itsmng\Domain\EntityScope($this->entities->id, $this->is_recursive && $software->is_recursive);
+        return new EntityScope($this->entities->id, $this->is_recursive && $software->is_recursive);
     }
 
     /** Finite over-allocation is permitted and represented by an invalid licence. */
@@ -69,7 +75,7 @@ class SoftwareLicense
     #[ORM\ManyToOne(targetEntity: SoftwareLicenseType::class)]
     #[ORM\JoinColumn(name: 'softwarelicensetypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
-    #[\itsmng\Database\Mapping\AssetClassification]
+    #[AssetClassification]
     public ?SoftwareLicenseType $softwarelicensetypes = null;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
@@ -92,21 +98,21 @@ class SoftwareLicense
     public ?SoftwareVersion $useVersion = null;
 
     #[ORM\Column(name: '`expire`', type: 'date', nullable: true)]
-    public ?\DateTimeInterface $expire = null;
+    public ?DateTimeInterface $expire = null;
 
     #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
     public ?string $comment = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_mod = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`is_valid`', type: 'boolean', nullable: false, options: ['default' => true])]
     public bool $is_valid = true;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
-    #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $date_creation = null;
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
 
     #[ORM\Column(name: '`is_deleted`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_deleted = false;

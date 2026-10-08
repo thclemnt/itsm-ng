@@ -40,6 +40,7 @@ if (!defined('GLPI_ROOT')) {
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Twig;
 
 class ClearCacheCommand extends Command
 {
@@ -60,7 +61,7 @@ class ClearCacheCommand extends Command
         global $GLPI_CACHE;
         $GLPI_CACHE->clear();
         require_once GLPI_ROOT . '/src/twig/twig.class.php';
-        \Twig::clearCache();
+        Twig::clearCache();
 
         $output->writeln('<info>' . __('Cache reset successful') . '</info>');
 

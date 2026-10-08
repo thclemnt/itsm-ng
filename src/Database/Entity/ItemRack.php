@@ -5,18 +5,21 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\LegacyInput;
+use itsmng\Database\Mapping\RackableItemReference;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_items_racks')]
 #[ORM\UniqueConstraint(name: 'items_racks_item', columns: ['itemtype', 'items_id', 'is_reserved'])]
 #[ORM\HasLifecycleCallbacks]
-class ItemRack implements \itsmng\Database\Mapping\LegacyInput
+class ItemRack implements LegacyInput
 {
-    use \itsmng\Database\Mapping\RackableItemReference;
+    use RackableItemReference;
 
     #[ORM\ManyToOne(targetEntity: Rack::class)]
     #[ORM\JoinColumn(name: 'racks_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Rack $racks = null;
 
     #[ORM\Id]

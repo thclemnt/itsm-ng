@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -62,7 +65,7 @@ class Reminder_User extends CommonDBRelation
 
         $users = [];
 
-        $rows = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+        $rows = (new RecordRepository(Orm::create($DB)))
             ->matching(self::getTable(), ['reminders_id' => $reminders_id], 'id');
         foreach ($rows as $data) {
             $users[$data['users_id']][] = $data;

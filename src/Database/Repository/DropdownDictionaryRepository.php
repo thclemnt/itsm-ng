@@ -7,6 +7,8 @@ namespace itsmng\Database\Repository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
+use InvalidArgumentException;
+use RuntimeException;
 use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
 use itsmng\Domain\DictionaryMutation;
@@ -20,7 +22,7 @@ final class DropdownDictionaryRepository
 
     private function classFor(string $table): string
     {
-        return EntityRegistry::tables()[$table] ?? throw new \InvalidArgumentException('Unmapped dictionary table: ' . $table);
+        return EntityRegistry::tables()[$table] ?? throw new InvalidArgumentException('Unmapped dictionary table: ' . $table);
     }
 
     public function count(string $table): int
@@ -45,7 +47,7 @@ final class DropdownDictionaryRepository
             }
         }
         if (count($properties) !== 1) {
-            throw new \InvalidArgumentException('Dictionary requires one mapped association: ' . $owner . ' -> ' . $target);
+            throw new InvalidArgumentException('Dictionary requires one mapped association: ' . $owner . ' -> ' . $target);
         }
         return $properties[0];
     }
@@ -117,7 +119,7 @@ final class DropdownDictionaryRepository
                         $added = $addCompatibility === null ? $compatibility->add((int)$link['id'], $target) : $addCompatibility((int)$link['id'], $target);
                         $assertActive();
                         if (!$added) {
-                            throw new \RuntimeException('Unable to move printer model compatibility.');
+                            throw new RuntimeException('Unable to move printer model compatibility.');
                         }
                     }
                 }

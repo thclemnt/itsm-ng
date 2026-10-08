@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\InventoryRepository;
+
 /**
  * Virtual machine management
  */
@@ -69,7 +72,7 @@ class ComputerVirtualMachine extends CommonDBChild
         ) {
             $nb = 0;
             if ($_SESSION['glpishow_count_on_tabs']) {
-                $nb = (new \itsmng\Database\Repository\InventoryRepository(\itsmng\Database\Orm::create($DB)))
+                $nb = (new InventoryRepository(Orm::create($DB)))
                     ->countVirtualMachines((int)$item->getID());
             }
             return self::createTabEntry(self::getTypeName(), $nb);
@@ -258,7 +261,7 @@ class ComputerVirtualMachine extends CommonDBChild
         echo "<div class='center'>";
 
         if (isset($comp->fields['uuid']) && ($comp->fields['uuid'] != '')) {
-            $hosts = (new \itsmng\Database\Repository\InventoryRepository(\itsmng\Database\Orm::create($DB)))
+            $hosts = (new InventoryRepository(Orm::create($DB)))
                 ->virtualMachineHosts(self::getUUIDRestrictCriteria($comp->fields['uuid']), getEntitiesRestrictCriteria('glpi_computers'));
 
             if (!empty($hosts)) {
@@ -329,7 +332,7 @@ class ComputerVirtualMachine extends CommonDBChild
 
         echo "<div class='center'>";
 
-        $virtualmachines = (new \itsmng\Database\Repository\InventoryRepository(\itsmng\Database\Orm::create($DB)))
+        $virtualmachines = (new InventoryRepository(Orm::create($DB)))
             ->virtualMachinesForComputer((int)$ID);
 
         echo "<table class='tab_cadre_fixehov' aria-label='Virtual Machine table'>";
@@ -486,7 +489,7 @@ class ComputerVirtualMachine extends CommonDBChild
             return false;
         }
 
-        $ids = (new \itsmng\Database\Repository\InventoryRepository(\itsmng\Database\Orm::create($DB)))
+        $ids = (new InventoryRepository(Orm::create($DB)))
             ->computerIdsByUuids(self::getUUIDRestrictCriteria($fields['uuid']));
         if (count($ids) === 1) {
             return $ids[0];

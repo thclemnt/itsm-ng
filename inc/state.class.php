@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\StateRepository;
+use itsmng\Reporting\Criteria;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -102,7 +107,7 @@ class State extends CommonTreeDropdown
             $elements["-1"] = $lib;
         }
 
-        foreach (\itsmng\Database\MappedReads::matching($DB, self::getTable(), [], 'name') as $data) {
+        foreach (MappedReads::matching($DB, self::getTable(), [], 'name') as $data) {
             $elements[$data["id"]] = sprintf(__('Set status: %s'), $data["name"]);
         }
         Dropdown::showFromArray($name, $elements, ['value' => $value]);
@@ -121,10 +126,10 @@ class State extends CommonTreeDropdown
                 if (!$item->canView()) {
                     unset($state_type[$key]);
                 } else {
-                    if (\itsmng\Database\Repository\StateRepository::supports($itemtype)) {
-                        $em = \itsmng\Database\Orm::create($DB);
+                    if (StateRepository::supports($itemtype)) {
+                        $em = Orm::create($DB);
                         try {
-                            $iterator = (new \itsmng\Database\Repository\StateRepository($em))->counts($itemtype, \itsmng\Reporting\Criteria::entities());
+                            $iterator = (new StateRepository($em))->counts($itemtype, Criteria::entities());
                         } finally {
                             $em->clear();
                         }
@@ -174,7 +179,7 @@ class State extends CommonTreeDropdown
             echo "<th>" . __('Total') . "</th>";
             echo "</tr>";
 
-            $iterator = \itsmng\Database\MappedReads::matching(
+            $iterator = MappedReads::matching(
                 $DB,
                 self::getTable(),
                 getEntitiesRestrictCriteria(self::getTable(), '', '', true),
@@ -527,7 +532,7 @@ class State extends CommonTreeDropdown
         if (!$this->isNewID($this->getID())) {
             $where['NOT'] = ['id' => $this->getID()];
         }
-        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), $where) === 0;
+        return MappedReads::countMatching($DB, self::getTable(), $where) === 0;
     }
 
     /**

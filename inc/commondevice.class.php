@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Repository\ComponentDefinitionRepository;
+use itsmng\Domain\ComponentDefinitionReplacement;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -168,7 +171,7 @@ abstract class CommonDevice extends CommonDropdown
         ];
     }
 
-    private ?\itsmng\Domain\ComponentDefinitionReplacement $definitionReplacement = null;
+    private ?ComponentDefinitionReplacement $definitionReplacement = null;
 
     public function deleteFromDB($force = 0)
     {
@@ -177,13 +180,13 @@ abstract class CommonDevice extends CommonDropdown
         }
         $family = getItemForItemtype(static::getItem_DeviceType());
         if (!$family instanceof Item_Devices
-            || !\itsmng\Database\Repository\ComponentDefinitionRepository::supportsFamily($family, $this->getTable())) {
+            || !ComponentDefinitionRepository::supportsFamily($family, $this->getTable())) {
             return parent::deleteFromDB($force);
         }
         // The ordinary deletion lifecycle owns caller authorization. Its
         // validated definition replacement delegates no asset editing rights.
         $previous = $this->definitionReplacement;
-        $command = \itsmng\Domain\ComponentDefinitionReplacement::forPurge($GLOBALS['DB'], $this);
+        $command = ComponentDefinitionReplacement::forPurge($GLOBALS['DB'], $this);
         $this->definitionReplacement = $command;
         try {
             return parent::deleteFromDB($force);
@@ -197,7 +200,7 @@ abstract class CommonDevice extends CommonDropdown
     {
         if ($this->definitionReplacement !== null && $related instanceof Item_Devices
             && $related::getDeviceType() === $this->getType()
-            && \itsmng\Database\Repository\ComponentDefinitionRepository::supportsFamily($related, $this->getTable(), $column)) {
+            && ComponentDefinitionRepository::supportsFamily($related, $this->getTable(), $column)) {
             return $related->replaceDefinition($this->definitionReplacement, $input, $column);
         }
         return parent::updateReplacementRelation($related, $input, $column);

@@ -38,6 +38,7 @@ if (!defined('GLPI_ROOT')) {
 }
 
 use Glpi\Console\AbstractCommand;
+use Throwable;
 use itsmng\Appliance\AppliancePluginImport;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -67,7 +68,7 @@ class AppliancesPluginToCoreCommand extends AbstractCommand
         $importer = new AppliancePluginImport($this->db);
         try {
             $plan = $importer->plan();
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $output->writeln('<error>' . $error->getMessage() . '</error>');
             return self::ERROR_PLUGIN_VERSION_OR_DATA_INVALID;
         }
@@ -90,7 +91,7 @@ class AppliancesPluginToCoreCommand extends AbstractCommand
             $result = $importer->import(static function (string $event, string $kind, int $id) use ($output): void {
                 $output->writeln($event . ': ' . $kind . ' ' . $id, OutputInterface::VERBOSITY_VERBOSE);
             });
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $output->writeln('<error>Appliance import rolled back: ' . $error->getMessage() . '</error>');
             return self::ERROR_PLUGIN_IMPORT_FAILED;
         }

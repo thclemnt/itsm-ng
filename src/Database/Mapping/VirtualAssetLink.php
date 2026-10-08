@@ -4,8 +4,10 @@
 
 namespace itsmng\Database\Mapping;
 
+use Attribute;
+
 /** Recursion checks follow the asset type stored beside this polymorphic ID. */
-#[\Attribute(\Attribute::TARGET_PROPERTY)]
+#[Attribute(Attribute::TARGET_PROPERTY)]
 final readonly class VirtualAssetLink
 {
     public function __construct(public string $discriminator)

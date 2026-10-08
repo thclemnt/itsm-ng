@@ -31,6 +31,13 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\DBAL\Driver\Exception\NoIdentityValue;
+use Doctrine\DBAL\Exception;
+use Doctrine\DBAL\Statement;
+use itsmng\Database\Installer;
+use itsmng\Database\LegacyResult;
+use itsmng\Database\LegacyStatement;
+use itsmng\Database\MySQLConnection;
 use itsmng\Database\OwnershipUpdateUnit;
 
 if (!defined('GLPI_ROOT')) {
@@ -80,7 +87,7 @@ class DBmysql extends DBAdapter
     public function installSchema(): bool
     {
         try {
-            \itsmng\Database\Installer::installMysqlSchema($this->getDoctrineConnection());
+            Installer::installMysqlSchema($this->getDoctrineConnection());
             return true;
         } finally {
             $this->clearSchemaCache();
@@ -109,7 +116,7 @@ class DBmysql extends DBAdapter
         $this->lastErrno = 0;
         $this->error = 0;
         try {
-            $this->doctrine = \itsmng\Database\MySQLConnection::create($this->connectionParameters());
+            $this->doctrine = MySQLConnection::create($this->connectionParameters());
             $this->doctrine->getServerVersion();
             if (!isset($this->dbenc) || $this->dbenc === 'utf8') {
                 $this->doctrine->executeStatement("SET NAMES 'utf8' COLLATE 'utf8_unicode_ci'");
@@ -117,7 +124,7 @@ class DBmysql extends DBAdapter
             $this->connected = true;
             $this->setTimezone($this->guessTimezone());
             return true;
-        } catch (\Doctrine\DBAL\Exception $error) {
+        } catch (Exception $error) {
             $this->lastError = 'Unable to connect to MySQL. Check host, database, credentials and TLS settings.';
             $this->lastErrno = (int)$error->getCode();
             $this->error = 1;
@@ -172,7 +179,7 @@ class DBmysql extends DBAdapter
         });
     }
 
-    public function executePrepared(\Doctrine\DBAL\Statement $statement, string $query)
+    public function executePrepared(Statement $statement, string $query)
     {
         return $this->executeResult($query, $statement->executeQuery(...));
     }
@@ -191,8 +198,8 @@ class DBmysql extends DBAdapter
                 $result->free();
                 return true;
             }
-            return new \itsmng\Database\LegacyResult($result);
-        } catch (\Doctrine\DBAL\Exception $error) {
+            return new LegacyResult($result);
+        } catch (Exception $error) {
             $this->lastError = $error->getMessage();
             $this->lastErrno = (int)$error->getCode();
             $this->affected = -1;
@@ -221,7 +228,7 @@ class DBmysql extends DBAdapter
 
     public function prepare($query)
     {
-        return new \itsmng\Database\LegacyStatement($this, $query);
+        return new LegacyStatement($this, $query);
     }
 
 
@@ -316,8 +323,8 @@ class DBmysql extends DBAdapter
             $connection = $this->getDoctrineConnection();
             OwnershipUpdateUnit::assertResolvedWriter($this, $connection);
             return (int)$connection->lastInsertId();
-        } catch (\Doctrine\DBAL\Exception\DriverException $error) {
-            if ($error->getPrevious() instanceof \Doctrine\DBAL\Driver\Exception\NoIdentityValue) {
+        } catch (Exception\DriverException $error) {
+            if ($error->getPrevious() instanceof NoIdentityValue) {
                 return 0;
             }
             throw $error;
@@ -796,7 +803,7 @@ class DBmysql extends DBAdapter
 
         try {
             $names = $this->getTimezoneNames();
-        } catch (\Doctrine\DBAL\Exception $error) {
+        } catch (Exception $error) {
             $msg = __('Access to timezone table (mysql.time_zone_name) is not allowed.');
             return false;
         }
@@ -843,7 +850,7 @@ class DBmysql extends DBAdapter
 
         try {
             foreach (array_intersect($this->getTimezoneNames(), $from_php) as $name) {
-                $now->setTimezone(new \DateTimeZone($name));
+                $now->setTimezone(new DateTimeZone($name));
                 $list[$name] = $name . $now->format(" (T P)");
             }
         } catch (\Exception $e) {
@@ -882,7 +889,7 @@ class DBmysql extends DBAdapter
      */
     private function getTimezoneNames(): array
     {
-        $connection = \itsmng\Database\MySQLConnection::create($this->connectionParameters());
+        $connection = MySQLConnection::create($this->connectionParameters());
         try {
             return $connection->fetchFirstColumn('SELECT Name FROM mysql.time_zone_name ORDER BY Name');
         } finally {

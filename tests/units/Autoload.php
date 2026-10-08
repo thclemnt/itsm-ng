@@ -34,6 +34,8 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\ORM\Query\AST\Functions\BitAndFunction;
+use itsmng\Database\Entity\Ticket;
 
 require_once __DIR__ . '/../Autoload.php';
 
@@ -74,7 +76,7 @@ class Autoload extends DbTestCase
 
     public function testComposerNamespacesAreLeftToTheirOwningLoader(): void
     {
-        foreach ([\Doctrine\ORM\Query\AST\Functions\BitAndFunction::class, \itsmng\Database\Entity\Ticket::class] as $class) {
+        foreach ([BitAndFunction::class, Ticket::class] as $class) {
             $this->boolean(glpi_autoload($class))->isFalse();
             $this->boolean(class_exists($class))->isTrue();
         }

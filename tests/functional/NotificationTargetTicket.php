@@ -33,10 +33,23 @@
 
 namespace tests\units;
 
+use Auth;
+use CommonITILActor;
 use DbTestCase;
+use Doctrine\ORM\Event\PostLoadEventArgs;
+use Doctrine\ORM\Events;
+use NotificationEventAjax;
+use NotificationEventMailing;
+use NotificationTarget;
+use NotificationTargetTicket as LegacyNotificationTargetTicket;
+use Notification_NotificationTemplate;
+use Ticket;
+use Ticket_User;
+use User;
 use itsmng\Database\Orm;
 use itsmng\Database\Entity;
 use itsmng\Database\Repository\NotificationRecipientRepository;
+use itsmng\Database\Repository\UserRepository;
 
 /* Test for inc/notificationtargetticket.class.php */
 
@@ -64,13 +77,13 @@ class NotificationTargetTicket extends DbTestCase
             }
             $email = "o'connor@example.test";
             $actors = [];
-            foreach ([[$ticket, null, \CommonITILActor::REQUESTER, true, $email],
-                [$ticket, null, \CommonITILActor::REQUESTER, true, 'not-an-address'],
-                [$ticket, null, \CommonITILActor::REQUESTER, true, null],
-                [$ticket, null, \CommonITILActor::REQUESTER, false, 'disabled@example.test'],
-                [$ticket, null, \CommonITILActor::OBSERVER, true, 'observer@example.test'],
-                [$peer, null, \CommonITILActor::REQUESTER, true, $email],
-                [$ticket, $user, \CommonITILActor::REQUESTER, true, 'registered@example.test']] as [$parent, $actor, $role, $notify, $address]) {
+            foreach ([[$ticket, null, CommonITILActor::REQUESTER, true, $email],
+                [$ticket, null, CommonITILActor::REQUESTER, true, 'not-an-address'],
+                [$ticket, null, CommonITILActor::REQUESTER, true, null],
+                [$ticket, null, CommonITILActor::REQUESTER, false, 'disabled@example.test'],
+                [$ticket, null, CommonITILActor::OBSERVER, true, 'observer@example.test'],
+                [$peer, null, CommonITILActor::REQUESTER, true, $email],
+                [$ticket, $user, CommonITILActor::REQUESTER, true, 'registered@example.test']] as [$parent, $actor, $role, $notify, $address]) {
                 $link = new Entity\TicketUser();
                 $link->tickets = $parent;
                 $link->actor = $actor;
@@ -84,50 +97,50 @@ class NotificationTargetTicket extends DbTestCase
             $manager->clear();
             $loads = new class () {
                 public int $count = 0;
-                public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
+                public function postLoad(PostLoadEventArgs $event): void
                 {
                     ++$this->count;
                 }
             };
             $manager->getEventManager()->addEventListener(['postLoad'], $loads);
             $repository = new NotificationRecipientRepository($manager);
-            $rows = $repository->anonymousUsers('glpi_tickets_users', 'tickets_id', $ticket->id, \CommonITILActor::REQUESTER);
+            $rows = $repository->anonymousUsers('glpi_tickets_users', 'tickets_id', $ticket->id, CommonITILActor::REQUESTER);
             $this->array($rows)->hasSize(3);
             foreach ([['alternative_email' => $email], ['alternative_email' => 'not-an-address'], ['alternative_email' => null]] as $expected) {
                 $this->boolean(in_array($expected, $rows, true))->isTrue();
             }
             $this->integer($manager->getUnitOfWork()->size())->isEqualTo(0);
-            $this->array($repository->anonymousUsers('glpi_tickets_users', 'tickets_id', 0, \CommonITILActor::REQUESTER))->isEmpty();
-            $this->array($repository->anonymousUsers('glpi_tickets_users', 'tickets_id', $ticket->id, \CommonITILActor::OBSERVER))
+            $this->array($repository->anonymousUsers('glpi_tickets_users', 'tickets_id', 0, CommonITILActor::REQUESTER))->isEmpty();
+            $this->array($repository->anonymousUsers('glpi_tickets_users', 'tickets_id', $ticket->id, CommonITILActor::OBSERVER))
                 ->isIdenticalTo([['alternative_email' => 'observer@example.test']]);
 
-            $model = new \Ticket();
+            $model = new Ticket();
             $this->boolean($model->getFromDB($ticket->id))->isTrue();
-            $target = new \NotificationTargetTicket($root->id, 'new', $model);
-            $target->setMode(\Notification_NotificationTemplate::MODE_MAIL)->setEvent(\NotificationEventMailing::class);
-            $target->addLinkedUserByType(\CommonITILActor::REQUESTER);
+            $target = new LegacyNotificationTargetTicket($root->id, 'new', $model);
+            $target->setMode(Notification_NotificationTemplate::MODE_MAIL)->setEvent(NotificationEventMailing::class);
+            $target->addLinkedUserByType(CommonITILActor::REQUESTER);
             $this->array(array_keys($target->target))->isIdenticalTo([$email]);
             $this->variable($target->target[$email]['users_id'])->isIdenticalTo(-1);
             $this->string($target->target[$email]['email'])->isIdenticalTo($email);
             $this->string($target->target[$email]['language'])->isIdenticalTo($CFG_GLPI['language']);
-            $this->integer($target->target[$email]['additionnaloption']['usertype'])->isIdenticalTo(\NotificationTarget::ANONYMOUS_USER);
-            $target->addLinkedUserByType(\CommonITILActor::REQUESTER);
+            $this->integer($target->target[$email]['additionnaloption']['usertype'])->isIdenticalTo(NotificationTarget::ANONYMOUS_USER);
+            $target->addLinkedUserByType(CommonITILActor::REQUESTER);
             $this->array(array_keys($target->target))->isIdenticalTo([$email]);
 
             $writer = Orm::create($DB);
             $writer->find(Entity\TicketUser::class, $actors[0]->id)->alternative_email = 'fresh@example.test';
             $writer->flush();
             $writer->clear();
-            $fresh = $repository->anonymousUsers('glpi_tickets_users', 'tickets_id', $ticket->id, \CommonITILActor::REQUESTER);
+            $fresh = $repository->anonymousUsers('glpi_tickets_users', 'tickets_id', $ticket->id, CommonITILActor::REQUESTER);
             $this->boolean(in_array(['alternative_email' => 'fresh@example.test'], $fresh, true))->isTrue();
             $this->boolean(in_array(['alternative_email' => $email], $fresh, true))->isFalse();
             $this->integer($manager->getUnitOfWork()->size())->isEqualTo(0);
             $target->target = [];
-            $target->addLinkedUserByType(\CommonITILActor::REQUESTER);
+            $target->addLinkedUserByType(CommonITILActor::REQUESTER);
             $this->array(array_keys($target->target))->isIdenticalTo(['fresh@example.test']);
-            $nonMail = new \NotificationTargetTicket($root->id, 'new', $model);
-            $nonMail->setMode(\Notification_NotificationTemplate::MODE_AJAX)->setEvent(\NotificationEventAjax::class);
-            $nonMail->addLinkedUserByType(\CommonITILActor::REQUESTER);
+            $nonMail = new LegacyNotificationTargetTicket($root->id, 'new', $model);
+            $nonMail->setMode(Notification_NotificationTemplate::MODE_AJAX)->setEvent(NotificationEventAjax::class);
+            $nonMail->addLinkedUserByType(CommonITILActor::REQUESTER);
             $this->array($nonMail->target)->isEmpty();
             $this->integer($loads->count)->isEqualTo(0);
             $this->object($manager->find(Entity\TicketUser::class, $actors[0]->id))->isInstanceOf(Entity\TicketUser::class);
@@ -155,28 +168,28 @@ class NotificationTargetTicket extends DbTestCase
                 ++$this->count;
             }
         };
-        $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+        $em->getEventManager()->addEventListener([Events::postLoad], $loads);
         try {
             $prefix = 'Notification names ' . $this->getUniqueString();
-            $first = $this->createItem(\User::class, ['name' => $prefix . ' first',
-                'firstname' => 'Ada', 'realname' => 'Reader', 'entities_id' => $entity, 'authtype' => \Auth::DB_GLPI]);
-            $second = $this->createItem(\User::class, ['name' => $prefix . ' second',
-                'firstname' => '', 'realname' => '', 'entities_id' => $entity, 'authtype' => \Auth::DB_GLPI]);
+            $first = $this->createItem(User::class, ['name' => $prefix . ' first',
+                'firstname' => 'Ada', 'realname' => 'Reader', 'entities_id' => $entity, 'authtype' => Auth::DB_GLPI]);
+            $second = $this->createItem(User::class, ['name' => $prefix . ' second',
+                'firstname' => '', 'realname' => '', 'entities_id' => $entity, 'authtype' => Auth::DB_GLPI]);
             $a = (int)$first->getID();
             $b = (int)$second->getID();
-            $ticket = new \Ticket();
+            $ticket = new Ticket();
             $id = $ticket->add(['name' => $prefix, 'content' => 'Template name projection',
                 'entities_id' => $entity, 'users_id_recipient' => $a]);
             $this->integer($id)->isGreaterThan(0);
             foreach ([$b, $a] as $actor) {
-                $link = new \Ticket_User();
+                $link = new Ticket_User();
                 $this->integer($link->add(['tickets_id' => $id, 'users_id' => $actor,
-                    'type' => \CommonITILActor::ASSIGN, 'use_notification' => 0]))->isGreaterThan(0);
+                    'type' => CommonITILActor::ASSIGN, 'use_notification' => 0]))->isGreaterThan(0);
             }
             $this->boolean($ticket->getFromDB($id))->isTrue();
-            $target = new \NotificationTargetTicket($entity, 'new', $ticket);
+            $target = new LegacyNotificationTargetTicket($entity, 'new', $ticket);
             $options = ['additionnaloption' => ['usertype' => '']];
-            $repository = new \itsmng\Database\Repository\UserRepository($em);
+            $repository = new UserRepository($em);
             $rows = $repository->friendlyNameData([$a, $b, $a, PHP_INT_MAX]);
             $this->array($rows)->hasSize(2);
             $this->integer($loads->count)->isIdenticalTo(0);
@@ -188,19 +201,19 @@ class NotificationTargetTicket extends DbTestCase
             $this->string($managed->firstname)->isIdenticalTo('Ada');
             $this->integer($loads->count)->isIdenticalTo(1);
             $this->boolean($em->contains($managed))->isTrue();
-            foreach ([\User::FIRSTNAME_BEFORE, \User::REALNAME_BEFORE] as $format) {
+            foreach ([User::FIRSTNAME_BEFORE, User::REALNAME_BEFORE] as $format) {
                 $_SESSION['glpinames_format'] = $format;
                 $_SESSION['glpiis_ids_visible'] = $CFG_GLPI['is_ids_visible'] = 1;
                 $expected = [];
-                foreach ($ticket->getUsers(\CommonITILActor::ASSIGN) as $actor) {
-                    $user = new \User();
+                foreach ($ticket->getUsers(CommonITILActor::ASSIGN) as $actor) {
+                    $user = new User();
                     $this->boolean($user->getFromDB($actor['users_id']))->isTrue();
                     $expected[$actor['users_id']] = $user->getName();
                 }
                 $data = $target->getDataForObject($ticket, $options, true);
                 $this->string($data['##ticket.assigntousers##'])->isIdenticalTo(implode(', ', $expected));
                 foreach (['users_id_recipient' => 'openbyuser', 'users_id_lastupdater' => 'lastupdater'] as $field => $tag) {
-                    $user = new \User();
+                    $user = new User();
                     $user->getFromDB($ticket->getField($field));
                     $this->string($data['##ticket.' . $tag . '##'])
                         ->isIdenticalTo($ticket->getField($field) ? $user->getName() : '');
@@ -210,7 +223,7 @@ class NotificationTargetTicket extends DbTestCase
             }
             // A custom selected-actor callback remains a freshness barrier. It can
             // supply duplicates or a disappeared identity without changing row order.
-            $selected = new class () extends \Ticket {
+            $selected = new class () extends Ticket {
                 public array $selected = [];
                 public $beforeSelection;
                 public static function getType()
@@ -219,11 +232,11 @@ class NotificationTargetTicket extends DbTestCase
                 }
                 public function countUsers($type = 0)
                 {
-                    return $type === \CommonITILActor::ASSIGN ? count($this->selected) : 0;
+                    return $type === CommonITILActor::ASSIGN ? count($this->selected) : 0;
                 }
                 public function getUsers($type)
                 {
-                    if ($type !== \CommonITILActor::ASSIGN) {
+                    if ($type !== CommonITILActor::ASSIGN) {
                         return [];
                     }
                     ($this->beforeSelection)();
@@ -237,7 +250,7 @@ class NotificationTargetTicket extends DbTestCase
             $selected->beforeSelection = static function () use ($connection, $a): void {
                 $connection->update('glpi_users', ['firstname' => 'Katherine'], ['id' => $a]);
             };
-            $before = new \User();
+            $before = new User();
             $this->boolean($before->getFromDB($a))->isTrue();
             $data = $target->getDataForObject($selected, $options, true);
             $this->string($data['##ticket.openbyuser##'])->isIdenticalTo($before->getName());
@@ -255,7 +268,7 @@ class NotificationTargetTicket extends DbTestCase
             $this->object($em->getConnection())->isIdenticalTo($connection);
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
         } finally {
-            $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+            $em->getEventManager()->removeEventListener([Events::postLoad], $loads);
             $em->clear();
             $_SESSION = $session;
             $CFG_GLPI['is_ids_visible'] = $idsVisible;

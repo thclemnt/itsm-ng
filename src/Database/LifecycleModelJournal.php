@@ -4,32 +4,35 @@
 
 namespace itsmng\Database;
 
+use CommonDBTM;
 use Doctrine\DBAL\Connection;
+use SplObjectStorage;
+use WeakMap;
 
 /** Shallow checkpoints of actual participating model instances, scoped to one writer. */
 final class LifecycleModelJournal
 {
-    private static ?\WeakMap $observers = null;
-    private \SplObjectStorage $models;
+    private static ?WeakMap $observers = null;
+    private SplObjectStorage $models;
 
     public function __construct()
     {
-        $this->models = new \SplObjectStorage();
+        $this->models = new SplObjectStorage();
     }
 
-    public static function state(\CommonDBTM $model): array
+    public static function state(CommonDBTM $model): array
     {
         return array_intersect_key(get_object_vars($model), array_fill_keys(['fields', 'input', 'updates', 'oldvalues'], true));
     }
 
-    public function remember(\CommonDBTM $model, ?array $state = null): void
+    public function remember(CommonDBTM $model, ?array $state = null): void
     {
         if (!$this->models->offsetExists($model)) {
             $this->models[$model] = $state ?? self::state($model);
         }
     }
 
-    public static function capture(Connection $connection, \CommonDBTM $model): void
+    public static function capture(Connection $connection, CommonDBTM $model): void
     {
         foreach (self::$observers[$connection] ?? [] as $journal) {
             $journal->remember($model);
@@ -38,7 +41,7 @@ final class LifecycleModelJournal
 
     public function observe(Connection $connection, callable $operation): mixed
     {
-        self::$observers ??= new \WeakMap();
+        self::$observers ??= new WeakMap();
         $observers = self::$observers[$connection] ?? [];
         $observers[] = $this;
         self::$observers[$connection] = $observers;

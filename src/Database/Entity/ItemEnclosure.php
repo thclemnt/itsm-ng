@@ -5,18 +5,21 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\LegacyInput;
+use itsmng\Database\Mapping\RackableItemReference;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_items_enclosures')]
 #[ORM\UniqueConstraint(name: 'items_enclosures_item', columns: ['itemtype', 'items_id'])]
 #[ORM\HasLifecycleCallbacks]
-class ItemEnclosure implements \itsmng\Database\Mapping\LegacyInput
+class ItemEnclosure implements LegacyInput
 {
-    use \itsmng\Database\Mapping\RackableItemReference;
+    use RackableItemReference;
 
     #[ORM\ManyToOne(targetEntity: Enclosure::class)]
     #[ORM\JoinColumn(name: 'enclosures_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?Enclosure $enclosures = null;
 
     #[ORM\Id]

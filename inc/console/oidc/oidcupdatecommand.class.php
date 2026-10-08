@@ -40,6 +40,8 @@ if (!defined('GLPI_ROOT')) {
 use Glpi\Console\AbstractCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\OidcRepository;
 
 class OidcUpdateCommand extends AbstractCommand
 {
@@ -57,7 +59,7 @@ class OidcUpdateCommand extends AbstractCommand
 
         global $DB;
 
-        (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::create($DB)))->requestRefresh();
+        (new OidcRepository(Orm::create($DB)))->requestRefresh();
 
         return 0; // Success
     }

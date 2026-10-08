@@ -31,6 +31,13 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\DropdownChoiceContext;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Entity\ItemProject;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ProjectAssetRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -68,17 +75,17 @@ class Item_Project extends CommonDBRelation
     {
         global $DB;
         try {
-            $normalized = (new \itsmng\Database\Entity\ItemProject())->normalizeInput($input);
-        } catch (\InvalidArgumentException) {
+            $normalized = (new ItemProject())->normalizeInput($input);
+        } catch (InvalidArgumentException) {
             return false;
         }
         $kind = $normalized['itemtype'];
-        $column = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'][$kind]['column'];
+        $column = EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'][$kind]['column'];
         $input = $normalized + ['items_id' => $normalized[$column]];
 
         // Avoid duplicate entry
         if (
-            (new \itsmng\Database\Repository\ProjectAssetRepository(\itsmng\Database\Orm::create($DB)))
+            (new ProjectAssetRepository(Orm::create($DB)))
                 ->hasBinding((int)($input['projects_id'] ?? 0), $kind, (int)$input['items_id'])
         ) {
             return false;
@@ -88,7 +95,7 @@ class Item_Project extends CommonDBRelation
 
     public function prepareInputForUpdate($input)
     {
-        $selections = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'];
+        $selections = EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'];
         if (array_intersect(array_keys($input), ['itemtype', 'items_id', ...array_column($selections, 'column')])) {
             $input += ['itemtype' => $this->fields['itemtype']];
             $column = $selections[$input['itemtype']]['column'] ?? null;
@@ -99,8 +106,8 @@ class Item_Project extends CommonDBRelation
                 $input['items_id'] = $this->fields['items_id'];
             }
             try {
-                $normalized = (new \itsmng\Database\Entity\ItemProject())->normalizeInput($input);
-            } catch (\InvalidArgumentException) {
+                $normalized = (new ItemProject())->normalizeInput($input);
+            } catch (InvalidArgumentException) {
                 return false;
             }
             $input = $normalized + ['items_id' => $normalized[$column]];
@@ -111,7 +118,7 @@ class Item_Project extends CommonDBRelation
     /** Both Project roles are explicit; unrelated subject IDs never select another kind. */
     public static function getSQLCriteriaToSearchForItem($itemtype, $items_id)
     {
-        $selection = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'][$itemtype] ?? null;
+        $selection = EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'][$itemtype] ?? null;
         $conditions = [];
         if ($itemtype === Project::class) {
             $conditions[] = ['projects_id' => $items_id];
@@ -125,16 +132,16 @@ class Item_Project extends CommonDBRelation
     public static function getDistinctTypes($items_id, $extra_where = [])
     {
         global $DB;
-        return new \itsmng\Database\RowIterator(
-            (new \itsmng\Database\Repository\ProjectAssetRepository(\itsmng\Database\Orm::create($DB)))->kinds((int)$items_id, $extra_where)
+        return new RowIterator(
+            (new ProjectAssetRepository(Orm::create($DB)))->kinds((int)$items_id, $extra_where)
         );
     }
 
     public static function getItemsAssociationRequest($itemtype, $items_id)
     {
         global $DB;
-        return new \itsmng\Database\RowIterator(
-            (new \itsmng\Database\Repository\ProjectAssetRepository(\itsmng\Database\Orm::create($DB)))
+        return new RowIterator(
+            (new ProjectAssetRepository(Orm::create($DB)))
                 ->relationshipsForItem($itemtype, (int)$items_id)
         );
     }
@@ -176,10 +183,10 @@ class Item_Project extends CommonDBRelation
         $rows = [];
         if ($item && $item->canView()) {
             $component = $item instanceof Item_Devices;
-            $rows = (new \itsmng\Database\Repository\ProjectAssetRepository(\itsmng\Database\Orm::create($DB)))
+            $rows = (new ProjectAssetRepository(Orm::create($DB)))
                 ->subjects((int)$items_id, $itemtype, self::subjectCriteria($item), $component ? 'itemtype' : $item::getNameField(), $component ? $itemtype::$items_id_2 : null);
         }
-        return new \itsmng\Database\RowIterator($rows);
+        return new RowIterator($rows);
     }
 
     public static function countForMainItem(CommonDBTM $item, $extra_types_where = [])
@@ -188,7 +195,7 @@ class Item_Project extends CommonDBRelation
         if (!$item->can($item->getID(), READ)) {
             return 0;
         }
-        $repository = new \itsmng\Database\Repository\ProjectAssetRepository(\itsmng\Database\Orm::create($DB));
+        $repository = new ProjectAssetRepository(Orm::create($DB));
         $count = 0;
         foreach ($repository->kinds((int)$item->getID(), $extra_types_where) as $row) {
             $subject = getItemForItemtype($row['itemtype']);
@@ -203,7 +210,7 @@ class Item_Project extends CommonDBRelation
     {
         global $DB;
         $criteria = Session::isCron() ? [] : getEntitiesRestrictCriteria(Project::getTable(), '', '', 'auto');
-        return (new \itsmng\Database\Repository\ProjectAssetRepository(\itsmng\Database\Orm::create($DB)))
+        return (new ProjectAssetRepository(Orm::create($DB)))
             ->ownerCount($item->getType(), (int)$item->getID(), $criteria);
     }
 
@@ -239,7 +246,7 @@ class Item_Project extends CommonDBRelation
 
             $dropdownChoiceTokens = [];
             foreach (array_keys(array_unique($options)) as $kind) {
-                $dropdownChoiceTokens[$kind] = \itsmng\Database\DropdownChoiceContext::token($kind, []);
+                $dropdownChoiceTokens[$kind] = DropdownChoiceContext::token($kind, []);
             }
             $dropdownChoiceTokens = json_encode($dropdownChoiceTokens, JSON_THROW_ON_ERROR);
 

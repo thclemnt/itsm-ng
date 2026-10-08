@@ -4,7 +4,9 @@
 
 namespace itsmng\Database;
 
+use RuntimeException;
+
 /** The supplied session cannot provide the application's current locking reads. */
-final class CurrentReadUnavailable extends \RuntimeException
+final class CurrentReadUnavailable extends RuntimeException
 {
 }

@@ -5,6 +5,7 @@
 namespace itsmng\Database;
 
 use Doctrine\DBAL\Connection;
+use Throwable;
 
 /** Commit and rollback use the existing DBAL owner's authoritative frame capability. */
 final class OwnedMutationFrame
@@ -48,10 +49,10 @@ final class OwnedMutationFrame
             $result = $operation();
             $frame->commit();
             return $result;
-        } catch (\Throwable $primary) {
+        } catch (Throwable $primary) {
             try {
                 $frame->rollBack();
-            } catch (\Throwable $cleanup) {
+            } catch (Throwable $cleanup) {
                 throw new MutationRollbackFailure($primary, $cleanup);
             }
             throw $primary;

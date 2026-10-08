@@ -5,6 +5,7 @@
 namespace itsmng\Database\Repository;
 
 use Doctrine\ORM\EntityManager;
+use LogicException;
 use itsmng\Database\Entity\VObject;
 use itsmng\Database\EntityRegistry;
 
@@ -31,7 +32,7 @@ final class CalendarObjectRepository
             }
             $target = $metadata->getAssociationTargetClass(VObject::referenceAssociation($kind));
             if (!$this->em->getClassMetadata($target)->hasField('uuid')) {
-                throw new \LogicException('Mapped calendar subject requires a UUID field: ' . $target);
+                throw new LogicException('Mapped calendar subject requires a UUID field: ' . $target);
             }
             $rows = $this->em->createQueryBuilder()->select('r.id AS id')->from($target, 'r')
                 ->where('r.uuid = :uid')->setParameter('uid', $uid)->orderBy('r.id')->setMaxResults(2 - count($matches))

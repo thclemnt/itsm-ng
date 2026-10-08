@@ -40,6 +40,9 @@ use Glpi\CalDAV\Traits\VobjectConverterTrait;
 use Sabre\VObject\Component\VCalendar;
 use Sabre\VObject\Component\VJournal;
 use Sabre\VObject\Component\VTodo;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\SharedContentRepository;
+use itsmng\Database\SharedContentAccess;
 
 /**
  * Reminder Class
@@ -806,13 +809,13 @@ class Reminder extends CommonDBVisible implements
         }
         $label = $personal ? _n('Personal reminder', 'Personal reminders', Session::getPluralNumber()) : _n('Public reminder', 'Public reminders', Session::getPluralNumber());
         $titre = $central ? "<a href='" . $CFG_GLPI['root_doc'] . '/front/reminder.php' . "'>" . $label . '</a>' : $label;
-        $access = \itsmng\Database\SharedContentAccess::current(Session::haveRight(self::$rightname, READ));
-        $rows = (new \itsmng\Database\Repository\SharedContentRepository(\itsmng\Database\Orm::create($DB)))->listing(
+        $access = SharedContentAccess::current(Session::haveRight(self::$rightname, READ));
+        $rows = (new SharedContentRepository(Orm::create($DB)))->listing(
             'reminder',
             $access,
             $personal,
             Session::getCurrentInterface() == 'central',
-            new \DateTimeImmutable(),
+            new DateTimeImmutable(),
             ReminderTranslation::isReminderTranslationActive() ? $_SESSION['glpilanguage'] : null
         );
         $nb = count($rows);
@@ -895,13 +898,13 @@ class Reminder extends CommonDBVisible implements
     public static function getGroupItemsAsVCalendars($groups_id)
     {
         global $DB;
-        return self::getItemsAsVCalendars((new \itsmng\Database\Repository\SharedContentRepository(\itsmng\Database\Orm::create($DB)))->calendarReminders(group: (int)$groups_id));
+        return self::getItemsAsVCalendars((new SharedContentRepository(Orm::create($DB)))->calendarReminders(group: (int)$groups_id));
     }
 
     public static function getUserItemsAsVCalendars($users_id)
     {
         global $DB;
-        return self::getItemsAsVCalendars((new \itsmng\Database\Repository\SharedContentRepository(\itsmng\Database\Orm::create($DB)))->calendarReminders(user: (int)$users_id));
+        return self::getItemsAsVCalendars((new SharedContentRepository(Orm::create($DB)))->calendarReminders(user: (int)$users_id));
     }
 
     /**
@@ -991,8 +994,8 @@ class Reminder extends CommonDBVisible implements
         $reminder = new self();
         $count = 0;
 
-        $before = (new \DateTimeImmutable())->modify('-' . (int)$max_age . ' days');
-        $iterator = (new \itsmng\Database\Repository\SharedContentRepository(\itsmng\Database\Orm::create($DB)))->expiredReminders($before);
+        $before = (new DateTimeImmutable())->modify('-' . (int)$max_age . ' days');
+        $iterator = (new SharedContentRepository(Orm::create($DB)))->expiredReminders($before);
 
         foreach ($iterator as $data) {
             if ($reminder->delete($data)) {

@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ConsumableRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -390,11 +393,11 @@ class ConsumableItem extends CommonDBTM
             $alert   = new Alert();
 
             foreach (Entity::getEntitiesToNotify('consumables_alert_repeat') as $entity => $repeat) {
-                $em = \itsmng\Database\Orm::create($DB);
+                $em = Orm::create($DB);
                 try {
-                    $alerts_result = (new \itsmng\Database\Repository\ConsumableRepository($em))->alertCandidates(
+                    $alerts_result = (new ConsumableRepository($em))->alertCandidates(
                         (int)$entity,
-                        (new \DateTimeImmutable())->modify(sprintf('%+d seconds', -(int)$repeat))
+                        (new DateTimeImmutable())->modify(sprintf('%+d seconds', -(int)$repeat))
                     );
                 } finally {
                     $em->clear();

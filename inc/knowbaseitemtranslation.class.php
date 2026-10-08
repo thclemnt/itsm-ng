@@ -32,6 +32,8 @@
  */
 
 use Glpi\Event;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\KnowledgeBaseRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -395,7 +397,7 @@ class KnowbaseItemTranslation extends CommonDBChild
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
+        return (new KnowledgeBaseRepository(Orm::create($DB)))
             ->translationCount((int)$item->getID());
     }
 
@@ -411,7 +413,7 @@ class KnowbaseItemTranslation extends CommonDBChild
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
+        return (new KnowledgeBaseRepository(Orm::create($DB)))
             ->translatedLanguages((int)$item->getID());
     }
 

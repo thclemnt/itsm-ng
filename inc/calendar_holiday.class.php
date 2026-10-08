@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CalendarRepository;
+use itsmng\Database\Repository\RecordRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -80,7 +84,7 @@ class Calendar_Holiday extends CommonDBRelation
 
         $rand    = mt_rand();
 
-        $links = (new \itsmng\Database\Repository\CalendarRepository(\itsmng\Database\Orm::create($DB)))
+        $links = (new CalendarRepository(Orm::create($DB)))
             ->closures((int)$ID);
         $numrows = count($links);
         $holidays = [];
@@ -177,9 +181,9 @@ class Calendar_Holiday extends CommonDBRelation
         global $DB;
 
         Toolbox::deprecated('Use clone');
-        $em = \itsmng\Database\Orm::create($DB);
-        $links = (new \itsmng\Database\Repository\CalendarRepository($em))->closures((int)$oldid);
-        $records = new \itsmng\Database\Repository\RecordRepository($em);
+        $em = Orm::create($DB);
+        $links = (new CalendarRepository($em))->closures((int)$oldid);
+        $records = new RecordRepository($em);
 
         foreach ($links as $link) {
             $data = $records->toRow($link);

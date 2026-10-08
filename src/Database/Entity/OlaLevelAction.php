@@ -5,6 +5,7 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_olalevelactions')]
@@ -17,7 +18,7 @@ class OlaLevelAction
 
     #[ORM\ManyToOne(targetEntity: OlaLevel::class)]
     #[ORM\JoinColumn(name: 'olalevels_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
-    #[\itsmng\Database\Mapping\ApplicationManaged]
+    #[ApplicationManaged]
     public ?OlaLevel $olalevels = null;
 
     #[ORM\Column(name: '`action_type`', type: 'string', length: 255, nullable: true)]

@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\SavedSearchRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -362,7 +365,7 @@ class SavedSearch_Alert extends CommonDBChild
     {
         global $DB;
 
-        $rows = (new \itsmng\Database\Repository\SavedSearchRepository(\itsmng\Database\Orm::create($DB)))->activeAlerts();
+        $rows = (new SavedSearchRepository(Orm::create($DB)))->activeAlerts();
 
         if ($rows) {
             $savedsearch = new SavedSearch();

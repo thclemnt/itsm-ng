@@ -4,7 +4,9 @@
 
 namespace itsmng\Database;
 
+use Closure;
 use Doctrine\DBAL\Result;
+use OutOfBoundsException;
 
 /** Seekable result for legacy iterators. New repositories use Doctrine results directly. */
 final class LegacyResult
@@ -15,7 +17,7 @@ final class LegacyResult
     public readonly int $field_count;
     public readonly int $num_rows;
 
-    public function __construct(Result $result, ?\Closure $normalize = null)
+    public function __construct(Result $result, ?Closure $normalize = null)
     {
         try {
             $this->field_count = $result->columnCount();
@@ -66,7 +68,7 @@ final class LegacyResult
 
     public function fieldName(int $index): string
     {
-        return $this->names[$index] ?? throw new \OutOfBoundsException('Invalid result column');
+        return $this->names[$index] ?? throw new OutOfBoundsException('Invalid result column');
     }
 
     public function free(): bool

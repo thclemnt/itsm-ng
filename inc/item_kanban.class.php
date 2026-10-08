@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\DeletionCancelled;
+use itsmng\Database\DeletionUnit;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\KanbanRepository;
+
 class Item_Kanban extends CommonDBRelation
 {
     public static $itemtype_1 = 'itemtype';
@@ -45,14 +50,14 @@ class Item_Kanban extends CommonDBRelation
         global $DB;
 
         $connection = $DB->getDoctrineConnection();
-        $repository = new \itsmng\Database\Repository\KanbanRepository(\itsmng\Database\Orm::create($DB));
+        $repository = new KanbanRepository(Orm::create($DB));
         $states = $repository->statesForItem($parent->getType(), (int)$parent->getID());
         $replacement = (int)($parent->input['_replace_by'] ?? 0);
         if ($replacement > 0) {
             $owners = array_values(array_unique(array_filter(array_column($states, 'owner'), static fn ($owner): bool => $owner !== null)));
             if ($repository->hasPrivateStateForOwners($parent->getType(), $replacement, $owners)) {
                 Session::addMessageAfterRedirect(__('Cannot replace this item: a private Kanban state already exists at the replacement.'), false, ERROR);
-                throw new \itsmng\Database\DeletionCancelled('Replacement already owns private Kanban state.');
+                throw new DeletionCancelled('Replacement already owns private Kanban state.');
             }
         }
         foreach ($states as $state) {
@@ -60,18 +65,18 @@ class Item_Kanban extends CommonDBRelation
             if ($replacement > 0 && $state['owner'] !== null) {
                 // Keep the public User endpoint/retarget guards. A shared NULL
                 // owner is not a valid required User for a generic retarget.
-                \itsmng\Database\DeletionUnit::requireSuccess($connection, (bool)$board->update([
+                DeletionUnit::requireSuccess($connection, (bool)$board->update([
                     'id' => $state['id'], 'items_id' => $replacement, '_disablenotif' => true,
                 ]));
                 $persisted = $repository->stateIdentity((int)$state['id']);
-                \itsmng\Database\DeletionUnit::requireSuccess($connection, $persisted !== null
+                DeletionUnit::requireSuccess($connection, $persisted !== null
                     && $persisted['kind'] === $parent->getType() && (int)$persisted['item'] === $replacement
                     && (int)$persisted['owner'] === (int)$state['owner']);
             } else {
-                \itsmng\Database\DeletionUnit::requireSuccess($connection, (bool)$board->delete([
+                DeletionUnit::requireSuccess($connection, (bool)$board->delete([
                     'id' => $state['id'], '_no_history' => true, '_disablenotif' => true,
                 ], true));
-                \itsmng\Database\DeletionUnit::requireSuccess($connection, $repository->stateIdentity((int)$state['id']) === null);
+                DeletionUnit::requireSuccess($connection, $repository->stateIdentity((int)$state['id']) === null);
             }
         }
     }
@@ -101,8 +106,8 @@ class Item_Kanban extends CommonDBRelation
             return false;
         }
 
-        (new \itsmng\Database\Repository\KanbanRepository(\itsmng\Database\Orm::create($DB)))
-            ->save($itemtype, (int)$items_id, (int)$users_id, $state, new \DateTimeImmutable($_SESSION['glpi_currenttime']));
+        (new KanbanRepository(Orm::create($DB)))
+            ->save($itemtype, (int)$items_id, (int)$users_id, $state, new DateTimeImmutable($_SESSION['glpi_currenttime']));
         return true;
     }
 
@@ -125,7 +130,7 @@ class Item_Kanban extends CommonDBRelation
         $item->getFromDB($items_id);
         $force_global = $item->forceGlobalState();
 
-        return (new \itsmng\Database\Repository\KanbanRepository(\itsmng\Database\Orm::create($DB)))
+        return (new KanbanRepository(Orm::create($DB)))
             ->load($itemtype, (int)$items_id, $force_global ? 0 : (int)Session::getLoginUserID(), $timestamp);
     }
 

@@ -33,7 +33,24 @@
 
 namespace tests\units;
 
+use Computer;
+use DBAdapter;
 use DbTestCase;
+use DomainType;
+use Item_SoftwareLicense;
+use Item_SoftwareVersion;
+use ReflectionProperty;
+use RuntimeException;
+use Software as LegacySoftware;
+use SoftwareCategory;
+use SoftwareLicense;
+use SoftwareVersion;
+use Throwable;
+use itsmng\Database\MutationCleanupFailure;
+use itsmng\Database\MySQLConnection;
+use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\PostgresConnection;
+use itsmng\Database\TransactionOwnershipMismatch;
 
 /* Test for inc/software.class.php */
 
@@ -49,17 +66,17 @@ class Software extends DbTestCase
         $caller = $connection->captureManagedTransactionScope();
         $depth = $connection->getTransactionNestingLevel();
         $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
-        $software = $this->createItem(\Software::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
-        $version = $this->createItem(\SoftwareVersion::class, ['name' => $this->getUniqueString(),
+        $software = $this->createItem(LegacySoftware::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+        $version = $this->createItem(SoftwareVersion::class, ['name' => $this->getUniqueString(),
             'softwares_id' => $software->getID(), 'entities_id' => $entity]);
-        $license = $this->createItem(\SoftwareLicense::class, ['name' => $this->getUniqueString(),
+        $license = $this->createItem(SoftwareLicense::class, ['name' => $this->getUniqueString(),
             'softwares_id' => $software->getID(), 'entities_id' => $entity, 'number' => -1]);
-        $computer = $this->createItem(\Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
-        $allocation = $this->createItem(\Item_SoftwareLicense::class, ['itemtype' => 'Computer',
+        $computer = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+        $allocation = $this->createItem(Item_SoftwareLicense::class, ['itemtype' => 'Computer',
             'items_id' => $computer->getID(), 'softwarelicenses_id' => $license->getID()]);
-        $installation = $this->createItem(\Item_SoftwareVersion::class, ['itemtype' => 'Computer',
+        $installation = $this->createItem(Item_SoftwareVersion::class, ['itemtype' => 'Computer',
             'items_id' => $computer->getID(), 'softwareversions_id' => $version->getID()]);
-        $witness = $this->createItem(\DomainType::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity, 'comment' => 'before']);
+        $witness = $this->createItem(DomainType::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity, 'comment' => 'before']);
         $fixtures = [$computer, $software, $license, $allocation, $installation, $version];
         $rows = static function () use ($connection, $fixtures): array {
             $result = [];
@@ -71,29 +88,29 @@ class Software extends DbTestCase
         };
         $before = $rows();
         $models = [
-            new class () extends \Computer {
+            new class () extends Computer {
                 use SoftwarePreloadObserver;
             },
-            new class () extends \Software {
+            new class () extends LegacySoftware {
                 use SoftwarePreloadObserver;
             },
-            new class () extends \SoftwareLicense {
+            new class () extends SoftwareLicense {
                 use SoftwarePreloadObserver;
             },
-            new class () extends \Item_SoftwareLicense {
+            new class () extends Item_SoftwareLicense {
                 use SoftwarePreloadObserver;
             },
-            new class () extends \Item_SoftwareVersion {
+            new class () extends Item_SoftwareVersion {
                 use SoftwarePreloadObserver;
             },
         ];
         foreach ($models as $index => $model) {
             foreach (['replace', 'replace-false', 'replace-throw', 'writer', 'false', 'throw', 'valid'] as $mode) {
-                $frame = \itsmng\Database\OwnedMutationFrame::begin($connection);
+                $frame = OwnedMutationFrame::begin($connection);
                 $replacement = null;
                 $session = $_SESSION;
                 $calls = 0;
-                $marker = new \RuntimeException('Owned preload callback marker');
+                $marker = new RuntimeException('Owned preload callback marker');
                 $primary = null;
                 $model->preloadCallback = function ($loadedModel, bool $loaded) use (
                     &$calls,
@@ -110,7 +127,7 @@ class Software extends DbTestCase
                     }
                     if (str_starts_with($mode, 'replace')) {
                         $connection->rollBack();
-                        $replacement = \itsmng\Database\OwnedMutationFrame::begin($connection);
+                        $replacement = OwnedMutationFrame::begin($connection);
                         $connection->update($witness->getTable(), ['comment' => 'replacement witness'], ['id' => $witness->getID()]);
                     } elseif ($mode === 'writer') {
                         $DB = clone $database;
@@ -125,13 +142,13 @@ class Software extends DbTestCase
                     $result = null;
                     try {
                         $result = $model->delete(['id' => $fixtures[$index]->getID(), '_no_message' => 1, '_no_history' => 1], false, false);
-                    } catch (\Throwable $failure) {
+                    } catch (Throwable $failure) {
                         $error = $failure;
                     }
                     if ($mode === 'replace-throw') {
-                        $this->object($error)->isInstanceOf(\itsmng\Database\MutationCleanupFailure::class);
+                        $this->object($error)->isInstanceOf(MutationCleanupFailure::class);
                         $this->object($error->primary)->isIdenticalTo($marker);
-                        $this->object($error->cleanup)->isInstanceOf(\itsmng\Database\TransactionOwnershipMismatch::class);
+                        $this->object($error->cleanup)->isInstanceOf(TransactionOwnershipMismatch::class);
                         $this->boolean($error->rollbackUnproven)->isTrue();
                     } elseif ($mode === 'throw') {
                         $this->object($error)->isIdenticalTo($marker);
@@ -139,7 +156,7 @@ class Software extends DbTestCase
                         $this->variable($error)->isNull();
                         $this->boolean($result)->isIdenticalTo($mode === 'valid');
                     } else {
-                        $this->boolean($error instanceof \itsmng\Database\TransactionOwnershipMismatch)
+                        $this->boolean($error instanceof TransactionOwnershipMismatch)
                             ->isTrue($model->getType() . ': preload cannot replace its original mutation writer');
                     }
                     if ($mode !== 'valid') {
@@ -158,7 +175,7 @@ class Software extends DbTestCase
                         $frame->assertActive();
                     }
                     $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth + 1);
-                } catch (\Throwable $failure) {
+                } catch (Throwable $failure) {
                     $primary = $failure;
                     throw $failure;
                 } finally {
@@ -167,8 +184,8 @@ class Software extends DbTestCase
                     $_SESSION = $session;
                     try {
                         ($replacement ?? $frame)->rollBack();
-                    } catch (\Throwable $cleanup) {
-                        throw $primary === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($primary, $cleanup);
+                    } catch (Throwable $cleanup) {
+                        throw $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
                     }
                 }
                 $caller->assertActive();
@@ -181,10 +198,10 @@ class Software extends DbTestCase
         // at depth zero, without ending or borrowing the DbTestCase caller.
         $parameters = $connection->getParams();
         $probeConnection = $database->getProvider() === 'pgsql'
-            ? \itsmng\Database\PostgresConnection::create($parameters)
-            : \itsmng\Database\MySQLConnection::create($parameters);
+            ? PostgresConnection::create($parameters)
+            : MySQLConnection::create($parameters);
         $probe = clone $database;
-        (new \ReflectionProperty(\DBAdapter::class, 'doctrine'))->setValue($probe, $probeConnection);
+        (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($probe, $probeConnection);
         $primary = null;
         try {
             $DB = $probe;
@@ -195,15 +212,15 @@ class Software extends DbTestCase
                 $this->boolean($model->delete(['id' => PHP_INT_MAX, '_no_message' => 1], false, false))->isFalse();
                 $this->integer($probeConnection->getTransactionNestingLevel())->isIdenticalTo(0);
             }
-        } catch (\Throwable $failure) {
+        } catch (Throwable $failure) {
             $primary = $failure;
             throw $failure;
         } finally {
             $DB = $database;
             try {
                 $probe->close();
-            } catch (\Throwable $cleanup) {
-                throw $primary === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($primary, $cleanup);
+            } catch (Throwable $cleanup) {
+                throw $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
             }
         }
         $caller->assertActive();
@@ -220,25 +237,25 @@ class Software extends DbTestCase
         $caller = $connection->captureManagedTransactionScope();
         $depth = $connection->getTransactionNestingLevel();
         $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
-        $source = $this->createItem(\Software::class, ['name' => $this->getUniqueString(),
+        $source = $this->createItem(LegacySoftware::class, ['name' => $this->getUniqueString(),
             'entities_id' => $entity, 'comment' => 'Existing source comment']);
-        $category = $this->createItem(\SoftwareCategory::class, ['name' => $this->getUniqueString()]);
-        $witness = $this->createItem(\DomainType::class, ['name' => $this->getUniqueString(),
+        $category = $this->createItem(SoftwareCategory::class, ['name' => $this->getUniqueString()]);
+        $witness = $this->createItem(DomainType::class, ['name' => $this->getUniqueString(),
             'entities_id' => $entity, 'comment' => 'before']);
         $readSource = static fn () => $connection->fetchAssociative('SELECT * FROM glpi_softwares WHERE id = ?', [$source->getID()]);
         $before = $readSource();
         $configuration = $CFG_GLPI;
-        $model = new class () extends \Software {
+        $model = new class () extends LegacySoftware {
             use SoftwarePreloadObserver;
         };
         try {
             $CFG_GLPI['softwarecategories_id_ondelete'] = $category->getID();
             foreach (['replace', 'replace-false', 'replace-throw', 'writer', 'false', 'throw', 'valid'] as $mode) {
-                $frame = \itsmng\Database\OwnedMutationFrame::begin($connection);
+                $frame = OwnedMutationFrame::begin($connection);
                 $replacement = null;
                 $session = $_SESSION;
                 $calls = 0;
-                $marker = new \RuntimeException('Merged source preload marker');
+                $marker = new RuntimeException('Merged source preload marker');
                 $primary = null;
                 $model->preloadCallback = function ($loadedModel, bool $loaded) use (
                     &$calls,
@@ -255,7 +272,7 @@ class Software extends DbTestCase
                     }
                     if (str_starts_with($mode, 'replace')) {
                         $connection->rollBack();
-                        $replacement = \itsmng\Database\OwnedMutationFrame::begin($connection);
+                        $replacement = OwnedMutationFrame::begin($connection);
                         $connection->update($witness->getTable(), ['comment' => 'replacement witness'], ['id' => $witness->getID()]);
                     } elseif ($mode === 'writer') {
                         $DB = clone $database;
@@ -270,13 +287,13 @@ class Software extends DbTestCase
                     $result = null;
                     try {
                         $result = $model->removeMergedSource((int)$source->getID(), 'Merged by regression');
-                    } catch (\Throwable $failure) {
+                    } catch (Throwable $failure) {
                         $error = $failure;
                     }
                     if ($mode === 'replace-throw') {
-                        $this->object($error)->isInstanceOf(\itsmng\Database\MutationCleanupFailure::class);
+                        $this->object($error)->isInstanceOf(MutationCleanupFailure::class);
                         $this->object($error->primary)->isIdenticalTo($marker);
-                        $this->object($error->cleanup)->isInstanceOf(\itsmng\Database\TransactionOwnershipMismatch::class);
+                        $this->object($error->cleanup)->isInstanceOf(TransactionOwnershipMismatch::class);
                         $this->boolean($error->rollbackUnproven)->isTrue();
                     } elseif ($mode === 'throw') {
                         $this->object($error)->isIdenticalTo($marker);
@@ -284,7 +301,7 @@ class Software extends DbTestCase
                         $this->variable($error)->isNull();
                         $this->boolean($result)->isIdenticalTo($mode === 'valid');
                     } else {
-                        $this->object($error)->isInstanceOf(\itsmng\Database\TransactionOwnershipMismatch::class);
+                        $this->object($error)->isInstanceOf(TransactionOwnershipMismatch::class);
                     }
                     if ($mode === 'valid') {
                         $stored = $readSource();
@@ -309,7 +326,7 @@ class Software extends DbTestCase
                         $frame->assertActive();
                     }
                     $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth + 1);
-                } catch (\Throwable $failure) {
+                } catch (Throwable $failure) {
                     $primary = $failure;
                     throw $failure;
                 } finally {
@@ -318,8 +335,8 @@ class Software extends DbTestCase
                     $_SESSION = $session;
                     try {
                         ($replacement ?? $frame)->rollBack();
-                    } catch (\Throwable $cleanup) {
-                        throw $primary === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($primary, $cleanup);
+                    } catch (Throwable $cleanup) {
+                        throw $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
                     }
                 }
                 $caller->assertActive();

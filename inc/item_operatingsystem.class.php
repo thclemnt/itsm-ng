@@ -1,5 +1,11 @@
 <?php
 
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Entity\ItemOperatingSystem;
+use itsmng\Database\Orm;
+use itsmng\Database\ReferenceValues;
+use itsmng\Database\Repository\OperatingSystemAssignmentRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access directly to this file");
 }
@@ -83,7 +89,7 @@ class Item_OperatingSystem extends CommonDBRelation
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\OperatingSystemAssignmentRepository(\itsmng\Database\Orm::create($DB)))
+        return (new OperatingSystemAssignmentRepository(Orm::create($DB)))
             ->forSubject($item->getType(), (int)$item->getID(), (string)($sort ?? 'glpi_items_operatingsystems.id'), (string)($order ?? 'ASC'));
     }
 
@@ -383,7 +389,7 @@ class Item_OperatingSystem extends CommonDBRelation
         $rows = (new self())->find(['itemtype' => $itemtype, 'items_id' => $oldid]);
         foreach ($rows as $row) {
             $input             = Toolbox::addslashes_deep($row);
-            $input = \itsmng\Database\Entity\ItemOperatingSystem::withReference($input, $newitemtype ?: $itemtype, (int)$newid);
+            $input = ItemOperatingSystem::withReference($input, $newitemtype ?: $itemtype, (int)$newid);
             unset($input["id"]);
             unset($input["date_mod"]);
             unset($input["date_creation"]);
@@ -736,7 +742,7 @@ class Item_OperatingSystem extends CommonDBRelation
     {
         global $DB;
 
-        $selections = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'];
+        $selections = EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'];
         $kind = array_key_exists('itemtype', $input) ? $input['itemtype'] : ($updating ? ($this->fields['itemtype'] ?? null) : null);
         if (!is_string($kind) || !isset($selections[$kind])) {
             return false;
@@ -747,8 +753,8 @@ class Item_OperatingSystem extends CommonDBRelation
             $input['items_id'] = $updating ? ($this->fields['items_id'] ?? null) : null;
         }
         try {
-            $input = (new \itsmng\Database\Entity\ItemOperatingSystem())->normalizeInput($input);
-        } catch (\InvalidArgumentException) {
+            $input = (new ItemOperatingSystem())->normalizeInput($input);
+        } catch (InvalidArgumentException) {
             return false;
         }
         $input['items_id'] = $input[$column];
@@ -764,8 +770,8 @@ class Item_OperatingSystem extends CommonDBRelation
         foreach (['operatingsystems_id', 'operatingsystemarchitectures_id'] as $component) {
             $components[$component] = array_key_exists($component, $input) ? $input[$component] : ($updating ? ($this->fields[$component] ?? null) : null);
         }
-        $components = \itsmng\Database\ReferenceValues::normalizeLegacy(static::getTable(), $components);
-        $repository = new \itsmng\Database\Repository\OperatingSystemAssignmentRepository(\itsmng\Database\Orm::create($DB));
+        $components = ReferenceValues::normalizeLegacy(static::getTable(), $components);
+        $repository = new OperatingSystemAssignmentRepository(Orm::create($DB));
         if ($repository->hasAssignment(
             $kind,
             (int)$input['items_id'],

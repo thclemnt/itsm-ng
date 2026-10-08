@@ -4,10 +4,14 @@
 
 namespace itsmng\Database\Repository;
 
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use LogicException;
+use ReflectionProperty;
 use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
+use itsmng\Database\Mapping\RackModel;
 
 /** Placement exclusions are global: an asset cannot occupy two physical locations. */
 final class PlacementRepository
@@ -51,9 +55,9 @@ final class PlacementRepository
             $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$target]);
             $models = [];
             foreach ($metadata->associationMappings as $property => $association) {
-                if ((new \ReflectionProperty($metadata->name, $property))->getAttributes(\itsmng\Database\Mapping\RackModel::class)) {
+                if ((new ReflectionProperty($metadata->name, $property))->getAttributes(RackModel::class)) {
                     if (!$association->isToOneOwningSide()) {
-                        throw new \LogicException('Rack dimensions require an owning model association: ' . $metadata->name);
+                        throw new LogicException('Rack dimensions require an owning model association: ' . $metadata->name);
                     }
                     $models[] = $property;
                 }
@@ -62,14 +66,14 @@ final class PlacementRepository
                 continue;
             }
             if (count($models) !== 1) {
-                throw new \LogicException('Ambiguous rack model association: ' . $metadata->name);
+                throw new LogicException('Ambiguous rack model association: ' . $metadata->name);
             }
             $query = $this->em->createQueryBuilder()
                 ->select('a.id AS asset_id', 'm.id AS model_id', 'm.required_units', 'm.depth')
                 ->from($metadata->name, 'a')
                 ->leftJoin('a.' . $models[0], 'm')
                 ->where('a.id IN (:assets)')
-                ->setParameter('assets', array_values(array_unique($identifiers)), \Doctrine\DBAL\ArrayParameterType::INTEGER);
+                ->setParameter('assets', array_values(array_unique($identifiers)), ArrayParameterType::INTEGER);
             if ($statistics) {
                 $query->addSelect('m.weight');
                 $modelMetadata = $this->em->getClassMetadata($metadata->getAssociationTargetClass($models[0]));
@@ -117,7 +121,7 @@ final class PlacementRepository
     public function clusterSelection(): array
     {
         $items = [];
-        foreach (\itsmng\Database\EntityRegistry::discriminatedReferences('glpi_items_clusters')['items_id']['selections'] as $kind => $selection) {
+        foreach (EntityRegistry::discriminatedReferences('glpi_items_clusters')['items_id']['selections'] as $kind => $selection) {
             $association = Entity\ItemCluster::referenceAssociation($kind);
             $rows = $this->em->createQueryBuilder()->select('IDENTITY(i.' . $association . ') AS id')
                 ->from(Entity\ItemCluster::class, 'i')->where('i.' . $association . ' IS NOT NULL')
