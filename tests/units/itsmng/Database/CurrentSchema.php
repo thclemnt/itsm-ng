@@ -24,20 +24,27 @@ use itsmng\Database\Entity\Config;
 use itsmng\Database\Entity\CronTask;
 use itsmng\Database\Entity\CronTaskLog;
 use itsmng\Database\Entity\DeviceBatteryModel;
+use itsmng\Database\Entity\DeviceBatteryType;
 use itsmng\Database\Entity\DeviceCaseModel;
+use itsmng\Database\Entity\DeviceCaseType;
 use itsmng\Database\Entity\DeviceControlModel;
 use itsmng\Database\Entity\DeviceDriveModel;
 use itsmng\Database\Entity\DeviceFirmwareModel;
+use itsmng\Database\Entity\DeviceFirmwareType;
 use itsmng\Database\Entity\DeviceGenericModel;
+use itsmng\Database\Entity\DeviceGenericType;
 use itsmng\Database\Entity\DeviceGraphicCardModel;
 use itsmng\Database\Entity\DeviceHardDriveModel;
 use itsmng\Database\Entity\DeviceMemoryModel;
+use itsmng\Database\Entity\DeviceMemoryType;
 use itsmng\Database\Entity\DeviceMotherBoardModel;
 use itsmng\Database\Entity\DeviceNetworkCardModel;
 use itsmng\Database\Entity\DevicePciModel;
 use itsmng\Database\Entity\DevicePowerSupplyModel;
 use itsmng\Database\Entity\DeviceProcessorModel;
 use itsmng\Database\Entity\DeviceSensorModel;
+use itsmng\Database\Entity\DeviceSensorType;
+use itsmng\Database\Entity\DeviceSimcardType;
 use itsmng\Database\Entity\DeviceSoundCardModel;
 use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\SchemaOwner;
@@ -248,6 +255,13 @@ class CurrentSchema extends \atoum\atoum\test
             ['glpi_deviceprocessormodels', 4, 3, [], []],
             ['glpi_devicesensormodels', 4, 3, [], []],
             ['glpi_devicesoundcardmodels', 4, 3, [], []],
+            ['glpi_devicebatterytypes', 5, 4, [], []],
+            ['glpi_devicecasetypes', 5, 4, [], []],
+            ['glpi_devicefirmwaretypes', 5, 4, [], []],
+            ['glpi_devicegenerictypes', 3, 2, [], []],
+            ['glpi_devicememorytypes', 5, 4, [], []],
+            ['glpi_devicesensortypes', 3, 2, [], []],
+            ['glpi_devicesimcardtypes', 5, 4, [], []],
             ['glpi_monitortypes', 5, 4, [], []],
             ['glpi_networkequipmenttypes', 5, 4, [], []],
             ['glpi_peripheraltypes', 5, 4, [], []],
@@ -548,6 +562,64 @@ class CurrentSchema extends \atoum\atoum\test
             }
             $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
             $this->boolean($manager->getConnection()->isConnected())->isFalse();
+        }
+    }
+
+    public function testDeviceTypePropertiesAndIndexesOwnCurrentExpectation(): void
+    {
+        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+            $manager = $this->manager($platform);
+            $frozen = (new Baseline())->build($platform)->toSql($platform);
+            $types = [];
+            foreach ([
+                DeviceBatteryType::class, DeviceCaseType::class, DeviceFirmwareType::class,
+                DeviceGenericType::class, DeviceMemoryType::class, DeviceSensorType::class,
+                DeviceSimcardType::class,
+            ] as $class) {
+                $metadata = $manager->getClassMetadata($class);
+                $table = $metadata->getTableName();
+                $name = $metadata->fieldMappings['name'];
+                $nullable = $name->nullable;
+                $default = $name->options['default'] ?? null;
+                $name->length = 173;
+                $name->nullable = !$nullable;
+                $name->options['default'] = 'Current device type';
+                $metadata->fieldMappings['comment']->type = Types::STRING;
+                $metadata->fieldMappings['comment']->length = 311;
+                $index = $platform instanceof PostgreSQLPlatform ? $table . '_name' : 'name';
+                unset($metadata->table['indexes'][$index]);
+                $metadata->table['indexes'][$table . '_current_label']['columns'] = ['name', 'comment'];
+                $types[] = [$metadata, $nullable, $default, $index];
+            }
+            $current = (new BaselineSchema($manager))->build($platform);
+            $freshManager = $this->manager($platform);
+            $fresh = (new BaselineSchema($freshManager))->build($platform);
+            foreach ($types as [$metadata, $nullable, $default, $index]) {
+                $table = $metadata->getTableName();
+                $declaration = $current->getTable($table);
+                $this->integer($declaration->getColumn('name')->getLength())->isIdenticalTo(173);
+                $this->boolean($declaration->getColumn('name')->getNotnull())->isIdenticalTo($nullable);
+                $this->string($declaration->getColumn('name')->getDefault())->isIdenticalTo('Current device type');
+                $this->string(Type::lookupName($declaration->getColumn('comment')->getType()))->isIdenticalTo(Types::STRING);
+                $this->integer($declaration->getColumn('comment')->getLength())->isIdenticalTo(311);
+                $this->boolean($declaration->hasIndex($index))->isFalse();
+                $this->array($declaration->getIndex($table . '_current_label')->getUnquotedColumns())->isIdenticalTo(['name', 'comment']);
+                $original = $fresh->getTable($table);
+                $this->integer($original->getColumn('name')->getLength())->isIdenticalTo(255);
+                $this->boolean($original->getColumn('name')->getNotnull())->isIdenticalTo(!$nullable);
+                $this->variable($original->getColumn('name')->getDefault())->isIdenticalTo($default);
+                $this->string(Type::lookupName($original->getColumn('comment')->getType()))->isIdenticalTo(Types::TEXT);
+                $this->boolean($original->hasIndex($index))->isTrue();
+                $this->boolean($original->hasIndex($table . '_current_label'))->isFalse();
+                unset($metadata->table['indexes'][$table . '_current_label'], $metadata->fieldMappings['comment']);
+            }
+            $removed = (new BaselineSchema($manager))->build($platform);
+            foreach ($types as [$metadata]) {
+                $this->boolean($removed->getTable($metadata->getTableName())->hasColumn('comment'))->isFalse();
+            }
+            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
+            $this->boolean($manager->getConnection()->isConnected())->isFalse();
+            $this->boolean($freshManager->getConnection()->isConnected())->isFalse();
         }
     }
 
