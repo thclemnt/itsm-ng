@@ -4,10 +4,25 @@
 
 namespace tests\units;
 
+use DBAdapter;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Result;
+use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use Doctrine\ORM\Event\OnClearEventArgs;
+use Doctrine\ORM\Events;
 use itsmng\Database\Entity as Record;
 use itsmng\Database\Orm;
 use itsmng\Database\OwnedMutationFrame;
 use itsmng\Database\Repository\ReservationRepository;
+use LogicException;
+use mock\tests\units\ReservationDisplayAdapterBase as ReservationDisplayAdapter;
+use ReflectionProperty;
+use SplObjectStorage;
 
 class Reservation extends \DbTestCase
 {
@@ -319,6 +334,108 @@ class Reservation extends \DbTestCase
                     ob_end_clean();
                 }
             };
+            // Empty public partitions require neither entity metadata nor a manager.
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $beforeFactories = $factories->getValue();
+            $this->string($render(0))->notContains('reservationitems_id=');
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+            $originalText = Type::getType(Types::TEXT);
+            try {
+                Type::overrideType(Types::TEXT, new ReservationDisplayTextType());
+                $convertedHtml = $render($user->id);
+                $this->string($convertedHtml)->contains('PAST BOUNDARY RESERVATION|php')
+                    ->contains(nl2br("CURRENT RESERVATION 24\nSECOND LINE|php"));
+                // The first partition keeps its selected route/scope; the second
+                // resolves again after display/Type callbacks have changed them.
+                ReservationDisplayTextType::$callback = static function () use ($original): void {
+                    $GLOBALS['DB'] = $original;
+                    $_SESSION['glpiactiveentities'] = [0];
+                };
+                $logger->reads = [];
+                $routed = $render($user->id);
+                $this->string($routed)->contains('CURRENT RESERVATION 0')
+                    ->notContains('PAST BOUNDARY RESERVATION')->notContains('OTHER ENTITY RESERVATION');
+                $this->object($DB)->isIdenticalTo($original);
+                $this->array($logger->reads['glpi_reservations'] ?? [])->hasSize(1);
+            } finally {
+                ReservationDisplayTextType::$callback = null;
+                Type::overrideType(Types::TEXT, $originalText);
+                $DB = $probe;
+                $_SESSION['glpiactiveentities'] = [$rootId, $childId];
+            }
+            $events = new EventManager();
+            $listener = new class () {
+                public int $loads = 0;
+                public int $clears = 0;
+                public int $otherClears = 0;
+                public SplObjectStorage $owners;
+                public function __construct()
+                {
+                    $this->owners = new SplObjectStorage();
+                }
+                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
+                {
+                    if ($event->getClassMetadata()->name === Record\Reservation::class) {
+                        $this->owners->offsetSet($event->getObjectManager());
+                    }
+                    if (in_array($event->getClassMetadata()->name, [Record\Reservation::class, Record\ReservationItem::class], true)) {
+                        ++$this->loads;
+                    }
+                }
+                public function onClear(OnClearEventArgs $event): void
+                {
+                    if ($this->owners->offsetExists($event->getObjectManager())) {
+                        ++$this->clears;
+                    } else {
+                        ++$this->otherClears;
+                    }
+                }
+            };
+            $events->addEventListener([Events::loadClassMetadata, Events::onClear], $listener);
+            $extendedConnection = new ReservationDisplayConnectionProbe($connection, $events);
+            // The generic connection extension requires the base adapter return
+            // type; a cloned DBpgsql retains its narrower PostgresConnection contract.
+            $this->mockGenerator->orphanize('__construct');
+            $extendedAdapter = new ReservationDisplayAdapter();
+            $this->calling($extendedAdapter)->getDoctrineConnection = $extendedConnection;
+            $this->calling($extendedAdapter)->getProvider = $probe->getProvider();
+            foreach (get_object_vars($probe) as $property => $value) {
+                if (property_exists($extendedAdapter, $property)) {
+                    $extendedAdapter->$property = $value;
+                }
+            }
+            try {
+                $DB = $extendedAdapter;
+                $beforeFactories = $factories->getValue();
+                $this->string($render(0))->notContains('reservationitems_id=');
+                $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(2);
+                $this->integer($listener->loads)->isIdenticalTo(4);
+                $this->integer(count($listener->owners))->isIdenticalTo(2);
+                $this->integer($listener->clears)->isIdenticalTo(0);
+                // A separate display owner still dispatches onClear through the
+                // shared EventManager; only reservation owners must remain uncleared.
+                $otherClears = $listener->otherClears;
+                $control = Orm::forConnection($extendedConnection);
+                $control->clear();
+                unset($control);
+                $this->integer($listener->otherClears - $otherClears)->isIdenticalTo(1);
+                // A second platform callback belongs after first-partition scope
+                // evaluation, as in the existing bare-manager display reader.
+                $extendedConnection->platformCalls = 0;
+                $extendedConnection->secondPlatform = static function (): void {
+                    $_SESSION['glpiactiveentities'] = [0];
+                };
+                $callbackHtml = $render($user->id);
+                $this->string($callbackHtml)->contains('Current reservation 0')
+                    ->notContains('Past boundary reservation')->notContains('Other entity reservation');
+                $this->integer(count($listener->owners))->isIdenticalTo(4);
+                $this->integer($listener->clears)->isIdenticalTo(0);
+            } finally {
+                $extendedConnection->secondPlatform = null;
+                $events->removeEventListener([Events::loadClassMetadata, Events::onClear], $listener);
+                $DB = $probe;
+                $_SESSION['glpiactiveentities'] = [$rootId, $childId];
+            }
             foreach (['Reservation Ada', 'Reservation Grace'] as $firstName) {
                 $connection->update('glpi_users', ['firstname' => $firstName], ['id' => $user->id]);
                 $connection->update('glpi_computers', ['name' => $firstName . ' asset'], ['id' => $assets[0]->id]);
@@ -483,13 +600,59 @@ class Reservation extends \DbTestCase
 
 final class ReservationDisplayTextType extends \Doctrine\DBAL\Types\TextType
 {
+    public static $callback = null;
+
     public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
     {
+        if (self::$callback !== null) {
+            $callback = self::$callback;
+            self::$callback = null;
+            $callback();
+        }
         return 'UPPER(' . $sqlExpr . ')';
     }
 
     public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): ?string
     {
         return $value === null ? null : (string)$value . '|php';
+    }
+}
+
+/** Atoum can implement the instance API; the display must use DBAL quoting. */
+abstract class ReservationDisplayAdapterBase extends DBAdapter
+{
+    public static function getQuoteNameChar(): string
+    {
+        throw new LogicException('Reservation display probe requires DBAL identifier quoting.');
+    }
+}
+
+/** A connection extension shares the owned fixture's real transaction. */
+class ReservationDisplayConnectionProbe extends Connection
+{
+    public int $platformCalls = 0;
+    public $secondPlatform = null;
+
+    public function __construct(private Connection $selected, private EventManager $events)
+    {
+        parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
+    }
+
+    public function getEventManager(): EventManager
+    {
+        return $this->events;
+    }
+
+    public function getDatabasePlatform(): AbstractPlatform
+    {
+        if (++$this->platformCalls === 2 && $this->secondPlatform !== null) {
+            ($this->secondPlatform)();
+        }
+        return $this->selected->getDatabasePlatform();
+    }
+
+    public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
+    {
+        return $this->selected->executeQuery($sql, $params, $types, $qcp);
     }
 }

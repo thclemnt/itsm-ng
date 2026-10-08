@@ -4,6 +4,8 @@
 
 namespace itsmng\Database\Repository;
 
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
@@ -51,36 +53,53 @@ final class ComponentRepository
         if ($reference !== null && !isset($reference['selections'][$type])) {
             return 0;
         }
-        $metadata = $mapping === null ? $this->em->getClassMetadata($class) : null;
+        if ($mapping !== null) {
+            return self::projectedCountForAsset($this->em->getConnection(), $table, $type, $id, $mapping);
+        }
+        $metadata = $this->em->getClassMetadata($class);
         $connection = $this->em->getConnection();
         $platform = $connection->getDatabasePlatform();
-        if ($mapping !== null) {
-            $identifier = static fn (array $name): string => $name[1] ? $platform->quoteSingleIdentifier($name[0]) : $name[0];
-            $column = static fn (string $field): string => 'r.' . $identifier($mapping['fields'][$field]);
-            $from = static fn (): string => $identifier($mapping['table']);
-            if ($reference === null) {
-                $subject = $column('items_id');
-            } else {
-                $join = $mapping['subjects'][$class::referenceAssociation($type)] ?? null;
-                if ($join === null) {
-                    throw new LogicException('Component counts require a single owning subject reference.');
-                }
-                $subject = 'r.' . $identifier($join);
-            }
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $column = static fn (string $field): string => 'r.' . $quote->getColumnName($field, $metadata, $platform);
+        $from = static fn (): string => $quote->getTableName($metadata, $platform);
+        if ($reference === null) {
+            $subject = $column('items_id');
         } else {
-            $quote = $this->em->getConfiguration()->getQuoteStrategy();
-            $column = static fn (string $field): string => 'r.' . $quote->getColumnName($field, $metadata, $platform);
-            $from = static fn (): string => $quote->getTableName($metadata, $platform);
-            if ($reference === null) {
-                $subject = $column('items_id');
-            } else {
-                $association = $metadata->associationMappings[$class::referenceAssociation($type)];
-                if (!$association->isToOneOwningSide() || count($association->joinColumns) !== 1) {
-                    throw new LogicException('Component counts require a single owning subject reference.');
-                }
-                $subject = 'r.' . $quote->getJoinColumnName($association->joinColumns[0], $metadata, $platform);
+            $association = $metadata->associationMappings[$class::referenceAssociation($type)];
+            if (!$association->isToOneOwningSide() || count($association->joinColumns) !== 1) {
+                throw new LogicException('Component counts require a single owning subject reference.');
             }
+            $subject = 'r.' . $quote->getJoinColumnName($association->joinColumns[0], $metadata, $platform);
         }
+        return self::executeCount($connection, $platform, $column, $from, $subject, $type, $id);
+    }
+
+    /** @internal The admitted immutable projection needs only the selected DBAL connection. */
+    public static function projectedCountForAsset(Connection $connection, string $table, string $type, int $id, array $mapping): int
+    {
+        $class = EntityRegistry::tables()[$table];
+        $reference = EntityRegistry::discriminatedReferences($table)['items_id'] ?? null;
+        if ($reference !== null && !isset($reference['selections'][$type])) {
+            return 0;
+        }
+        $platform = $connection->getDatabasePlatform();
+        $identifier = static fn (array $name): string => $name[1] ? $platform->quoteSingleIdentifier($name[0]) : $name[0];
+        $column = static fn (string $field): string => 'r.' . $identifier($mapping['fields'][$field]);
+        $from = static fn (): string => $identifier($mapping['table']);
+        if ($reference === null) {
+            $subject = $column('items_id');
+        } else {
+            $join = $mapping['subjects'][$class::referenceAssociation($type)] ?? null;
+            if ($join === null) {
+                throw new LogicException('Component counts require a single owning subject reference.');
+            }
+            $subject = 'r.' . $identifier($join);
+        }
+        return self::executeCount($connection, $platform, $column, $from, $subject, $type, $id);
+    }
+
+    private static function executeCount(Connection $connection, AbstractPlatform $platform, callable $column, callable $from, string $subject, string $type, int $id): int
+    {
         $asset = Type::getType(Types::BIGINT);
         $kind = Type::getType(Types::STRING);
         $deleted = Type::getType(Types::BOOLEAN);

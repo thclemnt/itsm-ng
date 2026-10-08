@@ -8,6 +8,8 @@ use Alert as LegacyAlert;
 use DateTime;
 use DateTimeImmutable;
 use Doctrine\DBAL\ArrayParameterType;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
@@ -56,57 +58,92 @@ final class ReservationRepository
         $quote = $this->em->getConfiguration()->getQuoteStrategy();
         $reservation = $this->em->getClassMetadata(Reservation::class);
         $item = $this->em->getClassMetadata($reservation->associationMappings['reservationitems']->targetEntity);
-        $reference = static function ($metadata, string $property, string $alias) use ($quote, $platform): string {
-            $mapping = $metadata->associationMappings[$property];
+        $metadata = ['r' => $reservation, 'i' => $item];
+        $reference = static function (string $alias, string $property) use ($metadata, $quote, $platform): string {
+            $record = $metadata[$alias];
+            $mapping = $record->associationMappings[$property];
             if (!$mapping->isToOneOwningSide() || count($mapping->joinColumns) !== 1) {
                 throw new LogicException('Reservation display requires single owning references');
             }
-            return $alias . '.' . $quote->getJoinColumnName($mapping->joinColumns[0], $metadata, $platform);
+            return $alias . '.' . $quote->getJoinColumnName($mapping->joinColumns[0], $record, $platform);
         };
-        $column = static fn ($metadata, string $property, string $alias): string => $alias . '.' . $quote->getColumnName($property, $metadata, $platform);
+        return self::userRows(
+            $connection,
+            $platform,
+            $user,
+            $now,
+            $past,
+            $entities,
+            static fn (string $alias, string $property): string => $alias . '.' . $quote->getColumnName($property, $metadata[$alias], $platform),
+            $reference,
+            static fn (string $alias): string => $quote->getTableName($metadata[$alias], $platform),
+            static fn (): string => $quote->getReferencedJoinColumnName($reservation->associationMappings['reservationitems']->joinColumns[0], $item, $platform),
+            static fn (string $alias, string $property): string => $metadata[$alias]->getTypeOfField($property),
+        );
+    }
+
+    /** @internal Private core display compiler; the mapping is derived from authoritative metadata. */
+    public static function projectedForUser(Connection $connection, array $mapping, int $user, string $now, bool $past, ?array $entities): array
+    {
+        $platform = $connection->getDatabasePlatform();
+        $identifier = static fn (array $field): string => $field[1] ? $platform->quoteSingleIdentifier($field[0]) : $field[0];
+        $join = $mapping['r']['references']['reservationitems'];
+        return self::userRows(
+            $connection,
+            $platform,
+            $user,
+            $now,
+            $past,
+            $entities,
+            static fn (string $alias, string $property): string => $alias . '.' . $identifier($mapping[$alias]['fields'][$property]),
+            static fn (string $alias, string $property): string => $alias . '.' . $identifier($mapping[$alias]['references'][$property]),
+            static fn (string $alias): string => $identifier($mapping[$alias]['table']),
+            static fn (): string => $identifier([$join[2], $join[1]]),
+            static fn (string $alias, string $property): string => $mapping[$alias]['fields'][$property][2],
+        );
+    }
+
+    private static function userRows(Connection $connection, AbstractPlatform $platform, int $user, string $now, bool $past, ?array $entities, callable $column, callable $reference, callable $table, callable $join, callable $fieldType): array
+    {
         $types = [];
-        $scalar = static function ($metadata, string $property, string $alias, string $result) use ($column, $platform, &$types): string {
-            $types[$result] = Type::getType($metadata->getTypeOfField($property));
-            return $types[$result]->convertToPHPValueSQL($column($metadata, $property, $alias), $platform)
+        $scalar = static function (string $alias, string $property, string $result) use ($column, $fieldType, $platform, &$types): string {
+            $types[$result] = Type::getType($fieldType($alias, $property));
+            return $types[$result]->convertToPHPValueSQL($column($alias, $property), $platform)
                 . ' AS ' . $platform->quoteIdentifier($result);
         };
         $integer = Type::getType(Types::INTEGER);
         $instant = Type::getType(Types::DATETIMETZ_MUTABLE);
         $query = $connection->createQueryBuilder()
             ->select(
-                $scalar($reservation, 'begin', 'r', 'begin'),
-                $scalar($reservation, 'end', 'r', 'end'),
-                $reference($reservation, 'users', 'r') . ' AS users_id',
-                $scalar($reservation, 'comment', 'r', 'comment'),
-                $scalar($item, 'id', 'i', 'reservationitems_id'),
-                $scalar($item, 'itemtype', 'i', 'itemtype'),
-                $scalar($item, 'items_id', 'i', 'items_id'),
-                $reference($item, 'entities', 'i') . ' AS entities_id'
+                $scalar('r', 'begin', 'begin'),
+                $scalar('r', 'end', 'end'),
+                $reference('r', 'users') . ' AS users_id',
+                $scalar('r', 'comment', 'comment'),
+                $scalar('i', 'id', 'reservationitems_id'),
+                $scalar('i', 'itemtype', 'itemtype'),
+                $scalar('i', 'items_id', 'items_id'),
+                $reference('i', 'entities') . ' AS entities_id'
             )
-            ->from($quote->getTableName($reservation, $platform), 'r')
+            ->from($table('r'), 'r')
             ->innerJoin(
                 'r',
-                $quote->getTableName($item, $platform),
+                $table('i'),
                 'i',
-                $reference($reservation, 'reservationitems', 'r') . ' = i.' . $quote->getReferencedJoinColumnName(
-                    $reservation->associationMappings['reservationitems']->joinColumns[0],
-                    $item,
-                    $platform
-                )
+                $reference('r', 'reservationitems') . ' = i.' . $join()
             )
             ->where(
-                $reference($reservation, 'users', 'r') . ' = ' . $integer->convertToDatabaseValueSQL(':user', $platform)
+                $reference('r', 'users') . ' = ' . $integer->convertToDatabaseValueSQL(':user', $platform)
             )
             ->andWhere(
-                $column($reservation, 'end', 'r') . ($past ? ' <= ' : ' > ')
+                $column('r', 'end') . ($past ? ' <= ' : ' > ')
                 . $instant->convertToDatabaseValueSQL(':now', $platform)
             )
             ->setParameter('user', $user, Types::INTEGER)
             ->setParameter('now', new DateTime($now), Types::DATETIMETZ_MUTABLE)
-            ->orderBy($column($reservation, 'begin', 'r'), $past ? 'DESC' : 'ASC')
-            ->addOrderBy($column($reservation, 'id', 'r'), 'ASC');
+            ->orderBy($column('r', 'begin'), $past ? 'DESC' : 'ASC')
+            ->addOrderBy($column('r', 'id'), 'ASC');
         if ($entities !== null) {
-            $query->andWhere($reference($item, 'entities', 'i') . ' IN (:entities)')
+            $query->andWhere($reference('i', 'entities') . ' IN (:entities)')
                 ->setParameter('entities', $entities ?: [-1], ArrayParameterType::INTEGER);
         }
         // Untyped DQL IDENTITY selections use the string hydration type.

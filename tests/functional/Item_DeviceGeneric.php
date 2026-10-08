@@ -53,15 +53,15 @@ use Doctrine\ORM\Query;
 use Item_DeviceGeneric as GenericDeviceLink;
 use Item_DeviceMemory;
 use Item_Devices;
-use LogicException;
-use ReflectionProperty;
-use Session;
 use itsmng\Database\ComponentCountReadOperation;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ComponentRepository;
+use LogicException;
 use mock\DBmysql as MockDatabase;
+use ReflectionProperty;
+use Session;
 
 class Item_DeviceGeneric extends DbTestCase
 {
@@ -261,14 +261,38 @@ class Item_DeviceGeneric extends DbTestCase
                 }
             }
             $this->integer($manager->getUnitOfWork()->size())->isIdenticalTo(0);
+            $before = $factories->getValue();
             $canonical = new ComponentCountReadOperation($connection);
             try {
                 $this->integer($canonical->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
-                $privateManager = (new ReflectionProperty($canonical, 'manager'))->getValue($canonical);
-                $this->integer(count($privateManager->getMetadataFactory()->getLoadedMetadata()))->isIdenticalTo(0);
+                $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+                $this->boolean((new ReflectionProperty($canonical, 'manager'))->isInitialized($canonical))->isFalse();
+                $this->integer($canonical->countForAsset([], 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
+                $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+                // A missing optional projection falls back lazily on the same owner.
+                $registry = new ReflectionProperty(EntityRegistry::class, 'model');
+                $originalModel = $registry->getValue();
+                $withoutProjection = $originalModel;
+                unset($withoutProjection['component_counts'][$tables[0]]);
+                $registry->setValue(null, $withoutProjection);
+                try {
+                    $this->integer($canonical->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
+                    $this->integer($factories->getValue() - $before)->isIdenticalTo(1);
+                    $this->integer($canonical->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
+                    $this->integer($factories->getValue() - $before)->isIdenticalTo(1);
+                } finally {
+                    $registry->setValue(null, $originalModel);
+                }
+
             } finally {
                 $canonical->close();
             }
+            $before = $factories->getValue();
+            $unused = new ComponentCountReadOperation($connection);
+            $unused->close();
+            $unused->close();
+            unset($unused);
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
             $native = new ComponentCountReadOperation($probe);
             $bigint = Type::getType('bigint');
             $string = Type::getType('string');
@@ -455,7 +479,7 @@ class Item_DeviceGeneric extends DbTestCase
             $GLPI_CACHE->set('item_device_affinities', ['' => $affinities, 'Computer' => $affinities]);
             $before = $factories->getValue();
             $this->string($tab->getTabNameForItem($asset))->isIdenticalTo($expected);
-            $this->integer($factories->getValue() - $before)->isIdenticalTo(1);
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
             $this->integer($routes)->isIdenticalTo(1);
         } finally {
             $manager?->clear();

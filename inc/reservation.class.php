@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\ReferenceValues;
+use itsmng\Database\Repository\ReservationRepository;
+use itsmng\Database\ReservationUserReadOperation;
+use itsmng\Reporting\Criteria;
 use itsmng\Timezone;
 
 if (!defined('GLPI_ROOT')) {
@@ -236,10 +241,10 @@ class Reservation extends CommonDBChild
     }
 
 
-    private static function repository(): \itsmng\Database\Repository\ReservationRepository
+    private static function repository(): ReservationRepository
     {
         global $DB;
-        return new \itsmng\Database\Repository\ReservationRepository(\itsmng\Database\Orm::create($DB));
+        return new ReservationRepository(Orm::create($DB));
     }
 
     private static function reservationUserName(array $row, bool $link = false): string
@@ -341,7 +346,7 @@ class Reservation extends CommonDBChild
         $owner = $this->fields['users_id'] ?? null;
         // Empty selection is also used while opening a new form. A selected
         // borrower follows the same self-or-administrator policy as its POST.
-        if ($owner !== null && !\itsmng\Database\ReferenceValues::isEmptySelection($owner)) {
+        if ($owner !== null && !ReferenceValues::isEmptySelection($owner)) {
             $ownerId = (is_int($owner) || is_string($owner))
                 ? filter_var($owner, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) : false;
             if ($ownerId === false || ($ownerId !== Session::getLoginUserID()
@@ -1249,8 +1254,8 @@ class Reservation extends CommonDBChild
         $now = $_SESSION["glpi_currenttime"];
 
         // Print reservation in progress
-        $rows = (new \itsmng\Database\Repository\ReservationRepository(\itsmng\Database\Orm::create($DB)))
-            ->nativeForUser((int)$ID, $now, false, \itsmng\Reporting\Criteria::entities());
+        $rows = ReservationUserReadOperation::forDatabase($DB)
+            ->forUser((int)$ID, $now, false, Criteria::entities());
 
         $entityNames = [];
         $userName = null;
@@ -1302,8 +1307,8 @@ class Reservation extends CommonDBChild
         echo "</table></div>\n";
 
         // Print old reservations
-        $rows = (new \itsmng\Database\Repository\ReservationRepository(\itsmng\Database\Orm::create($DB)))
-            ->nativeForUser((int)$ID, $now, true, \itsmng\Reporting\Criteria::entities());
+        $rows = ReservationUserReadOperation::forDatabase($DB)
+            ->forUser((int)$ID, $now, true, Criteria::entities());
 
         echo "<div class='spaced'>";
         echo "<table class='tab_cadre_fixehov' aria-label='Past Reservations'>";

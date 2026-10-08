@@ -36,7 +36,16 @@ namespace tests\units;
 use DBmysqlIterator;
 use DbTestCase;
 use DbUtils as DbUtilsModel;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Result;
+use Doctrine\DBAL\Types\BigIntType;
+use Doctrine\DBAL\Types\TextType;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\Events;
 use Entity;
 use itsmng\Database\Entity\Computer;
 use itsmng\Database\Entity\Entity as EntityRecord;
@@ -45,7 +54,11 @@ use itsmng\Database\Entity\Monitor;
 use itsmng\Database\Entity\Printer;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\AutoNameRepository;
+use itsmng\Database\Repository\TreeRepository;
+use itsmng\Database\TreeReadOperation;
 use Location;
+use LogicException;
+use ReflectionProperty;
 use Software;
 use Toolbox;
 use User;
@@ -985,6 +998,97 @@ class DbUtils extends DbTestCase
         $DB->update('glpi_entities', ['ancestors_cache' => null], [true]);
         $this->runGetAncestorsOf();
 
+        $connection = $DB->getDoctrineConnection();
+        $manager = Orm::forConnection($connection);
+        $repository = new TreeRepository($manager);
+        $reader = new TreeReadOperation($connection);
+        try {
+            foreach ([0, (int)getItemByTypeName('Entity', '_test_root_entity', true)] as $id) {
+                foreach ([['sons_cache'], ['id', 'ancestors_cache', 'entities_id'], ['entities_id']] as $fields) {
+                    $this->array($reader->rows('glpi_entities', $fields, ['id' => $id]))
+                        ->isIdenticalTo($repository->pointRows('glpi_entities', $fields, ['id' => $id]));
+                }
+            }
+            $privateManager = (new ReflectionProperty($reader, 'manager'))->getValue($reader);
+            $this->integer(count($privateManager->getMetadataFactory()->getLoadedMetadata()))->isIdenticalTo(0);
+            $ids = [0, (string)$id, $id, null];
+            $this->array($reader->rows('glpi_entities', ['id', 'entities_id'], ['id' => $ids]))
+                ->isIdenticalTo($repository->pointRows('glpi_entities', ['id', 'entities_id'], ['id' => $ids]));
+            $bigint = Type::getType(Types::BIGINT);
+            $text = Type::getType(Types::TEXT);
+            try {
+                $shifted = new class () extends BigIntType {
+                    public int $calls = 0;
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        ++$this->calls;
+                        return '(' . $sqlExpr . ' + 1000000)';
+                    }
+                };
+                Type::overrideType(Types::BIGINT, $shifted);
+                $this->array($reader->rows('glpi_entities', ['id'], ['id' => $ids]))->isEmpty();
+                $this->array($repository->pointRows('glpi_entities', ['id'], ['id' => $ids]))->isEmpty();
+                $this->integer($shifted->calls)->isIdenticalTo(2 * count($ids));
+                Type::overrideType(Types::BIGINT, $bigint);
+                Type::overrideType(Types::TEXT, new class () extends TextType {
+                    public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return "'[]'";
+                    }
+                    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
+                    {
+                        throw new LogicException('A tree scalar alias must remain a raw value.');
+                    }
+                });
+                $raw = $reader->rows('glpi_entities', ['ancestors_cache', 'sons_cache'], ['id' => 0]);
+                $this->array($raw)->isIdenticalTo($repository->pointRows('glpi_entities', ['ancestors_cache', 'sons_cache'], ['id' => 0]));
+                $this->string($raw[0]['ancestors_cache'])->isIdenticalTo('[]');
+                $this->string($raw[0]['sons_cache'])->isIdenticalTo('[]');
+            } finally {
+                Type::overrideType(Types::BIGINT, $bigint);
+                Type::overrideType(Types::TEXT, $text);
+            }
+            $this->integer(count($privateManager->getMetadataFactory()->getLoadedMetadata()))->isIdenticalTo(0);
+            // An unrelated field and explicit ordering keep their existing paths.
+            $this->array($reader->rows('glpi_entities', ['name'], ['id' => 0]))
+                ->isIdenticalTo($repository->pointRows('glpi_entities', ['name'], ['id' => 0]));
+            $this->integer(count($privateManager->getMetadataFactory()->getLoadedMetadata()))->isGreaterThan(0);
+            $this->array($reader->rows('glpi_entities', ['id'], ['id' => [0, $id]], ['id DESC']))
+                ->isIdenticalTo($repository->rows('glpi_entities', ['id'], ['id' => [0, $id]], ['id DESC']));
+
+            $events = new EventManager();
+            $extended = new class ($connection, $events) extends TreePointConnectionProbe {
+                public function __construct(Connection $selected, private EventManager $events)
+                {
+                    parent::__construct($selected);
+                }
+                public function getEventManager(): EventManager
+                {
+                    return $this->events;
+                }
+            };
+            $local = new TreeReadOperation($extended);
+            $listener = new class () {
+                public int $loads = 0;
+                public function loadClassMetadata(): void
+                {
+                    ++$this->loads;
+                }
+            };
+            $events->addEventListener([Events::loadClassMetadata], $listener);
+            try {
+                $this->array($local->rows('glpi_entities', ['id', 'entities_id'], ['id' => 0]))
+                    ->isIdenticalTo($repository->rows('glpi_entities', ['id', 'entities_id'], ['id' => 0]));
+                $this->integer($listener->loads)->isGreaterThan(0);
+            } finally {
+                $events->removeEventListener([Events::loadClassMetadata], $listener);
+                $local->close();
+            }
+        } finally {
+            $reader->close();
+            $manager->clear();
+        }
+
         $this->integer(
             countElementsInTable(
                 'glpi_entities',
@@ -1534,5 +1638,24 @@ class DbUtils extends DbTestCase
         } finally {
             $CFG_GLPI['use_autoname_by_entity'] = $savedConfiguration;
         }
+    }
+}
+
+/** Connection extension keeps reads inside the existing fixture transaction. */
+class TreePointConnectionProbe extends Connection
+{
+    public function __construct(private Connection $selected)
+    {
+        parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
+    }
+
+    public function getDatabasePlatform(): AbstractPlatform
+    {
+        return $this->selected->getDatabasePlatform();
+    }
+
+    public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
+    {
+        return $this->selected->executeQuery($sql, $params, $types, $qcp);
     }
 }

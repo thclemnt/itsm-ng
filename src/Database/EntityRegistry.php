@@ -49,6 +49,18 @@ final class EntityRegistry
         return self::model()['component_counts'][$table] ?? null;
     }
 
+    /** Sparse physical fields for the fixed reservation/user display projection. */
+    public static function reservationUserMapping(): ?array
+    {
+        return self::model()['reservation_user'] ?? null;
+    }
+
+    /** Cache fields and owning self-parent names for private tree point reads. */
+    public static function treePointMapping(string $table): ?array
+    {
+        return self::model()['tree_points'][$table] ?? null;
+    }
+
     public static function booleanColumns(): array
     {
         return self::model()['booleans'];
@@ -153,6 +165,41 @@ final class EntityRegistry
         return self::$model = self::buildModel();
     }
 
+    private static function reservationUserProjection(EntityManager $manager): ?array
+    {
+        $reservation = $manager->getClassMetadata(Entity\Reservation::class);
+        $owner = $reservation->associationMappings['reservationitems'] ?? null;
+        if ($owner === null || !$owner->isToOneOwningSide() || count($owner->joinColumns) !== 1) {
+            return null;
+        }
+        $item = $manager->getClassMetadata($owner->targetEntity);
+        $projection = [];
+        foreach (['r' => [$reservation, ['id', 'begin', 'end', 'comment'], ['users', 'reservationitems']],
+            'i' => [$item, ['id', 'itemtype', 'items_id'], ['entities']]] as $alias => [$metadata, $fields, $references]) {
+            if (!$metadata->isInheritanceTypeNone() || $metadata->identifier !== ['id'] || !empty($metadata->table['schema'])) {
+                return null;
+            }
+            $part = ['table' => [$metadata->table['name'], isset($metadata->table['quoted'])], 'fields' => [], 'references' => []];
+            foreach ($fields as $property) {
+                if (!$metadata->hasField($property)) {
+                    return null;
+                }
+                $field = $metadata->fieldMappings[$property];
+                $part['fields'][$property] = [$field->columnName, isset($field->quoted), $field->type];
+            }
+            foreach ($references as $property) {
+                $reference = $metadata->associationMappings[$property] ?? null;
+                if ($reference === null || !$reference->isToOneOwningSide() || count($reference->joinColumns) !== 1) {
+                    return null;
+                }
+                $join = $reference->joinColumns[0];
+                $part['references'][$property] = [$join->name, isset($join->quoted), $join->referencedColumnName];
+            }
+            $projection[$alias] = $part;
+        }
+        return $projection;
+    }
+
     private static function buildModel(): array
     {
         // Mapping inspection must also work before installation. The explicit
@@ -164,7 +211,7 @@ final class EntityRegistry
         $metadata = $em->getMetadataFactory()->getAllMetadata();
         $nativeTimestamps = NativeTimestampSchema::declarations($metadata);
         $legacyTables = $tables = $types = $enums = $booleans = $booleanFields = $relations = $references = $discriminators = $lifecycle = $readOnly = $scopeOwners = [];
-        $scalarIdentifiers = $componentCounts = [];
+        $scalarIdentifiers = $componentCounts = $treePoints = [];
         foreach ($metadata as $record) {
             if (count($record->identifier) === 1) {
                 $identifier = $record->getSingleIdentifierFieldName();
@@ -191,6 +238,28 @@ final class EntityRegistry
                     $countMapping['fields'][$property] = [$field->columnName, isset($field->quoted)];
                 }
                 $componentCounts[$table] = $countMapping;
+            }
+            if ($record->identifier === ['id'] && $record->hasField('id')
+                && $record->isInheritanceTypeNone() && empty($record->table['schema'])) {
+                $fields = [];
+                foreach (['id', 'sons_cache', 'ancestors_cache'] as $property) {
+                    if ($record->hasField($property)) {
+                        $field = $record->fieldMappings[$property];
+                        $fields[$field->columnName] = [$field->columnName, isset($field->quoted), $field->type];
+                    }
+                }
+                foreach ($record->associationMappings as $association) {
+                    if ($association->isToOneOwningSide() && count($association->joinColumns) === 1
+                        && $association->targetEntity === $record->name) {
+                        $join = $association->joinColumns[0];
+                        $fields[$join->name] = [$join->name, isset($join->quoted), null];
+                    }
+                }
+                // A plain identifier alone is not a tree projection.
+                if (count($fields) > 1) {
+                    $treePoints[$table] = ['table' => [$record->table['name'], isset($record->table['quoted'])],
+                        'identifier' => $record->getColumnName('id'), 'fields' => $fields];
+                }
             }
             foreach ($record->fieldMappings as $mapping) {
                 $types[$table][$mapping->columnName] = $mapping->type;
@@ -323,10 +392,11 @@ final class EntityRegistry
             unset($columns);
         }
         unset($children);
+        $reservationUser = self::reservationUserProjection($em);
         $connection->close();
         // Only immutable lookup projections survive bootstrap, not the offline unit of work.
         unset($em, $metadata, $record);
         gc_collect_cycles();
-        return ['legacy_tables' => $legacyTables, 'tables' => $tables, 'types' => $types, 'enums' => $enums, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners, 'native_timestamps' => $nativeTimestamps, 'scalar_identifiers' => $scalarIdentifiers, 'component_counts' => $componentCounts];
+        return ['legacy_tables' => $legacyTables, 'tables' => $tables, 'types' => $types, 'enums' => $enums, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners, 'native_timestamps' => $nativeTimestamps, 'scalar_identifiers' => $scalarIdentifiers, 'component_counts' => $componentCounts, 'reservation_user' => $reservationUser, 'tree_points' => $treePoints];
     }
 }

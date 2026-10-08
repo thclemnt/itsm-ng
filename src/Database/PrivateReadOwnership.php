@@ -7,6 +7,7 @@ namespace itsmng\Database;
 use Composer\InstalledVersions;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Types\Type as DbalType;
+use Doctrine\ORM\Configuration;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\Mapping\ClassMetadata;
@@ -41,9 +42,14 @@ trait PrivateReadOwnership
     {
         $this->connection = $connection;
         $this->manager = Orm::forConnection($connection);
+        $this->ownedMapping = self::ownsReadMapping($connection);
+    }
+
+    private static function ownsReadMapping(Connection $connection): bool
+    {
         $platformFile = (new ReflectionClass($connection->getDatabasePlatform()))->getFileName();
         $dbalPath = InstalledVersions::getInstallPath('doctrine/dbal');
-        $this->ownedMapping = $platformFile !== false && $dbalPath !== null
+        return $platformFile !== false && $dbalPath !== null
             && ($platformFile = realpath($platformFile)) !== false
             && ($dbalPath = realpath($dbalPath)) !== false
             && str_starts_with($platformFile, $dbalPath . '/src/Platforms/')
@@ -53,14 +59,14 @@ trait PrivateReadOwnership
             && !method_exists($connection, 'getEventManager');
     }
 
-    private function initializeReadCaches(): void
+    private function initializeReadCaches(?Configuration $configuration = null): void
     {
         if ($this->readCachesInitialized) {
             return;
         }
         $this->readCachesInitialized = true;
         $connection = $this->connection;
-        $configuration = $this->manager->getConfiguration();
+        $configuration ??= $this->manager->getConfiguration();
         $this->pool = $this->ownedMapping ? ($GLOBALS['GLPI_CACHE'] ?? null) : null;
         $this->identifiers = $this->ownedMapping ? EntityRegistry::scalarIdentifiers() : [];
         if ($this->pool instanceof CacheInterface && ($fingerprint = MappingFingerprint::current()) !== null) {
