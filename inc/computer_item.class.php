@@ -32,6 +32,9 @@
  */
 
 use itsmng\Database\DeletionUnit;
+use itsmng\Database\LifecycleModelJournal;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\TransactionOwnershipMismatch;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -675,43 +678,98 @@ class Computer_Item extends CommonDBRelation
      * Unglobalize an item : duplicate item and connections
      *
      * @param $item   CommonDBTM object to unglobalize
+     * @return bool Whether every required change completed
     **/
-    public static function unglobalizeItem(CommonDBTM $item)
+    public static function unglobalizeItem(CommonDBTM $item): bool
     {
         global $DB;
 
-        // Update item to unit management :
-        if ($item->getField('is_global')) {
-            $input = ['id'        => $item->fields['id'],
-                           'is_global' => 0];
-            $item->update($input);
+        if (!$item->getField('is_global')) {
+            return false;
+        }
 
-            // Get connect_wire for this connection
-            $iterator = $DB->request([
-               'SELECT' => ['id'],
-               'FROM'   => self::getTable(),
-               'WHERE'  => [
-                  'items_id'  => $item->getID(),
-                  'itemtype'  => $item->getType()
-               ]
-            ]);
+        $writer = $DB;
+        $connection = $writer->getDoctrineConnection();
+        $itemId = $item->getID();
+        $itemType = $item->getType();
+        return OwnershipUpdateUnit::run($writer, $item, $item->fields, static function () use (
+            $writer,
+            $connection,
+            $item,
+            $itemId,
+            $itemType
+        ): bool {
+            $scope = $connection->captureManagedTransactionScope();
+            $level = $connection->getTransactionNestingLevel();
+            $assertWriter = static function () use ($writer, $connection, $scope, $level): void {
+                $scope->assertActive();
+                if ($writer !== ($GLOBALS['DB'] ?? null)
+                    || $writer->getDoctrineConnection() !== $connection
+                    || $connection->getTransactionNestingLevel() !== $level) {
+                    throw new TransactionOwnershipMismatch('Unglobalize changed its supplied writer or frame.');
+                }
+            };
+            OwnershipUpdateUnit::assertTransactionalStorage($writer, $item->getTable());
+            OwnershipUpdateUnit::assertTransactionalStorage($writer, self::getTable());
 
-            $first = true;
-            while ($data = $iterator->next()) {
-                if ($first) {
-                    $first = false;
-                    unset($input['id']);
-                    $conn = new self();
-                } else {
-                    $temp = clone $item;
-                    unset($temp->fields['id']);
-                    if ($newID = $temp->add($temp->fields)) {
-                        $conn->update(['id'       => $data['id'],
-                                       'items_id' => $newID]);
-                    }
+            $connections = iterator_to_array($writer->request([
+                'SELECT' => ['id', 'computers_id'],
+                'FROM' => self::getTable(),
+                'WHERE' => ['items_id' => $itemId, 'itemtype' => $itemType],
+                'ORDER' => 'id',
+            ]));
+            $toMove = array_slice($connections, 1);
+            $conn = new self();
+            LifecycleModelJournal::capture($connection, $conn);
+            foreach ($toMove as $data) {
+                $allowed = $conn->can($data['id'], UPDATE);
+                $assertWriter();
+                if (!$allowed) {
+                    return false;
                 }
             }
-        }
+
+            $updated = $item->update(['id' => $itemId, 'is_global' => 0]);
+            $assertWriter();
+            if (!$updated) {
+                return false;
+            }
+            $loaded = $item->getFromDB($itemId);
+            $assertWriter();
+            if (!$loaded || $item->getID() != $itemId || $item->getField('is_global')) {
+                return false;
+            }
+
+            foreach ($toMove as $data) {
+                $temp = clone $item;
+                unset($temp->fields['id']);
+                LifecycleModelJournal::capture($connection, $temp);
+                $newId = $temp->add($temp->fields);
+                $assertWriter();
+                if (!$newId) {
+                    return false;
+                }
+                $loaded = $temp->getFromDB($newId);
+                $assertWriter();
+                if (!$loaded || $temp->getID() != $newId || $temp->getField('is_global')) {
+                    return false;
+                }
+                $updated = $conn->update(['id' => $data['id'], 'items_id' => $newId]);
+                $assertWriter();
+                if (!$updated) {
+                    return false;
+                }
+                $loaded = $conn->getFromDB($data['id']);
+                $assertWriter();
+                if (!$loaded || $conn->getID() != $data['id']
+                    || $conn->getField('items_id') != $newId
+                    || $conn->getField('computers_id') != $data['computers_id']
+                    || $conn->getField('itemtype') !== $itemType) {
+                    return false;
+                }
+            }
+            return true;
+        }, guardWriter: true);
     }
 
 

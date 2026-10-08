@@ -4,6 +4,8 @@
 
 namespace itsmng\Database;
 
+use DBAdapter;
+use Doctrine\DBAL\Connection;
 use Doctrine\ORM\Configuration;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Proxy\ProxyFactory;
@@ -18,18 +20,20 @@ final class Orm
      * A unit of work never outlives an application operation: legacy writers do
      * not notify Doctrine's identity map. The connection and transaction are shared.
      */
-    public static function create(\DBAdapter $db): EntityManager
+    public static function create(DBAdapter $db): EntityManager
     {
-        return self::forConnection($db->getDoctrineConnection());
+        $connection = $db->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($db, $connection);
+        return self::forConnection($connection);
     }
 
     /** Construct on the operation's already selected route without resolving it again. */
-    public static function forConnection(\Doctrine\DBAL\Connection $connection): EntityManager
+    public static function forConnection(Connection $connection): EntityManager
     {
         return self::manager($connection, self::configuration($connection->getDatabasePlatform()));
     }
 
-    private static function manager(\Doctrine\DBAL\Connection $connection, Configuration $configuration): EntityManager
+    private static function manager(Connection $connection, Configuration $configuration): EntityManager
     {
         // A metadata factory and its unit of work refer back to their manager.
         // After bulk mapping inspection PHP raises its automatic GC threshold;
@@ -42,7 +46,7 @@ final class Orm
     }
 
     /** One current model-row operation; only its scalar branch owns a private compiled plan. */
-    public static function readRecord(\DBAdapter $db, string $table, string $column, int $id): ?array
+    public static function readRecord(DBAdapter $db, string $table, string $column, int $id): ?array
     {
         $operation = new RecordReadOperation($db->getDoctrineConnection());
         try {

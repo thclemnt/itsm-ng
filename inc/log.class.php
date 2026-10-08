@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\HistoryRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -218,6 +222,8 @@ class Log extends CommonDBTM
     {
         global $DB;
 
+        OwnershipUpdateUnit::assertWriter($DB);
+
         if (!isset($_SESSION["glpi_currenttime"])) {
             $date = date('Y-m-d H:i:s');
             $_SESSION['glpi_currenttime'] = $date;
@@ -272,7 +278,8 @@ class Log extends CommonDBTM
            'old_value'         => $old_value,
            'new_value'         => $new_value
         ];
-        return $_SESSION['glpi_maxhistory'] = (new \itsmng\Database\Repository\HistoryRepository(\itsmng\Database\Orm::create($DB)))->append($params);
+        OwnershipUpdateUnit::assertWriter($DB);
+        return $_SESSION['glpi_maxhistory'] = (new HistoryRepository(Orm::create($DB)))->append($params);
     }
 
 

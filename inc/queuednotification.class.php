@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\LifecycleNotifications;
+use itsmng\Database\OwnershipUpdateUnit;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -598,8 +601,14 @@ class QueuedNotification extends CommonDBTM
     {
         global $DB;
 
-        if ($DB instanceof DBAdapter && \itsmng\Database\LifecycleNotifications::defer($DB->getDoctrineConnection(), (string)$itemtype, (int)$items_id)) {
-            return;
+        if ($DB instanceof DBAdapter) {
+            $writer = $DB;
+            OwnershipUpdateUnit::assertWriter($writer);
+            $connection = $writer->getDoctrineConnection();
+            OwnershipUpdateUnit::assertResolvedWriter($writer, $connection);
+            if (LifecycleNotifications::defer($connection, (string)$itemtype, (int)$items_id)) {
+                return;
+            }
         }
         if (
             !empty($itemtype)

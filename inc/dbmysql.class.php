@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\OwnershipUpdateUnit;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -137,7 +139,9 @@ class DBmysql extends DBAdapter
      */
     public function escape($string)
     {
-        return substr($this->getDoctrineConnection()->quote((string)$string), 1, -1);
+        $connection = $this->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($this, $connection);
+        return substr($connection->quote((string)$string), 1, -1);
     }
 
     /**
@@ -161,7 +165,11 @@ class DBmysql extends DBAdapter
     /** Compatibility execution boundary; application repositories bind through ORM. */
     public function queryParams(string $query, array $values)
     {
-        return $this->executeResult($query, fn () => $this->getDoctrineConnection()->executeQuery($query, $values));
+        return $this->executeResult($query, function () use ($query, $values) {
+            $connection = $this->getDoctrineConnection();
+            OwnershipUpdateUnit::assertResolvedWriter($this, $connection);
+            return $connection->executeQuery($query, $values);
+        });
     }
 
     public function executePrepared(\Doctrine\DBAL\Statement $statement, string $query)
@@ -305,7 +313,9 @@ class DBmysql extends DBAdapter
     public function insertId()
     {
         try {
-            return (int)$this->getDoctrineConnection()->lastInsertId();
+            $connection = $this->getDoctrineConnection();
+            OwnershipUpdateUnit::assertResolvedWriter($this, $connection);
+            return (int)$connection->lastInsertId();
         } catch (\Doctrine\DBAL\Exception\DriverException $error) {
             if ($error->getPrevious() instanceof \Doctrine\DBAL\Driver\Exception\NoIdentityValue) {
                 return 0;

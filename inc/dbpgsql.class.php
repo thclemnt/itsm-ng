@@ -6,6 +6,7 @@ if (!defined('GLPI_ROOT')) {
 }
 
 use itsmng\Database\LegacySql;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\PostgresStatement;
 
 class DBpgsql extends DBAdapter
@@ -109,12 +110,20 @@ class DBpgsql extends DBAdapter
             }
         }
         [$sql, $values] = \itsmng\Database\PostgresParameters::bind($sql, $values);
-        return $this->executeResult($sql, fn () => $this->getDoctrineConnection()->executeLegacyQuery($sql, $values));
+        return $this->executeResult($sql, function () use ($sql, $values) {
+            $connection = $this->getDoctrineConnection();
+            OwnershipUpdateUnit::assertResolvedWriter($this, $connection);
+            return $connection->executeLegacyQuery($sql, $values);
+        });
     }
 
     public function executePrepared(\Doctrine\DBAL\Driver\Statement $statement, string $sql, array $values, array $types)
     {
-        return $this->executeResult($sql, fn () => $this->getDoctrineConnection()->executeLegacyStatement($statement, $sql, $values, $types));
+        return $this->executeResult($sql, function () use ($statement, $sql, $values, $types) {
+            $connection = $this->getDoctrineConnection();
+            OwnershipUpdateUnit::assertResolvedWriter($this, $connection);
+            return $connection->executeLegacyStatement($statement, $sql, $values, $types);
+        });
     }
 
     private function executeResult(string $sql, callable $execute)

@@ -759,7 +759,11 @@ class CommonDBTM extends CommonGLPI
     {
         global $DB;
 
+        $writer = $DB;
+        OwnershipUpdateUnit::assertWriter($writer);
+
         $mapped = MappedStorage::supports($this->getTable());
+        OwnershipUpdateUnit::assertWriter($writer);
         $changedColumns = [];
         if ($mapped) {
             $values = [];
@@ -769,11 +773,15 @@ class CommonDBTM extends CommonGLPI
                 }
             }
             if ($values) {
-                $changedColumns = (new MappedStorage($DB))->update(
-                    $this->getTable(),
+                $producer = new MappedStorage($DB);
+                $table = $this->getTable();
+                OwnershipUpdateUnit::assertWriter($writer);
+                $changedColumns = $producer->update(
+                    $table,
                     (int)$this->fields['id'],
                     $values
                 );
+                OwnershipUpdateUnit::assertWriter($writer);
             }
         }
 
@@ -782,9 +790,13 @@ class CommonDBTM extends CommonGLPI
                 if ($mapped) {
                     $changed = in_array($field, $changedColumns, true);
                 } else {
-                    if (!$DB->update($this->getTable(), [$field => $this->fields[$field]], ['id' => $this->fields['id']])) {
+                    $producer = $DB;
+                    $table = $this->getTable();
+                    OwnershipUpdateUnit::assertWriter($writer);
+                    if (!$producer->update($table, [$field => $this->fields[$field]], ['id' => $this->fields['id']])) {
                         return false;
                     }
+                    OwnershipUpdateUnit::assertWriter($writer);
                     $changed = $DB->affectedRows() > 0;
                 }
                 if (!$changed) {
@@ -803,6 +815,7 @@ class CommonDBTM extends CommonGLPI
         if (count($oldvalues)) {
             // History callbacks can mutate the model; reload the persisted source.
             $updatedId = $this->getID();
+            OwnershipUpdateUnit::assertWriter($writer);
             Log::constructHistory($this, $oldvalues, $this->fields);
             $this->getFromDB($updatedId);
         }
@@ -820,6 +833,9 @@ class CommonDBTM extends CommonGLPI
     {
         global $DB;
 
+        $writer = $DB;
+        OwnershipUpdateUnit::assertWriter($writer);
+
         if (isset($this->fields['id']) && $this->isNewID($this->fields['id'])) {
             unset($this->fields['id']);
         }
@@ -835,12 +851,21 @@ class CommonDBTM extends CommonGLPI
                 $params[$key] = $value;
             }
 
-            if (MappedStorage::supports($this->getTable())) {
-                $this->fields['id'] = (new MappedStorage($DB))->insert($this->getTable(), $params);
+            $mapped = MappedStorage::supports($this->getTable());
+            OwnershipUpdateUnit::assertWriter($writer);
+            if ($mapped) {
+                $producer = new MappedStorage($DB);
+                $table = $this->getTable();
+                OwnershipUpdateUnit::assertWriter($writer);
+                $this->fields['id'] = $producer->insert($table, $params);
                 $result = true;
             } else {
-                $result = $DB->insert($this->getTable(), $params);
+                $producer = $DB;
+                $table = $this->getTable();
+                OwnershipUpdateUnit::assertWriter($writer);
+                $result = $producer->insert($table, $params);
             }
+            OwnershipUpdateUnit::assertWriter($writer);
             if ($result) {
                 if (
                     !isset($this->fields['id'])
@@ -856,6 +881,7 @@ class CommonDBTM extends CommonGLPI
                 // Public reads use the declared index, which can differ from
                 // the physical identity returned by the insert producer.
                 $this->getFromDB($this->getID());
+                OwnershipUpdateUnit::assertWriter($writer);
 
                 return $createdId;
             }
@@ -873,6 +899,9 @@ class CommonDBTM extends CommonGLPI
     {
         global $DB;
 
+        $writer = $DB;
+        OwnershipUpdateUnit::assertWriter($writer);
+
         if ($this->maybeDeleted()) {
             $params = ['is_deleted' => 0];
             // Auto set date_mod if exsist
@@ -880,11 +909,22 @@ class CommonDBTM extends CommonGLPI
                 $params['date_mod'] = $_SESSION["glpi_currenttime"];
             }
 
-            if (MappedStorage::supports($this->getTable())) {
-                (new MappedStorage($DB))->update($this->getTable(), (int)$this->fields['id'], $params);
+            $mapped = MappedStorage::supports($this->getTable());
+            OwnershipUpdateUnit::assertWriter($writer);
+            if ($mapped) {
+                $producer = new MappedStorage($DB);
+                $table = $this->getTable();
+                OwnershipUpdateUnit::assertWriter($writer);
+                $producer->update($table, (int)$this->fields['id'], $params);
+                OwnershipUpdateUnit::assertWriter($writer);
                 return true;
             }
-            if ($DB->update($this->getTable(), $params, ['id' => $this->fields['id']])) {
+            $producer = $DB;
+            $table = $this->getTable();
+            OwnershipUpdateUnit::assertWriter($writer);
+            $result = $producer->update($table, $params, ['id' => $this->fields['id']]);
+            OwnershipUpdateUnit::assertWriter($writer);
+            if ($result) {
                 return true;
             }
         }
@@ -905,11 +945,15 @@ class CommonDBTM extends CommonGLPI
         global $DB;
 
         $writer = $DB;
+        OwnershipUpdateUnit::assertWriter($writer);
+
         $connection = $writer->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($writer, $connection);
         $scope = DeletionUnit::isActive($connection)
             ? $connection->captureManagedTransactionScope() : null;
         $identity = $this->fields['id'];
         $publicIdentity = $this->getID();
+        OwnershipUpdateUnit::assertWriter($writer);
         $assertWriter = function () use ($writer, $connection, $scope, $identity, $publicIdentity): void {
             $scope?->assertActive();
             if ($writer !== ($GLOBALS['DB'] ?? null) || $writer->getDoctrineConnection() !== $connection) {
@@ -918,14 +962,15 @@ class CommonDBTM extends CommonGLPI
             if (($this->fields['id'] ?? null) !== $identity || $this->getID() !== $publicIdentity) {
                 throw new DeletionCancelled('The deletion callback replaced its selected owner.');
             }
+            OwnershipUpdateUnit::assertWriter($writer);
         };
 
-        if (
-            ($force == 1)
+        $purge = ($force == 1)
             || !$this->maybeDeleted()
             || ($this->useDeletedToLockIfDynamic()
-                && !$this->isDynamic())
-        ) {
+                && !$this->isDynamic());
+        OwnershipUpdateUnit::assertWriter($writer);
+        if ($purge) {
             $this->cleanDBonPurge();
             $assertWriter();
             if ($this instanceof CommonDropdown) {
@@ -939,9 +984,20 @@ class CommonDBTM extends CommonGLPI
             $this->cleanRelationTable();
             $assertWriter();
 
-            $result = MappedStorage::supports($this->getTable())
-                ? (new MappedStorage($DB))->delete($this->getTable(), (int)$this->fields['id'])
-                : $DB->delete($this->getTable(), ['id' => $this->fields['id']]);
+            $mapped = MappedStorage::supports($this->getTable());
+            OwnershipUpdateUnit::assertWriter($writer);
+            if ($mapped) {
+                $producer = new MappedStorage($DB);
+                $table = $this->getTable();
+                OwnershipUpdateUnit::assertWriter($writer);
+                $result = $producer->delete($table, (int)$this->fields['id']);
+            } else {
+                $producer = $DB;
+                $table = $this->getTable();
+                OwnershipUpdateUnit::assertWriter($writer);
+                $result = $producer->delete($table, ['id' => $this->fields['id']]);
+            }
+            OwnershipUpdateUnit::assertWriter($writer);
             if ($result) {
                 $this->post_deleteFromDB();
                 $assertWriter();
@@ -955,12 +1011,21 @@ class CommonDBTM extends CommonGLPI
             }
 
             $params = ['is_deleted' => 1] + $toadd;
-            if (MappedStorage::supports($this->getTable())) {
-                (new MappedStorage($DB))->update($this->getTable(), (int)$this->fields['id'], $params);
+            $mapped = MappedStorage::supports($this->getTable());
+            OwnershipUpdateUnit::assertWriter($writer);
+            if ($mapped) {
+                $producer = new MappedStorage($DB);
+                $table = $this->getTable();
+                OwnershipUpdateUnit::assertWriter($writer);
+                $producer->update($table, (int)$this->fields['id'], $params);
                 $result = true;
             } else {
-                $result = $DB->update($this->getTable(), $params, ['id' => $this->fields['id']]);
+                $producer = $DB;
+                $table = $this->getTable();
+                OwnershipUpdateUnit::assertWriter($writer);
+                $result = $producer->update($table, $params, ['id' => $this->fields['id']]);
             }
+            OwnershipUpdateUnit::assertWriter($writer);
             $this->cleanDBonMarkDeleted();
             $assertWriter();
 
@@ -1445,6 +1510,7 @@ class CommonDBTM extends CommonGLPI
         // Call the plugin hook - $this->input can be altered
         // This hook get the data from the form, not yet altered
         Plugin::doHook("pre_item_add", $this);
+        OwnershipUpdateUnit::assertWriter($DB);
 
         if ($this->input && is_array($this->input)) {
             if (isset($this->input['add'])) {
@@ -1455,6 +1521,7 @@ class CommonDBTM extends CommonGLPI
             $this->input = $this->normalizeLifecycleInput($this->input);
             if ($this->input !== false) {
                 $this->input = $this->prepareInputForAdd($this->input);
+                OwnershipUpdateUnit::assertWriter($DB);
             }
         }
 
@@ -1462,6 +1529,7 @@ class CommonDBTM extends CommonGLPI
             // Call the plugin hook - $this->input can be altered
             // This hook get the data altered by the object method
             Plugin::doHook("post_prepareadd", $this);
+            OwnershipUpdateUnit::assertWriter($DB);
         }
 
         if ($this->input && is_array($this->input)) {
@@ -1471,6 +1539,7 @@ class CommonDBTM extends CommonGLPI
 
         //Process business rules for assets
         $this->assetBusinessRules(RuleAsset::ONADD);
+        OwnershipUpdateUnit::assertWriter($DB);
 
         if ($this->input && is_array($this->input)) {
             $this->input = $this->normalizeLifecycleInput($this->input);
@@ -1520,6 +1589,7 @@ class CommonDBTM extends CommonGLPI
     /** Model-owned prepared persistence; default models retain their lifecycle. */
     protected function executePreparedAdd(callable $operation, array $priorState): mixed
     {
+        OwnershipUpdateUnit::assertWriter($GLOBALS['DB']);
         return $operation();
     }
 
@@ -1531,15 +1601,19 @@ class CommonDBTM extends CommonGLPI
      */
     protected function captureLifecycleWriter(DBAdapter $writer): void
     {
+        OwnershipUpdateUnit::assertWriter($writer);
     }
 
     private function completeLifecycleAdd(array $input, $history)
     {
-        global $CFG_GLPI;
+        global $CFG_GLPI, $DB;
 
         if (($createdId = $this->addToDB()) !== false) {
+            OwnershipUpdateUnit::assertWriter($DB);
             $this->post_addItem();
+            OwnershipUpdateUnit::assertWriter($DB);
             $this->addMessageOnAddAction();
+            OwnershipUpdateUnit::assertWriter($DB);
 
             if ($this->dohistory && $history) {
                 $changes = [
@@ -1581,6 +1655,7 @@ class CommonDBTM extends CommonGLPI
                 Infocom::manageDateOnStatusChange($this);
             }
             Plugin::doHook("item_add", $this);
+            OwnershipUpdateUnit::assertWriter($DB);
 
             // As add have suceed, clean the old input value
             if (isset($this->input['_add'])) {
@@ -1942,6 +2017,7 @@ class CommonDBTM extends CommonGLPI
         if (!$this->getFromDB($input[static::getIndexName()])) {
             return false;
         }
+        OwnershipUpdateUnit::assertWriter($DB);
 
         $storedFields = $this->fields;
         LifecycleModelJournal::capture($DB->getDoctrineConnection(), $this);
@@ -1981,6 +2057,7 @@ class CommonDBTM extends CommonGLPI
 
         //Process business rules for assets
         $this->assetBusinessRules(RuleAsset::ONUPDATE);
+        OwnershipUpdateUnit::assertWriter($DB);
 
         if ($this->input && is_array($this->input)) {
             $this->input = $this->normalizeLifecycleInput($this->input);
@@ -2099,10 +2176,12 @@ class CommonDBTM extends CommonGLPI
 
     protected function assertLifecycleUpdateContext(bool $persisted): void
     {
+        OwnershipUpdateUnit::assertWriter($GLOBALS['DB']);
     }
 
     protected function executePreparedUpdate(callable $operation, array $storedFields): bool
     {
+        OwnershipUpdateUnit::assertWriter($GLOBALS['DB']);
         return $operation();
     }
 

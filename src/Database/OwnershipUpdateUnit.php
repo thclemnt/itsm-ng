@@ -6,6 +6,7 @@ namespace itsmng\Database;
 
 use CommonDBTM;
 use DBAdapter;
+use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use RuntimeException;
 use Throwable;
@@ -13,6 +14,43 @@ use Throwable;
 /** Parent persistence and required scope forwarding own one database frame. */
 final class OwnershipUpdateUnit
 {
+    /** @var list<array{writer: DBAdapter, connection: Connection, scope: ManagedTransactionScope}> */
+    private static array $writerGuards = [];
+
+    /** An opted-in command must reject a changed route before a model producer uses it. */
+    public static function assertWriter(DBAdapter $database): void
+    {
+        if (self::$writerGuards === []) {
+            return;
+        }
+        foreach (self::$writerGuards as $guard) {
+            if ($database !== $guard['writer'] || ($GLOBALS['DB'] ?? null) !== $guard['writer']) {
+                throw new TransactionOwnershipMismatch('The owned lifecycle changed its supplied writer.');
+            }
+        }
+        // A virtual getter can change the global route while returning the old
+        // connection. Validate its result and the route after it has returned.
+        self::assertResolvedWriter($database, $database->getDoctrineConnection());
+    }
+
+    /** Validate the connection a real producer resolved without calling its getter again. */
+    public static function assertResolvedWriter(DBAdapter $database, Connection $connection): void
+    {
+        foreach (self::$writerGuards as $guard) {
+            // Explicit readers retain their own route. Only a captured writer's
+            // resolved connection belongs to this mutation's producer contract.
+            if ($database !== $guard['writer']) {
+                continue;
+            }
+            if (($GLOBALS['DB'] ?? null) !== $guard['writer'] || $connection !== $guard['connection']) {
+                throw new TransactionOwnershipMismatch('The owned lifecycle changed its supplied writer.');
+            }
+            // A legitimate nested unit may hold a descendant frame. The original
+            // captured parent must still exist, including its physical identity.
+            $guard['scope']->assertActive();
+        }
+    }
+
     public static function assertTransactionalStorage(DBAdapter $database, string $table): void
     {
         $connection = $database->getDoctrineConnection();
@@ -28,8 +66,17 @@ final class OwnershipUpdateUnit
         }
     }
 
-    public static function run(DBAdapter $database, CommonDBTM $model, array $storedFields, callable $operation): bool
-    {
+    public static function run(
+        DBAdapter $database,
+        CommonDBTM $model,
+        array $storedFields,
+        callable $operation,
+        bool $guardWriter = false
+    ): bool {
+        self::assertWriter($database);
+        if ($guardWriter && ($GLOBALS['DB'] ?? null) !== $database) {
+            throw new TransactionOwnershipMismatch('The owned lifecycle requires its supplied writer.');
+        }
         $database->assertManagedTransaction();
         $connection = $database->getDoctrineConnection();
         $frame = null;
@@ -47,9 +94,20 @@ final class OwnershipUpdateUnit
         $accepted = false;
         $failure = null;
         $notifications = [];
+        $guardRegistered = false;
         try {
             $frame = OwnedMutationFrame::begin($connection);
-            if ($journal->observe($connection, $operation)) {
+            if ($guardWriter) {
+                self::$writerGuards[] = [
+                    'writer' => $database,
+                    'connection' => $connection,
+                    'scope' => $connection->captureManagedTransactionScope(),
+                ];
+                $guardRegistered = true;
+            }
+            $completed = $journal->observe($connection, $operation);
+            self::assertWriter($database);
+            if ($completed) {
                 $frame->commit();
                 $accepted = true;
             } else {
@@ -68,6 +126,9 @@ final class OwnershipUpdateUnit
                 }
             }
         } finally {
+            if ($guardRegistered) {
+                array_pop(self::$writerGuards);
+            }
             try {
                 $notifications = $delivery->finish($accepted);
             } catch (Throwable $cleanup) {

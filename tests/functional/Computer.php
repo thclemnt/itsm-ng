@@ -33,16 +33,31 @@
 
 namespace tests\units;
 
+use Closure;
 use CommonDBTM;
 use Computer as ComputerModel;
 use Computer_Item;
+use DBAdapter;
+use DBmysql;
+use DBpgsql;
 use DbTestCase;
+use Doctrine\DBAL\Connection;
+use itsmng\Database\MutationRollbackFailure;
+use itsmng\Database\MySQLConnection;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\PostgresConnection;
+use itsmng\Database\TransactionOwnershipMismatch;
+use Log;
 use Monitor;
 use Peripheral;
 use Phone;
 use Plugin;
 use Printer;
+use QueuedNotification;
 use ReflectionProperty;
+use Throwable;
 
 /* Test for inc/computer.class.php */
 
@@ -348,6 +363,636 @@ class Computer extends DbTestCase
             $CFG_GLPI = $savedConfig;
             $PLUGIN_HOOKS = $savedHooks;
             $plugins->setValue(null, $savedPlugins);
+        }
+    }
+
+    public function testUnglobalizePreservesOwnedChangesOnRequiredMutationRefusal(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+
+        $session = $_SESSION;
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $activePlugins = $plugins->getValue();
+        $attempting = false;
+        $mode = '';
+        $relationUpdates = 0;
+        $createdClones = [];
+        $connection = $DB->getDoctrineConnection();
+        $level = $connection->getTransactionNestingLevel();
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $profile = $_SESSION['glpiactiveprofile'];
+            $plugins->setValue(null, [...$activePlugins, 'unglobalize_fixture']);
+            $PLUGIN_HOOKS['pre_item_update']['unglobalize_fixture'][Computer_Item::class] = static function (
+                CommonDBTM $model
+            ) use (
+                &$attempting,
+                &$mode,
+                &$relationUpdates
+            ): void {
+                if ($attempting && ++$relationUpdates === 2 && $mode === 'late_link_veto') {
+                    $model->input = [];
+                } elseif ($attempting && $mode === 'link_noop') {
+                    $model->input = ['id' => $model->getID()];
+                }
+            };
+            foreach ([Monitor::class, Peripheral::class, Phone::class, Printer::class] as $type) {
+                $PLUGIN_HOOKS['pre_item_update']['unglobalize_fixture'][$type] = static function (
+                    CommonDBTM $model
+                ) use (&$attempting, &$mode): void {
+                    if ($attempting && $mode === 'asset_veto') {
+                        $model->input = [];
+                    } elseif ($attempting && $mode === 'asset_noop') {
+                        $model->input = ['id' => $model->getID()];
+                    }
+                };
+                $PLUGIN_HOOKS['pre_item_add']['unglobalize_fixture'][$type] = static function (
+                    CommonDBTM $model
+                ) use (&$attempting, &$mode): void {
+                    if ($attempting && $mode === 'clone_veto') {
+                        $model->input = [];
+                    }
+                };
+                $PLUGIN_HOOKS['item_add']['unglobalize_fixture'][$type] = static function (
+                    CommonDBTM $model
+                ) use (&$attempting, &$createdClones): void {
+                    if ($attempting) {
+                        $createdClones[] = $model;
+                    }
+                };
+                foreach ([
+                    'permissions', 'asset_veto', 'asset_noop', 'clone_veto',
+                    'link_noop', 'late_link_veto', 'success',
+                ] as $mode) {
+                    $attempting = false;
+                    $_SESSION['glpiactiveprofile'] = $profile;
+                    $device = $this->createItem($type, [
+                        'name' => '_unglobalize_' . $type . '_' . $mode,
+                        'entities_id' => $entity,
+                        'is_global' => true,
+                        'contact' => 'Shared device contact',
+                    ]);
+                    $links = [];
+                    for ($index = 0; $index < 3; ++$index) {
+                        $computer = $this->createItem(ComputerModel::class, [
+                            'name' => '_unglobalize_' . $type . '_' . $mode . '_' . $index,
+                            'entities_id' => $entity,
+                        ]);
+                        $link = $this->createItem(Computer_Item::class, [
+                            'computers_id' => $computer->getID(),
+                            'itemtype' => $type,
+                            'items_id' => $device->getID(),
+                            'is_dynamic' => $index === 1,
+                        ]);
+                        $this->boolean($link->getFromDB($link->getID()))->isTrue();
+                        $links[] = $link->fields;
+                    }
+                    $this->boolean($device->getFromDB($device->getID()))->isTrue();
+                    $stored = $device->fields;
+                    $tables = [
+                        ComputerModel::getTable(), $type::getTable(), Computer_Item::getTable(),
+                        'glpi_logs', 'glpi_infocoms',
+                    ];
+                    $snapshot = static function () use ($DB, $tables): array {
+                        $rows = [];
+                        foreach ($tables as $table) {
+                            $rows[$table] = iterator_to_array($DB->request(['FROM' => $table, 'ORDER' => 'id']));
+                        }
+                        return $rows;
+                    };
+                    $before = $snapshot();
+                    if ($mode === 'permissions') {
+                        $_SESSION['glpiactiveprofile']['computer'] = READ;
+                        $_SESSION['glpiactiveprofile'][$type::$rightname] = READ | UPDATE;
+                        $this->boolean($device->can($device->getID(), UPDATE))->isTrue();
+                        $this->boolean((new Computer_Item())->can($links[1]['id'], UPDATE))->isFalse();
+                    }
+                    $messages = $_SESSION['MESSAGE_AFTER_REDIRECT'] ?? [];
+                    $relationUpdates = 0;
+                    $createdClones = [];
+                    $attempting = true;
+                    $result = Computer_Item::unglobalizeItem($device);
+                    $attempting = false;
+                    $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+                    if ($mode !== 'success') {
+                        $this->boolean($snapshot() === $before)->isTrue();
+                        $this->boolean($result)->isFalse();
+                        $this->array($device->fields)->isIdenticalTo($stored);
+                        $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'][INFO] ?? [])->isIdenticalTo($messages[INFO] ?? []);
+                        foreach ($createdClones as $clone) {
+                            $this->boolean(isset($clone->fields['id']))->isFalse();
+                        }
+                        if ($mode === 'late_link_veto') {
+                            $this->integer($relationUpdates)->isIdenticalTo(2);
+                            $this->array($createdClones)->hasSize(2);
+                        }
+                    } else {
+                        $this->boolean($result)->isTrue();
+                        $this->boolean((bool)$device->getField('is_global'))->isFalse();
+                        $this->array($createdClones)->hasSize(2);
+                        $targets = [];
+                        foreach ($links as $fields) {
+                            $link = new Computer_Item();
+                            $this->boolean($link->getFromDB($fields['id']))->isTrue();
+                            $targets[] = (int)$link->getField('items_id');
+                            $fields['items_id'] = $link->getField('items_id');
+                            $this->array($link->fields)->isIdenticalTo($fields);
+                            $target = new $type();
+                            $this->boolean($target->getFromDB($link->getField('items_id')))->isTrue();
+                            $this->boolean((bool)$target->getField('is_global'))->isFalse();
+                            $this->string($target->getField('contact'))->isIdenticalTo('Shared device contact');
+                        }
+                        $this->array(array_unique($targets))->hasSize(3);
+                        $this->array($targets)->contains((int)$device->getID());
+                    }
+                }
+                unset(
+                    $PLUGIN_HOOKS['pre_item_update']['unglobalize_fixture'][$type],
+                    $PLUGIN_HOOKS['pre_item_add']['unglobalize_fixture'][$type],
+                    $PLUGIN_HOOKS['item_add']['unglobalize_fixture'][$type]
+                );
+            }
+        } finally {
+            $_SESSION = $session;
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $activePlugins);
+        }
+    }
+
+    public function testUnglobalizeRejectsChangedWriterBeforeLifecyclePersistence(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        $caller = $connection->captureManagedTransactionScope();
+        $level = $connection->getTransactionNestingLevel();
+        $session = $_SESSION;
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $activePlugins = $plugins->getValue();
+        $alternate = $database->getProvider() === 'pgsql'
+            ? PostgresConnection::create(['driver' => 'pdo_pgsql', 'serverVersion' => '14.0'])
+            : MySQLConnection::create(['driver' => 'pdo_mysql', 'serverVersion' => '8.0.0']);
+        $routed = clone $database;
+        (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($routed, $alternate);
+        $attempting = false;
+        $mode = '';
+        $triggered = 0;
+        $deviceId = 0;
+        $replacement = null;
+        $clones = [];
+        $nested = null;
+        $nestedRunning = false;
+        $nestedResult = null;
+        $nestedDepth = null;
+        $returnedDepth = null;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $plugins->setValue(null, [...$activePlugins, 'unglobalize_writer_fixture']);
+            $switchRoute = static function (string $phase) use (&$mode, &$triggered, $routed): void {
+                if ($mode === $phase && $triggered === 0) {
+                    ++$triggered;
+                    $GLOBALS['DB'] = $routed;
+                }
+            };
+            $PLUGIN_HOOKS['pre_item_update']['unglobalize_writer_fixture'][Monitor::class] = static function (
+                CommonDBTM $model
+            ) use (
+                &$attempting, &$mode, &$triggered, &$deviceId, &$replacement,
+                &$nested, &$nestedRunning, &$nestedResult, &$nestedDepth, &$returnedDepth,
+                $connection, $database, $switchRoute
+            ): void {
+                if (!$attempting || $nestedRunning || (int)$model->getID() !== $deviceId) {
+                    return;
+                }
+                $switchRoute('asset_pre_route');
+                if ($mode === 'queue_route' && $triggered === 0) {
+                    $switchRoute('queue_route');
+                    QueuedNotification::forceSendFor(Monitor::class, $model->getID());
+                } elseif ($mode === 'replace_scope' && $triggered === 0) {
+                    ++$triggered;
+                    $connection->rollBack();
+                    $replacement = OwnedMutationFrame::begin($connection);
+                    $model->fields['_replacement_scope_marker'] = 'retained';
+                    $_SESSION['MESSAGE_AFTER_REDIRECT'][INFO][] = 'Retained replacement scope feedback';
+                } elseif ($mode === 'nested_success' && $triggered === 0) {
+                    ++$triggered;
+                    $nestedRunning = true;
+                    try {
+                        $nestedResult = OwnershipUpdateUnit::run(
+                            $database,
+                            $nested,
+                            $nested->fields,
+                            static function () use ($nested, $connection, &$nestedDepth): bool {
+                                $nestedDepth = $connection->getTransactionNestingLevel();
+                                return $nested->update([
+                                    'id' => $nested->getID(),
+                                    'contact' => 'Nested owned contact',
+                                ]);
+                            }
+                        );
+                        $returnedDepth = $connection->getTransactionNestingLevel();
+                    } finally {
+                        $nestedRunning = false;
+                    }
+                }
+            };
+            $PLUGIN_HOOKS['pre_item_add']['unglobalize_writer_fixture'][Monitor::class] = static function (
+                CommonDBTM $model
+            ) use (&$attempting, $switchRoute): void {
+                if ($attempting) {
+                    $switchRoute('clone_pre_route');
+                }
+            };
+            $PLUGIN_HOOKS['pre_item_update']['unglobalize_writer_fixture'][Computer_Item::class] = static function (
+                CommonDBTM $model
+            ) use (&$attempting, $switchRoute): void {
+                if ($attempting) {
+                    $switchRoute('link_pre_route');
+                }
+            };
+            $PLUGIN_HOOKS['item_add']['unglobalize_writer_fixture'][Monitor::class] = static function (
+                CommonDBTM $model
+            ) use (&$attempting, &$clones, $switchRoute): void {
+                if ($attempting) {
+                    $clones[] = $model;
+                    $switchRoute('clone_post_route');
+                }
+            };
+            $PLUGIN_HOOKS['item_update']['unglobalize_writer_fixture'][Monitor::class] = static function (
+                CommonDBTM $model
+            ) use (&$attempting, &$deviceId, $switchRoute): void {
+                if ($attempting && (int)$model->getID() === $deviceId) {
+                    $switchRoute('asset_post_route');
+                }
+            };
+            foreach ([
+                'asset_pre_route', 'clone_pre_route', 'link_pre_route',
+                'clone_post_route', 'asset_post_route', 'queue_route',
+                'replace_scope', 'nested_success', 'success',
+            ] as $mode) {
+                $attempting = false;
+                $triggered = 0;
+                $clones = [];
+                $nestedResult = null;
+                $nestedDepth = null;
+                $returnedDepth = null;
+                $device = $this->createItem(Monitor::class, [
+                    'name' => '_unglobalize_writer_' . $mode,
+                    'entities_id' => $entity,
+                    'is_global' => true,
+                    'contact' => 'Shared device contact',
+                ]);
+                $deviceId = (int)$device->getID();
+                $links = [];
+                for ($index = 0; $index < 3; ++$index) {
+                    $computer = $this->createItem(ComputerModel::class, [
+                        'name' => '_unglobalize_writer_' . $mode . '_' . $index,
+                        'entities_id' => $entity,
+                    ]);
+                    $link = $this->createItem(Computer_Item::class, [
+                        'computers_id' => $computer->getID(),
+                        'itemtype' => Monitor::class,
+                        'items_id' => $deviceId,
+                        'is_dynamic' => $index === 1,
+                    ]);
+                    $this->boolean($link->getFromDB($link->getID()))->isTrue();
+                    $links[] = $link->fields;
+                }
+                if ($mode === 'nested_success') {
+                    $nested = $this->createItem(Monitor::class, [
+                        'name' => '_unglobalize_writer_nested',
+                        'entities_id' => $entity,
+                        'is_global' => false,
+                        'contact' => 'Before nested update',
+                    ]);
+                    $this->boolean($nested->getFromDB($nested->getID()))->isTrue();
+                }
+                $this->boolean($device->getFromDB($deviceId))->isTrue();
+                $stored = $device->fields;
+                $snapshot = static function () use ($database): array {
+                    $rows = [];
+                    foreach ([
+                        ComputerModel::getTable(), Monitor::getTable(), Computer_Item::getTable(),
+                        'glpi_logs', 'glpi_infocoms', 'glpi_queuednotifications',
+                    ] as $table) {
+                        $rows[$table] = iterator_to_array($database->request(['FROM' => $table, 'ORDER' => 'id']));
+                    }
+                    return $rows;
+                };
+                $before = $snapshot();
+                $messages = $_SESSION['MESSAGE_AFTER_REDIRECT'] ?? [];
+                $error = null;
+                $result = null;
+                $attempting = true;
+                try {
+                    $result = Computer_Item::unglobalizeItem($device);
+                } catch (Throwable $failure) {
+                    $error = $failure;
+                } finally {
+                    $DB = $database;
+                    $attempting = false;
+                }
+                $this->boolean($alternate->isConnected())->isFalse();
+                if ($mode === 'replace_scope') {
+                    try {
+                        $this->object($error)->isInstanceOf(MutationRollbackFailure::class);
+                        $this->object($error->primary)->isInstanceOf(TransactionOwnershipMismatch::class);
+                        $this->object($error->cleanup)->isInstanceOf(TransactionOwnershipMismatch::class);
+                        $this->boolean($error->rollbackUnproven)->isTrue();
+                        $this->string($device->fields['_replacement_scope_marker'])->isIdenticalTo('retained');
+                        $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'][INFO])->contains('Retained replacement scope feedback');
+                        $this->integer($triggered)->isIdenticalTo(1);
+                        $this->object($replacement)->isInstanceOf(OwnedMutationFrame::class);
+                        $replacement->assertActive();
+                        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level + 1);
+                        $this->boolean($snapshot() === $before)->isTrue();
+                    } finally {
+                        // Only the capability retained by this callback may close its replacement.
+                        if ($replacement !== null) {
+                            $replacement->rollBack();
+                            $replacement = null;
+                        }
+                    }
+                } elseif ($mode !== 'nested_success' && $mode !== 'success') {
+                    $this->object($error)->isInstanceOf(TransactionOwnershipMismatch::class);
+                    $this->integer($triggered)->isIdenticalTo(1);
+                    $this->boolean($snapshot() === $before)->isTrue();
+                    $this->array($device->fields)->isIdenticalTo($stored);
+                    $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'][INFO] ?? [])->isIdenticalTo($messages[INFO] ?? []);
+                    foreach ($clones as $clone) {
+                        $this->boolean(isset($clone->fields['id']))->isFalse();
+                    }
+                } else {
+                    $this->variable($error)->isNull();
+                    $this->boolean($result)->isTrue();
+                    $this->array($clones)->hasSize(2);
+                    $targets = [];
+                    foreach ($links as $fields) {
+                        $link = new Computer_Item();
+                        $this->boolean($link->getFromDB($fields['id']))->isTrue();
+                        $targets[] = (int)$link->getField('items_id');
+                        $fields['items_id'] = $link->getField('items_id');
+                        $this->array($link->fields)->isIdenticalTo($fields);
+                        $target = new Monitor();
+                        $this->boolean($target->getFromDB($link->getField('items_id')))->isTrue();
+                        $this->boolean((bool)$target->getField('is_global'))->isFalse();
+                        $this->string($target->getField('contact'))->isIdenticalTo('Shared device contact');
+                    }
+                    $this->array(array_unique($targets))->hasSize(3);
+                    $this->array($targets)->contains($deviceId);
+                    if ($mode === 'nested_success') {
+                        $this->integer($triggered)->isIdenticalTo(1);
+                        $this->boolean($nestedResult)->isTrue();
+                        $this->integer($nestedDepth)->isIdenticalTo($level + 2);
+                        $this->integer($returnedDepth)->isIdenticalTo($level + 1);
+                        $fresh = new Monitor();
+                        $this->boolean($fresh->getFromDB($nested->getID()))->isTrue();
+                        $this->string($fresh->getField('contact'))->isIdenticalTo('Nested owned contact');
+                    } else {
+                        $this->integer($triggered)->isIdenticalTo(0);
+                    }
+                }
+                $caller->assertActive();
+                $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+            }
+            // These invoke inherited public producers under a real owned frame.
+            // Only the extension callbacks vary; the database effect is the oracle.
+            foreach ([
+                'table_update', 'table_add', 'table_argument_update', 'table_argument_add',
+                'history_table_update', 'getter_update', 'orm_getter_update', 'orm_connection_update',
+            ] as $producerMode) {
+                $source = $this->createItem(Monitor::class, [
+                    'name' => '_unglobalize_callback_' . $producerMode,
+                    'entities_id' => $entity,
+                    'is_global' => false,
+                    'contact' => 'Before producer callback',
+                ]);
+                $this->boolean($source->getFromDB($source->getID()))->isTrue();
+                $probe = (object)['armed' => false, 'calls' => 0, 'tableCalls' => 0, 'history' => false];
+                $producer = new class extends Monitor {
+                    public static ?Closure $tableCallback = null;
+
+                    public static function getType()
+                    {
+                        return Monitor::class;
+                    }
+
+                    public static function getTable($classname = null)
+                    {
+                        if (self::$tableCallback !== null) {
+                            (self::$tableCallback)();
+                        }
+                        return 'glpi_monitors';
+                    }
+                };
+                $producer->fields = $source->fields;
+                $producer::$tableCallback = static function () use ($probe, $producerMode, $routed): void {
+                    if (!$probe->armed) {
+                        return;
+                    }
+                    ++$probe->tableCalls;
+                    $inHistory = false;
+                    foreach (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 4) as $frame) {
+                        if (($frame['class'] ?? null) === Log::class
+                            && ($frame['function'] ?? null) === 'constructHistory') {
+                            $inHistory = true;
+                        }
+                    }
+                    $trigger = in_array($producerMode, ['table_update', 'table_add'], true)
+                        || (in_array($producerMode, ['table_argument_update', 'table_argument_add'], true)
+                            && $probe->tableCalls === 2)
+                        || ($producerMode === 'history_table_update' && $inHistory);
+                    if ($trigger) {
+                        $probe->armed = false;
+                        ++$probe->calls;
+                        $probe->history = $inHistory;
+                        $GLOBALS['DB'] = $routed;
+                    }
+                };
+                $owner = $database;
+                if (in_array($producerMode, ['getter_update', 'orm_getter_update', 'orm_connection_update'], true)) {
+                    $owner = new class ($connection, $probe, $routed, $alternate, $producerMode) extends DBmysql {
+                        public function __construct(
+                            private Connection $selected,
+                            private object $probe,
+                            private DBAdapter $routed,
+                            private Connection $alternate,
+                            private string $mode
+                        ) {
+                        }
+
+                        public function getDoctrineConnection(): Connection
+                        {
+                            if ($this->probe->armed && ($this->mode === 'getter_update'
+                                || (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2)[1]['class'] ?? null) === Orm::class)) {
+                                $this->probe->armed = false;
+                                ++$this->probe->calls;
+                                if ($this->mode === 'orm_connection_update') {
+                                    return $this->alternate;
+                                }
+                                $GLOBALS['DB'] = $this->routed;
+                            }
+                            return $this->selected;
+                        }
+                    };
+                }
+                $before = $snapshot();
+                $stored = $producer->fields;
+                $error = null;
+                try {
+                    $DB = $owner;
+                    OwnershipUpdateUnit::run(
+                        $owner,
+                        $producer,
+                        $stored,
+                        static function () use ($producer, $producerMode, $probe): bool {
+                            $producer->fields['contact'] = 'Must not persist through redirected producer';
+                            $probe->armed = true;
+                            if (in_array($producerMode, ['table_add', 'table_argument_add'], true)) {
+                                unset($producer->fields['id']);
+                                return $producer->addToDB() !== false;
+                            }
+                            return $producer->updateInDB(
+                                ['contact'],
+                                $producerMode === 'history_table_update' ? ['contact' => 'Before producer callback'] : []
+                            );
+                        },
+                        guardWriter: true
+                    );
+                } catch (Throwable $failure) {
+                    $error = $failure;
+                } finally {
+                    $DB = $database;
+                    $probe->armed = false;
+                    $producer::$tableCallback = null;
+                }
+                $this->object($error)->isInstanceOf(TransactionOwnershipMismatch::class);
+                $this->integer($probe->calls)->isIdenticalTo(1);
+                if (in_array($producerMode, ['table_argument_update', 'table_argument_add'], true)) {
+                    $this->integer($probe->tableCalls)->isIdenticalTo(2);
+                } elseif ($producerMode === 'history_table_update') {
+                    $this->boolean($probe->history)->isTrue();
+                }
+                $this->boolean($alternate->isConnected())->isFalse();
+                $this->boolean($snapshot() === $before)->isTrue();
+                $this->array($producer->fields)->isIdenticalTo($stored);
+                $caller->assertActive();
+                $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+            }
+            foreach (['fallback_global', 'fallback_connection'] as $fallbackMode) {
+                $source = $this->createItem(Monitor::class, [
+                    'name' => '_unglobalize_' . $fallbackMode,
+                    'entities_id' => $entity,
+                    'is_global' => false,
+                    'contact' => 'Before fallback query',
+                ]);
+                $this->boolean($source->getFromDB($source->getID()))->isTrue();
+                $probe = (object)['armed' => false, 'calls' => 0];
+                $route = static function () use ($probe, $fallbackMode, $connection, $alternate, $routed) {
+                    if ($probe->armed) {
+                        $probe->armed = false;
+                        ++$probe->calls;
+                        if ($fallbackMode === 'fallback_connection') {
+                            return $alternate;
+                        }
+                        $GLOBALS['DB'] = $routed;
+                    }
+                    return $connection;
+                };
+                $owner = $database->getProvider() === 'pgsql'
+                    ? new class ($route) extends DBpgsql {
+                        public function __construct(private Closure $route)
+                        {
+                            $this->connected = true;
+                        }
+
+                        public function getDoctrineConnection(): PostgresConnection
+                        {
+                            return ($this->route)();
+                        }
+                    }
+                    : new class ($route) extends DBmysql {
+                        public function __construct(private Closure $route)
+                        {
+                        }
+
+                        public function getDoctrineConnection(): Connection
+                        {
+                            return ($this->route)();
+                        }
+                    };
+                $before = $snapshot();
+                $error = null;
+                try {
+                    $DB = $owner;
+                    OwnershipUpdateUnit::run(
+                        $owner,
+                        $source,
+                        $source->fields,
+                        static function () use ($owner, $source, $probe): bool {
+                            $probe->armed = true;
+                            return $owner->queryParams(
+                                $owner->getProvider() === 'pgsql'
+                                    ? 'UPDATE glpi_monitors SET contact = $1 WHERE id = $2'
+                                    : 'UPDATE glpi_monitors SET contact = ? WHERE id = ?',
+                                ['Must not persist through redirected adapter', $source->getID()]
+                            ) !== false;
+                        },
+                        guardWriter: true
+                    );
+                } catch (Throwable $failure) {
+                    $error = $failure;
+                } finally {
+                    $DB = $database;
+                    $probe->armed = false;
+                }
+                $this->object($error)->isInstanceOf(TransactionOwnershipMismatch::class);
+                $this->integer($probe->calls)->isIdenticalTo(1);
+                $this->boolean($alternate->isConnected())->isFalse();
+                $this->boolean($snapshot() === $before)->isTrue();
+                $caller->assertActive();
+                $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+            }
+            // A separately supplied reader must not be mistaken for the owned writer.
+            $readerAdapter = clone $routed;
+            $readerAdapter->slave = true;
+            $readConnection = null;
+            $this->boolean(OwnershipUpdateUnit::run(
+                $database,
+                $device,
+                $device->fields,
+                static function () use ($readerAdapter, &$readConnection): bool {
+                    $reader = Orm::create($readerAdapter);
+                    try {
+                        $readConnection = $reader->getConnection();
+                        return true;
+                    } finally {
+                        $reader->clear();
+                    }
+                },
+                guardWriter: true
+            ))->isTrue();
+            $this->object($readConnection)->isIdenticalTo($alternate);
+            $this->boolean($alternate->isConnected())->isFalse();
+            $caller->assertActive();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $DB = $database;
+            $attempting = false;
+            if ($replacement !== null) {
+                $replacement->rollBack();
+            }
+            $alternate->close();
+            $_SESSION = $session;
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $activePlugins);
         }
     }
 
