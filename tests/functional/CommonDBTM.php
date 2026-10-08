@@ -117,6 +117,8 @@ use TicketTask;
 use mock\DBmysql;
 use tests\fixtures\ScalarReadProbe;
 
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
+
 /* Test for inc/commondbtm.class.php */
 
 class CommonDBTM extends DbTestCase
