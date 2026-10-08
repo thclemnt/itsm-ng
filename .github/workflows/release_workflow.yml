@@ -92,10 +92,13 @@ jobs:
             -e LDAP_CONFIG_PASSWORD="insecure" \
             osixia/openldap:1.5.0
           echo "127.0.0.1 openldap" | sudo tee -a /etc/hosts
-          until ldapsearch -x -H ldap://localhost:389 -D "cn=admin,dc=glpi,dc=org" -w insecure -b "dc=glpi,dc=org" > /dev/null 2>&1; do
+          ready=false
+          for attempt in $(seq 1 30); do
+            if timeout --signal=TERM --kill-after=2s 5s ldapsearch -x -H ldap://localhost:389 -D "cn=admin,dc=glpi,dc=org" -w insecure -b "dc=glpi,dc=org" > /dev/null 2>&1; then ready=true; break; fi
             echo "Waiting for OpenLDAP..."
             sleep 2
           done
+          test "$ready" = true
 
       - name: Load LDAP fixtures
         run: |

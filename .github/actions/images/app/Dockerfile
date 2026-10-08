@@ -7,7 +7,7 @@ COPY --from=ghcr.io/mlocati/php-extension-installer:2 /usr/bin/install-php-exten
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-    ca-certificates curl default-mysql-client git nodejs npm unzip zip \
+    ca-certificates curl default-mysql-client git nodejs npm postgresql-client unzip zip \
  && rm -rf /var/lib/apt/lists/* \
  && install-php-extensions \
     apcu bcmath bz2 exif gd intl ldap mysqli opcache pcntl \
