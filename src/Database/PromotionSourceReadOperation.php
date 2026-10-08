@@ -32,11 +32,11 @@ final class PromotionSourceReadOperation
             $this->manager = Orm::forConnection($connection);
             return;
         }
-        $platform = $connection->getDatabasePlatform();
+        $connection->getDatabasePlatform();
         $this->project = Orm::ownsReadMapping($connection);
         if ($this->project) {
             // Keep the previous eager Type registration before argument callbacks.
-            Orm::configuration($platform);
+            Orm::registerTypes();
         } else {
             $this->manager = Orm::forConnection($connection);
         }

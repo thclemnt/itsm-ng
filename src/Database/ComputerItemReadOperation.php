@@ -32,10 +32,10 @@ final class ComputerItemReadOperation
             $this->manager = Orm::forConnection($connection);
             return;
         }
-        $platform = $connection->getDatabasePlatform();
+        $connection->getDatabasePlatform();
         $this->project = Orm::ownsReadMapping($connection);
         if ($this->project) {
-            Orm::configuration($platform);
+            Orm::registerTypes();
         } else {
             $this->manager = Orm::forConnection($connection);
         }

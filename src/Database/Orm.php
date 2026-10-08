@@ -109,16 +109,22 @@ final class Orm
         });
     }
 
-    /** Independent mutable configuration; no caller can alter another operation. */
-    public static function configuration(AbstractPlatform $platform): Configuration
+    /** @internal Scalar readers need the application types without allocating ORM configuration. */
+    public static function registerTypes(): void
     {
-        $proxyDirectory = defined('GLPI_CACHE_DIR') ? GLPI_CACHE_DIR . '/orm' : sys_get_temp_dir() . '/itsm-orm';
         if (!DbalType::hasType(Type\ClockTimeType::NAME)) {
             DbalType::addType(Type\ClockTimeType::NAME, Type\ClockTimeType::class);
         }
         if (!DbalType::hasType(Type\FixedStringType::NAME)) {
             DbalType::addType(Type\FixedStringType::NAME, Type\FixedStringType::class);
         }
+    }
+
+    /** Independent mutable configuration; no caller can alter another operation. */
+    public static function configuration(AbstractPlatform $platform): Configuration
+    {
+        $proxyDirectory = defined('GLPI_CACHE_DIR') ? GLPI_CACHE_DIR . '/orm' : sys_get_temp_dir() . '/itsm-orm';
+        self::registerTypes();
         $config = new Configuration();
         $config->setDefaultRepositoryClassName(Repository\DropdownChoiceRepository::class);
         $config->addCustomStringFunction('REPLACE', Query\Replace::class);

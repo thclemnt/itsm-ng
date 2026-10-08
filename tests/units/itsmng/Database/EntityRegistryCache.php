@@ -6,6 +6,7 @@ namespace tests\units\itsmng\Database;
 
 use itsmng\Database\MySQLManagedConnection;
 use itsmng\Database\Type\FixedStringType;
+use itsmng\Database\Type\ClockTimeType;
 use itsmng\Database\Entity\User;
 use Doctrine\ORM\Id\AssignedGenerator;
 use Doctrine\DBAL\Types\Type as DbalType;
@@ -54,6 +55,35 @@ use itsmng\Database\Entity\ITILFollowup;
 class EntityRegistryCache extends test
 {
     private string $root;
+
+    public function testScalarTypeRegistrationPreservesExistingTypes(): void
+    {
+        Orm::registerTypes();
+        $registry = DbalType::getTypeRegistry();
+        $originals = [
+            ClockTimeType::NAME => DbalType::getType(ClockTimeType::NAME),
+            FixedStringType::NAME => DbalType::getType(FixedStringType::NAME),
+        ];
+        Orm::registerTypes();
+        foreach ($originals as $name => $type) {
+            $this->object(DbalType::getType($name))->isIdenticalTo($type);
+        }
+        try {
+            $custom = [];
+            foreach ($originals as $name => $type) {
+                $registry->override($name, $custom[$name] = new StringType());
+            }
+            Orm::registerTypes();
+            Orm::configuration(new MySQLPlatform());
+            foreach ($custom as $name => $type) {
+                $this->object(DbalType::getType($name))->isIdenticalTo($type);
+            }
+        } finally {
+            foreach ($originals as $name => $type) {
+                $registry->override($name, $type);
+            }
+        }
+    }
 
     public function beforeTestMethod($method): void
     {
