@@ -454,6 +454,22 @@ class User extends DbTestCase
         $ordinary = new UserEmailRepository($manager);
         $expected = $ordinary->preferred($id);
         $this->string($expected['email'])->isIdenticalTo('first@example.test');
+        $expectedEmails = $ordinary->all($id);
+        $this->string(UserEmail::getDefaultForUser($id))->isIdenticalTo($expected['email']);
+        $this->array(UserEmail::getAllForUser($id))->isIdenticalTo($expectedEmails);
+        $this->boolean(UserEmail::isEmailForUser($id, $expected['email']))->isTrue();
+        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeManagers = $managers->getValue();
+        for ($repeat = 0; $repeat < 3; ++$repeat) {
+            $this->string(UserEmail::getDefaultForUser($id))->isIdenticalTo($expected['email']);
+            $this->array(UserEmail::getAllForUser($id))->isIdenticalTo($expectedEmails);
+            $this->boolean(UserEmail::isEmailForUser($id, $expected['email']))->isTrue();
+            $this->boolean(UserEmail::isEmailForUser($id, 'absent@example.test'))->isFalse();
+        }
+        $this->integer($managers->getValue() - $beforeManagers)->isIdenticalTo(
+            0,
+            'Repeated email lookups share the selected canonical manager'
+        );
         $probe = new UserScalarReadProbe($connection);
         $originalAdapter = $DB;
         $scope = $connection->captureManagedTransactionScope();
@@ -466,6 +482,10 @@ class User extends DbTestCase
             $DB = $adapter;
             $this->string(UserEmail::getDefaultForUser($id))->isIdenticalTo($expected['email']);
             $this->array($probe->queries)->hasSize(1);
+            $this->integer($probe->builders)->isIdenticalTo(1);
+            $this->array(UserEmail::getAllForUser($id))->isIdenticalTo($expectedEmails);
+            $this->boolean(UserEmail::isEmailForUser($id, $expected['email']))->isTrue();
+            $this->array($probe->queries)->hasSize(3);
             $this->integer($probe->builders)->isIdenticalTo(1);
         } finally {
             $DB = $originalAdapter;
@@ -483,6 +503,8 @@ class User extends DbTestCase
             $connection->update('glpi_useremails', ['is_default' => true], ['users_id' => $id, 'email' => 'second@example.test'], ['is_default' => 'boolean', 'users_id' => 'bigint', 'email' => 'string']);
             $this->array($reader->preferred($id))->isIdenticalTo($ordinary->preferred($id));
             $this->string($reader->preferred($id)['email'])->isIdenticalTo('second@example.test');
+            $this->string(UserEmail::getDefaultForUser($id))->isIdenticalTo('second@example.test');
+            $this->array(UserEmail::getAllForUser($id))->isIdenticalTo($ordinary->all($id));
             // Tied defaults still select the lowest physical identifier.
             $connection->update('glpi_useremails', ['is_default' => true], ['id' => $expected['id']], ['is_default' => 'boolean', 'id' => 'bigint']);
             $this->array($reader->preferred($id))->isIdenticalTo($expected);

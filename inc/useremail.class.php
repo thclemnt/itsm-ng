@@ -31,7 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\UserEmailRepository;
 use itsmng\Database\UserEmailReadOperation;
 
@@ -100,7 +102,9 @@ class UserEmail extends CommonDBChild
     {
         global $DB;
 
-        return (new UserEmailReadOperation($DB->getDoctrineConnection()))->preferred((int)$users_id)['email'] ?? '';
+        $connection = $DB->getDoctrineConnection();
+        return Orm::withReadConnection($connection, static fn (?EntityManager $manager): mixed =>
+            (new UserEmailReadOperation($connection, $manager))->preferred((int)$users_id)['email'] ?? '');
     }
 
 
@@ -115,7 +119,11 @@ class UserEmail extends CommonDBChild
     {
         global $DB;
 
-        return (new UserEmailRepository(Orm::create($DB)))->all((int)$users_id);
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        return Orm::withReadConnection($connection, static fn (?EntityManager $manager): array =>
+            (new UserEmailRepository($manager ?? Orm::forConnection($connection)))->all((int)$users_id));
     }
 
 
@@ -131,7 +139,11 @@ class UserEmail extends CommonDBChild
     {
         global $DB;
 
-        return (new UserEmailRepository(Orm::create($DB)))->contains((int)$users_id, (string)$email);
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        return Orm::withReadConnection($connection, static fn (?EntityManager $manager): bool =>
+            (new UserEmailRepository($manager ?? Orm::forConnection($connection)))->contains((int)$users_id, (string)$email));
     }
 
 
