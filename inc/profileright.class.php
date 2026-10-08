@@ -31,7 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\ProfileRightRepository;
 
 if (!defined('GLPI_ROOT')) {
@@ -58,10 +60,15 @@ class ProfileRight extends CommonDBChild
      */
     public static function getAllPossibleRights()
     {
-        global $GLPI_CACHE;
+        global $DB, $GLPI_CACHE;
         if (!$GLPI_CACHE->has('all_possible_rights') || count($GLPI_CACHE->get('all_possible_rights')) === 0) {
             $rights = [];
-            foreach (self::repository()->names() as $name) {
+            $database = $DB;
+            $connection = $database->getDoctrineConnection();
+            OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+            $names = Orm::withReadConnection($connection, static fn (?EntityManager $manager): array =>
+                (new ProfileRightRepository($manager ?? Orm::forConnection($connection)))->names());
+            foreach ($names as $name) {
                 $rights[$name] = '';
             }
             $GLPI_CACHE->set('all_possible_rights', $rights);

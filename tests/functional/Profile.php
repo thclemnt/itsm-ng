@@ -34,11 +34,92 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Entity\Profile as ProfileEntity;
+use itsmng\Database\Entity\ProfileRight as ProfileRightEntity;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ProfileRightRepository;
+use Profile as LegacyProfile;
+use ProfileRight;
+use ReflectionProperty;
 
 /* Test for inc/profile.class.php */
 
 class Profile extends DbTestCase
 {
+    public function testPermissionReadsReuseScopeAndObserveWrites()
+    {
+        global $DB, $GLPI_CACHE;
+
+        $session = $_SESSION;
+        $hadCache = $GLPI_CACHE->has('all_possible_rights');
+        $cached = $hadCache ? $GLPI_CACHE->get('all_possible_rights') : null;
+        $connection = $DB->getDoctrineConnection();
+        $renamed = '__test_permission_scope_computer';
+        $right = false;
+        try {
+            $this->login('tech', 'tech');
+            $profile = getItemByTypeName('Profile', 'Technician');
+            $id = (int)$profile->getID();
+            $external = Orm::forConnection($connection);
+            $entity = $external->find(ProfileEntity::class, $id);
+            $expected = [];
+            foreach ((new ProfileRightRepository($external))->names() as $name) {
+                $expected[$name] = '';
+            }
+            $right = $connection->fetchOne('SELECT rights FROM glpi_profilerights WHERE profiles_id = ? AND name = ?', [$id, 'computer']);
+            Orm::withReadConnection($connection, static function (?EntityManager $manager): void {
+                $manager->getClassMetadata(ProfileRightEntity::class);
+                $manager->getClassMetadata(ProfileEntity::class);
+            });
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $before = $factories->getValue();
+            ProfileRight::cleanAllPossibleRights();
+            $this->array(ProfileRight::getAllPossibleRights())->isIdenticalTo($expected);
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+            $connection->update('glpi_profilerights', ['name' => $renamed], ['name' => 'computer']);
+            $this->array(ProfileRight::getAllPossibleRights())->isIdenticalTo($expected, 'Existing cache policy remains in effect');
+            ProfileRight::cleanAllPossibleRights();
+            $fresh = ProfileRight::getAllPossibleRights();
+            $this->array($fresh)->hasKey($renamed)->notHasKey('computer');
+            $connection->update('glpi_profilerights', ['name' => 'computer'], ['name' => $renamed]);
+
+            // One known right keeps the public permission decision independent of fixture-wide grants.
+            $GLPI_CACHE->set('all_possible_rights', ['computer' => '']);
+            $_SESSION['glpiactiveprofile'] = ['interface' => 'central', 'profile' => 0, 'computer' => READ];
+            unset($_SESSION['glpicronuserrunning']);
+            $connection->update('glpi_profilerights', ['rights' => 0], ['profiles_id' => $id, 'name' => 'computer']);
+            $this->boolean(LegacyProfile::currentUserHaveMoreRightThan([$id, (string)$id]))->isTrue();
+            $connection->update('glpi_profilerights', ['rights' => READ | CREATE], ['profiles_id' => $id, 'name' => 'computer']);
+            $this->boolean(LegacyProfile::currentUserHaveMoreRightThan([$id]))->isFalse('A later SQL write is visible through the reused manager');
+            $_SESSION['glpiactiveprofile']['computer'] = READ | CREATE;
+            $this->boolean(LegacyProfile::currentUserHaveMoreRightThan([$id]))->isTrue();
+            $this->boolean(LegacyProfile::currentUserHaveMoreRightThan([$id, PHP_INT_MAX]))->isFalse();
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(0, 'Repeated scalar permission reads keep the same manager');
+            $this->boolean($external->contains($entity))->isTrue('An independent caller manager is never cleared');
+
+            Orm::withReadConnection($connection, function (?EntityManager $outer) use ($connection, $id, $factories): void {
+                $managed = $outer->find(ProfileEntity::class, $id);
+                $beforeNested = $factories->getValue();
+                $this->boolean(LegacyProfile::currentUserHaveMoreRightThan([$id]))->isTrue();
+                $this->integer($factories->getValue() - $beforeNested)->isIdenticalTo(1, 'Reentrant work retains an independent unit of work');
+                $this->boolean($outer->contains($managed))->isTrue();
+                $this->boolean($connection->ownsApplicationEntityManager($outer))->isTrue();
+            });
+        } finally {
+            $connection->update('glpi_profilerights', ['name' => 'computer'], ['name' => $renamed]);
+            if ($right !== false) {
+                $connection->update('glpi_profilerights', ['rights' => $right], ['profiles_id' => $id, 'name' => 'computer']);
+            }
+            $_SESSION = $session;
+            if ($hadCache) {
+                $GLPI_CACHE->set('all_possible_rights', $cached);
+            } else {
+                $GLPI_CACHE->delete('all_possible_rights');
+            }
+        }
+    }
+
     /**
      * @see self::testHaveUserRight()
      *

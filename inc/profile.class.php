@@ -31,7 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\NotificationRecipientRepository;
 use itsmng\Database\Repository\ProfileRepository;
 use itsmng\Database\Repository\ProfileRightRepository;
@@ -650,8 +652,13 @@ class Profile extends CommonDBTM
         }
         $rights = self::activeRights();
         $interface = Session::getCurrentInterface();
-        return (new ProfileRepository(Orm::create($DB)))
-            ->canManage($IDs, $rights, $interface, Profile::canCreate());
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        return Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $IDs, $rights, $interface): bool {
+            return (new ProfileRepository($manager ?? Orm::forConnection($connection)))
+                ->canManage($IDs, $rights, $interface, Profile::canCreate());
+        });
     }
 
 
