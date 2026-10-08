@@ -4,13 +4,19 @@
 
 namespace itsmng\Database\Migration;
 
+use DBAdapter;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use itsmng\Database\CheckConstraintSupport;
+use itsmng\Database\InitialData;
+use itsmng\Database\Migration\V220\Baseline;
+use itsmng\Database\MutationRollbackFailure;
 use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\ReleasePublication;
 use itsmng\Database\SchemaCheck;
 use itsmng\Database\SequenceSynchronizer;
-use itsmng\Database\Migration\V220\Baseline;
+use RuntimeException;
+use Throwable;
 
 /** Ordered ORM releases; internal checkpoints are not application releases. */
 final class History
@@ -81,17 +87,17 @@ final class History
         (new Version220())->baseline($connection, $progress);
     }
 
-    public function install(\DBAdapter $database, string $language, ?callable $progress = null): void
+    public function install(DBAdapter $database, string $language, ?callable $progress = null): void
     {
         $connection = $database->getDoctrineConnection();
         $this->locked($connection, function () use ($database, $connection, $language, $progress): void {
             (new Version220())->install($database, $language, $progress);
             $this->replay($connection, $progress, static function () use ($database, $language): void {
-                \itsmng\Database\ReleasePublication::publish($database, [
+                ReleasePublication::publish($database, [
                     'language' => $language, 'use_timezones' => $database->areTimezonesAvailable(),
                 ]);
                 if (defined('GLPI_SYSTEM_CRON')) {
-                    \itsmng\Database\InitialData::enableSystemCron($database);
+                    InitialData::enableSystemCron($database);
                 }
             });
             $database->clearSchemaCache();
@@ -127,7 +133,7 @@ final class History
         }
         $differences = (new SchemaCheck())->differences($connection);
         if ($differences) {
-            throw new \RuntimeException("Migration history did not converge:\n" . implode("\n", $differences));
+            throw new RuntimeException("Migration history did not converge:\n" . implode("\n", $differences));
         }
         SequenceSynchronizer::synchronize($connection);
         $frame = OwnedMutationFrame::begin($connection);
@@ -147,11 +153,11 @@ final class History
                 Ledger::save($connection, Baseline::PHASE, $baseline);
             }
             $frame->commit();
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             try {
                 $frame->rollBack();
-            } catch (\Throwable $cleanup) {
-                throw new \itsmng\Database\MutationRollbackFailure($error, $cleanup);
+            } catch (Throwable $cleanup) {
+                throw new MutationRollbackFailure($error, $cleanup);
             }
             throw $error;
         }
@@ -167,11 +173,11 @@ final class History
             return;
         }
         if ($connection->isTransactionActive()) {
-            throw new \RuntimeException('Run migration history outside a MySQL application transaction.');
+            throw new RuntimeException('Run migration history outside a MySQL application transaction.');
         }
         $lock = 'itsmng_history_' . sha1($connection->getDatabase());
         if ((int)$connection->fetchOne('SELECT GET_LOCK(?, 0)', [$lock]) !== 1) {
-            throw new \RuntimeException('Another migration history operation is running.');
+            throw new RuntimeException('Another migration history operation is running.');
         }
         try {
             $operation();

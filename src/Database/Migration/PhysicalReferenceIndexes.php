@@ -9,6 +9,7 @@ use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Index;
 use itsmng\Database\PhysicalIndexSchema;
+use RuntimeException;
 
 /** Frozen forward repair of missing physical FK lookup coverage; no row changes. */
 final class PhysicalReferenceIndexes implements ReleaseMigration
@@ -122,7 +123,7 @@ final class PhysicalReferenceIndexes implements ReleaseMigration
                     $existing = array_change_key_case($existing, CASE_LOWER);
                 }
                 if (isset($existing[$nativeName])) {
-                    throw new \RuntimeException('Physical reference index name has a different definition: ' . $table . '.' . $index->getName());
+                    throw new RuntimeException('Physical reference index name has a different definition: ' . $table . '.' . $index->getName());
                 }
                 $missing[] = $table . '.' . $index->getName();
                 $sql[] = $platform->getCreateIndexSQL($index, $platform->quoteIdentifier($table));
@@ -134,7 +135,7 @@ final class PhysicalReferenceIndexes implements ReleaseMigration
     public function apply(Connection $connection, ?callable $progress = null): void
     {
         if ($connection->getDatabasePlatform() instanceof AbstractMySQLPlatform && $connection->isTransactionActive()) {
-            throw new \RuntimeException('Physical index migration must run outside a MySQL application transaction.');
+            throw new RuntimeException('Physical index migration must run outside a MySQL application transaction.');
         }
         // Each completed CREATE remains discoverable on retry, including MySQL
         // implicit commits. No historical index is renamed or removed.
@@ -149,7 +150,7 @@ final class PhysicalReferenceIndexes implements ReleaseMigration
         $required = self::declarations();
         $missing = PhysicalIndexSchema::missing($required, PhysicalIndexSchema::catalog($connection, array_keys($required)));
         if ($missing) {
-            throw new \RuntimeException('Physical reference index migration did not converge: ' . implode(', ', array_keys($missing)));
+            throw new RuntimeException('Physical reference index migration did not converge: ' . implode(', ', array_keys($missing)));
         }
         // This index-only release does not supersede the preceding subject
         // policy or its retained native proof; terminal replay must retain it.
