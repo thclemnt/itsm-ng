@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { expect } from '@playwright/test';
 import {
   fillRichTextForm,
@@ -59,6 +60,18 @@ test('uploads an image into the followup editor before submit', async ({ page, r
 
   const form = page.getByTestId('timeline-editor').locator('form').first();
   await fillRichTextForm(form, `<p>${followupContent}</p>`);
+
+  const image = Array.from(await readFile(new URL('../../fixtures/uploads/foo.png', import.meta.url)));
+  const imageTypes = await page.evaluate(async (bytes) => {
+    const detector = Reflect.get(window, 'fileType');
+    const data = new Uint8Array(bytes);
+    return [await detector.fromBuffer(data), await detector.fromBlob(new Blob([data]))];
+  }, image);
+  expect(imageTypes).toEqual([
+    { ext: 'png', mime: 'image/png' },
+    { ext: 'png', mime: 'image/png' },
+  ]);
+
   await uploadRichTextFixture(form, 'tests/fixtures/uploads/foo.png', ticketFixtures);
 
   await expect(form.locator('input[name^="_content["]')).toHaveCount(1);
