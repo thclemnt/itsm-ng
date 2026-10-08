@@ -1300,10 +1300,25 @@ class Config extends DbTestCase
             }
             $expected = ['z-key' => 'first', 'a-key' => 'last', 'NULL' => 'NULL'];
             $this->array($ordinary->values($context))->isIdenticalTo($expected);
+            $this->array(ConfigModel::getConfigurationValues($context))->isIdenticalTo($expected);
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $beforeFactories = $factories->getValue();
+            for ($repeat = 0; $repeat < 3; ++$repeat) {
+                $this->array(ConfigModel::getConfigurationValues($context))->isIdenticalTo($expected);
+            }
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+            $this->exception(static fn () => ConfigurationRepository::forConnection($probe, $manager))
+                ->isInstanceOf(LogicException::class)
+                ->hasMessage('A configuration read must use its selected physical connection.');
+            $connection->update('glpi_configs', ['value' => 'fresh'], ['context' => $context, 'name' => 'z-key']);
+            $this->array(ConfigModel::getConfigurationValues($context, ['z-key']))->isIdenticalTo(['z-key' => 'fresh']);
+            $connection->update('glpi_configs', ['value' => 'first'], ['context' => $context, 'name' => 'z-key']);
             $DB = $adapter;
+            $beforeFactories = $factories->getValue();
             $this->array(ConfigModel::getConfigurationValues($context))->isIdenticalTo($expected);
             $this->array($probe->queries)->hasSize(1);
             $this->integer($probe->builders)->isIdenticalTo(1);
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(1);
 
             $this->array(ConfigModel::getConfigurationValues($context, ['later' => 'a-key', 'earlier' => 'z-key']))
                 ->isIdenticalTo(['z-key' => 'first', 'a-key' => 'last']);
@@ -1314,19 +1329,24 @@ class Config extends DbTestCase
             $otherProbe = new ConfigOidcScalarReadProbe($connection);
             $otherAdapter = new ConfigurationAdapter();
             $this->calling($otherAdapter)->getDoctrineConnection = $otherProbe;
-            $contextCallback = new class ($context, $otherAdapter) {
-                public function __construct(private string $context, private object $replacement)
+            $contextCallback = new class ($context, $otherAdapter, $factories) {
+                public int $factoriesAtCast = 0;
+
+                public function __construct(private string $context, private object $replacement, private ReflectionProperty $factories)
                 {
                 }
 
                 public function __toString(): string
                 {
+                    $this->factoriesAtCast = $this->factories->getValue();
                     $GLOBALS['DB'] = $this->replacement;
                     return $this->context;
                 }
             };
             $queryCount = count($probe->queries);
+            $beforeFactories = $factories->getValue();
             $this->array(ConfigModel::getConfigurationValues($contextCallback))->isIdenticalTo($expected);
+            $this->integer($contextCallback->factoriesAtCast - $beforeFactories)->isIdenticalTo(1);
             $this->integer(count($probe->queries))->isIdenticalTo($queryCount + 1);
             $this->array($otherProbe->queries)->isEmpty();
             $this->object($DB)->isIdenticalTo($otherAdapter);

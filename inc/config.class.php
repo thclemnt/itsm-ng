@@ -34,12 +34,14 @@
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
 use Glpi\Cache\SimpleCache;
 use Glpi\Exception\PasswordTooWeakException;
 use Glpi\System\RequirementsManager;
 use SimplePie\SimplePie as SimplePieFeed;
 use itsmng\Cache\StorageFactory;
 use itsmng\Database\CheckConstraintSupport;
+use itsmng\Database\Orm;
 use itsmng\Database\Repository\ConfigurationRepository;
 use itsmng\Timezone;
 use PHPMailer\PHPMailer\PHPMailer;
@@ -3087,8 +3089,10 @@ class Config extends CommonDBTM
     public static function getConfigurationValues($context, array $names = [])
     {
         global $DB;
-        return ConfigurationRepository::forConnection($DB->getDoctrineConnection())
-            ->values((string)$context, $names);
+        $connection = $DB->getDoctrineConnection();
+        return Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $context, $names): array {
+            return ConfigurationRepository::forConnection($connection, $manager)->values((string)$context, $names);
+        });
     }
 
     /**

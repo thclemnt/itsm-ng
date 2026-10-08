@@ -35,7 +35,16 @@ namespace tests\units;
 
 use AuthLDAP;
 use Computer;
+use Closure;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Result;
+use mock\DBmysql as HistoryAdapter;
 use DbTestCase;
+use itsmng\Database\Orm;
+use ReflectionProperty;
 use Entity;
 use Log as LegacyLog;
 
@@ -61,6 +70,102 @@ class Log extends DbTestCase
             $this->createLogEntry($computer, []);
             $this->string($history->getTabNameForItem($computer))
                 ->isIdenticalTo("Historical <sup class='tab_nb'>1</sup>");
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $beforeFactories = $factories->getValue();
+            for ($repeat = 0; $repeat < 3; ++$repeat) {
+                $this->string($history->getTabNameForItem($computer))
+                    ->isIdenticalTo("Historical <sup class='tab_nb'>1</sup>");
+            }
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+            $this->createLogEntry($computer, []);
+            $this->string($history->getTabNameForItem($computer))
+                ->isIdenticalTo("Historical <sup class='tab_nb'>2</sup>");
+
+            $originalAdapter = $DB;
+            $readPreference = $GLOBALS['CFG_GLPI']['use_slave_for_search'];
+            $events = new EventManager();
+            $clears = new class () {
+                public int $count = 0;
+
+                public function onClear(): void
+                {
+                    ++$this->count;
+                }
+            };
+            $events->addEventListener(['onClear'], $clears);
+            $probe = new class ($DB->getDoctrineConnection(), $events) extends Connection {
+                public int $queries = 0;
+
+                public function __construct(private Connection $selected, private EventManager $events)
+                {
+                    parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
+                }
+
+                public function getDatabasePlatform(): AbstractPlatform
+                {
+                    return $this->selected->getDatabasePlatform();
+                }
+
+                public function getEventManager(): EventManager
+                {
+                    return $this->events;
+                }
+
+                public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
+                {
+                    ++$this->queries;
+                    return $this->selected->executeQuery($sql, $params, $types, $qcp);
+                }
+            };
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new HistoryAdapter();
+            $getters = 0;
+            $this->calling($adapter)->getDoctrineConnection = static function () use ($probe, &$getters): Connection {
+                ++$getters;
+                return $probe;
+            };
+            $this->calling($adapter)->getProvider = $originalAdapter->getProvider();
+            $callbackItem = new class () extends Computer {
+                public Closure $identityCallback;
+                public static ?Closure $typeCallback = null;
+
+                public function getID()
+                {
+                    ($this->identityCallback)();
+                    return parent::getID();
+                }
+
+                public static function getType()
+                {
+                    if (self::$typeCallback !== null) {
+                        (self::$typeCallback)();
+                    }
+                    return 'Computer';
+                }
+            };
+            $callbackItem->fields = $computer->fields;
+            $callbackItem->identityCallback = static function () use ($adapter): void {
+                $GLOBALS['DB'] = $adapter;
+            };
+            $beforeFactories = $factories->getValue();
+            $atType = [];
+            $callbackItem::$typeCallback = static function () use ($originalAdapter, $factories, $probe, &$getters, &$atType): void {
+                $atType = [$factories->getValue(), $getters, $probe->queries];
+                $GLOBALS['DB'] = $originalAdapter;
+            };
+            try {
+                $GLOBALS['CFG_GLPI']['use_slave_for_search'] = false;
+                $this->string($history->getTabNameForItem($callbackItem))
+                    ->isIdenticalTo("Historical <sup class='tab_nb'>2</sup>");
+                $this->array($atType)->isIdenticalTo([$beforeFactories + 1, 1, 0]);
+                $this->integer($probe->queries)->isIdenticalTo(1);
+                $this->integer($clears->count)->isIdenticalTo(0);
+                $this->object($DB)->isIdenticalTo($originalAdapter);
+            } finally {
+                $callbackItem::$typeCallback = null;
+                $DB = $originalAdapter;
+                $GLOBALS['CFG_GLPI']['use_slave_for_search'] = $readPreference;
+            }
 
             $root = new Entity();
             $this->boolean($root->getFromDB(0))->isTrue();

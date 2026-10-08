@@ -4,7 +4,6 @@
 
 namespace itsmng\Database\Repository;
 
-use Composer\InstalledVersions;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Types\Type;
@@ -12,7 +11,7 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity\Config;
 use itsmng\Database\Orm;
-use ReflectionClass;
+use LogicException;
 
 /** Configuration names and contexts are literal values, including the string NULL. */
 final class ConfigurationRepository
@@ -23,15 +22,14 @@ final class ConfigurationRepository
     {
     }
 
-    /** A private fixed read; supplied managers retain their live ORM configuration. */
-    public static function forConnection(Connection $connection): self
+    /** @internal Optional manager belongs to the enclosing value-only application scope. */
+    public static function forConnection(Connection $connection, ?EntityManager $manager = null): self
     {
-        $repository = new self(Orm::forConnection($connection));
-        $file = (new ReflectionClass($connection->getDatabasePlatform()))->getFileName();
-        $package = InstalledVersions::getInstallPath('doctrine/dbal');
-        $repository->nativeRead = !method_exists($connection, 'getEventManager') && $file !== false && $package !== null
-            && ($file = realpath($file)) !== false && ($package = realpath($package)) !== false
-            && str_starts_with($file, $package . '/src/Platforms/');
+        if ($manager !== null && $manager->getConnection() !== $connection) {
+            throw new LogicException('A configuration read must use its selected physical connection.');
+        }
+        $repository = new self($manager ?? Orm::forConnection($connection));
+        $repository->nativeRead = Orm::ownsReadMapping($connection);
         return $repository;
     }
 
