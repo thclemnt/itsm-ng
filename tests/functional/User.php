@@ -1178,7 +1178,7 @@ class User extends DbTestCase
             $this->integer($customLoads->metadata)->isGreaterThan(0);
             $this->integer($customLoads->entities)->isIdenticalTo(0);
             $ordinaryManager = Orm::forConnection($extension);
-            $this->array($model->fields)->isIdenticalTo((new UserRepository($ordinaryManager))->timelineAuthor($id));
+            $this->array($model->fields)->isIdenticalTo((new RecordRepository($ordinaryManager))->scalarRow(UserRecord::class, $id));
             $this->string($model->fields['entities_id'])->isIdenticalTo('0');
             $ordinaryManager->find(UserRecord::class, $id);
             $this->integer($customLoads->entities)->isGreaterThan(0);
@@ -1203,7 +1203,7 @@ class User extends DbTestCase
             'comment' => 'Complete author fields', 'authtype' => Auth::DB_GLPI]);
         $id = (int)$user->getID();
         $manager = Orm::create($DB);
-        $repository = new UserRepository($manager);
+        $repository = new RecordRepository($manager);
         $loads = new class () {
             public int $count = 0;
             public function postLoad(): void
@@ -1218,7 +1218,7 @@ class User extends DbTestCase
                 $this->boolean($DB->update('glpi_users', ['is_active' => $active, 'last_login' => $date,
                     'firstname' => $firstname], ['id' => $id]))->isTrue();
                 $this->boolean($user->getFromDB($id))->isTrue();
-                $this->array($repository->timelineAuthor($id))->isIdenticalTo($user->fields);
+                $this->array($repository->scalarRow(UserRecord::class, $id))->isIdenticalTo($user->fields);
                 $this->boolean($model->getTimelineAuthorFromDB($id))->isTrue();
                 $this->array($model->fields)->isIdenticalTo($user->fields);
             }
@@ -1232,7 +1232,7 @@ class User extends DbTestCase
                 $this->boolean($model->getTimelineAuthorFromDB($missing))->isFalse();
                 $this->array($model->fields)->isIdenticalTo($before);
             }
-            $this->variable($repository->timelineAuthor(PHP_INT_MAX))->isNull();
+            $this->variable($repository->scalarRow(UserRecord::class, PHP_INT_MAX))->isNull();
             $custom = new class () extends UserModel {
                 public int $calls = 0;
                 public function getFromDB($id)
