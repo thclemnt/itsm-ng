@@ -63,17 +63,42 @@ final class RecordRepository
     }
 
     /** Complete legacy row without creating managed records or association proxies. */
-    public function scalarRow(string $recordClass, int $id, ?array $defaultIdentifiers = null, ?ReadQueryOwner $operation = null): ?array
+    public function scalarRow(string $recordClass, int $id, ?array $defaultIdentifiers = null, ?ReadQueryOwner $operation = null, ?string $lookupColumn = null): ?array
     {
         $metadata = $this->em->getClassMetadata($recordClass);
         $identifier = $metadata->getSingleIdentifierFieldName();
         if (!$metadata->hasField($identifier)) {
             throw new LogicException('Scalar record reads require a scalar identifier');
         }
+        $lookup = 'r.' . $identifier;
+        $type = $metadata->getTypeOfField($identifier);
+        if ($lookupColumn !== null) {
+            $field = $metadata->getFieldName($lookupColumn);
+            $lookup = 'r.' . $field;
+            $type = $metadata->getTypeOfField($field);
+            foreach ($metadata->associationMappings as $property => $association) {
+                if ($association->isToOneOwningSide() && count($association->joinColumns) === 1
+                    && $association->joinColumns[0]->name === $lookupColumn) {
+                    $lookup = 'IDENTITY(r.' . $property . ')';
+                    $target = $defaultIdentifiers[$association->targetEntity] ?? null;
+                    if ($target !== null && $target['column'] === $association->joinColumns[0]->referencedColumnName) {
+                        $type = $target['type'];
+                    } else {
+                        $targetMetadata = $this->em->getClassMetadata($association->targetEntity);
+                        $type = $targetMetadata->getTypeOfField($targetMetadata->getSingleIdentifierFieldName());
+                    }
+                    break;
+                }
+            }
+        }
         $query = $this->em->createQueryBuilder()
             ->from($recordClass, 'r')
-            ->where('r.' . $identifier . ' = :id')
-            ->setParameter('id', $id, $metadata->getTypeOfField($identifier));
+            ->where($lookup . ' = :id')
+            ->setParameter('id', $id, $type);
+        if ($lookupColumn !== null) {
+            // Match findOneBy: one row without adding an ordering contract.
+            $query->setMaxResults(1);
+        }
         $projection = new MappedRowProjection($this->em, $metadata, $defaultIdentifiers);
         $projection->select($query);
         // Scalar-only array hydration applies DBAL types without loading entities.

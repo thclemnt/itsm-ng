@@ -46,6 +46,10 @@ use DBAdapter;
 use DBmysql as LegacyDBmysql;
 use DbTestCase;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Types\BigIntType;
+use Doctrine\DBAL\Types\IntegerType;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\Configuration;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use Doctrine\ORM\Event\PostLoadEventArgs;
@@ -89,6 +93,7 @@ use itsmng\Database\MutationCleanupFailure;
 use itsmng\Database\MySQLConnection;
 use itsmng\Database\PostgresConnection;
 use itsmng\Database\Orm;
+use itsmng\Database\RecordReadOperation;
 use LogicException;
 use itsmng\Database\OwnedMutationFrame;
 use itsmng\Database\OwnershipUpdateUnit;
@@ -608,9 +613,55 @@ class CommonDBTM extends DbTestCase
             $this->array(array_column($records->matching('glpi_computers', ['id' => $ids], ['id'], 0, -1), 'id'))
                 ->isIdenticalTo($ids);
 
-            // Nonidentifier owning-reference indexes retain the original entity lookup.
+            // The explicit repository remains the independent entity-lookup oracle.
             $indexed = $records->find('glpi_computers', 'entities_id', (int)$entity->getID());
             $this->integer((int)$indexed['id'])->isIdenticalTo((int)$computer->getID());
+            $expectedIndexed = (new RecordRepository($oracle))->find('glpi_computers', 'entities_id', (int)$entity->getID());
+            $this->array(Orm::readRecord($DB, 'glpi_computers', 'entities_id', (int)$entity->getID()))->isIdenticalTo($expectedIndexed);
+            $beforeIndexed = $creations->getValue();
+            for ($repeat = 0; $repeat < 3; ++$repeat) {
+                $this->array(Orm::readRecord($DB, 'glpi_computers', 'entities_id', (int)$entity->getID()))->isIdenticalTo($expectedIndexed);
+            }
+            $this->integer($creations->getValue() - $beforeIndexed)->isIdenticalTo(
+                0,
+                'Canonical alternate-key reads do not create isolated hydration managers'
+            );
+            $this->variable(Orm::readRecord($DB, 'glpi_computers', 'entities_id', PHP_INT_MAX))->isNull();
+            $integerType = Type::getType('integer');
+            $bigintType = Type::getType('bigint');
+            try {
+                Type::overrideType('integer', new class () extends IntegerType {
+                    public function convertToDatabaseValue(mixed $value, AbstractPlatform $platform): mixed
+                    {
+                        return $value === null ? null : (int)$value + 1000000;
+                    }
+                });
+                // An owning reference uses its target BIGINT, never a generic INTEGER.
+                $this->array(Orm::readRecord($DB, 'glpi_computers', 'entities_id', (int)$entity->getID()))->isIdenticalTo($expectedIndexed);
+                Type::overrideType('integer', $integerType);
+                Type::overrideType('bigint', new class () extends BigIntType {
+                    public function convertToDatabaseValue(mixed $value, AbstractPlatform $platform): mixed
+                    {
+                        return $value === null ? null : (int)$value + 1000000;
+                    }
+                });
+                $oracle->clear();
+                $this->variable((new RecordRepository($oracle))->find('glpi_computers', 'entities_id', (int)$entity->getID()))->isNull();
+                $this->variable(Orm::readRecord($DB, 'glpi_computers', 'entities_id', (int)$entity->getID()))->isNull();
+            } finally {
+                Type::overrideType('integer', $integerType);
+                Type::overrideType('bigint', $bigintType);
+            }
+            $oracle->clear();
+            $expectedBinding = (new RecordRepository($oracle))->find('glpi_certificates_items', 'certificates_id', (int)$certificate->getID());
+            $this->array(Orm::readRecord($DB, 'glpi_certificates_items', 'certificates_id', (int)$certificate->getID()))->isIdenticalTo($expectedBinding);
+            $this->string($expectedBinding['itemtype'])->isIdenticalTo('Computer');
+
+            $connection->update('glpi_computers', ['comment' => 'Alternate current comment'], ['id' => $computer->getID()]);
+            $this->string(Orm::readRecord($DB, 'glpi_computers', 'entities_id', (int)$entity->getID())['comment'])->isIdenticalTo('Alternate current comment');
+            $connection->update('glpi_computers', ['comment' => null], ['id' => $computer->getID()]);
+            $this->variable(Orm::readRecord($DB, 'glpi_computers', 'entities_id', (int)$entity->getID())['comment'])->isNull();
+
             $managed = $manager->find(ComputerEntity::class, (int)$computer->getID());
             $this->boolean($DB->update('glpi_computers', ['name' => 'After legacy update'], ['id' => $computer->getID()]))->isTrue();
             $this->string($records->find('glpi_computers', 'id', (int)$computer->getID())['name'])->isIdenticalTo('After legacy update');
@@ -649,10 +700,28 @@ class CommonDBTM extends DbTestCase
                     ->matching('glpi_computers', ['id' => $computer->getID()]);
                 $this->string($transformedRows[0]['name'])->isIdenticalTo('Listener transformed row');
                 $this->integer($loads->count)->isGreaterThan(0);
+                $observed->clear();
+                $loads->count = 0;
+                $operation = new RecordReadOperation($connection, $observed);
+                $transformed = $operation->row('glpi_computers', 'entities_id', (int)$entity->getID());
+                $this->string($transformed['name'])->isIdenticalTo('Listener transformed row');
+                $this->integer($loads->count)->isGreaterThan(0);
 
             } finally {
                 $observed->clear();
             }
+            // Unordered alternate-key lookup may choose either complete matching row.
+            $peer = $this->createItem(Computer::class, ['name' => 'Alternate key peer', 'entities_id' => $entity->getID()]);
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_computers WHERE entities_id = ?', [$entity->getID()]))->isIdenticalTo(2);
+            $oracle->clear();
+            $allowedRows = [];
+            foreach ([(int)$computer->getID(), (int)$peer->getID()] as $candidateId) {
+                $allowedRows[] = (new RecordRepository($oracle))->find('glpi_computers', 'id', $candidateId);
+            }
+            $originalFirst = (new RecordRepository($oracle))->find('glpi_computers', 'entities_id', (int)$entity->getID());
+            $projectedFirst = Orm::readRecord($DB, 'glpi_computers', 'entities_id', (int)$entity->getID());
+            $this->boolean(in_array($originalFirst, $allowedRows, true))->isTrue();
+            $this->boolean(in_array($projectedFirst, $allowedRows, true))->isTrue();
         } finally {
             $manager->clear();
             $oracle->clear();

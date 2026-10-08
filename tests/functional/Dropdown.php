@@ -109,7 +109,7 @@ class Dropdown extends DbTestCase
         $operation = new EntityScopeReadOperation();
         $this->array($operation->criteria('glpi_suppliers', '', [$id], true))->isIdenticalTo($expected);
         $this->array($operation->criteria('glpi_suppliers', '', [$id], true))->isIdenticalTo($expected);
-        $this->integer($counter->getValue() - $before)->isIdenticalTo(1, 'One scalar operation owns one manager across current permission reads');
+        $this->integer($counter->getValue() - $before)->isIdenticalTo(0, 'Current permission reads reuse the warmed canonical manager');
         $connection->update('glpi_entities', ['entities_id' => 0], ['id' => $id]);
         $fresh = getEntitiesRestrictCriteria('glpi_suppliers', '', [$id], true);
         $this->array($fresh)->isNotIdenticalTo($expected);

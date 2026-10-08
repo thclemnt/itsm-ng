@@ -34,6 +34,36 @@ final class RecordReadOperation implements ReadQueryOwner
                 $this,
             );
         }
+        // Alternate legacy indexes still return one complete row. Admit only
+        // canonical scalar declarations; custom repositories and lifecycle hooks
+        // retain their independently owned entity lookup below.
+        $identifiers = $this->defaultIdentifiers($metadata);
+        if ($this->ownedMapping && $this->scalar($metadata) && $identifiers !== null
+            && $metadata->isInheritanceTypeNone() && $metadata->customRepositoryClassName === null
+            && $this->manager->getUnitOfWork()->size() === 0) {
+            $knownColumn = isset($metadata->fieldNames[$column]);
+            $supportedReferences = true;
+            foreach ($metadata->associationMappings as $association) {
+                if (!$association->isToOneOwningSide()) {
+                    continue;
+                }
+                if (count($association->joinColumns) !== 1
+                    || ($identifiers[$association->targetEntity]['column'] ?? null) !== $association->joinColumns[0]->referencedColumnName) {
+                    $supportedReferences = false;
+                    break;
+                }
+                $knownColumn = $knownColumn || $association->joinColumns[0]->name === $column;
+            }
+            if ($knownColumn && $supportedReferences) {
+                return (new RecordRepository($this->manager))->scalarRow(
+                    $metadata->name,
+                    $id,
+                    $identifiers,
+                    $this,
+                    $column
+                );
+            }
+        }
         // Entity callbacks must receive wholly local metadata, not private cached
         // metadata whose backend alone was detached after it had already loaded.
         $fallback = $this->fallbackManager();

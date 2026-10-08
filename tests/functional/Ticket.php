@@ -3172,6 +3172,7 @@ class Ticket extends DbTestCase
 
     public function testSatisfactionTabReadsOnlyClosedTickets(): void
     {
+        global $DB;
         $this->login();
         $ticket = $this->createItem(LegacyTicket::class, ['name' => $this->getUniqueString(),
             'content' => 'Satisfaction tab guard', '_disablenotif' => true]);
@@ -3180,30 +3181,51 @@ class Ticket extends DbTestCase
             'tickets_id' => $ticket->getID(), 'type' => 1, 'date_begin' => $_SESSION['glpi_currenttime'],
         ]))->isGreaterThan(0);
         $this->boolean($satisfaction->getFromDB($ticket->getID()))->isTrue();
-        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        $this->mockGenerator->orphanize('__construct');
+        $adapter = new TimelineCountAdapter();
+        $this->calling($adapter)->getProvider = $database->getProvider();
+        $this->calling($adapter)->request = static fn ($table, $criteria = '', $debug = false) =>
+            $database->request($table, $criteria, $debug);
+        $probe = new TimelineDocumentReadProbe($connection);
+        $this->calling($adapter)->getDoctrineConnection = $probe;
+        $readTabs = function (int $expectedReads) use ($ticket, $database, $adapter, $probe): array {
+            global $DB;
+            // Keep the canonical scoped path as the domain oracle, then observe
+            // the same public call on the same physical transaction.
+            $expected = $ticket->getTabNameForItem($ticket);
+            $probe->queries = [];
+            try {
+                $DB = $adapter;
+                $observed = $ticket->getTabNameForItem($ticket);
+            } finally {
+                $DB = $database;
+            }
+            $this->array($observed)->isIdenticalTo($expected);
+            $reads = array_values(array_filter($probe->queries, static fn (array $query): bool =>
+                str_contains($query['sql'], 'glpi_ticketsatisfactions')));
+            $this->array($reads)->hasSize($expectedReads);
+            if ($expectedReads !== 0) {
+                $this->array(array_values($reads[0]['params']))->isIdenticalTo([(int)$ticket->getID()]);
+            }
+            return $expected;
+        };
         $ticket->fields['status'] = $_SESSION['INCOMING'];
-        $before = $factories->getValue();
-        $open = $ticket->getTabNameForItem($ticket);
-        $openReads = $factories->getValue() - $before;
+        $open = $readTabs(0);
         $this->array($open)->notHasKey(3);
         $this->array($open)->hasKey(1);
         $ticket->fields['status'] = $_SESSION['CLOSED'];
-        $before = $factories->getValue();
-        $closed = $ticket->getTabNameForItem($ticket);
-        $this->integer($factories->getValue() - $before)->isIdenticalTo($openReads + 1);
+        $closed = $readTabs(1);
         $this->array($closed)->hasKey(3);
         $this->string($closed[3])->isIdenticalTo(__('Satisfaction'));
         unset($closed[3]);
         $this->array($closed)->isIdenticalTo($open);
         // A missing satisfaction on a closed ticket still performs the current presence read.
         $this->boolean($satisfaction->delete(['tickets_id' => $ticket->getID()], true))->isTrue();
-        $before = $factories->getValue();
-        $this->array($ticket->getTabNameForItem($ticket))->isIdenticalTo($open);
-        $this->integer($factories->getValue() - $before)->isIdenticalTo($openReads + 1);
+        $this->array($readTabs(1))->isIdenticalTo($open);
         $ticket->fields['status'] = $_SESSION['INCOMING'];
-        $before = $factories->getValue();
-        $this->array($ticket->getTabNameForItem($ticket))->isIdenticalTo($open);
-        $this->integer($factories->getValue() - $before)->isIdenticalTo($openReads);
+        $this->array($readTabs(0))->isIdenticalTo($open);
     }
 
     public function testTimelineCountAssociatedDocumentVisibility()
