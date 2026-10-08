@@ -33,6 +33,8 @@
 
 use Glpi\Event;
 use itsmng\Csrf;
+use Psr\Cache\CacheItemPoolInterface;
+use Symfony\Component\Cache\Psr16Cache;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -601,7 +603,7 @@ class Session
         $cache = Config::getCache('cache_trans', 'core', false);
         $TRANSLATE = new \itsmng\Translation\Translator(
             $trytoload,
-            $cache !== false && !defined('TU_USER') ? new \Laminas\Cache\Psr\SimpleCache\SimpleCacheDecorator($cache) : null
+            $cache !== false && !defined('TU_USER') ? ($cache instanceof CacheItemPoolInterface ? new Psr16Cache($cache) : $cache) : null
         );
 
         $TRANSLATE->addTranslationFile('gettext', GLPI_I18N_DIR . $newfile, 'glpi', $trytoload);

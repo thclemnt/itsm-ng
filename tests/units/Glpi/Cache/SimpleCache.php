@@ -33,7 +33,19 @@
 
 namespace tests\units\Glpi\Cache;
 
+use ArrayAccess;
+use ArrayIterator;
+use ArrayObject;
+use DateInterval;
+use IteratorAggregate;
+use itsmng\Cache\SessionAdapter;
+use itsmng\Cache\StorageFactory;
 use org\bovigo\vfs\vfsStream;
+use Psr\SimpleCache\InvalidArgumentException as CacheInvalidArgumentException;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Symfony\Component\Cache\Exception\InvalidArgumentException;
+use Symfony\Component\Cache\Psr16Cache;
+use Traversable;
 
 /* Test for inc/cache/simplecache.class.php */
 
@@ -44,43 +56,116 @@ class SimpleCache extends \GLPITestCase
         $previousSession = $_SESSION;
         try {
             $_SESSION['glpiID'] = 194;
-            $first = \itsmng\Cache\StorageFactory::create(['adapter' => 'session', 'options' => ['namespace' => 'first']]);
-            $second = \itsmng\Cache\StorageFactory::create(['adapter' => 'Session', 'options' => ['namespace' => 'second']]);
-            $this->array($first->setItems(['42' => 'numeric-key']))->isEmpty();
-            $this->string($first->getItem('42'))->isIdenticalTo('numeric-key');
-            $first->removeItem('42');
-            $this->boolean($first->setItems(['empty' => null, 'prefix-one' => ['value' => 7]]) === [])->isTrue();
-            $this->boolean($first->hasItem('empty'))->isTrue();
-            $this->variable($first->getItem('empty', $success))->isNull();
-            $this->boolean($success)->isTrue();
-            $this->array($first->getItems(['empty', 'prefix-one', 'absent']))->isIdenticalTo(['empty' => null, 'prefix-one' => ['value' => 7]]);
-            $this->boolean($second->hasItem('empty'))->isFalse();
-            $second->setItem('kept', 9);
-            $iterator = $first->getIterator();
-            $iterator->setMode(\Laminas\Cache\Storage\IteratorInterface::CURRENT_AS_KEY);
-            $this->array(iterator_to_array($iterator, false))->isIdenticalTo(['empty', 'prefix-one']);
-            $this->boolean($first->clearByPrefix('prefix-'))->isTrue();
-            $this->boolean($first->hasItem('prefix-one'))->isFalse();
-            $this->integer($second->getItem('kept'))->isIdenticalTo(9);
-            $cache = new \Glpi\Cache\SimpleCache($first, '', false);
-            $this->boolean($cache->set('explicit-ttl', 'value', 30))->isFalse();
-            $this->boolean($cache->has('explicit-ttl'))->isFalse();
-            $this->boolean($cache->set('session-lifetime', 'value'))->isTrue();
-            $this->string($cache->get('session-lifetime'))->isIdenticalTo('value');
-            $this->boolean($cache->clear())->isTrue();
-            $this->boolean($second->hasItem('kept'))->isFalse();
+            $first = StorageFactory::create(['adapter' => 'session', 'options' => ['namespace' => 'first']]);
+            $second = StorageFactory::create(['adapter' => 'Session', 'options' => ['namespace' => 'second']]);
+            $this->boolean($first->setMultiple(['42' => 'numeric-key']))->isTrue();
+            $this->string($first->get('42'))->isIdenticalTo('numeric-key');
+            $this->boolean($first->delete('42'))->isTrue();
+            $this->boolean($first->delete('absent'))->isTrue();
+            $this->boolean($first->setMultiple(['empty' => null, 'nested' => ['value' => 7]]))->isTrue();
+            $this->boolean($first->has('empty'))->isTrue();
+            $this->variable($first->get('empty', 'missing'))->isNull();
+            $this->array($first->getMultiple(['empty', 'nested', 'absent'], 'missing'))
+                ->isIdenticalTo(['empty' => null, 'nested' => ['value' => 7], 'absent' => 'missing']);
+            $this->boolean($second->has('empty'))->isFalse();
+            $this->boolean($second->set('kept', 9))->isTrue();
+            foreach ([30, new DateInterval('PT30S')] as $ttl) {
+                $this->boolean($first->set('explicit-ttl', 'value', $ttl))->isTrue();
+                $this->boolean($first->has('explicit-ttl'))->isTrue();
+                $this->boolean($first->setMultiple(['explicit-bulk' => 'value'], $ttl))->isTrue();
+                $this->boolean($first->has('explicit-bulk'))->isTrue();
+            }
+            $past = new DateInterval('PT1S');
+            $past->invert = 1;
+            foreach ([0, -1, new DateInterval('PT0S'), $past] as $ttl) {
+                $first->set('expired', 'old');
+                $this->boolean($first->set('expired', 'new', $ttl))->isTrue();
+                $this->boolean($first->has('expired'))->isFalse();
+                $first->set('expired-bulk', 'old');
+                $this->boolean($first->setMultiple(['expired-bulk' => 'new'], $ttl))->isTrue();
+                $this->boolean($first->has('expired-bulk'))->isFalse();
+            }
+            $this->boolean($first->setMultiple([], 30))->isTrue();
+            $expiring = StorageFactory::create(['adapter' => 'session', 'options' => ['namespace' => 'expiry', 'ttl' => 1]]);
+            $this->boolean($expiring->set('default', 'short'))->isTrue();
+            $this->boolean($expiring->set('integer', null, 1))->isTrue();
+            $this->boolean($expiring->set('interval', 'short', new DateInterval('PT1S')))->isTrue();
+            $this->boolean($expiring->setMultiple(['bulk' => 'short']))->isTrue();
+            $this->boolean($first->set('unlimited', 'held'))->isTrue();
+            $this->boolean($expiring->has('integer'))->isTrue();
+            $this->variable($expiring->get('integer', 'missing'))->isNull();
+            sleep(1);
+            $this->boolean($expiring->has('default'))->isFalse();
+            $this->string($expiring->get('integer', 'missing'))->isIdenticalTo('missing');
+            $this->array($expiring->getMultiple(['interval', 'bulk'], 'missing'))
+                ->isIdenticalTo(['interval' => 'missing', 'bulk' => 'missing']);
+            $this->string($first->get('unlimited'))->isIdenticalTo('held');
+            // Existing unversioned data is deliberately cold, not misread as expiry envelopes.
+            $_SESSION['itsmng_cache']['first']['legacy'] = ['value' => 'old', 'expires' => null];
+            $this->boolean($first->has('legacy'))->isFalse();
+
+            $this->boolean($first->set('session-lifetime', 'value'))->isTrue();
+            $this->string((new SessionAdapter('first'))->get('session-lifetime'))->isIdenticalTo('value');
+            $keys = static function () {
+                yield 0 => 'empty';
+                yield 0 => 'nested';
+            };
+            $this->array($first->getMultiple($keys()))->isIdenticalTo(['empty' => null, 'nested' => ['value' => 7]]);
+            $this->boolean($first->deleteMultiple($keys()))->isTrue();
+            $this->boolean($first->has('empty'))->isFalse();
+            foreach (['', 'bad:key', 'bad/key', 'bad\\key', '{}', '()', '@', 42] as $invalid) {
+                $this->exception(fn () => $first->get($invalid))->isInstanceOf(CacheInvalidArgumentException::class);
+                $this->exception(fn () => $first->set($invalid, 1))->isInstanceOf(CacheInvalidArgumentException::class);
+                $this->exception(fn () => $first->has($invalid))->isInstanceOf(CacheInvalidArgumentException::class);
+                $this->exception(fn () => $first->delete($invalid))->isInstanceOf(CacheInvalidArgumentException::class);
+            }
+            $this->boolean($first->clear())->isTrue();
+            $this->boolean($second->has('kept'))->isTrue();
+            $this->integer($second->get('kept'))->isIdenticalTo(9);
             $this->integer($_SESSION['glpiID'])->isIdenticalTo(194);
 
-            // Existing caller-supplied containers remain distinct from native session storage.
-            foreach ([\ArrayObject::class, \Laminas\Stdlib\ArrayObject::class] as $containerClass) {
-                $container = new $containerClass(['other' => ['retained' => 3]]);
-                $external = \itsmng\Cache\StorageFactory::create(['adapter' => 'session', 'options' => ['namespace' => 'external', 'session_container' => $container]]);
-                $external->setItem('raw', ['nested' => true]);
-                $this->array($container['external']['raw'])->isIdenticalTo(['nested' => true]);
+            // A reader follows the current session, rather than retaining an old array.
+            $this->boolean($first->set('old-session', 'private'))->isTrue();
+            $_SESSION = ['glpiID' => 195];
+            $this->boolean($first->has('old-session'))->isFalse();
+            $this->boolean($first->set('new-session', 1))->isTrue();
+            $this->integer($_SESSION['glpiID'])->isIdenticalTo(195);
+
+            // Native ArrayObject and any ArrayAccess+Traversable container work without
+            // a Laminas dependency or exchangeArray method requirement.
+            $containers = [new ArrayObject(['other' => ['retained' => 3]]), new class () implements ArrayAccess, IteratorAggregate {
+                private array $values = ['other' => ['retained' => 3]];
+                public function offsetExists(mixed $offset): bool
+                {
+                    return array_key_exists($offset, $this->values);
+                }
+                public function offsetGet(mixed $offset): mixed
+                {
+                    return $this->values[$offset] ?? null;
+                }
+                public function offsetSet(mixed $offset, mixed $value): void
+                {
+                    $this->values[$offset] = $value;
+                }
+                public function offsetUnset(mixed $offset): void
+                {
+                    unset($this->values[$offset]);
+                }
+                public function getIterator(): Traversable
+                {
+                    return new ArrayIterator($this->values);
+                }
+            }];
+            foreach ($containers as $container) {
+                $external = new SessionAdapter('external', $container);
+                $this->boolean($external->set('raw', ['nested' => true]))->isTrue();
+                $this->array($external->get('raw'))->isIdenticalTo(['nested' => true]);
                 $this->integer($container['other']['retained'])->isIdenticalTo(3);
-                $external->flush();
-                $this->array($container->getArrayCopy())->isEmpty();
-                $this->integer($_SESSION['glpiID'])->isIdenticalTo(194);
+                $this->boolean($external->clear())->isTrue();
+                $this->array(iterator_to_array($container))->isIdenticalTo(['other' => ['retained' => 3]]);
+                $this->boolean($external->has('raw'))->isFalse();
+                $this->integer($first->get('new-session'))->isIdenticalTo(1);
+                $this->integer($_SESSION['glpiID'])->isIdenticalTo(195);
             }
         } finally {
             $_SESSION = $previousSession;
@@ -89,35 +174,56 @@ class SimpleCache extends \GLPITestCase
 
     public function testStorageFactoryPreservesPluginFormsAndPriority(): void
     {
+        // Existing documented serializer forms become native Symfony marshalling;
+        // application code no longer depends on mutable adapter plugin events.
         foreach ([['serializer'], ['serializer' => ['serializer' => 'phpserialize']], [['name' => 'serializer', 'options' => ['serializer' => 'phpserialize'], 'priority' => '20']]] as $plugins) {
-            $storage = \itsmng\Cache\StorageFactory::create([
+            $pool = StorageFactory::create([
                 'adapter' => ['name' => 'Memory', 'options' => ['namespace' => 'nested']],
                 'options' => ['namespace' => 'override'],
                 'plugins' => $plugins,
             ]);
-            $this->string($storage->getOptions()->getNamespace())->isIdenticalTo('override');
-            $observed = null;
-            $storage->getEventManager()->attach('setItem.pre', static function ($event) use (&$observed): void {
-                $observed = $event->getParam('value');
-            }, 10);
-            $this->boolean($storage->setItem('value', ['nested' => 4]))->isTrue();
-            if (isset($plugins[0]['priority'])) {
-                $this->string($observed)->isIdenticalTo(serialize(['nested' => 4]));
-            } else {
-                $this->array($observed)->isIdenticalTo(['nested' => 4]);
-            }
-            $this->array($storage->getItem('value'))->isIdenticalTo(['nested' => 4]);
-            foreach ($storage->getPluginRegistry() as $plugin) {
-                $storage->removePlugin($plugin);
-            }
-            $this->string($storage->getItem('value'))->isIdenticalTo(serialize(['nested' => 4]));
+            $this->object($pool)->isInstanceOf(ArrayAdapter::class);
+            $cache = new Psr16Cache($pool);
+            $this->boolean($cache->set('value', ['nested' => 4]))->isTrue();
+            $this->array($cache->get('value'))->isIdenticalTo(['nested' => 4]);
+            $this->boolean($cache->set('expired', 'value', 0))->isTrue();
+            $this->boolean($cache->has('expired'))->isFalse();
         }
+        foreach ([
+            ['adapter' => 'memory', 'plugins' => ['unknown']],
+            ['adapter' => 7], ['adapter' => 'memory', 'options' => 'invalid'],
+            ['adapter' => 'memory', 'options' => ['namespace' => []]],
+            ['adapter' => 'filesystem', 'options' => ['cache_dir' => []]],
+            ['adapter' => 'session', 'options' => ['session_container' => []]],
+            ['adapter' => 'redis', 'options' => ['server' => ['host' => []]]],
+            ['adapter' => 'redis', 'options' => ['server' => []]],
+            ['adapter' => 'redis', 'options' => ['server' => ['port' => 6380]]],
+        ] as $invalid) {
+            $this->exception(static fn () => StorageFactory::create($invalid))->isInstanceOf(InvalidArgumentException::class);
+        }
+        vfsStream::setup('cache-backends');
+        $options = ['cache_dir' => vfsStream::url('cache-backends'), 'namespace' => 'first', 'ttl' => 600];
+        $first = new Psr16Cache(StorageFactory::create(['adapter' => 'filesystem', 'options' => $options]));
+        $same = new Psr16Cache(StorageFactory::create(['adapter' => 'filesystem', 'options' => $options]));
+        $other = new Psr16Cache(StorageFactory::create(['adapter' => 'filesystem', 'options' => array_replace($options, ['namespace' => 'second'])]));
+        $this->boolean($first->set('shared', ['value' => 7]))->isTrue();
+        $this->array($same->get('shared'))->isIdenticalTo(['value' => 7]);
+        $this->boolean($other->has('shared'))->isFalse();
+        $other->set('retained', 9);
+        $this->boolean($first->clear())->isTrue();
+        $this->boolean($same->has('shared'))->isFalse();
+        $this->integer($other->get('retained'))->isIdenticalTo(9);
+        $overridden = new Psr16Cache(StorageFactory::create([
+            'adapter' => ['name' => 'Filesystem', 'options' => $options],
+            'options' => ['namespace' => 'second'],
+        ]));
+        $this->integer($overridden->get('retained'))->isIdenticalTo(9);
     }
 
     public function testIterableBulkOperationsKeepFootprints(): void
     {
         vfsStream::setup('glpi', null, ['cache' => []]);
-        $storage = \itsmng\Cache\StorageFactory::create(['adapter' => 'memory']);
+        $storage = new Psr16Cache(StorageFactory::create(['adapter' => 'memory']));
         $cache = new \Glpi\Cache\SimpleCache($storage, vfsStream::url('glpi/cache'));
         $values = static function () {
             yield 'one' => 1;
@@ -141,8 +247,8 @@ class SimpleCache extends \GLPITestCase
         $directory = vfsStream::url('glpi/cache');
         $file = $directory . '/' . $namespace . '.json';
         file_put_contents($file, '{"retained_null":null}');
-        $storage = new \Laminas\Cache\Storage\Adapter\Memory(['namespace' => $namespace]);
-        $cache = new \Glpi\Cache\SimpleCache($storage, $directory);
+        $storage = new Psr16Cache(new ArrayAdapter());
+        $cache = new \Glpi\Cache\SimpleCache($storage, $directory, true, $namespace);
         $this->boolean($cache->setMultiple(['live' => 'value', 'zero' => 0, 'null' => null]))->isTrue();
         // Known SHA-1 footprints for serialized "value", 0 and null. Existing
         // null entries and deleted keys are retained by the footprint writer.
@@ -179,9 +285,9 @@ class SimpleCache extends \GLPITestCase
         $namespace = 'fresh-footprint-' . uniqid();
         $directory = vfsStream::url('glpi/cache');
         $file = $directory . '/' . $namespace . '.json';
-        $storage = new \Laminas\Cache\Storage\Adapter\Memory(['namespace' => $namespace]);
-        $cache = new \Glpi\Cache\SimpleCache($storage, $directory);
-        $other = new \Glpi\Cache\SimpleCache($storage, $directory);
+        $storage = new Psr16Cache(new ArrayAdapter());
+        $cache = new \Glpi\Cache\SimpleCache($storage, $directory, true, $namespace);
+        $other = new \Glpi\Cache\SimpleCache($storage, $directory, true, $namespace);
         $cache->set('one', 'first');
         $this->string($cache->get('one'))->isIdenticalTo('first');
         $this->string($cache->get('one'))->isIdenticalTo('first');
@@ -212,7 +318,7 @@ class SimpleCache extends \GLPITestCase
         $returned = $cache->get('one');
         $returned['nested']['value'] = 'local mutation';
         $this->array($cache->get('one'))->isIdenticalTo(['nested' => ['value' => 'new']]);
-        $storage->setItem(sha1('one'), 'changed without matching footprint');
+        $storage->set(sha1('one'), 'changed without matching footprint');
         $this->variable($cache->get('one'))->isNull();
         $other->set('one', 'restored');
         $this->string($cache->get('one'))->isIdenticalTo('restored');
@@ -246,8 +352,10 @@ class SimpleCache extends \GLPITestCase
         $footprint_file = vfsStream::url('glpi/cache/' . $cache_namespace . '.json');
 
         $this->newTestedInstance(
-            new \Laminas\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
-            $cache_dir
+            new Psr16Cache(new ArrayAdapter()),
+            $cache_dir,
+            true,
+            $cache_namespace
         );
 
         // File has been initialized
@@ -277,8 +385,10 @@ class SimpleCache extends \GLPITestCase
         $footprint_file = vfsStream::url('glpi/cache/' . $cache_namespace . '.json');
 
         $this->newTestedInstance(
-            new \Laminas\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
-            $cache_dir
+            new Psr16Cache(new ArrayAdapter()),
+            $cache_dir,
+            true,
+            $cache_namespace
         );
 
         // File has initialized
@@ -310,8 +420,10 @@ class SimpleCache extends \GLPITestCase
         $footprint_file = vfsStream::url('glpi/cache/' . $cache_namespace . '.json');
 
         $this->newTestedInstance(
-            new \Laminas\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
-            $cache_dir
+            new Psr16Cache(new ArrayAdapter()),
+            $cache_dir,
+            true,
+            $cache_namespace
         );
 
         // File has not been erased
@@ -344,8 +456,10 @@ class SimpleCache extends \GLPITestCase
         $this->when(
             function () use ($self, $cache_dir, $cache_namespace) {
                 $self->newTestedInstance(
-                    new \Laminas\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
-                    $cache_dir
+                    new Psr16Cache(new ArrayAdapter()),
+                    $cache_dir,
+                    true,
+                    $cache_namespace
                 );
             }
         )->error()
@@ -377,8 +491,10 @@ class SimpleCache extends \GLPITestCase
 
         // Simulate existing cache with footprint.
         $this->newTestedInstance(
-            new \Laminas\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
-            $cache_dir
+            new Psr16Cache(new ArrayAdapter()),
+            $cache_dir,
+            true,
+            $cache_namespace
         );
 
         $this->boolean($this->testedInstance->set('footprinted', 'some value'))->isTrue();
@@ -392,8 +508,10 @@ class SimpleCache extends \GLPITestCase
         $this->when(
             function () use ($self, $cache_dir, $cache_namespace) {
                 $self->newTestedInstance(
-                    new \Laminas\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
-                    $cache_dir
+                    new Psr16Cache(new ArrayAdapter()),
+                    $cache_dir,
+                    true,
+                    $cache_namespace
                 );
             }
         )->error()
@@ -433,8 +551,10 @@ class SimpleCache extends \GLPITestCase
         $this->when(
             function () use ($self, $cache_dir, $cache_namespace) {
                 $self->newTestedInstance(
-                    new \Laminas\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
-                    $cache_dir
+                    new Psr16Cache(new ArrayAdapter()),
+                    $cache_dir,
+                    true,
+                    $cache_namespace
                 );
             }
         )->error()

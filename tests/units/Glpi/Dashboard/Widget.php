@@ -36,7 +36,8 @@ namespace tests\units\Glpi\Dashboard;
 use DbTestCase;
 use Glpi\Cache\SimpleCache;
 use Glpi\Dashboard\Widget as WidgetModel;
-use Laminas\Cache\Storage\Adapter\Memory;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Symfony\Component\Cache\Psr16Cache;
 
 /* Test for inc/dashboard/widget.class.php */
 
@@ -112,7 +113,7 @@ class Widget extends DbTestCase
         global $GLPI_CACHE;
         $cache = $GLPI_CACHE;
         try {
-            $GLPI_CACHE = new SimpleCache(new Memory(), '', false);
+            $GLPI_CACHE = new SimpleCache(new Psr16Cache(new ArrayAdapter()), '', false);
             $first = WidgetModel::getCssGradientPalette($bg_color, $nb_series, '#palette-first', $revert);
             $second = WidgetModel::getCssGradientPalette($bg_color, $nb_series, '#palette-second', $revert);
             $this->string($first)->contains('#palette-first .ct-series-a');

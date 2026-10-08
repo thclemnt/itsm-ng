@@ -33,8 +33,8 @@
 
 namespace tests\units;
 
-use PHPMailer\PHPMailer\PHPMailer;
 use Config as ConfigModel;
+use DbTestCase;
 use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Types\StringType;
@@ -44,11 +44,16 @@ use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use itsmng\Database\Entity\Config as ConfigRecord;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ConfigurationRepository;
+use Log;
 use LogicException;
 use mock\DBmysql as ConfigurationAdapter;
-use DbTestCase;
-use Log;
+use PHPMailer\PHPMailer\PHPMailer;
+use ReflectionProperty;
 use Session;
+use Symfony\Component\Cache\Adapter\AbstractAdapter;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Symfony\Component\Cache\Adapter\FilesystemAdapter;
+use Symfony\Component\Cache\Psr16Cache;
 
 /* Test for inc/config.class.php */
 
@@ -321,7 +326,7 @@ class Config extends DbTestCase
             // must remain visible to the adapter's formerly fresh first scan.
             $manager->renameTable('glpi_configs', 'saved_configs');
             $this->object(\Config::getCache('cache_db', 'core', false))
-                ->isInstanceOf(\Laminas\Cache\Storage\Adapter\Filesystem::class);
+                ->isInstanceOf(FilesystemAdapter::class);
             $this->boolean($probe->tableExists('glpi_configs', false))->isFalse();
             $connection->executeStatement('CREATE TABLE glpi_configs (id INTEGER NOT NULL, catalog_probe VARCHAR(40))');
             $connection->insert('glpi_configs', ['id' => 1, 'catalog_probe' => 'wide']);
@@ -795,36 +800,40 @@ class Config extends DbTestCase
             $connection->insert($table, ['context' => $context, 'name' => 'other-cache', 'value' => $settings('wrong-name', 43)]);
             unset($GLOBALS['GLPI_CACHE']);
             $first = \Config::getCache($name, $context, false);
-            $this->object($first)->isInstanceOf(\Laminas\Cache\Storage\Adapter\Memory::class);
-            $this->string($first->getOptions()->getNamespace())->isIdenticalTo('first');
-            $this->integer($first->getOptions()->getTtl())->isIdenticalTo(17);
+            $this->object($first)->isInstanceOf(ArrayAdapter::class);
+            $firstCache = new Psr16Cache($first);
+            $this->boolean($firstCache->set('retained', 'first'))->isTrue();
+            $this->integer((new ReflectionProperty(ArrayAdapter::class, 'defaultLifetime'))->getValue($first))->isIdenticalTo(17);
 
             $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache($memory);
             $connection->update($table, ['value' => $settings('second', 29)], ['context' => $context, 'name' => $name]);
             $second = \Config::getCache($name, $context, false);
             $this->object($second)->isNotIdenticalTo($first);
-            $this->string($second->getOptions()->getNamespace())->isIdenticalTo('second');
-            $this->integer($second->getOptions()->getTtl())->isIdenticalTo(29);
-            $this->string($first->getOptions()->getNamespace())->isIdenticalTo('first');
+            $secondCache = new Psr16Cache($second);
+            $this->boolean($secondCache->has('retained'))->isFalse();
+            $this->integer((new ReflectionProperty(ArrayAdapter::class, 'defaultLifetime'))->getValue($second))->isIdenticalTo(29);
+            $this->string($firstCache->get('retained'))->isIdenticalTo('first');
 
             $sessionSettings = ['adapter' => 'session', 'options' => ['namespace' => $context, 'ttl' => 23]];
             $connection->update($table, ['value' => json_encode($sessionSettings, JSON_THROW_ON_ERROR)], ['context' => $context, 'name' => $name]);
             $session = \Config::getCache($name, $context, false);
             $this->object($session)->isInstanceOf(\itsmng\Cache\SessionAdapter::class);
-            $this->integer($session->getOptions()->getTtl())->isIdenticalTo(23);
-            $this->boolean($session->setItem('configuration', ['native' => true]))->isTrue();
-            $this->array($session->getItem('configuration'))->isIdenticalTo(['native' => true]);
-            $session->removeItem('configuration');
+            $this->boolean($session->set('explicit-ttl', 'value', 23))->isTrue();
+            $this->string($session->get('explicit-ttl'))->isIdenticalTo('value');
+            $session->delete('explicit-ttl');
+            $this->boolean($session->set('configuration', ['native' => true]))->isTrue();
+            $this->array($session->get('configuration'))->isIdenticalTo(['native' => true]);
+            $session->delete('configuration');
 
             // Neither SQL NULL, JSON null nor ciphertext is an adapter declaration.
             foreach ([null, 'null', $encrypted] as $value) {
                 $connection->update($table, ['value' => $value], ['context' => $context, 'name' => $name]);
                 $fallback = \Config::getCache($name, $context, false);
-                $this->object($fallback)->isInstanceOf(\Laminas\Cache\Storage\Adapter\Filesystem::class);
-                $this->integer($fallback->getOptions()->getTtl())->isIdenticalTo(600);
+                $this->object($fallback)->isInstanceOf(FilesystemAdapter::class);
+                $this->integer((new ReflectionProperty(AbstractAdapter::class, 'defaultLifetime'))->getValue($fallback))->isIdenticalTo(600);
             }
             $connection->delete($table, ['context' => $context, 'name' => $name]);
-            $this->object(\Config::getCache($name, $context, false))->isInstanceOf(\Laminas\Cache\Storage\Adapter\Filesystem::class);
+            $this->object(\Config::getCache($name, $context, false))->isInstanceOf(FilesystemAdapter::class);
             $this->array($memory->getValues())->isEmpty('Cache backend construction does not populate the ORM metadata cache');
 
             // Consume only the five deliberate getCache debug messages, after

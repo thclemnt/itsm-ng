@@ -38,12 +38,10 @@ if (!defined('GLPI_ROOT')) {
 }
 
 use Psr\SimpleCache\CacheInterface;
-use Laminas\Cache\Psr\SimpleCache\SimpleCacheDecorator;
-use Laminas\Cache\Storage\StorageInterface;
 
 class SimpleCache implements CacheInterface
 {
-    private SimpleCacheDecorator $cache;
+    private CacheInterface $cache;
 
     /**
      * Determines if footprints must be checked.
@@ -70,13 +68,13 @@ class SimpleCache implements CacheInterface
     private ?string $decodedFootprintContents = null;
     private array $decodedFootprints = [];
 
-    public function __construct(StorageInterface $storage, $cache_dir, $check_footprints = true)
+    public function __construct(CacheInterface $storage, $cache_dir, $check_footprints = true, string $namespace = '')
     {
-        $this->cache = new SimpleCacheDecorator($storage);
+        $this->cache = $storage;
 
         $this->check_footprints = $check_footprints;
         if ($this->check_footprints) {
-            $this->footprint_file = $cache_dir . '/' . $storage->getOptions()->getNamespace() . '.json';
+            $this->footprint_file = $cache_dir . '/' . $namespace . '.json';
             $this->checkFootprintFileIntegrity();
         }
     }
@@ -85,7 +83,7 @@ class SimpleCache implements CacheInterface
     {
         $normalized_key = $this->getNormalizedKey($key);
 
-        $cached_value = $this->cache->get($normalized_key, $default);
+        $cached_value = $this->cache->get($normalized_key, $default) ?? $default;
 
         if (!$this->check_footprints) {
             return $cached_value;
@@ -137,6 +135,10 @@ class SimpleCache implements CacheInterface
         $normalized_keys = array_map($this->getNormalizedKey(...), $keys);
 
         $cached_values = $this->cache->getMultiple($normalized_keys, $default);
+        $cached_values = is_array($cached_values) ? $cached_values : iterator_to_array($cached_values);
+        foreach ($normalized_keys as $normalized_key) {
+            $cached_values[$normalized_key] ??= $default;
+        }
         $footprints = $this->check_footprints ? $this->getMultipleCachedFootprints($keys) : [];
 
         $result = [];

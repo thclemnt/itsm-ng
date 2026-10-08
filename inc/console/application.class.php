@@ -46,18 +46,18 @@ use Glpi\Console\Command\GlpiCommandInterface;
 use Glpi\System\RequirementsManager;
 use Plugin;
 use Session;
-use Toolbox;
 use Symfony\Component\Console\Application as BaseApplication;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Exception\CommandNotFoundException;
+use Symfony\Component\Console\Exception\RuntimeException;
 use Symfony\Component\Console\Helper\Helper;
 use Symfony\Component\Console\Input\ArgvInput;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputDefinition;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
-use Symfony\Component\Console\Exception\CommandNotFoundException;
-use Symfony\Component\Console\Exception\RuntimeException;
 use Symfony\Component\Console\Output\OutputInterface;
+use Toolbox;
 
 class Application extends BaseApplication
 {
@@ -382,7 +382,7 @@ class Application extends BaseApplication
     /**
      * Initialize GLPI cache.
      *
-     * @global Laminas\Cache\Storage\StorageInterface $GLPI_CACHE
+     * @global Psr\SimpleCache\CacheInterface $GLPI_CACHE
      *
      * @return void
      */

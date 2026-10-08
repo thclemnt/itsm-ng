@@ -33,6 +33,9 @@
 
 namespace tests\units;
 
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Symfony\Component\Cache\Psr16Cache;
+
 /* Test for inc/session.class.php */
 
 class Session extends \DbTestCase
@@ -324,8 +327,8 @@ class Session extends \DbTestCase
             $this->string($TRANSLATE->translate('Late message', $domain, ''))->isIdenticalTo('Late plugin translation');
 
             // Cached TextDomain objects retain their plural AST when serialized.
-            $raw = new \Laminas\Cache\Storage\Adapter\Memory();
-            $cache = new \Laminas\Cache\Psr\SimpleCache\SimpleCacheDecorator($raw);
+            $raw = new ArrayAdapter();
+            $cache = new Psr16Cache($raw);
             $cached = new \itsmng\Translation\Translator('en_GB', $cache);
             $cached->addTranslationFile('phparray', $file, $domain, 'en_GB');
             $this->string($cached->translatePlural('Entry', 'Entries', 0, $domain))->isIdenticalTo('First entry');

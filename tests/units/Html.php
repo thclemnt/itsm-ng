@@ -35,8 +35,9 @@ namespace tests\units;
 
 use Glpi\Cache\SimpleCache;
 use Html as HtmlModel;
-use Laminas\Cache\Storage\Adapter\Memory;
 use org\bovigo\vfs\vfsStream;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Symfony\Component\Cache\Psr16Cache;
 
 /* Test for inc/html.class.php */
 
@@ -1190,7 +1191,7 @@ SCSS
         global $CFG_GLPI, $GLPI_CACHE;
         $cache = $GLPI_CACHE;
         try {
-            $GLPI_CACHE = new SimpleCache(new Memory(), '', false);
+            $GLPI_CACHE = new SimpleCache(new Psr16Cache(new ArrayAdapter()), '', false);
             $GLPI_CACHE->set('css_raw_file_css/bootstrap-itsm.scss', HtmlModel::getScssFileHash(GLPI_ROOT . '/css/bootstrap-itsm.scss'));
             $args = ['file' => 'css/bootstrap-itsm', 'v' => 'scss-unit'];
             $normal = HtmlModel::compileScss($args);
