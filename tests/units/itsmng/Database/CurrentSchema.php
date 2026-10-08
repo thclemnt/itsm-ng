@@ -77,6 +77,9 @@ use itsmng\Database\Entity\PhoneModel;
 use itsmng\Database\Entity\PhoneType;
 use itsmng\Database\Entity\PrinterModel;
 use itsmng\Database\Entity\PrinterType;
+use itsmng\Database\Entity\Profile;
+use itsmng\Database\Entity\ProfileRight;
+use itsmng\Database\Entity\ProfileUser;
 use itsmng\Database\Entity\RackModel;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Mapping\AttributeDriver;
@@ -270,6 +273,14 @@ class CurrentSchema extends test
         return [
             ['glpi_crontasks', 16, 5, [], []],
             ['glpi_configs', 4, 2, [], []],
+            ['glpi_profiles', 17, 8, ['tickettemplates_id', 'changetemplates_id', 'problemtemplates_id'], [
+                '`tickettemplates_id`' => 'glpi_tickettemplates', '`changetemplates_id`' => 'glpi_changetemplates',
+                '`problemtemplates_id`' => 'glpi_problemtemplates',
+            ]],
+            ['glpi_profilerights', 4, 3, [], ['`profiles_id`' => 'glpi_profiles']],
+            ['glpi_profiles_users', 7, 6, [], [
+                '`users_id`' => 'glpi_users', '`profiles_id`' => 'glpi_profiles', '`entities_id`' => 'glpi_entities',
+            ]],
             ['glpi_calendars', 8, 6, [], ['`entities_id`' => 'glpi_entities']],
             ['glpi_holidays', 10, 8, [], ['`entities_id`' => 'glpi_entities']],
             ['glpi_calendarsegments', 7, 4, [], [
@@ -671,6 +682,83 @@ class CurrentSchema extends test
             }
             $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
             $this->boolean($manager->getConnection()->isConnected())->isFalse();
+        }
+    }
+
+    public function testProfileFamilyDeclarationsOwnCurrentSchemaWithoutChangingHistory(): void
+    {
+        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+            $manager = $this->manager($platform);
+            $this->boolean($manager->getConnection()->isConnected())->isFalse();
+            $frozen = (new Baseline())->build($platform)->toSql($platform);
+            $profile = $manager->getClassMetadata(Profile::class);
+            $right = $manager->getClassMetadata(ProfileRight::class);
+            $user = $manager->getClassMetadata(ProfileUser::class);
+            $current = (new BaselineSchema($manager))->build($platform);
+            foreach ([Profile::class => ['is_default', 'create_ticket_on_login'],
+                ProfileUser::class => ['is_recursive', 'is_dynamic', 'is_default_profile']] as $class => $fields) {
+                $table = $current->getTable($manager->getClassMetadata($class)->getTableName());
+                foreach ($fields as $field) {
+                    $this->string(Type::lookupName($table->getColumn($field)->getType()))
+                        ->isIdenticalTo($platform instanceof PostgreSQLPlatform ? Types::BOOLEAN : Types::SMALLINT);
+                }
+            }
+            $unique = $platform instanceof PostgreSQLPlatform ? 'glpi_profilerights_unicity' : 'unicity';
+            $interface = $platform instanceof PostgreSQLPlatform ? 'glpi_profiles_interface' : 'interface';
+            $this->boolean($current->getTable('glpi_profilerights')->getIndex($unique)->isUnique())->isTrue();
+            $profile->fieldMappings['name']->length = 173;
+            $profile->fieldMappings['name']->nullable = false;
+            $profile->fieldMappings['name']->options['default'] = 'Current profile';
+            $profile->fieldMappings['ticket_status']->options['comment'] = 'Current status declaration';
+            unset($profile->fieldMappings['comment'], $profile->table['indexes'][$interface]);
+            $profile->table['indexes']['current_profile_name'] = ['columns' => ['name']];
+            $right->fieldMappings['rights']->options['default'] = 7;
+            unset($right->table['uniqueConstraints'][$unique]);
+            $user->associationMappings['users']->joinColumns[0]->nullable = true;
+            $user->associationMappings['users']->joinColumns[0]->options['default'] = null;
+            $user->fieldMappings['is_dynamic']->options['default'] = true;
+
+            $changed = (new BaselineSchema($manager))->build($platform);
+            $withoutKeys = (new BaselineSchema($manager))->build($platform, false);
+            $declaration = $changed->getTable('glpi_profiles');
+            $this->integer($declaration->getColumn('name')->getLength())->isIdenticalTo(173);
+            $this->boolean($declaration->getColumn('name')->getNotnull())->isTrue();
+            $this->string($declaration->getColumn('name')->getDefault())->isIdenticalTo('Current profile');
+            $this->string($declaration->getColumn('ticket_status')->getComment())->isIdenticalTo('Current status declaration');
+            $this->boolean($declaration->hasColumn('comment'))->isFalse();
+            $this->boolean($declaration->hasIndex($interface))->isFalse();
+            $this->boolean($declaration->hasIndex('current_profile_name'))->isTrue();
+            $this->variable($changed->getTable('glpi_profilerights')->getColumn('rights')->getDefault())->isEqualTo(7);
+            $this->boolean($changed->getTable('glpi_profilerights')->hasIndex($unique))->isFalse();
+            $this->boolean($changed->getTable('glpi_profiles_users')->getColumn('users_id')->getNotnull())->isFalse();
+            $this->variable($changed->getTable('glpi_profiles_users')->getColumn('users_id')->getDefault())->isNull();
+            $this->variable($changed->getTable('glpi_profiles_users')->getColumn('is_dynamic')->getDefault())
+                ->isIdenticalTo($platform instanceof PostgreSQLPlatform ? true : '1');
+            foreach ([Profile::class, ProfileRight::class, ProfileUser::class] as $class) {
+                $metadata = $manager->getClassMetadata($class);
+                $this->integer(count((new ReflectionClass($class))->getAttributes(SchemaOwner::class)))->isIdenticalTo(1);
+                $this->integer(count($changed->getTable($metadata->getTableName())->getForeignKeys()))
+                    ->isIdenticalTo(count($metadata->associationMappings));
+                $this->array($withoutKeys->getTable($metadata->getTableName())->getForeignKeys())->isEmpty();
+            }
+            $freshManager = $this->manager($platform);
+            $fresh = (new BaselineSchema($freshManager))->build($platform);
+            $declaration = $fresh->getTable('glpi_profiles');
+            $this->integer($declaration->getColumn('name')->getLength())->isIdenticalTo(255);
+            $this->boolean($declaration->getColumn('name')->getNotnull())->isFalse();
+            $this->variable($declaration->getColumn('name')->getDefault())->isNull();
+            $this->boolean($declaration->hasColumn('comment'))->isTrue();
+            $this->boolean($declaration->hasIndex($interface))->isTrue();
+            $this->boolean($declaration->hasIndex('current_profile_name'))->isFalse();
+            $this->variable($fresh->getTable('glpi_profilerights')->getColumn('rights')->getDefault())->isEqualTo(0);
+            $this->boolean($fresh->getTable('glpi_profilerights')->hasIndex($unique))->isTrue();
+            $this->boolean($fresh->getTable('glpi_profiles_users')->getColumn('users_id')->getNotnull())->isTrue();
+            $this->variable($fresh->getTable('glpi_profiles_users')->getColumn('users_id')->getDefault())->isEqualTo(0);
+            $this->variable($fresh->getTable('glpi_profiles_users')->getColumn('is_dynamic')->getDefault())
+                ->isIdenticalTo($platform instanceof PostgreSQLPlatform ? false : '0');
+            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
+            $this->boolean($manager->getConnection()->isConnected())->isFalse();
+            $this->boolean($freshManager->getConnection()->isConnected())->isFalse();
         }
     }
 
