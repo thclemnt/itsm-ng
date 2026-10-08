@@ -4,8 +4,11 @@
 
 namespace itsmng\Database\Migration;
 
+use DBAdapter;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use itsmng\Database\CheckConstraintSupport;
+use itsmng\Database\LegacyAdoptionEligibility;
 use itsmng\Database\Migration\V220\ApplianceAssets;
 use itsmng\Database\Migration\V220\ApplianceRecipients;
 use itsmng\Database\Migration\V220\Baseline;
@@ -22,6 +25,7 @@ use itsmng\Database\Migration\V220\IdentifierSequences;
 use itsmng\Database\Migration\V220\MemorySubjects;
 use itsmng\Database\Migration\V220\MotherboardSubjects;
 use itsmng\Database\Migration\V220\OperatingSystemSubjects;
+use itsmng\Database\Migration\V220\Postconditions;
 use itsmng\Database\Migration\V220\PowerSupplySubjects;
 use itsmng\Database\Migration\V220\ProcessorSubjects;
 use itsmng\Database\Migration\V220\ProjectAssets;
@@ -30,6 +34,8 @@ use itsmng\Database\Migration\V220\RetiredMarketplaceDefaults;
 use itsmng\Database\Migration\V220\Seeds;
 use itsmng\Database\Migration\V220\SoftwareInstallationSubjects;
 use itsmng\Database\Migration\V220\SoftwareLicenseSubjects;
+use RuntimeException;
+use Session;
 
 /**
  * The single frozen 2.1.3 data-format to 2.2.0 ORM transition.
@@ -80,8 +86,8 @@ final class Version220 implements ReleaseMigration
     /** Read-only adoption preview; baseline and seed phases are inherited, not replayed. */
     public function plan(Connection $connection): array
     {
-        \itsmng\Database\CheckConstraintSupport::assertSupported($connection);
-        \itsmng\Database\LegacyAdoptionEligibility::assertConnection($connection);
+        CheckConstraintSupport::assertSupported($connection);
+        LegacyAdoptionEligibility::assertConnection($connection);
         $this->assertSource($connection);
         if ((Ledger::state($connection, ExactDiscriminators::PHASE)['complete'] ?? false) === true) {
             (new ExactDiscriminators())->verify($connection);
@@ -125,7 +131,7 @@ final class Version220 implements ReleaseMigration
             }
         }
         if ($missing) {
-            throw new \RuntimeException('This schema predates or differs from the frozen ITSM-NG adoption baseline. Upgrade older releases using their matching historical application to the ITSM-NG 2.1.3 schema before switching to this application, then run db:migrate --apply.' . "\n" . implode("\n", $missing));
+            throw new RuntimeException('This schema predates or differs from the frozen ITSM-NG adoption baseline. Upgrade older releases using their matching historical application to the ITSM-NG 2.1.3 schema before switching to this application, then run db:migrate --apply.' . "\n" . implode("\n", $missing));
         }
     }
 
@@ -159,7 +165,7 @@ final class Version220 implements ReleaseMigration
     /** Journal each MySQL table creation; PostgreSQL also retains all-or-nothing DDL. */
     public function baseline(Connection $connection, ?callable $progress = null): void
     {
-        \itsmng\Database\CheckConstraintSupport::assertSupported($connection);
+        CheckConstraintSupport::assertSupported($connection);
         $apply = static function () use ($connection, $progress): void {
             $state = Ledger::state($connection, Baseline::PHASE);
             if (($state['complete'] ?? false) === true) {
@@ -172,7 +178,7 @@ final class Version220 implements ReleaseMigration
             if ($state === null) {
                 $existing = array_intersect($manager->listTableNames(), array_map(static fn ($table) => $table->getName(), $schema->getTables()));
                 if ($existing) {
-                    throw new \RuntimeException('Baseline replay requires an empty database or its own unfinished journal; use adoption for an existing installation.');
+                    throw new RuntimeException('Baseline replay requires an empty database or its own unfinished journal; use adoption for an existing installation.');
                 }
                 $state = ['complete' => false, 'origin' => 'installed', 'next' => 0];
                 Ledger::save($connection, Baseline::PHASE, $state);
@@ -185,7 +191,7 @@ final class Version220 implements ReleaseMigration
                     // A process can die after CREATE commits and before its checkpoint.
                     // Accept only the exact historical declaration, never a conflicting table.
                     if (!$manager->createComparator()->compareTables($table, $manager->introspectTable($table->getName()))->isEmpty()) {
-                        throw new \RuntimeException('Interrupted baseline table differs from history: ' . $table->getName());
+                        throw new RuntimeException('Interrupted baseline table differs from history: ' . $table->getName());
                     }
                 } else {
                     foreach ($platform->getCreateTableSQL($table) as $sql) {
@@ -205,22 +211,22 @@ final class Version220 implements ReleaseMigration
             $connection->transactional($apply);
         } else {
             if ($connection->isTransactionActive()) {
-                throw new \RuntimeException('MySQL baseline replay must run outside an application transaction.');
+                throw new RuntimeException('MySQL baseline replay must run outside an application transaction.');
             }
             $apply();
         }
     }
 
     /** Frozen empty-database inputs; History owns the enclosing lock and replay. */
-    public function install(\DBAdapter $database, string $language, ?callable $progress = null): void
+    public function install(DBAdapter $database, string $language, ?callable $progress = null): void
     {
         $connection = $database->getDoctrineConnection();
         $this->baseline($connection, $progress);
-        \Session::loadLanguage($language, false);
+        Session::loadLanguage($language, false);
         try {
             (new Seeds())->apply($connection, static fn (string $text): string => __($text), $progress === null ? null : static fn () => $progress('Seed row'));
         } finally {
-            \Session::loadLanguage('', false);
+            Session::loadLanguage('', false);
         }
         $database->synchronizeSequences();
     }
@@ -228,10 +234,10 @@ final class Version220 implements ReleaseMigration
     /** Adopt validated existing data; never replay installation seeds onto it. */
     public function apply(Connection $connection, ?callable $progress = null): void
     {
-        \itsmng\Database\CheckConstraintSupport::assertSupported($connection);
+        CheckConstraintSupport::assertSupported($connection);
         // Admit provenance under the same lock before source remapping,
         // ledger bootstrap or nontransactional canonical DDL can occur.
-        \itsmng\Database\LegacyAdoptionEligibility::assertConnection($connection);
+        LegacyAdoptionEligibility::assertConnection($connection);
         $this->assertSource($connection);
         if ((Ledger::state($connection, ExactDiscriminators::PHASE)['complete'] ?? false) === true) {
             (new ExactDiscriminators())->verify($connection);
@@ -299,8 +305,8 @@ final class Version220 implements ReleaseMigration
     public function verify(Connection $connection): void
     {
         if ((new RetiredMarketplaceDefaults())->plan($connection)) {
-            throw new \RuntimeException('The frozen retired marketplace archival prerequisite is still pending.');
+            throw new RuntimeException('The frozen retired marketplace archival prerequisite is still pending.');
         }
-        V220\Postconditions::assert($connection);
+        Postconditions::assert($connection);
     }
 }

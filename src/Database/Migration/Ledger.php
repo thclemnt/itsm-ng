@@ -7,6 +7,7 @@ namespace itsmng\Database\Migration;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Schema\Table;
+use RuntimeException;
 
 /** Shared storage for canonical migrations and the existing adoption DDL journal. */
 final class Ledger
@@ -22,7 +23,7 @@ final class Ledger
                 return false;
             }
             if (strcasecmp((string)$engine, 'InnoDB') !== 0) {
-                throw new \RuntimeException('The migration ledger ' . self::TABLE . ' must use InnoDB; found ' . ($engine ?? 'no transactional table engine')
+                throw new RuntimeException('The migration ledger ' . self::TABLE . ' must use InnoDB; found ' . ($engine ?? 'no transactional table engine')
                     . '. Stop application writers and reconcile the ledger against the actual schema and imported data before converting its engine. Existing completion receipts may have survived rolled-back work and cannot be trusted or automatically repaired.');
             }
             return true;
@@ -57,7 +58,7 @@ final class Ledger
     {
         if (!self::assertTransactional($connection)) {
             if ($connection->getDatabasePlatform() instanceof AbstractMySQLPlatform && $connection->isTransactionActive()) {
-                throw new \RuntimeException('Create the migration ledger outside an application transaction before recording work; MySQL CREATE TABLE would commit unrelated changes implicitly.');
+                throw new RuntimeException('Create the migration ledger outside an application transaction before recording work; MySQL CREATE TABLE would commit unrelated changes implicitly.');
             }
             $table = new Table(self::TABLE);
             $table->addColumn('version', 'string', ['length' => 100]);
