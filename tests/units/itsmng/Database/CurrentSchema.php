@@ -15,6 +15,7 @@ use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Mapping as ORM;
+use Doctrine\ORM\Mapping\ClassMetadataFactory;
 use Doctrine\Persistence\Mapping\ClassMetadata;
 use Doctrine\Persistence\Mapping\Driver\MappingDriver;
 use itsmng\Database\BaselineSchema;
@@ -884,6 +885,35 @@ class CurrentSchema extends \atoum\atoum\test
         }
     }
 
+    public function testCurrentColumnsAndNativePoliciesUseOneFreshMetadataSnapshot(): void
+    {
+        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+            $configuration = ApplicationOrm::configuration($platform);
+            $configuration->setClassMetadataFactoryName(CurrentSchemaMetadataFactory::class);
+            $connection = new DisconnectedSchemaConnection($platform);
+            $manager = new EntityManager($connection, $configuration);
+            $factory = $manager->getMetadataFactory();
+            $builder = new BaselineSchema($manager);
+            $frozen = (new Baseline())->build($platform)->toSql($platform);
+            $first = $builder->build($platform);
+            $policies = $builder->subjectPolicies();
+            $this->integer($factory->enumerations)->isIdenticalTo(1, 'Columns and native policies share one enumeration');
+            $this->array($policies)->hasKeys(['glpi_certificates_items', 'glpi_items_devicesensors']);
+            $this->integer($first->getTable('glpi_configs')->getColumn('context')->getLength())->isIdenticalTo(150);
+
+            // Reusing the builder must observe edits, without retaining a previous
+            // snapshot or closing its caller-owned metadata connection/manager.
+            $manager->getClassMetadata(Config::class)->fieldMappings['context']->length = 173;
+            $second = $builder->build($platform);
+            $this->integer($factory->enumerations)->isIdenticalTo(2);
+            $this->integer($second->getTable('glpi_configs')->getColumn('context')->getLength())->isIdenticalTo(173);
+            $this->array($builder->subjectPolicies())->isIdenticalTo($policies);
+            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
+            $this->boolean($manager->isOpen())->isTrue();
+            $this->boolean($connection->isConnected())->isFalse();
+        }
+    }
+
     public function testSuppliedMetadataRequiresTheSelectedPlatform(): void
     {
         $builder = new BaselineSchema($this->manager(new PostgreSQLPlatform()));
@@ -965,4 +995,16 @@ class CompositeProviderColumn
     #[ORM\JoinColumn(name: 'task_name', referencedColumnName: 'name')]
     #[PlatformOptions(PostgreSQLPlatform::class, ['default' => 0])]
     public ?CronTask $invalid = null;
+}
+
+/** Records externally observable metadata enumeration work for one inspection. */
+final class CurrentSchemaMetadataFactory extends ClassMetadataFactory
+{
+    public int $enumerations = 0;
+
+    public function getAllMetadata(): array
+    {
+        ++$this->enumerations;
+        return parent::getAllMetadata();
+    }
 }

@@ -95,8 +95,7 @@ final class BaselineSchema
         NetworkPortAggregateOrigins::configureSchema($schema);
         PlanningEventGuests::configureSchema($schema);
         UnusedProjectTemplateReference::configureTable($schema->getTable('glpi_projects'));
-        $ownedTables = $this->configurePropertyColumns($schema, $platform, $configuration, $foreignKeys);
-        $this->configureRequiredSubjects($schema, $platform);
+        $ownedTables = $this->configureCurrentMappings($schema, $platform, $configuration, $foreignKeys);
         $this->extraSql['glpi_users'][] = UserAuthenticationSources::checkSql();
         $this->extraSql['glpi_notificationtargets'][] = NotificationRecipients::checkSql();
         $this->extraSql['glpi_entities'][] = EntityParents::checkSql();
@@ -129,8 +128,9 @@ final class BaselineSchema
     }
 
     /** Current schema inspection uses entity policies; historical replay remains immutable. */
-    private function configurePropertyColumns(Schema &$schema, AbstractPlatform $platform, SchemaConfig $configuration, bool $foreignKeys): array
+    private function configureCurrentMappings(Schema &$schema, AbstractPlatform $platform, SchemaConfig $configuration, bool $foreignKeys): array
     {
+        // The explicit version keeps this owned metadata connection offline.
         $connection = $this->metadataManager?->getConnection()
             ?? DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
         $em = $this->metadataManager ?? new EntityManager($connection, Orm::configuration($platform));
@@ -242,6 +242,8 @@ final class BaselineSchema
                     }
                 }
             }
+            // Native policies use the same metadata snapshot as columns and indexes.
+            $this->configureRequiredSubjects($schema, $platform, $metadata);
             return $ownedTables;
         } finally {
             if ($this->metadataManager === null) {
@@ -278,60 +280,50 @@ final class BaselineSchema
         }
     }
 
-    private function configureRequiredSubjects(Schema $schema, AbstractPlatform $platform): void
+    /** @param list<ClassMetadata> $declarations One current-build metadata snapshot. */
+    private function configureRequiredSubjects(Schema $schema, AbstractPlatform $platform, array $declarations): void
     {
-        // An explicit version keeps offline schema inspection independent of a server.
-        $connection = $this->metadataManager?->getConnection()
-            ?? DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
-        $em = $this->metadataManager ?? new EntityManager($connection, Orm::configuration($platform));
-        try {
-            foreach ($em->getMetadataFactory()->getAllMetadata() as $metadata) {
-                foreach ($metadata->fieldMappings as $property => $field) {
-                    // Logical flags live on their entity properties. MySQL keeps
-                    // historical integer storage; PostgreSQL uses native booleans.
-                    if ($platform instanceof PostgreSQLPlatform && $field->type === Types::BOOLEAN) {
-                        $column = $schema->getTable($metadata->getTableName())->getColumn($field->columnName);
-                        $column->setType(Type::getType(Types::BOOLEAN));
-                        if ($column->getDefault() !== null) {
-                            $column->setDefault((bool)(int)$column->getDefault());
-                        }
-                    }
-                    if ($platform instanceof AbstractMySQLPlatform && $field->type === Types::BOOLEAN) {
-                        $name = BooleanDomainSchema::name($metadata->getTableName(), $field->columnName);
-                        $this->extraSql[$metadata->getTableName()][] = 'ALTER TABLE ' . $platform->quoteIdentifier($metadata->getTableName())
-                            . ' ADD CONSTRAINT ' . $platform->quoteIdentifier($name) . ' CHECK (' . BooleanDomainSchema::expression($platform, $field->columnName, (bool)$field->nullable) . ')'
-                            . ($platform instanceof MySQLPlatform ? ' ENFORCED' : '');
-                    }
-                    foreach ((new ReflectionProperty($metadata->name, $property))->getAttributes(DiscriminatorKey::class) as $attribute) {
-                        $key = $attribute->newInstance();
-                        if ($key->fallbackProperty !== null) {
-                            continue;
-                        }
-                        $key->configureSubjectTable($schema->getTable($metadata->getTableName()), $platform, $metadata, $property);
-                        $discriminators = [];
-                        foreach ($metadata->associationMappings as $association => $mapping) {
-                            foreach ((new ReflectionProperty($metadata->name, $association))->getAttributes(DiscriminatedBy::class) as $binding) {
-                                $binding = $binding->newInstance();
-                                if ($binding->legacyColumn === $metadata->getColumnName($property)) {
-                                    $discriminators[] = $metadata->getColumnName($binding->discriminator);
-                                }
-                            }
-                        }
-                        $this->subjectPolicies[$metadata->getTableName()][$metadata->getColumnName($property)] = [
-                            'projection' => $key->projectionExpression($platform, $metadata, $property),
-                            'constraint' => $key->subjectConstraintName($metadata),
-                            'check' => $key->subjectCheckExpression($platform, $metadata, $property),
-                            'discriminators' => array_values(array_unique($discriminators)),
-                        ];
-                        $this->extraSql[$metadata->getTableName()][] = $key->subjectCheckSql($platform, $metadata, $property);
+        foreach ($declarations as $metadata) {
+            foreach ($metadata->fieldMappings as $property => $field) {
+                // Logical flags live on their entity properties. MySQL keeps
+                // historical integer storage; PostgreSQL uses native booleans.
+                if ($platform instanceof PostgreSQLPlatform && $field->type === Types::BOOLEAN) {
+                    $column = $schema->getTable($metadata->getTableName())->getColumn($field->columnName);
+                    $column->setType(Type::getType(Types::BOOLEAN));
+                    if ($column->getDefault() !== null) {
+                        $column->setDefault((bool)(int)$column->getDefault());
                     }
                 }
-            }
-        } finally {
-            if ($this->metadataManager === null) {
-                $connection->close();
+                if ($platform instanceof AbstractMySQLPlatform && $field->type === Types::BOOLEAN) {
+                    $name = BooleanDomainSchema::name($metadata->getTableName(), $field->columnName);
+                    $this->extraSql[$metadata->getTableName()][] = 'ALTER TABLE ' . $platform->quoteIdentifier($metadata->getTableName())
+                        . ' ADD CONSTRAINT ' . $platform->quoteIdentifier($name) . ' CHECK (' . BooleanDomainSchema::expression($platform, $field->columnName, (bool)$field->nullable) . ')'
+                        . ($platform instanceof MySQLPlatform ? ' ENFORCED' : '');
+                }
+                foreach ((new ReflectionProperty($metadata->name, $property))->getAttributes(DiscriminatorKey::class) as $attribute) {
+                    $key = $attribute->newInstance();
+                    if ($key->fallbackProperty !== null) {
+                        continue;
+                    }
+                    $key->configureSubjectTable($schema->getTable($metadata->getTableName()), $platform, $metadata, $property);
+                    $discriminators = [];
+                    foreach ($metadata->associationMappings as $association => $mapping) {
+                        foreach ((new ReflectionProperty($metadata->name, $association))->getAttributes(DiscriminatedBy::class) as $binding) {
+                            $binding = $binding->newInstance();
+                            if ($binding->legacyColumn === $metadata->getColumnName($property)) {
+                                $discriminators[] = $metadata->getColumnName($binding->discriminator);
+                            }
+                        }
+                    }
+                    $this->subjectPolicies[$metadata->getTableName()][$metadata->getColumnName($property)] = [
+                        'projection' => $key->projectionExpression($platform, $metadata, $property),
+                        'constraint' => $key->subjectConstraintName($metadata),
+                        'check' => $key->subjectCheckExpression($platform, $metadata, $property),
+                        'discriminators' => array_values(array_unique($discriminators)),
+                    ];
+                    $this->extraSql[$metadata->getTableName()][] = $key->subjectCheckSql($platform, $metadata, $property);
+                }
             }
         }
     }
-
 }
