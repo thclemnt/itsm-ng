@@ -173,11 +173,6 @@ jobs:
         run: composer test:function -- --fail-if-skipped-methods 2>&1 | tee "$RUNNER_TEMP/functional.log"
       - name: Verify the core schema after application tests
         run: php bin/console db:check --config-dir="$GLPI_CONFIG_DIR" --no-interaction 2>&1 | tee "$RUNNER_TEMP/schema-check.log"
-      - name: Diagnose native subject definitions after failure
-        if: failure() && matrix.database.provider == 'mysql'
-        env:
-          ITSM_DIAGNOSTIC_DB_PORT: ${{ matrix.database.port }}
-        run: timeout --signal=TERM --kill-after=5s 60s php -d memory_limit=512M .github/actions/diagnose-native-subject.php > "$RUNNER_TEMP/native-subject.json"
       - name: Record final MySQL 8.4 redo diagnostics
         if: always() && matrix.database.id == 'mysql-8.4'
         timeout-minutes: 1
@@ -193,8 +188,6 @@ jobs:
             ${{ runner.temp }}/mysql-redo.log
             ${{ runner.temp }}/migration.log
             ${{ runner.temp }}/migration.xml
-            ${{ runner.temp }}/native-subject.json
-            ${{ runner.temp }}/native-subject-details.json.gz
             ${{ runner.temp }}/units.log
             ${{ runner.temp }}/functional.log
             ${{ runner.temp }}/schema-check.log
