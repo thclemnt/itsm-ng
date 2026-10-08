@@ -4,12 +4,12 @@
 
 namespace itsmng\Database\Query;
 
-use itsmng\Database\Expressions;
 use Doctrine\ORM\Query\AST\Functions\FunctionNode;
 use Doctrine\ORM\Query\AST\Node;
 use Doctrine\ORM\Query\Parser;
 use Doctrine\ORM\Query\SqlWalker;
 use Doctrine\ORM\Query\TokenType;
+use itsmng\Database\Expressions;
 
 /** Calendar text in the connection's timezone, with the application's legacy precision. */
 final class TemporalText extends FunctionNode

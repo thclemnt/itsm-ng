@@ -4,10 +4,13 @@
 
 namespace itsmng\Database\Repository;
 
+use CommonITILObject;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\ORM\QueryBuilder;
+use InvalidArgumentException;
 use itsmng\Database\Entity;
 use itsmng\Database\Expressions;
 use itsmng\Database\ITILDocumentAccess;
@@ -74,7 +77,7 @@ final class DocumentRepository
         $query = $this->itilBindings($type, $item, $access)
             ->select("DISTINCT IDENTITY(d.documents) AS document_id, TEMPORAL_TEXT(COALESCE(d.date, d.date_creation), 'datetime') AS event_date")
             ->andWhere('d.timeline_position > :inline')
-            ->setParameter('inline', \CommonITILObject::NO_TIMELINE, Types::INTEGER);
+            ->setParameter('inline', CommonITILObject::NO_TIMELINE, Types::INTEGER);
         return count($query->getQuery()->getScalarResult());
     }
 
@@ -107,9 +110,11 @@ final class DocumentRepository
         );
         $query = $connection->createQueryBuilder()
             ->select($identity($document, 'documents', 'd') . ' AS document_id', $eventDate . ' AS event_date')
-            ->distinct()->from($quote->getTableName($document, $platform), 'd')
-            ->setParameter('type', $type)->setParameter('item', $item, Types::INTEGER)
-            ->setParameter('inline', \CommonITILObject::NO_TIMELINE, Types::INTEGER);
+            ->distinct()
+            ->from($quote->getTableName($document, $platform), 'd')
+            ->setParameter('type', $type)
+            ->setParameter('item', $item, Types::INTEGER)
+            ->setParameter('inline', CommonITILObject::NO_TIMELINE, Types::INTEGER);
         $kind = $column($document, 'itemtype', 'd');
         $subjectId = $column($document, 'items_id', 'd');
         $conditions = ['(' . $kind . ' = :type AND ' . $subjectId . ' = ' . $itemParameter . ')'];
@@ -127,7 +132,8 @@ final class DocumentRepository
                 $viewer = $integer->convertToDatabaseValueSQL(':viewer', $platform);
                 $predicate .= ' AND (' . $column($metadata, 'is_private', $alias) . ' = ' . $public
                     . ' OR ' . $identity($metadata, 'author', $alias) . ' = ' . $viewer . ')';
-                $query->setParameter('public', false, Types::BOOLEAN)->setParameter('viewer', $access->user, Types::INTEGER);
+                $query->setParameter('public', false, Types::BOOLEAN)
+                    ->setParameter('viewer', $access->user, Types::INTEGER);
             }
             $conditions[] = '(' . $kind . ' = ' . $discriminator . ' AND EXISTS (SELECT '
                 . $column($metadata, 'id', $alias) . ' FROM ' . $quote->getTableName($metadata, $platform)
@@ -148,7 +154,7 @@ final class DocumentRepository
     public function notificationDocuments(string $type, int $item, ITILDocumentAccess $access): array
     {
         $query = $this->itilBindings($type, $item, $access)->select('d', 'document')->join('d.documents', 'document')
-            ->andWhere('d.timeline_position > :inline')->setParameter('inline', \CommonITILObject::NO_TIMELINE, Types::INTEGER)
+            ->andWhere('d.timeline_position > :inline')->setParameter('inline', CommonITILObject::NO_TIMELINE, Types::INTEGER)
             ->orderBy('d.id');
         $records = new RecordRepository($this->em);
         $rows = [];
@@ -179,12 +185,12 @@ final class DocumentRepository
             ->getQuery()->getScalarResult();
     }
 
-    private function itemBindings(string $type, int $item): \Doctrine\ORM\QueryBuilder
+    private function itemBindings(string $type, int $item): QueryBuilder
     {
         $query = $this->em->createQueryBuilder()->from(Entity\DocumentItem::class, 'binding')->orderBy('binding.id');
         try {
             $association = Entity\DocumentItem::referenceAssociation($type);
-        } catch (\InvalidArgumentException) {
+        } catch (InvalidArgumentException) {
             // No mapped subject can own a binding for an unknown item kind.
             return $query->where('1 = 0');
         }
@@ -209,7 +215,7 @@ final class DocumentRepository
         return $subjects;
     }
 
-    private function itilBindings(string $type, int $item, ITILDocumentAccess $access): \Doctrine\ORM\QueryBuilder
+    private function itilBindings(string $type, int $item, ITILDocumentAccess $access): QueryBuilder
     {
         $subjects = $this->itilSubjects($type, $access);
         $query = $this->em->createQueryBuilder()->select('d.id')->from(Entity\DocumentItem::class, 'd')

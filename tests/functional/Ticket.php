@@ -45,8 +45,10 @@ use Doctrine\DBAL\Types\StringType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use ITILSolution;
+use itsmng\Database\Entity\DocumentItem;
 use itsmng\Database\Entity\ITILSolution as SolutionRecord;
 use itsmng\Database\Orm;
+use itsmng\Database\Repository\DocumentRepository;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\TimelineCountReadOperation;
 use itsmng\Database\TimelineSelection;
@@ -2582,10 +2584,10 @@ class Ticket extends DbTestCase
     private function checkTimelineDocumentCount(\CommonITILObject $item, int $expected, bool $bypassRights = false): void
     {
         global $DB;
-        $manager = \itsmng\Database\Orm::create($DB);
+        $manager = Orm::create($DB);
         try {
             // Keep the ordinary ORM projection as an independent semantic oracle.
-            $count = (new \itsmng\Database\Repository\DocumentRepository($manager))->countTimelineDocuments(
+            $count = (new DocumentRepository($manager))->countTimelineDocuments(
                 $item->getType(),
                 (int)$item->getID(),
                 $item::getAssociatedDocumentAccess($bypassRights)
@@ -2984,7 +2986,7 @@ class Ticket extends DbTestCase
                     public int $loads = 0;
                     public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
                     {
-                        if ($event->getClassMetadata()->name === \itsmng\Database\Entity\DocumentItem::class) {
+                        if ($event->getClassMetadata()->name === DocumentItem::class) {
                             ++$this->loads;
                             $event->getClassMetadata()->fieldMappings['date']->columnName = 'date_creation';
                         }
