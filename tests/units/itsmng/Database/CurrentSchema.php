@@ -275,7 +275,7 @@ class CurrentSchema extends test
             ['glpi_calendarsegments', 7, 4, [], [
                 '`calendars_id`' => 'glpi_calendars', '`entities_id`' => 'glpi_entities',
             ], ['begin' => ClockTimeType::NAME, 'end' => ClockTimeType::NAME]],
-            ['glpi_calendars_holidays', 3, 3, [], [
+            ['glpi_calendars_holidays', 3, 4, [], [
                 '`calendars_id`' => 'glpi_calendars', '`holidays_id`' => 'glpi_holidays',
             ]],
             ['glpi_domaintypes', 5, 3, [], ['`entities_id`' => 'glpi_entities']],

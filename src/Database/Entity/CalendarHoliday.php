@@ -15,6 +15,7 @@ use itsmng\Database\Mapping\SchemaOwner;
 #[ORM\Table(name: 'glpi_calendars_holidays')]
 #[PlatformOptions(AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
 #[SchemaOwner]
+#[SchemaIndex('IDX_2315C8B3BDBA0E81', ['calendars_id'])]
 #[SchemaIndex('holidays_id', ['holidays_id'], postgresqlName: 'glpi_calendars_holidays_holidays_id')]
 #[SchemaIndex('unicity', ['calendars_id', 'holidays_id'], unique: true, postgresqlName: 'glpi_calendars_holidays_unicity')]
 class CalendarHoliday
