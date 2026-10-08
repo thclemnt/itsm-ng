@@ -60,7 +60,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: mysqli, pdo_mysql, pgsql, pdo_pgsql, dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, apcu-5.1.28, redis-6.3.0
+          extensions: mysqli, pdo_mysql, pgsql, pdo_pgsql, dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, apcu, redis
           coverage: none
 
       - name: Install NodeJS
@@ -78,128 +78,13 @@ jobs:
           provider: ${{ matrix.database.provider }}
           port: ${{ matrix.database.port }}
 
-      - name: Prepare PHP crash diagnostics
-        run: |
-          if ! command -v gdb >/dev/null; then
-            sudo apt-get update -qq
-            sudo apt-get install -y --no-install-recommends gdb
-          fi
-          sudo sysctl -w "kernel.core_pattern=$RUNNER_TEMP/web-api-core.%p"
-          php <<'PHP' > "$RUNNER_TEMP/web-api-runtime.json"
-          <?php
-          $settings = [];
-          foreach (['memory_limit', 'opcache.enable', 'opcache.enable_cli', 'opcache.jit',
-              'opcache.jit_buffer_size', 'zend.max_allowed_stack_size', 'zend.reserved_stack_size'] as $name) {
-              $settings[$name] = ini_get($name);
-          }
-          $extensions = [];
-          foreach (get_loaded_extensions() as $name) {
-              $extensions[$name] = phpversion($name);
-          }
-          echo json_encode(['php' => PHP_VERSION, 'binary' => PHP_BINARY, 'thread_safe' => PHP_ZTS,
-              'debug' => PHP_DEBUG, 'ini' => $settings, 'extensions' => $extensions,
-              'libpq_compiled' => defined('PGSQL_LIBPQ_VERSION') ? constant('PGSQL_LIBPQ_VERSION') : null], JSON_PRETTY_PRINT);
-          PHP
-
       - name: Run web API tests
-        run: |
-          python3 - <<'PYTHON'
-          import os, pathlib, re, resource, shutil, signal, subprocess, sys
-          log = pathlib.Path(os.environ['RUNNER_TEMP']) / 'web-api-server.log'
-          result = 1
-          cleanup_errors = []
-          repository = pathlib.Path.cwd()
-          router = log.with_name('web-api-router.php')
-          def php_literal(path):
-              return "'" + str(path).replace('\\', '\\\\').replace("'", "\\'") + "'"
-          router.write_text('<?php require ' + php_literal(repository / '.github/actions/api-server-runtime.php')
-              + '; return require ' + php_literal(repository / 'tests/router.php') + ';')
-          server_env = dict(os.environ, ITSM_API_SERVER_RUNTIME=str(log.with_name('web-api-server-runtime.json')))
-          def enable_core_dump():
-              _, hard_limit = resource.getrlimit(resource.RLIMIT_CORE)
-              limit = 512 * 1024 * 1024
-              if hard_limit != resource.RLIM_INFINITY:
-                  limit = min(limit, hard_limit)
-              resource.setrlimit(resource.RLIMIT_CORE, (limit, hard_limit))
-          with log.open('w') as output:
-              # Keep functional API tests independent of runner-provided JIT defaults.
-              server = subprocess.Popen(['php', '-d', 'opcache.jit=disable', '-d', 'opcache.jit_buffer_size=0',
-                  '-S', 'localhost:8088', str(router)],
-                  stdout=output, stderr=subprocess.STDOUT, env=server_env,
-                  preexec_fn=enable_core_dump)
-              try:
-                  result = subprocess.run([
-                      'vendor/bin/atoum', '-p', 'php -d memory_limit=512M', '--debug',
-                      '--force-terminal', '--use-dot-report', '--bootstrap-file', 'tests/bootstrap.php',
-                      '--no-code-coverage', '--max-children-number', '1', '-d', 'tests/web',
-                  ]).returncode
-              finally:
-                  running = server.poll() is None
-                  if running:
-                      server.terminate()
-                  server_status = server.wait()
-                  if not running or server_status != -signal.SIGTERM:
-                      cleanup_errors.append(f'Owned server exited {server_status}')
-                  core = log.with_name(f'web-api-core.{server.pid}')
-                  if server_status in (-signal.SIGSEGV, -signal.SIGABRT):
-                      symbols = log.with_name(f'web-api-symbols-{server.pid}')
-                      binary = str(pathlib.Path(shutil.which('php')).resolve())
-                      try:
-                          collector = subprocess.Popen(['python3', '.github/actions/api-crash-symbols.py', binary, str(symbols)],
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-                          try:
-                              collector.wait(timeout=75)
-                          except subprocess.TimeoutExpired:
-                              try:
-                                  os.killpg(collector.pid, signal.SIGKILL)
-                              except ProcessLookupError:
-                                  pass
-                              collector.wait()
-                              cleanup_errors.append('Debug symbol collection timed out')
+        run: bash .github/actions/test_tests-web.sh
 
-                          with log.with_name('web-api-backtrace.log').open('w') as trace:
-                              if core.is_file():
-                                  subprocess.run(['gdb', '-nx', '-nh', '--batch',
-                                      '-iex', 'set auto-load off', '-iex', 'set debuginfod enabled off',
-                                      '-iex', 'set print frame-arguments none',
-                                      '-iex', 'set print entry-values no',
-                                      '-iex', 'set debug-file-directory ' + str(symbols / 'usr/lib/debug'),
-                                      '-ex', 'info sharedlibrary', '-ex', 'thread apply all bt 80',
-                                      '-ex', 'source .github/actions/api-php-frames.py',
-                                      binary, str(core)],
-                                      stdout=trace, stderr=subprocess.STDOUT, timeout=30, check=True)
-                              else:
-                                  trace.write(f'Owned server exited {server_status}; no core dump was produced.\n')
-                      except (OSError, subprocess.SubprocessError) as error:
-                          cleanup_errors.append(f'Backtrace collection failed: {error}')
-                      finally:
-                          try:
-                              trace_path = log.with_name('web-api-backtrace.log')
-                              if trace_path.is_file() and trace_path.stat().st_size > 131072:
-                                  with trace_path.open('r+b') as bounded:
-                                      bounded.truncate(131072)
-                              core.unlink(missing_ok=True)
-                              if symbols.exists():
-                                  shutil.rmtree(symbols)
-                          except OSError as error:
-                              cleanup_errors.append(f'Crash diagnostic cleanup failed: {error}')
-                  router.unlink(missing_ok=True)
-                  output.flush()
-                  diagnostics = re.sub(r'((?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) )\S+', r'\1[request URI omitted]', log.read_text(errors='replace'))
-                  log.with_name('web-api-server-diagnostics.log').write_text(diagnostics)
-                  print(f'API tests exit={result}; owned server exit={server_status}; cleanup errors={cleanup_errors}', flush=True)
-          sys.exit(result if result else bool(cleanup_errors))
-          PYTHON
-
-      - name: Retain PHP server diagnostics
+      - name: Retain PHP server log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: web-api-server-diagnostics-php-${{ matrix.php }}-${{ matrix.database.id }}
-          path: |
-            ${{ runner.temp }}/web-api-server-diagnostics.log
-            ${{ runner.temp }}/web-api-runtime.json
-            ${{ runner.temp }}/web-api-server-runtime.json
-            ${{ runner.temp }}/web-api-symbols.json
-            ${{ runner.temp }}/web-api-backtrace.log
+          path: ${{ runner.temp }}/web-api-server-diagnostics.log
           if-no-files-found: warn

@@ -4,6 +4,7 @@ services:
     build:
       context: "${APPLICATION_ROOT}"
       dockerfile: ".github/actions/images/app/Dockerfile"
+      target: app
       args:
         PHP_VERSION: "${TEST_PHP_VERSION:-8.2}"
     image: "${PHP_IMAGE:-itsm-tests-app:local}"

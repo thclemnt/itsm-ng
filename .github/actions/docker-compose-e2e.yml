@@ -26,13 +26,17 @@ services:
     container_name: "e2e"
     build:
       context: "${APPLICATION_ROOT}"
-      dockerfile: ".github/actions/images/e2e/Dockerfile"
+      dockerfile: ".github/actions/images/app/Dockerfile"
+      target: e2e
+      args:
+        PHP_VERSION: "${TEST_PHP_VERSION:-8.2}"
     image: "${E2E_IMAGE:-itsm-tests-e2e:local}"
     working_dir: "/var/itsm"
     command: ["sleep", "infinity"]
     ipc: host
     network_mode: "service:app-web"
     environment:
+      GLPI_VAR_DIR: "${PLAYWRIGHT_VAR_DIR}"
       PLAYWRIGHT_BASE_URL: http://127.0.0.1:8088
       PLAYWRIGHT_DOMAIN_CONFIG: /var/itsm/tests/config
       PLAYWRIGHT_APPLIANCE_CONFIG: /var/itsm/tests/config
@@ -43,4 +47,4 @@ services:
       - app-web
     volumes:
       - "${APPLICATION_ROOT}:/var/itsm:z"
-      - /var/run/docker.sock:/var/run/docker.sock
+      - "${APP_CONTAINER_HOME}:/home/itsm:z"

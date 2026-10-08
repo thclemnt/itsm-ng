@@ -28,7 +28,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: mysqli, pdo_mysql, pgsql, pdo_pgsql, dom, curl, mbstring, zip, pcntl, intl, gd, ldap, exif, apcu-5.1.28, redis-6.3.0
+          extensions: mysqli, pdo_mysql, pgsql, pdo_pgsql, dom, curl, mbstring, zip, pcntl, intl, gd, ldap, exif, apcu, redis
           coverage: none
       - uses: actions/setup-node@v7
         with:
@@ -99,7 +99,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: mysqli, pdo_mysql, pgsql, pdo_pgsql, dom, curl, mbstring, zip, pcntl, intl, gd, ldap, exif, soap, bcmath, apcu-5.1.28, redis-6.3.0
+          extensions: mysqli, pdo_mysql, pgsql, pdo_pgsql, dom, curl, mbstring, zip, pcntl, intl, gd, ldap, exif, soap, bcmath, apcu, redis
           coverage: none
       - uses: actions/setup-node@v7
         with:
@@ -120,26 +120,17 @@ jobs:
         timeout-minutes: 2
         run: |
           container="${{ job.services.database.id }}"
-          log="$RUNNER_TEMP/mysql-redo.log"
           durability='SELECT @@GLOBAL.innodb_flush_log_at_trx_commit, @@GLOBAL.sync_binlog, @@GLOBAL.innodb_doublewrite, @@GLOBAL.sql_mode'
-          snapshot="SELECT @@version AS version, @@GLOBAL.innodb_redo_log_capacity AS configured_redo_capacity, @@GLOBAL.innodb_flush_log_at_trx_commit AS flush_log_at_trx_commit, @@GLOBAL.sync_binlog AS sync_binlog, @@GLOBAL.innodb_doublewrite AS doublewrite, @@GLOBAL.sql_mode AS sql_mode; SHOW GLOBAL STATUS WHERE Variable_name IN ('Innodb_redo_log_capacity_resized', 'Innodb_redo_log_resize_status', 'Innodb_redo_log_current_lsn', 'Innodb_redo_log_checkpoint_lsn', 'Innodb_log_waits')"
-          before=$(timeout --signal=TERM --kill-after=5s 10s docker exec "$container" mysql -uroot -ptest --batch --skip-column-names -e "$durability")
-          echo 'Before redo resize' | tee "$log"
-          timeout --signal=TERM --kill-after=5s 10s docker exec "$container" mysql -uroot -ptest --batch -e "$snapshot" | tee -a "$log"
-          # Increase only the disposable service's redo disk budget; preserve durability.
-          timeout --signal=TERM --kill-after=5s 10s docker exec "$container" mysql -uroot -ptest -e 'SET GLOBAL innodb_redo_log_capacity = 268435456'
-          deadline=$((SECONDS + 30))
+          before=$(docker exec "$container" mysql -uroot -ptest --batch --skip-column-names -e "$durability")
+          # Increase only redo capacity on this disposable service; preserve durability.
+          docker exec "$container" mysql -uroot -ptest -e 'SET GLOBAL innodb_redo_log_capacity = 268435456'
           resized=false
-          while (( SECONDS < deadline )); do
-            remaining=$((deadline - SECONDS))
-            (( remaining > 0 )) || break
-            actual=$(timeout --signal=TERM --kill-after=5s "${remaining}s" docker exec "$container" mysql -uroot -ptest --batch --skip-column-names -e "SELECT @@GLOBAL.innodb_redo_log_capacity, VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Innodb_redo_log_capacity_resized'")
+          for attempt in {1..30}; do
+            actual=$(docker exec "$container" mysql -uroot -ptest --batch --skip-column-names -e "SELECT @@GLOBAL.innodb_redo_log_capacity, VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Innodb_redo_log_capacity_resized'")
             if [[ "$actual" == $'268435456\t268435456' ]]; then resized=true; break; fi
             sleep 1
           done
-          echo 'After redo resize' | tee -a "$log"
-          timeout --signal=TERM --kill-after=5s 10s docker exec "$container" mysql -uroot -ptest --batch -e "$snapshot" | tee -a "$log"
-          after=$(timeout --signal=TERM --kill-after=5s 10s docker exec "$container" mysql -uroot -ptest --batch --skip-column-names -e "$durability")
+          after=$(docker exec "$container" mysql -uroot -ptest --batch --skip-column-names -e "$durability")
           test "$before" = "$after"
           test "$resized" = true
       - name: Prepare PostgreSQL migration lock budget and separate target
@@ -173,19 +164,12 @@ jobs:
         run: composer test:function -- --fail-if-skipped-methods 2>&1 | tee "$RUNNER_TEMP/functional.log"
       - name: Verify the core schema after application tests
         run: php bin/console db:check --config-dir="$GLPI_CONFIG_DIR" --no-interaction 2>&1 | tee "$RUNNER_TEMP/schema-check.log"
-      - name: Record final MySQL 8.4 redo diagnostics
-        if: always() && matrix.database.id == 'mysql-8.4'
-        timeout-minutes: 1
-        run: |
-          echo 'Final redo status' | tee -a "$RUNNER_TEMP/mysql-redo.log"
-          timeout --signal=TERM --kill-after=5s 10s docker exec "${{ job.services.database.id }}" mysql -uroot -ptest --batch -e "SELECT @@version AS version, @@GLOBAL.innodb_redo_log_capacity AS configured_redo_capacity, @@GLOBAL.innodb_flush_log_at_trx_commit AS flush_log_at_trx_commit, @@GLOBAL.sync_binlog AS sync_binlog, @@GLOBAL.innodb_doublewrite AS doublewrite, @@GLOBAL.sql_mode AS sql_mode; SHOW GLOBAL STATUS WHERE Variable_name IN ('Innodb_redo_log_capacity_resized', 'Innodb_redo_log_resize_status', 'Innodb_redo_log_current_lsn', 'Innodb_redo_log_checkpoint_lsn', 'Innodb_log_waits')" | tee -a "$RUNNER_TEMP/mysql-redo.log"
       - name: Retain test diagnostics
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: application-php-${{ matrix.php }}-${{ matrix.database.id }}
           path: |
-            ${{ runner.temp }}/mysql-redo.log
             ${{ runner.temp }}/migration.log
             ${{ runner.temp }}/migration.xml
             ${{ runner.temp }}/units.log
