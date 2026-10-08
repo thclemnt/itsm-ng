@@ -44,7 +44,18 @@ RUN apt-get update \
  && if ! php -r 'exit(extension_loaded("Zend OPcache") ? 0 : 1);'; then \
       docker-php-ext-install -j"$(nproc)" opcache; \
     fi \
- && pecl install apcu-5.1.28 redis-6.3.0 \
+ && curl --fail --silent --show-error --location \
+      --retry 3 --retry-delay 2 --retry-max-time 120 --connect-timeout 10 --max-time 60 \
+      --output /tmp/apcu-5.1.28.tgz https://pecl.php.net/get/apcu-5.1.28.tgz \
+ && curl --fail --silent --show-error --location \
+      --retry 3 --retry-delay 2 --retry-max-time 120 --connect-timeout 10 --max-time 60 \
+      --output /tmp/redis-6.3.0.tgz https://pecl.php.net/get/redis-6.3.0.tgz \
+ && printf '%s\n' \
+      'ca9c1820810a168786f8048a4c3f8c9e3fd941407ad1553259fb2e30b5f057bf  /tmp/apcu-5.1.28.tgz' \
+      '0d5141f634bd1db6c1ddcda053d25ecf2c4fc1c395430d534fd3f8d51dd7f0b5  /tmp/redis-6.3.0.tgz' \
+    | sha256sum --check --strict \
+ && pecl install /tmp/apcu-5.1.28.tgz /tmp/redis-6.3.0.tgz \
+ && rm /tmp/apcu-5.1.28.tgz /tmp/redis-6.3.0.tgz \
  && docker-php-ext-enable apcu redis \
  && rm -rf /var/lib/apt/lists/*
 
