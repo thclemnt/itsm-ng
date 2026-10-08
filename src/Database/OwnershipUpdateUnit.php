@@ -51,6 +51,30 @@ final class OwnershipUpdateUnit
         }
     }
 
+    /** Guard core lifecycle producers inside a caller's already-owned frame. */
+    public static function withWriterGuard(DBAdapter $database, Connection $connection, callable $operation): mixed
+    {
+        self::registerWriterGuard($database, $connection);
+        try {
+            self::assertWriter($database);
+            $result = $operation();
+            self::assertWriter($database);
+            return $result;
+        } finally {
+            array_pop(self::$writerGuards);
+        }
+    }
+
+    private static function registerWriterGuard(DBAdapter $database, Connection $connection): void
+    {
+        if (($GLOBALS['DB'] ?? null) !== $database) {
+            throw new TransactionOwnershipMismatch('The owned lifecycle requires its supplied writer.');
+        }
+        TransactionOwnership::assertManaged($connection);
+        $scope = $connection->captureManagedTransactionScope();
+        self::$writerGuards[] = ['writer' => $database, 'connection' => $connection, 'scope' => $scope];
+    }
+
     public static function assertTransactionalStorage(DBAdapter $database, string $table): void
     {
         $connection = $database->getDoctrineConnection();
@@ -98,11 +122,7 @@ final class OwnershipUpdateUnit
         try {
             $frame = OwnedMutationFrame::begin($connection);
             if ($guardWriter) {
-                self::$writerGuards[] = [
-                    'writer' => $database,
-                    'connection' => $connection,
-                    'scope' => $connection->captureManagedTransactionScope(),
-                ];
+                self::registerWriterGuard($database, $connection);
                 $guardRegistered = true;
             }
             $completed = $journal->observe($connection, $operation);
