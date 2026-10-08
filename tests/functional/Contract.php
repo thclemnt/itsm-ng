@@ -70,7 +70,7 @@ class Contract extends DbTestCase
         $this->login();
         $this->setEntity('_test_root_entity', true);
 
-        $contract = new \Contract();
+        $contract = new ContractModel();
         $input = [
            'name' => 'A test contract',
            'entities_id'  => 0
@@ -129,7 +129,7 @@ class Contract extends DbTestCase
         $this->login();
         $this->setEntity('_test_root_entity', true);
 
-        $contract = new \Contract();
+        $contract = new ContractModel();
         $contract_id = $contract->add([
            'name'        => 'contract-supplier-link',
            'entities_id' => 0,
@@ -162,7 +162,7 @@ class Contract extends DbTestCase
         $this->login();
         $this->setEntity('_test_root_entity', true);
 
-        $contract = new \Contract();
+        $contract = new ContractModel();
         $contract_id = $contract->add([
            'name'        => 'contract-alert-clear-' . $this->getUniqueString(),
            'entities_id' => 0,
@@ -172,17 +172,17 @@ class Contract extends DbTestCase
         ]);
         $this->integer((int)$contract_id)->isGreaterThan(0);
 
-        $alert = new \Alert();
+        $alert = new Alert();
         $end_alert_id = $alert->add([
            'itemtype' => 'Contract',
            'items_id' => $contract_id,
-           'type'     => \Alert::END,
+           'type'     => Alert::END,
            'date'     => '2025-12-31 00:00:00',
         ]);
         $notice_alert_id = $alert->add([
            'itemtype' => 'Contract',
            'items_id' => $contract_id,
-           'type'     => \Alert::NOTICE,
+           'type'     => Alert::NOTICE,
            'date'     => '2025-11-30 00:00:00',
         ]);
         $this->integer((int)$end_alert_id)->isGreaterThan(0);
@@ -195,20 +195,20 @@ class Contract extends DbTestCase
            'notice'     => 1,
         ]))->isTrue();
 
-        $this->boolean((bool)\Alert::alertExists('Contract', $contract_id, \Alert::END))->isFalse();
-        $this->boolean((bool)\Alert::alertExists('Contract', $contract_id, \Alert::NOTICE))->isFalse();
+        $this->boolean((bool)Alert::alertExists('Contract', $contract_id, Alert::END))->isFalse();
+        $this->boolean((bool)Alert::alertExists('Contract', $contract_id, Alert::NOTICE))->isFalse();
     }
 
     public function testAlertPublisherKeepsCallerSavepointAndQueuedDelivery()
     {
-        $this->withAlertNotification(function (\Contract $contract, array $payload, int $template, Connection $connection, OwnedMutationFrame $caller): void {
-            $this->variable((new ContractAlertPublisher($GLOBALS['DB']))->publish('end', \Alert::END, 0, $payload))
+        $this->withAlertNotification(function (ContractModel $contract, array $payload, int $template, Connection $connection, OwnedMutationFrame $caller): void {
+            $this->variable((new ContractAlertPublisher($GLOBALS['DB']))->publish('end', Alert::END, 0, $payload))
                 ->isIdenticalTo(ContractAlertOutcome::Published);
             $caller->assertActive();
             $this->integer($this->alertQueueCount($template))->isIdenticalTo(1);
-            $this->boolean((bool)\Alert::alertExists('Contract', $contract->getID(), \Alert::END))->isTrue();
+            $this->boolean((bool)Alert::alertExists('Contract', $contract->getID(), Alert::END))->isTrue();
             // Ajax send() must never be called, including after the savepoint release.
-            $this->variable((new ContractAlertPublisher($GLOBALS['DB']))->publish('end', \Alert::END, 0, $payload))
+            $this->variable((new ContractAlertPublisher($GLOBALS['DB']))->publish('end', Alert::END, 0, $payload))
                 ->isIdenticalTo(ContractAlertOutcome::Skipped);
             $this->integer($this->alertQueueCount($template))->isIdenticalTo(1);
             $caller->assertActive();
@@ -217,11 +217,11 @@ class Contract extends DbTestCase
 
     public function testAlertPublisherRejectsCommittedAndReopenedHookFrame()
     {
-        $this->withAlertNotification(function (\Contract $contract, array $payload, int $template, Connection $connection, OwnedMutationFrame $caller, ?OwnedMutationFrame &$replacement): void {
+        $this->withAlertNotification(function (ContractModel $contract, array $payload, int $template, Connection $connection, OwnedMutationFrame $caller, ?OwnedMutationFrame &$replacement): void {
             global $PLUGIN_HOOKS;
             $depth = $connection->getTransactionNestingLevel();
             $calls = 0;
-            $PLUGIN_HOOKS['pre_item_add']['contractframe'][\QueuedNotification::class] = function ($queue) use ($contract, $template, $connection, $depth, &$replacement, &$calls): void {
+            $PLUGIN_HOOKS['pre_item_add']['contractframe'][QueuedNotification::class] = function ($queue) use ($contract, $template, $connection, $depth, &$replacement, &$calls): void {
                 if ((int)$queue->input['notificationtemplates_id'] !== $template) {
                     return;
                 }
@@ -235,8 +235,8 @@ class Contract extends DbTestCase
             };
             $error = null;
             try {
-                (new ContractAlertPublisher($GLOBALS['DB']))->publish('end', \Alert::END, 0, $payload);
-            } catch (\Throwable $failure) {
+                (new ContractAlertPublisher($GLOBALS['DB']))->publish('end', Alert::END, 0, $payload);
+            } catch (Throwable $failure) {
                 $error = $failure;
             }
             $this->integer($calls)->isIdenticalTo(1);
@@ -247,22 +247,22 @@ class Contract extends DbTestCase
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth + 1);
             $this->string($_SESSION['contract_frame_marker'])->isIdenticalTo('commit-reopen');
             $this->string($contract->fields['comment'])->isIdenticalTo('Hook released publisher savepoint');
-            $stored = new \Contract();
+            $stored = new ContractModel();
             $this->boolean($stored->getFromDB($contract->getID()))->isTrue();
             $this->string($stored->fields['comment'])->isIdenticalTo('Hook released publisher savepoint');
             $this->integer($this->alertQueueCount($template))->isIdenticalTo(0, 'A retired publisher scope cannot insert into its replacement');
-            $this->boolean((bool)\Alert::alertExists('Contract', $contract->getID(), \Alert::END))->isFalse();
+            $this->boolean((bool)Alert::alertExists('Contract', $contract->getID(), Alert::END))->isFalse();
         });
     }
 
     public function testAlertPublisherDoesNotRollbackReopenedRefusalFrame()
     {
-        $this->withAlertNotification(function (\Contract $contract, array $payload, int $template, Connection $connection, OwnedMutationFrame $caller, ?OwnedMutationFrame &$replacement): void {
+        $this->withAlertNotification(function (ContractModel $contract, array $payload, int $template, Connection $connection, OwnedMutationFrame $caller, ?OwnedMutationFrame &$replacement): void {
             global $PLUGIN_HOOKS;
             $depth = $connection->getTransactionNestingLevel();
             $calls = 0;
             $witness = null;
-            $PLUGIN_HOOKS['pre_item_add']['contractframe'][\QueuedNotification::class] = function ($queue) use ($contract, $template, $connection, $depth, &$replacement, &$witness, &$calls): void {
+            $PLUGIN_HOOKS['pre_item_add']['contractframe'][QueuedNotification::class] = function ($queue) use ($contract, $template, $connection, $depth, &$replacement, &$witness, &$calls): void {
                 if ((int)$queue->input['notificationtemplates_id'] !== $template) {
                     return;
                 }
@@ -287,8 +287,8 @@ class Contract extends DbTestCase
             };
             $error = null;
             try {
-                (new ContractAlertPublisher($GLOBALS['DB']))->publish('end', \Alert::END, 0, $payload);
-            } catch (\Throwable $failure) {
+                (new ContractAlertPublisher($GLOBALS['DB']))->publish('end', Alert::END, 0, $payload);
+            } catch (Throwable $failure) {
                 $error = $failure;
             }
             $this->integer($calls)->isIdenticalTo(1);
@@ -298,21 +298,21 @@ class Contract extends DbTestCase
             $replacement->assertActive();
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth + 1);
             $this->string($_SESSION['contract_frame_marker'])->isIdenticalTo('rollback-reopen');
-            $stored = new \Contract();
+            $stored = new ContractModel();
             $this->boolean($stored->getFromDB($witness->id))->isTrue();
             $this->checkInput($stored, $witness->id, ['name' => 'Replacement frame witness', 'entities_id' => 0]);
             $this->integer($this->alertQueueCount($template))->isIdenticalTo(0);
-            $this->boolean((bool)\Alert::alertExists('Contract', $contract->getID(), \Alert::END))->isFalse();
+            $this->boolean((bool)Alert::alertExists('Contract', $contract->getID(), Alert::END))->isFalse();
         });
     }
 
     public function testAlertPublisherPreservesPrimaryWhenHookReplacesItsFrame()
     {
-        $this->withAlertNotification(function (\Contract $contract, array $payload, int $template, Connection $connection, OwnedMutationFrame $caller, ?OwnedMutationFrame &$replacement): void {
+        $this->withAlertNotification(function (ContractModel $contract, array $payload, int $template, Connection $connection, OwnedMutationFrame $caller, ?OwnedMutationFrame &$replacement): void {
             global $PLUGIN_HOOKS;
-            $primary = new \RuntimeException('Contract hook primary failure');
+            $primary = new RuntimeException('Contract hook primary failure');
             $depth = $connection->getTransactionNestingLevel();
-            $PLUGIN_HOOKS['pre_item_add']['contractframe'][\QueuedNotification::class] = function ($queue) use ($template, $connection, $depth, $primary, &$replacement): void {
+            $PLUGIN_HOOKS['pre_item_add']['contractframe'][QueuedNotification::class] = function ($queue) use ($template, $connection, $depth, $primary, &$replacement): void {
                 if ((int)$queue->input['notificationtemplates_id'] !== $template) {
                     return;
                 }
@@ -324,8 +324,8 @@ class Contract extends DbTestCase
             };
             $error = null;
             try {
-                (new ContractAlertPublisher($GLOBALS['DB']))->publish('end', \Alert::END, 0, $payload);
-            } catch (\Throwable $failure) {
+                (new ContractAlertPublisher($GLOBALS['DB']))->publish('end', Alert::END, 0, $payload);
+            } catch (Throwable $failure) {
                 $error = $failure;
             }
             $this->object($error)->isInstanceOf(MutationRollbackFailure::class);
@@ -334,17 +334,17 @@ class Contract extends DbTestCase
             $this->boolean($error->rollbackUnproven)->isTrue();
             $replacement->assertActive();
             $this->string($_SESSION['contract_frame_marker'])->isIdenticalTo('primary-preserved');
-            $this->boolean((bool)\Alert::alertExists('Contract', $contract->getID(), \Alert::END))->isFalse();
+            $this->boolean((bool)Alert::alertExists('Contract', $contract->getID(), Alert::END))->isFalse();
         });
     }
 
     public function testAlertPublisherRewindsModelsAndSessionOnlyAfterOwnedVetoRollback()
     {
-        $this->withAlertNotification(function (\Contract $contract, array $payload, int $template, Connection $connection, OwnedMutationFrame $caller): void {
+        $this->withAlertNotification(function (ContractModel $contract, array $payload, int $template, Connection $connection, OwnedMutationFrame $caller): void {
             global $PLUGIN_HOOKS;
             $before = $contract->fields['comment'];
             $calls = 0;
-            $PLUGIN_HOOKS['pre_item_add']['contractframe'][\QueuedNotification::class] = function ($queue) use ($contract, $template, &$calls): void {
+            $PLUGIN_HOOKS['pre_item_add']['contractframe'][QueuedNotification::class] = function ($queue) use ($contract, $template, &$calls): void {
                 if ((int)$queue->input['notificationtemplates_id'] !== $template) {
                     return;
                 }
@@ -354,28 +354,28 @@ class Contract extends DbTestCase
                 \Session::addMessageAfterRedirect('Contract frame veto warning', true, WARNING, false);
                 $queue->input = false;
             };
-            $this->variable((new ContractAlertPublisher($GLOBALS['DB']))->publish('end', \Alert::END, 0, $payload))
+            $this->variable((new ContractAlertPublisher($GLOBALS['DB']))->publish('end', Alert::END, 0, $payload))
                 ->isIdenticalTo(ContractAlertOutcome::Refused);
             $this->integer($calls)->isIdenticalTo(1);
             $caller->assertActive();
             $this->array($_SESSION)->notHasKey('contract_frame_marker');
             $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'][WARNING])->contains('Contract frame veto warning');
             $this->variable($contract->fields['comment'])->isIdenticalTo($before);
-            $stored = new \Contract();
+            $stored = new ContractModel();
             $this->boolean($stored->getFromDB($contract->getID()))->isTrue();
             $this->variable($stored->fields['comment'])->isIdenticalTo($before);
             $this->integer($this->alertQueueCount($template))->isIdenticalTo(0);
-            $this->boolean((bool)\Alert::alertExists('Contract', $contract->getID(), \Alert::END))->isFalse();
+            $this->boolean((bool)Alert::alertExists('Contract', $contract->getID(), Alert::END))->isFalse();
         });
     }
 
     public function testAlertPublisherRetainsPrimaryAfterProvenRollback()
     {
-        $this->withAlertNotification(function (\Contract $contract, array $payload, int $template, Connection $connection, OwnedMutationFrame $caller): void {
+        $this->withAlertNotification(function (ContractModel $contract, array $payload, int $template, Connection $connection, OwnedMutationFrame $caller): void {
             global $PLUGIN_HOOKS;
             $before = $contract->fields['comment'];
-            $primary = new \RuntimeException('Owned notification hook failure');
-            $PLUGIN_HOOKS['pre_item_add']['contractframe'][\QueuedNotification::class] = function ($queue) use ($contract, $template, $primary): void {
+            $primary = new RuntimeException('Owned notification hook failure');
+            $PLUGIN_HOOKS['pre_item_add']['contractframe'][QueuedNotification::class] = function ($queue) use ($contract, $template, $primary): void {
                 if ((int)$queue->input['notificationtemplates_id'] !== $template) {
                     return;
                 }
@@ -385,8 +385,8 @@ class Contract extends DbTestCase
             };
             $error = null;
             try {
-                (new ContractAlertPublisher($GLOBALS['DB']))->publish('end', \Alert::END, 0, $payload);
-            } catch (\Throwable $failure) {
+                (new ContractAlertPublisher($GLOBALS['DB']))->publish('end', Alert::END, 0, $payload);
+            } catch (Throwable $failure) {
                 $error = $failure;
             }
             $this->object($error)->isIdenticalTo($primary);
@@ -394,15 +394,15 @@ class Contract extends DbTestCase
             $this->array($_SESSION)->notHasKey('contract_frame_marker');
             $this->variable($contract->fields['comment'])->isIdenticalTo($before);
             $this->integer($this->alertQueueCount($template))->isIdenticalTo(0);
-            $this->boolean((bool)\Alert::alertExists('Contract', $contract->getID(), \Alert::END))->isFalse();
+            $this->boolean((bool)Alert::alertExists('Contract', $contract->getID(), Alert::END))->isFalse();
         });
     }
 
     public function testAlertPublisherRefusesChangedGlobalWriterBeforeAlertMutation()
     {
-        $this->withAlertNotification(function (\Contract $contract, array $payload, int $template, Connection $connection, OwnedMutationFrame $caller): void {
+        $this->withAlertNotification(function (ContractModel $contract, array $payload, int $template, Connection $connection, OwnedMutationFrame $caller): void {
             global $PLUGIN_HOOKS;
-            $PLUGIN_HOOKS['pre_item_add']['contractframe'][\QueuedNotification::class] = function ($queue) use ($template): void {
+            $PLUGIN_HOOKS['pre_item_add']['contractframe'][QueuedNotification::class] = function ($queue) use ($template): void {
                 if ((int)$queue->input['notificationtemplates_id'] === $template) {
                     $GLOBALS['DB'] = clone $GLOBALS['DB'];
                     $queue->input = false;
@@ -410,15 +410,15 @@ class Contract extends DbTestCase
             };
             $error = null;
             try {
-                (new ContractAlertPublisher($GLOBALS['DB']))->publish('end', \Alert::END, 0, $payload);
-            } catch (\Throwable $failure) {
+                (new ContractAlertPublisher($GLOBALS['DB']))->publish('end', Alert::END, 0, $payload);
+            } catch (Throwable $failure) {
                 $error = $failure;
             }
             $this->object($error)->isInstanceOf(TransactionOwnershipMismatch::class);
             $this->string($error->getMessage())->isIdenticalTo('The owned lifecycle changed its supplied writer.');
             $caller->assertActive();
             $this->integer($this->alertQueueCount($template))->isIdenticalTo(0);
-            $this->boolean((bool)\Alert::alertExists('Contract', $contract->getID(), \Alert::END))->isFalse();
+            $this->boolean((bool)Alert::alertExists('Contract', $contract->getID(), Alert::END))->isFalse();
         });
     }
 
@@ -684,14 +684,14 @@ class Contract extends DbTestCase
         $configuration = $CFG_GLPI;
         $hooks = $PLUGIN_HOOKS;
         $session = $_SESSION;
-        $pluginProperty = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $pluginProperty = new ReflectionProperty(\Plugin::class, 'activated_plugins');
         $plugins = $pluginProperty->getValue();
         $caller = $replacement = null;
         $failure = null;
         try {
             $CFG_GLPI['use_notifications'] = false;
             $this->login();
-            $contract = $this->createItem(\Contract::class, [
+            $contract = $this->createItem(ContractModel::class, [
                 'name' => 'Contract frame ' . $this->getUniqueString(),
                 'entities_id' => 0,
                 'begin_date' => '2025-01-01',
@@ -741,7 +741,7 @@ class Contract extends DbTestCase
             $pluginProperty->setValue(null, [...$plugins, 'contractframe']);
             $caller = OwnedMutationFrame::begin($connection);
             $test($contract, [$contract->getID() => $contract->fields], (int)$template->getID(), $connection, $caller, $replacement);
-        } catch (\Throwable $primary) {
+        } catch (Throwable $primary) {
             $failure = $primary;
         } finally {
             // Replacement and caller capabilities are cleaned independently;
@@ -752,7 +752,7 @@ class Contract extends DbTestCase
                 }
                 try {
                     $frame->rollBack();
-                } catch (\Throwable $cleanup) {
+                } catch (Throwable $cleanup) {
                     $failure = $failure === null ? $cleanup : new MutationRollbackFailure($failure, $cleanup);
                 }
             }
@@ -772,6 +772,6 @@ class Contract extends DbTestCase
 
     private function alertQueueCount(int $template): int
     {
-        return (int)countElementsInTable(\QueuedNotification::getTable(), ['notificationtemplates_id' => $template]);
+        return (int)countElementsInTable(QueuedNotification::getTable(), ['notificationtemplates_id' => $template]);
     }
 }

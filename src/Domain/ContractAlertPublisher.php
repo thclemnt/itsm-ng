@@ -4,9 +4,14 @@
 
 namespace itsmng\Domain;
 
+use Alert as AlertModel;
+use Contract as ContractModel;
+use DateTimeInterface;
+use DBAdapter;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\LockMode;
-use itsmng\Database\Entity\Contract;
+use itsmng\Database\Entity\Alert as AlertRecord;
+use itsmng\Database\Entity\Contract as ContractRecord;
 use itsmng\Database\LifecycleModelJournal;
 use itsmng\Database\LifecycleNotifications;
 use itsmng\Database\MutationCleanupFailure;
@@ -14,13 +19,17 @@ use itsmng\Database\MutationRollbackFailure;
 use itsmng\Database\Orm;
 use itsmng\Database\OwnedMutationFrame;
 use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\TransactionOwnership;
 use itsmng\Database\TransactionOwnershipMismatch;
+use LogicException;
+use NotificationEvent;
+use Throwable;
 
 /** Public dispatch and Alert lifecycle share the active writer transaction; transport stays queued. */
 final class ContractAlertPublisher
 {
-    public function __construct(private \DBAdapter $database)
+    public function __construct(private DBAdapter $database)
     {
     }
 
@@ -29,7 +38,7 @@ final class ContractAlertPublisher
     {
         global $DB;
         if ($DB !== $this->database) {
-            throw new \LogicException('Contract notification hooks must use the supplied active connection');
+            throw new LogicException('Contract notification hooks must use the supplied active connection');
         }
         if ($this->database->isSlave() || !$contracts) {
             return ContractAlertOutcome::Refused;
@@ -67,26 +76,32 @@ final class ContractAlertPublisher
                             $ids = array_keys($contracts);
                             sort($ids, SORT_NUMERIC);
                             foreach ($ids as $id) {
-                                $contract = $manager->find(Contract::class, (int)$id, LockMode::PESSIMISTIC_WRITE);
+                                $contract = $manager->find(ContractRecord::class, (int)$id, LockMode::PESSIMISTIC_WRITE);
                                 if ($contract === null || $contract->entities?->id !== $entity) {
                                     return ContractAlertOutcome::Refused;
                                 }
                                 $selected = $contracts[$id];
-                                $current = (new \itsmng\Database\Repository\RecordRepository($manager))->toRow($contract);
+                                $current = (new RecordRepository($manager))->toRow($contract);
                                 foreach (['begin_date', 'duration', 'notice', 'periodicity', 'alert', 'is_deleted'] as $field) {
                                     if (($selected[$field] ?? null) !== $current[$field]) {
                                         return ContractAlertOutcome::Skipped;
                                     }
                                 }
-                                $previous = $manager->createQueryBuilder()->select('a')->from(\itsmng\Database\Entity\Alert::class, 'a')
-                                    ->where('a.contract = :contract AND a.type = :type')->setParameter('contract', $contract)
-                                    ->setParameter('type', $alertType)->getQuery()->setLockMode(LockMode::PESSIMISTIC_WRITE)->getOneOrNullResult();
+                                $previous = $manager->createQueryBuilder()
+                                    ->select('a')
+                                    ->from(AlertRecord::class, 'a')
+                                    ->where('a.contract = :contract AND a.type = :type')
+                                    ->setParameter('contract', $contract)
+                                    ->setParameter('type', $alertType)
+                                    ->getQuery()
+                                    ->setLockMode(LockMode::PESSIMISTIC_WRITE)
+                                    ->getOneOrNullResult();
                                 if (!$replacePrevious && $previous !== null) {
                                     return ContractAlertOutcome::Skipped;
                                 }
                                 if ($replacePrevious) {
-                                    $expected = $contracts[$id][$alertType === \Alert::NOTICE ? 'last_notice' : 'last_period'] ?? null;
-                                    $expected = $expected instanceof \DateTimeInterface ? $expected->format('Y-m-d H:i:s') : $expected;
+                                    $expected = $contracts[$id][$alertType === AlertModel::NOTICE ? 'last_notice' : 'last_period'] ?? null;
+                                    $expected = $expected instanceof DateTimeInterface ? $expected->format('Y-m-d H:i:s') : $expected;
                                     if ($previous?->date?->format('Y-m-d H:i:s') !== $expected) {
                                         return ContractAlertOutcome::Skipped;
                                     }
@@ -96,14 +111,14 @@ final class ContractAlertPublisher
                             $manager->clear();
                         }
                         $this->assertActive($frame, $connection);
-                        $notified = \NotificationEvent::raiseEvent($event, new \Contract(), ['entities_id' => $entity, 'items' => $contracts]);
+                        $notified = NotificationEvent::raiseEvent($event, new ContractModel(), ['entities_id' => $entity, 'items' => $contracts]);
                         // Refusal is not permission to unwind a replacement callback frame.
                         $this->assertActive($frame, $connection);
                         if (!$notified) {
                             return ContractAlertOutcome::Refused;
                         }
                         foreach ($contracts as $id => $contract) {
-                            $alert = new \Alert();
+                            $alert = new AlertModel();
                             $this->assertActive($frame, $connection);
                             if ($replacePrevious) {
                                 $cleared = $alert->clear('Contract', $id, $alertType);
@@ -131,14 +146,14 @@ final class ContractAlertPublisher
                 $frame->rollBack();
                 $rolledBack = true;
             }
-        } catch (\Throwable $primary) {
+        } catch (Throwable $primary) {
             $failure = $primary;
             if ($frame !== null && !$rollbackAttempted) {
                 try {
                     $rollbackAttempted = true;
                     $frame->rollBack();
                     $rolledBack = true;
-                } catch (\Throwable $cleanup) {
+                } catch (Throwable $cleanup) {
                     $failure = new MutationRollbackFailure($primary, $cleanup);
                 }
             }
@@ -147,18 +162,18 @@ final class ContractAlertPublisher
                 // Contract alarms retain queue-only transport, including when
                 // this frame released a savepoint in a caller-owned transaction.
                 $delivery->finish($accepted);
-            } catch (\Throwable $cleanup) {
+            } catch (Throwable $cleanup) {
                 $failure = self::preserveFailure($failure, $cleanup);
             }
             if ($rolledBack) {
                 try {
                     $journal->restore();
-                } catch (\Throwable $cleanup) {
+                } catch (Throwable $cleanup) {
                     $failure = self::preserveFailure($failure, $cleanup);
                 }
                 try {
                     $restoreFeedback();
-                } catch (\Throwable $cleanup) {
+                } catch (Throwable $cleanup) {
                     $failure = self::preserveFailure($failure, $cleanup);
                 }
             }
@@ -177,7 +192,7 @@ final class ContractAlertPublisher
         $frame->assertActive();
     }
 
-    private static function preserveFailure(?\Throwable $primary, \Throwable $cleanup): \Throwable
+    private static function preserveFailure(?Throwable $primary, Throwable $cleanup): Throwable
     {
         return $primary === null ? $cleanup : new MutationCleanupFailure(
             $primary,
