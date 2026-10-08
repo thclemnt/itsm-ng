@@ -84,11 +84,7 @@ final class Orm
     /** Construct on the operation's already selected route without resolving it again. */
     public static function forConnection(Connection $connection): EntityManager
     {
-        return self::manager($connection, self::configuration($connection->getDatabasePlatform()));
-    }
-
-    private static function manager(Connection $connection, Configuration $configuration): EntityManager
-    {
+        $configuration = self::configuration($connection->getDatabasePlatform());
         // A metadata factory and its unit of work refer back to their manager.
         // After bulk mapping inspection PHP raises its automatic GC threshold;
         // discarded managers can then accumulate faster than it collects them.

@@ -21,7 +21,7 @@ final class ComponentCountReadOperation
         // original eager callback ordering and independently mutable manager.
         if ((new ReflectionMethod($connection, 'getDatabasePlatform'))->getDeclaringClass()->getName() !== Connection::class
             || method_exists($connection, 'getEventManager')
-            || !self::ownsReadMapping($connection)) {
+            || !Orm::ownsReadMapping($connection)) {
             $this->initializeEagerRead($connection);
             return;
         }

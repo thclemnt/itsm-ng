@@ -48,12 +48,7 @@ trait PrivateReadOwnership
             && ($connection instanceof MySQLManagedConnection || $connection instanceof PostgresConnection)
             && $connection->ownsApplicationEntityManager($manager);
         $this->manager = $manager ?? Orm::forConnection($connection);
-        $this->ownedMapping = (!$this->suppliedManager || $this->sharedManager) && self::ownsReadMapping($connection);
-    }
-
-    private static function ownsReadMapping(Connection $connection): bool
-    {
-        return Orm::ownsReadMapping($connection);
+        $this->ownedMapping = (!$this->suppliedManager || $this->sharedManager) && Orm::ownsReadMapping($connection);
     }
 
     private function initializeReadCaches(?Configuration $configuration = null): void

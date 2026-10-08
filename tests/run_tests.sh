@@ -72,9 +72,9 @@ if [[ $# -gt 0 ]]; then
     echo -e "\e[1;30;43m/!\ Invalid \"$KEY\" test suite \e[0m"
   done
 
-  # Ensure install test is executed if something else than "lint" is executed
+  # Ensure installation precedes every selected application test suite
   # This is mandatory as database is initialized by this test suite
-  if [[ !${#TESTS_TO_RUN[@]} -eq 0 && "${TESTS_TO_RUN[@]}" != "lint" && ! "${TESTS_TO_RUN[@]}" =~ "install" ]]; then
+  if [[ !${#TESTS_TO_RUN[@]} -eq 0 && ! "${TESTS_TO_RUN[@]}" =~ "install" ]]; then
     TESTS_TO_RUN=("install" "${TESTS_TO_RUN[@]}")
   fi
 elif [[ "$ALL" = true ]]; then
@@ -151,8 +151,8 @@ find "$APPLICATION_ROOT/tests/config" -mindepth 1 ! -iname ".gitignore" -exec mv
 
 # Export variables to env (required for compose) and start containers
 export COMPOSE_FILE="$APPLICATION_ROOT/.github/actions/docker-compose-app.yml"
-[[ "${TESTS_TO_RUN[@]}" == "lint" ]] || export COMPOSE_FILE="$COMPOSE_FILE:$APPLICATION_ROOT/.github/actions/docker-compose-services.yml"
-if [[ "${TESTS_TO_RUN[@]}" != "lint" && "$TEST_DB_TYPE" == pgsql ]]; then
+export COMPOSE_FILE="$COMPOSE_FILE:$APPLICATION_ROOT/.github/actions/docker-compose-services.yml"
+if [[ "$TEST_DB_TYPE" == pgsql ]]; then
   export COMPOSE_FILE="$COMPOSE_FILE:$APPLICATION_ROOT/.github/actions/docker-compose-postgres.yml"
 fi
 if [[ " ${TESTS_TO_RUN[*]} " == *" e2e "* ]]; then
