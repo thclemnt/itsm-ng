@@ -4,7 +4,7 @@
 
 namespace itsmng\Database\Query;
 
-use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use itsmng\Database\Expressions;
 use Doctrine\ORM\Query\AST\Functions\FunctionNode;
 use Doctrine\ORM\Query\AST\Node;
 use Doctrine\ORM\Query\Parser;
@@ -31,14 +31,9 @@ final class TemporalText extends FunctionNode
     public function getSql(SqlWalker $walker): string
     {
         $value = $this->value->dispatch($walker);
-        [$postgres, $mysql] = match ($this->kind) {
-            'date' => ['YYYY-MM-DD', '%Y-%m-%d'],
-            'datetime' => ['YYYY-MM-DD HH24:MI:SS', '%Y-%m-%d %H:%i:%s'],
-            default => throw new \InvalidArgumentException('Unknown temporal text representation.'),
-        };
-        if ($walker->getConnection()->getDatabasePlatform() instanceof PostgreSQLPlatform) {
-            return 'TO_CHAR(' . $value . ", '" . $postgres . "')";
-        }
-        return 'DATE_FORMAT(' . $value . ", '" . $mysql . "')";
+        return (new Expressions($walker->getConnection()->getDatabasePlatform()))->temporalText(
+            $value,
+            $this->kind
+        );
     }
 }

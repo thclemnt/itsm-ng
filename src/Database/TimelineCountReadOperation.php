@@ -82,7 +82,7 @@ final class TimelineCountReadOperation
     public function documents(string $type, int $item, ITILDocumentAccess $access): int
     {
         if ($this->documentMetadata($type, $access)) {
-            return (new DocumentRepository($this->manager))->countTimelineDocuments($type, $item, $access);
+            return (new DocumentRepository($this->manager))->nativeTimelineDocumentCount($type, $item, $access);
         }
         $manager = $this->fallbackManager();
         try {

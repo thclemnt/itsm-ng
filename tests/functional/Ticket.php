@@ -2584,13 +2584,37 @@ class Ticket extends DbTestCase
         global $DB;
         $manager = \itsmng\Database\Orm::create($DB);
         try {
-            // Exercise the DQL directly: the model's compatibility fallback cannot mask failure.
+            // Keep the ordinary ORM projection as an independent semantic oracle.
             $count = (new \itsmng\Database\Repository\DocumentRepository($manager))->countTimelineDocuments(
                 $item->getType(),
                 (int)$item->getID(),
                 $item::getAssociatedDocumentAccess($bypassRights)
             );
             $this->integer($count)->isEqualTo($expected);
+            $probe = new TicketScalarReadProbe($DB->getDoctrineConnection());
+            $reader = new TimelineCountReadOperation($probe);
+            try {
+                $this->integer($reader->documents(
+                    $item->getType(),
+                    (int)$item->getID(),
+                    $item::getAssociatedDocumentAccess($bypassRights)
+                ))->isIdenticalTo($count);
+                $this->integer($probe->builders)->isIdenticalTo(1);
+                $this->array($probe->queries)->hasSize(1);
+                $this->string($probe->queries[0]['sql'])->startWith('SELECT COUNT(*) FROM (SELECT DISTINCT ')
+                    ->contains(' AS document_id')->contains(' AS event_date')
+                    ->contains('COALESCE(')->contains(') document_events');
+                // Missing subjects must not load IDs or inherit another discriminator's events.
+                foreach ([0, PHP_INT_MAX] as $missing) {
+                    $this->integer($reader->documents(
+                        $item->getType(),
+                        $missing,
+                        $item::getAssociatedDocumentAccess($bypassRights)
+                    ))->isIdenticalTo(0);
+                }
+            } finally {
+                $reader->close();
+            }
         } finally {
             $manager->clear();
         }
@@ -2651,9 +2675,10 @@ class Ticket extends DbTestCase
                     // Document EXISTS subqueries can mention the same tables; the
                     // three standalone COUNT statements must still be present.
                     $eventQueries = array_filter($eventQueries, static fn (array $query): bool =>
-                        preg_match('/^SELECT COUNT\(/i', $query['sql']) === 1);
+                        preg_match('/^SELECT COUNT\(/i', $query['sql']) === 1
+                        && !str_contains($query['sql'], 'glpi_documents_items'));
                     $this->array($eventQueries)->hasSize(3);
-                    $this->integer($probe->builders)->isIdenticalTo(3);
+                    $this->integer($probe->builders)->isIdenticalTo(4);
                 } finally {
                     $DB = $originalAdapter;
                 }
@@ -2788,7 +2813,7 @@ class Ticket extends DbTestCase
                     try {
                         $DB = $adapter;
                         $count = $item->getTimelineItemCount();
-                        $this->integer($probe->builders)->isIdenticalTo(3);
+                        $this->integer($probe->builders)->isIdenticalTo(4);
                     } finally {
                         $DB = $originalAdapter;
                     }
@@ -2841,7 +2866,7 @@ class Ticket extends DbTestCase
                         $probe->builders = 0;
                         $this->integer($callbackItem->getTimelineItemCount())->isIdenticalTo($expectedRouteCount);
                         $this->integer($selectedCalls)->isIdenticalTo(1);
-                        $this->integer($probe->builders)->isIdenticalTo(3);
+                        $this->integer($probe->builders)->isIdenticalTo(4);
                         $this->array($otherProbe->queries)->isEmpty();
                         $this->object($DB)->isIdenticalTo($otherAdapter);
                     } finally {
@@ -2899,7 +2924,7 @@ class Ticket extends DbTestCase
                             $this->calling($adapter)->getDoctrineConnection = $probe;
                             $probe->builders = 0;
                             $this->integer($item->getTimelineItemCount())->isIdenticalTo($expected);
-                            $this->integer($probe->builders)->isIdenticalTo(3);
+                            $this->integer($probe->builders)->isIdenticalTo(4);
                             Type::overrideType($name, $originalTypes[$name]);
                         }
                     } finally {
@@ -2952,6 +2977,29 @@ class Ticket extends DbTestCase
             $this->boolean($DB->update('glpi_documents_items', ['date' => '2020-01-02 12:00:00'], ['id' => $bindings[1]]))->isTrue();
             $this->checkTimelineDocumentCount($item, 2);
             $this->integer($item->getTimelineItemCount())->isEqualTo(2)->isEqualTo(count($item->getTimelineItems()));
+            if ($type === 'Ticket') {
+                $local = new TimelineLocalCountProbe($DB->getDoctrineConnection());
+                $reader = new TimelineCountReadOperation($local);
+                $listener = new class () {
+                    public int $loads = 0;
+                    public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
+                    {
+                        if ($event->getClassMetadata()->name === \itsmng\Database\Entity\DocumentItem::class) {
+                            ++$this->loads;
+                            $event->getClassMetadata()->fieldMappings['date']->columnName = 'date_creation';
+                        }
+                    }
+                };
+                // A listener attached after construction still owns this operation's metadata.
+                $local->getEventManager()->addEventListener(['loadClassMetadata'], $listener);
+                try {
+                    $this->integer($reader->documents('Ticket', (int)$item->getID(), $item::getAssociatedDocumentAccess()))->isIdenticalTo(1);
+                    $this->integer($listener->loads)->isIdenticalTo(1);
+                    $this->integer($local->builders)->isIdenticalTo(0);
+                } finally {
+                    $reader->close();
+                }
+            }
             $this->boolean($DB->update('glpi_documents_items', ['date' => null, 'date_creation' => null], ['id' => $bindings]))->isTrue();
             $this->checkTimelineDocumentCount($item, 1);
             $this->integer($item->getTimelineItemCount())->isEqualTo(1)->isEqualTo(count($item->getTimelineItems()));

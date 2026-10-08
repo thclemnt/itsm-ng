@@ -34,6 +34,19 @@ final class Expressions
             ? "TO_CHAR($date, 'YYYY-MM')" : "DATE_FORMAT($date, '%Y-%m')";
     }
 
+    /** Calendar text matches legacy event keys, including repeated local hours. */
+    public function temporalText(string $value, string $kind): string
+    {
+        [$postgres, $mysql] = match ($kind) {
+            'date' => ['YYYY-MM-DD', '%Y-%m-%d'],
+            'datetime' => ['YYYY-MM-DD HH24:MI:SS', '%Y-%m-%d %H:%i:%s'],
+            default => throw new \InvalidArgumentException('Unknown temporal text representation.'),
+        };
+        return $this->platform instanceof PostgreSQLPlatform
+            ? 'TO_CHAR(' . $value . ", '" . $postgres . "')"
+            : 'DATE_FORMAT(' . $value . ", '" . $mysql . "')";
+    }
+
     public function epoch(string $date = 'CURRENT_TIMESTAMP'): string
     {
         return $this->platform instanceof PostgreSQLPlatform ? "EXTRACT(EPOCH FROM $date)" : "UNIX_TIMESTAMP($date)";

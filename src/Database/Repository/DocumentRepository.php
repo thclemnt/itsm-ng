@@ -4,9 +4,12 @@
 
 namespace itsmng\Database\Repository;
 
+use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Mapping\ClassMetadata;
 use itsmng\Database\Entity;
+use itsmng\Database\Expressions;
 use itsmng\Database\ITILDocumentAccess;
 use itsmng\Database\RecordCriteria;
 
@@ -75,6 +78,72 @@ final class DocumentRepository
         return count($query->getQuery()->getScalarResult());
     }
 
+    /** Only the private, canonical timeline read owner admits this fixed projection. */
+    public function nativeTimelineDocumentCount(string $type, int $item, ITILDocumentAccess $access): int
+    {
+        $subjects = $this->itilSubjects($type, $access);
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $document = $this->em->getClassMetadata(Entity\DocumentItem::class);
+        $column = static fn (ClassMetadata $metadata, string $field, string $alias): string =>
+            $alias . '.' . $quote->getColumnName($field, $metadata, $platform);
+        $identity = function (ClassMetadata $metadata, string $field, string $alias) use ($quote, $platform): string {
+            $association = $metadata->associationMappings[$field];
+            return $alias . '.' . $quote->getJoinColumnName(
+                $association->joinColumns[0],
+                $this->em->getClassMetadata($association->targetEntity),
+                $platform
+            );
+        };
+        // The ORM binds explicit integers/booleans through their live SQL converters;
+        // inferred string parameters and fixed discriminator literals stay strings.
+        $integer = Type::getType(Types::INTEGER);
+        $itemParameter = $integer->convertToDatabaseValueSQL(':item', $platform);
+        $inline = $integer->convertToDatabaseValueSQL(':inline', $platform);
+        $eventDate = (new Expressions($platform))->temporalText(
+            'COALESCE(' . $column($document, 'date', 'd') . ', ' . $column($document, 'date_creation', 'd') . ')',
+            'datetime'
+        );
+        $query = $connection->createQueryBuilder()
+            ->select($identity($document, 'documents', 'd') . ' AS document_id', $eventDate . ' AS event_date')
+            ->distinct()->from($quote->getTableName($document, $platform), 'd')
+            ->setParameter('type', $type)->setParameter('item', $item, Types::INTEGER)
+            ->setParameter('inline', \CommonITILObject::NO_TIMELINE, Types::INTEGER);
+        $kind = $column($document, 'itemtype', 'd');
+        $subjectId = $column($document, 'items_id', 'd');
+        $conditions = ['(' . $kind . ' = :type AND ' . $subjectId . ' = ' . $itemParameter . ')'];
+        foreach ($subjects as [$subjectType, $class, $parent, $restricted, $alias]) {
+            $metadata = $this->em->getClassMetadata($class);
+            $discriminator = $connection->quote($subjectType);
+            if ($alias === 't') {
+                $discriminator = ':taskType';
+                $query->setParameter('taskType', $subjectType);
+            }
+            $predicate = $column($metadata, 'id', $alias) . ' = ' . $subjectId
+                . ' AND ' . $identity($metadata, $parent, $alias) . ' = ' . $itemParameter;
+            if ($restricted) {
+                $public = Type::getType(Types::BOOLEAN)->convertToDatabaseValueSQL(':public', $platform);
+                $viewer = $integer->convertToDatabaseValueSQL(':viewer', $platform);
+                $predicate .= ' AND (' . $column($metadata, 'is_private', $alias) . ' = ' . $public
+                    . ' OR ' . $identity($metadata, 'author', $alias) . ' = ' . $viewer . ')';
+                $query->setParameter('public', false, Types::BOOLEAN)->setParameter('viewer', $access->user, Types::INTEGER);
+            }
+            $conditions[] = '(' . $kind . ' = ' . $discriminator . ' AND EXISTS (SELECT '
+                . $column($metadata, 'id', $alias) . ' FROM ' . $quote->getTableName($metadata, $platform)
+                . ' ' . $alias . ' WHERE ' . $predicate . '))';
+        }
+        $query->where('(' . implode(' OR ', $conditions) . ')')
+            ->andWhere($column($document, 'timeline_position', 'd') . ' > ' . $inline);
+        // Counting the distinct pair retains NULL calendar keys and repeated documents.
+        // COUNT(DISTINCT document_id) or a multi-column MySQL COUNT drops valid events.
+        return (int)$connection->fetchOne(
+            'SELECT COUNT(*) FROM (' . $query->getSQL() . ') document_events',
+            $query->getParameters(),
+            $query->getParameterTypes()
+        );
+    }
+
     /** Template attachments retain one row per visible timeline binding. */
     public function notificationDocuments(string $type, int $item, ITILDocumentAccess $access): array
     {
@@ -123,33 +192,43 @@ final class DocumentRepository
             ->setParameter('item', $item, Types::BIGINT)->orderBy('binding.id');
     }
 
-    private function itilBindings(string $type, int $item, ITILDocumentAccess $access): \Doctrine\ORM\QueryBuilder
+    /** The document consumers share one subject/privacy selection and owning associations. */
+    private function itilSubjects(string $type, ITILDocumentAccess $access): array
     {
         [$task, , $taskAssociation] = (new ITILTaskRepository($this->em))->definition($type . 'Task');
+        $subjects = [];
+        if ($access->followups) {
+            $subjects[] = ['ITILFollowup', Entity\ITILFollowup::class, Entity\ITILFollowup::subjectAssociation($type), !$access->privateFollowups, 'f'];
+        }
+        if ($access->solutions) {
+            $subjects[] = ['ITILSolution', Entity\ITILSolution::class, Entity\ITILSolution::subjectAssociation($type), false, 's'];
+        }
+        if ($access->tasks) {
+            $subjects[] = [$type . 'Task', $task, $taskAssociation, !$access->privateTasks, 't'];
+        }
+        return $subjects;
+    }
+
+    private function itilBindings(string $type, int $item, ITILDocumentAccess $access): \Doctrine\ORM\QueryBuilder
+    {
+        $subjects = $this->itilSubjects($type, $access);
         $query = $this->em->createQueryBuilder()->select('d.id')->from(Entity\DocumentItem::class, 'd')
             ->setParameter('type', $type)->setParameter('item', $item, Types::INTEGER);
         $conditions = ['(d.itemtype = :type AND d.items_id = :item)'];
-        if ($access->followups) {
+        foreach ($subjects as [$subjectType, $class, $parent, $restricted, $alias]) {
+            $discriminator = "'" . $subjectType . "'";
+            if ($alias === 't') {
+                $discriminator = ':taskType';
+                $query->setParameter('taskType', $subjectType);
+            }
             $private = '';
-            if (!$access->privateFollowups) {
-                $private = ' AND (f.is_private = :public OR IDENTITY(f.author) = :viewer)';
+            if ($restricted) {
+                $private = ' AND (' . $alias . '.is_private = :public OR IDENTITY(' . $alias . '.author) = :viewer)';
                 $query->setParameter('public', false, Types::BOOLEAN)->setParameter('viewer', $access->user, Types::INTEGER);
             }
-            $subject = Entity\ITILFollowup::subjectAssociation($type);
-            $conditions[] = "(d.itemtype = 'ITILFollowup' AND EXISTS (SELECT f.id FROM " . Entity\ITILFollowup::class . ' f WHERE f.id = d.items_id AND IDENTITY(f.' . $subject . ') = :item' . $private . '))';
-        }
-        if ($access->solutions) {
-            $subject = Entity\ITILSolution::subjectAssociation($type);
-            $conditions[] = "(d.itemtype = 'ITILSolution' AND EXISTS (SELECT s.id FROM " . Entity\ITILSolution::class . ' s WHERE s.id = d.items_id AND IDENTITY(s.' . $subject . ') = :item))';
-        }
-        if ($access->tasks) {
-            $private = '';
-            if (!$access->privateTasks) {
-                $private = ' AND (t.is_private = :public OR IDENTITY(t.author) = :viewer)';
-                $query->setParameter('public', false, Types::BOOLEAN)->setParameter('viewer', $access->user, Types::INTEGER);
-            }
-            $conditions[] = '(d.itemtype = :taskType AND EXISTS (SELECT t.id FROM ' . $task . ' t WHERE t.id = d.items_id AND IDENTITY(t.' . $taskAssociation . ') = :item' . $private . '))';
-            $query->setParameter('taskType', $type . 'Task');
+            $conditions[] = '(d.itemtype = ' . $discriminator . ' AND EXISTS (SELECT ' . $alias . '.id FROM '
+                . $class . ' ' . $alias . ' WHERE ' . $alias . '.id = d.items_id AND IDENTITY('
+                . $alias . '.' . $parent . ') = :item' . $private . '))';
         }
         return $query->where('(' . implode(' OR ', $conditions) . ')');
     }
