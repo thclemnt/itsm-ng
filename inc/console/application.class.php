@@ -39,6 +39,9 @@ if (!defined('GLPI_ROOT')) {
 
 use Config;
 use DB;
+use DBAdapter;
+use DBmysql;
+use DBpgsql;
 use GLPI;
 use Glpi\Application\ErrorHandler;
 use Glpi\Console\Command\ForceNoPluginsOptionCommandInterface;
@@ -57,7 +60,9 @@ use Symfony\Component\Console\Input\InputDefinition;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Throwable;
 use Toolbox;
+use itsmng\Database\Migration\History;
 
 class Application extends BaseApplication
 {
@@ -332,8 +337,8 @@ class Application extends BaseApplication
 
         if (
             !class_exists('DB', false)
-            || (is_subclass_of(DB::class, \DBmysql::class) && !extension_loaded('pdo_mysql'))
-            || (is_subclass_of(DB::class, \DBpgsql::class) && !extension_loaded('pdo_pgsql'))
+            || (is_subclass_of(DB::class, DBmysql::class) && !extension_loaded('pdo_mysql'))
+            || (is_subclass_of(DB::class, DBpgsql::class) && !extension_loaded('pdo_pgsql'))
         ) {
             return;
         }
@@ -494,15 +499,15 @@ class Application extends BaseApplication
 
     private function pendingHistory(): array
     {
-        if (!($this->db instanceof \DBAdapter) || !$this->db->connected) {
+        if (!($this->db instanceof DBAdapter) || !$this->db->connected) {
             return [];
         }
         if ($this->pendingHistory === null) {
             try {
-                $this->pendingHistory = \itsmng\Database\Migration\History::pendingVersions($this->db->getDoctrineConnection());
-            } catch (\Throwable $error) {
+                $this->pendingHistory = History::pendingVersions($this->db->getDoctrineConnection());
+            } catch (Throwable $error) {
                 $this->historyError = 'Canonical migration ledger could not be validated: ' . $error->getMessage();
-                $this->pendingHistory = \itsmng\Database\Migration\History::versions();
+                $this->pendingHistory = History::versions();
             }
         }
         return $this->pendingHistory;
@@ -519,7 +524,7 @@ class Application extends BaseApplication
 
         $requirements_manager = new RequirementsManager();
         $core_requirements = $requirements_manager->getCoreRequirementList(
-            $db instanceof \DBAdapter && $db->connected ? $db : null
+            $db instanceof DBAdapter && $db->connected ? $db : null
         );
 
         if ($core_requirements->hasMissingMandatoryRequirements()) {

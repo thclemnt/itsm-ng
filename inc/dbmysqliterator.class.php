@@ -267,9 +267,9 @@ class DBmysqlIterator implements Iterator, Countable
                     throw new InvalidArgumentException("Missing table name");
                 }
             } elseif ($table) {
-                if ($table instanceof \AbstractQuery) {
+                if ($table instanceof AbstractQuery) {
                     $table = $table->getQuery();
-                } elseif ($table instanceof \QueryExpression) {
+                } elseif ($table instanceof QueryExpression) {
                     $table = $table->getValue();
                 } else {
                     $table = $this->quoter::quoteName($table);
@@ -402,9 +402,9 @@ class DBmysqlIterator implements Iterator, Countable
     private function handleFields($t, $f)
     {
         if (is_numeric($t)) {
-            if ($f instanceof \AbstractQuery) {
+            if ($f instanceof AbstractQuery) {
                 return $f->getQuery();
-            } elseif ($f instanceof \QueryExpression) {
+            } elseif ($f instanceof QueryExpression) {
                 return $f->getValue();
             } else {
                 return $this->quoter::quoteName($f);
@@ -580,13 +580,13 @@ class DBmysqlIterator implements Iterator, Countable
                     $criterion_value = $value[1];
                 } else {
                     if (!count($value)) {
-                        throw new \RuntimeException('Empty IN are not allowed');
+                        throw new RuntimeException('Empty IN are not allowed');
                     }
                     // Array of Values
                     return "IN (" . $this->analyseCriterionValue($value) . ")";
                 }
             } else {
-                $comparison = ($value instanceof \AbstractQuery ? 'IN' : '=');
+                $comparison = ($value instanceof AbstractQuery ? 'IN' : '=');
                 $criterion_value = $value;
             }
             $criterion = "$comparison " . $this->getCriterionValue($criterion_value);
@@ -611,11 +611,11 @@ class DBmysqlIterator implements Iterator, Countable
      */
     private function getCriterionValue($value)
     {
-        if ($value instanceof \AbstractQuery) {
+        if ($value instanceof AbstractQuery) {
             return $value->getQuery();
-        } elseif ($value instanceof \QueryExpression) {
+        } elseif ($value instanceof QueryExpression) {
             return $value->getValue();
-        } elseif ($value instanceof \QueryParam) {
+        } elseif ($value instanceof QueryParam) {
             return $value->getValue();
         } else {
             return $this->analyseCriterionValue($value);
@@ -651,7 +651,7 @@ class DBmysqlIterator implements Iterator, Countable
         $query = '';
         foreach ($joinarray as $jointype => $jointables) {
             if (!in_array($jointype, ['JOIN', 'LEFT JOIN', 'INNER JOIN', 'RIGHT JOIN'])) {
-                throw new \RuntimeException('BAD JOIN');
+                throw new RuntimeException('BAD JOIN');
             }
 
             if ($jointype == 'JOIN') {
@@ -668,10 +668,10 @@ class DBmysqlIterator implements Iterator, Countable
                     $jointablekey = $jointablecrit['TABLE'];
                     unset($jointablecrit['TABLE']);
                 } elseif (is_numeric($jointablekey) || $jointablekey == 'FKEY' || $jointablekey == 'ON') {
-                    throw new \RuntimeException('BAD JOIN');
+                    throw new RuntimeException('BAD JOIN');
                 }
 
-                if ($jointablekey instanceof \QuerySubQuery) {
+                if ($jointablekey instanceof QuerySubQuery) {
                     $jointablekey = $jointablekey->getQuery();
                 } else {
                     $jointablekey = $this->quoter::quoteName($jointablekey);
@@ -754,7 +754,7 @@ class DBmysqlIterator implements Iterator, Countable
      *
      * @return string[]|null fetch_assoc() of first results row
      */
-    #[\ReturnTypeWillChange]
+    #[ReturnTypeWillChange]
     public function next()
     {
         if (!is_object($this->res)) {

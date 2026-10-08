@@ -39,6 +39,7 @@ if (!defined('GLPI_ROOT')) {
 
 use RRule\RRule;
 use RRule\RSet;
+use Ramsey\Uuid\Uuid;
 use Session;
 use Toolbox;
 use Planning;
@@ -129,7 +130,7 @@ trait PlanningEvent
         Toolbox::manageBeginAndEndPlanDates($input['plan']);
 
         if (!isset($input['uuid'])) {
-            $input['uuid'] = \Ramsey\Uuid\Uuid::uuid4();
+            $input['uuid'] = Uuid::uuid4();
         }
 
         $input["name"] = trim((string) $input["name"]);

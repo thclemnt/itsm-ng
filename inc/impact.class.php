@@ -708,7 +708,7 @@ class Impact extends CommonGLPI
                 break;
 
             default:
-                throw new \InvalidArgumentException("Invalid direction : $direction");
+                throw new InvalidArgumentException("Invalid direction : $direction");
         }
 
         // Insert start node in the queue
@@ -897,14 +897,14 @@ class Impact extends CommonGLPI
 
         // Check if this type is enabled in config
         if (!self::isEnabled($itemtype)) {
-            throw new \InvalidArgumentException(
+            throw new InvalidArgumentException(
                 "itemtype ($itemtype) must be enabled in config"
             );
         }
 
         // Check class exist and is a child of CommonDBTM
         if (!is_subclass_of($itemtype, "CommonDBTM", true)) {
-            throw new \InvalidArgumentException(
+            throw new InvalidArgumentException(
                 "itemtype ($itemtype) must be a valid child of CommonDBTM"
             );
         }
@@ -1641,7 +1641,7 @@ class Impact extends CommonGLPI
      *
      * @param CommonDBTM $item The item being purged
      */
-    public static function clean(\CommonDBTM $item)
+    public static function clean(CommonDBTM $item)
     {
         global $DB;
 

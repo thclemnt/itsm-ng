@@ -33,6 +33,7 @@
 
 namespace Glpi\Dashboard;
 
+use Line;
 use Mexitek\PHPColors\Color;
 use ScssPhp\ScssPhp\Compiler;
 use Michelf\MarkdownExtra;
@@ -113,7 +114,7 @@ class Widget extends CommonGLPI
               'height'   => 3,
            ],
            'line' => [
-              'label'    => \Line::getTypeName(1),
+              'label'    => Line::getTypeName(1),
               'function' => 'Glpi\\Dashboard\\Widget::simpleLine',
               'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/line.png',
               'limit'    => true,
@@ -704,7 +705,7 @@ HTML;
          });
       });
 JAVASCRIPT;
-        $js = \Html::scriptBlock($js);
+        $js = Html::scriptBlock($js);
 
         return $html . $js;
     }
@@ -1197,7 +1198,7 @@ HTML;
          });
       });
 JAVASCRIPT;
-        $js = \Html::scriptBlock($js);
+        $js = Html::scriptBlock($js);
 
         return $html . $js;
     }
@@ -1534,7 +1535,7 @@ JAVASCRIPT;
 
         // fix auto-escaping
         if (isset($p['markdown_content'])) {
-            $p['markdown_content'] = \Html::cleanPostForTextArea($p['markdown_content']);
+            $p['markdown_content'] = Html::cleanPostForTextArea($p['markdown_content']);
         }
 
         $ph           = __("Type markdown text here");
@@ -1782,7 +1783,7 @@ HTML;
          });
       });
 JAVASCRIPT;
-        $js = \Html::scriptBlock($js);
+        $js = Html::scriptBlock($js);
 
         return $html . $js;
     }

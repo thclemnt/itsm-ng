@@ -560,7 +560,7 @@ class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemIn
 
         if ($vcomp instanceof VTodo && !array_key_exists('state', $input)) {
             // Force default state to TO DO or event will be considered as VEVENT
-            $input['state'] = \Planning::TODO;
+            $input['state'] = Planning::TODO;
         }
 
         return $input;

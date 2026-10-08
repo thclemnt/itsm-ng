@@ -945,7 +945,7 @@ class CronTask extends CommonDBTM
                                 );
                                 try {
                                     $retcode = call_user_func($function, $crontask);
-                                } catch (\Throwable $e) {
+                                } catch (Throwable $e) {
                                     global $GLPI;
                                     $GLPI->getErrorHandler()->handleException($e);
                                     Toolbox::logInFile(
@@ -995,7 +995,7 @@ class CronTask extends CommonDBTM
                         $msgcron = sprintf(__('%1$s: %2$s'), $msgprefix, __('Nothing to launch'));
                         Toolbox::logInFile('cron', $msgcron . "\n");
                     }
-                } catch (\Throwable $e) {
+                } catch (Throwable $e) {
                     global $GLPI;
                     $GLPI->getErrorHandler()->handleException($e);
                     Toolbox::logInFile(

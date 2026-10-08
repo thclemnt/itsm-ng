@@ -50,7 +50,7 @@ class TicketCost extends CommonITILCost
 
     private function updateLinkedItemsTco(): void
     {
-        $used_items = \Item_Ticket::getUsedItems((int)$this->fields['tickets_id']);
+        $used_items = Item_Ticket::getUsedItems((int)$this->fields['tickets_id']);
 
         foreach ($used_items as $itemtype => $items) {
             $item = getItemForItemtype($itemtype);
@@ -65,7 +65,7 @@ class TicketCost extends CommonITILCost
 
                 $item->update([
                    'id'         => $items_id,
-                   'ticket_tco' => \Ticket::computeTco($item),
+                   'ticket_tco' => Ticket::computeTco($item),
                 ]);
             }
         }

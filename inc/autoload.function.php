@@ -96,7 +96,7 @@ function isPluginItemType($classname)
         $plug['plugin'] = $matches[1];
         $plug['class']  = $matches[2];
         return $plug;
-    } elseif (substr($classname, 0, \strlen(NS_PLUG)) === NS_PLUG) {
+    } elseif (substr($classname, 0, strlen(NS_PLUG)) === NS_PLUG) {
         $tab = explode('\\', $classname, 3);
         $plug           = [];
         $plug['plugin'] = $tab[1];
@@ -345,8 +345,8 @@ function glpi_autoload($classname)
         }
     } else {
         $item = strtolower($classname);
-        if (substr($classname, 0, \strlen(NS_GLPI)) === NS_GLPI) {
-            $item = str_replace('\\', '/', substr($item, \strlen(NS_GLPI)));
+        if (substr($classname, 0, strlen(NS_GLPI)) === NS_GLPI) {
+            $item = str_replace('\\', '/', substr($item, strlen(NS_GLPI)));
         }
     }
 

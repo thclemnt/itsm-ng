@@ -35,9 +35,11 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use Glpi\CalDAV\Backend\Calendar;
 use RRule\RRule;
 use Sabre\VObject\Component\VCalendar;
 use Sabre\VObject\Property\FlatText;
+use Sabre\VObject\Property\ICalendar\DateTime as ICalendarDateTime;
 use Sabre\VObject\Reader;
 use Sabre\VObject\ParseException;
 use Sabre\VObject\Component\VEvent;
@@ -2059,7 +2061,7 @@ class Planning extends CommonGLPI
 
                 // append icon to distinguish reccurent event in views
                 // use UTC datetime to avoid some issues with rlan/phprrule
-                $dtstart_datetime  = new \DateTime($new_event['start']);
+                $dtstart_datetime  = new DateTime($new_event['start']);
                 unset($rrule['exceptions']); // remove exceptions key (as libraries throw exception for unknow keys)
                 $hr_rrule_o = new RRule(
                     array_merge(
@@ -2229,12 +2231,12 @@ class Planning extends CommonGLPI
 
                 $end_date_prop = $vcomp instanceof VTodo ? 'DUE' : 'DTEND';
                 if (
-                    !$vcomp->DTSTART instanceof \Sabre\VObject\Property\ICalendar\DateTime
-                    || !$vcomp->$end_date_prop instanceof \Sabre\VObject\Property\ICalendar\DateTime
+                    !$vcomp->DTSTART instanceof ICalendarDateTime
+                    || !$vcomp->$end_date_prop instanceof ICalendarDateTime
                 ) {
                     continue;
                 }
-                $user_tz  = new \DateTimeZone(date_default_timezone_get());
+                $user_tz  = new DateTimeZone(date_default_timezone_get());
                 $begin_dt = $vcomp->DTSTART->getDateTime();
                 $begin_dt = $begin_dt->setTimeZone($user_tz);
                 $end_dt   = $vcomp->$end_date_prop->getDateTime();
@@ -2721,21 +2723,21 @@ class Planning extends CommonGLPI
      *
      * @return string|null
      */
-    private static function getCaldavBaseCalendarUrl(\CommonDBTM $item)
+    private static function getCaldavBaseCalendarUrl(CommonDBTM $item)
     {
 
         $calendar_uri = null;
 
         switch (get_class($item)) {
-            case \Group::class:
-                $calendar_uri = \Glpi\CalDAV\Backend\Calendar::PREFIX_GROUPS
+            case Group::class:
+                $calendar_uri = Calendar::PREFIX_GROUPS
                    . '/' . $item->fields['id']
-                   . '/' . \Glpi\CalDAV\Backend\Calendar::BASE_CALENDAR_URI;
+                   . '/' . Calendar::BASE_CALENDAR_URI;
                 break;
-            case \User::class:
-                $calendar_uri = \Glpi\CalDAV\Backend\Calendar::PREFIX_USERS
+            case User::class:
+                $calendar_uri = Calendar::PREFIX_USERS
                    . '/' . $item->fields['name']
-                   . '/' . \Glpi\CalDAV\Backend\Calendar::BASE_CALENDAR_URI;
+                   . '/' . Calendar::BASE_CALENDAR_URI;
                 break;
         }
 

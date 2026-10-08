@@ -35,6 +35,8 @@ use Glpi\Console\Application;
 use Glpi\Event;
 use Glpi\Mail\Protocol\ProtocolInterface;
 use Glpi\System\RequirementsManager;
+use Laminas\Mail\Protocol\Imap;
+use Laminas\Mail\Protocol\Pop3;
 use Laminas\Mail\Storage\AbstractStorage;
 use Monolog\Logger;
 use Mexitek\PHPColors\Color;
@@ -545,7 +547,7 @@ class Toolbox
         }
 
         if (defined('TU_USER') && $level >= Logger::NOTICE) {
-            throw new \RuntimeException($msg);
+            throw new RuntimeException($msg);
         }
 
         $tps = microtime(true);
@@ -557,7 +559,7 @@ class Toolbox
 
         try {
             $logger->addRecord($level, $msg, $extra);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             //something went wrong, make sure logging does not cause fatal
             error_log($e);
         }
@@ -619,11 +621,11 @@ class Toolbox
         $msg = $args[0];
         try {
             self::log($SQLLOGGER, Logger::ERROR, $args);
-        } catch (\RuntimeException $e) {
+        } catch (RuntimeException $e) {
             $msg = $e->getMessage();
         } finally {
             if (class_exists('GlpitestSQLError')) { // For unit test
-                throw new \GlpitestSQLError($msg);
+                throw new GlpitestSQLError($msg);
             }
         }
     }
@@ -1591,8 +1593,8 @@ class Toolbox
             $item = str_replace('\\', '/', strtolower((string) $plug['class']));
         } else { // Standard case
             $item = strtolower($itemtype);
-            if (substr($itemtype, 0, \strlen(NS_GLPI)) === NS_GLPI) {
-                $item = str_replace('\\', '/', substr($item, \strlen(NS_GLPI)));
+            if (substr($itemtype, 0, strlen(NS_GLPI)) === NS_GLPI) {
+                $item = str_replace('\\', '/', substr($item, strlen(NS_GLPI)));
             }
         }
 
@@ -1625,8 +1627,8 @@ class Toolbox
                 $itemtype = 'ConsumableItem';
             }
             $item = strtolower($itemtype);
-            if (substr($itemtype, 0, \strlen(NS_GLPI)) === NS_GLPI) {
-                $item = str_replace('\\', '/', substr($item, \strlen(NS_GLPI)));
+            if (substr($itemtype, 0, strlen(NS_GLPI)) === NS_GLPI) {
+                $item = str_replace('\\', '/', substr($item, strlen(NS_GLPI)));
             }
         }
 
@@ -2512,8 +2514,8 @@ class Toolbox
             } elseif (
                 class_exists($protocol)
                 && (is_a($protocol, ProtocolInterface::class, true)
-                    || is_a($protocol, \Laminas\Mail\Protocol\Imap::class, true)
-                    || is_a($protocol, \Laminas\Mail\Protocol\Pop3::class, true))
+                    || is_a($protocol, Imap::class, true)
+                    || is_a($protocol, Pop3::class, true))
             ) {
                 return new $protocol();
             } else {
@@ -3257,7 +3259,7 @@ class Toolbox
                 ];
                 break;
             default:
-                throw new \RuntimeException("Unknown type $type to get date formats.");
+                throw new RuntimeException("Unknown type $type to get date formats.");
         }
         return $formats;
     }

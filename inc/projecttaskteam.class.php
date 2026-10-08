@@ -200,7 +200,7 @@ class ProjectTaskTeam extends CommonDBRelation
                 //only Users can be checked for planning conflicts
                 break;
             default:
-                throw new \RuntimeException($input['itemtype'] . " is not (yet?) handled.");
+                throw new RuntimeException($input['itemtype'] . " is not (yet?) handled.");
         }
 
         return $input;

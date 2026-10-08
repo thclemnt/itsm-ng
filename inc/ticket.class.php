@@ -694,7 +694,7 @@ class Ticket extends CommonITILObject
                         $nb = countElementsInTable(
                             ['glpi_tickets', 'glpi_tickets_users'],
                             [
-                              'glpi_tickets_users.tickets_id'  => new \QueryExpression(DB::quoteName('glpi_tickets.id')),
+                              'glpi_tickets_users.tickets_id'  => new QueryExpression(DB::quoteName('glpi_tickets.id')),
                               'glpi_tickets_users.users_id'    => $item->getID(),
                               'glpi_tickets_users.type'        => CommonITILActor::REQUESTER
                             ] + getEntitiesRestrictCriteria(self::getTable())
@@ -706,7 +706,7 @@ class Ticket extends CommonITILObject
                         $nb = countElementsInTable(
                             ['glpi_tickets', 'glpi_suppliers_tickets'],
                             [
-                              'glpi_suppliers_tickets.tickets_id'    => new \QueryExpression(DB::quoteName('glpi_tickets.id')),
+                              'glpi_suppliers_tickets.tickets_id'    => new QueryExpression(DB::quoteName('glpi_tickets.id')),
                               'glpi_suppliers_tickets.suppliers_id'  => $item->getID()
                             ] + getEntitiesRestrictCriteria(self::getTable())
                         );
@@ -739,7 +739,7 @@ class Ticket extends CommonITILObject
                         $nb = countElementsInTable(
                             ['glpi_tickets', 'glpi_groups_tickets'],
                             [
-                              'glpi_groups_tickets.tickets_id' => new \QueryExpression(DB::quoteName('glpi_tickets.id')),
+                              'glpi_groups_tickets.tickets_id' => new QueryExpression(DB::quoteName('glpi_tickets.id')),
                               'glpi_groups_tickets.groups_id'  => $item->getID(),
                               'glpi_groups_tickets.type'       => CommonITILActor::REQUESTER
                             ] + getEntitiesRestrictCriteria(self::getTable())
@@ -5913,7 +5913,7 @@ class Ticket extends CommonITILObject
                       'glpi_tickets.status'   => $_SESSION['CLOSED'],
                       ['OR'                   => [
                          'glpi_entities.inquest_duration' => 0,
-                         new \QueryExpression(
+                         new QueryExpression(
                              'DATEDIFF(ADDDATE(' . $DB->quoteName('glpi_ticketsatisfactions.date_begin') .
                                ', INTERVAL ' . $DB->quoteName('glpi_entities.inquest_duration')  . ' DAY), CURDATE()) > 0'
                          )
@@ -6738,7 +6738,7 @@ class Ticket extends CommonITILObject
                        'glpi_tickets.users_id_recipient'   => Session::getLoginUserID(),
                        [
                           'AND' => [
-                             'glpi_tickets_users.tickets_id'  => new \QueryExpression('glpi_tickets.id'),
+                             'glpi_tickets_users.tickets_id'  => new QueryExpression('glpi_tickets.id'),
                              'glpi_tickets_users.users_id'    => Session::getLoginUserID()
                           ]
                        ]
@@ -7944,7 +7944,7 @@ class Ticket extends CommonITILObject
                 if ($merge_target->canUpdateItem() && $ticket->can($id, DELETE)) {
                     if (!$ticket->getFromDB($id)) {
                         //Cannot retrieve ticket. Abort/fail the merge
-                        throw new \RuntimeException(sprintf(__('Failed to load ticket %d'), $id), 1);
+                        throw new RuntimeException(sprintf(__('Failed to load ticket %d'), $id), 1);
                     }
                     //Build followup from the original ticket
                     $input = [
@@ -7959,7 +7959,7 @@ class Ticket extends CommonITILObject
                     ];
                     if (!$fup->add($input)) {
                         //Cannot add followup. Abort/fail the merge
-                        throw new \RuntimeException(sprintf(__('Failed to add followup to ticket %d'), $merge_target_id), 1);
+                        throw new RuntimeException(sprintf(__('Failed to add followup to ticket %d'), $merge_target_id), 1);
                     }
                     if (in_array('ITILFollowup', $p['linktypes'])) {
                         // Copy any followups to the ticket
@@ -7974,14 +7974,14 @@ class Ticket extends CommonITILObject
                             unset($fup2['id']);
                             if (!$fup->add($fup2)) {
                                 // Cannot add followup. Abort/fail the merge
-                                throw new \RuntimeException(sprintf(__('Failed to add followup to ticket %d'), $merge_target_id), 1);
+                                throw new RuntimeException(sprintf(__('Failed to add followup to ticket %d'), $merge_target_id), 1);
                             }
                         }
                     }
                     if (in_array('TicketTask', $p['linktypes'])) {
                         $merge_tmp = ['tickets_id' => $merge_target_id];
                         if (!$task->can(-1, CREATE, $merge_tmp)) {
-                            throw new \RuntimeException(sprintf(__('Not enough rights to merge tickets %d and %d'), $merge_target_id, $id), 2);
+                            throw new RuntimeException(sprintf(__('Not enough rights to merge tickets %d and %d'), $merge_target_id, $id), 2);
                         }
                         // Copy any tasks to the ticket
                         $tomerge = $task->find([
@@ -7995,19 +7995,19 @@ class Ticket extends CommonITILObject
                             unset($task2['uuid']);
                             if (!$task->add($task2)) {
                                 //Cannot add followup. Abort/fail the merge
-                                throw new \RuntimeException(sprintf(__('Failed to add task to ticket %d'), $merge_target_id), 1);
+                                throw new RuntimeException(sprintf(__('Failed to add task to ticket %d'), $merge_target_id), 1);
                             }
                         }
                     }
                     if (in_array('Document', $p['linktypes'])) {
                         if (!$merge_target->canAddItem('Document')) {
-                            throw new \RuntimeException(sprintf(__('Not enough rights to merge tickets %d and %d'), $merge_target_id, $id), 2);
+                            throw new RuntimeException(sprintf(__('Not enough rights to merge tickets %d and %d'), $merge_target_id, $id), 2);
                         }
                         $tomerge = $document_item->find([
                            'itemtype' => 'Ticket',
                            'items_id' => $id,
                            'NOT' => [
-                              'documents_id' => new \QuerySubQuery([
+                              'documents_id' => new QuerySubQuery([
                                  'SELECT' => 'documents_id',
                                  'FROM'   => $document_item->getTable(),
                                  'WHERE'  => [
@@ -8023,7 +8023,7 @@ class Ticket extends CommonITILObject
                             unset($document_item2['id']);
                             if (!$document_item->add($document_item2)) {
                                 //Cannot add document. Abort/fail the merge
-                                throw new \RuntimeException(sprintf(__('Failed to add document to ticket %d'), $merge_target_id), 1);
+                                throw new RuntimeException(sprintf(__('Failed to add document to ticket %d'), $merge_target_id), 1);
                             }
                         }
                     }
@@ -8053,7 +8053,7 @@ class Ticket extends CommonITILObject
                         ]);
                         if (!$tt->add($linkparams)) {
                             //Cannot link tickets. Abort/fail the merge
-                            throw new \RuntimeException(sprintf(__('Failed to link tickets %d and %d'), $merge_target_id, $id), 1);
+                            throw new RuntimeException(sprintf(__('Failed to link tickets %d and %d'), $merge_target_id, $id), 1);
                         }
                     }
                     if (isset($p['append_actors'])) {
@@ -8147,7 +8147,7 @@ class Ticket extends CommonITILObject
                     }
                     //Delete this ticket
                     if (!$ticket->delete(['id' => $id, '_disablenotif' => true])) {
-                        throw new \RuntimeException(sprintf(__('Failed to delete ticket %d'), $id), 1);
+                        throw new RuntimeException(sprintf(__('Failed to delete ticket %d'), $id), 1);
                     }
                     if (!$p['full_transaction'] && !$in_transaction) {
                         $DB->commit();
@@ -8166,9 +8166,9 @@ class Ticket extends CommonITILObject
                         )
                     );
                 } else {
-                    throw new \RuntimeException(sprintf(__('Not enough rights to merge tickets %d and %d'), $merge_target_id, $id), 2);
+                    throw new RuntimeException(sprintf(__('Not enough rights to merge tickets %d and %d'), $merge_target_id, $id), 2);
                 }
-            } catch (\RuntimeException $e) {
+            } catch (RuntimeException $e) {
                 if ($e->getCode() < 1 || $e->getCode() > 2) {
                     $status[$id] = 1;
                 } else {

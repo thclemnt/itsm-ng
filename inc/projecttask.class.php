@@ -37,6 +37,7 @@ if (!defined('GLPI_ROOT')) {
 
 use Glpi\CalDAV\Contracts\CalDAVCompatibleItemInterface;
 use Glpi\CalDAV\Traits\VobjectConverterTrait;
+use Ramsey\Uuid\Uuid;
 use itsmng\Database\DropdownChoiceContext;
 use itsmng\Database\MappedReads;
 use itsmng\Database\Orm;
@@ -268,7 +269,7 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
                         break;
                     default:
                         if (count($actors)) {
-                            throw new \RuntimeException($type . " is not (yet?) handled.");
+                            throw new RuntimeException($type . " is not (yet?) handled.");
                         }
                 }
             }
@@ -454,7 +455,7 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
         }
 
         if (!isset($input['uuid'])) {
-            $input['uuid'] = \Ramsey\Uuid\Uuid::uuid4();
+            $input['uuid'] = Uuid::uuid4();
         }
         if (!isset($input['users_id'])) {
             $input['users_id'] = Session::getLoginUserID();
@@ -1924,21 +1925,21 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
         $vcalendar = $this->getVCalendarForItem($this, $target_component);
 
         $fields = Html::entity_decode_deep($this->fields);
-        $utc_tz = new \DateTimeZone('UTC');
+        $utc_tz = new DateTimeZone('UTC');
 
         $vcomp = $vcalendar->getBaseComponent();
 
         if ('VTODO' === $target_component) {
             if ($is_planned) {
-                $vcomp->DTSTART = (new \DateTime($fields['plan_start_date']))->setTimeZone($utc_tz);
-                $vcomp->DUE = (new \DateTime($fields['plan_end_date']))->setTimeZone($utc_tz);
+                $vcomp->DTSTART = (new DateTime($fields['plan_start_date']))->setTimeZone($utc_tz);
+                $vcomp->DUE = (new DateTime($fields['plan_end_date']))->setTimeZone($utc_tz);
             }
             $vcomp->STATUS = 100 == $fields['percent_done'] ? 'COMPLETED' : 'NEEDS-ACTION';
             $vcomp->{'PERCENT-COMPLETE'} = $fields['percent_done'];
         } elseif ('VEVENT' === $target_component) {
             if ($is_planned) {
-                $vcomp->DTSTART = (new \DateTime($fields['plan_start_date']))->setTimeZone($utc_tz);
-                $vcomp->DTEND   = (new \DateTime($fields['plan_end_date']))->setTimeZone($utc_tz);
+                $vcomp->DTSTART = (new DateTime($fields['plan_start_date']))->setTimeZone($utc_tz);
+                $vcomp->DTEND   = (new DateTime($fields['plan_end_date']))->setTimeZone($utc_tz);
             }
         }
 
@@ -1965,7 +1966,7 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
 
         if ($vtodo->{'PERCENT-COMPLETE'} instanceof IntegerValue) {
             $input['percent_done'] = $vtodo->{'PERCENT-COMPLETE'}->getValue();
-        } elseif (array_key_exists('state', $input) && $input['state'] == \Planning::DONE) {
+        } elseif (array_key_exists('state', $input) && $input['state'] == Planning::DONE) {
             // Consider task as done if status is DONE
             $input['percent_done'] = 100;
         }
@@ -1976,7 +1977,7 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
 
     public function prepareInputForClone($input)
     {
-        $input['uuid'] = \Ramsey\Uuid\Uuid::uuid4();
+        $input['uuid'] = Uuid::uuid4();
         return parent::prepareInputForClone($input);
     }
 }

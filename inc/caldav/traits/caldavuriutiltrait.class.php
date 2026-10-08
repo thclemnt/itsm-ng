@@ -33,10 +33,16 @@
 
 namespace Glpi\CalDAV\Traits;
 
+use CommonDBTM;
 use Glpi\CalDAV\Backend\Principal;
 use Glpi\CalDAV\Contracts\CalDAVCompatibleItemInterface;
+use Group;
+use Toolbox;
+use User;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\CalendarObjectRepository;
+
+use function Sabre\Uri\split;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -56,16 +62,16 @@ trait CalDAVUriUtilTrait
      *
      * @return string|null
      */
-    protected function getPrincipalUri(\CommonDBTM $item)
+    protected function getPrincipalUri(CommonDBTM $item)
     {
 
         $principal_uri = null;
 
         switch (get_class($item)) {
-            case \Group::class:
+            case Group::class:
                 $principal_uri = $this->getGroupPrincipalUri($item->fields['id']);
                 break;
-            case \User::class:
+            case User::class:
                 $principal_uri = $this->getUserPrincipalUri($item->fields['name']);
                 break;
         }
@@ -111,17 +117,17 @@ trait CalDAVUriUtilTrait
 
         if (
             null === $principal_itemtype || !class_exists($principal_itemtype)
-            || !is_a($principal_itemtype, \CommonDBTM::class, true)
+            || !is_a($principal_itemtype, CommonDBTM::class, true)
         ) {
             return null;
         }
 
         $item  = new $principal_itemtype();
         switch ($principal_itemtype) {
-            case \Group::class:
+            case Group::class:
                 $found = $item->getFromDB($this->getGroupIdFromPrincipalUri($uri));
                 break;
-            case \User::class:
+            case User::class:
                 $found = $item->getFromDBbyName($this->getUsernameFromPrincipalUri($uri));
                 break;
         }
@@ -138,17 +144,17 @@ trait CalDAVUriUtilTrait
      */
     protected function getPrincipalItemtypeFromUri($uri)
     {
-        $uri_parts = \Sabre\Uri\split($uri);
+        $uri_parts = split($uri);
         $prefix = $uri_parts[0];
 
         $itemtype = null;
 
         switch ($prefix) {
             case Principal::PREFIX_GROUPS:
-                $itemtype = \Group::class;
+                $itemtype = Group::class;
                 break;
             case Principal::PREFIX_USERS:
-                $itemtype = \User::class;
+                $itemtype = User::class;
                 break;
         }
 
@@ -164,8 +170,8 @@ trait CalDAVUriUtilTrait
      */
     protected function getGroupIdFromPrincipalUri($uri)
     {
-        $uri_parts = \Sabre\Uri\split($uri);
-        return \Group::class === $this->getPrincipalItemtypeFromUri($uri) ? $uri_parts[1] : null;
+        $uri_parts = split($uri);
+        return Group::class === $this->getPrincipalItemtypeFromUri($uri) ? $uri_parts[1] : null;
     }
 
     /**
@@ -177,8 +183,8 @@ trait CalDAVUriUtilTrait
      */
     protected function getUsernameFromPrincipalUri($uri)
     {
-        $uri_parts = \Sabre\Uri\split($uri);
-        return \User::class === $this->getPrincipalItemtypeFromUri($uri) ? $uri_parts[1] : null;
+        $uri_parts = split($uri);
+        return User::class === $this->getPrincipalItemtypeFromUri($uri) ? $uri_parts[1] : null;
     }
 
     /**
@@ -215,7 +221,7 @@ trait CalDAVUriUtilTrait
         if (count($matches) !== 1) {
             if (count($matches) > 1) {
                 // Ambiguous response, unable to return matching element.
-                \Toolbox::logError(
+                Toolbox::logError(
                     sprintf(
                         'Multiple calendar items found with uuid %s. Unable to determine which item should be returned.',
                         $uid

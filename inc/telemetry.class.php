@@ -104,7 +104,7 @@ class Telemetry extends CommonGLPI
         }
 
         if ($CFG_GLPI['use_notifications']) {
-            foreach (array_keys(\Notification_NotificationTemplate::getModes()) as $mode) {
+            foreach (array_keys(Notification_NotificationTemplate::getModes()) as $mode) {
                 if ($CFG_GLPI['notifications_' . $mode]) {
                     $glpi['usage']['notifications'][] = $mode;
                 }

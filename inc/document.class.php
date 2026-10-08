@@ -761,7 +761,7 @@ class Document extends CommonDBTM
      */
     private static function loadAPISessionIfExist()
     {
-        $session_token = \Toolbox::getHeader('Session-Token');
+        $session_token = Toolbox::getHeader('Session-Token');
 
         // No api token found
         if ($session_token === null) {
@@ -1670,7 +1670,7 @@ class Document extends CommonDBTM
                     $mheight = $mheight ?? 100;
                     break;
                 default:
-                    throw new \RuntimeException("Unknown context $context!");
+                    throw new RuntimeException("Unknown context $context!");
             }
         }
 

@@ -34,8 +34,10 @@
 namespace Glpi\System\Status;
 
 use AuthLDAP;
+use Exception;
 use MailCollector;
 use Plugin;
+use RuntimeException;
 use Toolbox;
 use itsmng\Database\DatabaseHealthProbe;
 use itsmng\Database\Orm;
@@ -171,7 +173,7 @@ final class StatusChecker
                                 ];
                                 $status['status'] = self::STATUS_PROBLEM;
                             }
-                        } catch (\RuntimeException $e) {
+                        } catch (RuntimeException $e) {
                             // May be missing LDAP extension (Probably test environment)
                             $status['servers'][$method['name']] = [
                                'status' => self::STATUS_PROBLEM
@@ -292,7 +294,7 @@ final class StatusChecker
                                 $status['servers'][$display_name] = [
                                    'status' => 'OK'
                                 ];
-                            } catch (\Exception $e) {
+                            } catch (Exception $e) {
                                 $status['servers'][$display_name] = [
                                    'status'       => self::STATUS_PROBLEM,
                                    'error_code'   => $e->getCode()

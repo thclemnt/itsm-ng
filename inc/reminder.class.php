@@ -219,7 +219,7 @@ class Reminder extends CommonDBVisible implements
         unset($criteria['WHERE']);
         $criteria['FROM'] = self::getTable();
 
-        $it = new \DBmysqlIterator(null);
+        $it = new DBmysqlIterator(null);
         $it->buildQuery($criteria);
         $sql = $it->getSql();
         $sql = trim(str_replace(
@@ -244,7 +244,7 @@ class Reminder extends CommonDBVisible implements
         unset($criteria['LEFT JOIN']);
         $criteria['FROM'] = self::getTable();
 
-        $it = new \DBmysqlIterator(null);
+        $it = new DBmysqlIterator(null);
         $it->buildQuery($criteria);
         $sql = $it->getSql();
         $sql = preg_replace('/.*WHERE /', '', $sql);
@@ -969,7 +969,7 @@ class Reminder extends CommonDBVisible implements
 
         if ($vcomp instanceof VTodo && !array_key_exists('state', $input)) {
             // Force default state to TODO or reminder will be considered as VEVENT
-            $input['state'] = \Planning::TODO;
+            $input['state'] = Planning::TODO;
         }
 
         return $input;

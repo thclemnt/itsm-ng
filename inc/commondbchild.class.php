@@ -86,7 +86,7 @@ abstract class CommonDBChild extends CommonDBConnexity
             $criteria['WHERE'][static::$itemtype] = $itemtype;
             $request = true;
         } else {
-            $criteria['SELECT'][] = new \QueryExpression("'" . static::$itemtype . "' AS itemtype");
+            $criteria['SELECT'][] = new QueryExpression("'" . static::$itemtype . "' AS itemtype");
             if (
                 ($itemtype ==  static::$itemtype)
                 || is_subclass_of($itemtype, static::$itemtype)
@@ -1001,6 +1001,6 @@ abstract class CommonDBChild extends CommonDBConnexity
             return static::$items_id;
         }
 
-        throw new \RuntimeException('Cannot guess field for itemtype ' . $itemtype . ' on ' . static::class);
+        throw new RuntimeException('Cannot guess field for itemtype ' . $itemtype . ' on ' . static::class);
     }
 }

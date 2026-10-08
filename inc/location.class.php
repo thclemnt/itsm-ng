@@ -563,7 +563,7 @@ JS;
                 $this->showMap();
                 break;
             default:
-                throw new \RuntimeException("Unknown {$field['type']}");
+                throw new RuntimeException("Unknown {$field['type']}");
         }
     }
 

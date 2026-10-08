@@ -37,6 +37,7 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use Auth as LegacyAuth;
 use Sabre\DAV\Auth\Backend\AbstractBasic;
 
 /**
@@ -50,7 +51,7 @@ class Auth extends AbstractBasic
 
     protected function validateUserPass($username, $password)
     {
-        $auth = new \Auth();
+        $auth = new LegacyAuth();
         return $auth->login($username, $password);
     }
 }

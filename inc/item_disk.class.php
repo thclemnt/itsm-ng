@@ -156,7 +156,7 @@ class Item_Disk extends CommonDBChild
         } elseif (isset($this->fields['itemtype']) && !empty($this->fields['itemtype'])) {
             $itemtype = $this->fields['itemtype'];
         } else {
-            throw new \RuntimeException('Unable to retrieve itemtype');
+            throw new RuntimeException('Unable to retrieve itemtype');
         }
 
         if (!Session::haveRight($itemtype::$rightname, READ)) {

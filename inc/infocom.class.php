@@ -884,10 +884,10 @@ JS;
 
         try {
             if ($fiscaldate == '') {
-                throw new \RuntimeException('Empty date');
+                throw new RuntimeException('Empty date');
             }
-            $fiscaldate = new \DateTime($fiscaldate, new DateTimeZone($TZ));
-        } catch (\Exception $e) {
+            $fiscaldate = new DateTime($fiscaldate, new DateTimeZone($TZ));
+        } catch (Exception $e) {
             Session::addMessageAfterRedirect(
                 __('Please fill you fiscal year date in preferences.'),
                 false,
@@ -899,14 +899,14 @@ JS;
         //get begin date. Work on use date if provided.
         try {
             if ($buydate == '' && $usedate == '') {
-                throw new \RuntimeException('Empty date');
+                throw new RuntimeException('Empty date');
             }
             if ($usedate != '') {
-                $usedate = new \DateTime($usedate, new DateTimeZone($TZ));
+                $usedate = new DateTime($usedate, new DateTimeZone($TZ));
             } else {
-                $usedate = new \DateTime($buydate, new DateTimeZone($TZ));
+                $usedate = new DateTime($buydate, new DateTimeZone($TZ));
             }
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Session::addMessageAfterRedirect(
                 __('Please fill either buy or use date in preferences.'),
                 false,
@@ -915,7 +915,7 @@ JS;
             return false;
         }
 
-        $now = new \DateTime('now', new DateTimeZone($TZ));
+        $now = new DateTime('now', new DateTimeZone($TZ));
 
         $elapsed_years = $now->format('Y') - $usedate->format('Y');
 
@@ -928,7 +928,7 @@ JS;
         for ($i = 0; $i <= $elapsed_years; ++$i) {
             $begin_value      = $value;
             $current_annuity  = $annuity;
-            $fiscal_end       = new \DateTime(
+            $fiscal_end       = new DateTime(
                 $fiscaldate->format('d-m-') . ($usedate->format('Y') + $i),
                 new DateTimeZone($TZ)
             );

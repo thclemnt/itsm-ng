@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Ramsey\Uuid\Uuid;
 use itsmng\Database\MappedReads;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ITILTaskRepository;
@@ -477,7 +478,7 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
         }
 
         if (!isset($input['uuid'])) {
-            $input['uuid'] = \Ramsey\Uuid\Uuid::uuid4();
+            $input['uuid'] = Uuid::uuid4();
         }
 
         Toolbox::manageBeginAndEndPlanDates($input['plan']);
@@ -2101,12 +2102,12 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
         $vcalendar = $this->getVCalendarForItem($this, $target_component);
 
         $parent_fields = Html::entity_decode_deep($parent_item->fields);
-        $utc_tz = new \DateTimeZone('UTC');
+        $utc_tz = new DateTimeZone('UTC');
 
         $vcomp = $vcalendar->getBaseComponent();
         $vcomp->SUMMARY           = $parent_fields['name'];
-        $vcomp->DTSTAMP           = (new \DateTime($parent_fields['date_mod']))->setTimeZone($utc_tz);
-        $vcomp->{'LAST-MODIFIED'} = (new \DateTime($parent_fields['date_mod']))->setTimeZone($utc_tz);
+        $vcomp->DTSTAMP           = (new DateTime($parent_fields['date_mod']))->setTimeZone($utc_tz);
+        $vcomp->{'LAST-MODIFIED'} = (new DateTime($parent_fields['date_mod']))->setTimeZone($utc_tz);
         $vcomp->URL               = $CFG_GLPI['url_base'] . $parent_item->getFormURLWithID($parent_id, false);
 
         return $vcalendar;

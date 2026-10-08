@@ -607,7 +607,7 @@ class MailCollector extends CommonDBTM
                     try {
                         $this->fetch_emails++;
                         $messages[$this->storage->getUniqueId($this->storage->key())] = $this->storage->current();
-                    } catch (\Exception $e) {
+                    } catch (Exception $e) {
                         $GLPI->getErrorHandler()->handleException($e);
                         Toolbox::logInFile(
                             'mailgate',
@@ -853,7 +853,7 @@ class MailCollector extends CommonDBTM
      *
      * @return array ticket fields
      */
-    public function buildTicket($uid, \Laminas\Mail\Storage\Message $message, $options = [])
+    public function buildTicket($uid, Message $message, $options = [])
     {
         global $CFG_GLPI;
 
@@ -1256,7 +1256,7 @@ class MailCollector extends CommonDBTM
         try {
             $storage = Toolbox::getMailServerStorageInstance($config['type'], $params);
             if ($storage === null) {
-                throw new \Exception(sprintf(__('Unsupported mail server type:%s.'), $config['type']));
+                throw new Exception(sprintf(__('Unsupported mail server type:%s.'), $config['type']));
             }
             $this->storage = $storage;
             if ($this->fields['errors'] > 0) {
@@ -1265,7 +1265,7 @@ class MailCollector extends CommonDBTM
                    'errors' => 0
                 ]);
             }
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $this->update([
                'id'     => $this->getID(),
                'errors' => ($this->fields['errors'] + 1)
@@ -1283,7 +1283,7 @@ class MailCollector extends CommonDBTM
      *
      * @return array
     **/
-    public function getAdditionnalHeaders(\Laminas\Mail\Storage\Message $message)
+    public function getAdditionnalHeaders(Message $message)
     {
         $head   = [];
         $headers = $message->getHeaders();
@@ -1324,7 +1324,7 @@ class MailCollector extends CommonDBTM
      *                from      => From address of mail
      *                fromName  => Form Name of Mail
     **/
-    public function getHeaders(\Laminas\Mail\Storage\Message $message)
+    public function getHeaders(Message $message)
     {
 
         $sender_email = $this->getEmailFromHeader($message, 'from');
@@ -1419,7 +1419,7 @@ class MailCollector extends CommonDBTM
      *
      * @return void
     **/
-    private function getRecursiveAttached(\Laminas\Mail\Storage\Part $part, $path, $maxsize, $subject, $subpart = "")
+    private function getRecursiveAttached(Storage\Part $part, $path, $maxsize, $subject, $subpart = "")
     {
         if ($part->isMultipart()) {
             $index = 0;
@@ -1585,7 +1585,7 @@ class MailCollector extends CommonDBTM
      *
      * @return array containing extracted filenames in file/_tmp
     **/
-    public function getAttached(\Laminas\Mail\Storage\Message $message, $path, $maxsize)
+    public function getAttached(Message $message, $path, $maxsize)
     {
         $this->files     = [];
         $this->altfiles  = [];
@@ -1608,7 +1608,7 @@ class MailCollector extends CommonDBTM
      *
      * @param \Laminas\Mail\Storage\Message $message Message
     **/
-    public function getBody(\Laminas\Mail\Storage\Message $message)
+    public function getBody(Message $message)
     {
         $content = null;
 
@@ -1660,7 +1660,7 @@ class MailCollector extends CommonDBTM
             try {
                 $this->storage->moveMessage($this->storage->getNumberByUniqueId($uid), $name);
                 return true;
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 // raise an error and fallback to delete
                 trigger_error(
                     sprintf(
@@ -2069,7 +2069,7 @@ class MailCollector extends CommonDBTM
      *
      * @return string
      */
-    public function getDecodedContent(\Laminas\Mail\Storage\Part $part)
+    public function getDecodedContent(Storage\Part $part)
     {
         $contents = $part->getContent();
 

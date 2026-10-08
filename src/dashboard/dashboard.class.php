@@ -35,7 +35,7 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
-class Dashboard extends \CommonDBTM
+class Dashboard extends CommonDBTM
 {
     public static $rightname = 'dashboard';
 

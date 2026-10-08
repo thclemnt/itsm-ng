@@ -132,7 +132,7 @@ class SavedSearch_Alert extends CommonDBChild
             if ($data = $search->execute()) {
                 $count = $data['data']['totalcount'];
             }
-        } catch (\RuntimeException $e) {
+        } catch (RuntimeException $e) {
             Toolbox::logError($e);
         }
 
@@ -429,7 +429,7 @@ class SavedSearch_Alert extends CommonDBChild
                             $tr_op = __('greater than');
                             break;
                         default:
-                            throw new \RuntimeException("Unknonw operator '{$row['operator']}'");
+                            throw new RuntimeException("Unknonw operator '{$row['operator']}'");
                     }
 
                     //TRANS : %1$s is the name of the saved search,
@@ -456,7 +456,7 @@ class SavedSearch_Alert extends CommonDBChild
                         NotificationEvent::raiseEvent($event, $alert, $data);
                         $task->addVolume(1);
                     }
-                } catch (\Exception $e) {
+                } catch (Exception $e) {
                     self::restoreContext($context);
                     Toolbox::logError($e);
                 }

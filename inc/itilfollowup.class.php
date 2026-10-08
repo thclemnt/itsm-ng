@@ -546,7 +546,7 @@ class ITILFollowup extends CommonDBChild
             return $input;
         }
 
-        $dom = new \DOMDocument('1.0', 'UTF-8');
+        $dom = new DOMDocument('1.0', 'UTF-8');
         $internal_errors = libxml_use_internal_errors(true);
         $loaded = $dom->loadHTML(
             '<?xml encoding="UTF-8"><div id="glpi-richtext-root">' . $content . '</div>',
@@ -573,9 +573,9 @@ class ITILFollowup extends CommonDBChild
             return $input;
         }
 
-        $xpath = new \DOMXPath($dom);
+        $xpath = new DOMXPath($dom);
         foreach ($xpath->query('//*[@data-glpi-doc-tag]') as $node) {
-            if (!$node instanceof \DOMElement) {
+            if (!$node instanceof DOMElement) {
                 continue;
             }
 
@@ -588,7 +588,7 @@ class ITILFollowup extends CommonDBChild
             $target = strtolower($node->tagName) === 'figure'
                 ? $node
                 : (
-                    $node->parentNode instanceof \DOMElement
+                    $node->parentNode instanceof DOMElement
                     && strtolower($node->parentNode->tagName) === 'figure'
                     && $node->parentNode->hasAttribute('data-glpi-doc-tag')
                     && $node->parentNode->getElementsByTagName('img')->length === 1
@@ -601,7 +601,7 @@ class ITILFollowup extends CommonDBChild
         }
 
         $root = $dom->getElementById('glpi-richtext-root');
-        if (!$root instanceof \DOMElement) {
+        if (!$root instanceof DOMElement) {
             return $input;
         }
 

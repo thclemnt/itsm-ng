@@ -225,8 +225,8 @@ final class DbUtils
                 $table   = strtolower((string) $plug['class']);
             } else {
                 $table = strtolower($itemtype);
-                if (substr($itemtype, 0, \strlen(NS_GLPI)) === NS_GLPI) {
-                    $table = substr($table, \strlen(NS_GLPI));
+                if (substr($itemtype, 0, strlen(NS_GLPI)) === NS_GLPI) {
+                    $table = substr($table, strlen(NS_GLPI));
                 }
             }
             $table = str_replace(['mock\\', '\\'], ['', '_'], $table);

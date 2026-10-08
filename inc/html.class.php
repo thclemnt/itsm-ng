@@ -296,8 +296,8 @@ class Html
         }
 
         try {
-            $date = new \DateTime($time);
-        } catch (\Exception $e) {
+            $date = new DateTime($time);
+        } catch (Exception $e) {
             Toolbox::logWarning("Invalid date $time!");
             Session::addMessageAfterRedirect(
                 sprintf(
@@ -2043,7 +2043,7 @@ JAVASCRIPT
         $twig = Twig::load(GLPI_ROOT . "/templates", true, true);
         try {
             echo $twig->render('footer.twig', $twig_vars);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             echo $e->getMessage();
         }
         self::displayDebugInfos();

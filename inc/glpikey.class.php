@@ -122,7 +122,7 @@ class GLPIKey
     public function get()
     {
         if (!file_exists($this->keyfile)) {
-            throw new \RuntimeException('You must create a security key, see itsmng:security:change_key command.');
+            throw new RuntimeException('You must create a security key, see itsmng:security:change_key command.');
         }
         //load key from existing config file
         $key = file_get_contents($this->keyfile);
@@ -161,7 +161,7 @@ class GLPIKey
         if ($migrate && $DB instanceof DBAdapter) {
             try {
                 $sodium_key = $this->get();
-            } catch (\RuntimeException $e) {
+            } catch (RuntimeException $e) {
                 $sodium_key = null;
                 $old_key = $this->getLegacyKey();
             }

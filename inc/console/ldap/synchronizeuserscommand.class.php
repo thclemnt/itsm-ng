@@ -465,7 +465,7 @@ class SynchronizeUsersCommand extends AbstractCommand
         $begin_date = $input->getOption('begin-date');
         $end_date   = $input->getOption('end-date');
         if ($only_create === false && $only_update === false && ($begin_date !== null || $end_date !== null)) {
-            throw new \Symfony\Component\Console\Exception\InvalidArgumentException(
+            throw new InvalidArgumentException(
                 __('Options --begin-date and --end-date can only be used with --only-create-new or --only-update-existing option.')
             );
         }

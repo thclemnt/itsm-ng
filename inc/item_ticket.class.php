@@ -1336,13 +1336,13 @@ class Item_Ticket extends CommonItilObject_Item
 
         $itemtypes = ['Computer', 'Monitor', 'NetworkEquipment', 'Peripheral', 'Phone', 'Printer'];
 
-        $union = new \QueryUnion();
+        $union = new QueryUnion();
         foreach ($itemtypes as $type) {
             $table = getTableForItemType($type);
             $union->addQuery([
                'SELECT' => [
                   'id',
-                  new \QueryExpression("$type AS " . $DB->quoteName('itemtype')),
+                  new QueryExpression("$type AS " . $DB->quoteName('itemtype')),
                   "name"
                ],
                'FROM'   => $table,

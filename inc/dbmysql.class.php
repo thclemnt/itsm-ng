@@ -34,6 +34,7 @@
 use Doctrine\DBAL\Driver\Exception\NoIdentityValue;
 use Doctrine\DBAL\Exception;
 use Doctrine\DBAL\Statement;
+use Exception as BaseException;
 use itsmng\Database\Installer;
 use itsmng\Database\LegacyResult;
 use itsmng\Database\LegacyStatement;
@@ -621,7 +622,7 @@ class DBmysql extends DBAdapter
     {
 
         if (!count($where)) {
-            throw new \RuntimeException('Cannot run an DELETE query without WHERE clause!');
+            throw new RuntimeException('Cannot run an DELETE query without WHERE clause!');
         }
 
         $query  = "DELETE " . self::quoteName($table) . " FROM " . self::quoteName($table);
@@ -845,15 +846,15 @@ class DBmysql extends DBAdapter
     {
         $list = []; //default $tz is empty
 
-        $from_php = \DateTimeZone::listIdentifiers();
-        $now = new \DateTime();
+        $from_php = DateTimeZone::listIdentifiers();
+        $now = new DateTime();
 
         try {
             foreach (array_intersect($this->getTimezoneNames(), $from_php) as $name) {
                 $now->setTimezone(new DateTimeZone($name));
                 $list[$name] = $name . $now->format(" (T P)");
             }
-        } catch (\Exception $e) {
+        } catch (BaseException $e) {
             //do nothing
         }
 

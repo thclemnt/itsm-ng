@@ -204,7 +204,7 @@ class Auth extends CommonGLPI
 
             $protocol = Toolbox::getMailServerProtocolInstance($config['type'], false);
             if ($protocol === null) {
-                throw new \RuntimeException(sprintf(__('Unsupported mail server type:%s.'), $config['type']));
+                throw new RuntimeException(sprintf(__('Unsupported mail server type:%s.'), $config['type']));
             }
             if ($config['validate-cert'] === false) {
                 $protocol->setNoValidateCert(true);
@@ -216,7 +216,7 @@ class Auth extends CommonGLPI
             );
 
             return $protocol->login($login, $pass);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $this->addToError($e->getMessage());
             return false;
         } finally {
@@ -269,7 +269,7 @@ class Auth extends CommonGLPI
                    'condition'         => $ldap_method['condition'],
                    'user_dn'           => $this->user_dn
                 ]);
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 Toolbox::logError($e->getMessage());
                 $this->addToError(__('Unable to connect to the LDAP directory'));
                 return false;
@@ -837,7 +837,7 @@ class Auth extends CommonGLPI
                                       'value'  => $login_name
                                    ],
                                 ]);
-                            } catch (\RuntimeException $e) {
+                            } catch (RuntimeException $e) {
                                 Toolbox::logError($e->getMessage());
                                 $user_dn = false;
                             }

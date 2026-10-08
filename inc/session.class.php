@@ -35,6 +35,10 @@ use Glpi\Event;
 use itsmng\Csrf;
 use Psr\Cache\CacheItemPoolInterface;
 use Symfony\Component\Cache\Psr16Cache;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\GroupMembershipRepository;
+use itsmng\Database\Repository\ProfileUserRepository;
+use itsmng\Translation\Translator;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -525,8 +529,8 @@ class Session
             return;
         }
 
-        $_SESSION['glpiprofiles'] = (new \itsmng\Database\Repository\ProfileUserRepository(
-            \itsmng\Database\Orm::create($DB)
+        $_SESSION['glpiprofiles'] = (new ProfileUserRepository(
+            Orm::create($DB)
         ))->sessionProfiles((int)$userID);
     }
 
@@ -544,8 +548,8 @@ class Session
 
         // Explicit active entities stay authoritative even when the all-entities flag is stale.
         $scope = getEntitiesRestrictCriteria(Group::getTable(), 'entities_id', $_SESSION['glpiactiveentities'], true);
-        $_SESSION['glpigroups'] = (new \itsmng\Database\Repository\GroupMembershipRepository(
-            \itsmng\Database\Orm::create($DB)
+        $_SESSION['glpigroups'] = (new GroupMembershipRepository(
+            Orm::create($DB)
         ))->sessionGroupIds((int)self::getLoginUserID(), $scope);
     }
 
@@ -595,13 +599,13 @@ class Session
         if (class_exists('Locale')) {
             // Locale class may be missing if intl extension is not installed.
             // In this case, we may still want to be able to load translations (for instance for requirements checks).
-            \Locale::setDefault($trytoload);
+            Locale::setDefault($trytoload);
         } else {
             Toolbox::logWarning('Missing required intl PHP extension');
         }
 
         $cache = Config::getCache('cache_trans', 'core', false);
-        $TRANSLATE = new \itsmng\Translation\Translator(
+        $TRANSLATE = new Translator(
             $trytoload,
             $cache !== false && !defined('TU_USER') ? ($cache instanceof CacheItemPoolInterface ? new Psr16Cache($cache) : $cache) : null
         );
@@ -1684,7 +1688,7 @@ class Session
             'values' => $_SESSION ?? [], 'id' => session_id(), 'status' => session_status(),
             'translation_defined' => array_key_exists('TRANSLATE', $GLOBALS),
             'translation' => $GLOBALS['TRANSLATE'] ?? null,
-            'locale' => class_exists('Locale') ? \Locale::getDefault() : null,
+            'locale' => class_exists('Locale') ? Locale::getDefault() : null,
         ];
         $accepted = false;
         try {
@@ -1722,7 +1726,7 @@ class Session
                     unset($GLOBALS['TRANSLATE']);
                 }
                 if ($previous['locale'] !== null) {
-                    \Locale::setDefault($previous['locale']);
+                    Locale::setDefault($previous['locale']);
                 }
             }
         }

@@ -41,6 +41,8 @@ use Glpi\CalDAV\Traits\CalDAVUriUtilTrait;
 use Sabre\DAV\Browser\Plugin;
 use Sabre\HTTP\RequestInterface;
 use Sabre\HTTP\ResponseInterface;
+use Session;
+use User;
 
 /**
  * Browser plugin for CalDAV server.
@@ -75,6 +77,6 @@ class Browser extends Plugin
 
         $user = $this->getPrincipalItemFromUri($authPlugin->getCurrentPrincipal());
 
-        return $user instanceof \User && \Session::DEBUG_MODE == $user->fields['use_mode'];
+        return $user instanceof User && Session::DEBUG_MODE == $user->fields['use_mode'];
     }
 }

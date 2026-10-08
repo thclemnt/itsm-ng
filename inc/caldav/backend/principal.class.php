@@ -37,11 +37,18 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use CommonDBTM;
 use Glpi\CalDAV\Node\Property;
 use Glpi\CalDAV\Traits\CalDAVPrincipalsTrait;
 use Glpi\CalDAV\Traits\CalDAVUriUtilTrait;
+use Group;
+use Group_User;
+use QuerySubQuery;
+use Sabre\DAV\Exception\NotImplemented;
 use Sabre\DAV\PropPatch;
 use Sabre\DAVACL\PrincipalBackend\AbstractBackend;
+use User;
+use UserEmail;
 
 /**
  * Principal backend for CalDAV server.
@@ -103,18 +110,18 @@ class Principal extends AbstractBackend
 
     public function updatePrincipal($path, PropPatch $propPatch)
     {
-        throw new \Sabre\DAV\Exception\NotImplemented('Principal update is not implemented');
+        throw new NotImplemented('Principal update is not implemented');
     }
 
     public function searchPrincipals($prefixPath, array $searchProperties, $test = 'allof')
     {
 
-        throw new \Sabre\DAV\Exception\NotImplemented('Principal search is not implemented');
+        throw new NotImplemented('Principal search is not implemented');
     }
 
     public function findByUri($uri, $principalPrefix)
     {
-        throw new \Sabre\DAV\Exception\NotImplemented('Principal findByUri is not implemented');
+        throw new NotImplemented('Principal findByUri is not implemented');
     }
 
     public function getGroupMemberSet($path)
@@ -125,7 +132,7 @@ class Principal extends AbstractBackend
         $principal_itemtype = $this->getPrincipalItemtypeFromUri($path);
         $group_id           = $this->getGroupIdFromPrincipalUri($path);
 
-        if (\Group::class !== $principal_itemtype) {
+        if (Group::class !== $principal_itemtype) {
             return [];
         }
 
@@ -133,12 +140,12 @@ class Principal extends AbstractBackend
 
         $groups_iterator = $DB->request(
             [
-              'FROM'  => \Group::getTable(),
+              'FROM'  => Group::getTable(),
               'WHERE' => [
                  'is_task'   => 1,
                  'groups_id' => $group_id,
               ] + getEntitiesRestrictCriteria(
-                  \Group::getTable(),
+                  Group::getTable(),
                   'entities_id',
                   $_SESSION['glpiactiveentities'],
                   true
@@ -151,18 +158,18 @@ class Principal extends AbstractBackend
 
         $users_iterator = $DB->request(
             [
-              'SELECT'     => [\User::getTableField('name')],
-              'FROM'       => \User::getTable(),
+              'SELECT'     => [User::getTableField('name')],
+              'FROM'       => User::getTable(),
               'INNER JOIN' => [
-                 \Group_User::getTable() => [
+                 Group_User::getTable() => [
                     'ON' => [
-                       \User::getTable()       => 'id',
-                       \Group_User::getTable() => 'users_id',
+                       User::getTable()       => 'id',
+                       Group_User::getTable() => 'users_id',
                     ],
                  ],
               ],
               'WHERE'     => [
-                 \Group_User::getTableField('groups_id') => $group_id,
+                 Group_User::getTableField('groups_id') => $group_id,
               ]
             ]
         );
@@ -179,13 +186,13 @@ class Principal extends AbstractBackend
         global $DB;
 
         $groups_query = [
-           'SELECT'     => [\Group::getTableField('id')],
-           'FROM'       => \Group::getTable(),
+           'SELECT'     => [Group::getTableField('id')],
+           'FROM'       => Group::getTable(),
            'INNER JOIN' => [],
            'WHERE'      => [
               'is_task' => 1,
            ] + getEntitiesRestrictCriteria(
-               \Group::getTable(),
+               Group::getTable(),
                'entities_id',
                $_SESSION['glpiactiveentities'],
                true
@@ -194,20 +201,20 @@ class Principal extends AbstractBackend
 
         $principal_itemtype = $this->getPrincipalItemtypeFromUri($path);
         switch ($principal_itemtype) {
-            case \Group::class:
+            case Group::class:
                 $groups_query['WHERE']['groups_id'] = $this->getGroupIdFromPrincipalUri($path);
                 break;
-            case \User::class:
-                $groups_query['INNER JOIN'][\Group_User::getTable()] = [
+            case User::class:
+                $groups_query['INNER JOIN'][Group_User::getTable()] = [
                    'ON' => [
-                      \Group::getTable()       => 'id',
-                      \Group_User::getTable()  => 'groups_id',
+                      Group::getTable()       => 'id',
+                      Group_User::getTable()  => 'groups_id',
                       [
                          'AND' => [
-                            \Group_User::getTableField('users_id') => new \QuerySubQuery(
+                            Group_User::getTableField('users_id') => new QuerySubQuery(
                                 [
                                   'SELECT' => 'id',
-                                  'FROM'   => \User::getTable(),
+                                  'FROM'   => User::getTable(),
                                   'WHERE'  => ['name' => $this->getUsernameFromPrincipalUri($path)],
                                 ]
                             ),
@@ -232,7 +239,7 @@ class Principal extends AbstractBackend
 
     public function setGroupMemberSet($path, array $members)
     {
-        throw new \Sabre\DAV\Exception\NotImplemented('Group member set update is not implemented');
+        throw new NotImplemented('Group member set update is not implemented');
     }
 
     /**
@@ -242,16 +249,16 @@ class Principal extends AbstractBackend
      *
      * @return null|array
      */
-    private function getPrincipalFromItem(\CommonDBTM $item)
+    private function getPrincipalFromItem(CommonDBTM $item)
     {
 
         $principal = null;
 
         switch (get_class($item)) {
-            case \Group::class:
+            case Group::class:
                 $principal = $this->getPrincipalFromGroupFields($item->fields);
                 break;
-            case \User::class:
+            case User::class:
                 $principal = $this->getPrincipalFromUserFields($item->fields);
                 break;
         }
@@ -278,7 +285,7 @@ class Principal extends AbstractBackend
                $user_fields['realname'],
                $user_fields['firstname']
            ),
-           Property::PRIMARY_EMAIL => \UserEmail::getDefaultForUser($user_fields['id']),
+           Property::PRIMARY_EMAIL => UserEmail::getDefaultForUser($user_fields['id']),
            Property::CAL_USER_TYPE => 'INDIVIDUAL',
         ];
     }

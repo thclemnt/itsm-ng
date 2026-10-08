@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Toolbox\URL;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\OidcRepository;
 
@@ -396,7 +397,7 @@ class Oidc extends CommonDBTM
         // ex: ticket_435
         if (
             $decodedValue[0] === "/" &&
-            \Glpi\Toolbox\URL::isITSMNGRelativeURL($decodedValue)
+            URL::isITSMNGRelativeURL($decodedValue)
         ) {
             return $value;
         }

@@ -33,6 +33,8 @@
 
 namespace Glpi\Api\Deprecated;
 
+use ReflectionClass;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -52,7 +54,7 @@ trait CommonDeprecatedTrait
      */
     private function getDeprecatedClass(): string
     {
-        return (new \ReflectionClass(static::class))->getShortName();
+        return (new ReflectionClass(static::class))->getShortName();
     }
 
     /**

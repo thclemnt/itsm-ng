@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use LDAP\Result;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\LdapRepository;
 
@@ -1455,7 +1456,7 @@ class AuthLDAP extends CommonDBTM
 
         $config_ldap = new self();
         if (!isset($_SESSION['ldap_server'])) {
-            throw new \RuntimeException('LDAP server must be set!');
+            throw new RuntimeException('LDAP server must be set!');
         }
         $config_ldap->getFromDB($_SESSION['ldap_server']);
 
@@ -2893,7 +2894,7 @@ class AuthLDAP extends CommonDBTM
                         'id' => $users_id
                     ];
                 }
-            } catch (\RuntimeException $e) {
+            } catch (RuntimeException $e) {
                 Toolbox::logError($e->getMessage());
                 return false;
             }
@@ -3404,7 +3405,7 @@ class AuthLDAP extends CommonDBTM
             }
             return false;
         }
-        throw new \RuntimeException('Something went wrong searching in LDAP directory');
+        throw new RuntimeException('Something went wrong searching in LDAP directory');
     }
 
 
@@ -4210,7 +4211,7 @@ class AuthLDAP extends CommonDBTM
     {
         if (
             !is_resource($result)
-            && (!class_exists(\LDAP\Result::class) || !$result instanceof \LDAP\Result)
+            && (!class_exists(Result::class) || !$result instanceof Result)
         ) {
             return [];
         }
@@ -4318,10 +4319,10 @@ class AuthLDAP extends CommonDBTM
             if (!self::isValidGuid($value)) {
                 $value = self::guidToString($value);
                 if (!self::isValidGuid($value)) {
-                    throw new \RuntimeException('Not an objectguid!');
+                    throw new RuntimeException('Not an objectguid!');
                 }
             }
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             //well... this is not an objectguid apparently
             $value = $infos[$field];
         }

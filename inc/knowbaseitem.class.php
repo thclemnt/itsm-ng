@@ -487,7 +487,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         unset($criteria['WHERE']);
         $criteria['FROM'] = self::getTable();
 
-        $it = new \DBmysqlIterator(null);
+        $it = new DBmysqlIterator(null);
         $it->buildQuery($criteria);
         $sql = $it->getSql();
         $sql = str_replace(
@@ -516,7 +516,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         unset($criteria['LEFT JOIN']);
         $criteria['FROM'] = self::getTable();
 
-        $it = new \DBmysqlIterator(null);
+        $it = new DBmysqlIterator(null);
         $it->buildQuery($criteria);
         $sql = $it->getSql();
         $sql = str_replace(

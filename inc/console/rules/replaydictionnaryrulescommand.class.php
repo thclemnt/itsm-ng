@@ -38,6 +38,7 @@ if (!defined('GLPI_ROOT')) {
 }
 
 use Glpi\Console\AbstractCommand;
+use RuleCollection;
 use Symfony\Component\Console\Exception\InvalidArgumentException;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -97,11 +98,11 @@ class ReplayDictionnaryRulesCommand extends AbstractCommand
     {
 
         $dictionnary = $input->getOption('dictionnary');
-        $rulecollection = \RuleCollection::getClassByType($dictionnary);
+        $rulecollection = RuleCollection::getClassByType($dictionnary);
 
         if (
             !in_array($dictionnary, $this->getDictionnaryTypes())
-            || !($rulecollection instanceof \RuleCollection)
+            || !($rulecollection instanceof RuleCollection)
         ) {
             throw new InvalidArgumentException(
                 sprintf(__('Invalid "dictionnary" value.'))

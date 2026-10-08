@@ -402,7 +402,7 @@ class PlanningRecall extends CommonDBChild
                 //               -> ChangeTask ->  Change which have entity notion
                 //               -> ProblemTask -> Problem which have entity notion
                 $itemToNotify = $pr->getItem();
-                if ($itemToNotify instanceof \CommonITILTask) {
+                if ($itemToNotify instanceof CommonITILTask) {
                     $linkedItem = $itemToNotify->getItem();
                     if ($linkedItem && $linkedItem->isEntityAssign()) {
                         $options['entities_id'] = $linkedItem->getEntityID();

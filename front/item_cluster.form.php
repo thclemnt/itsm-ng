@@ -35,7 +35,7 @@ include('../inc/includes.php');
 
 Session::checkCentralAccess();
 
-$icl = new \Item_Cluster();
+$icl = new Item_Cluster();
 $cluster = new Cluster();
 
 if (isset($_POST['update'])) {

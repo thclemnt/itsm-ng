@@ -366,7 +366,7 @@ class RuleRight extends Rule
         global $DB;
         if ($criteria['field'] == 'type') {
             $methods = [
-               \Auth::DB_GLPI => __('Authentication on ITSM-NG database'),
+               Auth::DB_GLPI => __('Authentication on ITSM-NG database'),
             ];
 
             $result = $DB->request([
@@ -378,8 +378,8 @@ class RuleRight extends Rule
             ])->next();
 
             if ($result['cpt'] > 0) {
-                $methods[\Auth::LDAP]     = __('Authentication on a LDAP directory');
-                $methods[\Auth::EXTERNAL] = __('External authentications');
+                $methods[Auth::LDAP]     = __('Authentication on a LDAP directory');
+                $methods[Auth::EXTERNAL] = __('External authentications');
             }
 
             $result = $DB->request([
@@ -391,7 +391,7 @@ class RuleRight extends Rule
             ])->next();
 
             if ($result['cpt'] > 0) {
-                $methods[\Auth::MAIL] = __('Authentication on mail server');
+                $methods[Auth::MAIL] = __('Authentication on mail server');
             }
             renderTwigTemplate('macros/input.twig', [
                'name' => $name,

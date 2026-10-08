@@ -31,10 +31,15 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Types\Types;
 use Glpi\Cache\SimpleCache;
 use Glpi\Exception\PasswordTooWeakException;
 use Glpi\System\RequirementsManager;
+use SimplePie\SimplePie as SimplePieFeed;
 use itsmng\Cache\StorageFactory;
+use itsmng\Database\CheckConstraintSupport;
 use itsmng\Database\Repository\ConfigurationRepository;
 use itsmng\Timezone;
 use PHPMailer\PHPMailer\PHPMailer;
@@ -2203,7 +2208,7 @@ class Config extends CommonDBTM
                    'version' => $pm::VERSION,
                    'check'   => 'PHPMailer\\PHPMailer\\PHPMailer' ],
                  [ 'name'    => 'simplepie/simplepie',
-                   'version' =>  \SimplePie\SimplePie::VERSION,
+                   'version' =>  SimplePieFeed::VERSION,
                    'check'   => $sp ],
                  [ 'name'    => 'tecnickcom/tcpdf',
                    'version' => TCPDF_STATIC::getTCPDFVersion(),
@@ -2664,9 +2669,9 @@ class Config extends CommonDBTM
 
         $maria = stripos((string)$raw, 'MariaDB') !== false;
         try {
-            $version = \itsmng\Database\CheckConstraintSupport::version((string)$raw, $maria);
-            $db_ver = \itsmng\Database\CheckConstraintSupport::supportsVersion((string)$raw, $maria);
-        } catch (\RuntimeException) {
+            $version = CheckConstraintSupport::version((string)$raw, $maria);
+            $db_ver = CheckConstraintSupport::supportsVersion((string)$raw, $maria);
+        } catch (RuntimeException) {
             // Retain the diagnostic's numeric display, never use an ambiguous
             // version to grant an installation capability.
             $version = preg_match('/^\d+/', (string)$raw, $found) ? $found[0] : (string)$raw;
@@ -2879,7 +2884,7 @@ class Config extends CommonDBTM
             global $PHPLOGGER;
             $PHPLOGGER->addRecord(Monolog\Logger::WARNING, "Test logger");
             $can_write_logs = true;
-        } catch (\UnexpectedValueException $e) {
+        } catch (UnexpectedValueException $e) {
             $catched = true;
             //empty catch
         }
@@ -3103,7 +3108,7 @@ class Config extends CommonDBTM
         // entity shape or any profile/domain state can be required.
         $connection = $DB->getDoctrineConnection();
         $platform = $connection->getDatabasePlatform();
-        $postgres = $platform instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+        $postgres = $platform instanceof PostgreSQLPlatform;
         $schema = $postgres ? 'current_schema()' : $platform->getCurrentDatabaseExpression();
         $filter = $connection->getConfiguration()->getSchemaAssetsFilter();
         // Inspect only the two physical bootstrap tables. information_schema
@@ -3415,7 +3420,7 @@ class Config extends CommonDBTM
      * Keep this bootstrap read on the supplied current connection and uncached:
      * backend settings may change between adapter constructions in one request.
      */
-    private static function getCacheConfiguration(\Doctrine\DBAL\Connection $connection, string $context, string $name): array
+    private static function getCacheConfiguration(Connection $connection, string $context, string $name): array
     {
         $query = $connection->createQueryBuilder()
             ->select($connection->quoteIdentifier('name'), $connection->quoteIdentifier('value'))
@@ -3423,8 +3428,8 @@ class Config extends CommonDBTM
             ->where($connection->quoteIdentifier('context') . ' = :context')
             ->andWhere($connection->quoteIdentifier('name') . ' = :name')
             ->orderBy($connection->quoteIdentifier('id'))
-            ->setParameter('context', $context, \Doctrine\DBAL\Types\Types::STRING)
-            ->setParameter('name', $name, \Doctrine\DBAL\Types\Types::STRING);
+            ->setParameter('context', $context, Types::STRING)
+            ->setParameter('name', $name, Types::STRING);
         $values = [];
         foreach ($query->executeQuery()->iterateAssociative() as $row) {
             $values[$row['name']] = $row['value'];

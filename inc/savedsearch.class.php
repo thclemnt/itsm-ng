@@ -996,7 +996,7 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
                     $count = null;
                     try {
                         $data = $this->execute();
-                    } catch (\RuntimeException $e) {
+                    } catch (RuntimeException $e) {
                         Toolbox::logError($e);
                         $data = false;
                     }
@@ -1378,7 +1378,7 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
             }
 
             if (!$params) {
-                throw new \RuntimeException('Saved search #' . $this->getID() . ' seems to be broken!');
+                throw new RuntimeException('Saved search #' . $this->getID() . ' seems to be broken!');
             } else {
                 $data                   = $search->prepareDatasForSearch(
                     $this->getField('itemtype'),
@@ -1436,7 +1436,7 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
         unset($criteria['LEFT JOIN']);
         $criteria['FROM'] = self::getTable();
 
-        $it = new \DBmysqlIterator(null);
+        $it = new DBmysqlIterator(null);
         $it->buildQuery($criteria);
         $sql = $it->getSql();
         $sql = preg_replace('/.*WHERE /', '', $sql);

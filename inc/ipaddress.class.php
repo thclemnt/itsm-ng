@@ -1192,7 +1192,7 @@ class IPAddress extends CommonDBChild
                    'NAME.id AS name_id',
                    'PORT.id AS port_id',
                    'ITEM.id AS item_id',
-                   new \QueryExpression("'$itemtype' AS " . $DB->quoteName('item_type'))
+                   new QueryExpression("'$itemtype' AS " . $DB->quoteName('item_type'))
                 ]);
                 $criteria['INNER JOIN'] = $criteria['INNER JOIN'] + [
                    'glpi_networknames AS NAME'   => [
@@ -1229,8 +1229,8 @@ class IPAddress extends CommonDBChild
             $criteria['SELECT'] = array_merge($criteria['SELECT'], [
                'NAME.id AS name_id',
                'PORT.id AS port_id',
-               new \QueryExpression('NULL AS ' . $DB->quoteName('item_id')),
-               new \QueryExpression("NULL AS " . $DB->quoteName('item_type')),
+               new QueryExpression('NULL AS ' . $DB->quoteName('item_id')),
+               new QueryExpression("NULL AS " . $DB->quoteName('item_type')),
             ]);
             $criteria['INNER JOIN'] = $criteria['INNER JOIN'] + [
                'glpi_networknames AS NAME'   => [
@@ -1261,9 +1261,9 @@ class IPAddress extends CommonDBChild
             $criteria = $main_criteria;
             $criteria['SELECT'] = array_merge($criteria['SELECT'], [
                'NAME.id AS name_id',
-               new \QueryExpression("NULL AS " . $DB->quoteName('port_id')),
-               new \QueryExpression('NULL AS ' . $DB->quoteName('item_id')),
-               new \QueryExpression("NULL AS " . $DB->quoteName('item_type'))
+               new QueryExpression("NULL AS " . $DB->quoteName('port_id')),
+               new QueryExpression('NULL AS ' . $DB->quoteName('item_id')),
+               new QueryExpression("NULL AS " . $DB->quoteName('item_type'))
             ]);
             $criteria['INNER JOIN'] = $criteria['INNER JOIN'] + [
                'glpi_networknames AS NAME'   => [
@@ -1281,15 +1281,15 @@ class IPAddress extends CommonDBChild
 
             $criteria = $main_criteria;
             $criteria['SELECT'] = array_merge($criteria['SELECT'], [
-               new \QueryExpression("NULL AS name_id"),
-               new \QueryExpression("NULL AS port_id"),
-               new \QueryExpression('NULL AS item_id'),
-               new \QueryExpression("NULL AS item_type")
+               new QueryExpression("NULL AS name_id"),
+               new QueryExpression("NULL AS port_id"),
+               new QueryExpression('NULL AS item_id'),
+               new QueryExpression("NULL AS item_type")
             ]);
             $criteria['INNER JOIN']['glpi_ipaddresses AS ADDR']['ON'][0]['AND']['ADDR.itemtype'] = ['!=', 'NetworkName'];
             $queries[] = $criteria;
 
-            $union = new \QueryUnion($queries);
+            $union = new QueryUnion($queries);
             $criteria = [
                'FROM'   => $union,
             ];

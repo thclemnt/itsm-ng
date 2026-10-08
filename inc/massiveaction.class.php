@@ -43,7 +43,7 @@ if (!defined('GLPI_ROOT')) {
  *
  * @since 0.85
 **/
-#[\AllowDynamicProperties]
+#[AllowDynamicProperties]
 class MassiveAction
 {
     public const CLASS_ACTION_SEPARATOR  = ':';

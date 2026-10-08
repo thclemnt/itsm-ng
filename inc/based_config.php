@@ -177,7 +177,7 @@ include_once(GLPI_ROOT . "/inc/autoload.function.php");
            GLPI_ROOT . '/plugins',
         ]);
     } elseif (!is_array(PLUGINS_DIRECTORIES)) {
-        throw new \Exception('PLUGINS_DIRECTORIES constant value must be an array');
+        throw new Exception('PLUGINS_DIRECTORIES constant value must be an array');
     }
 })();
 
