@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\ProfileUserReadOperation;
 use itsmng\Database\Repository\ProfileUserRepository;
@@ -673,7 +674,7 @@ class Profile_User extends CommonDBRelation
      **/
     public static function getUserEntities($user_ID, $is_recursive = true, $default_first = false)
     {
-        $iterator = new RowIterator(self::scopeReader()->scopes((int)$user_ID));
+        $iterator = new RowIterator(self::scopeRows((int)$user_ID));
         $entities = [];
 
         while ($data = $iterator->next()) {
@@ -716,7 +717,7 @@ class Profile_User extends CommonDBRelation
      **/
     public static function getUserEntitiesForRight($user_ID, $rightname, $rights, $is_recursive = true)
     {
-        $iterator = new RowIterator(self::scopeReader()->scopes((int)$user_ID, right: $rightname, mask: (int)$rights));
+        $iterator = new RowIterator(self::scopeRows((int)$user_ID, right: $rightname, mask: (int)$rights));
 
         if (count($iterator) > 0) {
             $entities = [];
@@ -753,7 +754,8 @@ class Profile_User extends CommonDBRelation
         $connection = $DB->getDoctrineConnection();
         $table = self::getTable();
         $ids = $sqlfilter === [] && $table === 'glpi_profiles_users'
-            ? (new ProfileUserReadOperation($connection))->profileIds($user_ID)
+            ? Orm::withReadConnection($connection, static fn (?EntityManager $manager): array =>
+                (new ProfileUserReadOperation($connection, $manager))->profileIds($user_ID))
             : (new RecordRepository(Orm::forConnection($connection)))->identifiers(
                 $table,
                 'profiles_id',
@@ -779,7 +781,7 @@ class Profile_User extends CommonDBRelation
      **/
     public static function getEntitiesForProfileByUser($users_id, $profiles_id, $child = false)
     {
-        $iterator = new RowIterator(self::scopeReader()->scopes((int)$users_id, (int)$profiles_id));
+        $iterator = new RowIterator(self::scopeRows((int)$users_id, (int)$profiles_id));
 
         $entities = [];
         while ($data = $iterator->next()) {
@@ -811,7 +813,7 @@ class Profile_User extends CommonDBRelation
      **/
     public static function getEntitiesForUser($users_id, $child = false)
     {
-        $iterator = new RowIterator(self::scopeReader()->scopes((int)$users_id));
+        $iterator = new RowIterator(self::scopeRows((int)$users_id));
 
         $entities = [];
         while ($data = $iterator->next()) {
@@ -850,10 +852,12 @@ class Profile_User extends CommonDBRelation
     }
 
 
-    private static function scopeReader(): ProfileUserReadOperation
+    private static function scopeRows(int $user, ?int $profile = null, mixed $right = null, int $mask = 0): array
     {
         global $DB;
-        return new ProfileUserReadOperation($DB->getDoctrineConnection());
+        $connection = $DB->getDoctrineConnection();
+        return Orm::withReadConnection($connection, static fn (?EntityManager $manager): array =>
+            (new ProfileUserReadOperation($connection, $manager))->scopes($user, $profile, $right, $mask));
     }
 
     private static function repository(): ProfileUserRepository

@@ -606,6 +606,18 @@ class User extends DbTestCase
         $expectedName = $utils->getUserName($id);
         $this->array($expectedScope)->isNotEmpty();
         $this->string($expectedName)->isNotEmpty();
+        $this->array(Profile_User::getEntitiesForProfileByUser($id, $profileId))->isIdenticalTo($expectedScope);
+        $this->array($sortedIds(array_values(Profile_User::getUserProfiles($id))))->isIdenticalTo($baselineIds);
+        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeManagers = $managers->getValue();
+        for ($repeat = 0; $repeat < 3; ++$repeat) {
+            $this->array(Profile_User::getEntitiesForProfileByUser($id, $profileId))->isIdenticalTo($expectedScope);
+            $this->array($sortedIds(array_values(Profile_User::getUserProfiles($id))))->isIdenticalTo($baselineIds);
+        }
+        $this->integer($managers->getValue() - $beforeManagers)->isIdenticalTo(
+            0,
+            'Profile membership and permission scopes share the selected canonical manager'
+        );
         $originalAdapter = $DB;
         $originalScope = $connection->captureManagedTransactionScope();
         $originalDepth = $connection->getTransactionNestingLevel();

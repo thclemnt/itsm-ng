@@ -701,9 +701,13 @@ class Ticket extends DbTestCase
                 }
             }
             $direct->close();
+            $parentModel->loadActors();
             $before = $managers->getValue();
             $parentModel->loadActors();
-            $this->integer($managers->getValue() - $before)->isIdenticalTo(1);
+            $this->integer($managers->getValue() - $before)->isIdenticalTo(
+                0,
+                'Repeated actor aggregation reuses its selected canonical manager across built-in families'
+            );
             $getter = match ($actorName) {
                 'Group' => 'getGroups', 'User' => 'getUsers', 'Supplier' => 'getSuppliers'
             };
@@ -720,7 +724,7 @@ class Ticket extends DbTestCase
                 $this->integer($rows[1]['actor_key'])->isIdenticalTo(0);
                 $this->string($rows[1]['actor_email_key'])->isIdenticalTo('projection@example.invalid');
             }
-            // A later operation observes writes; no actor rows or managers survive in a cache.
+            // A later operation observes writes; no actor rows survive between scopes.
             $observer->type = CommonITILActor::REQUESTER;
             $em->flush();
             $this->array($model->getActors($parent->id))->hasKey(CommonITILActor::REQUESTER);
@@ -770,6 +774,9 @@ class Ticket extends DbTestCase
         }
         $em->flush();
 
+        $warm = new LegacyTicket();
+        $warm->fields['id'] = $first->id;
+        $warm->loadActors();
         $ticket = new LegacyTicket();
         $ticket->fields['id'] = $first->id;
         $custom = new class () extends Ticket_User {
@@ -786,7 +793,7 @@ class Ticket extends DbTestCase
         $custom::$read = function ($id) use ($DB, $ticket, $first, $second, $supplier, $managers, $before, &$calls): array {
             $calls[] = $id;
             $this->integer((int)$id)->isIdenticalTo($first->id);
-            $this->integer($managers->getValue() - $before)->isIdenticalTo(1);
+            $this->integer($managers->getValue() - $before)->isIdenticalTo(0);
             $this->array($ticket->getGroups(CommonITILActor::REQUESTER))->isEmpty();
             $this->boolean($DB->update('glpi_suppliers_tickets', ['type' => CommonITILActor::ASSIGN], ['id' => $supplier->id]))->isTrue();
             $ticket->fields['id'] = $second->id;
@@ -794,7 +801,7 @@ class Ticket extends DbTestCase
         };
         try {
             $ticket->loadActors();
-            $this->integer($managers->getValue() - $before)->isIdenticalTo(2);
+            $this->integer($managers->getValue() - $before)->isIdenticalTo(0);
             $this->array($calls)->isIdenticalTo([$first->id]);
             $this->array($ticket->getUsers(CommonITILActor::REQUESTER))->isIdenticalTo([['custom' => $first->id]]);
             $rows = $ticket->getSuppliers(CommonITILActor::ASSIGN);

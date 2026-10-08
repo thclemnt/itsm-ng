@@ -875,7 +875,9 @@ final class DbUtils
             if ($this->treeReads !== null) {
                 return $this->treeReads->rows($DB, $table, $fields, $criteria);
             }
-            return (new TreeReadOperation($DB->getDoctrineConnection()))->rows($table, $fields, $criteria);
+            $connection = $DB->getDoctrineConnection();
+            return Orm::withReadConnection($connection, static fn (?EntityManager $manager): array =>
+                (new TreeReadOperation($connection, $manager))->rows($table, $fields, $criteria));
         }
         return array_values(iterator_to_array($DB->request(['SELECT' => $fields, 'FROM' => $table, 'WHERE' => $criteria])));
     }
@@ -1635,8 +1637,9 @@ final class DbUtils
         }
 
         if ($ID) {
-            $data = (new UserDisplayReadOperation($DB->getDoctrineConnection()))
-                ->displayData((int)$ID);
+            $connection = $DB->getDoctrineConnection();
+            $data = Orm::withReadConnection($connection, static fn (?EntityManager $manager): ?array =>
+                (new UserDisplayReadOperation($connection, $manager))->displayData((int)$ID));
 
             if ($link == 2) {
                 $user = ["name"    => "",

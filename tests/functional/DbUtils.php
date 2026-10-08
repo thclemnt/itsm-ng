@@ -52,6 +52,7 @@ use itsmng\Database\Entity\Entity as EntityRecord;
 use itsmng\Database\Entity\Infocom;
 use itsmng\Database\Entity\Monitor;
 use itsmng\Database\Entity\Printer;
+use itsmng\Database\EntityScopeReadOperation;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\AutoNameRepository;
 use itsmng\Database\Repository\TreeRepository;
@@ -97,6 +98,16 @@ class DbUtils extends DbTestCase
         $this->integer($id)->isGreaterThan(0);
         $utils = new DbUtilsModel();
         $this->string($utils->getUserName($id))->isEqualTo('Ada Lovelace');
+        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeManagers = $managers->getValue();
+        for ($repeat = 0; $repeat < 3; ++$repeat) {
+            $this->string($utils->getUserName($id))->isEqualTo('Ada Lovelace');
+        }
+        $this->integer($managers->getValue() - $beforeManagers)->isIdenticalTo(
+            0,
+            'Repeated user display reads reuse the selected canonical manager'
+        );
+
         $this->string($utils->getUserName($id, 1))->contains('Ada Lovelace')
             ->contains(User::getFormURLWithID($id));
         $details = $utils->getUserName($id, 2);
@@ -999,6 +1010,18 @@ class DbUtils extends DbTestCase
         $this->runGetAncestorsOf();
 
         $connection = $DB->getDoctrineConnection();
+        $scopeRows = (new EntityScopeReadOperation())->rows($DB, 'glpi_entities', ['id'], ['id' => 0]);
+        $this->array($scopeRows)->isIdenticalTo([['id' => 0]]);
+        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeManagers = $managers->getValue();
+        for ($repeat = 0; $repeat < 3; ++$repeat) {
+            $this->array((new EntityScopeReadOperation())->rows($DB, 'glpi_entities', ['id'], ['id' => 0]))
+                ->isIdenticalTo($scopeRows);
+        }
+        $this->integer($managers->getValue() - $beforeManagers)->isIdenticalTo(
+            0,
+            'Independent permission readers share the selected canonical manager without caching tree rows'
+        );
         $manager = Orm::forConnection($connection);
         $repository = new TreeRepository($manager);
         $reader = new TreeReadOperation($connection);

@@ -7,6 +7,7 @@ namespace itsmng\Database;
 use DBAdapter;
 use DbUtils;
 use Doctrine\DBAL\Connection;
+use Doctrine\ORM\EntityManager;
 
 use function getEntitiesRestrictCriteria;
 
@@ -35,11 +36,16 @@ final class EntityScopeReadOperation
         if ($this->reader === null || $this->database !== $database
             || $this->connection !== $connection) {
             $this->reader?->close();
-            $this->reader = new TreeReadOperation($connection);
+            $this->reader = null;
             $this->connection = $connection;
             $this->database = $database;
         }
-        return $this->reader->rows($table, $fields, $criteria);
+        return Orm::withReadConnection($connection, function (?EntityManager $manager) use ($connection, $table, $fields, $criteria): array {
+            $reader = $manager === null
+                ? ($this->reader ??= new TreeReadOperation($connection))
+                : new TreeReadOperation($connection, $manager);
+            return $reader->rows($table, $fields, $criteria);
+        });
     }
 
     public function __destruct()

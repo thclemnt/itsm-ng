@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\ITILActorReadOperation;
 use itsmng\Database\ITILDocumentAccess;
 use itsmng\Database\Orm;
@@ -117,6 +118,7 @@ abstract class CommonITILObject extends CommonDBTM
     {
         global $DB;
         $repository = null;
+        $connection = null;
         try {
             foreach (['grouplinkclass' => 'groups', 'userlinkclass' => 'users', 'supplierlinkclass' => 'suppliers'] as $link => $field) {
                 if (empty($this->$link)) {
@@ -125,13 +127,19 @@ abstract class CommonITILObject extends CommonDBTM
                 $actorClass = $this->$link;
                 $class = new $actorClass();
                 if (ITILActorRepository::supports($class::class)) {
-                    // One read operation owns metadata for all built-in actor families.
-                    $repository ??= new ITILActorReadOperation($DB->getDoctrineConnection());
-                    $this->$field = $repository->actors($class::class, (int)$this->fields['id']);
+                    // Keep the selected route across built-in families until custom dispatch.
+                    $connection ??= $DB->getDoctrineConnection();
+                    $this->$field = Orm::withReadConnection($connection, function (?EntityManager $manager) use ($connection, &$repository, $class): array {
+                        $reader = $manager === null
+                            ? ($repository ??= new ITILActorReadOperation($connection))
+                            : new ITILActorReadOperation($connection, $manager);
+                        return $reader->actors($class::class, (int)$this->fields['id']);
+                    });
                 } else {
                     // Custom dispatch may write later actors or change the supplied connection.
                     $repository?->close();
                     $repository = null;
+                    $connection = null;
                     $this->$field = $class->getActors($this->fields['id']);
                 }
             }
@@ -7494,8 +7502,9 @@ abstract class CommonITILObject extends CommonDBTM
         echo "<div class='timeline_form' data-testid='timeline-form'>";
         echo "<ul class='timeline_choices'>";
 
-        $preferences = (new UserDisplayReadOperation($DB->getDoctrineConnection()))
-            ->timelinePreferences((int)Session::getLoginUserID());
+        $connection = $DB->getDoctrineConnection();
+        $preferences = Orm::withReadConnection($connection, static fn (?EntityManager $manager): array =>
+            (new UserDisplayReadOperation($connection, $manager))->timelinePreferences((int)Session::getLoginUserID()));
         $canuse_shortcuts = $preferences['access_shortcuts'] ?? null;
         $font = "\"Bitstream Vera Sans\", arial, Tahoma, \"Sans serif\"";
         if (Session::haveRight("accessibility", READ)) {
