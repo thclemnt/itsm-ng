@@ -194,6 +194,7 @@ jobs:
             ${{ runner.temp }}/migration.log
             ${{ runner.temp }}/migration.xml
             ${{ runner.temp }}/native-subject.json
+            ${{ runner.temp }}/native-subject-details.json.gz
             ${{ runner.temp }}/units.log
             ${{ runner.temp }}/functional.log
             ${{ runner.temp }}/schema-check.log
