@@ -33,8 +33,26 @@
 
 namespace tests\units;
 
+use DBAdapter;
 use DbTestCase;
+use Doctrine\DBAL\Connection;
+use DomainType;
+use Doctrine\DBAL\TransactionIsolationLevel;
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Entity\DomainType as DomainTypeRecord;
+use itsmng\Database\Entity\Entity as EntityRecord;
+use itsmng\Database\MutationCleanupFailure;
+use itsmng\Database\MySQLConnection;
+use itsmng\Database\PostgresConnection;
+use itsmng\Database\Orm;
+use LogicException;
+use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\TransactionOwnershipMismatch;
+use Plugin;
+use ReflectionProperty;
 use Software;
+use Throwable;
 use TicketTask;
 
 /* Test for inc/commondbtm.class.php */
@@ -58,16 +76,16 @@ class CommonDBTM extends DbTestCase
         $cleanup = static function (callable $operation) use (&$failure): void {
             try {
                 $operation();
-            } catch (\Throwable $error) {
-                $failure = $failure === null ? $error : new \itsmng\Database\MutationCleanupFailure($failure, $error);
+            } catch (Throwable $error) {
+                $failure = $failure === null ? $error : new MutationCleanupFailure($failure, $error);
             }
         };
         try {
             $parameters = $originalConnection->getParams();
-            $reader = $mysql ? \itsmng\Database\MySQLConnection::create($parameters)
-                : \itsmng\Database\PostgresConnection::create($parameters);
-            $writer = $mysql ? \itsmng\Database\MySQLConnection::create($parameters)
-                : \itsmng\Database\PostgresConnection::create($parameters);
+            $reader = $mysql ? MySQLConnection::create($parameters)
+                : PostgresConnection::create($parameters);
+            $writer = $mysql ? MySQLConnection::create($parameters)
+                : PostgresConnection::create($parameters);
             foreach ([$reader, $writer] as $connection) {
                 if ($mysql) {
                     $connection->executeStatement('SET SESSION innodb_lock_wait_timeout = 5');
@@ -76,37 +94,37 @@ class CommonDBTM extends DbTestCase
                     $connection->executeStatement("SET SESSION statement_timeout = '20s'");
                 }
             }
-            $reader->setTransactionIsolation($mysql ? \Doctrine\DBAL\TransactionIsolationLevel::REPEATABLE_READ
-                : \Doctrine\DBAL\TransactionIsolationLevel::READ_COMMITTED);
+            $reader->setTransactionIsolation($mysql ? TransactionIsolationLevel::REPEATABLE_READ
+                : TransactionIsolationLevel::READ_COMMITTED);
             $routed = clone $original;
-            (new \ReflectionProperty(\DBAdapter::class, 'doctrine'))->setValue($routed, $reader);
+            (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($routed, $reader);
             foreach (['source', 'target'] as $changed) {
                 $token = 'delete-current-' . $this->getUniqueString();
-                $fixture = \itsmng\Database\OwnedMutationFrame::run($writer, static function () use ($writer, $token): array {
-                    $manager = new \Doctrine\ORM\EntityManager($writer, \itsmng\Database\Orm::configuration($writer->getDatabasePlatform()));
+                $fixture = OwnedMutationFrame::run($writer, static function () use ($writer, $token): array {
+                    $manager = new EntityManager($writer, Orm::configuration($writer->getDatabasePlatform()));
                     try {
                         $records = [];
-                        foreach (['source', 'target'] as $name) {
-                            $record = new \itsmng\Database\Entity\DomainType();
-                            $record->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, 0);
+                        foreach (['source', 'target', 'unrelated'] as $name) {
+                            $record = new DomainTypeRecord();
+                            $record->entities = $manager->getReference(EntityRecord::class, 0);
                             $record->name = $token . '-' . $name;
                             $manager->persist($record);
                             $records[$name] = $record;
                         }
                         $manager->flush();
-                        return ['name' => $token, 'source' => $records['source']->id, 'target' => $records['target']->id];
+                        return ['name' => $token, 'source' => $records['source']->id, 'target' => $records['target']->id, 'unrelated' => $records['unrelated']->id];
                     } finally {
                         $manager->clear();
                     }
                 });
                 $fixtures[] = $fixture;
-                $frame = \itsmng\Database\OwnedMutationFrame::begin($reader);
+                $frame = OwnedMutationFrame::begin($reader);
                 $snapshot = $reader->fetchAllAssociative(
                     'SELECT id, entities_id FROM glpi_domaintypes WHERE id IN (?, ?) ORDER BY id',
                     [$fixture['source'], $fixture['target']]
                 );
                 $this->array(array_map('intval', array_column($snapshot, 'entities_id')))->isIdenticalTo([0, 0]);
-                \itsmng\Database\OwnedMutationFrame::run($writer, static function () use ($writer, $fixture, $changed, $otherEntity): void {
+                OwnedMutationFrame::run($writer, static function () use ($writer, $fixture, $changed, $otherEntity): void {
                     $writer->update(
                         'glpi_domaintypes',
                         ['entities_id' => $otherEntity],
@@ -115,7 +133,7 @@ class CommonDBTM extends DbTestCase
                 });
                 $observer = (object)['loads' => [], 'probing' => false, 'probed' => false, 'cloneEntity' => null,
                     'otherEntity' => null, 'source' => $fixture['source'], 'target' => $fixture['target']];
-                $model = new class ($observer) extends \DomainType {
+                $model = new class ($observer) extends DomainType {
                     public function __construct(private object $observer)
                     {
                     }
@@ -191,6 +209,96 @@ class CommonDBTM extends DbTestCase
                 } finally {
                     $DB = $original;
                 }
+                // Two real purge listeners share one selected writer. A later
+                // listener must not persist through a route changed by an earlier one.
+                $hooks = $GLOBALS['PLUGIN_HOOKS'];
+                $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+                $active = $plugins->getValue();
+                $foreignFrame = OwnedMutationFrame::begin($writer);
+                try {
+                    $foreignRoute = clone $original;
+                    (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($foreignRoute, $writer);
+                    $snapshot = static function (Connection $connection): array {
+                        $rows = [];
+                        foreach (['glpi_domaintypes', 'glpi_logs', 'glpi_alerts', 'glpi_queuednotifications'] as $table) {
+                            $rows[$table] = $connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table) . ' ORDER BY id');
+                        }
+                        return $rows;
+                    };
+                    $foreignBefore = $snapshot($writer);
+                    $sourceBefore = $snapshot($reader);
+                    $switched = $listeners = $persisted = 0;
+                    $purged = new DomainType();
+                    $purgedState = get_object_vars($purged);
+                    $DB = $routed;
+                    $this->array((new ReflectionProperty(OwnershipUpdateUnit::class, 'writerGuards'))->getValue())->isEmpty();
+                    $plugins->setValue(null, [...$active, 'deletion_route_fixture', 'deletion_write_fixture']);
+                    $GLOBALS['PLUGIN_HOOKS']['pre_item_purge']['deletion_route_fixture'][DomainType::class] =
+                        static function (DomainType $item) use ($fixture, $foreignRoute, &$switched): void {
+                            if ((int)$item->getID() === $fixture['source']) {
+                                ++$switched;
+                                $GLOBALS['DB'] = $foreignRoute;
+                            }
+                        };
+                    $GLOBALS['PLUGIN_HOOKS']['pre_item_purge']['deletion_write_fixture'][DomainType::class] =
+                        static function (DomainType $item) use ($fixture, &$listeners, &$persisted): void {
+                            if ((int)$item->getID() === $fixture['source']) {
+                                ++$listeners;
+                                $target = new DomainType();
+                                if ($target->update(['id' => $fixture['unrelated'], 'comment' => 'Purge listener write'])) {
+                                    ++$persisted;
+                                }
+                            }
+                        };
+                    $error = null;
+                    try {
+                        $purged->delete(['id' => $fixture['source'], '_no_message' => 1, '_no_history' => 1], true, false);
+                    } catch (Throwable $caught) {
+                        $error = $caught;
+                    } finally {
+                        $DB = $routed;
+                    }
+                    $this->array($snapshot($writer))->isIdenticalTo($foreignBefore, 'Purge callbacks cannot write through an independent physical route');
+                    $this->array($snapshot($reader))->isIdenticalTo($sourceBefore);
+                    $this->object($error)->isInstanceOf(TransactionOwnershipMismatch::class);
+                    $this->array(get_object_vars($purged))->isIdenticalTo($purgedState);
+                    $this->integer($switched)->isIdenticalTo(1);
+                    $this->integer($listeners)->isIdenticalTo(1);
+                    $this->integer($persisted)->isIdenticalTo(0);
+                    $GLOBALS['PLUGIN_HOOKS'] = $hooks;
+                    $plugins->setValue(null, $active);
+                    // The refused operation releases its guard; normal deletion
+                    // and deletion nested under an existing guard still complete.
+                    foreach ([false, true] as $nestedGuard) {
+                        $successFrame = OwnedMutationFrame::begin($reader);
+                        try {
+                            $success = new DomainType();
+                            $operation = static fn (): bool => $success->delete([
+                                'id' => $fixture['source'], '_no_message' => 1, '_no_history' => 1,
+                            ], true, false);
+                            $this->boolean($nestedGuard
+                                ? OwnershipUpdateUnit::withWriterGuard($routed, $reader, $operation)
+                                : $operation())->isTrue();
+                            $this->boolean($reader->fetchOne('SELECT id FROM glpi_domaintypes WHERE id = ?', [$fixture['source']]))->isFalse();
+                            $this->array($snapshot($writer))->isIdenticalTo($foreignBefore);
+                            $successFrame->assertActive();
+                        } finally {
+                            $successFrame->rollBack();
+                        }
+                        $this->array($snapshot($reader))->isIdenticalTo($sourceBefore);
+                    }
+
+                    $frame->assertActive();
+                    $foreignFrame->assertActive();
+                    $this->integer($reader->getTransactionNestingLevel())->isIdenticalTo(1);
+                    $this->integer($writer->getTransactionNestingLevel())->isIdenticalTo(1);
+                    $this->array((new ReflectionProperty(OwnershipUpdateUnit::class, 'writerGuards'))->getValue())->isEmpty();
+                } finally {
+                    $DB = $original;
+                    $GLOBALS['PLUGIN_HOOKS'] = $hooks;
+                    $plugins->setValue(null, $active);
+                    $cleanup(static fn () => $foreignFrame->rollBack());
+                }
                 $frame->rollBack();
                 $frame = null;
                 $this->integer((int)$writer->fetchOne('SELECT entities_id FROM glpi_domaintypes WHERE id = ?', [$fixture[$changed]]))
@@ -198,7 +306,7 @@ class CommonDBTM extends DbTestCase
                 $originalScope->assertActive();
                 $this->integer($originalConnection->getTransactionNestingLevel())->isIdenticalTo($originalLevel);
             }
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $failure = $error;
         } finally {
             $DB = $original;
@@ -210,15 +318,15 @@ class CommonDBTM extends DbTestCase
             }
             if ($writer !== null) {
                 foreach ($fixtures as $fixture) {
-                    $cleanup(static fn () => \itsmng\Database\OwnedMutationFrame::run($writer, static function () use ($writer, $fixture): void {
-                        foreach (['source', 'target'] as $name) {
+                    $cleanup(static fn () => OwnedMutationFrame::run($writer, static function () use ($writer, $fixture): void {
+                        foreach (['source', 'target', 'unrelated'] as $name) {
                             if ($writer->fetchOne('SELECT name FROM glpi_domaintypes WHERE id = ?', [$fixture[$name]]) !== $fixture['name'] . '-' . $name) {
-                                throw new \LogicException('Refusing cleanup of a missing or unowned domain type');
+                                throw new LogicException('Refusing cleanup of a missing or unowned domain type');
                             }
                         }
-                        foreach (['source', 'target'] as $name) {
+                        foreach (['source', 'target', 'unrelated'] as $name) {
                             if ($writer->delete('glpi_domaintypes', ['id' => $fixture[$name], 'name' => $fixture['name'] . '-' . $name]) !== 1) {
-                                throw new \LogicException('Owned domain type fixture cleanup failed');
+                                throw new LogicException('Owned domain type fixture cleanup failed');
                             }
                         }
                     }));

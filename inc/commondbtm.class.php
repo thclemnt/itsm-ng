@@ -2508,7 +2508,7 @@ class CommonDBTM extends CommonGLPI
             }
         };
         $connection = $DB->getDoctrineConnection();
-        $result = DeletionUnit::run($connection, function () use ($DB, $connection, $input, $force, $history): DeletionOutcome {
+        $operation = function () use ($DB, $connection, $input, $force, $history): DeletionOutcome {
             $manager = Orm::create($DB);
             try {
                 $valid = (new DeletionRepository($manager))->validate($this, $input);
@@ -2526,7 +2526,12 @@ class CommonDBTM extends CommonGLPI
                 throw new TransactionOwnershipMismatch('The deletion callback replaced its supplied writer.');
             }
             return $outcome;
-        }, $restore);
+        };
+        $result = DeletionUnit::run(
+            $connection,
+            fn (): DeletionOutcome => OwnershipUpdateUnit::withWriterGuard($DB, $connection, $operation),
+            $restore
+        );
         // SMTP/chat delivery occurs only after this unit physically commits.
         $result->deliverNotifications();
         return $result->outcome === DeletionOutcome::Deleted;
