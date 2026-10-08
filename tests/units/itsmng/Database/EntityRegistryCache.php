@@ -4,6 +4,13 @@
 
 namespace tests\units\itsmng\Database;
 
+use itsmng\Database\MySQLManagedConnection;
+use itsmng\Database\Type\FixedStringType;
+use itsmng\Database\Entity\User;
+use Doctrine\ORM\Id\AssignedGenerator;
+use Doctrine\DBAL\Types\Type as DbalType;
+use Doctrine\DBAL\Types\StringType;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\ORM\EntityManager;
@@ -100,6 +107,141 @@ class EntityRegistryCache extends test
         $custom->clear();
         $normal->clear();
         $connection->close();
+
+        $parameters = ['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0', 'wrapperClass' => MySQLManagedConnection::class];
+        $application = DriverManager::getConnection($parameters);
+        $otherRoute = DriverManager::getConnection($parameters);
+        $canonical = null;
+        try {
+            Orm::withConnection($application, function (EntityManager $manager) use ($application, &$canonical): void {
+                $canonical = $manager;
+                $reference = $manager->getReference(Config::class, 1);
+                $this->boolean($manager->contains($reference))->isTrue();
+                Orm::withConnection($application, function (EntityManager $nested) use ($manager): void {
+                    $this->object($nested)->isNotIdenticalTo($manager);
+                });
+                $this->boolean($manager->contains($reference))->isTrue('Nested completion cannot clear its parent unit of work');
+            });
+            Orm::withConnection($application, function (EntityManager $manager) use (&$canonical, $otherRoute): void {
+                $this->object($manager)->isIdenticalTo($canonical);
+                $this->integer($manager->getUnitOfWork()->size())->isIdenticalTo(0);
+                Orm::withConnection($otherRoute, function (EntityManager $other) use ($manager): void {
+                    $this->object($other)->isNotIdenticalTo($manager);
+                    $this->object($other->getConnection())->isNotIdenticalTo($manager->getConnection());
+                });
+                $manager->close();
+            });
+            Orm::withConnection($application, function (EntityManager $manager) use (&$canonical): void {
+                $this->object($manager)->isNotIdenticalTo($canonical);
+                $this->boolean($manager->isOpen())->isTrue();
+                $canonical = $manager;
+            });
+            $application->close();
+            Orm::withConnection($application, function (EntityManager $manager) use ($canonical): void {
+                $this->object($manager)->isNotIdenticalTo($canonical);
+            });
+            Orm::withConnection($application, function (EntityManager $manager): void {
+                $metadata = $manager->getClassMetadata(Config::class);
+                $persister = $manager->getUnitOfWork()->getEntityPersister(Config::class);
+                $automatic = $persister->getInsertSQL();
+                $generatorType = $metadata->generatorType;
+                $generator = $metadata->idGenerator;
+                try {
+                    $metadata->setIdGeneratorType(ClassMetadata::GENERATOR_TYPE_NONE);
+                    $metadata->setIdGenerator(new AssignedGenerator());
+                    $this->string($persister->getInsertSQL())->isNotIdenticalTo($automatic)->contains('`id`');
+                } finally {
+                    $metadata->setIdGeneratorType($generatorType);
+                    $metadata->setIdGenerator($generator);
+                }
+                $this->string($persister->getInsertSQL())->isIdenticalTo($automatic);
+            });
+            $originalString = DbalType::getType('string');
+            $converter = new class () extends StringType {
+                public bool $upper = true;
+
+                public function convertToPHPValueSQL(string $expression, AbstractPlatform $platform): string
+                {
+                    return ($this->upper ? 'UPPER(' : 'LOWER(') . $expression . ')';
+                }
+            };
+            $select = static fn (EntityManager $manager): string =>
+                $manager->getUnitOfWork()->getEntityPersister(Config::class)->getSelectSQL(['id' => 1]);
+            $plainSql = Orm::withConnection($application, $select);
+            try {
+                DbalType::getTypeRegistry()->override('string', $converter);
+                $upperSql = Orm::withConnection($application, $select);
+                $this->string($upperSql)->contains('UPPER(')->isNotIdenticalTo($plainSql);
+                $converter->upper = false;
+                $this->string(Orm::withConnection($application, $select))->contains('LOWER(')->isNotIdenticalTo($upperSql);
+            } finally {
+                DbalType::getTypeRegistry()->override('string', $originalString);
+            }
+            $this->string(Orm::withConnection($application, $select))->isIdenticalTo($plainSql);
+            $originalFixed = DbalType::getType(FixedStringType::NAME);
+            $fixedSelect = static fn (EntityManager $manager): string =>
+                $manager->getUnitOfWork()->getEntityPersister(User::class)->getSelectSQL(['id' => 1]);
+            $fixedSql = Orm::withConnection($application, $fixedSelect);
+            $this->string($fixedSql)->contains('RTRIM(');
+            try {
+                DbalType::getTypeRegistry()->override('string', new FixedStringType());
+                $this->string(Orm::withConnection($application, $select))->contains('RTRIM(')->isNotIdenticalTo($plainSql);
+                DbalType::getTypeRegistry()->override('string', $originalString);
+                $this->string(Orm::withConnection($application, $select))->isIdenticalTo($plainSql);
+                DbalType::getTypeRegistry()->override(FixedStringType::NAME, new StringType());
+                $this->string(Orm::withConnection($application, $fixedSelect))->notContains('RTRIM(')->isNotIdenticalTo($fixedSql);
+            } finally {
+                DbalType::getTypeRegistry()->override('string', $originalString);
+                DbalType::getTypeRegistry()->override(FixedStringType::NAME, $originalFixed);
+            }
+            $this->string(Orm::withConnection($application, $fixedSelect))->isIdenticalTo($fixedSql);
+
+            $priorManager = null;
+            Orm::withConnection($application, static function (EntityManager $manager) use (&$priorManager): void {
+                $priorManager = $manager;
+            });
+            try {
+                // Even a same-class replacement changes the authoritative type binding.
+                DbalType::getTypeRegistry()->override('string', new StringType());
+                Orm::withConnection($application, function (EntityManager $manager) use ($priorManager): void {
+                    $this->object($manager)->isNotIdenticalTo($priorManager);
+                });
+            } finally {
+                DbalType::getTypeRegistry()->override('string', $originalString);
+            }
+            $rejected = null;
+            $this->exception(function () use ($application, &$rejected): void {
+                Orm::withConnection($application, static function (EntityManager $manager) use (&$rejected): void {
+                    $rejected = $manager;
+                    throw new LogicException('Rejected application operation');
+                });
+            })->isInstanceOf(LogicException::class);
+            Orm::withConnection($application, function (EntityManager $manager) use ($rejected): void {
+                $this->object($manager)->isNotIdenticalTo($rejected);
+            });
+            $failedCleanup = null;
+            $this->exception(function () use ($application, &$failedCleanup): void {
+                Orm::withConnection($application, static function (EntityManager $manager) use (&$failedCleanup): void {
+                    $failedCleanup = $manager;
+                    $manager->getEventManager()->addEventListener(Events::onClear, new class () {
+                        public function onClear(): void
+                        {
+                            throw new LogicException('Rejected application cleanup');
+                        }
+                    });
+                });
+            })->isInstanceOf(LogicException::class);
+            Orm::withConnection($application, function (EntityManager $manager) use ($failedCleanup): void {
+                $this->object($manager)->isNotIdenticalTo($failedCleanup);
+                $this->integer($manager->getUnitOfWork()->size())->isIdenticalTo(0);
+            });
+            $this->boolean($application->isConnected())->isFalse();
+            $this->boolean($otherRoute->isConnected())->isFalse();
+        } finally {
+            $application->close();
+            $otherRoute->close();
+        }
+
     }
 
     public function testScalarIdentifiersMatchBothProvidersAndIgnorePublicCustomization(): void

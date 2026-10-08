@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\DeletionUnit;
 use itsmng\Database\DropdownReadOperation;
 use itsmng\Database\EntityRegistry;
@@ -1181,8 +1182,10 @@ final class DbUtils
             if ($table === Location::getTable()) {
                 $columns = array_merge($columns, ['address', 'town', 'country']);
             }
-            $result = (new DropdownReadOperation($DB->getDoctrineConnection()))
-                ->label($table, (int)$ID, $type, $_SESSION['glpilanguage'] ?? '', $translations, $columns);
+            $connection = $DB->getDoctrineConnection();
+            $result = Orm::withReadConnection($connection, static fn (?EntityManager $manager): ?array =>
+                (new DropdownReadOperation($connection, $manager))
+                    ->label($table, (int)$ID, $type, $_SESSION['glpilanguage'] ?? '', $translations, $columns));
             $iterator = new RowIterator($result === null ? [] : [$result]);
         } else {
             $SELECTNAME    = new QueryExpression("'' AS " . $DB->quoteName('transname'));

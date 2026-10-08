@@ -22,6 +22,7 @@ use itsmng\Database\Driver\Postgres\OwnedStatement;
 /** Shared PostgreSQL transaction outcomes for ORM, DBAL and the legacy adapter. */
 final class PostgresConnection extends Connection implements ManagedTransactionConnection
 {
+    use ApplicationOrmOwnership;
     use PdoTransactionOwnership;
 
     private string $timezone = 'UTC';
@@ -135,6 +136,7 @@ final class PostgresConnection extends Connection implements ManagedTransactionC
 
     public function close(): void
     {
+        $this->resetApplicationEntityManager();
         $this->resetManagedFrames();
         if ($this->statements !== null) {
             foreach ($this->statements as $statement => $_) {

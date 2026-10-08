@@ -31,10 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\DropdownChoiceContext;
 use itsmng\Database\DropdownReadOperation;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\EntityScopeReadOperation;
+use itsmng\Database\Orm;
 use itsmng\Database\RowIterator;
 use itsmng\Database\UnmappedDropdownChoices;
 
@@ -369,8 +371,10 @@ class Dropdown
                     $item->getDropdownNameFields((bool)$tooltip),
                     EntityRegistry::columnNames($table)
                 ));
-                $data = (new DropdownReadOperation($DB->getDoctrineConnection()))
-                    ->label($table, (int)$id, $type, $_SESSION['glpilanguage'] ?? '', $translations, $columns);
+                $connection = $DB->getDoctrineConnection();
+                $data = Orm::withReadConnection($connection, static fn (?EntityManager $manager): ?array =>
+                    (new DropdownReadOperation($connection, $manager))
+                        ->label($table, (int)$id, $type, $_SESSION['glpilanguage'] ?? '', $translations, $columns));
                 $iterator = new RowIterator($data === null ? [] : [$data]);
             } else {
                 $SELECTNAME    = new QueryExpression("'' AS " . $DB->quoteName('transname'));
@@ -3163,16 +3167,18 @@ class Dropdown
             }
         }
         if (isset(EntityRegistry::tables()[$table])) {
-            return (new DropdownReadOperation($database->getDoctrineConnection()))->choices(
-                $table,
-                $criteria,
-                $order,
-                $translations,
-                $kind,
-                $_SESSION['glpilanguage'],
-                $limit,
-                $offset
-            );
+            $connection = $database->getDoctrineConnection();
+            return Orm::withReadConnection($connection, static fn (?EntityManager $manager): array =>
+                (new DropdownReadOperation($connection, $manager))->choices(
+                    $table,
+                    $criteria,
+                    $order,
+                    $translations,
+                    $kind,
+                    $_SESSION['glpilanguage'],
+                    $limit,
+                    $offset
+                ));
         }
         return UnmappedDropdownChoices::read(
             $database,

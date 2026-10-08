@@ -4,7 +4,6 @@
 
 namespace itsmng\Database;
 
-use Composer\InstalledVersions;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Types\Type as DbalType;
 use Doctrine\ORM\Configuration;
@@ -12,17 +11,16 @@ use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Query;
-use itsmng\Database\Type\FixedStringType;
 use LogicException;
 use Psr\SimpleCache\CacheInterface;
-use ReflectionClass;
-use ReflectionMethod;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 
 /** @internal Private implementation shared only by final read operation owners. */
 trait PrivateReadOwnership
 {
     private EntityManager $manager;
+    private bool $suppliedManager = false;
+    private bool $sharedManager = false;
     private readonly Connection $connection;
     private ?SerializedMetadataCache $queryCache = null;
     private array $identifiers = [];
@@ -32,31 +30,30 @@ trait PrivateReadOwnership
     private mixed $pool;
     private ?string $context = null;
 
-    public function __construct(Connection $connection)
+    /** @internal A supplied manager belongs to the enclosing value-only application scope. */
+    public function __construct(Connection $connection, ?EntityManager $manager = null)
     {
-        $this->initializeReadManager($connection);
+        $this->initializeReadManager($connection, $manager);
         $this->initializeReadCaches();
     }
 
-    private function initializeReadManager(Connection $connection): void
+    private function initializeReadManager(Connection $connection, ?EntityManager $manager = null): void
     {
         $this->connection = $connection;
-        $this->manager = Orm::forConnection($connection);
-        $this->ownedMapping = self::ownsReadMapping($connection);
+        if ($manager !== null && $manager->getConnection() !== $connection) {
+            throw new LogicException('A read operation must use its selected physical connection.');
+        }
+        $this->suppliedManager = $manager !== null;
+        $this->sharedManager = $this->suppliedManager
+            && ($connection instanceof MySQLManagedConnection || $connection instanceof PostgresConnection)
+            && $connection->ownsApplicationEntityManager($manager);
+        $this->manager = $manager ?? Orm::forConnection($connection);
+        $this->ownedMapping = (!$this->suppliedManager || $this->sharedManager) && self::ownsReadMapping($connection);
     }
 
     private static function ownsReadMapping(Connection $connection): bool
     {
-        $platformFile = (new ReflectionClass($connection->getDatabasePlatform()))->getFileName();
-        $dbalPath = InstalledVersions::getInstallPath('doctrine/dbal');
-        return $platformFile !== false && $dbalPath !== null
-            && ($platformFile = realpath($platformFile)) !== false
-            && ($dbalPath = realpath($dbalPath)) !== false
-            && str_starts_with($platformFile, $dbalPath . '/src/Platforms/')
-            // A connection-provided EventManager remains externally mutable, even
-            // before its first listener is registered. Its mappings and target
-            // identifier facts must therefore remain local from the outset.
-            && !method_exists($connection, 'getEventManager');
+        return Orm::ownsReadMapping($connection);
     }
 
     private function initializeReadCaches(?Configuration $configuration = null): void
@@ -94,7 +91,7 @@ trait PrivateReadOwnership
 
     private function fallbackManager(): EntityManager
     {
-        if ($this->persistentMetadataLoaded) {
+        if ($this->sharedManager || $this->persistentMetadataLoaded) {
             return Orm::forConnection($this->connection);
         }
         // This manager has only local metadata. Retire private cache eligibility
@@ -151,14 +148,8 @@ trait PrivateReadOwnership
         // Check the actual selected and bound SQL conversions, including integer
         // association parameters that need not occur among the root scalar fields.
         foreach (array_unique($types) as $name) {
-            $type = DbalType::getType($name);
-            if ($name === FixedStringType::NAME && $type::class === FixedStringType::class) {
-                continue;
-            }
-            foreach (['convertToPHPValueSQL', 'convertToDatabaseValueSQL'] as $method) {
-                if ((new ReflectionMethod($type, $method))->getDeclaringClass()->getName() !== DbalType::class) {
-                    return;
-                }
+            if (!Orm::stableSqlConversion($name, DbalType::getType($name))) {
+                return;
             }
         }
         $query->setQueryCache($this->queryCache);
@@ -166,7 +157,9 @@ trait PrivateReadOwnership
 
     public function close(): void
     {
-        $this->manager->clear();
+        if (!$this->suppliedManager) {
+            $this->manager->clear();
+        }
     }
 
     public function __destruct()

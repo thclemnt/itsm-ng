@@ -5,6 +5,7 @@
 namespace itsmng\Database;
 
 use DBAdapter;
+use Doctrine\ORM\EntityManager;
 use InvalidArgumentException;
 use itsmng\Database\Repository\RecordWriter;
 use QueryExpression;
@@ -24,35 +25,32 @@ final class MappedStorage
 
     public function insert(string $table, array $values): int
     {
-        $em = Orm::create($this->db);
-        try {
-            return (new RecordWriter($em))->insert($table, ReferenceValues::normalizeLegacy($table, self::values($values)));
-        } finally {
-            $em->clear();
-        }
+        $connection = $this->db->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($this->db, $connection);
+        return Orm::withConnection($connection, static function (EntityManager $manager) use ($table, $values): int {
+            return (new RecordWriter($manager))->insert($table, ReferenceValues::normalizeLegacy($table, self::values($values)));
+        });
     }
 
     /** @return string[] Columns changed by this unit of work. */
     public function update(string $table, int $id, array $values): array
     {
-        $em = Orm::create($this->db);
-        try {
-            $changed = (new RecordWriter($em))->update($table, $id, ReferenceValues::normalizeLegacy($table, self::values($values)));
+        $connection = $this->db->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($this->db, $connection);
+        return Orm::withConnection($connection, static function (EntityManager $manager) use ($table, $id, $values): array {
+            $changed = (new RecordWriter($manager))->update($table, $id, ReferenceValues::normalizeLegacy($table, self::values($values)));
             return EntityConfigurationReferences::legacyChanges($table, $changed);
-        } finally {
-            $em->clear();
-        }
+        });
     }
 
     public function delete(string $table, int $id): bool
     {
-        $em = Orm::create($this->db);
-        try {
-            (new RecordWriter($em))->delete($table, $id);
+        $connection = $this->db->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($this->db, $connection);
+        return Orm::withConnection($connection, static function (EntityManager $manager) use ($table, $id): bool {
+            (new RecordWriter($manager))->delete($table, $id);
             return true;
-        } finally {
-            $em->clear();
-        }
+        });
     }
 
     private static function values(array $values): array

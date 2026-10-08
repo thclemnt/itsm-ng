@@ -4,6 +4,7 @@
 
 namespace itsmng\Database;
 
+use Composer\InstalledVersions;
 use DBAdapter;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
@@ -12,6 +13,8 @@ use Doctrine\ORM\Configuration;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Proxy\ProxyFactory;
 use itsmng\Database\Mapping\AttributeDriver;
+use ReflectionClass;
+use ReflectionMethod;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 
 final class Orm
@@ -26,6 +29,56 @@ final class Orm
         $connection = $db->getDoctrineConnection();
         OwnershipUpdateUnit::assertResolvedWriter($db, $connection);
         return self::forConnection($connection);
+    }
+
+    /** @internal Value-only application work; custom configurations use create()/forConnection(). */
+    public static function withConnection(Connection $connection, callable $operation): mixed
+    {
+        if (($connection instanceof MySQLManagedConnection || $connection instanceof PostgresConnection)
+            && self::ownsReadMapping($connection)
+            && !array_filter(DbalType::getTypeRegistry()->getMap(), static fn (DbalType $type, string $name): bool => !self::stableSqlConversion($name, $type), ARRAY_FILTER_USE_BOTH)) {
+            return $connection->withApplicationEntityManager($operation);
+        }
+        // Supplied/custom connections retain independently mutable configuration.
+        $manager = self::forConnection($connection);
+        try {
+            return $operation($manager);
+        } finally {
+            $manager->clear();
+        }
+    }
+
+    /** @internal Custom readers retain their original constructor and clear callbacks. */
+    public static function withReadConnection(Connection $connection, callable $operation): mixed
+    {
+        if (!$connection instanceof MySQLManagedConnection && !$connection instanceof PostgresConnection) {
+            return $operation(null);
+        }
+        return self::withConnection($connection, $operation);
+    }
+
+    /** Canonical declarations cannot depend on externally mutable mapping callbacks. */
+    public static function ownsReadMapping(Connection $connection): bool
+    {
+        $platformFile = (new ReflectionClass($connection->getDatabasePlatform()))->getFileName();
+        $dbalPath = InstalledVersions::getInstallPath('doctrine/dbal');
+        return $platformFile !== false && $dbalPath !== null
+            && ($platformFile = realpath($platformFile)) !== false
+            && ($dbalPath = realpath($dbalPath)) !== false
+            && str_starts_with($platformFile, $dbalPath . '/src/Platforms/')
+            && !method_exists($connection, 'getEventManager');
+    }
+
+    /** SQL retained by Doctrine persisters must not depend on a live custom converter. */
+    public static function stableSqlConversion(string $name, DbalType $type): bool
+    {
+        static $classes = [];
+        $class = $type::class;
+        if ($name === Type\FixedStringType::NAME || $class === Type\FixedStringType::class) {
+            return $name === Type\FixedStringType::NAME && $class === Type\FixedStringType::class;
+        }
+        return $classes[$class] ??= (new ReflectionMethod($type, 'convertToPHPValueSQL'))->getDeclaringClass()->getName() === DbalType::class
+            && (new ReflectionMethod($type, 'convertToDatabaseValueSQL'))->getDeclaringClass()->getName() === DbalType::class;
     }
 
     /** Construct on the operation's already selected route without resolving it again. */
@@ -49,12 +102,15 @@ final class Orm
     /** One current model-row operation; only its scalar branch owns a private compiled plan. */
     public static function readRecord(DBAdapter $db, string $table, string $column, int $id): ?array
     {
-        $operation = new RecordReadOperation($db->getDoctrineConnection());
-        try {
-            return $operation->row($table, $column, $id);
-        } finally {
-            $operation->close();
-        }
+        $connection = $db->getDoctrineConnection();
+        return self::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $table, $column, $id): ?array {
+            $operation = new RecordReadOperation($connection, $manager);
+            try {
+                return $operation->row($table, $column, $id);
+            } finally {
+                $operation->close();
+            }
+        });
     }
 
     /** Independent mutable configuration; no caller can alter another operation. */

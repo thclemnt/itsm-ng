@@ -12,6 +12,7 @@ use itsmng\Database\Driver\OwnedConnection;
 /** The application and installation use one PDO-backed DBAL physical owner. */
 final class MySQLManagedConnection extends Connection implements ManagedTransactionConnection
 {
+    use ApplicationOrmOwnership;
     use PdoTransactionOwnership;
 
     protected function connect(): DriverConnection
@@ -52,6 +53,7 @@ final class MySQLManagedConnection extends Connection implements ManagedTransact
 
     public function close(): void
     {
+        $this->resetApplicationEntityManager();
         $this->resetManagedFrames();
         try {
             if ($this->_conn instanceof OwnedConnection) {

@@ -5,6 +5,7 @@
 namespace itsmng\Database;
 
 use DBAdapter;
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Repository\RecordRepository;
 
 /** Scoped ORM reads beneath the legacy model's row and lifecycle interfaces. */
@@ -15,13 +16,16 @@ final class MappedReads
         if (!isset(EntityRegistry::tables()[$table])) {
             throw new UnsupportedCriteria('Unmapped table requires a registered entity.');
         }
-        $operation = new RecordReadOperation($database->getDoctrineConnection());
-        try {
-            $rows = $operation->matching($table, $criteria, $order, $limit, $offset);
-            return array_map(static fn (array $row): array => ReferenceValues::legacyRow($table, $row), $rows);
-        } finally {
-            $operation->close();
-        }
+        $connection = $database->getDoctrineConnection();
+        return Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $table, $criteria, $order, $limit, $offset): array {
+            $operation = new RecordReadOperation($connection, $manager);
+            try {
+                $rows = $operation->matching($table, $criteria, $order, $limit, $offset);
+                return array_map(static fn (array $row): array => ReferenceValues::legacyRow($table, $row), $rows);
+            } finally {
+                $operation->close();
+            }
+        });
     }
 
     public static function countMatching(DBAdapter $database, string $table, array $criteria): int
@@ -29,12 +33,15 @@ final class MappedReads
         if (!isset(EntityRegistry::tables()[$table])) {
             throw new UnsupportedCriteria('Unmapped table requires a registered entity.');
         }
-        $operation = new RecordReadOperation($database->getDoctrineConnection());
-        try {
-            return $operation->countMatching($table, $criteria);
-        } finally {
-            $operation->close();
-        }
+        $connection = $database->getDoctrineConnection();
+        return Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $table, $criteria): int {
+            $operation = new RecordReadOperation($connection, $manager);
+            try {
+                return $operation->countMatching($table, $criteria);
+            } finally {
+                $operation->close();
+            }
+        });
     }
 
     public static function identifiers(DBAdapter $database, string $table, string $column, array $criteria, array|string $order = []): array
@@ -42,11 +49,10 @@ final class MappedReads
         if (!isset(EntityRegistry::tables()[$table])) {
             throw new UnsupportedCriteria('Unmapped table requires a registered entity.');
         }
-        $em = Orm::create($database);
-        try {
-            return (new RecordRepository($em))->identifiers($table, $column, $criteria, $order);
-        } finally {
-            $em->clear();
-        }
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        return Orm::withConnection($connection, static function (EntityManager $manager) use ($table, $column, $criteria, $order): array {
+            return (new RecordRepository($manager))->identifiers($table, $column, $criteria, $order);
+        });
     }
 }

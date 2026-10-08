@@ -84,6 +84,7 @@ use itsmng\Database\Entity\Infocom as InfocomEntity;
 use itsmng\Database\Entity\NetworkPort;
 use itsmng\Database\Entity\NetworkPortLocal;
 use itsmng\Database\Entity\Ticket as TicketEntity;
+use itsmng\Database\MappedStorage;
 use itsmng\Database\MutationCleanupFailure;
 use itsmng\Database\MySQLConnection;
 use itsmng\Database\PostgresConnection;
@@ -497,6 +498,41 @@ class CommonDBTM extends DbTestCase
         $segment = $this->createItem(CalendarSegment::class, ['calendars_id' => $calendar->getID(),
             'day' => 1, 'begin' => '00:00:00', 'end' => '24:00:00']);
         $connection = $DB->getDoctrineConnection();
+        // Repeated ordinary model reads share the selected connection's manager.
+        $reloaded = new Computer();
+        $this->boolean($reloaded->getFromDB($computer->getID()))->isTrue();
+        $creations = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeCreations = $creations->getValue();
+        for ($repeat = 0; $repeat < 3; ++$repeat) {
+            $this->boolean($reloaded->getFromDB($computer->getID()))->isTrue();
+            $this->string($reloaded->fields['name'])->isIdenticalTo('Before scalar read');
+        }
+        $this->integer($creations->getValue() - $beforeCreations)->isIdenticalTo(
+            0,
+            'Repeated model reads must not construct another EntityManager on the same application connection'
+        );
+        $frame = OwnedMutationFrame::begin($connection);
+        try {
+            $storage = new MappedStorage($DB);
+            $storage->update('glpi_computers', (int)$computer->getID(), ['name' => 'Scoped ORM write']);
+            $this->boolean($reloaded->getFromDB($computer->getID()))->isTrue();
+            $this->string($reloaded->fields['name'])->isIdenticalTo('Scoped ORM write');
+            $this->integer($connection->update('glpi_computers', ['name' => 'Direct DBAL write'], ['id' => $computer->getID()]))->isIdenticalTo(1);
+            $this->boolean($reloaded->getFromDB($computer->getID()))->isTrue();
+            $this->string($reloaded->fields['name'])->isIdenticalTo('Direct DBAL write');
+            $storage->update('glpi_computers', (int)$computer->getID(), ['comment' => 'Fresh assignment after DBAL']);
+            $this->string($connection->fetchOne('SELECT name FROM glpi_computers WHERE id = ?', [$computer->getID()]))
+                ->isIdenticalTo('Direct DBAL write');
+            $this->integer($creations->getValue() - $beforeCreations)->isIdenticalTo(
+                0,
+                'Sequential mapped writes and reads use the same canonical manager without stale managed rows'
+            );
+        } finally {
+            $frame->rollBack();
+        }
+        $this->boolean($reloaded->getFromDB($computer->getID()))->isTrue();
+        $this->string($reloaded->fields['name'])->isIdenticalTo('Before scalar read');
+
         $manager = new class ($connection, Orm::configuration($connection->getDatabasePlatform())) extends EntityManager {
             public array $queries = [];
             public array $hydrationModes = [];
