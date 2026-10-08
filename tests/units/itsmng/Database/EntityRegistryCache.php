@@ -46,6 +46,7 @@ use itsmng\Database\Query\EpochSeconds;
 use itsmng\Database\SerializedMetadataCache;
 use stdClass;
 use itsmng\Database\Entity\ComputerItem;
+use itsmng\Database\Entity\ComputerVirtualMachine;
 use itsmng\Database\Entity\ITILFollowup;
 
 /** Mapping/cache behavior without an application bootstrap or database connection. */
@@ -292,6 +293,16 @@ class EntityRegistryCache extends test
                 $quote = $configuration->getQuoteStrategy();
                 $quoteName = static fn (array $name): string => $name[1] ? $platform->quoteSingleIdentifier($name[0]) : $name[0];
                 foreach ($manager->getMetadataFactory()->getAllMetadata() as $metadata) {
+                    if ($metadata->name === ComputerVirtualMachine::class) {
+                        $vm = EntityRegistry::virtualMachineCountMapping();
+                        $this->array($vm);
+                        $this->string($quoteName($vm['table']))->isIdenticalTo($quote->getTableName($metadata, $platform));
+                        $this->string($quoteName($vm['id']))->isIdenticalTo($quote->getColumnName('id', $metadata, $platform));
+                        $this->string($quoteName($vm['deleted']))->isIdenticalTo($quote->getColumnName('is_deleted', $metadata, $platform));
+                        $this->string($vm['deleted'][2])->isIdenticalTo($metadata->getTypeOfField('is_deleted'));
+                        $join = $metadata->associationMappings['computers']->joinColumns[0];
+                        $this->string($quoteName($vm['host']))->isIdenticalTo($quote->getJoinColumnName($join, $metadata, $platform));
+                    }
                     if ($metadata->name === ITILFollowup::class) {
                         $promotion = EntityRegistry::promotionSourceMapping();
                         $this->array($promotion);
@@ -661,7 +672,7 @@ class EntityRegistryCache extends test
         $previousModel = $model->getValue();
         $pool = new ArrayAdapter(storeSerialized: false);
         $GLOBALS['GLPI_CACHE'] = new Psr16Cache($pool);
-        $snapshot = static fn (): array => [EntityRegistry::tables(), EntityRegistry::legacyTables(), EntityRegistry::relations(), EntityRegistry::lifecycleRelations(), EntityRegistry::nativeTimestamps(), EntityRegistry::booleanColumns(), EntityRegistry::references('glpi_tickets'), EntityRegistry::fieldTypes('glpi_entities'), EntityRegistry::fieldEnums('glpi_entities'), EntityRegistry::promotionSourceMapping(), EntityRegistry::computerItemMapping()];
+        $snapshot = static fn (): array => [EntityRegistry::tables(), EntityRegistry::legacyTables(), EntityRegistry::relations(), EntityRegistry::lifecycleRelations(), EntityRegistry::nativeTimestamps(), EntityRegistry::booleanColumns(), EntityRegistry::references('glpi_tickets'), EntityRegistry::fieldTypes('glpi_entities'), EntityRegistry::fieldEnums('glpi_entities'), EntityRegistry::promotionSourceMapping(), EntityRegistry::computerItemMapping(), EntityRegistry::virtualMachineCountMapping()];
         try {
             $model->setValue(null, null);
             $cold = serialize($snapshot());

@@ -5,6 +5,9 @@
 namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\ArrayParameterType;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Query\QueryBuilder;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity;
@@ -50,6 +53,22 @@ final class InventoryRepository
             ['computers_id' => $computer, 'is_deleted' => false],
             legacyValues: false
         );
+    }
+
+    /** @internal Scalar count on the private tab owner's authority-derived projection. */
+    public static function projectedVirtualMachineCount(Connection $connection, array $mapping, int $computer): int
+    {
+        $platform = $connection->getDatabasePlatform();
+        $quote = static fn (array $name): string => $name[1] ? $platform->quoteSingleIdentifier($name[0]) : $name[0];
+        return (int)(new QueryBuilder($connection))
+            ->select('COUNT(r.' . $quote($mapping['id']) . ')')
+            ->from($quote($mapping['table']), 'r')
+            ->where('r.' . $quote($mapping['host']) . ' = ' . Type::getType(Types::INTEGER)->convertToDatabaseValueSQL('?', $platform))
+            ->andWhere('r.' . $quote($mapping['deleted']) . ' = ' . Type::getType($mapping['deleted'][2])->convertToDatabaseValueSQL('?', $platform))
+            ->setParameter(0, $computer, Types::INTEGER)
+            ->setParameter(1, false, $mapping['deleted'][2])
+            ->executeQuery()
+            ->fetchOne();
     }
 
     /** A host is listed once even when inventory contains duplicate UUID records. */

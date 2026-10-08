@@ -67,6 +67,12 @@ final class EntityRegistry
         return self::model()['computer_item'] ?? null;
     }
 
+    /** Fixed virtualization count facts from the declared host relationship. */
+    public static function virtualMachineCountMapping(): ?array
+    {
+        return self::model()['virtual_machine_count'] ?? null;
+    }
+
     /** Cache fields and owning self-parent names for private tree point reads. */
     public static function treePointMapping(string $table): ?array
     {
@@ -265,6 +271,28 @@ final class EntityRegistry
         return $projection;
     }
 
+    private static function virtualMachineCountProjection(EntityManager $manager): ?array
+    {
+        $metadata = $manager->getClassMetadata(Entity\ComputerVirtualMachine::class);
+        $host = $metadata->associationMappings['computers'] ?? null;
+        if ($metadata->identifier !== ['id'] || !$metadata->hasField('id')
+            || !$metadata->hasField('is_deleted') || !$metadata->isInheritanceTypeNone()
+            || !empty($metadata->table['schema']) || $host === null
+            || !$host->isToOneOwningSide() || count($host->joinColumns) !== 1
+            || $host->joinColumns[0]->name !== 'computers_id'
+            || $metadata->getColumnName('is_deleted') !== 'is_deleted'
+            || $metadata->getTypeOfField('is_deleted') !== 'boolean') {
+            return null;
+        }
+        $id = $metadata->fieldMappings['id'];
+        $deleted = $metadata->fieldMappings['is_deleted'];
+        $join = $host->joinColumns[0];
+        return ['table' => [$metadata->table['name'], isset($metadata->table['quoted'])],
+            'id' => [$id->columnName, isset($id->quoted)],
+            'host' => [$join->name, isset($join->quoted)],
+            'deleted' => [$deleted->columnName, isset($deleted->quoted), $deleted->type]];
+    }
+
     private static function buildModel(): array
     {
         // Mapping inspection must also work before installation. The explicit
@@ -458,12 +486,13 @@ final class EntityRegistry
         }
         unset($children);
         $reservationUser = self::reservationUserProjection($em);
+        $virtualMachineCount = self::virtualMachineCountProjection($em);
         $promotionSource = self::promotionSourceProjection($em);
         $computerItem = self::computerItemProjection($em);
         $connection->close();
         // Only immutable lookup projections survive bootstrap, not the offline unit of work.
         unset($em, $metadata, $record);
         gc_collect_cycles();
-        return ['legacy_tables' => $legacyTables, 'tables' => $tables, 'types' => $types, 'enums' => $enums, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners, 'native_timestamps' => $nativeTimestamps, 'scalar_identifiers' => $scalarIdentifiers, 'component_counts' => $componentCounts, 'reservation_user' => $reservationUser, 'tree_points' => $treePoints, 'promotion_source' => $promotionSource, 'computer_item' => $computerItem];
+        return ['legacy_tables' => $legacyTables, 'tables' => $tables, 'types' => $types, 'enums' => $enums, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners, 'native_timestamps' => $nativeTimestamps, 'scalar_identifiers' => $scalarIdentifiers, 'component_counts' => $componentCounts, 'reservation_user' => $reservationUser, 'tree_points' => $treePoints, 'promotion_source' => $promotionSource, 'computer_item' => $computerItem, 'virtual_machine_count' => $virtualMachineCount];
     }
 }

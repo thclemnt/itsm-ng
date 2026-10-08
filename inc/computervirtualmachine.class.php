@@ -33,6 +33,7 @@
 
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\InventoryRepository;
+use itsmng\Database\VirtualMachineCountReadOperation;
 
 /**
  * Virtual machine management
@@ -72,8 +73,8 @@ class ComputerVirtualMachine extends CommonDBChild
         ) {
             $nb = 0;
             if ($_SESSION['glpishow_count_on_tabs']) {
-                $nb = (new InventoryRepository(Orm::create($DB)))
-                    ->countVirtualMachines((int)$item->getID());
+                $nb = VirtualMachineCountReadOperation::forDatabase($DB)
+                    ->forComputer((int)$item->getID());
             }
             return self::createTabEntry(self::getTypeName(), $nb);
         }
