@@ -5,12 +5,14 @@
 namespace itsmng\Database\Repository;
 
 use CommonITILObject;
+use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\QueryBuilder;
 use InvalidArgumentException;
+use ReflectionMethod;
 use itsmng\Database\Entity;
 use itsmng\Database\Expressions;
 use itsmng\Database\ITILDocumentAccess;
@@ -84,9 +86,20 @@ final class DocumentRepository
     /** Only the private, canonical timeline read owner admits this fixed projection. */
     public function nativeTimelineDocumentCount(string $type, int $item, ITILDocumentAccess $access): int
     {
-        $subjects = $this->itilSubjects($type, $access);
         $connection = $this->em->getConnection();
+        foreach (['getDatabasePlatform', 'createQueryBuilder', 'quote'] as $method) {
+            if ((new ReflectionMethod($connection, $method))->getDeclaringClass()->getName() !== Connection::class) {
+                return $this->countTimelineDocuments($type, $item, $access);
+            }
+        }
         $platform = $connection->getDatabasePlatform();
+        // Repeated predicates must retain the ORM's SQL callback order and multiplicity.
+        foreach ([Types::INTEGER, Types::BOOLEAN] as $name) {
+            if ((new ReflectionMethod(Type::getType($name), 'convertToDatabaseValueSQL'))->getDeclaringClass()->getName() !== Type::class) {
+                return $this->countTimelineDocuments($type, $item, $access);
+            }
+        }
+        $subjects = $this->itilSubjects($type, $access);
         $quote = $this->em->getConfiguration()->getQuoteStrategy();
         $document = $this->em->getClassMetadata(Entity\DocumentItem::class);
         $column = static fn (ClassMetadata $metadata, string $field, string $alias): string =>
@@ -143,11 +156,11 @@ final class DocumentRepository
             ->andWhere($column($document, 'timeline_position', 'd') . ' > ' . $inline);
         // Counting the distinct pair retains NULL calendar keys and repeated documents.
         // COUNT(DISTINCT document_id) or a multi-column MySQL COUNT drops valid events.
-        return (int)$connection->fetchOne(
+        return (int)$connection->executeQuery(
             'SELECT COUNT(*) FROM (' . $query->getSQL() . ') document_events',
             $query->getParameters(),
             $query->getParameterTypes()
-        );
+        )->fetchOne();
     }
 
     /** Template attachments retain one row per visible timeline binding. */

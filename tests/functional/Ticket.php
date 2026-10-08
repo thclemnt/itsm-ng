@@ -36,8 +36,15 @@ namespace tests\units;
 use CommonITILObject;
 use DbTestCase;
 use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Cache\QueryCacheProfile;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Driver;
+use Doctrine\DBAL\Driver\Connection as DriverConnection;
+use Doctrine\DBAL\Driver\Middleware\AbstractDriverMiddleware;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Query\QueryBuilder;
+use Doctrine\DBAL\Result;
+use Doctrine\DBAL\ServerVersionProvider;
 use Doctrine\DBAL\Types\BigIntType;
 use Doctrine\DBAL\Types\BooleanType;
 use Doctrine\DBAL\Types\IntegerType;
@@ -45,8 +52,10 @@ use Doctrine\DBAL\Types\StringType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use ITILSolution;
+use LogicException;
 use itsmng\Database\Entity\DocumentItem;
 use itsmng\Database\Entity\ITILSolution as SolutionRecord;
+use itsmng\Database\ITILDocumentAccess;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\DocumentRepository;
 use itsmng\Database\Repository\RecordRepository;
@@ -2593,7 +2602,7 @@ class Ticket extends DbTestCase
                 $item::getAssociatedDocumentAccess($bypassRights)
             );
             $this->integer($count)->isEqualTo($expected);
-            $probe = new TicketScalarReadProbe($DB->getDoctrineConnection());
+            $probe = new TimelineDocumentReadProbe($DB->getDoctrineConnection());
             $reader = new TimelineCountReadOperation($probe);
             try {
                 $this->integer($reader->documents(
@@ -2601,7 +2610,6 @@ class Ticket extends DbTestCase
                     (int)$item->getID(),
                     $item::getAssociatedDocumentAccess($bypassRights)
                 ))->isIdenticalTo($count);
-                $this->integer($probe->builders)->isIdenticalTo(1);
                 $this->array($probe->queries)->hasSize(1);
                 $this->string($probe->queries[0]['sql'])->startWith('SELECT COUNT(*) FROM (SELECT DISTINCT ')
                     ->contains(' AS document_id')->contains(' AS event_date')
@@ -2680,7 +2688,7 @@ class Ticket extends DbTestCase
                         preg_match('/^SELECT COUNT\(/i', $query['sql']) === 1
                         && !str_contains($query['sql'], 'glpi_documents_items'));
                     $this->array($eventQueries)->hasSize(3);
-                    $this->integer($probe->builders)->isIdenticalTo(4);
+                    $this->integer($probe->builders)->isIdenticalTo(3);
                 } finally {
                     $DB = $originalAdapter;
                 }
@@ -2815,7 +2823,7 @@ class Ticket extends DbTestCase
                     try {
                         $DB = $adapter;
                         $count = $item->getTimelineItemCount();
-                        $this->integer($probe->builders)->isIdenticalTo(4);
+                        $this->integer($probe->builders)->isIdenticalTo(3);
                     } finally {
                         $DB = $originalAdapter;
                     }
@@ -2868,7 +2876,7 @@ class Ticket extends DbTestCase
                         $probe->builders = 0;
                         $this->integer($callbackItem->getTimelineItemCount())->isIdenticalTo($expectedRouteCount);
                         $this->integer($selectedCalls)->isIdenticalTo(1);
-                        $this->integer($probe->builders)->isIdenticalTo(4);
+                        $this->integer($probe->builders)->isIdenticalTo(3);
                         $this->array($otherProbe->queries)->isEmpty();
                         $this->object($DB)->isIdenticalTo($otherAdapter);
                     } finally {
@@ -2926,7 +2934,7 @@ class Ticket extends DbTestCase
                             $this->calling($adapter)->getDoctrineConnection = $probe;
                             $probe->builders = 0;
                             $this->integer($item->getTimelineItemCount())->isIdenticalTo($expected);
-                            $this->integer($probe->builders)->isIdenticalTo(4);
+                            $this->integer($probe->builders)->isIdenticalTo(3);
                             Type::overrideType($name, $originalTypes[$name]);
                         }
                     } finally {
@@ -2980,6 +2988,78 @@ class Ticket extends DbTestCase
             $this->checkTimelineDocumentCount($item, 2);
             $this->integer($item->getTimelineItemCount())->isEqualTo(2)->isEqualTo(count($item->getTimelineItems()));
             if ($type === 'Ticket') {
+                $originalInteger = Type::getType('integer');
+                $converter = new class () extends IntegerType {
+                    public int $calls = 0;
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        // The fifth original occurrence is the final timeline-position predicate.
+                        return ++$this->calls === 5 ? '(' . $sqlExpr . ' + 100)' : $sqlExpr;
+                    }
+                };
+                $access = new ITILDocumentAccess(17, true, true, true, true, true);
+                $manager = Orm::create($DB);
+                $probe = new TimelineDocumentReadProbe($DB->getDoctrineConnection());
+                $reader = new TimelineCountReadOperation($probe);
+                try {
+                    Type::overrideType('integer', $converter);
+                    $expected = (new DocumentRepository($manager))->countTimelineDocuments('Ticket', (int)$item->getID(), $access);
+                    $this->integer($expected)->isIdenticalTo(0);
+                    $this->integer($converter->calls)->isIdenticalTo(5);
+                    $converter->calls = 0;
+                    $this->integer($reader->documents('Ticket', (int)$item->getID(), $access))->isIdenticalTo($expected);
+                    $this->integer($converter->calls)->isIdenticalTo(5);
+                    $this->array($probe->queries)->hasSize(1);
+                    $this->string($probe->queries[0]['sql'])->startWith('SELECT DISTINCT ');
+                } finally {
+                    Type::overrideType('integer', $originalInteger);
+                    $reader->close();
+                    $manager->clear();
+                }
+                $dispatch = new class ($DB->getDoctrineConnection()) extends TimelineDocumentReadProbe {
+                    public function fetchOne(string $query, array $params = [], array $types = []): mixed
+                    {
+                        throw new LogicException('Document reads must retain the ORM executeQuery dispatch');
+                    }
+                };
+                $reader = new TimelineCountReadOperation($dispatch);
+                try {
+                    $this->integer($reader->documents('Ticket', (int)$item->getID(), $access))->isIdenticalTo(2);
+                    $this->array($dispatch->queries)->hasSize(1);
+                    $this->string($dispatch->queries[0]['sql'])->startWith('SELECT COUNT(*) FROM (SELECT DISTINCT ');
+                } finally {
+                    $reader->close();
+                }
+                // Supplied compiler extensions keep their ordinary ORM dispatch.
+                foreach ([
+                    new class ($DB->getDoctrineConnection()) extends TimelineDocumentReadProbe {
+                        public function createQueryBuilder(): QueryBuilder
+                        {
+                            throw new LogicException('ORM reads do not invoke the DBAL builder extension');
+                        }
+                    },
+                    new class ($DB->getDoctrineConnection()) extends TimelineDocumentReadProbe {
+                        public function getDatabasePlatform(): AbstractPlatform
+                        {
+                            return parent::getDatabasePlatform();
+                        }
+                    },
+                    new class ($DB->getDoctrineConnection()) extends TimelineDocumentReadProbe {
+                        public function quote(string $value): string
+                        {
+                            return parent::quote($value);
+                        }
+                    },
+                ] as $extended) {
+                    $reader = new TimelineCountReadOperation($extended);
+                    try {
+                        $this->integer($reader->documents('Ticket', (int)$item->getID(), $access))->isIdenticalTo(2);
+                        $this->array($extended->queries)->hasSize(1);
+                        $this->string($extended->queries[0]['sql'])->startWith('SELECT DISTINCT ');
+                    } finally {
+                        $reader->close();
+                    }
+                }
                 $local = new TimelineLocalCountProbe($DB->getDoctrineConnection());
                 $reader = new TimelineCountReadOperation($local);
                 $listener = new class () {
@@ -5667,6 +5747,46 @@ class TicketScalarReadProbe extends \Doctrine\DBAL\Connection
     }
 
     public function executeQuery(string $sql, array $params = [], array $types = [], ?\Doctrine\DBAL\Cache\QueryCacheProfile $qcp = null): \Doctrine\DBAL\Result
+    {
+        $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
+        return $this->selected->executeQuery($sql, $params, $types, $qcp);
+    }
+}
+
+
+/** Observe document SQL while retaining the base connection's compiler methods. */
+class TimelineDocumentReadProbe extends Connection
+{
+    public array $queries = [];
+
+    public function __construct(private readonly Connection $selected)
+    {
+        $driver = new class ($selected->getDriver(), $selected->getDatabasePlatform()) extends AbstractDriverMiddleware {
+            public function __construct(Driver $driver, private readonly AbstractPlatform $platform)
+            {
+                parent::__construct($driver);
+            }
+
+            public function getDatabasePlatform(ServerVersionProvider $versionProvider): AbstractPlatform
+            {
+                return $this->platform;
+            }
+
+            public function connect(array $params): DriverConnection
+            {
+                throw new LogicException('The document observer cannot open an independent connection');
+            }
+        };
+        parent::__construct($selected->getParams(), $driver, $selected->getConfiguration());
+    }
+
+    protected function connect(): DriverConnection
+    {
+        // Fixed discriminator quoting uses the same physical route and transaction.
+        return $this->selected->connect();
+    }
+
+    public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
     {
         $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
         return $this->selected->executeQuery($sql, $params, $types, $qcp);
