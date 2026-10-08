@@ -6,10 +6,11 @@ namespace itsmng\Database;
 
 use DBAdapter;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Types\Type as DbalType;
 use Doctrine\ORM\Configuration;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Proxy\ProxyFactory;
-use Doctrine\DBAL\Platforms\AbstractPlatform;
 use itsmng\Database\Mapping\AttributeDriver;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 
@@ -60,11 +61,11 @@ final class Orm
     public static function configuration(AbstractPlatform $platform): Configuration
     {
         $proxyDirectory = defined('GLPI_CACHE_DIR') ? GLPI_CACHE_DIR . '/orm' : sys_get_temp_dir() . '/itsm-orm';
-        if (!\Doctrine\DBAL\Types\Type::hasType(Type\ClockTimeType::NAME)) {
-            \Doctrine\DBAL\Types\Type::addType(Type\ClockTimeType::NAME, Type\ClockTimeType::class);
+        if (!DbalType::hasType(Type\ClockTimeType::NAME)) {
+            DbalType::addType(Type\ClockTimeType::NAME, Type\ClockTimeType::class);
         }
-        if (!\Doctrine\DBAL\Types\Type::hasType(Type\FixedStringType::NAME)) {
-            \Doctrine\DBAL\Types\Type::addType(Type\FixedStringType::NAME, Type\FixedStringType::class);
+        if (!DbalType::hasType(Type\FixedStringType::NAME)) {
+            DbalType::addType(Type\FixedStringType::NAME, Type\FixedStringType::class);
         }
         $config = new Configuration();
         $config->setDefaultRepositoryClassName(Repository\DropdownChoiceRepository::class);

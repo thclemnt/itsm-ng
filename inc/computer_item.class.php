@@ -33,7 +33,9 @@
 
 use itsmng\Database\DeletionUnit;
 use itsmng\Database\LifecycleModelJournal;
+use itsmng\Database\Orm;
 use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\AssetRepository;
 use itsmng\Database\TransactionOwnershipMismatch;
 
 if (!defined('GLPI_ROOT')) {
@@ -635,7 +637,7 @@ class Computer_Item extends CommonDBRelation
             // Form/massive-action callbacks have finished. Permission hooks
             // still require complete per-row reads and may change later rows.
             $display = empty($PLUGIN_HOOKS['item_can'])
-                ? (new \itsmng\Database\Repository\AssetRepository(\itsmng\Database\Orm::create($DB)))
+                ? (new AssetRepository(Orm::create($DB)))
                     ->computerDisplayData($compids)
                 : [];
             foreach ($compids as $key => $compid) {
@@ -1008,9 +1010,9 @@ class Computer_Item extends CommonDBRelation
     {
         global $DB;
 
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         try {
-            $links = (new \itsmng\Database\Repository\AssetRepository($em))->linkedItems(
+            $links = (new AssetRepository($em))->linkedItems(
                 $item instanceof Computer ? Computer::class : $item->getType(),
                 (int)$item->getID()
             );

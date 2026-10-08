@@ -564,9 +564,19 @@ class Computer extends DbTestCase
             $PLUGIN_HOOKS['pre_item_update']['unglobalize_writer_fixture'][Monitor::class] = static function (
                 CommonDBTM $model
             ) use (
-                &$attempting, &$mode, &$triggered, &$deviceId, &$replacement,
-                &$nested, &$nestedRunning, &$nestedResult, &$nestedDepth, &$returnedDepth,
-                $connection, $database, $switchRoute
+                &$attempting,
+                &$mode,
+                &$triggered,
+                &$deviceId,
+                &$replacement,
+                &$nested,
+                &$nestedRunning,
+                &$nestedResult,
+                &$nestedDepth,
+                &$returnedDepth,
+                $connection,
+                $database,
+                $switchRoute
             ): void {
                 if (!$attempting || $nestedRunning || (int)$model->getID() !== $deviceId) {
                     return;
@@ -776,7 +786,7 @@ class Computer extends DbTestCase
                 ]);
                 $this->boolean($source->getFromDB($source->getID()))->isTrue();
                 $probe = (object)['armed' => false, 'calls' => 0, 'tableCalls' => 0, 'history' => false];
-                $producer = new class extends Monitor {
+                $producer = new class () extends Monitor {
                     public static ?Closure $tableCallback = null;
 
                     public static function getType()
@@ -918,16 +928,16 @@ class Computer extends DbTestCase
                             return ($this->route)();
                         }
                     }
-                    : new class ($route) extends DBmysql {
-                        public function __construct(private Closure $route)
-                        {
-                        }
+                : new class ($route) extends DBmysql {
+                    public function __construct(private Closure $route)
+                    {
+                    }
 
-                        public function getDoctrineConnection(): Connection
-                        {
-                            return ($this->route)();
-                        }
-                    };
+                    public function getDoctrineConnection(): Connection
+                    {
+                        return ($this->route)();
+                    }
+                };
                 $before = $snapshot();
                 $error = null;
                 try {
