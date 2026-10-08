@@ -34,6 +34,19 @@
 namespace tests\units;
 
 use CommonITILObject;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\TimelineCountReadOperation;
+use itsmng\Database\TimelineSelection;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Types\BigIntType;
+use Doctrine\DBAL\Types\BooleanType;
+use Doctrine\DBAL\Types\IntegerType;
+use Doctrine\DBAL\Types\StringType;
+use Doctrine\DBAL\Types\Type;
+use mock\DBmysql as TimelineCountAdapter;
 use DbTestCase;
 use TicketValidation;
 use User;
@@ -2616,13 +2629,65 @@ class Ticket extends DbTestCase
                 ]))->isGreaterThan(0);
                 $this->integer($item->getTimelineItemCount())->isEqualTo(9);
                 $this->integer($item->getTimelineItemCount())->isEqualTo(count($item->getTimelineItems()));
+                $originalAdapter = $DB;
+                $probe = new TicketScalarReadProbe($DB->getDoctrineConnection());
+                $this->mockGenerator()->orphanize('__construct');
+                $adapter = new TimelineCountAdapter();
+                $this->calling($adapter)->getDoctrineConnection = $probe;
+                $this->calling($adapter)->getProvider = $DB->getProvider();
+                try {
+                    $DB = $adapter;
+                    $this->integer($item->getTimelineItemCount())->isIdenticalTo(9);
+                    $eventQueries = array_filter($probe->queries, static fn (array $query): bool =>
+                        str_contains($query['sql'], 'glpi_itilsolutions')
+                        || str_contains($query['sql'], 'glpi_itilfollowups')
+                        || str_contains($query['sql'], 'glpi_' . strtolower($type) . 'tasks'));
+                    // Document EXISTS subqueries can mention the same tables; the
+                    // three standalone COUNT statements must still be present.
+                    $eventQueries = array_filter($eventQueries, static fn (array $query): bool =>
+                        preg_match('/^SELECT COUNT\(/i', $query['sql']) === 1);
+                    $this->array($eventQueries)->hasSize(3);
+                    $this->integer($probe->builders)->isIdenticalTo(3);
+                } finally {
+                    $DB = $originalAdapter;
+                }
+
+
+                // A selected non-task table or non-parent column retains the generic count contract.
+                $countManager = Orm::forConnection($originalAdapter->getDoctrineConnection());
+                $ordinaryCounts = new RecordRepository($countManager);
+                $countReader = new TimelineCountReadOperation($probe);
+                try {
+                    foreach ([
+                        [$task_class::getTable(), ['users_id' => (int)$_SESSION['glpiID']]],
+                        ['glpi_configs', ['context' => 'core']],
+                    ] as [$selectedTable, $criteria]) {
+                        $expected = $ordinaryCounts->countMatching($selectedTable, $criteria);
+                        $this->integer($expected)->isGreaterThan(0);
+                        $selection = new TimelineSelection(['tasks' => $criteria], false, null, false, null);
+                        $builders = $probe->builders;
+                        $this->integer($countReader->tasks($selectedTable, $selection))->isIdenticalTo($expected);
+                        $this->integer($probe->builders)->isIdenticalTo($builders);
+                    }
+                } finally {
+                    $countReader->close();
+                    $countManager->clear();
+                }
 
                 $_SESSION['glpiactiveprofile']['followup'] &= ~\ITILFollowup::SEEPRIVATE;
                 $_SESSION['glpiactiveprofile']['task'] &= ~\CommonITILTask::SEEPRIVATE;
                 foreach (['central', 'helpdesk'] as $interface) {
                     $_SESSION['glpiactiveprofile']['interface'] = $interface;
                     $timeline = $item->getTimelineItems();
-                    $count = $item->getTimelineItemCount();
+                    $probe->builders = 0;
+                    $probe->queries = [];
+                    try {
+                        $DB = $adapter;
+                        $count = $item->getTimelineItemCount();
+                        $this->integer($probe->builders)->isIdenticalTo(3);
+                    } finally {
+                        $DB = $originalAdapter;
+                    }
                     $this->integer($count)->isEqualTo(count($timeline));
                     $this->integer($count)->isEqualTo($private_tasks ? 5 : 7);
                     $task_ids = array_column(array_column(array_filter($timeline, static fn ($event) => $event['type'] === $task_class), 'item'), 'id');
@@ -2635,6 +2700,111 @@ class Ticket extends DbTestCase
                     $this->array($followup_ids)->hasSize(2)
                         ->contains($followup_ids_by_role['public'])->contains($followup_ids_by_role['author'])
                         ->notContains($followup_ids_by_role['other'])->notContains($followup_ids_by_role['anonymous']);
+                }
+
+                if ($type === 'Ticket') {
+                    $expectedRouteCount = $item->getTimelineItemCount();
+                    $otherProbe = new TicketScalarReadProbe($originalAdapter->getDoctrineConnection());
+                    $otherAdapter = new TimelineCountAdapter();
+                    $this->calling($otherAdapter)->getDoctrineConnection = $otherProbe;
+                    $callbackItem = new class () extends \Ticket {
+                        public static bool $captured = false;
+                        public static mixed $replacement;
+
+                        public static function getForeignKeyField()
+                        {
+                            return \Ticket::getForeignKeyField();
+                        }
+
+                        public static function getType()
+                        {
+                            if (self::$captured) {
+                                $GLOBALS['DB'] = self::$replacement;
+                            }
+                            return 'Ticket';
+                        }
+                    };
+                    $callbackItem->fields = $item->fields;
+                    $callbackItem::$replacement = $otherAdapter;
+                    $selectedCalls = 0;
+                    $this->calling($adapter)->getDoctrineConnection = static function () use ($probe, $callbackItem, &$selectedCalls): Connection {
+                        ++$selectedCalls;
+                        $callbackItem::$captured = true;
+                        return $probe;
+                    };
+                    try {
+                        $DB = $adapter;
+                        $probe->builders = 0;
+                        $this->integer($callbackItem->getTimelineItemCount())->isIdenticalTo($expectedRouteCount);
+                        $this->integer($selectedCalls)->isIdenticalTo(1);
+                        $this->integer($probe->builders)->isIdenticalTo(3);
+                        $this->array($otherProbe->queries)->isEmpty();
+                        $this->object($DB)->isIdenticalTo($otherAdapter);
+                    } finally {
+                        $callbackItem::$captured = false;
+                        $this->calling($adapter)->getDoctrineConnection = $probe;
+                        $DB = $originalAdapter;
+                    }
+
+                    $local = new TimelineLocalCountProbe($originalAdapter->getDoctrineConnection());
+                    $listener = new class () {
+                        public int $loads = 0;
+
+                        public function loadClassMetadata(): void
+                        {
+                            ++$this->loads;
+                        }
+                    };
+                    $local->getEventManager()->addEventListener(['loadClassMetadata'], $listener);
+                    $originalTypes = [];
+                    $converters = [
+                        'string' => new class () extends StringType {
+                            public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                            {
+                                return "CASE WHEN " . $sqlExpr . " = '' THEN 'no-timeline-kind' ELSE 'no-timeline-kind' END";
+                            }
+                        },
+                        'bigint' => new class () extends BigIntType {
+                            public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                            {
+                                return 'CASE WHEN ' . $sqlExpr . ' = -1 THEN -1 ELSE -1 END';
+                            }
+                        },
+                        'integer' => new class () extends IntegerType {
+                            public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                            {
+                                return 'CASE WHEN ' . $sqlExpr . ' = -1 THEN -1 ELSE -1 END';
+                            }
+                        },
+                        'boolean' => new class () extends BooleanType {
+                            public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                            {
+                                return '(CASE WHEN ' . $sqlExpr . ' THEN FALSE ELSE TRUE END)';
+                            }
+                        },
+                    ];
+                    try {
+                        $DB = $adapter;
+                        foreach ($converters as $name => $converter) {
+                            $originalTypes[$name] = Type::getType($name);
+                            Type::overrideType($name, $converter);
+                            $this->calling($adapter)->getDoctrineConnection = $local;
+                            $expected = $item->getTimelineItemCount();
+                            $this->integer($local->builders)->isIdenticalTo(0);
+                            $this->integer($listener->loads)->isGreaterThan(0);
+                            $this->calling($adapter)->getDoctrineConnection = $probe;
+                            $probe->builders = 0;
+                            $this->integer($item->getTimelineItemCount())->isIdenticalTo($expected);
+                            $this->integer($probe->builders)->isIdenticalTo(3);
+                            Type::overrideType($name, $originalTypes[$name]);
+                        }
+                    } finally {
+                        foreach ($originalTypes as $name => $original) {
+                            Type::overrideType($name, $original);
+                        }
+                        $this->calling($adapter)->getDoctrineConnection = $probe;
+                        $DB = $originalAdapter;
+                    }
                 }
 
                 foreach (['followup', 'task', 'ticket', 'change', 'problem', 'document', 'ticketvalidation', 'changevalidation'] as $right) {
@@ -5346,5 +5516,23 @@ class TicketScalarReadProbe extends \Doctrine\DBAL\Connection
     {
         $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
         return $this->selected->executeQuery($sql, $params, $types, $qcp);
+    }
+}
+
+
+/** A supplied mutable EventManager keeps every timeline count on the ordinary path. */
+class TimelineLocalCountProbe extends TicketScalarReadProbe
+{
+    private EventManager $events;
+
+    public function __construct(Connection $selected)
+    {
+        parent::__construct($selected);
+        $this->events = new EventManager();
+    }
+
+    public function getEventManager(): EventManager
+    {
+        return $this->events;
     }
 }

@@ -42,6 +42,8 @@ use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\TimelineRepository;
 use itsmng\Database\Repository\UserRepository;
 use itsmng\Database\TimelineAuthorReader;
+use itsmng\Database\TimelineCountReadOperation;
+use itsmng\Database\TimelineSelection;
 use itsmng\Database\UserDisplayReadOperation;
 use itsmng\Reporting\Criteria;
 
@@ -7685,7 +7687,7 @@ abstract class CommonITILObject extends CommonDBTM
             $valitation_obj     = new $validation_class();
         }
 
-        $selection = $this->getTimelineSelection();
+        $selection = $this->getTimelineSelection()->criteria;
 
         //add followups to timeline
         if ($selection['followups'] !== null) {
@@ -7816,17 +7818,20 @@ abstract class CommonITILObject extends CommonDBTM
 
 
     /** The same visibility predicates serve the rendered timeline and its tab count. */
-    private function getTimelineSelection(): array
+    private function getTimelineSelection(): TimelineSelection
     {
         $task_class = static::getType() . 'Task';
         $task_obj = new $task_class();
         $validation_class = static::getType() . 'Validation';
         $restrict_fup = $restrict_task = [];
+        $followupAuthor = $taskAuthor = null;
+        $followupRestricted = $taskRestricted = false;
         if (!Session::haveRight("followup", ITILFollowup::SEEPRIVATE)) {
+            $followupRestricted = true;
             $restrict_fup = [
                'OR' => [
                   'is_private'   => 0,
-                  'users_id'     => Session::getLoginUserID()
+                  'users_id'     => $followupAuthor = Session::getLoginUserID()
                ]
             ];
         }
@@ -7835,17 +7840,18 @@ abstract class CommonITILObject extends CommonDBTM
         $restrict_fup['items_id'] = $this->getID();
 
         if ($task_obj->maybePrivate() && !Session::haveRight("task", CommonITILTask::SEEPRIVATE)) {
+            $taskRestricted = true;
             $restrict_task = [
                'OR' => [
                   'is_private'   => 0,
-                  'users_id'     => Session::getCurrentInterface() == "central"
+                  'users_id'     => $taskAuthor = Session::getCurrentInterface() == "central"
                                        ? Session::getLoginUserID()
                                        : 0
                ]
             ];
         }
 
-        return [
+        $criteria = [
             'followups' => ITILFollowup::canView() ? $restrict_fup : null,
             'tasks' => $task_obj->canView()
                 ? [static::getForeignKeyField() => $this->getID()] + $restrict_task : null,
@@ -7855,6 +7861,7 @@ abstract class CommonITILObject extends CommonDBTM
             'validations' => in_array(static::getType(), ['Ticket', 'Change'], true) && $validation_class::canView()
                 ? [static::getForeignKeyField() => $this->getID()] : null,
         ];
+        return new TimelineSelection($criteria, $followupRestricted, $followupAuthor, $taskRestricted, $taskAuthor);
     }
 
     /** Count event keys without building content, edit controls or author links. */
@@ -7870,32 +7877,30 @@ abstract class CommonITILObject extends CommonDBTM
         }
 
         $selection = $this->getTimelineSelection();
-        $manager = Orm::create($DB);
+        $counts = new TimelineCountReadOperation($DB->getDoctrineConnection());
         try {
-            $records = new RecordRepository($manager);
-            $events = new TimelineRepository($manager);
             $task_class = static::getType() . 'Task';
             $validation_class = static::getType() . 'Validation';
-            $count = $records->countMatching(ITILSolution::getTable(), $selection['solutions']);
-            if ($selection['followups'] !== null) {
-                $count += $records->countMatching(ITILFollowup::getTable(), $selection['followups']);
+            $count = $counts->solutions(ITILSolution::getTable(), $selection);
+            if ($selection->criteria['followups'] !== null) {
+                $count += $counts->followups(ITILFollowup::getTable(), $selection);
             }
-            if ($selection['tasks'] !== null) {
-                $count += $records->countMatching($task_class::getTable(), $selection['tasks']);
+            if ($selection->criteria['tasks'] !== null) {
+                $count += $counts->tasks($task_class::getTable(), $selection);
             }
-            if ($selection['documents'] !== null) {
-                $count += (new DocumentRepository($manager))->countTimelineDocuments(
+            if ($selection->criteria['documents'] !== null) {
+                $count += $counts->documents(
                     static::getType(),
                     (int)$this->getID(),
                     static::getAssociatedDocumentAccess()
                 );
             }
-            if ($selection['validations'] !== null) {
-                $count += $events->countValidations($validation_class::getTable(), $selection['validations']);
+            if ($selection->criteria['validations'] !== null) {
+                $count += $counts->validations($validation_class::getTable(), $selection->criteria['validations']);
             }
             return $count;
         } finally {
-            $manager->clear();
+            $counts->close();
         }
     }
 

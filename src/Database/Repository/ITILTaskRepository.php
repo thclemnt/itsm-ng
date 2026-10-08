@@ -6,9 +6,15 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\QueryBuilder;
+use InvalidArgumentException;
 use itsmng\Database\Entity;
+use itsmng\Database\Mapping\ITILStatisticsRelation;
+use itsmng\Database\Mapping\ITILStatisticsRole;
 use itsmng\Database\RecordCriteria;
+use ReflectionClass;
+use ReflectionProperty;
 
 /** Task projections share the mapped parent relation across Ticket, Change and Problem. */
 final class ITILTaskRepository
@@ -20,17 +26,27 @@ final class ITILTaskRepository
     public function definition(string $type): array
     {
         if (!preg_match('/^[A-Za-z][A-Za-z0-9]*$/D', $type) || !class_exists($class = 'itsmng\\Database\\Entity\\' . $type)) {
-            throw new \InvalidArgumentException('Unsupported ITIL task type');
+            throw new InvalidArgumentException('Unsupported ITIL task type');
         }
-        $metadata = $this->em->getClassMetadata($class);
+        return $this->definitionForMetadata($this->em->getClassMetadata($class))
+            ?? throw new InvalidArgumentException('Unsupported ITIL task type');
+    }
+
+    /** The owning property declares the task parent; non-task mappings have no definition. */
+    public function definitionForMetadata(ClassMetadata $metadata): ?array
+    {
+        $class = new ReflectionClass($metadata->name);
         foreach ($metadata->associationMappings as $property => $association) {
-            foreach ((new \ReflectionProperty($class, $property))->getAttributes(\itsmng\Database\Mapping\ITILStatisticsRelation::class) as $attribute) {
-                if ($attribute->newInstance()->role === \itsmng\Database\Mapping\ITILStatisticsRole::Tasks && $association->isToOneOwningSide()) {
-                    return [$class, $association->targetEntity, $property];
+            if (!$class->hasProperty($property)) {
+                continue;
+            }
+            foreach ((new ReflectionProperty($metadata->name, $property))->getAttributes(ITILStatisticsRelation::class) as $attribute) {
+                if ($attribute->newInstance()->role === ITILStatisticsRole::Tasks && $association->isToOneOwningSide()) {
+                    return [$metadata->name, $association->targetEntity, $property];
                 }
             }
         }
-        throw new \InvalidArgumentException('Unsupported ITIL task type');
+        return null;
     }
 
     public function parentTasks(string $type, int $parent): array
