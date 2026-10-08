@@ -37,6 +37,8 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use DateTime;
+use DateTimeZone;
 use Glpi\Console\AbstractCommand;
 use QueryExpression;
 use Symfony\Component\Console\Helper\ProgressBar;
@@ -165,13 +167,13 @@ class TimestampsCommand extends AbstractCommand
                         $default = $column['COLUMN_DEFAULT'];
                     } elseif ($column['COLUMN_DEFAULT'] < '1970-01-01 00:00:01') {
                         // Prevent default value to be out of range (lower to min possible value)
-                        $defaultDate = new \DateTime('1970-01-01 00:00:01', new \DateTimeZone('UTC'));
-                        $defaultDate->setTimezone(new \DateTimeZone(date_default_timezone_get()));
+                        $defaultDate = new DateTime('1970-01-01 00:00:01', new DateTimeZone('UTC'));
+                        $defaultDate->setTimezone(new DateTimeZone(date_default_timezone_get()));
                         $default = $this->db->quoteValue($defaultDate->format("Y-m-d H:i:s"));
                     } elseif ($column['COLUMN_DEFAULT'] > '2038-01-19 03:14:07') {
                         // Prevent default value to be out of range (greater to max possible value)
-                        $defaultDate = new \DateTime('2038-01-19 03:14:07', new \DateTimeZone('UTC'));
-                        $defaultDate->setTimezone(new \DateTimeZone(date_default_timezone_get()));
+                        $defaultDate = new DateTime('2038-01-19 03:14:07', new DateTimeZone('UTC'));
+                        $defaultDate->setTimezone(new DateTimeZone(date_default_timezone_get()));
                         $default = $this->db->quoteValue($defaultDate->format("Y-m-d H:i:s"));
                     } else {
                         $default = $this->db->quoteValue($column['COLUMN_DEFAULT']);

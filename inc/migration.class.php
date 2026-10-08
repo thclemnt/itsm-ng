@@ -1313,7 +1313,7 @@ class Migration
 
             // Check prerequisites
             if (!$DB->tableExists($old_table)) {
-                throw new \RuntimeException(
+                throw new RuntimeException(
                     sprintf(
                         'Table "%s" does not exists.',
                         $old_table
@@ -1321,7 +1321,7 @@ class Migration
                 );
             }
             if ($DB->tableExists($new_table)) {
-                throw new \RuntimeException(
+                throw new RuntimeException(
                     sprintf(
                         'Table "%s" cannot be renamed as table "%s" already exists.',
                         $old_table,
@@ -1353,7 +1353,7 @@ class Migration
                 $fkey_oldname = $fkey_column['COLUMN_NAME'];
                 $fkey_newname = preg_replace('/^' . preg_quote($old_fkey) . '/', $new_fkey, (string) $fkey_oldname);
                 if ($DB->fieldExists($fkey_table, $fkey_newname)) {
-                    throw new \RuntimeException(
+                    throw new RuntimeException(
                         sprintf(
                             'Field "%s" cannot be renamed in table "%s" as "%s" is field already exists.',
                             $fkey_oldname,
