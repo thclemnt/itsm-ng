@@ -75,10 +75,13 @@ final class CalendarSchedule
         return false;
     }
 
-    public function nextWorkingOccurrence(int $time): int
+    public function nextWorkingOccurrence(int $time, ?int $end = null): int|false
     {
         if (!$this->hasAWorkingDay()) {
             throw new LogicException('A recurrence calendar requires positive working duration.');
+        }
+        if (!$this->hasAnnualOpening()) {
+            return false;
         }
         while (true) {
             $day = (int)date('w', $time);
@@ -91,11 +94,36 @@ final class CalendarSchedule
                 }
             }
             if (!$closed && $this->activeSeconds($day, '00:00:00', '24:00:00') > 0) {
-                return $this->contains($day, date('H:i:s', $time)) ? $time
+                $occurrence = $this->contains($day, date('H:i:s', $time)) ? $time
                     : strtotime($date->format('Y-m-d') . ' ' . $this->addDelay($day, '00:00:00', 0));
+                return $end === null || $occurrence <= $end ? $occurrence : false;
+            }
+            if ($end !== null && $time > $end) {
+                return false;
             }
             $time = strtotime('+ 1 day', $time);
         }
+    }
+
+    /** Annual closures depend only on month/day, including February 29. */
+    private function hasAnnualOpening(): bool
+    {
+        $perpetual = array_filter($this->holidays, static fn (Holiday $holiday): bool => $holiday->is_perpetual);
+        if ($perpetual === []) {
+            return true;
+        }
+        // In a full Gregorian cycle every annual date reaches every weekday.
+        // Thus any uncovered annual date eventually meets a working weekday;
+        // finite closures can delay it, but cannot remove it forever.
+        for ($date = new DateTimeImmutable('2000-01-01'); $date->format('Y') === '2000'; $date = $date->modify('+1 day')) {
+            foreach ($perpetual as $holiday) {
+                if ($holiday->containsDay($date)) {
+                    continue 2;
+                }
+            }
+            return true;
+        }
+        return false;
     }
 
     public static function seconds(string $time): int

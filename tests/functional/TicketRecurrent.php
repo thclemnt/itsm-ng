@@ -635,6 +635,29 @@ class TicketRecurrent extends DbTestCase
         $this->integer($link->add(['calendars_id' => $calendarId, 'holidays_id' => $holidayId]))->isGreaterThan(0);
         $this->string($calculate())->isIdenticalTo('2026-10-13 08:00:00');
         $this->integer($recurrent->calendarEntityManager->queryCount)->isIdenticalTo(6);
+
+        // The nominal day is allowed, but its calendar-shifted occurrence is not.
+        $this->string($recurrent->computeNextCreationDate(
+            '2025-10-01 00:00:00',
+            '2026-10-08 23:59:59',
+            DAY_TIMESTAMP,
+            2 * HOUR_TIMESTAMP,
+            $calendarId
+        ))->isIdenticalTo('NULL');
+        $this->integer($recurrent->calendarEntityManager->queryCount)->isIdenticalTo(8);
+
+        $this->boolean($holiday->update([
+            'id' => $holidayId, 'begin_date' => '2020-01-01',
+            'end_date' => '2020-12-31', 'is_perpetual' => 1,
+        ]))->isTrue();
+        $this->string($recurrent->computeNextCreationDate(
+            '2025-10-01 00:00:00',
+            null,
+            DAY_TIMESTAMP,
+            0,
+            $calendarId
+        ))->isIdenticalTo('NULL');
+        $this->integer($recurrent->calendarEntityManager->queryCount)->isIdenticalTo(10);
     }
 
     /**

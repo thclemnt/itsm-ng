@@ -462,7 +462,13 @@ class TicketRecurrent extends CommonDropdown
 
                 $nominal_occurence_time = $occurence_time;
                 if ($is_calendar_valid) {
-                    $occurence_time = $schedule->nextWorkingOccurrence($occurence_time);
+                    $occurence_time = $schedule->nextWorkingOccurrence(
+                        $occurence_time,
+                        $has_end_date ? strtotime($end_date) : null
+                    );
+                    if ($occurence_time === false) {
+                        return 'NULL';
+                    }
                 }
                 $creation_time = $occurence_time - $create_before;
                 // Opening hours may recover a creation on its nominal occurrence date.
