@@ -29,6 +29,9 @@ use RuntimeException;
 use atoum\atoum\test;
 use itsmng\Database\BaselineSchema;
 use itsmng\Database\CurrentSchema as Projection;
+use itsmng\Database\Entity\Calendar;
+use itsmng\Database\Entity\CalendarHoliday;
+use itsmng\Database\Entity\CalendarSegment;
 use itsmng\Database\Entity\ComputerModel;
 use itsmng\Database\Entity\ComputerType;
 use itsmng\Database\Entity\Config;
@@ -61,6 +64,7 @@ use itsmng\Database\Entity\DeviceSensorType;
 use itsmng\Database\Entity\DeviceSimcardType;
 use itsmng\Database\Entity\DeviceSoundCardModel;
 use itsmng\Database\Entity\EnclosureModel;
+use itsmng\Database\Entity\Holiday;
 use itsmng\Database\Entity\MonitorModel;
 use itsmng\Database\Entity\MonitorType;
 use itsmng\Database\Entity\NetworkEquipmentModel;
@@ -83,6 +87,7 @@ use itsmng\Database\Migration\V220\Baseline;
 use itsmng\Database\Migration\V220\IdentifierColumns;
 use itsmng\Database\NativeSubjectSchema;
 use itsmng\Database\Orm as ApplicationOrm;
+use itsmng\Database\Type\ClockTimeType;
 use ReflectionClass;
 use itsmng\Database\PhysicalIndexSchema;
 use itsmng\Database\PluginImportMutation;
@@ -265,6 +270,14 @@ class CurrentSchema extends test
         return [
             ['glpi_crontasks', 16, 5, [], []],
             ['glpi_configs', 4, 2, [], []],
+            ['glpi_calendars', 8, 6, [], ['`entities_id`' => 'glpi_entities']],
+            ['glpi_holidays', 10, 8, [], ['`entities_id`' => 'glpi_entities']],
+            ['glpi_calendarsegments', 7, 4, [], [
+                '`calendars_id`' => 'glpi_calendars', '`entities_id`' => 'glpi_entities',
+            ], ['begin' => ClockTimeType::NAME, 'end' => ClockTimeType::NAME]],
+            ['glpi_calendars_holidays', 3, 3, [], [
+                '`calendars_id`' => 'glpi_calendars', '`holidays_id`' => 'glpi_holidays',
+            ]],
             ['glpi_domaintypes', 5, 3, [], ['`entities_id`' => 'glpi_entities']],
             ['glpi_domainrelations', 5, 3, [], ['`entities_id`' => 'glpi_entities']],
             ['glpi_domainrecordtypes', 5, 3, [], ['`entities_id`' => 'glpi_entities']],
@@ -315,7 +328,7 @@ class CurrentSchema extends test
     }
 
     /** @dataProvider ownedTableProvider */
-    public function testOwnedTablesPreserveEveryCurrentColumnAndIndexAcrossProviders(string $table, int $columnCount, int $indexCount, array $emptyReferences, array $references): void
+    public function testOwnedTablesPreserveEveryCurrentColumnAndIndexAcrossProviders(string $table, int $columnCount, int $indexCount, array $emptyReferences, array $references, array $logicalTypes = []): void
     {
         foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
             $manager = $this->manager($platform);
@@ -336,6 +349,15 @@ class CurrentSchema extends test
                     ['onDelete' => 'RESTRICT', 'onUpdate' => 'RESTRICT'],
                     ForeignKeys::name($table, trim($column, '`'))
                 );
+            }
+            foreach ($logicalTypes as $column => $type) {
+                // The existing entity clock mapping preserves 24:00:00 as a string.
+                // Its native declaration must remain identical to frozen TIME.
+                $historicalColumn = $historical->getColumn($column);
+                $logical = Type::getType($type);
+                $this->string($logical->getSQLDeclaration($historicalColumn->toArray(true), $platform))
+                    ->isIdenticalTo($historicalColumn->getType()->getSQLDeclaration($historicalColumn->toArray(true), $platform));
+                $historicalColumn->setType($logical);
             }
             $current = (new BaselineSchema($manager))->build($platform)->getTable($table);
             $comparator = new Comparator($platform);
@@ -599,6 +621,53 @@ class CurrentSchema extends test
                 $this->boolean($fresh->getTable($table)->getColumn('name')->getNotnull())->isFalse();
                 $this->boolean($fresh->getTable($table)->hasIndex($index))->isTrue();
                 $this->boolean($fresh->getTable($table)->hasIndex($table . '_current_label'))->isFalse();
+            }
+            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
+            $this->boolean($manager->getConnection()->isConnected())->isFalse();
+        }
+    }
+
+    public function testCalendarPropertiesAndAssociationsOwnCurrentExpectation(): void
+    {
+        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+            $manager = $this->manager($platform);
+            $frozen = (new Baseline())->build($platform)->toSql($platform);
+            foreach ([Calendar::class, Holiday::class] as $class) {
+                $metadata = $manager->getClassMetadata($class);
+                $metadata->fieldMappings['name']->length = 173;
+                $metadata->associationMappings['entities']->joinColumns[0]->nullable = true;
+                $metadata->associationMappings['entities']->joinColumns[0]->options['default'] = null;
+                unset($metadata->fieldMappings['comment']);
+            }
+            $segment = $manager->getClassMetadata(CalendarSegment::class);
+            $segment->fieldMappings['day']->options['comment'] = 'Current calendar day';
+            $segment->fieldMappings['day']->options['default'] = 3;
+            $segment->fieldMappings['begin']->nullable = false;
+            $link = $manager->getClassMetadata(CalendarHoliday::class);
+            unset($link->table['uniqueConstraints'][$platform instanceof PostgreSQLPlatform ? 'glpi_calendars_holidays_unicity' : 'unicity']);
+            $changed = (new BaselineSchema($manager))->build($platform);
+            $withoutKeys = (new BaselineSchema($manager))->build($platform, false);
+            foreach ([Calendar::class, Holiday::class] as $class) {
+                $table = $manager->getClassMetadata($class)->getTableName();
+                $declaration = $changed->getTable($table);
+                $this->integer($declaration->getColumn('name')->getLength())->isIdenticalTo(173);
+                $this->boolean($declaration->getColumn('entities_id')->getNotnull())->isFalse();
+                $this->variable($declaration->getColumn('entities_id')->getDefault())->isNull();
+                $this->boolean($declaration->hasColumn('comment'))->isFalse();
+            }
+            $declaration = $changed->getTable('glpi_calendarsegments');
+            $this->string($declaration->getColumn('day')->getComment())->isIdenticalTo('Current calendar day');
+            $this->variable($declaration->getColumn('day')->getDefault())->isEqualTo(3);
+            $this->boolean($declaration->getColumn('begin')->getNotnull())->isTrue();
+            $this->boolean($changed->getTable('glpi_calendars_holidays')->hasIndex(
+                $platform instanceof PostgreSQLPlatform ? 'glpi_calendars_holidays_unicity' : 'unicity'
+            ))->isFalse();
+            foreach ([Calendar::class, Holiday::class, CalendarSegment::class, CalendarHoliday::class] as $class) {
+                $metadata = $manager->getClassMetadata($class);
+                $this->integer(count((new ReflectionClass($class))->getAttributes(SchemaOwner::class)))->isIdenticalTo(1);
+                $this->integer(count($changed->getTable($metadata->getTableName())->getForeignKeys()))
+                    ->isIdenticalTo(count($metadata->associationMappings));
+                $this->array($withoutKeys->getTable($metadata->getTableName())->getForeignKeys())->isEmpty();
             }
             $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
             $this->boolean($manager->getConnection()->isConnected())->isFalse();
