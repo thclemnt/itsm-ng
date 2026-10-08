@@ -6,9 +6,11 @@ namespace itsmng\Database;
 
 use Composer\InstalledVersions;
 use FilesystemIterator;
+use RecursiveCallbackFilterIterator;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use RuntimeException;
+use SplFileInfo;
 use Throwable;
 
 /** Content identity shared by derived mapping caches, never a schema declaration. */
@@ -39,9 +41,13 @@ final class MappingFingerprint
             // below still identifies the dependencies actually shipped.
             $files = is_file($sourceRoot . '/composer.lock') ? [$sourceRoot . '/composer.lock'] : [];
             $sources = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator(
-                    $sourceRoot . '/src/Database',
-                    FilesystemIterator::SKIP_DOTS,
+                new RecursiveCallbackFilterIterator(
+                    new RecursiveDirectoryIterator(
+                        $sourceRoot . '/src/Database',
+                        FilesystemIterator::SKIP_DOTS,
+                    ),
+                    // Installation history does not define cached runtime mappings.
+                    static fn (SplFileInfo $file): bool => $file->getPathname() !== $sourceRoot . '/src/Database/Migration',
                 )
             );
             foreach ($sources as $file) {

@@ -527,28 +527,63 @@ class EntityRegistryCache extends test
 
     public function testContentChangesInvalidateEntitiesHelpersAndDependencyLock(): void
     {
+        $runtime = [
+            'src/Database/Type/Value.php', 'src/Database/Query/Expression.php',
+            'src/Database/Repository/Read.php', 'src/Database/RuntimeProjection.php',
+            'src/Database/MigrationPolicy.php', 'src/Database/Mapping/Migration/Live.php',
+            'src/Database/MigrationTools/Live.php',
+        ];
+        foreach ($runtime as $relative) {
+            $file = $this->root . '/' . $relative;
+            if (!is_dir(dirname($file))) {
+                mkdir(dirname($file), 0700, true);
+            }
+            file_put_contents($file, '<?php /* runtime version 1 */');
+        }
         $cache = new Psr16Cache(new ArrayAdapter());
         $builds = 0;
         $build = static function () use (&$builds): array {
             return ['generation' => ++$builds];
         };
         (new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build);
+        $expected = 1;
         foreach ([
             'src/Database/Entity/Record.php' => '<?php /* field length 200 */',
             'src/Database/Mapping/Driver.php' => '<?php /* driver version 2 */',
             'composer.lock' => 'dependency version two',
-        ] as $relative => $content) {
+        ] + array_fill_keys($runtime, '<?php /* runtime version 2 */') as $relative => $content) {
             $file = $this->root . '/' . $relative;
             $mtime = filemtime($file);
             file_put_contents($file, $content);
             touch($file, $mtime); // same-size/same-mtime deployment still changes the key
             $value = (new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build);
-            $this->integer($value['generation'])->isIdenticalTo($builds);
+            $this->integer($value['generation'])->isIdenticalTo(++$expected);
         }
-        $this->integer($builds)->isIdenticalTo(4);
+        $this->integer($builds)->isIdenticalTo($expected);
         unlink($this->root . '/src/Database/Entity/Record.php');
         (new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build);
-        $this->integer($builds)->isIdenticalTo(5);
+        $this->integer($builds)->isIdenticalTo(++$expected);
+        file_put_contents($this->root . '/src/Database/Entity/Added.php', '<?php /* new runtime declaration */');
+        (new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build);
+        $this->integer($builds)->isIdenticalTo(++$expected);
+
+        // Only the exact top-level migration subtree is outside this derived runtime cache.
+        $fingerprint = MappingFingerprint::forSource($this->root);
+        mkdir($this->root . '/src/Database/Migration/V220', 0700, true);
+        $history = $this->root . '/src/Database/Migration/V220/Baseline.php';
+        file_put_contents($history, '<?php /* frozen version 1 */');
+        $this->string(MappingFingerprint::forSource($this->root))->isIdenticalTo($fingerprint);
+        $mtime = filemtime($history);
+        file_put_contents($history, '<?php /* frozen version 2 */');
+        touch($history, $mtime);
+        $this->string(MappingFingerprint::forSource($this->root))->isIdenticalTo($fingerprint);
+        file_put_contents($this->root . '/src/Database/Migration/Added.php', '<?php /* additional history */');
+        $this->string(MappingFingerprint::forSource($this->root))->isIdenticalTo($fingerprint);
+        unlink($history);
+        unlink($this->root . '/src/Database/Migration/Added.php');
+        $this->string(MappingFingerprint::forSource($this->root))->isIdenticalTo($fingerprint);
+        (new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build);
+        $this->integer($builds)->isIdenticalTo($expected);
     }
 
     public function testDamagedCacheIsAMissAndDoesNotMaskMappingFailures(): void
