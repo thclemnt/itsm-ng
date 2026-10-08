@@ -31,9 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Csrf;
 use itsmng\Database\Migration\History;
 use itsmng\Database\OidcRefreshReadOperation;
+use itsmng\Database\Orm;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -343,7 +345,12 @@ if (!file_exists(GLPI_CONFIG_DIR . "/config_db.php")) {
     //set Status session var
     SpecialStatus::oldStatusOrder();
 
-    if (isset($_SESSION['glpiID']) && (new OidcRefreshReadOperation($DB->getDoctrineConnection()))->needsRefresh((int)$_SESSION['glpiID'])) {
-        Oidc::auth();
+    if (isset($_SESSION['glpiID'])) {
+        $oidcConnection = $DB->getDoctrineConnection();
+        $needsOidcRefresh = Orm::withReadConnection($oidcConnection, static fn (?EntityManager $manager): bool =>
+            (new OidcRefreshReadOperation($oidcConnection, $manager))->needsRefresh((int)$_SESSION['glpiID']));
+        if ($needsOidcRefresh) {
+            Oidc::auth();
+        }
     }
 }

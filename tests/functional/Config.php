@@ -33,15 +33,19 @@
 
 namespace tests\units;
 
+use Closure;
 use Config as ConfigModel;
 use DbTestCase;
 use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Types\StringType;
 use Doctrine\DBAL\Types\TextType;
 use Doctrine\DBAL\Types\Type;
+use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use itsmng\Database\Entity\Config as ConfigRecord;
+use itsmng\Database\OidcRefreshReadOperation;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ConfigurationRepository;
 use Log;
@@ -91,6 +95,82 @@ class Config extends DbTestCase
             $this->boolean($reader->needsRefresh($id))->isFalse();
             $this->boolean($reader->needsRefresh($id))->isIdenticalTo($ordinary->needsRefresh($id));
             $connection->update('glpi_oidc_users', [$pendingColumn => false], ['user_id' => $id], [$pendingColumn => 'boolean', 'user_id' => 'bigint']);
+            $hadSessionId = array_key_exists('glpiID', $_SESSION);
+            $sessionId = $_SESSION['glpiID'] ?? null;
+            $scopedManager = null;
+            $scopedRead = static function (Connection $selected) use (&$scopedManager): bool {
+                return Orm::withReadConnection($selected, static function (?EntityManager $manager) use ($selected, &$scopedManager): bool {
+                    $scopedManager = $manager;
+                    return (new OidcRefreshReadOperation($selected, $manager))->needsRefresh((int)$_SESSION['glpiID']);
+                });
+            };
+            try {
+                $_SESSION['glpiID'] = $id;
+                $this->boolean($scopedRead($connection))->isTrue();
+                $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+                $beforeFactories = $factories->getValue();
+                for ($repeat = 0; $repeat < 3; ++$repeat) {
+                    $this->boolean($scopedRead($connection))->isTrue();
+                    $this->boolean($connection->ownsApplicationEntityManager($scopedManager))->isFalse();
+                }
+                $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+                $connection->update('glpi_oidc_users', [$pendingColumn => true], ['user_id' => $id], [$pendingColumn => 'boolean', 'user_id' => 'bigint']);
+                $this->boolean($scopedRead($connection))->isFalse();
+                $connection->update('glpi_oidc_users', [$pendingColumn => false], ['user_id' => $id], [$pendingColumn => 'boolean', 'user_id' => 'bigint']);
+                $this->boolean($scopedRead($connection))->isTrue();
+                Orm::withReadConnection($connection, function (?EntityManager $outer) use ($connection, $scopedRead, $factories): void {
+                    $this->boolean($connection->ownsApplicationEntityManager($outer))->isTrue();
+                    $beforeNested = $factories->getValue();
+                    $this->boolean($scopedRead($connection))->isTrue();
+                    $this->integer($factories->getValue() - $beforeNested)->isIdenticalTo(1);
+                    $this->boolean($connection->ownsApplicationEntityManager($outer))->isTrue();
+                });
+
+                $custom = new class ($connection) extends ConfigOidcScalarReadProbe {
+                    public ?Closure $beforePlatform = null;
+                    private ?EventManager $events = null;
+
+                    public function getDatabasePlatform(): AbstractPlatform
+                    {
+                        if ($this->beforePlatform !== null) {
+                            $callback = $this->beforePlatform;
+                            $this->beforePlatform = null;
+                            $callback();
+                        }
+                        return parent::getDatabasePlatform();
+                    }
+
+                    public function getEventManager(): EventManager
+                    {
+                        return $this->events ??= new EventManager();
+                    }
+                };
+                $clears = new class () {
+                    public int $count = 0;
+
+                    public function onClear(): void
+                    {
+                        ++$this->count;
+                    }
+                };
+                $custom->getEventManager()->addEventListener(['onClear'], $clears);
+                $_SESSION['glpiID'] = 0;
+                $custom->beforePlatform = static function () use ($id): void {
+                    $_SESSION['glpiID'] = $id;
+                };
+                $beforeFactories = $factories->getValue();
+                $this->boolean($scopedRead($custom))->isTrue();
+                $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(1);
+                $this->array($custom->queries)->hasSize(1);
+                $this->integer($custom->builders)->isIdenticalTo(0);
+                $this->integer($clears->count)->isIdenticalTo(1);
+            } finally {
+                if ($hadSessionId) {
+                    $_SESSION['glpiID'] = $sessionId;
+                } else {
+                    unset($_SESSION['glpiID']);
+                }
+            }
             $observed = new class () extends \Doctrine\DBAL\Types\BigIntType {
                 public int $conversions = 0;
                 public int $sql = 0;
