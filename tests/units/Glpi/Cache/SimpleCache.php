@@ -299,19 +299,19 @@ class SimpleCache extends \GLPITestCase
             $queries = new SerializedMetadataCache($pool, 'orm_record_query_' . $fingerprint);
             $builds = 0;
             $build = static function () use (&$builds): array {
-                return ['generation' => ++$builds];
+                return ['generation' => [++$builds]];
             };
-            $this->array($registry->load($build))->isIdenticalTo(['generation' => 1]);
+            $this->array($registry->load('generation', $build))->isIdenticalTo(['generation' => [1]]);
             $this->boolean($metadata->save($metadata->getItem('config')->set(new ClassMetadata(ConfigRecord::class))))->isTrue();
             $this->boolean($queries->save($queries->getItem('read')->set(['sql' => 'SELECT 1'])))->isTrue();
-            $this->array($registry->load($build))->isIdenticalTo(['generation' => 1]);
+            $this->array($registry->load('generation', $build))->isIdenticalTo(['generation' => [1]]);
             $this->boolean($metadata->getItem('config')->isHit())->isTrue();
             $this->boolean($queries->getItem('read')->isHit())->isTrue();
 
             // The existing deployment/update command clears this same pool.
             $this->boolean($other->clear())->isTrue();
             $this->string(MappingFingerprint::current())->isIdenticalTo($fingerprint);
-            $this->array($registry->load($build))->isIdenticalTo(['generation' => 2]);
+            $this->array($registry->load('generation', $build))->isIdenticalTo(['generation' => [2]]);
             $this->boolean($metadata->getItem('config')->isHit())->isFalse();
             $this->boolean($queries->getItem('read')->isHit())->isFalse();
         }

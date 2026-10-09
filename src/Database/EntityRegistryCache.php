@@ -22,14 +22,16 @@ final class EntityRegistryCache
 
     public function __construct(private readonly CacheInterface $cache, string $fingerprint)
     {
-        $this->key = 'orm_registry_' . $fingerprint;
+        $this->key = 'orm_registry_view_' . $fingerprint;
     }
 
-    public function load(callable $build): array
+    /** A hit returns the requested view; one cold build populates and returns all views. */
+    public function load(string $view, callable $build): array
     {
         try {
-            $model = $this->decode($this->cache->get($this->key));
-            if ($model !== null) {
+            $model = $this->decode($this->cache->get($this->key . '_' . $view));
+            if ($model !== null && array_keys($model) === [$view]
+                && ($model[$view] === null || is_array($model[$view]))) {
                 return $model;
             }
         } catch (Throwable) {
@@ -40,8 +42,12 @@ final class EntityRegistryCache
         try {
             // Even memory/session adapters receive only strings, never objects
             // retained by callers. No manager, metadata or connection is saved.
-            $serialized = serialize($model);
-            $this->cache->set($this->key, '2:' . hash('sha256', $serialized) . ':' . $serialized);
+            $values = [];
+            foreach ($model as $name => $value) {
+                $serialized = serialize([$name => $value]);
+                $values[$this->key . '_' . $name] = '2:' . hash('sha256', $serialized) . ':' . $serialized;
+            }
+            $this->cache->setMultiple($values);
         } catch (Throwable) {
             // Best-effort population; the authoritative projection is usable.
         }

@@ -483,21 +483,31 @@ class EntityRegistryCache extends test
     {
         // A cache that itself retains objects must still receive only serialized
         // projections, and cannot leak a caller's edits into the next request.
-        $cache = new Psr16Cache(new ArrayAdapter(storeSerialized: false));
+        $memory = new ArrayAdapter(storeSerialized: false);
+        $cache = new Psr16Cache($memory);
         $builds = 0;
         $build = static function () use (&$builds): array {
             ++$builds;
-            return ['types' => ['name' => 'string'], 'reference' => new MappedReference('entity', 'entities_id', 'glpi_entities', new ReferencePolicy(ReferenceKind::RootEntity))];
+            return ['types' => ['name' => 'string'], 'reference' => [new MappedReference('entity', 'entities_id', 'glpi_entities', new ReferencePolicy(ReferenceKind::RootEntity))], 'optional' => null];
         };
-        $first = (new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0')))->load($build);
+        $registry = new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0'));
+        $first = $registry->load('types', $build);
+        $this->array($memory->getValues())->hasSize(3);
+        foreach ($memory->getValues() as $value) {
+            $this->string($value);
+        }
         $first['types']['name'] = 'changed by caller';
-        $second = (new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0')))->load($build);
-        $this->integer($builds)->isIdenticalTo(1);
+        $second = $registry->load('types', $build);
+        $this->array(array_keys($second))->isIdenticalTo(['types']);
         $this->string($second['types']['name'])->isIdenticalTo('string');
-        $this->object($second['reference'])->isNotIdenticalTo($first['reference']);
-        $this->variable($second['reference']->policy->kind)->isIdenticalTo(ReferenceKind::RootEntity);
+        $reference = $registry->load('reference', $build)['reference'][0];
+        $this->object($reference)->isNotIdenticalTo($first['reference'][0]);
+        $this->variable($reference->policy->kind)->isIdenticalTo(ReferenceKind::RootEntity);
+        $this->array($registry->load('optional', $build))->isIdenticalTo(['optional' => null]);
+        $this->integer($builds)->isIdenticalTo(1, 'One cold build populates previously unread and nullable views');
         $cache->clear();
-        (new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0')))->load($build);
+        $registry->load('optional', $build);
+        $registry->load('types', $build);
         $this->integer($builds)->isIdenticalTo(2);
     }
 
@@ -506,21 +516,21 @@ class EntityRegistryCache extends test
         $cache = new Psr16Cache(new ArrayAdapter());
         $builds = 0;
         $build = static function () use (&$builds): array {
-            return ['generation' => ++$builds];
+            return ['generation' => [++$builds]];
         };
         // The configured backend can have an explicit, unversioned namespace.
         $first = new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0'));
         $next = new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.1'));
         $other = new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__ . '/other', '2.2.0'));
-        $this->array($first->load($build))->isIdenticalTo(['generation' => 1]);
-        $this->array($next->load($build))->isIdenticalTo(['generation' => 2]);
-        $this->array($other->load($build))->isIdenticalTo(['generation' => 3]);
-        $this->array($first->load($build))->isIdenticalTo(['generation' => 1]);
+        $this->array($first->load('generation', $build))->isIdenticalTo(['generation' => [1]]);
+        $this->array($next->load('generation', $build))->isIdenticalTo(['generation' => [2]]);
+        $this->array($other->load('generation', $build))->isIdenticalTo(['generation' => [3]]);
+        $this->array($first->load('generation', $build))->isIdenticalTo(['generation' => [1]]);
         $this->integer($builds)->isIdenticalTo(3);
         $cache->clear();
-        $this->array($first->load($build))->isIdenticalTo(['generation' => 4]);
-        $this->array($next->load($build))->isIdenticalTo(['generation' => 5]);
-        $this->array($other->load($build))->isIdenticalTo(['generation' => 6]);
+        $this->array($first->load('generation', $build))->isIdenticalTo(['generation' => [4]]);
+        $this->array($next->load('generation', $build))->isIdenticalTo(['generation' => [5]]);
+        $this->array($other->load('generation', $build))->isIdenticalTo(['generation' => [6]]);
     }
 
     public function testInstalledDependencyChangesUseIndependentMappingCaches(): void
@@ -529,19 +539,19 @@ class EntityRegistryCache extends test
         $cache = new Psr16Cache(new ArrayAdapter());
         $builds = 0;
         $build = static function () use (&$builds): array {
-            return ['generation' => ++$builds];
+            return ['generation' => [++$builds]];
         };
         try {
             // Use Composer's supported reload on both sides of the comparison.
             InstalledVersions::reload($original);
             $first = new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0'));
-            $this->array($first->load($build))->isIdenticalTo(['generation' => 1]);
+            $this->array($first->load('generation', $build))->isIdenticalTo(['generation' => [1]]);
             $changed = $original;
             $changed['versions']['doctrine/orm']['reference'] = 'different-installed-package-reference';
             InstalledVersions::reload($changed);
             $next = new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0'));
-            $this->array($next->load($build))->isIdenticalTo(['generation' => 2]);
-            $this->array($first->load($build))->isIdenticalTo(['generation' => 1]);
+            $this->array($next->load('generation', $build))->isIdenticalTo(['generation' => [2]]);
+            $this->array($first->load('generation', $build))->isIdenticalTo(['generation' => [1]]);
         } finally {
             InstalledVersions::reload($original);
         }
@@ -553,23 +563,27 @@ class EntityRegistryCache extends test
         $cache = new Psr16Cache($pool);
         $builds = 0;
         $build = static function () use (&$builds): array {
-            return ['generation' => ++$builds];
+            return ['generation' => [++$builds]];
         };
         $registry = new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0'));
-        $registry->load($build);
+        $registry->load('generation', $build);
         $key = array_key_first($pool->getValues());
-        foreach (['a:0:{}', '2:' . str_repeat('0', 64) . ':a:0:{}', '2:' . hash('sha256', 'truncated') . ':truncated'] as $damaged) {
+        foreach (['a:0:{}', '2:' . str_repeat('0', 64) . ':a:0:{}', '2:' . hash('sha256', 'truncated') . ':truncated', '2:' . hash('sha256', 'a:0:{}') . ':a:0:{}'] as $damaged) {
             $cache->set($key, $damaged);
-            $value = $registry->load($build);
-            $this->integer($value['generation'])->isIdenticalTo($builds);
+            $value = $registry->load('generation', $build);
+            $this->integer($value['generation'][0])->isIdenticalTo($builds);
         }
-        $this->integer($builds)->isIdenticalTo(4);
+        $this->integer($builds)->isIdenticalTo(5);
         $unrecognized = serialize(['unexpected' => new RegistryCacheWakeupProbe()]);
         $cache->set($key, '2:' . hash('sha256', $unrecognized) . ':' . $unrecognized);
-        $this->array($registry->load($build))->isIdenticalTo(['generation' => 5]);
+        $this->array($registry->load('generation', $build))->isIdenticalTo(['generation' => [6]]);
         $this->integer(RegistryCacheWakeupProbe::$wakeups)->isIdenticalTo(0);
+        $scalar = serialize(['generation' => 123]);
+        $cache->set($key, '2:' . hash('sha256', $scalar) . ':' . $scalar);
+        $this->array($registry->load('generation', $build))->isIdenticalTo(['generation' => [7]], 'A cached view must be an array or null');
+        $this->integer($builds)->isIdenticalTo(7);
         $cache->clear();
-        $this->exception(static fn () => $registry->load(static fn () => throw new LogicException('Invalid authoritative mapping')))
+        $this->exception(static fn () => $registry->load('generation', static fn () => throw new LogicException('Invalid authoritative mapping')))
             ->isInstanceOf(LogicException::class)->hasMessage('Invalid authoritative mapping');
     }
 
@@ -588,16 +602,16 @@ class EntityRegistryCache extends test
         $builds = 0;
         $build = static function () use (&$builds, $model): array {
             ++$builds;
-            return $model;
+            return ['sample' => $model];
         };
-        $registry->load($build);
+        $registry->load('sample', $build);
         $key = array_key_first($pool->getValues());
-        $warm = $registry->load($build);
+        $warm = $registry->load('sample', $build)['sample'];
         $this->integer($builds)->isIdenticalTo(1);
         $this->string(serialize($warm))->isIdenticalTo(serialize($model));
         $warm['left']['flag'] = false;
         $this->boolean($warm['right']['flag'])->isFalse();
-        $this->boolean($registry->load($build)['left']['flag'])->isTrue();
+        $this->boolean($registry->load('sample', $build)['sample']['left']['flag'])->isTrue();
         $this->integer($builds)->isIdenticalTo(1);
 
         $cycle = [];
@@ -606,10 +620,10 @@ class EntityRegistryCache extends test
         $second = ['back' => &$first];
         $first['next'] = &$second;
         foreach ([$cycle, $first, ['nested' => [['unknown' => new RegistryCacheWakeupProbe()]]]] as $invalid) {
-            $bytes = serialize($invalid);
+            $bytes = serialize(['sample' => $invalid]);
             $cache->set($key, '2:' . hash('sha256', $bytes) . ':' . $bytes);
             $before = $builds;
-            $this->string(serialize($registry->load($build)))->isIdenticalTo(serialize($model));
+            $this->string(serialize($registry->load('sample', $build)['sample']))->isIdenticalTo(serialize($model));
             $this->integer($builds)->isIdenticalTo($before + 1);
             $this->integer(RegistryCacheWakeupProbe::$wakeups)->isIdenticalTo(0);
         }
@@ -622,10 +636,10 @@ class EntityRegistryCache extends test
         $cache = new Psr16Cache(new ArrayAdapter());
         $builds = 0;
         $build = static function () use (&$builds): array {
-            return ['generation' => ++$builds];
+            return ['generation' => [++$builds]];
         };
-        (new RegistryCache($cache, $fingerprint))->load($build);
-        (new RegistryCache($cache, $fingerprint))->load($build);
+        (new RegistryCache($cache, $fingerprint))->load('generation', $build);
+        (new RegistryCache($cache, $fingerprint))->load('generation', $build);
         $this->integer($builds)->isIdenticalTo(1);
     }
 
@@ -637,17 +651,17 @@ class EntityRegistryCache extends test
                 throw new RuntimeException('Cache unavailable');
             }
 
-            public function set($key, $value, $ttl = null): bool
+            public function setMultiple($values, $ttl = null): bool
             {
                 throw new RuntimeException('Cache unavailable');
             }
         };
         $builds = 0;
         $build = static function () use (&$builds): array {
-            return ['generation' => ++$builds];
+            return ['generation' => [++$builds]];
         };
-        $this->array((new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0')))->load($build))->isIdenticalTo(['generation' => 1]);
-        $this->array((new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0')))->load($build))->isIdenticalTo(['generation' => 2]);
+        $this->array((new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0')))->load('generation', $build))->isIdenticalTo(['generation' => [1]]);
+        $this->array((new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0')))->load('generation', $build))->isIdenticalTo(['generation' => [2]]);
     }
 
     public function testSerializedMetadataBridgePreservesFreshObjectsAndDeploymentNamespaces(): void

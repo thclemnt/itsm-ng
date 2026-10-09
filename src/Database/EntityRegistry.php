@@ -33,140 +33,140 @@ final class EntityRegistry
 
     public static function tables(): array
     {
-        return self::model()['tables'];
+        return self::model('tables');
     }
 
     /** Exact public item classes declared by itemtype owning-reference branches. */
     public static function legacyTables(): array
     {
-        return self::model()['legacy_tables'];
+        return self::model('legacy_tables');
     }
 
     /** Compatibility role derived only from the annotated owning association. */
     public static function entityScopeOwner(string $table): ?array
     {
-        return self::model()['scope_owners'][$table] ?? null;
+        return self::model('scope_owners')[$table] ?? null;
     }
 
     /** Default core scalar IDs, derived once without retaining mutable ORM metadata. */
     public static function scalarIdentifiers(): array
     {
-        return self::model()['scalar_identifiers'];
+        return self::model('scalar_identifiers');
     }
 
     /** Small physical projection for the private component count, derived from mapped properties. */
     public static function componentCountMapping(string $table): ?array
     {
-        return self::model()['component_counts'][$table] ?? null;
+        return self::model('component_counts')[$table] ?? null;
     }
 
     /** Sparse physical fields for the fixed reservation/user display projection. */
     public static function reservationUserMapping(): ?array
     {
-        return self::model()['reservation_user'] ?? null;
+        return self::model('reservation_user');
     }
 
     /** Fixed historical link fields, derived from the owning followup metadata. */
     public static function promotionSourceMapping(): ?array
     {
-        return self::model()['promotion_source'] ?? null;
+        return self::model('promotion_source');
     }
 
     /** Physical facts for fixed computer connection reads, without mutable metadata. */
     public static function computerItemMapping(): ?array
     {
-        return self::model()['computer_item'] ?? null;
+        return self::model('computer_item');
     }
 
     /** Fixed virtualization count facts from the declared host relationship. */
     public static function virtualMachineCountMapping(): ?array
     {
-        return self::model()['virtual_machine_count'] ?? null;
+        return self::model('virtual_machine_count');
     }
 
     /** Physical fields for an exact item's financial activation presence. */
     public static function infocomPresenceMapping(): ?array
     {
-        return self::model()['infocom_presence'] ?? null;
+        return self::model('infocom_presence');
     }
 
     /** Cache fields and owning self-parent names for private tree point reads. */
     public static function treePointMapping(string $table): ?array
     {
-        return self::model()['tree_points'][$table] ?? null;
+        return self::model('tree_points')[$table] ?? null;
     }
 
     public static function booleanColumns(): array
     {
-        return self::model()['booleans'];
+        return self::model('booleans');
     }
 
     /** Physical instant/touch policy is declared once, on its owning temporal property. */
     public static function nativeTimestamps(): array
     {
-        return self::model()['native_timestamps'];
+        return self::model('native_timestamps');
     }
 
     /** Nullability belongs to the same mapped properties as the flag's type. */
     public static function booleanFields(string $table): array
     {
-        return self::model()['boolean_fields'][$table] ?? [];
+        return self::model('boolean_fields')[$table] ?? [];
     }
 
     public static function isBoolean(string $table, string $column): bool
     {
-        return (self::model()['types'][$table][$column] ?? null) === 'boolean';
+        return (self::model('types')[$table][$column] ?? null) === 'boolean';
     }
 
     /** Canonical scalar projection types derived from the owning attributes. */
     public static function fieldTypes(string $table): array
     {
-        return self::model()['types'][$table] ?? [];
+        return self::model('types')[$table] ?? [];
     }
 
     /** Enum hydration belongs to the same scalar property declaration as its type. */
     public static function fieldEnums(string $table): array
     {
-        return self::model()['enums'][$table] ?? [];
+        return self::model('enums')[$table] ?? [];
     }
 
     /** Scalar fields and owning join columns, including generated compatibility identities. */
     public static function columnNames(string $table): array
     {
         return array_values(array_unique([
-            ...array_keys(self::model()['types'][$table] ?? []),
-            ...array_keys(self::model()['relations'][$table] ?? []),
+            ...array_keys(self::model('types')[$table] ?? []),
+            ...array_keys(self::model('relations')[$table] ?? []),
         ]));
     }
 
     /** Generated compatibility fields are never copied as physical clone writes. */
     public static function readOnlyColumns(string $table): array
     {
-        return self::model()['read_only'][$table] ?? [];
+        return self::model('read_only')[$table] ?? [];
     }
 
     /** Owning association join columns, not inferred names or nullable scalars. */
     public static function relations(): array
     {
-        return self::model()['relations'];
+        return self::model('relations');
     }
 
     /** Compatibility view of owning associations and property-local lifecycle policies. */
     public static function lifecycleRelations(): array
     {
-        return self::model()['lifecycle'];
+        return self::model('lifecycle');
     }
 
     /** @return array<string, MappedReference> */
     public static function references(string $table): array
     {
-        return self::model()['references'][$table] ?? [];
+        return self::model('references')[$table] ?? [];
     }
 
     /** Legacy discriminator branches derived from annotations on owning associations. */
     public static function discriminatedReferences(string $table): array
     {
-        return self::model()['discriminators'][$table] ?? [];
+        return self::model('discriminators')[$table] ?? [];
     }
 
     public static function hasPolicy(string $table, string $column, ReferenceKind $kind): bool
@@ -178,7 +178,7 @@ final class EntityRegistry
     public static function relationsByPolicy(ReferenceKind $kind): array
     {
         $relations = [];
-        foreach (self::model()['references'] as $table => $references) {
+        foreach (self::model('references') as $table => $references) {
             foreach ($references as $column => $reference) {
                 if ($reference->policy->kind === $kind) {
                     $relations[$table][$column] = $reference->targetTable;
@@ -188,16 +188,18 @@ final class EntityRegistry
         return $relations;
     }
 
-    private static function model(): array
+    private static function model(string $view): ?array
     {
-        if (self::$model !== null) {
-            return self::$model;
+        if (self::$model !== null && array_key_exists($view, self::$model)) {
+            return self::$model[$view];
         }
         $cache = $GLOBALS['GLPI_CACHE'] ?? null;
-        if ($cache instanceof CacheInterface) {
-            return self::$model = (new EntityRegistryCache($cache, MappingFingerprint::current()))->load(self::buildModel(...));
-        }
-        return self::$model = self::buildModel();
+        $model = $cache instanceof CacheInterface
+            ? (new EntityRegistryCache($cache, MappingFingerprint::current()))->load($view, self::buildModel(...))
+            : self::buildModel();
+        // A cold build retains every view even when cache population fails.
+        self::$model = array_replace(self::$model ?? [], $model);
+        return self::$model[$view];
     }
 
     private static function reservationUserProjection(EntityManager $manager): ?array

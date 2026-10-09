@@ -53,7 +53,7 @@ final class ComponentCountReadOperation
         // Metadata loading invokes this selected compiler callback. An override
         // must retain that invocation before its live Type conversions.
         $project = (new ReflectionMethod($this->connection, 'getDatabasePlatform'))->getDeclaringClass()->getName() === Connection::class;
-        $count = 0;
+        $queries = [];
         foreach ($tables as $table) {
             $reference = EntityRegistry::discriminatedReferences($table)['items_id'] ?? null;
             if ($reference !== null && !isset($reference['selections'][$type])) {
@@ -61,14 +61,37 @@ final class ComponentCountReadOperation
             }
             $mapping = $project ? EntityRegistry::componentCountMapping($table) : null;
             if ($mapping !== null) {
-                $count += ComponentRepository::projectedCountForAsset($this->connection, $table, $type, $id, $mapping);
+                $queries[] = ComponentRepository::projectedCountQueryForAsset($this->connection, $table, $type, $id, $mapping);
                 continue;
             }
             $repository = $this->repository();
             $metadata = $this->metadata($table);
-            $count += $this->defaultIdentifiers($metadata) !== null && $metadata->isInheritanceTypeNone()
-                ? $repository->nativeCountForAsset($table, $type, $id)
-                : $repository->countForAsset([$table], $type, $id);
+            if ($this->defaultIdentifiers($metadata) === null || !$metadata->isInheritanceTypeNone()) {
+                return $repository->countForAsset($tables, $type, $id);
+            }
+            $queries[] = $repository->nativeCountQueryForAsset($table, $type, $id);
+        }
+        $queries = array_filter($queries);
+        if ($queries === []) {
+            return 0;
+        }
+        $sql = [];
+        $parameters = [];
+        $types = [];
+        foreach ($queries as $query) {
+            $sql[] = $query->getSQL();
+            array_push($parameters, ...$query->getParameters());
+            array_push($types, ...$query->getParameterTypes());
+        }
+        // One component-tab total observes one statement snapshot, not one per family.
+        $count = 0;
+        $values = $this->connection->executeQuery(
+            implode(' UNION ALL ', $sql),
+            $parameters,
+            $types,
+        )->fetchFirstColumn();
+        foreach ($values as $value) {
+            $count += (int)$value;
         }
         return $count;
     }

@@ -6,6 +6,7 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Query\QueryBuilder;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
@@ -45,16 +46,13 @@ final class ComponentRepository
         return $count;
     }
 
-    /** One private family count; retain the same scalar result and bound conversions as DQL. */
-    public function nativeCountForAsset(string $table, string $type, int $id, ?array $mapping = null): int
+    /** @internal Compile one family for the caller-owned component total. */
+    public function nativeCountQueryForAsset(string $table, string $type, int $id): ?QueryBuilder
     {
         $class = EntityRegistry::tables()[$table];
         $reference = EntityRegistry::discriminatedReferences($table)['items_id'] ?? null;
         if ($reference !== null && !isset($reference['selections'][$type])) {
-            return 0;
-        }
-        if ($mapping !== null) {
-            return self::projectedCountForAsset($this->em->getConnection(), $table, $type, $id, $mapping);
+            return null;
         }
         $metadata = $this->em->getClassMetadata($class);
         $connection = $this->em->getConnection();
@@ -71,16 +69,16 @@ final class ComponentRepository
             }
             $subject = 'r.' . $quote->getJoinColumnName($association->joinColumns[0], $metadata, $platform);
         }
-        return self::executeCount($connection, $platform, $column, $from, $subject, $type, $id);
+        return self::countQuery($connection, $platform, $column, $from, $subject, $type, $id);
     }
 
     /** @internal The admitted immutable projection needs only the selected DBAL connection. */
-    public static function projectedCountForAsset(Connection $connection, string $table, string $type, int $id, array $mapping): int
+    public static function projectedCountQueryForAsset(Connection $connection, string $table, string $type, int $id, array $mapping): ?QueryBuilder
     {
         $class = EntityRegistry::tables()[$table];
         $reference = EntityRegistry::discriminatedReferences($table)['items_id'] ?? null;
         if ($reference !== null && !isset($reference['selections'][$type])) {
-            return 0;
+            return null;
         }
         $platform = $connection->getDatabasePlatform();
         $identifier = static fn (array $name): string => $name[1] ? $platform->quoteSingleIdentifier($name[0]) : $name[0];
@@ -95,16 +93,16 @@ final class ComponentRepository
             }
             $subject = 'r.' . $identifier($join);
         }
-        return self::executeCount($connection, $platform, $column, $from, $subject, $type, $id);
+        return self::countQuery($connection, $platform, $column, $from, $subject, $type, $id);
     }
 
-    private static function executeCount(Connection $connection, AbstractPlatform $platform, callable $column, callable $from, string $subject, string $type, int $id): int
+    private static function countQuery(Connection $connection, AbstractPlatform $platform, callable $column, callable $from, string $subject, string $type, int $id): QueryBuilder
     {
         $asset = Type::getType(Types::BIGINT);
         $kind = Type::getType(Types::STRING);
         $deleted = Type::getType(Types::BOOLEAN);
         // COUNT's path and scalar hydration do not apply mapped SQL/PHP output converters.
-        return (int)$connection->createQueryBuilder()
+        return $connection->createQueryBuilder()
             ->select('COUNT(' . $column('id') . ')')
             ->from($from(), 'r')
             ->where($subject . ' = ' . $asset->convertToDatabaseValueSQL('?', $platform))
@@ -112,9 +110,7 @@ final class ComponentRepository
             ->andWhere($column('is_deleted') . ' = ' . $deleted->convertToDatabaseValueSQL('?', $platform))
             ->setParameter(0, $id, Types::BIGINT)
             ->setParameter(1, $type, Types::STRING)
-            ->setParameter(2, false, Types::BOOLEAN)
-            ->executeQuery()
-            ->fetchOne();
+            ->setParameter(2, false, Types::BOOLEAN);
     }
 
     /** A selected typed subject must exist; stock deliberately selects no subject. */
