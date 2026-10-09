@@ -47,6 +47,7 @@ use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Query;
 use Doctrine\ORM\Query\Filter\SQLFilter;
 use itsmng\Database\Entity\Log as LogRecord;
+use itsmng\Database\Entity\Entity as EntityRecord;
 use itsmng\Database\Entity\User as UserRecord;
 use itsmng\Database\Repository\HistoryRepository;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
@@ -275,6 +276,7 @@ class Log extends DbTestCase
             $computer = $this->createComputer();
             $manager = Orm::create($DB);
             $user = new UserRecord();
+            $user->entities = $manager->getReference(EntityRecord::class, (int)$computer->fields['entities_id']);
             $user->name = 'history-reader-' . bin2hex(random_bytes(6));
             $user->firstname = 'Ada';
             $user->realname = 'History';
