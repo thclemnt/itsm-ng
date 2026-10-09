@@ -70,7 +70,9 @@ final class RecordReadOperation implements ReadQueryOwner
         try {
             return (new RecordRepository($fallback))->find($table, $column, $id);
         } finally {
-            $fallback->clear();
+            if (!$this->suppliedManager || $fallback !== $this->manager) {
+                $fallback->clear();
+            }
         }
     }
 
@@ -108,7 +110,9 @@ final class RecordReadOperation implements ReadQueryOwner
         try {
             return (new RecordRepository($fallback))->matching($table, $criteria, $order, $limit, $offset);
         } finally {
-            $fallback->clear();
+            if (!$this->suppliedManager || $fallback !== $this->manager) {
+                $fallback->clear();
+            }
         }
     }
 

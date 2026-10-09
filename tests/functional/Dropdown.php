@@ -456,10 +456,12 @@ class Dropdown extends DbTestCase
         $id = (int)getItemByTypeName('Budget', '_budget01', true);
         $listener = new class () {
             public int $loaded = 0;
+            public array $managers = [];
             public function postLoad(PostLoadEventArgs $event): void
             {
                 if ($event->getObject() instanceof BudgetEntity) {
                     ++$this->loaded;
+                    $this->managers[] = $event->getObjectManager();
                     $event->getObject()->name = 'Post-load presentation';
                 }
             }
@@ -518,6 +520,28 @@ class Dropdown extends DbTestCase
             $this->string($manager->getRepository(Contact::class)
                 ->choices(['id' => (int)$contact->getID()], [], [], 'Contact', 'en_GB', 0, 0)[0]['name'])
                 ->isIdenticalTo(($contact->fields['name'] ?? '') . ' ' . ($contact->fields['firstname'] ?? ''));
+            $sentinel = $manager->find(Contact::class, (int)$contact->getID());
+            $configuration = $manager->getConfiguration();
+            $cache = $configuration->getMetadataCache();
+            $listener->managers = [];
+            $manager->getEventManager()->addEventListener([Events::postLoad], $listener);
+            $borrowed = new DropdownReadOperation($connection, $manager);
+            try {
+                $this->string($borrowed->label('glpi_budgets', $id, 'Budget', 'en_GB', [])['name'])
+                    ->isIdenticalTo('Post-load presentation');
+                $this->boolean($manager->contains($sentinel))->isTrue('Label fallback preserves unrelated caller entities');
+                $this->object($manager->getConfiguration())->isIdenticalTo($configuration);
+                $this->object($configuration->getMetadataCache())->isIdenticalTo($cache);
+                $this->string($borrowed->choices('glpi_budgets', ['id' => $id], [], [], 'Budget', 'en_GB', 0, 0)[0]['name'])
+                    ->isIdenticalTo('Post-load presentation');
+                $this->boolean($manager->contains($sentinel))->isTrue('Choice fallback preserves unrelated caller entities');
+                $this->object($manager->getConfiguration())->isIdenticalTo($configuration);
+                $this->object($configuration->getMetadataCache())->isIdenticalTo($cache);
+                $this->array($listener->managers)->isIdenticalTo([$manager, $manager]);
+            } finally {
+                $borrowed->close();
+            }
+            $this->boolean($manager->contains($sentinel))->isTrue();
         } finally {
             $manager->getEventManager()->removeEventListener([Events::postLoad], $listener);
             $manager->clear();

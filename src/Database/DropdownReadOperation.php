@@ -35,7 +35,9 @@ final class DropdownReadOperation implements ReadQueryOwner
         try {
             return (new DropdownTranslationRepository($fallback))->dropdownRow($table, $id, $type, $language, $translations, $columns);
         } finally {
-            $fallback->clear();
+            if (!$this->suppliedManager || $fallback !== $this->manager) {
+                $fallback->clear();
+            }
         }
     }
 
@@ -63,7 +65,9 @@ final class DropdownReadOperation implements ReadQueryOwner
             try {
                 return $fallback->getRepository($metadata->name)->choices($criteria, $order, $translations, $kind, $language, $limit, $offset);
             } finally {
-                $fallback->clear();
+                if (!$this->suppliedManager || $fallback !== $this->manager) {
+                    $fallback->clear();
+                }
             }
         }
         return $this->manager->getRepository($metadata->name)->ownedChoices(

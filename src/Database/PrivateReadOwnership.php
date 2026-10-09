@@ -71,6 +71,9 @@ trait PrivateReadOwnership
     private function metadata(string $table, ?string $lookupColumn = null): ClassMetadata
     {
         $class = EntityRegistry::tables()[$table];
+        if ($this->suppliedManager && !$this->sharedManager) {
+            return $this->manager->getClassMetadata($class);
+        }
         // Only canonical source declarations enter the private persistent namespace.
         // Custom/composite roots continue with the independently mutable local cache.
         $persistent = isset($this->identifiers[$class]) && $this->context !== null
