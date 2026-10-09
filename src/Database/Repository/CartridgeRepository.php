@@ -107,7 +107,6 @@ final class CartridgeRepository
         $rows = [];
         foreach ($query->getQuery()->toIterable() as $result) {
             $row = $records->toRow($result[0]);
-            $this->em->detach($result[0]);
             unset($result[0]);
             $rows[] = $row + $result;
         }

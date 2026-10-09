@@ -73,7 +73,6 @@ final class InfocomRepository
         $rows = [];
         foreach ($query->getQuery()->toIterable() as $record) {
             $rows[] = $records->toRow($record) + ['warrantyexpiration' => $record->warrantyExpiresOn()?->format('Y-m-d')];
-            $this->em->detach($record);
         }
         return $rows;
     }
@@ -149,7 +148,6 @@ final class InfocomRepository
         foreach ($query->getQuery()->toIterable() as $result) {
             $record = $result[0];
             $rows[] = array_replace($records->toRow($record), [$name => $result['linked_name']]);
-            $this->em->detach($record);
         }
         return ['count' => $count, 'rows' => $rows];
     }

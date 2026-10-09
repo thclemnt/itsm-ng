@@ -239,7 +239,6 @@ final class SoftwareRepository
         $rows = [];
         foreach ($query->getQuery()->toIterable() as $result) {
             $rows[] = $records->toRow($result[0]) + ['sname' => $result['sname']];
-            $this->em->detach($result[0]);
         }
         return $rows;
     }
@@ -364,7 +363,6 @@ final class SoftwareRepository
             $license = $result[0];
             unset($result[0]);
             $rows[] = $records->toRow($license) + $result;
-            $this->em->detach($license);
         }
         return $rows;
     }

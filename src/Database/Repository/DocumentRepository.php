@@ -173,7 +173,6 @@ final class DocumentRepository
         $rows = [];
         foreach ($query->getQuery()->toIterable() as $binding) {
             $rows[] = $records->toRow($binding->documents);
-            $this->em->detach($binding);
         }
         return $rows;
     }
@@ -186,7 +185,6 @@ final class DocumentRepository
         $rows = [];
         foreach ($query->getQuery()->toIterable() as $binding) {
             $rows[] = $records->toRow($binding->documents);
-            $this->em->detach($binding);
         }
         return $rows;
     }

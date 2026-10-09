@@ -44,7 +44,6 @@ final class ItilProjectRepository
         $rows = [];
         foreach ($query->getQuery()->toIterable() as $result) {
             $rows[] = $records->toRow($result[0]) + ['linkid' => (int)$result['linkid']];
-            $this->em->detach($result[0]);
         }
         return $rows;
     }

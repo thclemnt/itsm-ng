@@ -45,7 +45,6 @@ final class EventRepository
         $rows = [];
         foreach ($query->getQuery()->toIterable() as $record) {
             $rows[] = $records->toRow($record);
-            $this->em->detach($record);
         }
         return $rows;
     }

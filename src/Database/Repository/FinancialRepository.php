@@ -80,12 +80,10 @@ final class FinancialRepository
         foreach ($query->getQuery()->toIterable() as $result) {
             if (is_array($result)) {
                 $row = $records->toRow($result[0]);
-                $this->em->detach($result[0]);
                 unset($result[0]);
                 $rows[] = array_merge($row, $result);
             } else {
                 $rows[] = $records->toRow($result);
-                $this->em->detach($result);
             }
         }
         return $rows;

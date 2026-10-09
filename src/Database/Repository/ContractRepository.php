@@ -137,7 +137,6 @@ final class ContractRepository extends DropdownChoiceRepository
             $record = $result instanceof Contract ? $result : $result[0];
             $extra = $result instanceof Contract ? [] : array_diff_key($result, [0 => true]);
             $rows[] = $records->toRow($record) + $extra;
-            $this->getEntityManager()->detach($record);
         }
         return $rows;
     }

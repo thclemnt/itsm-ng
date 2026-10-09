@@ -1322,8 +1322,13 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
             return 0;
         }
         $lastdate = (new DateTimeImmutable($task->getField('lastrun')))->sub(new DateInterval('P7D'));
-        $repository = self::repository();
-        $rows = $repository->stale($lastdate);
+        $manager = Orm::create($DB);
+        $repository = new SavedSearchRepository($manager);
+        try {
+            $rows = $repository->stale($lastdate);
+        } finally {
+            $manager->clear();
+        }
         if (!$rows) {
             return 0;
         }

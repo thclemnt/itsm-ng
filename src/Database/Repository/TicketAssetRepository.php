@@ -113,8 +113,6 @@ final class TicketAssetRepository
         $rows = [];
         foreach ($query->select('i, t')->orderBy('t.id')->getQuery()->toIterable() as $link) {
             $rows[] = $records->toRow($link->tickets) + ['_relid' => $link->id];
-            $this->em->detach($link->tickets);
-            $this->em->detach($link);
         }
         return $rows;
     }
@@ -143,7 +141,6 @@ final class TicketAssetRepository
         $rows = [];
         foreach ($query->getQuery()->toIterable() as $record) {
             $rows[] = $records->toRow($record);
-            $this->em->detach($record);
         }
         return $rows;
     }

@@ -140,7 +140,6 @@ final class GroupMembershipRepository
                 'IDD' => $membership->id, 'linkid' => $membership->id, 'is_dynamic' => (int)$membership->is_dynamic,
                 'is_manager' => (int)$membership->is_manager, 'is_userdelegate' => (int)$membership->is_userdelegate,
             ]);
-            $this->em->detach($membership);
         }
         return $rows;
     }

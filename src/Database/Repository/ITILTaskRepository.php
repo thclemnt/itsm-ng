@@ -160,7 +160,6 @@ final class ITILTaskRepository
                 }
             }
             $rows[] = $row;
-            $this->em->detach($record);
         }
         return $rows;
     }

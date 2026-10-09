@@ -40,7 +40,6 @@ final class MailAuthenticationRepository
         $rows = [];
         foreach ($query->addOrderBy('m.id')->getQuery()->toIterable() as $record) {
             $rows[] = $records->toRow($record);
-            $this->em->detach($record);
         }
         return $rows;
     }

@@ -268,7 +268,6 @@ final class ProfileUserRepository
                 $extra += ['pid' => $grant->profiles->id, 'pname' => $grant->profiles->name];
             }
             $rows[] = array_merge($records->toRow($grant->users), $extra);
-            $this->em->detach($grant);
         }
         return $rows;
     }

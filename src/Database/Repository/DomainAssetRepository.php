@@ -43,7 +43,6 @@ final class DomainAssetRepository
         foreach ($query->orderBy('l.id')->getQuery()->getResult() as $result) {
             $record = $result[0];
             $rows[] = array_replace($records->toRow($record), ['items_id' => $result['linkid'], 'domainrelations_id' => $result['domainrelations_id'], 'entity' => $result['entity']]);
-            $this->em->detach($record);
         }
         return $rows;
     }
@@ -72,7 +71,6 @@ final class DomainAssetRepository
         foreach ($query->getQuery()->getResult() as $result) {
             $record = $result[0]->domains;
             $rows[] = $records->toRow($record) + ['assocID' => $result['assocID'], 'domainrelations_id' => $result['domainrelations_id'], 'entity' => $result['entity'], 'assocName' => $record->name];
-            $this->em->detach($result[0]);
         }
         return $rows;
     }

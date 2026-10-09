@@ -57,8 +57,6 @@ final class ComponentDefinitionRepository
         if ($record === null) {
             return null;
         }
-        $row = (new RecordRepository($this->em))->toRow($record);
-        $this->em->detach($record);
-        return $row;
+        return (new RecordRepository($this->em))->toRow($record);
     }
 }

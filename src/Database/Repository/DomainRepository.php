@@ -189,7 +189,6 @@ final class DomainRepository
                 'group_name' => $result['group_name'],
                 'technician_name' => $result['technician_name']
             ];
-            $this->em->detach($result[0]);
         }
         return $rows;
     }
@@ -214,7 +213,6 @@ final class DomainRepository
         $rows = [];
         foreach ($query->getQuery()->toIterable() as $record) {
             $rows[] = $records->toRow($record);
-            $this->em->detach($record);
         }
         return $rows;
     }

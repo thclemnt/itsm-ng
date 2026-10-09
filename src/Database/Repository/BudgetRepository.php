@@ -65,7 +65,6 @@ final class BudgetRepository
             $record = $result[0];
             unset($result[0]);
             $rows[] = array_merge($records->toRow($record), $result);
-            $this->em->detach($record);
         }
         return $rows;
     }

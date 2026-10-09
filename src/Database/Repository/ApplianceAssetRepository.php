@@ -166,7 +166,6 @@ final class ApplianceAssetRepository
             $rows[] = ['id' => $binding->id, 'itemtype_1' => $ownerKind, 'items_id_1' => $binding->{$owner}->id,
                 'itemtype_2' => $binding->itemtype, 'items_id_2' => $binding->{$subject}->id,
                 'is_1' => (int)($kind === $ownerKind), 'is_2' => (int)($kind !== $ownerKind)];
-            $this->em->detach($binding);
         }
         return $rows;
     }
@@ -252,10 +251,6 @@ final class ApplianceAssetRepository
             $record = $subject === null ? $root : $root->{$subject};
             $scalars = is_array($result) ? array_diff_key($result, [0 => true]) : [];
             $rows[] = $records->toRow($record) + $scalars;
-            $this->em->detach($record);
-            if ($root !== $record) {
-                $this->em->detach($root);
-            }
         }
         return $rows;
     }

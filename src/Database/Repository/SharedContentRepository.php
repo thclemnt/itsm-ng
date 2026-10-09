@@ -139,7 +139,6 @@ final class SharedContentRepository
                 $row += $result;
             }
             $rows[] = $row;
-            $this->em->detach($record);
         }
         return $rows;
     }

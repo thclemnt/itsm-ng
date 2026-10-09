@@ -45,7 +45,6 @@ final class ContactRepository
             $row = $records->toRow($record);
             $row['name'] = ($row['name'] ?? '') . ' ' . ($row['firstname'] ?? '');
             $rows[] = $row;
-            $this->em->detach($record);
         }
         return $rows;
     }
@@ -65,7 +64,6 @@ final class ContactRepository
             $record = $result[0];
             unset($result[0]);
             $rows[] = $records->toRow($record) + $result;
-            $this->em->detach($record);
         }
         return $rows;
     }

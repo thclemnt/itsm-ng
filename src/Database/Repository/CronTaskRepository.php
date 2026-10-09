@@ -136,7 +136,6 @@ final class CronTaskRepository
         $rows = [];
         foreach ($query->getQuery()->toIterable() as $task) {
             $rows[] = $records->toRow($task);
-            $this->em->detach($task);
         }
         return $rows;
     }

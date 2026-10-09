@@ -79,7 +79,6 @@ final class ServiceLevelRepository
         $records = new RecordRepository($this->em);
         foreach ($query->getQuery()->toIterable() as $result) {
             $rows[] = $records->toRow($result[0]) + ['type' => (int)$result['agreement_type']];
-            $this->em->detach($result[0]);
         }
         return $rows;
     }

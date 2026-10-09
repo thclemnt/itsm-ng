@@ -25,7 +25,6 @@ final class ObjectLockRepository
         $rows = [];
         foreach ($query->getQuery()->toIterable() as $lock) {
             $rows[] = $records->toRow($lock);
-            $this->em->detach($lock);
         }
         return $rows;
     }

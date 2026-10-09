@@ -87,7 +87,6 @@ final class ProjectAssetRepository
             $record = $result[0];
             unset($result[0]);
             $rows[] = $records->toRow($record) + $result;
-            $this->em->detach($record);
         }
         return $rows;
     }
@@ -124,7 +123,6 @@ final class ProjectAssetRepository
         foreach ($query->getQuery()->toIterable() as $binding) {
             $association = ItemProject::referenceAssociation($binding->itemtype);
             $rows[] = ['id' => $binding->id, 'itemtype' => $binding->itemtype, 'items_id' => $binding->{$association}->id];
-            $this->em->detach($binding);
         }
         return $rows;
     }
@@ -154,7 +152,6 @@ final class ProjectAssetRepository
                 'itemtype_2' => $binding->itemtype, 'items_id_2' => $subjectId,
                 'is_1' => (int)($kind === LegacyProject::class && $ownerId === $id),
                 'is_2' => (int)($binding->itemtype === $kind && $subjectId === $id)];
-            $this->em->detach($binding);
         }
         return $rows;
     }

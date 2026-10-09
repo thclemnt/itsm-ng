@@ -51,7 +51,6 @@ final class RuleRepository
         $rows = [];
         foreach ($query->getQuery()->toIterable() as $rule) {
             $rows[] = $records->toRow($rule);
-            $this->em->detach($rule);
         }
         return $rows;
     }

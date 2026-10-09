@@ -242,9 +242,16 @@ class SlaLevel_Ticket extends CommonDBTM
      */
     public static function replayForTicket($tickets_id, $slaType)
     {
-        $repository = self::serviceRepository();
+        global $DB;
+        $manager = Orm::create($DB);
+        $repository = new ServiceLevelRepository($manager, 'sla');
         do {
-            $rows = $repository->scheduled((int)$tickets_id, (int)$slaType, new DateTimeImmutable(), 2);
+            try {
+                $rows = $repository->scheduled((int)$tickets_id, (int)$slaType, new DateTimeImmutable(), 2);
+            } finally {
+                // The next selection follows legacy queue and ticket mutations.
+                $manager->clear();
+            }
             if (count($rows) === 1) {
                 self::doLevelForTicket($rows[0], $slaType);
             }

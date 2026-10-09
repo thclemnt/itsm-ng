@@ -46,7 +46,6 @@ final class LocationRepository
         foreach ($query->getQuery()->toIterable() as $result) {
             $record = $result[0];
             $rows[] = ['fields' => $records->toRow($record), 'entity_name' => !empty($result['translated_entity']) ? $result['translated_entity'] : ($result['entity_name'] ?? '')];
-            $this->em->detach($record);
         }
         return $rows;
     }

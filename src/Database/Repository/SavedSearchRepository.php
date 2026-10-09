@@ -63,7 +63,6 @@ final class SavedSearchRepository
             $row = $records->toRow($result[0]);
             $row['IS_DEFAULT'] = $result['default_id'] === null ? null : (int)$result['default_id'];
             $rows[$row['is_private'] ? 'private' : 'public'][$row['id']] = $row;
-            $this->em->detach($result[0]);
         }
         return $rows;
     }
@@ -106,7 +105,6 @@ final class SavedSearchRepository
         $rows = [];
         foreach ($query->getQuery()->toIterable() as $record) {
             $rows[] = $records->toRow($record);
-            $this->em->detach($record);
         }
         return $rows;
     }

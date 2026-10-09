@@ -118,8 +118,6 @@ final class CalendarRepository
             ->setParameter('day', $day, Types::DATE_IMMUTABLE)->getQuery()->toIterable();
         foreach ($links as $link) {
             $holiday = $link->holidays;
-            $this->em->detach($link);
-            $this->em->detach($holiday);
             if ($holiday->containsDay($day)) {
                 return true;
             }

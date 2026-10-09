@@ -31,7 +31,6 @@ final class InventoryRepository
         $rows = [];
         foreach ($query->getQuery()->toIterable() as $result) {
             $rows[] = $records->toRow($result[0]) + ['fsname' => $result['fsname']];
-            $this->em->detach($result[0]);
         }
         return $rows;
     }

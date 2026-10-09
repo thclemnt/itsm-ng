@@ -7221,11 +7221,16 @@ class Ticket extends CommonITILObject
         }
         // Recherche des entit??s
         $tot = 0;
-        $candidates = new TicketAutomaticActionRepository(Orm::create($DB));
+        $manager = Orm::create($DB);
+        $candidates = new TicketAutomaticActionRepository($manager);
         foreach (Entity::getEntitiesToNotify('notclosed_delay') as $entity => $value) {
-            $tickets = $candidates->overdue((int)$entity, [
-                $_SESSION['INCOMING'], $_SESSION['ASSIGNED'], $_SESSION['PLANNED'], $_SESSION['WAITING'],
-            ], (int)$value);
+            try {
+                $tickets = $candidates->overdue((int)$entity, [
+                    $_SESSION['INCOMING'], $_SESSION['ASSIGNED'], $_SESSION['PLANNED'], $_SESSION['WAITING'],
+                ], (int)$value);
+            } finally {
+                $manager->clear();
+            }
 
             if (!empty($tickets)) {
                 if (

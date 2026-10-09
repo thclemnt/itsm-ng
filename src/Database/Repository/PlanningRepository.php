@@ -55,7 +55,6 @@ final class PlanningRepository
         $rows = [];
         foreach ($query->getQuery()->toIterable() as $result) {
             $rows[] = $records->toRow($result[0]) + ['cat_color' => $result['cat_color']];
-            $this->em->detach($result[0]);
         }
         return $rows;
     }
@@ -90,7 +89,6 @@ final class PlanningRepository
         $rows = [];
         foreach ($query->getQuery()->toIterable() as $recall) {
             $rows[] = $records->toRow($recall);
-            $this->em->detach($recall);
         }
         return $rows;
     }

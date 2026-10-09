@@ -248,9 +248,16 @@ class OlaLevel_Ticket extends CommonDBTM
      */
     public static function replayForTicket($tickets_id, $olaType)
     {
-        $repository = self::serviceRepository();
+        global $DB;
+        $manager = Orm::create($DB);
+        $repository = new ServiceLevelRepository($manager, 'ola');
         do {
-            $rows = $repository->scheduled((int)$tickets_id, (int)$olaType, new DateTimeImmutable(), 2);
+            try {
+                $rows = $repository->scheduled((int)$tickets_id, (int)$olaType, new DateTimeImmutable(), 2);
+            } finally {
+                // The next selection follows legacy queue and ticket mutations.
+                $manager->clear();
+            }
             if (count($rows) === 1) {
                 self::doLevelForTicket($rows[0], $olaType);
             }

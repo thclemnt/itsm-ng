@@ -59,7 +59,6 @@ final class ContractAssetRepository
             $record = $result[0];
             unset($result[0]);
             $rows[] = $records->toRow($record) + $result;
-            $this->em->detach($record);
         }
         return ['count' => $count, 'rows' => $rows];
     }
