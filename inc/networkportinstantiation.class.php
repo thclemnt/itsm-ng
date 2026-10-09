@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\NetworkPortAggregateRepository;
 use itsmng\Database\RowIterator;
@@ -321,8 +322,12 @@ class NetworkPortInstantiation extends CommonDBChild
         if (($this->canHaveVirtualPort) && ($display_options['virtual_ports'])) {
             $virtual_header = $row->getHeaderByName('Instantiation', 'VirtualPorts');
 
-            $iterator = new RowIterator((new NetworkPortAggregateRepository(Orm::create($DB)))
-                ->virtualPorts((int)$netport->getID()));
+            $virtualPorts = Orm::read(
+                $DB,
+                static fn (EntityManager $manager): array => (new NetworkPortAggregateRepository($manager))
+                    ->virtualPorts((int)$netport->getID())
+            );
+            $iterator = new RowIterator($virtualPorts);
 
             if (count($iterator)) {
                 $new_father = $row->addCell($virtual_header, __('this port'), $father);
@@ -743,8 +748,15 @@ class NetworkPortInstantiation extends CommonDBChild
 
         $macAddresses = [];
         foreach ($netport_types as $netport_type) {
-            $iterator = new RowIterator((new NetworkPortAggregateRepository(Orm::create($DB)))
-                ->availablePorts($lastItem->getType(), (int)$lastItem->getID(), $netport_type));
+            $availablePorts = Orm::read(
+                $DB,
+                static fn (EntityManager $manager): array => (new NetworkPortAggregateRepository($manager))->availablePorts(
+                    $lastItem->getType(),
+                    (int)$lastItem->getID(),
+                    $netport_type
+                )
+            );
+            $iterator = new RowIterator($availablePorts);
 
             if (count($iterator)) {
                 $array_element_name = call_user_func(
