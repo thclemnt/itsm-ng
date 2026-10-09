@@ -1,5 +1,5 @@
-#!/bin/bash -e
-set -e
+#!/bin/bash
+set -euo pipefail
 
 for required_file in tests/config/config_db.php tests/config/glpicrypt.key; do
   if [[ ! -f "$required_file" ]]; then

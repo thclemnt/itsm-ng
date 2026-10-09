@@ -1,5 +1,5 @@
-#!/bin/bash -e
-set -e
+#!/bin/bash
+set -euo pipefail
 
 export PLAYWRIGHT_BASE_URL="${PLAYWRIGHT_BASE_URL:-http://127.0.0.1:8088}"
 export PLAYWRIGHT_APP_TOKEN_FILE="${PLAYWRIGHT_APP_TOKEN_FILE:-tests/files/_playwright/app-token}"

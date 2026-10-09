@@ -1,8 +1,8 @@
-#!/bin/bash -e
-set -o pipefail
+#!/bin/bash
+set -euo pipefail
 
 LOG_FILE="./tests/files/_log/install.log"
-mkdir -p $(dirname "$LOG_FILE")
+mkdir -p "$(dirname "$LOG_FILE")"
 
 # Execute install
 case "${TEST_DB_TYPE:-mysql}" in

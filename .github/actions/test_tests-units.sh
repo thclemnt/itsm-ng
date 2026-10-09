@@ -1,10 +1,11 @@
-#!/bin/bash -e
+#!/bin/bash
+set -euo pipefail
 
 # Doctrine and domain units use the isolated Composer bootstrap.
 composer test:units:isolated
 
 ATOUM_ADDITIONNAL_OPTIONS=""
-if [[ "$CODE_COVERAGE" = true ]]; then
+if [[ "${CODE_COVERAGE:-false}" = true ]]; then
   export COVERAGE_DIR="coverage-unit"
 else
   ATOUM_ADDITIONNAL_OPTIONS="--no-code-coverage";

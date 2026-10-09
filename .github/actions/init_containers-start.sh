@@ -1,4 +1,5 @@
-#!/bin/bash -e
+#!/bin/bash
+set -euo pipefail
 
 ROOT_DIR=$(readlink -f "$(dirname "$0")/../..")
 COMPOSE_CMD="$ROOT_DIR/.github/actions/docker-compose.sh"
@@ -9,7 +10,7 @@ mkdir -p $APP_CONTAINER_HOME
 echo "Build and start containers"
 "$COMPOSE_CMD" up --build --detach
 
-if [[ "$UPDATE_FILES_ACL" = true ]]; then
+if [[ "${UPDATE_FILES_ACL:-false}" = true ]]; then
   echo "Change files rights to give write access to app container user"
   sudo apt-get install --assume-yes --no-install-recommends --quiet acl
   setfacl --recursive --modify u:1000:rwx $APPLICATION_ROOT

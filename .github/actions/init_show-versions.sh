@@ -1,4 +1,5 @@
-#!/bin/bash -e
+#!/bin/bash
+set -euo pipefail
 
 ROOT_DIR=$(readlink -f "$(dirname "$0")/../..")
 COMPOSE_CMD="$ROOT_DIR/.github/actions/docker-compose.sh"

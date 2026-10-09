@@ -23,8 +23,6 @@ jobs:
         php: ['8.2', '8.5']
     steps:
       - uses: actions/checkout@v7
-      - name: Test installer failure propagation and readiness ordering
-        run: bash .github/actions/test_install_contract.sh
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}

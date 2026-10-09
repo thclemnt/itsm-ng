@@ -1,4 +1,5 @@
-#!/bin/bash -e
+#!/bin/bash
+set -euo pipefail
 
 # The repository is bind-mounted into the container.
 git config --global --add safe.directory "$(pwd)"
