@@ -453,12 +453,35 @@ class Reservation extends DbTestCase
                     ->notContains('Past boundary reservation')->notContains('Other entity reservation');
                 $this->integer(count($listener->owners))->isIdenticalTo(4);
                 $this->integer($listener->clears)->isIdenticalTo(0);
+                $reservation = new LegacyReservation();
+                $reservation->fields = [
+                    'reservationitems_id' => $items[0]->id,
+                    'begin' => '2030-01-01 10:00:00', 'end' => '2030-01-01 11:00:00',
+                ];
+                $extendedConnection->platformCalls = 0;
+                $extendedConnection->secondPlatform = static function () use ($original): void {
+                    $GLOBALS['DB'] = $original;
+                };
+                $beforeFactories = $factories->getValue();
+                $this->boolean($reservation->is_reserved())->isTrue();
+                $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(1);
+                $this->object($DB)->isIdenticalTo($original);
+                $this->integer($listener->clears)->isIdenticalTo(0);
             } finally {
                 $extendedConnection->secondPlatform = null;
                 $events->removeEventListener([Events::loadClassMetadata, Events::onClear], $listener);
                 $DB = $probe;
                 $_SESSION['glpiactiveentities'] = [$rootId, $childId];
             }
+            $renderDay = static function (int $id): string {
+                ob_start();
+                try {
+                    LegacyReservation::displayReservationDay($id, '2030-01-01');
+                    return ob_get_contents();
+                } finally {
+                    ob_end_clean();
+                }
+            };
             foreach (['Reservation Ada', 'Reservation Grace'] as $firstName) {
                 $connection->update('glpi_users', ['firstname' => $firstName], ['id' => $user->id]);
                 $connection->update('glpi_computers', ['name' => $firstName . ' asset'], ['id' => $assets[0]->id]);
@@ -479,6 +502,11 @@ class Reservation extends DbTestCase
                 $this->array($logger->reads['glpi_entities'] ?? [])->hasSize(2);
                 $this->array($logger->reads['glpi_reservations'] ?? [])->hasSize(2);
                 $this->array($logger->reads['glpi_reservationitems'] ?? [])->isEmpty();
+                $this->string($renderDay($items[0]->id))->contains($firstName);
+                $beforeFactories = $factories->getValue();
+                $this->string($renderDay($items[0]->id))->contains($firstName);
+                $this->integer($factories->getValue() - $beforeFactories)
+                    ->isIdenticalTo(0, 'Repeated calendar rows reuse the request-owned manager');
                 $frame->assertActive();
                 $this->object($DB->getDoctrineConnection())->isIdenticalTo($connection);
             }

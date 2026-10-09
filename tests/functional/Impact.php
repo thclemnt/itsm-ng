@@ -33,9 +33,13 @@
 
 namespace tests\units;
 
+use Change;
+use Change_Item;
 use CommonDBTM;
 use Computer;
 use Config as ConfigModel;
+use Doctrine\Common\EventManager;
+use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Event\PostLoadEventArgs;
 use ReflectionProperty;
 use InvalidArgumentException;
@@ -46,7 +50,9 @@ use Impact as ImpactModel;
 use ImpactCompound;
 use ImpactItem;
 use ImpactRelation;
+use Item_Problem;
 use Item_Ticket;
+use Problem;
 use Session;
 use Ticket;
 use Toolbox;
@@ -134,7 +140,10 @@ class Impact extends \DbTestCase
                     ob_end_clean();
                 }
             };
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $beforeFactories = $factories->getValue();
             $html = $render();
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0, 'Priority rendering reuses the existing request manager');
             foreach (['#123456', '#abcdef', '', '0'] as $color) {
                 $this->string($html)->contains('background-color:' . $color . '; cursor:pointer;');
             }
@@ -485,8 +494,96 @@ class Impact extends \DbTestCase
 
         // Build graph from pc02
         $computer = getItemByTypeName('Computer', '_test_pc02');
-        $graph = \Impact::buildGraph($computer);
-        // var_dump(array_keys($graph['nodes']));
+        $this->login();
+        $objects = [];
+        foreach ([
+            ['incidents', Ticket::class, Item_Ticket::class, Ticket::INCIDENT_TYPE],
+            ['requests', Ticket::class, Item_Ticket::class, Ticket::DEMAND_TYPE],
+            ['changes', Change::class, Change_Item::class, null],
+            ['problems', Problem::class, Item_Problem::class, null],
+        ] as [$bucket, $class, $linkClass, $type]) {
+            $object = new $class();
+            $input = ['name' => 'Impact ' . $bucket . ' ' . $this->getUniqueString(),
+                'content' => 'Linked graph object', 'entities_id' => (int)$computer->fields['entities_id']];
+            if ($type !== null) {
+                $input['type'] = $type;
+            }
+            $this->integer((int)$object->add($input))->isGreaterThan(0);
+            $link = new $linkClass();
+            $this->integer((int)$link->add(['itemtype' => Computer::class, 'items_id' => $computer->getID(),
+                $class::getForeignKeyField() => $object->getID()]))->isGreaterThan(0);
+            $objects[$bucket] = $object;
+        }
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeFactories = $factories->getValue();
+        $graph = ImpactModel::buildGraph($computer);
+        $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0, 'A populated graph reuses the existing request manager');
+        $nodeId = ImpactModel::getNodeID($computer);
+        foreach ($objects as $bucket => $object) {
+            $this->array(array_column($graph['nodes'][$nodeId]['ITILObjects'][$bucket], 'id'))
+                ->contains((int)$object->getID());
+        }
+        $this->array(ImpactModel::buildGraph($computer))->isIdenticalTo($graph);
+        $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+
+        $connection = $GLOBALS['DB']->getDoctrineConnection();
+        $connection->update('glpi_tickets', ['name' => 'Fresh graph incident'], ['id' => $objects['incidents']->getID()]);
+        $fresh = ImpactModel::buildGraph($computer);
+        $this->array(array_column($fresh['nodes'][$nodeId]['ITILObjects']['incidents'], 'name', 'id'))
+            ->hasKey((int)$objects['incidents']->getID());
+        $names = array_column($fresh['nodes'][$nodeId]['ITILObjects']['incidents'], 'name', 'id');
+        $this->string($names[(int)$objects['incidents']->getID()])->isIdenticalTo('Fresh graph incident');
+        $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+        $found = ImpactModel::searchAsset(Computer::class, [], $computer->fields['name']);
+        $this->array(array_map('intval', array_column($found['items'], 'id')))->contains((int)$computer->getID());
+        $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+        Orm::withConnection($connection, function (EntityManager $outer) use ($computer, $factories): void {
+            $pending = $outer->find(User::class, (int)Session::getLoginUserID());
+            $pending->priority_5 = '#123789';
+            $beforeNestedFactories = $factories->getValue();
+            $computer->getITILTickets(true);
+            $this->integer($factories->getValue() - $beforeNestedFactories)->isIdenticalTo(4, 'Each nested ITIL read owns a separate manager');
+            $this->boolean($outer->contains($pending))->isTrue();
+            $this->string($pending->priority_5)->isIdenticalTo('#123789');
+        });
+
+        $events = new EventManager();
+        $observer = new class () {
+            public int $clears = 0;
+            public function onClear(): void
+            {
+                ++$this->clears;
+            }
+        };
+        $events->addEventListener(['onClear'], $observer);
+        $probe = new class ($connection) extends ScalarReadProbe {
+            public EventManager $events;
+            public function getEventManager(): EventManager
+            {
+                return $this->events;
+            }
+        };
+        $probe->events = $events;
+        $originalAdapter = $GLOBALS['DB'];
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new ImpactAdapterProbe();
+        $getters = 0;
+        $this->calling($adapter)->getDoctrineConnection = static function () use ($probe, &$getters) {
+            ++$getters;
+            return $probe;
+        };
+        $this->calling($adapter)->getProvider = $originalAdapter->getProvider();
+        try {
+            $GLOBALS['DB'] = $adapter;
+            $beforeFactories = $factories->getValue();
+            $this->array($computer->getITILTickets(true))->isIdenticalTo($fresh['nodes'][$nodeId]['ITILObjects']);
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(4);
+            $this->integer($getters)->isIdenticalTo(4);
+            $this->array($probe->queries)->hasSize(4);
+            $this->integer($observer->clears)->isIdenticalTo(0);
+        } finally {
+            $GLOBALS['DB'] = $originalAdapter;
+        }
         $this->array($graph)->hasKeys(["nodes", "edges"]);
 
         // Nodes should contain 8 elements (6 nodes + 2 compounds)
