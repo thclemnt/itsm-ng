@@ -14,10 +14,9 @@ use InvalidArgumentException;
  */
 final class LegacySql
 {
-    public static function postgres(string $sql, bool $parameters = false): string
+    public static function postgres(string $sql): string
     {
         $out = '';
-        $parameter = 0;
         $length = strlen($sql);
         for ($i = 0; $i < $length; $i++) {
             $char = $sql[$i];
@@ -75,8 +74,6 @@ final class LegacySql
                 }
                 $out .= substr($sql, $i, $end + 2 - $i);
                 $i = $end + 1;
-            } elseif ($char === '?' && $parameters) {
-                $out .= '$' . ++$parameter;
             } else {
                 $out .= $char;
             }
