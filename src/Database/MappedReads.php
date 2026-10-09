@@ -17,15 +17,23 @@ final class MappedReads
             throw new UnsupportedCriteria('Unmapped table requires a registered entity.');
         }
         $connection = $database->getDoctrineConnection();
-        return Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $table, $criteria, $order, $limit, $offset): array {
+        $result = Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $table, $criteria, $order, $limit, $offset): array|UnsupportedCriteria {
             $operation = new RecordReadOperation($connection, $manager);
             try {
-                $rows = $operation->matching($table, $criteria, $order, $limit, $offset);
+                $rows = $operation->matchingResult($table, $criteria, $order, $limit, $offset);
+                if ($rows instanceof UnsupportedCriteria) {
+                    return $rows;
+                }
                 return array_map(static fn (array $row): array => ReferenceValues::legacyRow($table, $row), $rows);
             } finally {
                 $operation->close();
             }
         });
+        if ($result instanceof UnsupportedCriteria) {
+            // The completed value-only scope has cleared normally; keep find's public fallback.
+            throw $result;
+        }
+        return $result;
     }
 
     public static function countMatching(DBAdapter $database, string $table, array $criteria): int

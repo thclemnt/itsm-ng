@@ -18,11 +18,37 @@ use RuntimeException;
 final class RecordCriteria
 {
     private int $parameter = 0;
+    /** Only diagnostics issued by this compiler can decline matching admission. */
+    private ?UnsupportedCriteria $rejection = null;
     /** Query-local aliases for explicitly mapped joins, never schema declarations. */
     private array $joinedMetadata = [];
 
     public function __construct(private QueryBuilder $query, private ClassMetadata $metadata, private bool $legacyValues = true)
     {
+    }
+
+    /** Apply the existing compiler once, without treating a language rejection as a failed query. */
+    public function applyMatching(array $criteria, array|string $order): ?UnsupportedCriteria
+    {
+        $this->rejection = null;
+        try {
+            $this->query->where($this->where($criteria));
+            $this->order($order);
+            return null;
+        } catch (UnsupportedCriteria $error) {
+            if ($error !== $this->rejection) {
+                throw $error;
+            }
+            return $error;
+        } finally {
+            $this->rejection = null;
+        }
+    }
+
+    private function reject(string $message): never
+    {
+        $this->rejection = new UnsupportedCriteria($message);
+        throw $this->rejection;
     }
 
     public function withJoinedMetadata(ClassMetadata $metadata, string $alias, ?string $qualifier = null): self
@@ -31,7 +57,7 @@ final class RecordCriteria
         if (!in_array($alias, $this->query->getAllAliases(), true)
             || $metadata->getTableName() === $this->metadata->getTableName()
             || isset($this->joinedMetadata[$qualifier])) {
-            throw new UnsupportedCriteria('Joined criteria require a unique mapped query alias.');
+            $this->reject('Joined criteria require a unique mapped query alias.');
         }
         $this->joinedMetadata[$qualifier] = [$metadata, $alias];
         return $this;
@@ -48,7 +74,7 @@ final class RecordCriteria
                     continue;
                 }
                 if (!is_array($value)) {
-                    throw new UnsupportedCriteria('Raw predicates require a mapped query.');
+                    $this->reject('Raw predicates require a mapped query.');
                 }
                 $expression = $this->where($value, $column === 'OR' ? 'OR' : 'AND');
                 $parts[] = ($column === 'NOT' ? 'NOT ' : '') . '(' . $expression . ')';
@@ -57,7 +83,7 @@ final class RecordCriteria
             [$expression, $type, $optional, $scope] = $this->field($column);
             $isEmpty = $scope ? ReferenceValues::isUnrestricted(...) : ReferenceValues::isEmptySelection(...);
             if ($type === Types::JSON && $value !== null) {
-                throw new UnsupportedCriteria('JSON comparisons require a mapped platform-aware query.');
+                $this->reject('JSON comparisons require a mapped platform-aware query.');
             }
             if ($value === null || ($this->legacyValues && is_string($value) && strtolower($value) === 'null')) {
                 $parts[] = $expression . ' IS NULL';
@@ -72,7 +98,7 @@ final class RecordCriteria
                 }
             }
             if ($operator === 'REGEXP' || $operator === 'NOT REGEX') {
-                throw new UnsupportedCriteria('Regular expressions require a mapped query.');
+                $this->reject('Regular expressions require a mapped query.');
             }
             if ($optional && $this->legacyValues && in_array($operator, ['=', '!=', '<>'], true) && $isEmpty($value)) {
                 $parts[] = $expression . ($operator === '=' ? ' IS NULL' : ' IS NOT NULL');
@@ -80,7 +106,7 @@ final class RecordCriteria
             }
             if ($operator === 'IN') {
                 if (!is_array($value)) {
-                    throw new UnsupportedCriteria('Subqueries require a mapped query.');
+                    $this->reject('Subqueries require a mapped query.');
                 }
                 if (!$value) {
                     throw new RuntimeException('Empty IN are not allowed');
@@ -128,11 +154,11 @@ final class RecordCriteria
     {
         foreach ((array)$order as $clause) {
             if (!is_string($clause)) {
-                throw new UnsupportedCriteria('Raw ordering requires a mapped query.');
+                $this->reject('Raw ordering requires a mapped query.');
             }
             foreach (explode(',', $clause) as $part) {
                 if (!preg_match('/^\s*([a-zA-Z0-9_.`]+)(?:\s+(ASC|DESC))?\s*$/iD', $part, $match)) {
-                    throw new UnsupportedCriteria('Invalid mapped ordering.');
+                    $this->reject('Invalid mapped ordering.');
                 }
                 [$field] = $this->field($match[1]);
                 $this->query->addOrderBy($field, strtoupper($match[2] ?? 'ASC'));
@@ -155,7 +181,7 @@ final class RecordCriteria
             [$table, $column] = explode('.', $column, 2);
             if ($table !== $metadata->getTableName()) {
                 if (!isset($this->joinedMetadata[$table])) {
-                    throw new UnsupportedCriteria('Cross-table criteria require a mapped join.');
+                    $this->reject('Cross-table criteria require a mapped join.');
                 }
                 [$metadata, $alias] = $this->joinedMetadata[$table];
             }
@@ -165,7 +191,7 @@ final class RecordCriteria
             $matches = array_filter($this->joinedMetadata, static fn (array $join): bool =>
                 in_array($column, EntityRegistry::columnNames($join[0]->getTableName()), true));
             if (count($matches) > 1) {
-                throw new UnsupportedCriteria('Ambiguous unqualified joined column: ' . $column);
+                $this->reject('Ambiguous unqualified joined column: ' . $column);
             }
             if ($matches) {
                 [$metadata, $alias] = reset($matches);
@@ -189,7 +215,7 @@ final class RecordCriteria
         }
         $field = $metadata->getFieldName($column);
         if (!$metadata->hasField($field)) {
-            throw new UnsupportedCriteria('Unmapped column in record criteria: ' . $column);
+            $this->reject('Unmapped column in record criteria: ' . $column);
         }
         return [$alias . '.' . $field, $metadata->getTypeOfField($field), false, false];
     }
@@ -205,7 +231,7 @@ final class RecordCriteria
             return ':' . $parameter;
         }
         if (is_object($value) || is_array($value)) {
-            throw new UnsupportedCriteria('Expressions and subqueries require mapped queries.');
+            $this->reject('Expressions and subqueries require mapped queries.');
         }
         if ($this->legacyValues) {
             $value = LegacyValues::decode($value);

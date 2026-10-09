@@ -94,6 +94,7 @@ use itsmng\Database\OidcRefreshReadOperation;
 use itsmng\Database\Orm;
 use itsmng\Database\PostgresConnection;
 use itsmng\Database\ReadQueryOwner;
+use itsmng\Database\RecordCriteria;
 use itsmng\Database\RecordReadOperation;
 use itsmng\Database\Repository\ConfigurationRepository;
 use itsmng\Database\Repository\OidcRepository;
@@ -1223,6 +1224,19 @@ class Config extends DbTestCase
                     $this->exception(static fn () => $operation->matching('glpi_configs', $criteria, [], null, 0))
                         ->isInstanceOf(UnsupportedCriteria::class);
                     $this->boolean($manager->contains($sentinel))->isTrue();
+                    $this->object($operation->matchingResult('glpi_configs', $criteria, [], null, 0))
+                        ->isInstanceOf(UnsupportedCriteria::class);
+                    $this->exception(static function () use ($connection, $criteria): void {
+                        Orm::withConnection($connection, static function (EntityManager $nested) use ($connection, $criteria): void {
+                            $read = new RecordReadOperation($connection, $nested);
+                            try {
+                                $read->matchingResult('glpi_configs', $criteria, [], null, 0);
+                            } finally {
+                                $read->close();
+                            }
+                        });
+                    })->isInstanceOf(UnsupportedCriteria::class);
+                    $this->boolean($manager->contains($sentinel))->isTrue();
                     $this->exception(static fn () => (new RecordRepository($manager))->matching('glpi_configs', $criteria))
                         ->isInstanceOf(UnsupportedCriteria::class);
                     // Reentrant public work owns an isolated manager and must not clear the outer one.
@@ -1241,10 +1255,19 @@ class Config extends DbTestCase
                 $this->exception(static fn () => $operation->matching('glpi_configs', $criteria, [], null, 0))
                     ->isInstanceOf(UnsupportedCriteria::class);
                 $this->boolean($supplied->contains($sentinel))->isTrue();
+                $this->exception(static fn () => $operation->matchingResult('glpi_configs', $criteria, [], null, 0))
+                    ->isInstanceOf(UnsupportedCriteria::class);
             } finally {
                 $operation->close();
             }
             $this->boolean($supplied->contains($sentinel))->isTrue();
+            $private = new RecordReadOperation($connection);
+            try {
+                $this->exception(static fn () => $private->matchingResult('glpi_configs', $criteria, [], null, 0))
+                    ->isInstanceOf(UnsupportedCriteria::class);
+            } finally {
+                $private->close();
+            }
         } finally {
             $supplied?->clear();
             $connection->delete('glpi_configs', ['context' => $context]);
@@ -1350,7 +1373,7 @@ class Config extends DbTestCase
                                 throw $this->error;
                             }
                         } : null;
-                        (new RecordRepository($manager))->matching('glpi_configs', ['context' => $context], operation: $owner);
+                        (new RecordRepository($manager))->matchingResult('glpi_configs', ['context' => $context], operation: $owner);
                     });
                 } catch (Throwable $error) {
                     $caught = $error;
@@ -1400,6 +1423,62 @@ class Config extends DbTestCase
         } finally {
             Type::overrideType('text', $originalText);
             $connection->delete('glpi_configs', ['context' => $context]);
+        }
+    }
+
+    public function testMatchingAdmissionOnlyReturnsItsOwnCompilerDiagnostic(): void
+    {
+        global $DB;
+        $probe = new class ($DB->getDoctrineConnection()) extends ConfigOidcScalarReadProbe {
+            public ?UnsupportedCriteria $platformFailure = null;
+            public function getDatabasePlatform(): AbstractPlatform
+            {
+                if ($this->platformFailure !== null) {
+                    throw $this->platformFailure;
+                }
+                return parent::getDatabasePlatform();
+            }
+        };
+        $manager = Orm::forConnection($probe);
+        try {
+            $metadata = $manager->getClassMetadata(ConfigRecord::class);
+            $query = $manager->createQueryBuilder()->select('r')->from(ConfigRecord::class, 'r');
+            $compiler = new RecordCriteria($query, $metadata);
+            $diagnostic = $compiler->applyMatching(['id' => new QuerySubQuery([
+                'SELECT' => 'id', 'FROM' => 'glpi_configs',
+            ])], []);
+            $this->object($diagnostic)->isInstanceOf(UnsupportedCriteria::class);
+            $this->string($diagnostic->getMessage())->isIdenticalTo('Expressions and subqueries require mapped queries.');
+            $this->array($probe->queries)->isEmpty();
+            $this->object((new RecordRepository($manager))->matchingResult('glpi_configs', ['id' => new QuerySubQuery([
+                'SELECT' => 'id', 'FROM' => 'glpi_configs',
+            ])]))->isInstanceOf(UnsupportedCriteria::class);
+            $this->array($probe->queries)->isEmpty();
+            // Rejected builders are discarded rather than reused as executable queries.
+            $query = $manager->createQueryBuilder()->select('r')->from(ConfigRecord::class, 'r');
+            $compiler = new RecordCriteria($query, $metadata);
+            $foreign = new UnsupportedCriteria('Connection callback, not a compiler diagnostic');
+            $caught = null;
+            $probe->platformFailure = $foreign;
+            try {
+                // Arm only after metadata/configuration setup; LIKE performs the observed callback.
+                $compiler->applyMatching(['name' => ['LIKE', '%']], []);
+            } catch (Throwable $error) {
+                $caught = $error;
+            } finally {
+                $probe->platformFailure = null;
+            }
+            $this->object($caught)->isIdenticalTo($foreign);
+            $this->array($probe->queries)->isEmpty();
+            $this->exception(static fn () => $compiler->applyMatching(['id' => []], []))
+                ->isInstanceOf(RuntimeException::class)->hasMessage('Empty IN are not allowed');
+            $query = $manager->createQueryBuilder()->select('r')->from(ConfigRecord::class, 'r');
+            $compiler = new RecordCriteria($query, $metadata);
+            $this->variable($compiler->applyMatching(['id' => 0], ['id']))->isNull();
+            $this->array($probe->queries)->isEmpty();
+        } finally {
+            $probe->platformFailure = null;
+            $manager->clear();
         }
     }
 

@@ -76,9 +76,19 @@ final class RecordReadOperation implements ReadQueryOwner
 
     public function matching(string $table, array $criteria, array|string $order, ?int $limit, int $offset): array
     {
+        $result = $this->matchingResult($table, $criteria, $order, $limit, $offset);
+        if ($result instanceof UnsupportedCriteria) {
+            throw $result;
+        }
+        return $result;
+    }
+
+    /** @internal Only MappedReads carries a compiler rejection outside its already admitted shared scope. */
+    public function matchingResult(string $table, array $criteria, array|string $order, ?int $limit, int $offset): array|UnsupportedCriteria
+    {
         $metadata = $this->metadata($table);
         if ($this->scalar($metadata)) {
-            return (new RecordRepository($this->manager))->matching(
+            $result = (new RecordRepository($this->manager))->matchingResult(
                 $table,
                 $criteria,
                 $order,
@@ -88,6 +98,11 @@ final class RecordReadOperation implements ReadQueryOwner
                 $this->defaultIdentifiers($metadata),
                 $this,
             );
+            if ($result instanceof UnsupportedCriteria && !$this->sharedManager) {
+                // Supplied/custom/reentrant managers retain the original exception boundary.
+                throw $result;
+            }
+            return $result;
         }
         $fallback = $this->fallbackManager();
         try {

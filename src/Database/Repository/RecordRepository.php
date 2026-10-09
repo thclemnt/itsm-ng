@@ -14,6 +14,7 @@ use itsmng\Database\EntityRegistry;
 use itsmng\Database\MappedRowProjection;
 use itsmng\Database\ReadQueryOwner;
 use itsmng\Database\RecordCriteria;
+use itsmng\Database\UnsupportedCriteria;
 use LogicException;
 
 /** ORM record access with the legacy model's scalar row contract at its boundary. */
@@ -111,13 +112,24 @@ final class RecordRepository
     /** Select complete mapped records with bound criteria and database-side limits. */
     public function matching(string $table, array $criteria = [], array|string $order = [], ?int $limit = null, int $offset = 0, bool $legacyValues = true, ?array $defaultIdentifiers = null, ?ReadQueryOwner $operation = null): array
     {
+        $result = $this->matchingResult($table, $criteria, $order, $limit, $offset, $legacyValues, $defaultIdentifiers, $operation);
+        if ($result instanceof UnsupportedCriteria) {
+            throw $result;
+        }
+        return $result;
+    }
+
+    /** @internal Only compiler-issued rejections are values; every execution failure still throws. */
+    public function matchingResult(string $table, array $criteria = [], array|string $order = [], ?int $limit = null, int $offset = 0, bool $legacyValues = true, ?array $defaultIdentifiers = null, ?ReadQueryOwner $operation = null): array|UnsupportedCriteria
+    {
         $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
         $query = $this->em->createQueryBuilder()
             ->select('r')
             ->from($metadata->name, 'r');
         $compiler = new RecordCriteria($query, $metadata, $legacyValues);
-        $query->where($compiler->where($criteria));
-        $compiler->order($order);
+        if (($rejection = $compiler->applyMatching($criteria, $order)) !== null) {
+            return $rejection;
+        }
         if ($limit !== null && $limit > 0) {
             $query->setMaxResults($limit);
         }
