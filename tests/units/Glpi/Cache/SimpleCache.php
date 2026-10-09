@@ -37,10 +37,15 @@ use ArrayAccess;
 use ArrayIterator;
 use ArrayObject;
 use DateInterval;
+use Doctrine\ORM\Mapping\ClassMetadata;
 use Glpi\Cache\SimpleCache as SimpleCacheModel;
 use IteratorAggregate;
 use itsmng\Cache\SessionAdapter;
 use itsmng\Cache\StorageFactory;
+use itsmng\Database\Entity\Config as ConfigRecord;
+use itsmng\Database\EntityRegistryCache;
+use itsmng\Database\MappingFingerprint;
+use itsmng\Database\SerializedMetadataCache;
 use org\bovigo\vfs\vfsStream;
 use Psr\SimpleCache\InvalidArgumentException as CacheInvalidArgumentException;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
@@ -278,6 +283,38 @@ class SimpleCache extends \GLPITestCase
         $this->boolean($cache->clear())->isTrue();
         $this->string(file_get_contents($file))->isIdenticalTo('[]');
         $this->array($cache->getAllKnownCacheKeys())->isEmpty();
+    }
+
+    public function testConfiguredPoolClearInvalidatesAllMappingCacheNamespaces(): void
+    {
+        vfsStream::setup('glpi', null, ['cache' => []]);
+        foreach ([false, true] as $footprints) {
+            $storage = new Psr16Cache(new ArrayAdapter(storeSerialized: false));
+            // An administrator may choose a namespace without a release version.
+            $pool = new SimpleCacheModel($storage, vfsStream::url('glpi/cache'), $footprints, 'custom-mapping');
+            $other = new SimpleCacheModel($storage, vfsStream::url('glpi/cache'), $footprints, 'custom-mapping');
+            $fingerprint = MappingFingerprint::current();
+            $registry = new EntityRegistryCache($pool, $fingerprint);
+            $metadata = new SerializedMetadataCache($pool, 'orm_record_metadata_' . $fingerprint);
+            $queries = new SerializedMetadataCache($pool, 'orm_record_query_' . $fingerprint);
+            $builds = 0;
+            $build = static function () use (&$builds): array {
+                return ['generation' => ++$builds];
+            };
+            $this->array($registry->load($build))->isIdenticalTo(['generation' => 1]);
+            $this->boolean($metadata->save($metadata->getItem('config')->set(new ClassMetadata(ConfigRecord::class))))->isTrue();
+            $this->boolean($queries->save($queries->getItem('read')->set(['sql' => 'SELECT 1'])))->isTrue();
+            $this->array($registry->load($build))->isIdenticalTo(['generation' => 1]);
+            $this->boolean($metadata->getItem('config')->isHit())->isTrue();
+            $this->boolean($queries->getItem('read')->isHit())->isTrue();
+
+            // The existing deployment/update command clears this same pool.
+            $this->boolean($other->clear())->isTrue();
+            $this->string(MappingFingerprint::current())->isIdenticalTo($fingerprint);
+            $this->array($registry->load($build))->isIdenticalTo(['generation' => 2]);
+            $this->boolean($metadata->getItem('config')->isHit())->isFalse();
+            $this->boolean($queries->getItem('read')->isHit())->isFalse();
+        }
     }
 
     public function testRepeatedFootprintReadsObserveExternalChanges(): void

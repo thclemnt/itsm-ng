@@ -562,16 +562,6 @@ class CurrentSchema extends test
                 $this->string($field->type)->isIdenticalTo(Types::BOOLEAN, 'The physical projection must not change ORM hydration');
                 $this->variable($field->options['default'])->isIdenticalTo($default);
             }
-            $sql = implode("\n", $builder->toSql($platform));
-            if ($platform instanceof PostgreSQLPlatform) {
-                $this->string($sql)->notContains('glpi_computermodels_is_half_rack_boolean');
-            } else {
-                $this->string($sql)->contains('ADD CONSTRAINT `glpi_computermodels_is_half_rack_boolean` CHECK (`is_half_rack` IS NULL OR `is_half_rack` IN (0, 1))');
-                $field->nullable = false;
-                $field->options['default'] = false;
-                $this->string(implode("\n", $builder->toSql($platform)))
-                    ->contains('ADD CONSTRAINT `glpi_computermodels_is_half_rack_boolean` CHECK (`is_half_rack` IS NOT NULL AND `is_half_rack` IN (0, 1))');
-            }
             $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
             $this->boolean($manager->getConnection()->isConnected())->isFalse();
         }

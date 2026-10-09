@@ -6,7 +6,6 @@ namespace itsmng\Database;
 
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
-use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\MariaDBPlatform;
 use Doctrine\DBAL\Schema\Schema;
@@ -19,12 +18,6 @@ final class BooleanDomainSchema
     {
         $name = $table . '_' . $column . '_boolean';
         return strlen($name) <= 63 ? $name : 'boolean_' . substr(hash('sha256', $table . '.' . $column), 0, 40);
-    }
-
-    public static function expression(AbstractPlatform $platform, string $column, bool $nullable): string
-    {
-        $field = $platform->quoteIdentifier($column);
-        return $field . ($nullable ? ' IS NULL OR ' : ' IS NOT NULL AND ') . $field . ' IN (0, 1)';
     }
 
     /** One native name/type snapshot per call; no persistent schema cache after DDL. */

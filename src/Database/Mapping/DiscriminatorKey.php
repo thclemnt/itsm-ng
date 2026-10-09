@@ -89,13 +89,6 @@ final readonly class DiscriminatorKey
         $column->setNotnull(false)->setDefault(null)->setColumnDefinition($declaration);
     }
 
-    public function subjectCheckSql(AbstractPlatform $platform, ClassMetadata $metadata, string $property): string
-    {
-        return 'ALTER TABLE ' . $platform->quoteIdentifier($metadata->getTableName()) . ' ADD CONSTRAINT '
-            . $platform->quoteIdentifier($this->subjectConstraintName($metadata)) . ' CHECK ('
-            . $this->subjectCheckExpression($platform, $metadata, $property) . ')';
-    }
-
     public function subjectCheckExpression(AbstractPlatform $platform, ClassMetadata $metadata, string $property): string
     {
         $bindings = $this->subjectBindings($metadata, $property);

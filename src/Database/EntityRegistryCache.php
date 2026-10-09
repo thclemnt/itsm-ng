@@ -18,18 +18,15 @@ use UnexpectedValueException;
 /** Persist only the derived, connection-independent mapping projection. */
 final class EntityRegistryCache
 {
-    private readonly ?string $key;
+    private readonly string $key;
 
-    public function __construct(private readonly CacheInterface $cache, ?string $fingerprint)
+    public function __construct(private readonly CacheInterface $cache, string $fingerprint)
     {
-        $this->key = $fingerprint === null ? null : 'orm_registry_' . $fingerprint;
+        $this->key = 'orm_registry_' . $fingerprint;
     }
 
     public function load(callable $build): array
     {
-        if ($this->key === null) {
-            return $build();
-        }
         try {
             $model = $this->decode($this->cache->get($this->key));
             if ($model !== null) {

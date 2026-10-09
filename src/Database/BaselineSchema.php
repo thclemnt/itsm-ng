@@ -5,9 +5,7 @@
 namespace itsmng\Database;
 
 use Doctrine\DBAL\DriverManager;
-use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Schema\SchemaConfig;
@@ -43,7 +41,6 @@ use ReflectionProperty;
 /** Current required schema for read-only inspection; installation replays frozen history. */
 final class BaselineSchema
 {
-    private array $extraSql = [];
     private array $subjectPolicies = [];
 
     /** Native policies from this same current-schema build, never a historical receipt. */
@@ -63,14 +60,11 @@ final class BaselineSchema
             && $this->metadataManager->getConnection()->getDatabasePlatform()::class !== $platform::class) {
             throw new InvalidArgumentException('Current schema metadata must use the selected platform.');
         }
-        $this->extraSql = [];
         $this->subjectPolicies = [];
         // Frozen Baseline creates Schema() with the default configuration. Own
         // that same configuration explicitly when composing current declarations.
         $configuration = new SchemaConfig();
-        $baseline = new FrozenBaseline();
-        $schema = $baseline->build($platform);
-        $this->extraSql['baseline'] = $baseline->extraSql($platform);
+        $schema = (new FrozenBaseline())->build($platform);
         // Adoption retains this redundant historical index on old installations.
         // It is optional beside the current numeric dashboard primary key.
         $schema->getTable('glpi_dashboards')->dropIndex('dashboard_legacy_id');
@@ -88,7 +82,7 @@ final class BaselineSchema
         }
         DashboardOwnership::configureTable($schema->getTable('glpi_dashboards'), $platform);
         OidcReferences::configureTable($schema->getTable('glpi_oidc_users'));
-        $this->configureInheritedReferences($schema, $platform);
+        $this->configureInheritedReferences($schema);
         EntityParents::configureTable($schema->getTable('glpi_entities'));
         NotificationRecipients::configureTable($schema->getTable('glpi_notificationtargets'));
         UserAuthenticationSources::configureTable($schema->getTable('glpi_users'));
@@ -96,10 +90,6 @@ final class BaselineSchema
         PlanningEventGuests::configureSchema($schema);
         UnusedProjectTemplateReference::configureTable($schema->getTable('glpi_projects'));
         $ownedTables = $this->configureCurrentMappings($schema, $platform, $configuration, $foreignKeys);
-        $this->extraSql['glpi_users'][] = UserAuthenticationSources::checkSql();
-        $this->extraSql['glpi_notificationtargets'][] = NotificationRecipients::checkSql();
-        $this->extraSql['glpi_entities'][] = EntityParents::checkSql();
-        $this->extraSql['glpi_slms'][] = ServiceLevelCalendars::checkSql();
         foreach (EntityRegistry::relationsByPolicy(ReferenceKind::EmptySelection) as $tableName => $relations) {
             foreach ($relations as $column => $target) {
                 $schema->getTable($tableName)
@@ -119,12 +109,6 @@ final class BaselineSchema
             (new ForeignKeys())->addToSchema($schema);
         }
         return CurrentSchema::replaceTables($schema, $ownedTables, $configuration);
-    }
-
-    public function toSql(AbstractPlatform $platform, bool $foreignKeys = true): array
-    {
-        $schema = $this->build($platform, $foreignKeys);
-        return array_merge($schema->toSql($platform), ...array_values($this->extraSql));
     }
 
     /** Current schema inspection uses entity policies; historical replay remains immutable. */
@@ -179,12 +163,6 @@ final class BaselineSchema
                 }
                 $subjectColumns = [];
                 NativeTimestampSchema::replaceOwnedColumns($table, $declaration, $nativeTimestamps[$entity->getTableName()] ?? []);
-                foreach ($nativeTimestamps[$entity->getTableName()] ?? [] as $column => $timestamp) {
-                    foreach ($timestamp->touchStatementPrefixes($platform) as $prefix) {
-                        $this->extraSql['baseline'] = array_values(array_filter($this->extraSql['baseline'], static fn ($sql) => !str_starts_with($sql, $prefix)));
-                    }
-                    $this->extraSql[$entity->getTableName()] = [...($this->extraSql[$entity->getTableName()] ?? []), ...$timestamp->touchSql($platform, $entity->getTableName(), $column)];
-                }
                 $ownedKeys = [];
                 foreach ($entity->fieldMappings as $property => $field) {
                     $name = trim($field->columnName, '`"');
@@ -253,7 +231,7 @@ final class BaselineSchema
     }
 
     /** Current schema inspection uses entity policies; historical replay remains immutable. */
-    private function configureInheritedReferences(Schema $schema, AbstractPlatform $platform): void
+    private function configureInheritedReferences(Schema $schema): void
     {
         foreach (array_keys(EntityRegistry::tables()) as $name) {
             foreach (EntityRegistry::references($name) as $reference) {
@@ -269,13 +247,6 @@ final class BaselineSchema
                     'notnull' => true,
                     'default' => $reference->defaultMode->value,
                 ]);
-                $column = $platform->quoteIdentifier($reference->column);
-                $mode = $platform->quoteIdentifier($reference->modeColumn);
-                $constraint = $platform->quoteIdentifier($name . '_' . $reference->modeColumn . '_selection');
-                $choices = $reference->policy->emptyZero ? "'explicit', 'inherit'" : "'explicit', 'inherit', 'unchanged'";
-                $selected = $reference->policy->emptyZero ? "($column IS NULL OR $column > 0)" : "($column IS NOT NULL AND $column >= 0)";
-                $this->extraSql[$name][] = 'ALTER TABLE ' . $table->getQuotedName($platform) . ' ADD CONSTRAINT ' . $constraint
-                    . " CHECK ($mode IN ($choices) AND (($mode = 'explicit' AND $selected) OR ($mode <> 'explicit' AND $column IS NULL)))";
             }
         }
     }
@@ -293,12 +264,6 @@ final class BaselineSchema
                     if ($column->getDefault() !== null) {
                         $column->setDefault((bool)(int)$column->getDefault());
                     }
-                }
-                if ($platform instanceof AbstractMySQLPlatform && $field->type === Types::BOOLEAN) {
-                    $name = BooleanDomainSchema::name($metadata->getTableName(), $field->columnName);
-                    $this->extraSql[$metadata->getTableName()][] = 'ALTER TABLE ' . $platform->quoteIdentifier($metadata->getTableName())
-                        . ' ADD CONSTRAINT ' . $platform->quoteIdentifier($name) . ' CHECK (' . BooleanDomainSchema::expression($platform, $field->columnName, (bool)$field->nullable) . ')'
-                        . ($platform instanceof MySQLPlatform ? ' ENFORCED' : '');
                 }
                 foreach ((new ReflectionProperty($metadata->name, $property))->getAttributes(DiscriminatorKey::class) as $attribute) {
                     $key = $attribute->newInstance();
@@ -321,7 +286,6 @@ final class BaselineSchema
                         'check' => $key->subjectCheckExpression($platform, $metadata, $property),
                         'discriminators' => array_values(array_unique($discriminators)),
                     ];
-                    $this->extraSql[$metadata->getTableName()][] = $key->subjectCheckSql($platform, $metadata, $property);
                 }
             }
         }

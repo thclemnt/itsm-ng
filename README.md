@@ -77,6 +77,14 @@ current entity mappings does not update an installed database; later schema
 changes require an appended migration. PostgreSQL support and broader ORM
 modernization remain in progress.
 
+Every deployment that changes application code or dependencies while retaining
+the same release version must successfully complete
+`php bin/console system:clear_cache --config-dir=config` and reload PHP
+workers/opcache before serving requests. The command requires the configured
+cache backend to be available and its contents to be cleared. Mapping caches use
+the release, installation path, PHP version, and installed dependencies;
+requests do not scan source files for changes.
+
 ## Tests
 
 Run `composer test:units:isolated` for disconnected tests. With a disposable

@@ -34,7 +34,7 @@ require_once dirname(__DIR__, 3) . '/fixtures/NativeTemporalProbe.php';
 
 class NativeTimestampSchema extends test
 {
-    public function testInitialTemporalCohortOwnsStorageReplacementAndTouchDdl(): void
+    public function testInitialTemporalCohortOwnsStorageReplacementAndClockPolicy(): void
     {
         $cohort = [Computer::class => ['date_mod', 'date_creation'], Alert::class => ['date'], Domain::class => ['date_expiration', 'date_mod', 'date_creation'], ObjectLock::class => ['date_mod']];
         foreach ([new MySQLPlatform(), new MariaDBPlatform(), new PostgreSQLPlatform()] as $platform) {
@@ -102,12 +102,6 @@ class NativeTimestampSchema extends test
                     $refused = true;
                 }
                 $this->boolean($refused)->isTrue('An incompatible scalar cannot be labelled as a native temporal property');
-                $lock = $em->getClassMetadata(ObjectLock::class);
-                $policy = $declarations[$lock->getTableName()]['date_mod'];
-                $sql = (new BaselineSchema())->toSql($platform, false);
-                foreach ($policy->touchSql($platform, $lock->getTableName(), 'date_mod') as $statement) {
-                    $this->boolean(count(array_filter($sql, static fn ($candidate) => $candidate === $statement)) === 1)->isTrue('Current touch DDL is emitted once from the property, replacing its inherited historical definition');
-                }
                 $this->boolean($connection->isConnected())->isFalse();
             } finally {
                 $connection->close();

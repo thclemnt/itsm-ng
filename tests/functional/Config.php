@@ -1013,7 +1013,29 @@ class Config extends DbTestCase
             $this->object(ConfigModel::getCache($name, $context, false))->isInstanceOf(FilesystemAdapter::class);
             $this->array($memory->getValues())->isEmpty('Cache backend construction does not populate the ORM metadata cache');
 
-            // Consume only the five deliberate getCache debug messages, after
+            // Invalid default-backend settings keep the ordinary request fallback,
+            // while an explicit cache-clear operation must receive the original error.
+            $unavailable = ['options' => ['ttl' => -1]];
+            $connection->insert($table, ['context' => $context, 'name' => $name,
+                'value' => json_encode($unavailable, JSON_THROW_ON_ERROR)]);
+            $this->object(ConfigModel::getCache($name, $context, false))->isInstanceOf(ArrayAdapter::class);
+            $this->exception(static fn () => ConfigModel::getCache($name, $context, false, allowFallback: false))
+                ->isInstanceOf(CacheConfigurationException::class)
+                ->hasMessage('Cache namespace must be a string and TTL a nonnegative integer.');
+
+            // A disconnected configured adapter cannot reveal a stored custom backend.
+            $connected = $DB->connected;
+            try {
+                $DB->connected = false;
+                $this->object(ConfigModel::getCache($name, $context, false))->isInstanceOf(FilesystemAdapter::class);
+                $this->exception(static fn () => ConfigModel::getCache($name, $context, false, allowFallback: false))
+                    ->isInstanceOf(RuntimeException::class)
+                    ->hasMessage('The configured cache cannot be read until the database is available.');
+            } finally {
+                $DB->connected = $connected;
+            }
+
+            // Consume only the seven deliberate getCache debug messages, after
             // checking their complete decoded payloads and order.
             $expectedPayloads = [];
             foreach ([['first', 17], ['second', 29]] as [$namespace, $ttl]) {
@@ -1025,8 +1047,11 @@ class Config extends DbTestCase
             $expectedPayloads[] = 'CACHE CONFIG  cache_db ' . str_replace("\n", "\n  ", print_r($sessionSettings, true));
             $expectedPayloads[] = 'CACHE CONFIG  cache_db NULL ';
             $expectedPayloads[] = 'CACHE CONFIG  cache_db NULL ';
+            $unavailablePayload = 'CACHE CONFIG  cache_db ' . str_replace("\n", "\n  ", print_r($unavailable, true));
+            $expectedPayloads[] = $unavailablePayload;
+            $expectedPayloads[] = $unavailablePayload;
             $records = $PHP_LOG_HANDLER->getRecords();
-            $this->array($records)->hasSize(5);
+            $this->array($records)->hasSize(7);
             foreach ($records as $index => $record) {
                 $this->string($record['level_name'])->isIdenticalTo('DEBUG');
                 [$caller, $payload] = explode("\n", $record['message'], 2);

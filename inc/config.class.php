@@ -3346,12 +3346,17 @@ class Config extends CommonDBTM
      * @param string  $optname name of the configuration field
      * @param string  $context name of the configuration context (default 'core')
      * @param boolean $psr16   Return the application footprint wrapper; false exposes the configured backend.
+     * @param boolean $allowFallback Allow a memory fallback when the configured backend cannot initialize.
      *
      * @return CacheInterface|CacheItemPoolInterface
      */
-    public static function getCache($optname, $context = 'core', $psr16 = true)
+    public static function getCache($optname, $context = 'core', $psr16 = true, bool $allowFallback = true)
     {
         global $DB;
+
+        if (!$allowFallback && $DB && !$DB->connected) {
+            throw new RuntimeException('The configured cache cannot be read until the database is available.');
+        }
 
         // Read configuration
         $conf = [];
@@ -3406,6 +3411,9 @@ class Config extends CommonDBTM
             }
             $storage = StorageFactory::create($opt);
         } catch (Exception $error) {
+            if (!$allowFallback) {
+                throw $error;
+            }
             if (!$computed) {
                 Toolbox::logError($error->getMessage());
             }

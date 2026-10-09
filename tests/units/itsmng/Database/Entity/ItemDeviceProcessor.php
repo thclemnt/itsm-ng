@@ -94,7 +94,7 @@ class ItemDeviceProcessor extends test
                         $this->boolean($table->hasForeignKey($name) && trim($table->getForeignKey($name)->getForeignTableName(), '`"') === $selection['target'])->isTrue('Every discriminator branch points to its actual target table');
                         $this->boolean($table->getColumn($selection['column'])->getNotnull() === false)->isTrue('An unselected association is nullable');
                     }
-                    $this->boolean(str_contains($key->subjectCheckSql($platform, $metadata, 'items_id'), 'IS NULL') && str_contains($key->subjectCheckSql($platform, $metadata, 'items_id'), '>= 1'))->isTrue('Native CHECK contains stock and positive selected-owner branches');
+                    $this->boolean(str_contains($key->subjectCheckExpression($platform, $metadata, 'items_id'), 'IS NULL') && str_contains($key->subjectCheckExpression($platform, $metadata, 'items_id'), '>= 1'))->isTrue('Native CHECK predicate contains stock and positive selected-owner branches');
                 }
                 $this->array($historical->toSql($platform))->isIdenticalTo($historicalSql, 'Configuring frozen component copies leaves the original baseline unchanged');
                 $this->boolean($connection->isConnected())->isFalse();

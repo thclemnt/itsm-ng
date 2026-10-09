@@ -4,6 +4,7 @@
 
 namespace tests\units\itsmng\Database;
 
+use Composer\InstalledVersions;
 use itsmng\Database\MySQLManagedConnection;
 use itsmng\Database\Type\FixedStringType;
 use itsmng\Database\Type\ClockTimeType;
@@ -19,11 +20,8 @@ use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Mapping\MappingException;
-use FilesystemIterator;
 use LogicException;
 use Psr\Log\AbstractLogger;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
 use ReflectionClass;
 use ReflectionProperty;
 use RuntimeException;
@@ -54,8 +52,6 @@ use itsmng\Database\Entity\ITILFollowup;
 /** Mapping/cache behavior without an application bootstrap or database connection. */
 class EntityRegistryCache extends test
 {
-    private string $root;
-
     public function testScalarTypeRegistrationPreservesExistingTypes(): void
     {
         Orm::registerTypes();
@@ -84,26 +80,6 @@ class EntityRegistryCache extends test
             }
         }
     }
-
-    public function beforeTestMethod($method): void
-    {
-        $this->root = sys_get_temp_dir() . '/itsm-registry-cache-' . bin2hex(random_bytes(8));
-        mkdir($this->root . '/src/Database/Entity', 0700, true);
-        mkdir($this->root . '/src/Database/Mapping', 0700);
-        file_put_contents($this->root . '/composer.lock', 'dependency version one');
-        file_put_contents($this->root . '/src/Database/Entity/Record.php', '<?php /* field length 100 */');
-        file_put_contents($this->root . '/src/Database/Mapping/Driver.php', '<?php /* driver version 1 */');
-    }
-
-    public function afterTestMethod($method): void
-    {
-        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($this->root, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
-        foreach ($files as $file) {
-            $file->isDir() ? rmdir($file->getPathname()) : unlink($file->getPathname());
-        }
-        rmdir($this->root);
-    }
-
 
     public function testPublicConfigurationsOwnMutableMappingState(): void
     {
@@ -513,77 +489,62 @@ class EntityRegistryCache extends test
             ++$builds;
             return ['types' => ['name' => 'string'], 'reference' => new MappedReference('entity', 'entities_id', 'glpi_entities', new ReferencePolicy(ReferenceKind::RootEntity))];
         };
-        $first = (new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build);
+        $first = (new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0')))->load($build);
         $first['types']['name'] = 'changed by caller';
-        $second = (new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build);
+        $second = (new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0')))->load($build);
         $this->integer($builds)->isIdenticalTo(1);
         $this->string($second['types']['name'])->isIdenticalTo('string');
         $this->object($second['reference'])->isNotIdenticalTo($first['reference']);
         $this->variable($second['reference']->policy->kind)->isIdenticalTo(ReferenceKind::RootEntity);
         $cache->clear();
-        (new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build);
+        (new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0')))->load($build);
         $this->integer($builds)->isIdenticalTo(2);
     }
 
-    public function testContentChangesInvalidateEntitiesHelpersAndDependencyLock(): void
+    public function testReleasesAndInstallationPathsHaveIndependentMappingCaches(): void
     {
-        $runtime = [
-            'src/Database/Type/Value.php', 'src/Database/Query/Expression.php',
-            'src/Database/Repository/Read.php', 'src/Database/RuntimeProjection.php',
-            'src/Database/MigrationPolicy.php', 'src/Database/Mapping/Migration/Live.php',
-            'src/Database/MigrationTools/Live.php',
-        ];
-        foreach ($runtime as $relative) {
-            $file = $this->root . '/' . $relative;
-            if (!is_dir(dirname($file))) {
-                mkdir(dirname($file), 0700, true);
-            }
-            file_put_contents($file, '<?php /* runtime version 1 */');
-        }
         $cache = new Psr16Cache(new ArrayAdapter());
         $builds = 0;
         $build = static function () use (&$builds): array {
             return ['generation' => ++$builds];
         };
-        (new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build);
-        $expected = 1;
-        foreach ([
-            'src/Database/Entity/Record.php' => '<?php /* field length 200 */',
-            'src/Database/Mapping/Driver.php' => '<?php /* driver version 2 */',
-            'composer.lock' => 'dependency version two',
-        ] + array_fill_keys($runtime, '<?php /* runtime version 2 */') as $relative => $content) {
-            $file = $this->root . '/' . $relative;
-            $mtime = filemtime($file);
-            file_put_contents($file, $content);
-            touch($file, $mtime); // same-size/same-mtime deployment still changes the key
-            $value = (new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build);
-            $this->integer($value['generation'])->isIdenticalTo(++$expected);
-        }
-        $this->integer($builds)->isIdenticalTo($expected);
-        unlink($this->root . '/src/Database/Entity/Record.php');
-        (new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build);
-        $this->integer($builds)->isIdenticalTo(++$expected);
-        file_put_contents($this->root . '/src/Database/Entity/Added.php', '<?php /* new runtime declaration */');
-        (new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build);
-        $this->integer($builds)->isIdenticalTo(++$expected);
+        // The configured backend can have an explicit, unversioned namespace.
+        $first = new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0'));
+        $next = new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.1'));
+        $other = new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__ . '/other', '2.2.0'));
+        $this->array($first->load($build))->isIdenticalTo(['generation' => 1]);
+        $this->array($next->load($build))->isIdenticalTo(['generation' => 2]);
+        $this->array($other->load($build))->isIdenticalTo(['generation' => 3]);
+        $this->array($first->load($build))->isIdenticalTo(['generation' => 1]);
+        $this->integer($builds)->isIdenticalTo(3);
+        $cache->clear();
+        $this->array($first->load($build))->isIdenticalTo(['generation' => 4]);
+        $this->array($next->load($build))->isIdenticalTo(['generation' => 5]);
+        $this->array($other->load($build))->isIdenticalTo(['generation' => 6]);
+    }
 
-        // Only the exact top-level migration subtree is outside this derived runtime cache.
-        $fingerprint = MappingFingerprint::forSource($this->root);
-        mkdir($this->root . '/src/Database/Migration/V220', 0700, true);
-        $history = $this->root . '/src/Database/Migration/V220/Baseline.php';
-        file_put_contents($history, '<?php /* frozen version 1 */');
-        $this->string(MappingFingerprint::forSource($this->root))->isIdenticalTo($fingerprint);
-        $mtime = filemtime($history);
-        file_put_contents($history, '<?php /* frozen version 2 */');
-        touch($history, $mtime);
-        $this->string(MappingFingerprint::forSource($this->root))->isIdenticalTo($fingerprint);
-        file_put_contents($this->root . '/src/Database/Migration/Added.php', '<?php /* additional history */');
-        $this->string(MappingFingerprint::forSource($this->root))->isIdenticalTo($fingerprint);
-        unlink($history);
-        unlink($this->root . '/src/Database/Migration/Added.php');
-        $this->string(MappingFingerprint::forSource($this->root))->isIdenticalTo($fingerprint);
-        (new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build);
-        $this->integer($builds)->isIdenticalTo($expected);
+    public function testInstalledDependencyChangesUseIndependentMappingCaches(): void
+    {
+        $original = InstalledVersions::getRawData();
+        $cache = new Psr16Cache(new ArrayAdapter());
+        $builds = 0;
+        $build = static function () use (&$builds): array {
+            return ['generation' => ++$builds];
+        };
+        try {
+            // Use Composer's supported reload on both sides of the comparison.
+            InstalledVersions::reload($original);
+            $first = new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0'));
+            $this->array($first->load($build))->isIdenticalTo(['generation' => 1]);
+            $changed = $original;
+            $changed['versions']['doctrine/orm']['reference'] = 'different-installed-package-reference';
+            InstalledVersions::reload($changed);
+            $next = new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0'));
+            $this->array($next->load($build))->isIdenticalTo(['generation' => 2]);
+            $this->array($first->load($build))->isIdenticalTo(['generation' => 1]);
+        } finally {
+            InstalledVersions::reload($original);
+        }
     }
 
     public function testDamagedCacheIsAMissAndDoesNotMaskMappingFailures(): void
@@ -594,7 +555,7 @@ class EntityRegistryCache extends test
         $build = static function () use (&$builds): array {
             return ['generation' => ++$builds];
         };
-        $registry = new RegistryCache($cache, MappingFingerprint::forSource($this->root));
+        $registry = new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0'));
         $registry->load($build);
         $key = array_key_first($pool->getValues());
         foreach (['a:0:{}', '2:' . str_repeat('0', 64) . ':a:0:{}', '2:' . hash('sha256', 'truncated') . ':truncated'] as $damaged) {
@@ -616,7 +577,7 @@ class EntityRegistryCache extends test
     {
         $pool = new ArrayAdapter(storeSerialized: false);
         $cache = new Psr16Cache($pool);
-        $registry = new RegistryCache($cache, MappingFingerprint::forSource($this->root));
+        $registry = new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0'));
         $shared = ['reference' => new MappedReference(
             'entity',
             'entities_id',
@@ -654,20 +615,21 @@ class EntityRegistryCache extends test
         }
     }
 
-    public function testPackagedReleaseWithoutComposerManifestStillCaches(): void
+    public function testDeploymentIdentityDoesNotRequireSourceFilesOrComposerManifests(): void
     {
-        unlink($this->root . '/composer.lock');
+        $this->string(MappingFingerprint::current())->isNotEmpty(); // Also works with vendor-only bootstrap.
+        $fingerprint = MappingFingerprint::forRelease('/packaged-release-without-sources', '2.2.0');
         $cache = new Psr16Cache(new ArrayAdapter());
         $builds = 0;
         $build = static function () use (&$builds): array {
             return ['generation' => ++$builds];
         };
-        (new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build);
-        (new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build);
+        (new RegistryCache($cache, $fingerprint))->load($build);
+        (new RegistryCache($cache, $fingerprint))->load($build);
         $this->integer($builds)->isIdenticalTo(1);
     }
 
-    public function testCacheFailuresAndMissingSourceUseAuthoritativeMapping(): void
+    public function testCacheFailuresUseAuthoritativeMapping(): void
     {
         $cache = new class (new ArrayAdapter()) extends Psr16Cache {
             public function get($key, $default = null): mixed
@@ -684,16 +646,15 @@ class EntityRegistryCache extends test
         $build = static function () use (&$builds): array {
             return ['generation' => ++$builds];
         };
-        $this->array((new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build))->isIdenticalTo(['generation' => 1]);
-        rename($this->root . '/src/Database', $this->root . '/src/UnavailableDatabase');
-        $this->array((new RegistryCache($cache, MappingFingerprint::forSource($this->root)))->load($build))->isIdenticalTo(['generation' => 2]);
+        $this->array((new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0')))->load($build))->isIdenticalTo(['generation' => 1]);
+        $this->array((new RegistryCache($cache, MappingFingerprint::forRelease(__DIR__, '2.2.0')))->load($build))->isIdenticalTo(['generation' => 2]);
     }
 
     public function testSerializedMetadataBridgePreservesFreshObjectsAndDeploymentNamespaces(): void
     {
         $memory = new ArrayAdapter(storeSerialized: false);
         $pool = new Psr16Cache($memory);
-        $fingerprint = MappingFingerprint::forSource($this->root);
+        $fingerprint = MappingFingerprint::forRelease(__DIR__, '2.2.0');
         $first = new SerializedMetadataCache($pool, 'metadata_' . $fingerprint);
         $metadata = new ClassMetadata(Config::class);
         $metadata->setIdGeneratorType(ClassMetadata::GENERATOR_TYPE_IDENTITY);
@@ -707,11 +668,7 @@ class EntityRegistryCache extends test
         foreach ($memory->getValues() as $value) {
             $this->string($value);
         }
-        $file = $this->root . '/src/Database/Mapping/Driver.php';
-        $mtime = filemtime($file);
-        file_put_contents($file, '<?php /* driver version 2 */');
-        touch($file, $mtime);
-        $rotated = new SerializedMetadataCache($pool, 'metadata_' . MappingFingerprint::forSource($this->root));
+        $rotated = new SerializedMetadataCache($pool, 'metadata_' . MappingFingerprint::forRelease(__DIR__, '2.2.1'));
         $this->boolean($rotated->getItem('config')->isHit())->isFalse();
         $this->boolean($second->getItem('config')->isHit())->isTrue();
         $pool->clear();

@@ -7,7 +7,6 @@ namespace itsmng\Database\Mapping;
 use Attribute;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\DefaultExpression;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping\ClassMetadata;
@@ -74,27 +73,5 @@ final class NativeTimestamp
         $quoted = $platform->quoteIdentifier($column);
         return 'BEGIN IF NEW IS DISTINCT FROM OLD AND NEW.' . $quoted . ' IS NOT DISTINCT FROM OLD.' . $quoted
             . ' THEN NEW.' . $quoted . ' = CURRENT_TIMESTAMP; END IF; RETURN NEW; END';
-    }
-
-    /** Current DDL owns these exact names; historical snapshots retain their older definitions. */
-    public function touchStatementPrefixes(AbstractPlatform $platform): array
-    {
-        if (!$platform instanceof PostgreSQLPlatform || $this->touchTrigger === null) {
-            return [];
-        }
-        $name = $platform->quoteIdentifier($this->touchTrigger);
-        return ['CREATE OR REPLACE FUNCTION ' . $name . '() ', 'CREATE TRIGGER ' . $name . ' '];
-    }
-
-    public function touchSql(AbstractPlatform $platform, string $table, string $column): array
-    {
-        if (!$platform instanceof PostgreSQLPlatform || $this->touchTrigger === null) {
-            return [];
-        }
-        $name = $platform->quoteIdentifier($this->touchTrigger);
-        return [
-            'CREATE OR REPLACE FUNCTION ' . $name . '() RETURNS trigger LANGUAGE plpgsql AS $$ ' . $this->touchBody($platform, $column) . ' $$',
-            'CREATE TRIGGER ' . $name . ' BEFORE UPDATE ON ' . $platform->quoteIdentifier($table) . ' FOR EACH ROW EXECUTE FUNCTION ' . $name . '()',
-        ];
     }
 }

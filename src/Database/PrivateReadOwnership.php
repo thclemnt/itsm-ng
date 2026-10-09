@@ -61,8 +61,8 @@ trait PrivateReadOwnership
         $configuration ??= $this->manager->getConfiguration();
         $this->pool = $this->ownedMapping ? ($GLOBALS['GLPI_CACHE'] ?? null) : null;
         $this->identifiers = $this->ownedMapping ? EntityRegistry::scalarIdentifiers() : [];
-        if ($this->pool instanceof CacheInterface && ($fingerprint = MappingFingerprint::current()) !== null) {
-            $this->context = hash('sha256', $fingerprint . "\0" . $connection->getDatabasePlatform()::class
+        if ($this->pool instanceof CacheInterface) {
+            $this->context = hash('sha256', MappingFingerprint::current() . "\0" . $connection->getDatabasePlatform()::class
                 . "\0" . $configuration->getMetadataDriverImpl()::class . "\0" . $configuration->getProxyDir());
         }
     }
