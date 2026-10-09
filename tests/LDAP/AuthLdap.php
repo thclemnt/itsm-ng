@@ -39,6 +39,7 @@ use DbTestCase;
 use Group;
 use Group_User;
 use InvalidArgumentException;
+use LDAP\Connection as LdapConnection;
 use User;
 
 /* Test for inc/authldap.class.php */
@@ -81,8 +82,8 @@ class AuthLDAP extends DbTestCase
 
     private function assertLdapConnection($connection)
     {
-        if (class_exists(\LDAP\Connection::class)) {
-            $this->object($connection)->isInstanceOf(\LDAP\Connection::class);
+        if (class_exists(LdapConnection::class)) {
+            $this->object($connection)->isInstanceOf(LdapConnection::class);
             return;
         }
 

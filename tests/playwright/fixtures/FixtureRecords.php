@@ -4,6 +4,7 @@
 
 use Doctrine\ORM\Mapping\ClassMetadata;
 use itsmng\Database\EntityRegistry;
+use itsmng\Database\Mapping\DiscriminatorKey;
 use itsmng\Database\Mapping\LegacyInput;
 use itsmng\Database\Migration\V220\ReferenceHistory;
 use itsmng\Database\Orm;
@@ -21,7 +22,7 @@ final class FixtureRecords
     public static function requiredSubjects(ClassMetadata $metadata, array $values, callable $create): array
     {
         foreach ($metadata->fieldMappings as $field => $mapping) {
-            foreach ((new ReflectionProperty($metadata->name, $field))->getAttributes(\itsmng\Database\Mapping\DiscriminatorKey::class) as $attribute) {
+            foreach ((new ReflectionProperty($metadata->name, $field))->getAttributes(DiscriminatorKey::class) as $attribute) {
                 if ($attribute->newInstance()->fallbackProperty !== null || $attribute->newInstance()->emptyValue !== null) {
                     continue;
                 }

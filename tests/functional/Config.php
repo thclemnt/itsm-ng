@@ -63,6 +63,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\Events;
+use Doctrine\ORM\Mapping as Mapping;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\NoResultException;
 use Doctrine\ORM\Query;
@@ -2650,25 +2651,25 @@ final class ConfigRecordPlanCache extends ArrayAdapter
     }
 }
 
-#[\Doctrine\ORM\Mapping\Entity]
-#[\Doctrine\ORM\Mapping\Table(name: 'glpi_configs')]
-#[\Doctrine\ORM\Mapping\HasLifecycleCallbacks]
+#[Mapping\Entity]
+#[Mapping\Table(name: 'glpi_configs')]
+#[Mapping\HasLifecycleCallbacks]
 final class ConfigRecordCallback
 {
     public static ?object $publicDriver = null;
     public static array $observed = [];
 
-    #[\Doctrine\ORM\Mapping\Id]
-    #[\Doctrine\ORM\Mapping\Column(type: 'bigint')]
+    #[Mapping\Id]
+    #[Mapping\Column(type: 'bigint')]
     public ?int $id = null;
-    #[\Doctrine\ORM\Mapping\Column(type: 'string', nullable: true)]
+    #[Mapping\Column(type: 'string', nullable: true)]
     public ?string $context = null;
-    #[\Doctrine\ORM\Mapping\Column(type: 'string', nullable: true)]
+    #[Mapping\Column(type: 'string', nullable: true)]
     public ?string $name = null;
-    #[\Doctrine\ORM\Mapping\Column(type: 'text', nullable: true)]
+    #[Mapping\Column(type: 'text', nullable: true)]
     public ?string $value = null;
 
-    #[\Doctrine\ORM\Mapping\PostLoad]
+    #[Mapping\PostLoad]
     public function loaded(PostLoadEventArgs $event): void
     {
         $manager = $event->getObjectManager();

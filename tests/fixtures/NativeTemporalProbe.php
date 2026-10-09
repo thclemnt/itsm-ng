@@ -2,6 +2,7 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use Doctrine\DBAL\Schema\DefaultExpression\CurrentTimestamp;
 use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\NativeTimestamp;
 
@@ -21,7 +22,7 @@ final class NativeTemporalProbe
     #[NativeTimestamp]
     public ?DateTimeInterface $nullable_instant = null;
 
-    #[ORM\Column(type: 'datetimetz', generated: 'ALWAYS', options: ['default' => new Doctrine\DBAL\Schema\DefaultExpression\CurrentTimestamp(), 'comment' => 'Owned touch clock'])]
+    #[ORM\Column(type: 'datetimetz', generated: 'ALWAYS', options: ['default' => new CurrentTimestamp(), 'comment' => 'Owned touch clock'])]
     #[NativeTimestamp(touchTrigger: 'glpi_native_temporal_probe_touch')]
     public ?DateTimeInterface $touched_instant = null;
 

@@ -45,7 +45,7 @@ class Widget extends DbTestCase
 {
     public function testGetAllTypes()
     {
-        $types = \Glpi\Dashboard\Widget::getAllTypes();
+        $types = WidgetModel::getAllTypes();
 
         $this->array($types)->isNotEmpty();
         foreach ($types as $specs) {

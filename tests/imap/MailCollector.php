@@ -36,7 +36,11 @@ namespace tests\units;
 use CommonITILObject;
 use DbTestCase;
 use ITILFollowup;
+use Laminas\Mail\Protocol\Imap as ImapProtocol;
+use Laminas\Mail\Protocol\Pop3 as Pop3Protocol;
+use Laminas\Mail\Storage\Imap as ImapStorage;
 use Laminas\Mail\Storage\Message;
+use Laminas\Mail\Storage\Pop3 as Pop3Storage;
 use MailCollector as MailCollectorModel;
 use NotificationTarget;
 use NotificationTargetSoftwareLicense;
@@ -821,26 +825,26 @@ class MailCollector extends DbTestCase
            [
               'cnx_string'        => '{mail.domain.org/imap}',
               'expected_type'     => 'imap',
-              'expected_protocol' => \Laminas\Mail\Protocol\Imap::class,
-              'expected_storage'  => \Laminas\Mail\Storage\Imap::class,
+              'expected_protocol' => ImapProtocol::class,
+              'expected_storage'  => ImapStorage::class,
            ],
            [
               'cnx_string'        => '{mail.domain.org/imap/ssl/debug}INBOX',
               'expected_type'     => 'imap',
-              'expected_protocol' => \Laminas\Mail\Protocol\Imap::class,
-              'expected_storage'  => \Laminas\Mail\Storage\Imap::class,
+              'expected_protocol' => ImapProtocol::class,
+              'expected_storage'  => ImapStorage::class,
            ],
            [
               'cnx_string'        => '{mail.domain.org/pop}',
               'expected_type'     => 'pop',
-              'expected_protocol' => \Laminas\Mail\Protocol\Pop3::class,
-              'expected_storage'  => \Laminas\Mail\Storage\Pop3::class,
+              'expected_protocol' => Pop3Protocol::class,
+              'expected_storage'  => Pop3Storage::class,
            ],
            [
               'cnx_string'        => '{mail.domain.org/pop/ssl/tls}',
               'expected_type'     => 'pop',
-              'expected_protocol' => \Laminas\Mail\Protocol\Pop3::class,
-              'expected_storage'  => \Laminas\Mail\Storage\Pop3::class,
+              'expected_protocol' => Pop3Protocol::class,
+              'expected_storage'  => Pop3Storage::class,
            ],
            [
               'cnx_string'        => '{mail.domain.org/unknown-type/ssl}',
