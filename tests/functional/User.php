@@ -1299,6 +1299,40 @@ class User extends DbTestCase
         }
     }
 
+    public function testApiPageReadsCurrentValuesAndPreservesPendingCallerChanges(): void
+    {
+        global $DB;
+        $this->login();
+        $name = 'api-page-' . $this->getUniqueString();
+        $user = $this->createItem(UserModel::class, ['name' => $name]);
+        $id = (int)$user->getID();
+        $connection = $DB->getDoctrineConnection();
+        $manager = Orm::forConnection($connection);
+        try {
+            $owned = $manager->find(UserRecord::class, $id);
+            $this->object($owned)->isInstanceOf(UserRecord::class);
+            $owned->name = 'Pending ' . $name;
+            $identityMap = $manager->getUnitOfWork()->getIdentityMap();
+            $connection->update('glpi_users', ['name' => 'Current ' . $name], ['id' => $id]);
+            $repository = new UserRepository($manager);
+            $options = ['searchText' => ['id' => '^' . $id . '$'], 'list_limit' => 1];
+            $page = $repository->apiPage($options, null);
+            $this->integer($page['total'])->isIdenticalTo(1);
+            $this->array($page['rows'])->hasSize(1);
+            $this->string($page['rows'][0]['name'])->isIdenticalTo('Current ' . $name);
+            $this->boolean($manager->contains($owned))->isTrue();
+            $this->string($owned->name)->isIdenticalTo('Pending ' . $name);
+            $this->array($manager->getUnitOfWork()->getIdentityMap())->isIdenticalTo($identityMap);
+            $connection->update('glpi_users', ['name' => 'Next ' . $name], ['id' => $id]);
+            $this->string($repository->apiPage($options, null)['rows'][0]['name'])->isIdenticalTo('Next ' . $name);
+            $manager->flush();
+            $this->string($connection->fetchOne('SELECT name FROM glpi_users WHERE id = ?', [$id]))
+                ->isIdenticalTo('Pending ' . $name);
+        } finally {
+            $manager->clear();
+        }
+    }
+
     public function testDisplayOptionsUpdatePreservesSerializedEscapes(): void
     {
         global $DB;
