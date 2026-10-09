@@ -1261,6 +1261,31 @@ class Config extends DbTestCase
                 $operation->close();
             }
             $this->boolean($supplied->contains($sentinel))->isTrue();
+            ConfigModel::setConfigurationValues($context, ['fallback' => 'hydrated']);
+            $fallbackId = (int)$connection->fetchOne('SELECT id FROM glpi_configs WHERE context = ? AND name = ?', [$context, 'fallback']);
+            $listener = new class () {
+                public array $managers = [];
+
+                public function postLoad(PostLoadEventArgs $event): void
+                {
+                    $this->managers[] = $event->getObjectManager();
+                }
+            };
+            $supplied->getEventManager()->addEventListener([Events::postLoad], $listener);
+            $operation = new RecordReadOperation($connection, $supplied);
+            try {
+                $this->string($operation->row('glpi_configs', 'id', $fallbackId)['value'])->isIdenticalTo('hydrated');
+                $this->boolean($supplied->contains($sentinel))->isTrue('A hydrated point read cannot clear its caller manager');
+                $this->array($listener->managers)->isIdenticalTo([$supplied]);
+                $supplied->detach($supplied->find(ConfigRecord::class, $fallbackId));
+                $this->string($operation->matching('glpi_configs', ['id' => $fallbackId], [], null, 0)[0]['value'])->isIdenticalTo('hydrated');
+                $this->boolean($supplied->contains($sentinel))->isTrue('A hydrated collection cannot clear unrelated caller entities');
+                $this->array($listener->managers)->isIdenticalTo([$supplied, $supplied]);
+            } finally {
+                $operation->close();
+                $supplied->getEventManager()->removeEventListener([Events::postLoad], $listener);
+            }
+            $this->boolean($supplied->contains($sentinel))->isTrue();
             $private = new RecordReadOperation($connection);
             try {
                 $this->exception(static fn () => $private->matchingResult('glpi_configs', $criteria, [], null, 0))
