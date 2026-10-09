@@ -1554,6 +1554,19 @@ class Config extends DbTestCase
                 $this->exception(static fn () => $owner->prepareQuery($query, $metadata))
                     ->isInstanceOf(LogicException::class)->hasMessage('A compiled read plan belongs to its private operation.');
                 $this->variable((new ReflectionProperty(Query::class, 'queryCache'))->getValue($query))->isNull();
+                $configurationCache = new ArrayAdapter(storeSerialized: true);
+                $factoryCache = new ArrayAdapter(storeSerialized: true);
+                $supplied->getConfiguration()->setMetadataCache($configurationCache);
+                $factory = $supplied->getMetadataFactory();
+                $factory->setCache($factoryCache);
+                $borrowed = new RecordReadOperation($connection, $supplied);
+                try {
+                    $this->integer($borrowed->countMatching('glpi_configs', ['context' => $context]))->isIdenticalTo(3);
+                    $this->object($supplied->getConfiguration()->getMetadataCache())->isIdenticalTo($configurationCache);
+                    $this->object((new ReflectionMethod($factory, 'getCache'))->invoke($factory))->isIdenticalTo($factoryCache);
+                } finally {
+                    $borrowed->close();
+                }
             } finally {
                 $owner->close();
                 $supplied->clear();
