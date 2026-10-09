@@ -343,8 +343,12 @@ class Log extends CommonDBTM
 
     public static function countForItem(CommonDBTM $item, array $filters = []): int
     {
-        $repository = new HistoryRepository(Orm::create(DBConnection::getReadConnection()));
-        return $repository->count(['items_id' => (int)$item->getID(), 'itemtype' => $item->getType()] + $filters);
+        return Orm::read(
+            DBConnection::getReadConnection(),
+            static fn (EntityManager $manager): int => (new HistoryRepository($manager))->count(
+                ['items_id' => (int)$item->getID(), 'itemtype' => $item->getType()] + $filters
+            )
+        );
     }
 
     /**
@@ -372,9 +376,40 @@ class Log extends CommonDBTM
 
         $SEARCHOPTION = Search::getOptions($itemtype);
 
-        $repository = new HistoryRepository(Orm::create($DBread));
-        $rows = $repository->forItem($itemtype, (int)$items_id, $sqlfilters, (int)$start, (int)$limit, is_string($options['sort'] ?? null) ? $options['sort'] : 'id', is_string($options['order'] ?? null) ? $options['order'] : 'DESC');
-        $users = new RecordRepository(Orm::create($DBread));
+        $rows = Orm::read(
+            $DBread,
+            static fn (EntityManager $manager): array => (new HistoryRepository($manager))->forItem(
+                $itemtype,
+                (int)$items_id,
+                $sqlfilters,
+                (int)$start,
+                (int)$limit,
+                is_string($options['sort'] ?? null) ? $options['sort'] : 'id',
+                is_string($options['order'] ?? null) ? $options['order'] : 'DESC'
+            )
+        );
+        $connection = $DBread->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($DBread, $connection);
+        // Preserve the custom reader's eager constructor and identity map across formatting callbacks.
+        $users = Orm::withReadConnection(
+            $connection,
+            static fn (?EntityManager $manager): ?RecordRepository =>
+                $manager === null ? new RecordRepository(Orm::forConnection($connection)) : null
+        );
+        $findUsers = static function (string $name) use ($connection, $users): array {
+            if ($users !== null) {
+                return $users->matching('glpi_users', ['name' => $name], 'id', legacyValues: false);
+            }
+            return Orm::withReadConnection(
+                $connection,
+                static fn (EntityManager $manager): array => (new RecordRepository($manager))->matching(
+                    'glpi_users',
+                    ['name' => $name],
+                    'id',
+                    legacyValues: false
+                )
+            );
+        };
         $changes = [];
         foreach ($rows as $data) {
             $tmp = [];
@@ -729,7 +764,7 @@ class Log extends CommonDBTM
                         if ($oldval_expl[0] == '&nbsp;') {
                             $oldval = $data["old_value"];
                         } else {
-                            foreach ($users->matching('glpi_users', ['name' => $oldval_expl[0]], 'id', legacyValues: false) as $val) {
+                            foreach ($findUsers($oldval_expl[0]) as $val) {
                                 $oldval = sprintf(
                                     __('%1$s %2$s'),
                                     formatUserName(
@@ -746,7 +781,7 @@ class Log extends CommonDBTM
                         if ($newval_expl[0] == '&nbsp;') {
                             $newval = $data["new_value"];
                         } else {
-                            foreach ($users->matching('glpi_users', ['name' => $newval_expl[0]], 'id', legacyValues: false) as $val) {
+                            foreach ($findUsers($newval_expl[0]) as $val) {
                                 $newval = sprintf(
                                     __('%1$s %2$s'),
                                     formatUserName(

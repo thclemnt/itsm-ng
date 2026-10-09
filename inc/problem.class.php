@@ -33,6 +33,7 @@
 
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
+use itsmng\Database\Entity\ItemProblem;
 use itsmng\Database\Repository\ITILAssetRepository;
 use itsmng\Database\RowIterator;
 use itsmng\Timezone;
@@ -1949,7 +1950,7 @@ class Problem extends CommonITILObject
 
         $rows = Orm::read($DB, fn (EntityManager $manager): array =>
             (new ITILAssetRepository($manager))
-                ->active('Problem', (string)$itemtype, (int)$items_id, array_merge($this->getSolvedStatusArray(), $this->getClosedStatusArray())));
+                ->activeForLink(ItemProblem::class, (string)$itemtype, (int)$items_id, array_merge($this->getSolvedStatusArray(), $this->getClosedStatusArray())));
         return new RowIterator($rows);
     }
 

@@ -38,13 +38,6 @@ final class ComponentCountReadOperation
         return new ComponentRepository($this->manager);
     }
 
-    public function close(): void
-    {
-        if (isset($this->manager)) {
-            $this->manager->clear();
-        }
-    }
-
     public function countForAsset(array $tables, string $type, int $id): int
     {
         if (!$this->ownedMapping) {

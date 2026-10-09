@@ -154,8 +154,10 @@ trait PrivateReadOwnership
 
     public function close(): void
     {
-        if (!$this->suppliedManager) {
-            $this->manager->clear();
+        if (!$this->suppliedManager && isset($this->manager)) {
+            $manager = $this->manager;
+            unset($this->manager);
+            $manager->clear();
         }
     }
 
