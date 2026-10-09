@@ -82,6 +82,7 @@ use Infocom;
 use Item_Devices;
 use itsmng\Cache\SessionAdapter;
 use itsmng\Database\BaselineSchema;
+use itsmng\Database\ComponentCountReadOperation;
 use itsmng\Database\Entity\Computer as ComputerRecord;
 use itsmng\Database\Entity\Config as ConfigRecord;
 use itsmng\Database\Entity\Entity as EntityRecord;
@@ -220,10 +221,14 @@ class Config extends DbTestCase
                 };
                 $clears = new class () {
                     public int $count = 0;
+                    public ?RuntimeException $failure = null;
 
                     public function onClear(): void
                     {
                         ++$this->count;
+                        if ($this->failure !== null) {
+                            throw $this->failure;
+                        }
                     }
                 };
                 $custom->getEventManager()->addEventListener(['onClear'], $clears);
@@ -237,6 +242,67 @@ class Config extends DbTestCase
                 $this->array($custom->queries)->hasSize(1);
                 $this->integer($custom->builders)->isIdenticalTo(0);
                 $this->integer($clears->count)->isIdenticalTo(1);
+
+                $this->mockGenerator()->orphanize('__construct');
+                $adapter = new ConfigurationAdapter();
+                $this->calling($adapter)->getDoctrineConnection = $custom;
+                $beforeClears = $clears->count;
+                $this->integer(MappedReads::countMatching($adapter, 'glpi_configs', ['context' => 'core']))->isGreaterThan(0);
+                $this->integer($clears->count - $beforeClears)->isIdenticalTo(1, 'The public finally and destructor close one private owner');
+
+                $private = new OidcRefreshReadOperation($custom);
+                $this->boolean($private->needsRefresh($id))->isTrue();
+                $beforeClears = $clears->count;
+                $private->close();
+                $private->close();
+                unset($private);
+                $this->integer($clears->count - $beforeClears)->isIdenticalTo(1);
+
+                $supplied = Orm::forConnection($custom);
+                $pending = new ConfigRecord();
+                $pending->context = 'private-owner';
+                $pending->name = 'pending';
+                $pending->value = 'retained';
+                $supplied->persist($pending);
+                try {
+                    $borrowed = new OidcRefreshReadOperation($custom, $supplied);
+                    $beforeClears = $clears->count;
+                    $borrowed->close();
+                    $borrowed->close();
+                    unset($borrowed);
+                    $this->integer($clears->count - $beforeClears)->isIdenticalTo(0);
+                    $this->boolean($supplied->contains($pending))->isTrue();
+                    $this->string($pending->value)->isIdenticalTo('retained');
+                } finally {
+                    $supplied->clear();
+                }
+
+                $beforeFactories = $factories->getValue();
+                $counts = new ComponentCountReadOperation($connection);
+                $counts->close();
+                $counts->close();
+                unset($counts);
+                $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0, 'An unused lazy component owner creates no manager during cleanup');
+                $counts = new ComponentCountReadOperation($custom);
+                $beforeClears = $clears->count;
+                $counts->close();
+                $counts->close();
+                unset($counts);
+                $this->integer($clears->count - $beforeClears)->isIdenticalTo(1);
+
+                $private = new OidcRefreshReadOperation($custom);
+                $clears->failure = new RuntimeException('Private owner cleanup failed');
+                $beforeClears = $clears->count;
+                try {
+                    $this->exception(static fn () => $private->close())
+                        ->isInstanceOf(RuntimeException::class)->hasMessage('Private owner cleanup failed');
+                    $private->close();
+                    unset($private);
+                    $this->integer($clears->count - $beforeClears)->isIdenticalTo(1, 'Cleanup failure is propagated once and is not retried by destruction');
+                } finally {
+                    $clears->failure = null;
+                    unset($private);
+                }
             } finally {
                 if ($hadSessionId) {
                     $_SESSION['glpiID'] = $sessionId;

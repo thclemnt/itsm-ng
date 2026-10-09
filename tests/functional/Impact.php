@@ -41,8 +41,10 @@ use Config as ConfigModel;
 use Doctrine\Common\EventManager;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Event\PostLoadEventArgs;
+use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use ReflectionProperty;
 use InvalidArgumentException;
+use LogicException;
 use mock\DBmysql as ImpactAdapterProbe;
 use mock\Computer as ImpactComputerProbe;
 use tests\fixtures\ScalarReadProbe;
@@ -56,6 +58,7 @@ use Problem;
 use Session;
 use Ticket;
 use Toolbox;
+use itsmng\Database\Entity;
 use itsmng\Database\Entity\User;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\UserRepository;
@@ -550,12 +553,26 @@ class Impact extends \DbTestCase
         $events = new EventManager();
         $observer = new class () {
             public int $clears = 0;
+            public array $loaded = [];
+            public ?string $changeParent = null;
+            public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
+            {
+                $metadata = $event->getClassMetadata();
+                $this->loaded[] = $metadata->name;
+                if ($metadata->name === Entity\ChangeItem::class) {
+                    if ($this->changeParent === 'redirect') {
+                        $metadata->associationMappings['changes']->targetEntity = Entity\Problem::class;
+                    } elseif ($this->changeParent === 'remove') {
+                        unset($metadata->associationMappings['changes']);
+                    }
+                }
+            }
             public function onClear(): void
             {
                 ++$this->clears;
             }
         };
-        $events->addEventListener(['onClear'], $observer);
+        $events->addEventListener(['onClear', 'loadClassMetadata'], $observer);
         $probe = new class ($connection) extends ScalarReadProbe {
             public EventManager $events;
             public function getEventManager(): EventManager
@@ -580,6 +597,23 @@ class Impact extends \DbTestCase
             $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(4);
             $this->integer($getters)->isIdenticalTo(4);
             $this->array($probe->queries)->hasSize(4);
+            $this->integer($observer->clears)->isIdenticalTo(0);
+            $this->array($observer->loaded)->contains(Entity\ChangeItem::class)->contains(Entity\ItemProblem::class);
+            $this->array($observer->loaded)->notContains(Entity\TicketTask::class)
+                ->notContains(Entity\ChangeTask::class)->notContains(Entity\ProblemTask::class);
+
+            $observer->changeParent = 'redirect';
+            $probe->queries = [];
+            $objects['changes']->getActiveChangesForItem(Computer::class, $computer->getID());
+            $this->array($probe->queries)->hasSize(1);
+            $this->string($probe->queries[0]['sql'])->contains('glpi_problems');
+
+            $observer->changeParent = 'remove';
+            $probe->queries = [];
+            $this->exception(fn () => $objects['changes']->getActiveChangesForItem(Computer::class, $computer->getID()))
+                ->isInstanceOf(LogicException::class)
+                ->hasMessage('Expected one ITIL asset parent association: ' . Entity\ChangeItem::class);
+            $this->array($probe->queries)->isEmpty();
             $this->integer($observer->clears)->isIdenticalTo(0);
         } finally {
             $GLOBALS['DB'] = $originalAdapter;

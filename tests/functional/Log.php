@@ -42,10 +42,12 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Result;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Query;
 use Doctrine\ORM\Query\Filter\SQLFilter;
 use itsmng\Database\Entity\Log as LogRecord;
+use itsmng\Database\Entity\User as UserRecord;
 use itsmng\Database\Repository\HistoryRepository;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Adapter\TraceableAdapter;
@@ -55,6 +57,10 @@ use itsmng\Database\Orm;
 use ReflectionProperty;
 use Entity;
 use Log as LegacyLog;
+use User;
+use tests\fixtures\ScalarReadProbe;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/log.class.php */
 
@@ -250,6 +256,158 @@ class Log extends DbTestCase
             } else {
                 $_SESSION['glpishow_count_on_tabs'] = $previous;
             }
+        }
+    }
+
+    public function testHistoryDataReusesReadScopeOutsideFormatting(): void
+    {
+        global $DB;
+        $original = $DB;
+        $session = $_SESSION;
+        $readPreference = $GLOBALS['CFG_GLPI']['use_slave_for_search'];
+        $connection = $DB->getDoctrineConnection();
+        $this->integer($connection->getTransactionNestingLevel())->isGreaterThan(0);
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        try {
+            $GLOBALS['CFG_GLPI']['use_slave_for_search'] = false;
+            $_SESSION['glpinames_format'] = User::FIRSTNAME_BEFORE;
+            $_SESSION['glpiis_ids_visible'] = 0;
+            $computer = $this->createComputer();
+            $manager = Orm::create($DB);
+            $user = new UserRecord();
+            $user->name = 'history-reader-' . bin2hex(random_bytes(6));
+            $user->firstname = 'Ada';
+            $user->realname = 'History';
+            $manager->persist($user);
+            $manager->flush();
+            $manager->clear();
+            $logs = [];
+            $logs[] = $this->createLogEntry($computer, [
+                'id_search_option' => 1, 'old_value' => 'Old name', 'new_value' => 'New name',
+            ]);
+            for ($repeat = 0; $repeat < 2; ++$repeat) {
+                $logs[] = $this->createLogEntry($computer, [
+                    'id_search_option' => 70, 'old_value' => $user->name . ' (1)', 'new_value' => $user->name . ' (2)',
+                ]);
+            }
+            $this->createLogEntry($computer, ['user_name' => 'excluded']);
+            $this->createLogEntry($this->createComputer(), ['user_name' => 'someuser']);
+            $filters = LegacyLog::convertFiltersValuesToSqlCriteria(['users_names' => ['someuser']]);
+            $options = ['sort' => 'id', 'order' => 'ASC'];
+            $rows = LegacyLog::getHistoryData($computer, 0, 0, $filters, $options);
+            $this->array(array_column($rows, 'id'))->isIdenticalTo(array_map(static fn ($log): int => (int)$log->getID(), $logs));
+            $this->string($rows[1]['change'])->isIdenticalTo('Change Ada History (1) to Ada History (2)');
+            $this->string($rows[2]['change'])->isIdenticalTo($rows[1]['change']);
+            $beforeFactories = $factories->getValue();
+            $this->integer(LegacyLog::countForItem($computer, $filters))->isIdenticalTo(3);
+            $page = LegacyLog::getHistoryData($computer, 1, 1, $filters, $options);
+            $this->array($page)->isIdenticalTo([$rows[1]]);
+            $this->array(LegacyLog::getHistoryData($computer, 0, 1, $filters, ['sort' => 'user_name', 'order' => 'DESC']))
+                ->isIdenticalTo([$rows[2]]);
+            $this->array(LegacyLog::getHistoryData($computer, 0, 0, ['user_name' => 'absent'], $options))->isEmpty();
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+            $connection->update('glpi_users', ['firstname' => 'Grace'], ['id' => $user->id]);
+            $connection->update('glpi_logs', ['new_value' => $user->name . ' (3)'], ['id' => $logs[2]->getID()]);
+            $fresh = LegacyLog::getHistoryData($computer, 0, 0, $filters, $options);
+            $this->string($fresh[1]['change'])->isIdenticalTo('Change Grace History (1) to Grace History (2)');
+            $this->string($fresh[2]['change'])->isIdenticalTo('Change Grace History (1) to Grace History (3)');
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+
+            $item = new class () extends Computer {
+                public Closure $formatCallback;
+
+                public static function getType()
+                {
+                    return 'Computer';
+                }
+
+                public static function getTable($classname = null)
+                {
+                    return 'glpi_computers';
+                }
+
+                public function getValueToDisplay($field_id_or_search_options, $values, $options = [])
+                {
+                    ($this->formatCallback)();
+                    return parent::getValueToDisplay($field_id_or_search_options, $values, $options);
+                }
+            };
+            $item->fields = $computer->fields;
+            $formats = 0;
+            // Formatting may write between the row query and the following username lookup.
+            $item->formatCallback = function () use ($connection, $user, &$formats): void {
+                ++$formats;
+                $connection->update('glpi_users', ['firstname' => 'Callback'], ['id' => $user->id]);
+                $this->integer(Orm::withReadConnection($connection, static fn (?EntityManager $manager): int => $manager->getUnitOfWork()->size()))
+                    ->isIdenticalTo(0);
+            };
+            $formatted = LegacyLog::getHistoryData($item, 0, 0, $filters, $options);
+            $this->string($formatted[1]['change'])->isIdenticalTo('Change Callback History (1) to Callback History (2)');
+            $this->string($formatted[2]['change'])->isIdenticalTo('Change Callback History (1) to Callback History (3)');
+            $this->integer($formats)->isIdenticalTo(2);
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+
+            // Custom readers keep both eager managers and the second selected physical route.
+            $events = new EventManager();
+            $listener = new class () {
+                public int $clears = 0;
+                public int $users = 0;
+
+                public function onClear(): void
+                {
+                    ++$this->clears;
+                }
+
+                public function postLoad(PostLoadEventArgs $event): void
+                {
+                    if ($event->getObject() instanceof UserRecord) {
+                        ++$this->users;
+                    }
+                }
+            };
+            $events->addEventListener(['onClear', 'postLoad'], $listener);
+            $historyConnection = new class ($connection) extends ScalarReadProbe {
+                public EventManager $events;
+
+                public function getEventManager(): EventManager
+                {
+                    return $this->events;
+                }
+            };
+            $historyConnection->events = $events;
+            $userConnection = clone $historyConnection;
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new HistoryAdapter();
+            $getters = 0;
+            $this->calling($adapter)->getDoctrineConnection = static function () use ($historyConnection, $userConnection, &$getters): Connection {
+                return ++$getters === 1 ? $historyConnection : $userConnection;
+            };
+            $this->calling($adapter)->getProvider = $original->getProvider();
+            $atFormatting = [];
+            $beforeFactories = $factories->getValue();
+            $item->formatCallback = static function () use ($original, $factories, $historyConnection, $userConnection, &$getters, &$atFormatting): void {
+                $atFormatting[] = [
+                    $factories->getValue(),
+                    $getters,
+                    count($historyConnection->queries),
+                    count($userConnection->queries),
+                ];
+                $GLOBALS['DB'] = $original;
+            };
+            $DB = $adapter;
+            $this->array(LegacyLog::getHistoryData($item, 0, 0, $filters, $options))->isIdenticalTo($formatted);
+            $this->array($atFormatting)->isIdenticalTo(array_fill(0, 2, [$beforeFactories + 2, 2, 1, 0]));
+            $this->integer($getters)->isIdenticalTo(2);
+            $this->array($historyConnection->queries)->hasSize(1);
+            $this->array($userConnection->queries)->hasSize(4);
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(2);
+            $this->integer($listener->users)->isIdenticalTo(1);
+            $this->integer($listener->clears)->isIdenticalTo(0);
+            $this->object($DB)->isIdenticalTo($original);
+        } finally {
+            $DB = $original;
+            $_SESSION = $session;
+            $GLOBALS['CFG_GLPI']['use_slave_for_search'] = $readPreference;
         }
     }
 
