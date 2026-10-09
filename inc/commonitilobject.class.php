@@ -6536,8 +6536,9 @@ abstract class CommonITILObject extends CommonDBTM
         ][$dimension] ?? null;
         $language = $labelType !== null && Session::haveTranslations($labelType, 'name')
             ? ($_SESSION['glpilanguage'] ?? null) : null;
-        return (new ITILStatisticsOptionsRepository(Orm::create($DB)))
-            ->options($this->getType(), $dimension, $begin, $end, Criteria::entities(), $language);
+        return Orm::read($DB, fn (EntityManager $manager): array =>
+            (new ITILStatisticsOptionsRepository($manager))
+                ->options($this->getType(), $dimension, $begin, $end, Criteria::entities(), $language));
     }
 
 
@@ -7310,8 +7311,8 @@ abstract class CommonITILObject extends CommonDBTM
 
         $font = "\"Bitstream Vera Sans\", arial, Tahoma, \"Sans serif\"";
         if (Session::haveRight("accessibility", READ)) {
-            $font = (new UserRepository(Orm::create($DB)))
-                ->accessibilityFont((int)Session::getLoginUserID());
+            $font = Orm::read($DB, static fn (EntityManager $manager): ?string =>
+                (new UserRepository($manager))->accessibilityFont((int)Session::getLoginUserID()));
         }
 
         echo "<div class='filter_timeline'>";
@@ -7353,8 +7354,8 @@ abstract class CommonITILObject extends CommonDBTM
         global $DB;
         $font = "\"Bitstream Vera Sans\", arial, Tahoma, \"Sans serif\"";
         if (Session::haveRight("accessibility", READ)) {
-            $font = (new UserRepository(Orm::create($DB)))
-                ->accessibilityFont((int)Session::getLoginUserID());
+            $font = Orm::read($DB, static fn (EntityManager $manager): ?string =>
+                (new UserRepository($manager))->accessibilityFont((int)Session::getLoginUserID()));
         }
         echo "<h2 style='font-family: $font;'>" . __("Actions historical") . " : </h2>";
         $this->filterTimeline();
@@ -7956,8 +7957,8 @@ abstract class CommonITILObject extends CommonDBTM
 
         $font = "\"Bitstream Vera Sans\", arial, Tahoma, \"Sans serif\"";
         if (Session::haveRight("accessibility", READ)) {
-            $font = (new UserRepository(Orm::create($DB)))
-                ->accessibilityFont((int)Session::getLoginUserID());
+            $font = Orm::read($DB, static fn (EntityManager $manager): ?string =>
+                (new UserRepository($manager))->accessibilityFont((int)Session::getLoginUserID()));
         }
 
         $authors = new TimelineAuthorReader();

@@ -199,8 +199,9 @@ class Stat extends CommonGLPI
         if ($scoped && Criteria::entities() === []) {
             return [];
         }
-        return (new StatisticsClassificationRepository(Orm::create($DB)))
-            ->options($table, $label, $criteria, $order);
+        return Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new StatisticsClassificationRepository($manager))
+                ->options($table, $label, $criteria, $order));
     }
 
 
@@ -828,21 +829,20 @@ class Stat extends CommonGLPI
         if (!$item instanceof CommonITILObject) {
             return;
         }
-        return (new ITILStatisticsRepository(
-            Orm::create(DBConnection::getReadConnection())
-        ))->monthly(
-            $itemtype,
-            $type,
-            (string)$begin,
-            (string)$end,
-            (string)$param,
-            $value,
-            $value2,
-            Criteria::entities(),
-            array_merge($item->getClosedStatusArray(), $item->getSolvedStatusArray()),
-            $item->getClosedStatusArray(),
-            $add_criteria
-        );
+        return Orm::read(DBConnection::getReadConnection(), static fn (EntityManager $manager): array =>
+            (new ITILStatisticsRepository($manager))->monthly(
+                $itemtype,
+                $type,
+                (string)$begin,
+                (string)$end,
+                (string)$param,
+                $value,
+                $value2,
+                Criteria::entities(),
+                array_merge($item->getClosedStatusArray(), $item->getSolvedStatusArray()),
+                $item->getClosedStatusArray(),
+                $add_criteria
+            ));
     }
 
     /**

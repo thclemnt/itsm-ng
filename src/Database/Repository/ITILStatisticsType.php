@@ -93,16 +93,28 @@ final class ITILStatisticsType
         // Reflection selects candidates only; actual ORM associations remain the
         // authority for reporting roles, parent targets and duplicate diagnostics.
         foreach ($driver->getAllClassNames() as $class) {
-            $reflection = new ReflectionClass($class);
-            do {
-                foreach ($reflection->getProperties() as $property) {
-                    if ($property->getAttributes(ITILStatisticsRelation::class) !== []) {
-                        yield $em->getClassMetadata($class);
-                        continue 3;
-                    }
-                }
-                // Include inherited private declarations in candidate selection.
-            } while ($reflection = $reflection->getParentClass());
+            if (self::hasReportingProperty($class)) {
+                yield $em->getClassMetadata($class);
+            }
         }
+    }
+
+    /** Loaded property declarations are immutable; driver visibility and ORM associations are not. */
+    private static function hasReportingProperty(string $class): bool
+    {
+        static $candidates = [];
+        if (isset($candidates[$class])) {
+            return $candidates[$class];
+        }
+        $reflection = new ReflectionClass($class);
+        do {
+            foreach ($reflection->getProperties() as $property) {
+                if ($property->getAttributes(ITILStatisticsRelation::class) !== []) {
+                    return $candidates[$class] = true;
+                }
+            }
+            // Include inherited private declarations in candidate selection.
+        } while ($reflection = $reflection->getParentClass());
+        return $candidates[$class] = false;
     }
 }
