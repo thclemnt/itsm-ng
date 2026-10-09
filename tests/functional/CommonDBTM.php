@@ -676,12 +676,15 @@ class CommonDBTM extends DbTestCase
             $this->string($records->find('glpi_computers', 'id', (int)$computer->getID())['name'])->isIdenticalTo('After legacy update');
             $this->string($managed->name)->isIdenticalTo('Before scalar read');
             $this->boolean($manager->contains($managed))->isTrue();
-            // matching() historically observes and detaches a preexisting managed record.
+            // Hydrated collections retain caller identity; refreshing it is the caller's decision.
             $manager->hydrationModes = [];
             $this->string($records->matching('glpi_computers', ['id' => $computer->getID()])[0]['name'])
                 ->isIdenticalTo('Before scalar read');
             $this->array($manager->hydrationModes)->isIdenticalTo([Query::HYDRATE_OBJECT]);
-            $this->boolean($manager->contains($managed))->isFalse();
+            $this->boolean($manager->contains($managed))->isTrue();
+            $this->string($records->matching('glpi_computers', ['id' => $computer->getID()])[0]['name'])
+                ->isIdenticalTo('Before scalar read');
+            $manager->refresh($managed);
             $this->string($records->matching('glpi_computers', ['id' => $computer->getID()])[0]['name'])
                 ->isIdenticalTo('After legacy update');
 

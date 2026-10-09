@@ -1281,11 +1281,30 @@ class Config extends DbTestCase
                 $this->string($operation->matching('glpi_configs', ['id' => $fallbackId], [], null, 0)[0]['value'])->isIdenticalTo('hydrated');
                 $this->boolean($supplied->contains($sentinel))->isTrue('A hydrated collection cannot clear unrelated caller entities');
                 $this->array($listener->managers)->isIdenticalTo([$supplied, $supplied]);
+                $sentinel->value = 'pending-with-listener';
+                $this->string($operation->matching('glpi_configs', ['id' => $id], [], null, 0)[0]['value'])
+                    ->isIdenticalTo('pending-with-listener');
+                $this->boolean($supplied->contains($sentinel))->isTrue('Matching a caller entity must not detach its pending edit');
             } finally {
                 $operation->close();
                 $supplied->getEventManager()->removeEventListener([Events::postLoad], $listener);
             }
             $this->boolean($supplied->contains($sentinel))->isTrue();
+            $supplied->flush();
+            $this->string($connection->fetchOne('SELECT value FROM glpi_configs WHERE id = ?', [$id]))
+                ->isIdenticalTo('pending-with-listener');
+            $sentinel->value = 'pending-without-listener';
+            $operation = new RecordReadOperation($connection, $supplied);
+            try {
+                $this->string($operation->matching('glpi_configs', ['id' => $id], [], null, 0)[0]['value'])
+                    ->isIdenticalTo('pending-without-listener');
+                $this->boolean($supplied->contains($sentinel))->isTrue();
+            } finally {
+                $operation->close();
+            }
+            $supplied->flush();
+            $this->string($connection->fetchOne('SELECT value FROM glpi_configs WHERE id = ?', [$id]))
+                ->isIdenticalTo('pending-without-listener');
             $private = new RecordReadOperation($connection);
             try {
                 $this->exception(static fn () => $private->matchingResult('glpi_configs', $criteria, [], null, 0))

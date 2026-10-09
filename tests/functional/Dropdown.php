@@ -79,6 +79,7 @@ use itsmng\Database\DropdownReadOperation;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\EntityScopeReadOperation;
 use itsmng\Database\Entity\Budget as BudgetEntity;
+use itsmng\Database\Entity\Config as ConfigRecord;
 use itsmng\Database\Entity\Contact;
 use itsmng\Database\Entity\DropdownTranslation;
 use itsmng\Database\Entity\Profile as ProfileEntity;
@@ -454,15 +455,25 @@ class Dropdown extends DbTestCase
             }
         };
         $id = (int)getItemByTypeName('Budget', '_budget01', true);
-        $listener = new class () {
+        $listener = new class ('dropdown-owner-' . bin2hex(random_bytes(6))) {
             public int $loaded = 0;
             public array $managers = [];
+            public array $created = [];
+            public function __construct(private string $context)
+            {
+            }
             public function postLoad(PostLoadEventArgs $event): void
             {
                 if ($event->getObject() instanceof BudgetEntity) {
                     ++$this->loaded;
                     $this->managers[] = $event->getObjectManager();
                     $event->getObject()->name = 'Post-load presentation';
+                    $record = new ConfigRecord();
+                    $record->context = $this->context;
+                    $record->name = 'load-' . $this->loaded;
+                    $record->value = 'pending callback write';
+                    $event->getObjectManager()->persist($record);
+                    $this->created[] = $record;
                 }
             }
         };
@@ -474,12 +485,21 @@ class Dropdown extends DbTestCase
             $this->string($repository->choices(['id' => $id], [], [], 'Budget', 'en_GB', 0, 0)[0]['name'])
                 ->isIdenticalTo('Pending managed value');
             $this->array($manager->hydrationModes)->isIdenticalTo([Query::HYDRATE_OBJECT]);
-            $this->boolean($manager->contains($managed))->isFalse();
+            $this->boolean($manager->contains($managed))->isTrue();
+            $manager->flush();
+            $this->string($connection->fetchOne('SELECT name FROM glpi_budgets WHERE id = ?', [$id]))
+                ->isIdenticalTo('Pending managed value');
             $manager->clear();
             $manager->getEventManager()->addEventListener([Events::postLoad], $listener);
             $this->string($repository->choices(['id' => $id], [], [], 'Budget', 'en_GB', 0, 0)[0]['name'])
                 ->isIdenticalTo('Post-load presentation');
             $this->integer($listener->loaded)->isIdenticalTo(1);
+            $this->boolean($manager->contains($listener->created[0]))->isTrue();
+            $manager->flush();
+            $this->string($connection->fetchOne('SELECT name FROM glpi_budgets WHERE id = ?', [$id]))
+                ->isIdenticalTo('Post-load presentation');
+            $this->string($connection->fetchOne('SELECT value FROM glpi_configs WHERE id = ?', [$listener->created[0]->id]))
+                ->isIdenticalTo('pending callback write');
             $manager->getEventManager()->removeEventListener([Events::postLoad], $listener);
             $manager->clear();
             $manager->hydrationModes = [];
@@ -490,10 +510,11 @@ class Dropdown extends DbTestCase
             $this->array($manager->hydrationModes)->isIdenticalTo([Query::HYDRATE_OBJECT]);
             $manager->clear();
 
-            // A custom presenter may observe the managed record before choices detaches it.
+            // A custom presenter can leave pending changes for the caller's later flush.
             $custom = new class ($manager, $manager->getClassMetadata(BudgetEntity::class)) extends DropdownChoiceRepository {
                 public bool $presentedManaged = false;
                 public bool $dispatchedOriginalSignature = false;
+                public ?BudgetEntity $presentedRecord = null;
                 public function choices(array $criteria, array $order, array $translations, string $kind, string $language, int $limit, int $offset): array
                 {
                     $this->dispatchedOriginalSignature = true;
@@ -506,6 +527,8 @@ class Dropdown extends DbTestCase
                 protected function presentChoice(array $row): array
                 {
                     $this->presentedManaged = $this->getEntityManager()->getUnitOfWork()->size() > 0;
+                    $this->presentedRecord = $this->getEntityManager()->find(BudgetEntity::class, $row['id']);
+                    $this->presentedRecord->comment = 'Pending presenter comment';
                     $row['name'] .= ' custom';
                     return $row;
                 }
@@ -515,6 +538,10 @@ class Dropdown extends DbTestCase
             $this->boolean($custom->presentedManaged)->isTrue();
             $this->boolean($custom->dispatchedOriginalSignature)->isTrue();
             $this->array($manager->hydrationModes)->isIdenticalTo([Query::HYDRATE_OBJECT]);
+            $this->boolean($manager->contains($custom->presentedRecord))->isTrue();
+            $manager->flush();
+            $this->string($connection->fetchOne('SELECT comment FROM glpi_budgets WHERE id = ?', [$id]))
+                ->isIdenticalTo('Pending presenter comment');
             $manager->clear();
             $contact = getItemByTypeName('Contact', '_contact01_name');
             $this->string($manager->getRepository(Contact::class)
@@ -530,6 +557,11 @@ class Dropdown extends DbTestCase
                 $this->string($borrowed->label('glpi_budgets', $id, 'Budget', 'en_GB', [])['name'])
                     ->isIdenticalTo('Post-load presentation');
                 $this->boolean($manager->contains($sentinel))->isTrue('Label fallback preserves unrelated caller entities');
+                $labelled = $manager->find(BudgetEntity::class, $id);
+                $labelled->comment = 'Pending labelled value';
+                $this->string($borrowed->label('glpi_budgets', $id, 'Budget', 'en_GB', [])['comment'])
+                    ->isIdenticalTo('Pending labelled value');
+                $this->boolean($manager->contains($labelled))->isTrue('Label fallback preserves the selected caller entity');
                 $this->object($manager->getConfiguration())->isIdenticalTo($configuration);
                 $this->object($configuration->getMetadataCache())->isIdenticalTo($cache);
                 $this->string($borrowed->choices('glpi_budgets', ['id' => $id], [], [], 'Budget', 'en_GB', 0, 0)[0]['name'])
@@ -537,11 +569,19 @@ class Dropdown extends DbTestCase
                 $this->boolean($manager->contains($sentinel))->isTrue('Choice fallback preserves unrelated caller entities');
                 $this->object($manager->getConfiguration())->isIdenticalTo($configuration);
                 $this->object($configuration->getMetadataCache())->isIdenticalTo($cache);
-                $this->array($listener->managers)->isIdenticalTo([$manager, $manager]);
+                // Label and choice reads share the same caller identity, so postLoad runs once.
+                $this->array($listener->managers)->isIdenticalTo([$manager]);
             } finally {
                 $borrowed->close();
             }
             $this->boolean($manager->contains($sentinel))->isTrue();
+            $this->boolean($manager->contains($labelled))->isTrue();
+            $manager->flush();
+            $this->string($connection->fetchOne('SELECT comment FROM glpi_budgets WHERE id = ?', [$id]))
+                ->isIdenticalTo('Pending labelled value');
+            $created = end($listener->created);
+            $this->string($connection->fetchOne('SELECT value FROM glpi_configs WHERE id = ?', [$created->id]))
+                ->isIdenticalTo('pending callback write');
         } finally {
             $manager->getEventManager()->removeEventListener([Events::postLoad], $listener);
             $manager->clear();

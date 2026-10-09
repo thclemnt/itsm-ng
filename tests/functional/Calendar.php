@@ -34,7 +34,21 @@
 namespace tests\units;
 
 use Calendar_Holiday;
+use Doctrine\Common\EventManager;
 use DbTestCase;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Types\DateImmutableType;
+use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Entity\Config;
+use itsmng\Database\Orm;
+use ReflectionProperty;
+use mock\DBmysql as CalendarAdapterProbe;
+use tests\fixtures\ScalarReadProbe;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/calendar.class.php */
 
@@ -298,6 +312,107 @@ class Calendar extends DbTestCase
 
         foreach ($dates as $date => $expected) {
             $this->boolean($calendar->isHoliday($date))->isIdenticalTo($expected);
+        }
+
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeFactories = $factories->getValue();
+        for ($repeat = 0; $repeat < 3; ++$repeat) {
+            $this->boolean($calendar->isHoliday('2019-07-12'))->isTrue();
+        }
+        $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+
+        $connection = $GLOBALS['DB']->getDoctrineConnection();
+        try {
+            $connection->update('glpi_holidays', ['begin_date' => '2020-07-08', 'end_date' => '2020-09-01'], ['id' => $hid]);
+            $this->boolean($calendar->isHoliday('2019-07-12'))->isFalse();
+        } finally {
+            $connection->update('glpi_holidays', ['begin_date' => '2019-07-08', 'end_date' => '2019-09-01'], ['id' => $hid]);
+        }
+        $this->boolean($calendar->isHoliday('2019-07-12'))->isTrue();
+
+        Orm::withConnection($connection, function (EntityManager $outer) use ($calendar, $factories): void {
+            $sentinel = $outer->getReference(Config::class, 1);
+            $beforeFactories = $factories->getValue();
+            $this->boolean($calendar->isHoliday('2019-07-12'))->isTrue();
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(1);
+            $this->boolean($outer->contains($sentinel))->isTrue();
+        });
+
+        $timezone = date_default_timezone_get();
+        try {
+            date_default_timezone_set('UTC');
+            $this->boolean($calendar->isHoliday('2019-07-07 23:30:00-02:00'))->isTrue();
+            date_default_timezone_set('America/Los_Angeles');
+            $this->boolean($calendar->isHoliday('2019-07-07 23:30:00-02:00'))->isFalse();
+        } finally {
+            date_default_timezone_set($timezone);
+        }
+
+        $originalAdapter = $GLOBALS['DB'];
+        $events = new EventManager();
+        $listener = new class () {
+            public int $clears = 0;
+
+            public function onClear(): void
+            {
+                ++$this->clears;
+            }
+        };
+        $events->addEventListener(['onClear'], $listener);
+        $probe = new class ($connection) extends ScalarReadProbe {
+            public EventManager $events;
+
+            public function getEventManager(): EventManager
+            {
+                return $this->events;
+            }
+        };
+        $probe->events = $events;
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new CalendarAdapterProbe();
+        $getters = 0;
+        $this->calling($adapter)->getDoctrineConnection = static function () use ($probe, $originalAdapter, &$getters): Connection {
+            ++$getters;
+            $GLOBALS['DB'] = $originalAdapter;
+            return $probe;
+        };
+        $this->calling($adapter)->getProvider = $originalAdapter->getProvider();
+        try {
+            $beforeFactories = $factories->getValue();
+            for ($repeat = 0; $repeat < 3; ++$repeat) {
+                $GLOBALS['DB'] = $adapter;
+                $this->boolean($calendar->isHoliday('2019-07-12'))->isTrue();
+            }
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(3);
+            $this->integer($getters)->isIdenticalTo(3);
+            $this->array($probe->queries)->hasSize(3);
+            $this->integer($listener->clears)->isIdenticalTo(0);
+            $this->object($GLOBALS['DB'])->isIdenticalTo($originalAdapter);
+        } finally {
+            $GLOBALS['DB'] = $originalAdapter;
+        }
+
+        $originalDate = Type::getType(Types::DATE_IMMUTABLE);
+        $converter = new class () extends DateImmutableType {
+            public int $sqlCalls = 0;
+
+            public function convertToDatabaseValueSQL(string $expression, AbstractPlatform $platform): string
+            {
+                ++$this->sqlCalls;
+                return $expression;
+            }
+        };
+        try {
+            Type::getTypeRegistry()->override(Types::DATE_IMMUTABLE, $converter);
+            $beforeFactories = $factories->getValue();
+            for ($repeat = 0; $repeat < 2; ++$repeat) {
+                $this->boolean($calendar->isHoliday('2019-07-12'))->isTrue();
+            }
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(2);
+            // :day occurs twice in this fixed DQL query, once for each boundary.
+            $this->integer($converter->sqlCalls)->isIdenticalTo(4);
+        } finally {
+            Type::getTypeRegistry()->override(Types::DATE_IMMUTABLE, $originalDate);
         }
     }
 
