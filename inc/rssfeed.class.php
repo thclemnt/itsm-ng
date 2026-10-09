@@ -31,7 +31,6 @@
  * ---------------------------------------------------------------------
  */
 
-use Psr\SimpleCache\CacheInterface;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\SharedContentRepository;
 use itsmng\Database\SharedContentAccess;
@@ -848,8 +847,6 @@ class RSSFeed extends CommonDBVisible implements ExtraVisibilityCriteria
     {
 
         $feed = new SimplePie();
-        //$feed->set_cache_location(GLPI_RSS_DIR);
-        $feed->set_cache(new CacheInterface());
         $feed->enable_cache(false);
         $feed->set_feed_url($this->fields['url']);
         $feed->init();

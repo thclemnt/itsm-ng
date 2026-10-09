@@ -34,6 +34,7 @@
 namespace tests\units;
 
 use DbTestCase;
+use RSSFeed as RSSFeedModel;
 
 class RSSFeed extends DbTestCase
 {
@@ -138,6 +139,21 @@ class RSSFeed extends DbTestCase
            'https://example.com/items/1',
            'https://example.com/items/2',
         ]);
+    }
+
+    public function testShowDiscoveredFeedsHandlesUnreadableFeed(): void
+    {
+        $rssfeed = new RSSFeedModel();
+        $rssfeed->fields['url'] = 'file:///nonexistent/rssfeed.xml';
+
+        ob_start();
+        try {
+            $result = $rssfeed->showDiscoveredFeeds();
+        } finally {
+            ob_end_clean();
+        }
+
+        $this->boolean($result)->isFalse();
     }
 
     public function testPrepareInputForAddKeepsCurrentUserAsOwner()
