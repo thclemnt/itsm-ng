@@ -91,6 +91,7 @@ use itsmng\Database\Entity\Profile;
 use itsmng\Database\Entity\ProfileUser;
 use itsmng\Database\Entity\SupplierTicket;
 use itsmng\Database\Entity\Ticket as TicketEntity;
+use itsmng\Database\Entity\TicketSatisfaction as SatisfactionRecord;
 use itsmng\Database\Entity\TicketUser;
 use itsmng\Database\Entity\User as UserEntity;
 use itsmng\Database\ITILActorReadOperation;
@@ -221,6 +222,7 @@ class Ticket extends DbTestCase
     {
         global $DB;
         $session = $_SESSION;
+        $manager = Orm::create($DB);
         try {
             $this->login();
             $this->setEntity('_test_child_1', false);
@@ -229,22 +231,29 @@ class Ticket extends DbTestCase
             $this->boolean($DB->update('glpi_entities', ['inquest_duration' => $duration], ['id' => $entity]))->isTrue();
             $today = new DateTimeImmutable((string)$DB->getDoctrineConnection()->fetchOne('SELECT CURRENT_DATE'));
             $name = 'Survey ' . $this->getUniqueString();
-            $ticket = $this->createItem(LegacyTicket::class, [
-                'name' => $name,
-                'content' => 'Pending survey eligibility',
-                'entities_id' => $entity,
-                'status' => CommonITILObject::CLOSED,
-                '_users_id_requester' => Session::getLoginUserID(),
-                '_disablenotif' => true,
-            ]);
-            $satisfaction = new TicketSatisfaction();
-            $this->integer((int)$satisfaction->add([
-                'tickets_id' => $ticket->getID(),
-                'type' => 1,
-                'date_begin' => $today->modify($offset)->format('Y-m-d 12:00:00'),
-                'date_answered' => $answered ? $today->format('Y-m-d 12:00:00') : null,
-                '_disablenotif' => true,
-            ]))->isGreaterThan(0);
+            $ticket = new TicketEntity();
+            $ticket->name = $name;
+            $ticket->content = 'Pending survey eligibility';
+            $ticket->entities = $manager->getReference(Entity::class, $entity);
+            $ticket->status = CommonITILObject::CLOSED;
+            $ticket->date = $ticket->date_mod = $ticket->closedate = DateTime::createFromImmutable($today);
+            $requester = new TicketUser();
+            $requester->tickets = $ticket;
+            $requester->actor = $manager->getReference(UserEntity::class, (int)Session::getLoginUserID());
+            $requester->type = CommonITILActor::REQUESTER;
+            $satisfaction = new SatisfactionRecord();
+            $satisfaction->tickets = $ticket;
+            $satisfaction->date_begin = DateTime::createFromImmutable($today->modify($offset)->setTime(12, 0));
+            $satisfaction->date_answered = $answered ? DateTime::createFromImmutable($today->setTime(12, 0)) : null;
+            $manager->persist($ticket);
+            $manager->persist($requester);
+            $manager->persist($satisfaction);
+            $manager->flush();
+            $this->string($DB->getDoctrineConnection()->fetchOne('SELECT name FROM glpi_tickets WHERE id = ?', [$ticket->id]))
+                ->isIdenticalTo($name);
+            $stored = new LegacyTicket();
+            $this->boolean($stored->getFromDB($ticket->id))->isTrue();
+            $this->string($stored->getField('name'))->isIdenticalTo($name);
             $output = $this->output(static fn () => LegacyTicket::showCentralList(0, 'survey', false));
             if ($visible) {
                 $output->contains($name);
@@ -253,6 +262,7 @@ class Ticket extends DbTestCase
             }
             $DB->assertManagedTransaction();
         } finally {
+            $manager->clear();
             $_SESSION = $session;
         }
     }
