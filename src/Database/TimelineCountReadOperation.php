@@ -5,6 +5,7 @@
 namespace itsmng\Database;
 
 use Doctrine\DBAL\Connection;
+use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use itsmng\Database\Entity;
 use itsmng\Database\Entity\ITILFollowup;
@@ -20,11 +21,11 @@ final class TimelineCountReadOperation
 {
     use PrivateReadOwnership;
 
-    public function __construct(Connection $connection)
+    public function __construct(Connection $connection, ?EntityManager $manager = null)
     {
         // Preserve manager creation before virtual table callbacks; private cache
         // authority is resolved only when the first selected table is read.
-        $this->initializeReadManager($connection);
+        $this->initializeReadManager($connection, $manager);
     }
 
     public function solutions(string $table, TimelineSelection $selection): int

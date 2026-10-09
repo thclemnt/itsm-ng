@@ -7883,31 +7883,34 @@ abstract class CommonITILObject extends CommonDBTM
         }
 
         $selection = $this->getTimelineSelection();
-        $counts = new TimelineCountReadOperation($DB->getDoctrineConnection());
-        try {
-            $task_class = static::getType() . 'Task';
-            $validation_class = static::getType() . 'Validation';
-            $count = $counts->solutions(ITILSolution::getTable(), $selection);
-            if ($selection->criteria['followups'] !== null) {
-                $count += $counts->followups(ITILFollowup::getTable(), $selection);
+        $connection = $DB->getDoctrineConnection();
+        return Orm::withReadConnection($connection, function (?EntityManager $manager) use ($connection, $selection): int {
+            $counts = new TimelineCountReadOperation($connection, $manager);
+            try {
+                $task_class = static::getType() . 'Task';
+                $validation_class = static::getType() . 'Validation';
+                $count = $counts->solutions(ITILSolution::getTable(), $selection);
+                if ($selection->criteria['followups'] !== null) {
+                    $count += $counts->followups(ITILFollowup::getTable(), $selection);
+                }
+                if ($selection->criteria['tasks'] !== null) {
+                    $count += $counts->tasks($task_class::getTable(), $selection);
+                }
+                if ($selection->criteria['documents'] !== null) {
+                    $count += $counts->documents(
+                        static::getType(),
+                        (int)$this->getID(),
+                        static::getAssociatedDocumentAccess()
+                    );
+                }
+                if ($selection->criteria['validations'] !== null) {
+                    $count += $counts->validations($validation_class::getTable(), $selection->criteria['validations']);
+                }
+                return $count;
+            } finally {
+                $counts->close();
             }
-            if ($selection->criteria['tasks'] !== null) {
-                $count += $counts->tasks($task_class::getTable(), $selection);
-            }
-            if ($selection->criteria['documents'] !== null) {
-                $count += $counts->documents(
-                    static::getType(),
-                    (int)$this->getID(),
-                    static::getAssociatedDocumentAccess()
-                );
-            }
-            if ($selection->criteria['validations'] !== null) {
-                $count += $counts->validations($validation_class::getTable(), $selection->criteria['validations']);
-            }
-            return $count;
-        } finally {
-            $counts->close();
-        }
+        });
     }
 
     /**

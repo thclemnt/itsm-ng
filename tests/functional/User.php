@@ -1084,10 +1084,15 @@ class User extends DbTestCase
         $this->login();
         $user = $this->createItem(UserModel::class, ['name' => 'render-author-' . $this->getUniqueString(), 'entities_id' => 0]);
         $id = (int)$user->getID();
+        $connection = $DB->getDoctrineConnection();
+        $privateConnection = new ScalarReadProbe($connection);
+        $this->mockGenerator->orphanize('__construct');
+        $privateDatabase = new DBmysql();
+        $this->calling($privateDatabase)->getDoctrineConnection = $privateConnection;
         $reader = new TimelineAuthorReader();
         $model = new UserModel();
-        $this->boolean($reader->load($model, $id, $DB))->isTrue();
-        // Inspect our private operation owner, without exposing it in the API.
+        $this->boolean($reader->load($model, $id, $privateDatabase))->isTrue();
+        // Custom connections retain private metadata for exactly one render.
         $owned = new ReflectionProperty($reader, 'records');
         $getManager = static fn ($render) => (new ReflectionProperty(RecordReadOperation::class, 'manager'))->getValue($owned->getValue($render));
         $manager = $getManager($reader);
@@ -1100,20 +1105,19 @@ class User extends DbTestCase
         };
         $manager->getEventManager()->addEventListener([Events::postLoad], $loads);
         $previousCache = $GLOBALS['GLPI_CACHE'] ?? null;
-        $connection = $DB->getDoctrineConnection();
         $alternate = $DB->getProvider() === 'pgsql'
             ? PostgresConnection::create($connection->getParams())
             : MySQLConnection::create($connection->getParams());
         try {
             $this->boolean($DB->update('glpi_users', ['comment' => 'Fresh callback write'], ['id' => $id]))->isTrue();
-            $this->boolean($reader->load($model, $id, $DB))->isTrue();
+            $this->boolean($reader->load($model, $id, $privateDatabase))->isTrue();
             $this->object($getManager($reader))->isIdenticalTo($manager);
             $this->string($model->fields['comment'])->isIdenticalTo('Fresh callback write');
             $this->integer($loads->count)->isIdenticalTo(0);
             $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
             $this->mockGenerator->orphanize('__construct');
             $routed = new DBmysql();
-            $currentConnection = $connection;
+            $currentConnection = $privateConnection;
             $routeCalls = 0;
             $this->calling($routed)->getDoctrineConnection = static function () use (&$currentConnection, &$routeCalls) {
                 ++$routeCalls;
@@ -1123,29 +1127,29 @@ class User extends DbTestCase
             $this->integer($routeCalls)->isIdenticalTo(1);
             $adapterManager = $getManager($reader);
             $this->object($adapterManager)->isNotIdenticalTo($manager);
-            $currentConnection = $alternate;
+            $currentConnection = new ScalarReadProbe($alternate);
             $before = $model->fields;
             $this->boolean($reader->load($model, PHP_INT_MAX, $routed))->isFalse();
             $this->array($model->fields)->isIdenticalTo($before);
             $this->object($getManager($reader))->isNotIdenticalTo($adapterManager);
-            $this->object($getManager($reader)->getConnection())->isIdenticalTo($alternate);
-            $this->boolean($reader->load($model, $id, $DB))->isTrue();
+            $this->object($getManager($reader)->getConnection())->isIdenticalTo($currentConnection);
+            $this->boolean($reader->load($model, $id, $privateDatabase))->isTrue();
             $beforePoolChange = $getManager($reader);
             $GLOBALS['GLPI_CACHE'] = new Psr16Cache(new ArrayAdapter());
-            $this->boolean($reader->load($model, $id, $DB))->isTrue();
+            $this->boolean($reader->load($model, $id, $privateDatabase))->isTrue();
             $this->object($getManager($reader))->isNotIdenticalTo($beforePoolChange);
             $metadata = $getManager($reader)->getClassMetadata(UserRecord::class);
             $originalGenerator = $metadata->generatorType;
             $metadata->setIdGeneratorType(ClassMetadata::GENERATOR_TYPE_NONE);
             $GLOBALS['GLPI_CACHE']->clear();
             $nextRender = new TimelineAuthorReader();
-            $this->boolean($nextRender->load($model, $id, $DB))->isTrue();
+            $this->boolean($nextRender->load($model, $id, $privateDatabase))->isTrue();
             $this->object($getManager($nextRender))->isNotIdenticalTo($getManager($reader));
             $this->integer($getManager($nextRender)->getClassMetadata(UserRecord::class)->generatorType)
                 ->isIdenticalTo($originalGenerator);
             $this->array($getManager($nextRender)->getUnitOfWork()->getIdentityMap())->isEmpty();
             $warmRender = new TimelineAuthorReader();
-            $this->boolean($warmRender->load($model, $id, $DB))->isTrue();
+            $this->boolean($warmRender->load($model, $id, $privateDatabase))->isTrue();
             $this->array(array_keys($getManager($warmRender)->getMetadataFactory()->getLoadedMetadata()))
                 ->isIdenticalTo([UserRecord::class]);
             $extension = new class ($connection) extends ScalarReadProbe {
@@ -1185,9 +1189,44 @@ class User extends DbTestCase
             // A normal load still fires the listener: zero above is not a missing observer.
             $manager->find(UserRecord::class, $id);
             $this->integer($loads->count)->isGreaterThan(0);
+
+            // Moving from the retained custom route to canonical ownership retires it.
+            $localManager = $getManager($localRender);
+            $localUser = $localManager->find(UserRecord::class, $id);
+            $this->object($localUser)->isInstanceOf(UserRecord::class);
+            $currentConnection = $connection;
+            $this->boolean($localRender->load($model, $id, $routed))->isTrue();
+            $this->variable($owned->getValue($localRender))->isNull();
+            $this->boolean($localManager->contains($localUser))->isFalse();
+
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $beforeFactories = $factories->getValue();
+            $this->boolean($DB->update('glpi_users', ['comment' => 'Canonical callback write'], ['id' => $id]))->isTrue();
+            $this->boolean($localRender->load($model, $id, $DB))->isTrue();
+            $this->string($model->fields['comment'])->isIdenticalTo('Canonical callback write');
+            $this->variable($owned->getValue($localRender))->isNull();
+            $canonicalRender = new TimelineAuthorReader();
+            $this->boolean($canonicalRender->load($model, $id, $DB))->isTrue();
+            $this->variable($owned->getValue($canonicalRender))->isNull();
+            $this->integer($factories->getValue())->isIdenticalTo($beforeFactories);
+
+            $outerManager = null;
+            $outerUser = null;
+            Orm::withReadConnection($connection, function (EntityManager $manager) use ($DB, $canonicalRender, $model, $id, $factories, &$outerManager, &$outerUser): void {
+                $outerManager = $manager;
+                $outerUser = $manager->find(UserRecord::class, $id);
+                $this->object($outerUser)->isInstanceOf(UserRecord::class);
+                $beforeNested = $factories->getValue();
+                $this->boolean($canonicalRender->load($model, $id, $DB))->isTrue();
+                $this->string($model->fields['comment'])->isIdenticalTo('Canonical callback write');
+                $this->integer($factories->getValue() - $beforeNested)->isIdenticalTo(1);
+                $this->boolean($manager->contains($outerUser))->isTrue();
+            });
+            $this->boolean($outerManager->contains($outerUser))->isFalse();
+            $this->variable($owned->getValue($canonicalRender))->isNull();
         } finally {
             $GLOBALS['GLPI_CACHE'] = $previousCache;
-            unset($reader, $nextRender, $warmRender, $localRender);
+            unset($reader, $nextRender, $warmRender, $localRender, $canonicalRender);
             $manager->clear();
             $alternate->close();
         }

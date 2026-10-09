@@ -386,6 +386,9 @@ class Ticket extends DbTestCase
             $routed = clone $DB;
             $calls = [];
             $expected = [];
+            $hookRows = [];
+            $hookFactories = [];
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
             $beforeCalls = 0;
             $plugins->setValue(null, [...$active, 'timeline_author_fixture']);
             $PLUGIN_HOOKS['pre_show_item'] = ['timeline_author_fixture' =>
@@ -402,9 +405,15 @@ class Ticket extends DbTestCase
                     }
                 }];
             $PLUGIN_HOOKS['item_can'] = ['timeline_author_fixture' => [User::class =>
-                static function (User $model) use ($user, &$calls): void {
+                static function (User $model) use ($user, &$calls, $factories, &$hookRows, &$hookFactories): void {
                     if ($model->getID() == $user->getID()) {
                         $calls[] = $model->fields;
+                        // Author ownership has ended before permission hooks reenter reads.
+                        $before = $factories->getValue();
+                        $nested = new User();
+                        $nested->getTimelineAuthorFromDB($user->getID());
+                        $hookRows[] = $nested->fields;
+                        $hookFactories[] = $factories->getValue() - $before;
                         $model->fields['name'] = 'Plugin author label';
                         $model->right = false;
                     }
@@ -413,6 +422,8 @@ class Ticket extends DbTestCase
             $this->integer($beforeCalls)->isIdenticalTo(2);
             $this->object($DB)->isIdenticalTo($routed);
             $this->array($calls)->isIdenticalTo($expected);
+            $this->array($hookRows)->isIdenticalTo($expected);
+            $this->array($hookFactories)->isIdenticalTo([0, 0]);
 
             $PLUGIN_HOOKS = $hooks;
             $plugins->setValue(null, $active);

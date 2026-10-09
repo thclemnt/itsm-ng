@@ -31,11 +31,13 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\ConnexityInput;
 use itsmng\Database\Entity\ItemSoftwareVersion;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\LifecycleModelJournal;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\SoftwareInstallationRepository;
 use itsmng\Database\Repository\SoftwareRepository;
@@ -1085,18 +1087,23 @@ class Item_SoftwareVersion extends CommonDBRelation
         global $DB;
 
         $category = (int)Session::getSavedOption(__CLASS__, 'criterion', -1);
-        $reader = new SoftwareRenderingReadOperation($DB->getDoctrineConnection());
-        try {
-            $rows = $reader->forSubject(
-                $item->getType(),
-                (int)$item->getID(),
-                (new DbUtils())->getEntityRestriction('glpi_softwares', '', '', true),
-                $item->maybeDeleted(),
-                $category > -1 ? $category : null
-            );
-        } finally {
-            $reader->close();
-        }
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        $rows = Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $item, $category): array {
+            $reader = new SoftwareRenderingReadOperation($connection, $manager);
+            try {
+                return $reader->forSubject(
+                    $item->getType(),
+                    (int)$item->getID(),
+                    (new DbUtils())->getEntityRestriction('glpi_softwares', '', '', true),
+                    $item->maybeDeleted(),
+                    $category > -1 ? $category : null
+                );
+            } finally {
+                $reader->close();
+            }
+        });
         if (!Plugin::haveImport()) {
             foreach ($rows as &$row) {
                 unset($row['is_dynamic']);
@@ -1253,14 +1260,19 @@ class Item_SoftwareVersion extends CommonDBRelation
         $licenseIds = null;
         $displayData = null;
         if ($datas && empty($GLOBALS['PLUGIN_HOOKS']['item_can'])) {
-            $reader = new SoftwareRenderingReadOperation($DB->getDoctrineConnection());
-            try {
-                $rendering = $reader->rendering($itemtype, (int)$items_id, $datas);
-                $licenseIds = $rendering['licenses'];
-                $displayData = $rendering['display'];
-            } finally {
-                $reader->close();
-            }
+            $database = $DB;
+            $connection = $database->getDoctrineConnection();
+            OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+            $rendering = Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $itemtype, $items_id, $datas): array {
+                $reader = new SoftwareRenderingReadOperation($connection, $manager);
+                try {
+                    return $reader->rendering($itemtype, (int)$items_id, $datas);
+                } finally {
+                    $reader->close();
+                }
+            });
+            $licenseIds = $rendering['licenses'];
+            $displayData = $rendering['display'];
         }
         foreach ($datas as $data) {
             $licids = $licenseIds !== null ? ($licenseIds[$data['verid']] ?? []) : self::softwareByCategory(

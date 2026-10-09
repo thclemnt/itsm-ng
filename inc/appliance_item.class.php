@@ -34,6 +34,7 @@ if (!defined('GLPI_ROOT')) {
  * along with GLPI. If not, see <http://www.gnu.org/licenses/>.
  * ---------------------------------------------------------------------
  **/
+use Doctrine\ORM\EntityManager;
 use Glpi\Features\Clonable;
 use itsmng\Database\ApplianceOwnerReadOperation;
 use itsmng\Database\DropdownChoiceContext;
@@ -572,8 +573,11 @@ class Appliance_Item extends CommonDBRelation
         global $DB;
         $scope = Session::isCron() ? null : (new EntityScopeReadOperation())->restriction(Appliance::getTable(), '', '', 'auto');
         $criteria = $scope?->wrappedCriteria() ?? [];
-        return (new ApplianceOwnerReadOperation($DB->getDoctrineConnection()))
-            ->ownerCount($item->getType(), (int)$item->getID(), $criteria, $scope);
+        $connection = $DB->getDoctrineConnection();
+        return Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $item, $criteria, $scope): int {
+            return (new ApplianceOwnerReadOperation($connection, $manager))
+                ->ownerCount($item->getType(), (int)$item->getID(), $criteria, $scope);
+        });
     }
 
     public function getForbiddenStandardMassiveAction()
