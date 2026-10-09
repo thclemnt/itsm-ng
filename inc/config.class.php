@@ -42,6 +42,7 @@ use Glpi\System\RequirementsManager;
 use SimplePie\SimplePie as SimplePieFeed;
 use itsmng\Cache\StorageFactory;
 use itsmng\Database\CheckConstraintSupport;
+use itsmng\Database\LegacyValues;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ConfigurationRepository;
 use itsmng\Timezone;
@@ -3789,7 +3790,7 @@ class Config extends CommonDBTM
             $this->logConfigChange(
                 $this->fields['context'],
                 $this->fields['name'],
-                (string)$this->fields['value'],
+                (string)LegacyValues::decode($this->fields['value']),
                 (string)$this->oldvalues['value']
             );
         }
@@ -3817,7 +3818,8 @@ class Config extends CommonDBTM
             $newvalue = $oldvalue = '********';
         }
         $oldvalue = $name . ($context !== 'core' ? ' (' . $context . ') ' : ' ') . $oldvalue;
-        Log::constructHistory($this, ['value' => $oldvalue], ['value' => $newvalue]);
+        // Lifecycle values are raw here; constructHistory expects PHP-escaped new values.
+        Log::constructHistory($this, ['value' => $oldvalue], ['value' => addslashes($newvalue)]);
     }
 
     /**
