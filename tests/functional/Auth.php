@@ -41,6 +41,7 @@ use itsmng\Database\Entity\AuthMail;
 use itsmng\Database\Orm;
 use ReflectionProperty;
 use Toolbox;
+use User as ApplicationUser;
 
 /* Test for inc/auth.class.php */
 
@@ -97,6 +98,18 @@ class Auth extends DbTestCase
             $manager->clear();
             // Warm the canonical read owner before measuring repeated enumeration.
             $this->array(ApplicationAuth::getLoginAuthMethods())->isIdenticalTo($expected);
+            $auth = new ApplicationAuth();
+            $auth->getAuthMethods();
+            $this->array(array_keys($auth->authtypes))->isIdenticalTo(['ldap', 'mail']);
+            $this->string($auth->authtypes['mail'][$mail->id]['name'])->isIdenticalTo($mail->name);
+            $this->variable($auth->authtypes['mail'][$mail->id]['comment'])->isNull();
+            $this->integer($auth->authtypes['mail'][$mail->id]['is_active'])->isIdenticalTo(0);
+            $dropdownOptions = ['display' => false, 'noselect2' => true, 'rand' => 731,
+                'name' => 'authtype', 'display_emptychoice' => false];
+            $inactiveDropdown = ApplicationAuth::dropdown($dropdownOptions);
+            $this->string($inactiveDropdown)->contains(__('Authentication on ITSM-NG database'))
+                ->notContains(__('Authentication on mail server'))
+                ->notContains(__('Authentication on a LDAP directory'));
             $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
             $before = $factories->getValue();
             $this->array(ApplicationAuth::getLoginAuthMethods())->isIdenticalTo($expected);
@@ -114,6 +127,22 @@ class Auth extends DbTestCase
                 ['id' => $mail->id]
             );
             $active['mail-' . $mail->id] = 'Fresh login mail';
+            $connection->update('glpi_authmails', ['comment' => 'NULL'], ['id' => $mail->id]);
+            $auth->getAuthMethods();
+            $this->string($auth->authtypes['mail'][$mail->id]['name'])->isIdenticalTo('Fresh login mail');
+            $this->string($auth->authtypes['mail'][$mail->id]['comment'])->isIdenticalTo('NULL');
+            $this->integer($auth->authtypes['mail'][$mail->id]['is_active'])->isIdenticalTo(1);
+            $this->string(ApplicationAuth::dropdown($dropdownOptions))
+                ->contains(__('Authentication on mail server'));
+            // Exercise the User field-selection caller, which requests returned HTML.
+            $this->string(ApplicationUser::getSpecificValueToSelect(
+                'authtype',
+                'authtype',
+                ApplicationAuth::MAIL,
+                ['noselect2' => true, 'rand' => 731, 'display_emptychoice' => false]
+            ))
+                ->contains(__('Authentication on mail server'));
+
             $this->array(ApplicationAuth::getLoginAuthMethods())->isIdenticalTo($active);
             if ($ldap !== null) {
                 $connection->update(
@@ -137,6 +166,14 @@ class Auth extends DbTestCase
                 );
                 $active['_default'] = 'local';
                 $active['ldap-' . $ldap->id] = 'Fresh login LDAP';
+                $auth->getAuthMethods();
+                $this->string($auth->authtypes['ldap'][$ldap->id]['name'])->isIdenticalTo('Fresh login LDAP');
+                $this->integer($auth->authtypes['ldap'][$ldap->id]['is_active'])->isIdenticalTo(1);
+                $this->integer($auth->authtypes['ldap'][$ldap->id]['is_default'])->isIdenticalTo(0);
+                $this->string(ApplicationAuth::dropdown($dropdownOptions))
+                    ->contains(__('Authentication on a LDAP directory'))
+                    ->contains(__('External authentications'));
+
                 $this->array(ApplicationAuth::getLoginAuthMethods())->isIdenticalTo($active);
                 $connection->update(
                     'glpi_authldaps',
@@ -152,11 +189,16 @@ class Auth extends DbTestCase
                 ['is_active' => Types::BOOLEAN]
             );
             $this->array(ApplicationAuth::getLoginAuthMethods())->isIdenticalTo($expected);
+            $connection->update('glpi_authmails', ['comment' => null], ['id' => $mail->id]);
+            $auth->getAuthMethods();
+            $this->variable($auth->authtypes['mail'][$mail->id]['comment'])->isNull();
+            $this->integer($auth->authtypes['mail'][$mail->id]['is_active'])->isIdenticalTo(0);
+            if ($ldap !== null) {
+                $this->integer($auth->authtypes['ldap'][$ldap->id]['is_active'])->isIdenticalTo(0);
+            }
+            $this->string(ApplicationAuth::dropdown($dropdownOptions))->isIdenticalTo($inactiveDropdown);
             // All positive source-selection and freshness checks precede the genuine old-runtime failure.
-            $this->integer($factories->getValue() - $before)->isIdenticalTo(
-                0,
-                'Login source reads reuse the warm application manager'
-            );
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
         } finally {
             $manager->clear();
         }
