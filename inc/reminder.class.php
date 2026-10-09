@@ -913,7 +913,7 @@ class Reminder extends CommonDBVisible implements
      *
      * @param array $rows
      *
-     * @return \Sabre\VObject\Component\VCalendar[]
+     * @return VCalendar[]
      */
     private static function getItemsAsVCalendars(array $rows)
     {

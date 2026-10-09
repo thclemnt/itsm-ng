@@ -2439,7 +2439,7 @@ class Ticket extends CommonITILObject
      * @param integer $items_id    ID of the Item
      * @param string $type         Type of the tickets (incident or request)
      *
-     * @return \itsmng\Database\RowIterator
+     * @return RowIterator
      */
     public function getActiveTicketsForItem($itemtype, $items_id, $type)
     {

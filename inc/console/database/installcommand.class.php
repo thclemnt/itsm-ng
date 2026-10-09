@@ -41,6 +41,7 @@ use DBAdapter;
 use DBConnection;
 use Doctrine\DBAL\Exception;
 use GLPIKey;
+use Symfony\Component\Console\Helper\QuestionHelper;
 use Toolbox;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -121,7 +122,7 @@ class InstallCommand extends AbstractConfigureCommand
             && $this->isInputContainingConfigValues($input, $output)
             && !$input->getOption('reconfigure')
         ) {
-            /** @var \Symfony\Component\Console\Helper\QuestionHelper $question_helper */
+            /** @var QuestionHelper $question_helper */
             $question_helper = $this->getHelper('question');
             $reconfigure = $question_helper->ask(
                 $input,

@@ -33,6 +33,7 @@
 
 namespace tests\units;
 
+use atoum\atoum\mock\controller as MockController;
 use Appliance;
 use ApplianceEnvironment;
 use ApplianceType;
@@ -446,7 +447,7 @@ class Domain extends DbTestCase
         //transer to another entity
         $transfer = new \Transfer();
 
-        $controller = new \atoum\atoum\mock\controller();
+        $controller = new MockController();
         $controller->__construct = function () {
             // void
         };

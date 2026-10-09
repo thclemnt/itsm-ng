@@ -673,7 +673,7 @@ class Notification extends CommonDBTM
      * @param string $itemtype Item type
      * @param int    $entity   Restrict to entity
      *
-     * @return \itsmng\Database\RowIterator
+     * @return RowIterator
     **/
     public static function getNotificationsByEventAndType($event, $itemtype, $entity)
     {

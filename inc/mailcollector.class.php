@@ -283,7 +283,7 @@ class MailCollector extends CommonDBTM
     /**
      * Display recursively a folder and its children
      *
-     * @param \Laminas\Mail\Storage\Folder $folder   Current folder
+     * @param Storage\Folder $folder   Current folder
      * @param string                       $input_id Input ID
      *
      * @return void
@@ -849,7 +849,7 @@ class MailCollector extends CommonDBTM
      * Builds and returns the main structure of the ticket to be created
      *
      * @param string                        $uid     UID of the message
-     * @param \Laminas\Mail\Storage\Message $message  Messge
+     * @param Message $message  Messge
      * @param array                         $options  Possible options
      *
      * @return array ticket fields
@@ -1280,7 +1280,7 @@ class MailCollector extends CommonDBTM
     /**
      * Get extra headers
      *
-     * @param \Laminas\Mail\Storage\Message $message Message
+     * @param Message $message Message
      *
      * @return array
     **/
@@ -1315,7 +1315,7 @@ class MailCollector extends CommonDBTM
     /**
      * Get full headers infos from particular mail
      *
-     * @param \Laminas\Mail\Storage\Message $message Message
+     * @param Message $message Message
      *
      * @return array Associative array with following keys
      *                subject   => Subject of Mail
@@ -1412,7 +1412,7 @@ class MailCollector extends CommonDBTM
      * Recursivly get attached documents
      * Result is stored in $this->files
      *
-     * @param \Laminas\Mail\Storage\Part $part     Message part
+     * @param Storage\Part $part     Message part
      * @param string                     $path     Temporary path
      * @param integer                    $maxsize  Maximum size of document to be retrieved
      * @param string                     $subject  Message subject
@@ -1580,7 +1580,7 @@ class MailCollector extends CommonDBTM
     /**
      * Get attached documents in a mail
      *
-     * @param \Laminas\Mail\Storage\Message $message  Message
+     * @param Message $message  Message
      * @param string                        $path     Temporary path
      * @param integer                       $maxsize  Maximaum size of document to be retrieved
      *
@@ -1607,7 +1607,7 @@ class MailCollector extends CommonDBTM
     /**
      * Get The actual mail content from this mail
      *
-     * @param \Laminas\Mail\Storage\Message $message Message
+     * @param Message $message Message
     **/
     public function getBody(Message $message)
     {
@@ -2066,7 +2066,7 @@ class MailCollector extends CommonDBTM
     /**
      * Retrieve properly decoded content
      *
-     * @param \Laminas\Mail\Storage\Message $part Message Part
+     * @param Message $part Message Part
      *
      * @return string
      */

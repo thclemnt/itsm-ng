@@ -33,6 +33,7 @@
 
 namespace tests\units;
 
+use atoum\atoum\mock\controller as MockController;
 use Group;
 
 /* Test for inc/consumable.class.php */
@@ -44,7 +45,7 @@ class Consumable extends \DbTestCase
         $ok = 0;
         $ko = 0;
 
-        $controller = new \atoum\atoum\mock\controller();
+        $controller = new MockController();
         $controller->__construct = function ($args) {
         };
 

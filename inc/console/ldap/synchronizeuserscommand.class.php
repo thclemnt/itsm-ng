@@ -38,6 +38,7 @@ if (!defined('GLPI_ROOT')) {
 }
 
 use AuthLDAP;
+use Symfony\Component\Console\Helper\QuestionHelper;
 use User;
 use Glpi\Console\AbstractCommand;
 use Symfony\Component\Console\Exception\InvalidArgumentException;
@@ -226,7 +227,7 @@ class SynchronizeUsersCommand extends AbstractCommand
             $informations->addRow([__('End date'), $end_date]);
             $informations->render();
 
-            /** @var \Symfony\Component\Console\Helper\QuestionHelper $question_helper */
+            /** @var QuestionHelper $question_helper */
             $question_helper = $this->getHelper('question');
             $run = $question_helper->ask(
                 $input,

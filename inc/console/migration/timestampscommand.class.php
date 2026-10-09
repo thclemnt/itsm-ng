@@ -42,6 +42,7 @@ use DateTimeZone;
 use Glpi\Console\AbstractCommand;
 use QueryExpression;
 use Symfony\Component\Console\Helper\ProgressBar;
+use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
@@ -106,7 +107,7 @@ class TimestampsCommand extends AbstractCommand
 
         if (!$input->getOption('no-interaction')) {
             // Ask for confirmation (unless --no-interaction)
-            /** @var \Symfony\Component\Console\Helper\QuestionHelper $question_helper */
+            /** @var QuestionHelper $question_helper */
             $question_helper = $this->getHelper('question');
             $run = $question_helper->ask(
                 $input,

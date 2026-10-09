@@ -40,6 +40,7 @@ if (!defined('GLPI_ROOT')) {
 use Config;
 use Glpi\Console\AbstractCommand;
 use GLPIKey;
+use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -71,7 +72,7 @@ class SetCommand extends AbstractCommand
     protected function interact(InputInterface $input, OutputInterface $output)
     {
         if (null === $input->getArgument('value')) {
-            /** @var \Symfony\Component\Console\Helper\QuestionHelper $question_helper */
+            /** @var QuestionHelper $question_helper */
             $question_helper = $this->getHelper('question');
             $question = new Question(__('Configuration value:'), '');
             $question->setHidden(true); // Hide prompt as configuration value may be sensitive

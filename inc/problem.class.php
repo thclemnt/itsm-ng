@@ -1940,7 +1940,7 @@ class Problem extends CommonITILObject
      * @param string $itemtype     Item type
      * @param integer $items_id    ID of the Item
      *
-     * @return \itsmng\Database\RowIterator
+     * @return RowIterator
      */
     public function getActiveProblemsForItem($itemtype, $items_id)
     {

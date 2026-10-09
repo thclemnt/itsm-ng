@@ -2011,7 +2011,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
      * @param integer $items_id    Object id to restrict on
      * @param array   $extra_where Extra where clause
      *
-     * @return DBmysqlIterator|\itsmng\Database\RowIterator
+     * @return DBmysqlIterator|RowIterator
      */
     public static function getDistinctTypes($items_id, $extra_where = [])
     {

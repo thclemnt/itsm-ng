@@ -33,6 +33,7 @@
 
 namespace tests\units;
 
+use atoum\atoum\mock\controller as MockController;
 use Closure;
 use CommonDBChild;
 use CommonDBRelation;
@@ -223,7 +224,7 @@ class Transfer extends DbTestCase
                 //transer to another entity
                 $transfer = new \Transfer();
 
-                $controller = new \atoum\atoum\mock\controller();
+                $controller = new MockController();
                 $controller->__construct = function () {
                     // void
                 };
@@ -348,7 +349,7 @@ class Transfer extends DbTestCase
         //transer to another entity
         $transfer = new \Transfer();
 
-        $controller = new \atoum\atoum\mock\controller();
+        $controller = new MockController();
         $controller->__construct = function () {
             // void
         };

@@ -161,7 +161,7 @@ class DBmysql extends DBAdapter
      * @var array   $DEBUG_SQL
      * @var integer $SQL_TOTAL_REQUEST
      *
-     * @return \itsmng\Database\LegacyResult|boolean Query result handler
+     * @return LegacyResult|boolean Query result handler
      *
      * @throws GlpitestSQLError
      */
@@ -236,7 +236,7 @@ class DBmysql extends DBAdapter
     /**
      * Number of rows
      *
-     * @param \itsmng\Database\LegacyResult $result MySQL result handler
+     * @param LegacyResult $result MySQL result handler
      *
      * @return integer number of rows
      */
@@ -250,7 +250,7 @@ class DBmysql extends DBAdapter
      * Fetch array of the next row of a Mysql query
      * Please prefer fetchRow or fetchAssoc
      *
-     * @param \itsmng\Database\LegacyResult $result MySQL result handler
+     * @param LegacyResult $result MySQL result handler
      *
      * @return string[]|null array results
      */
@@ -263,7 +263,7 @@ class DBmysql extends DBAdapter
     /**
      * Fetch row of the next row of a Mysql query
      *
-     * @param \itsmng\Database\LegacyResult $result MySQL result handler
+     * @param LegacyResult $result MySQL result handler
      *
      * @return mixed|null result row
      */
@@ -276,7 +276,7 @@ class DBmysql extends DBAdapter
     /**
      * Fetch assoc of the next row of a Mysql query
      *
-     * @param \itsmng\Database\LegacyResult $result MySQL result handler
+     * @param LegacyResult $result MySQL result handler
      *
      * @return string[]|null result associative array
      */
@@ -289,7 +289,7 @@ class DBmysql extends DBAdapter
     /**
      * Fetch object of the next row of an SQL query
      *
-     * @param \itsmng\Database\LegacyResult $result MySQL result handler
+     * @param LegacyResult $result MySQL result handler
      *
      * @return object|null
      */
@@ -302,7 +302,7 @@ class DBmysql extends DBAdapter
     /**
      * Move current pointer of a Mysql result to the specific row
      *
-     * @param \itsmng\Database\LegacyResult $result MySQL result handler
+     * @param LegacyResult $result MySQL result handler
      * @param integer       $num    Row to move current pointer
      *
      * @return boolean
@@ -336,7 +336,7 @@ class DBmysql extends DBAdapter
     /**
      * Give number of fields of a Mysql result
      *
-     * @param \itsmng\Database\LegacyResult $result MySQL result handler
+     * @param LegacyResult $result MySQL result handler
      *
      * @return int number of fields
      */
@@ -349,7 +349,7 @@ class DBmysql extends DBAdapter
     /**
      * Give name of a field of a Mysql result
      *
-     * @param \itsmng\Database\LegacyResult $result MySQL result handler
+     * @param LegacyResult $result MySQL result handler
      * @param integer       $nb     ID of the field
      *
      * @return string name of the field
@@ -439,7 +439,7 @@ class DBmysql extends DBAdapter
     /**
      * Free result memory
      *
-     * @param \itsmng\Database\LegacyResult $result MySQL result handler
+     * @param LegacyResult $result MySQL result handler
      *
      * @return boolean
      */

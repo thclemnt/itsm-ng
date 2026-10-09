@@ -2498,12 +2498,12 @@ class Toolbox
      * Returns protocol instance for given mail server type.
      *
      * Class should implements Glpi\Mail\Protocol\ProtocolInterface
-     * or should be \Laminas\Mail\Protocol\Imap|\Laminas\Mail\Protocol\Pop3 for native protocols.
+     * or should be Imap|Pop3 for native protocols.
      *
      * @param string $protocol_type
      * @param boolean $allow_plugins_protocols allow plugins protocols
      *
-     * @return null|\Glpi\Mail\Protocol\ProtocolInterface|\Laminas\Mail\Protocol\Imap|\Laminas\Mail\Protocol\Pop3
+     * @return null|ProtocolInterface|Imap|Pop3
      */
     public static function getMailServerProtocolInstance(string $protocol_type, $allow_plugins_protocols = true)
     {
@@ -2532,7 +2532,7 @@ class Toolbox
     /**
      * Returns storage instance for given mail server type.
      *
-     * Class should extends \Laminas\Mail\Storage\AbstractStorage.
+     * Class should extends AbstractStorage.
      *
      * @param string $protocol_type
      * @param array  $params         Storage constructor params, as defined in AbstractStorage
