@@ -2943,15 +2943,19 @@ class Ticket extends DbTestCase
                     // Warm the canonical metadata, then observe legacy writes without another factory.
                     $this->integer($item->getTimelineItemCount())->isIdenticalTo(9);
                     $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+                    $otherTicket = $this->createItem('Ticket', [
+                        'name' => 'Timeline live subject change',
+                        'entities_id' => $item->getEntityID(),
+                    ]);
                     $beforeFactories = $factories->getValue();
                     try {
-                        $connection->update('glpi_itilfollowups', ['items_id' => 0], ['id' => $followup_ids_by_role['public']]);
+                        $connection->update('glpi_itilfollowups', ['tickets_id' => (int)$otherTicket->getID()], ['id' => $followup_ids_by_role['public']]);
                         $this->integer($item->getTimelineItemCount())->isIdenticalTo(8);
-                        $connection->update('glpi_itilfollowups', ['items_id' => (int)$item->getID()], ['id' => $followup_ids_by_role['public']]);
+                        $connection->update('glpi_itilfollowups', ['tickets_id' => (int)$item->getID()], ['id' => $followup_ids_by_role['public']]);
                         $this->integer($item->getTimelineItemCount())->isIdenticalTo(9);
                         $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
                     } finally {
-                        $connection->update('glpi_itilfollowups', ['items_id' => (int)$item->getID()], ['id' => $followup_ids_by_role['public']]);
+                        $connection->update('glpi_itilfollowups', ['tickets_id' => (int)$item->getID()], ['id' => $followup_ids_by_role['public']]);
                     }
 
                     $outerManager = null;
