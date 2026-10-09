@@ -45,6 +45,7 @@ use Doctrine\DBAL\Types\BigIntType;
 use Doctrine\DBAL\Types\TextType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
 use Entity;
 use itsmng\Database\Entity\Computer;
@@ -1052,6 +1053,18 @@ class DbUtils extends DbTestCase
             0,
             'Independent permission readers share the selected canonical manager without caching tree rows'
         );
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $ancestors = getAncestorsOf('glpi_entities', $entity);
+        Orm::withReadConnection($connection, function (EntityManager $owner) use ($DB, $entity, $ancestors, $scopeRows, $managers): void {
+            $managed = $owner->find(EntityRecord::class, $entity);
+            $this->object($managed)->isInstanceOf(EntityRecord::class);
+            $beforeNested = $managers->getValue();
+            $this->array((new EntityScopeReadOperation())->rows($DB, 'glpi_entities', ['id'], ['id' => 0]))
+                ->isIdenticalTo($scopeRows);
+            $this->array(getAncestorsOf('glpi_entities', $entity))->isIdenticalTo($ancestors);
+            $this->integer($managers->getValue() - $beforeNested)->isIdenticalTo(0);
+            $this->boolean($owner->contains($managed))->isTrue();
+        });
         $manager = Orm::forConnection($connection);
         $repository = new TreeRepository($manager);
         $reader = new TreeReadOperation($connection);
@@ -1120,6 +1133,7 @@ class DbUtils extends DbTestCase
                     return $this->events;
                 }
             };
+            $this->variable(TreeReadOperation::projectedRows($extended, 'glpi_entities', ['id'], ['id' => 0]))->isNull();
             $local = new TreeReadOperation($extended);
             $listener = new class () {
                 public int $loads = 0;

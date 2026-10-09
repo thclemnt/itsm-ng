@@ -40,6 +40,10 @@ final class EntityScopeReadOperation
             $this->connection = $connection;
             $this->database = $database;
         }
+        $rows = TreeReadOperation::projectedRows($connection, $table, $fields, $criteria);
+        if ($rows !== null) {
+            return $rows;
+        }
         return Orm::withReadConnection($connection, function (?EntityManager $manager) use ($connection, $table, $fields, $criteria): array {
             $reader = $manager === null
                 ? ($this->reader ??= new TreeReadOperation($connection))

@@ -877,6 +877,10 @@ final class DbUtils
                 return $this->treeReads->rows($DB, $table, $fields, $criteria);
             }
             $connection = $DB->getDoctrineConnection();
+            $rows = TreeReadOperation::projectedRows($connection, $table, $fields, $criteria);
+            if ($rows !== null) {
+                return $rows;
+            }
             return Orm::withReadConnection($connection, static fn (?EntityManager $manager): array =>
                 (new TreeReadOperation($connection, $manager))->rows($table, $fields, $criteria));
         }

@@ -554,8 +554,7 @@ class Item_SoftwareVersion extends DbTestCase
                 $this->integer(preg_match('/<script type="application\/json"[^>]*>(.*?)<\/script>/s', $html, $match))->isIdenticalTo(1);
                 return json_decode($match[1], true, 512, JSON_THROW_ON_ERROR);
             };
-            Orm::withReadConnection($connection, static function (?EntityManager $manager): void {
-            });
+            $this->array(ItemSoftwareVersionModel::getFromItem($computer))->isIdenticalTo($publicExpected);
             $beforeRender = $factories->getValue();
             $table = $render();
             $this->integer($factories->getValue() - $beforeRender)->isIdenticalTo(0);
