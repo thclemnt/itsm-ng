@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\Clonable;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\NotificationQueueRepository;
 use itsmng\Domain\NotificationTemplateService;
@@ -44,7 +45,7 @@ if (!defined('GLPI_ROOT')) {
 **/
 class NotificationTemplate extends CommonDBTM
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     // From CommonDBTM
     public $dohistory = true;

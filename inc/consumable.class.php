@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\Clonable;
 use Glpi\Event;
 use itsmng\Database\MappedReads;
 use itsmng\Database\Orm;
@@ -48,7 +49,7 @@ if (!defined('GLPI_ROOT')) {
 **/
 class Consumable extends CommonDBChild
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     // From CommonDBTM
     protected static $forward_entity_to = ['Infocom'];

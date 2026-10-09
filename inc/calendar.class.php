@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\Clonable;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\CalendarRepository;
 
@@ -43,7 +44,7 @@ if (!defined('GLPI_ROOT')) {
 **/
 class Calendar extends CommonDropdown
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     // From CommonDBTM
     public $dohistory                   = true;

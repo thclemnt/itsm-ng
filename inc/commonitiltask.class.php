@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\PlanningEvent;
 use Ramsey\Uuid\Uuid;
 use itsmng\Database\MappedReads;
 use itsmng\Database\Orm;
@@ -48,7 +49,7 @@ use Sabre\VObject\Component\VCalendar;
 /// TODO extends it from CommonDBChild
 abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItemInterface
 {
-    use Glpi\Features\PlanningEvent;
+    use PlanningEvent;
     use VobjectConverterTrait;
 
     // From CommonDBTM

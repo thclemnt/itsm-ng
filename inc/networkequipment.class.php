@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\Clonable;
+use Glpi\Features\DCBreadcrumb;
 use itsmng\Domain\SoftwareAllocationSubjectLifecycle;
 
 if (!defined('GLPI_ROOT')) {
@@ -43,8 +45,8 @@ if (!defined('GLPI_ROOT')) {
 **/
 class NetworkEquipment extends CommonDBTM
 {
-    use Glpi\Features\DCBreadcrumb;
-    use Glpi\Features\Clonable;
+    use DCBreadcrumb;
+    use Clonable;
     use SoftwareAllocationSubjectLifecycle;
 
     // From CommonDBTM

@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Monolog\Logger;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Types;
@@ -2203,7 +2204,7 @@ class Config extends CommonDBTM
     public static function getLibraries($all = false)
     {
         $pm = new PHPMailer();
-        $sp = new SimplePie\SimplePie();
+        $sp = new SimplePieFeed();
 
         // use same name that in composer.json
         $deps = [[ 'name'    => 'htmlawed/htmlawed',
@@ -2887,7 +2888,7 @@ class Config extends CommonDBTM
 
         try {
             global $PHPLOGGER;
-            $PHPLOGGER->addRecord(Monolog\Logger::WARNING, "Test logger");
+            $PHPLOGGER->addRecord(Logger::WARNING, "Test logger");
             $can_write_logs = true;
         } catch (UnexpectedValueException $e) {
             $catched = true;

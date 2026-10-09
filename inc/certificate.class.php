@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\Clonable;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\CertificateRepository;
 
@@ -47,7 +48,7 @@ if (!defined('GLPI_ROOT')) {
  */
 class Certificate extends CommonDBTM
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     public $dohistory           = true;
     public static $rightname           = "certificate";

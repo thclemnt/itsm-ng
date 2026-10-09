@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\Clonable;
 use itsmng\Database\Entity\Contract as ContractEntity;
 use itsmng\Database\Entity\ContractItem;
 use itsmng\Database\Orm;
@@ -49,7 +50,7 @@ if (!defined('GLPI_ROOT')) {
  */
 class Contract extends CommonDBTM
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     // From CommonDBTM
     public $dohistory                   = true;

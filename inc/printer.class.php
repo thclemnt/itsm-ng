@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\Clonable;
 use itsmng\Database\ComputerItemReadOperation;
 use itsmng\Database\MappedReads;
 use itsmng\Database\Orm;
@@ -47,7 +48,7 @@ if (!defined('GLPI_ROOT')) {
 **/
 class Printer extends CommonDBTM
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
     use SoftwareAllocationSubjectLifecycle;
 
     // From CommonDBTM

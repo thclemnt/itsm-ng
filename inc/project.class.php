@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\Clonable;
+use Glpi\Features\Kanban;
 use itsmng\Database\DropdownChoiceContext;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ProjectRepository;
@@ -46,8 +48,8 @@ if (!defined('GLPI_ROOT')) {
 **/
 class Project extends CommonDBTM implements ExtraVisibilityCriteria
 {
-    use Glpi\Features\Kanban;
-    use Glpi\Features\Clonable;
+    use Kanban;
+    use Clonable;
 
     // From CommonDBTM
     public $dohistory                   = true;

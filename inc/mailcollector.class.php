@@ -35,6 +35,7 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use Laminas\Mail\Storage\Exception\InvalidArgumentException as MailStorageInvalidArgumentException;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\MailCollectorRepository;
 use itsmng\MailServer;
@@ -964,7 +965,7 @@ class MailCollector extends CommonDBTM
 
         try {
             $subject = $message->getHeader('subject')->getFieldValue();
-        } catch (Laminas\Mail\Storage\Exception\InvalidArgumentException $e) {
+        } catch (MailStorageInvalidArgumentException $e) {
             $subject = null;
         }
         $tkt['_message']  = $message;
@@ -1360,7 +1361,7 @@ class MailCollector extends CommonDBTM
         // secu on subject setting
         try {
             $subject = $message->getHeader('subject')->getFieldValue();
-        } catch (Laminas\Mail\Storage\Exception\InvalidArgumentException $e) {
+        } catch (MailStorageInvalidArgumentException $e) {
             $subject = '';
         }
 
@@ -1593,7 +1594,7 @@ class MailCollector extends CommonDBTM
 
         try {
             $subject = $message->getHeader('subject')->getFieldValue();
-        } catch (Laminas\Mail\Storage\Exception\InvalidArgumentException $e) {
+        } catch (MailStorageInvalidArgumentException $e) {
             $subject = null;
         }
 

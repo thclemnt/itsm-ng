@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\Clonable;
 use itsmng\Database\LifecycleModelJournal;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
@@ -51,7 +52,7 @@ class SoftwareLicense extends CommonTreeDropdown
 {
     use SoftwareLifecycleAdmission;
 
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     protected function executePreparedAdd(callable $operation, array $priorState): mixed
     {

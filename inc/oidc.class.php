@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Jumbojett\OpenIDConnectClient;
 use Glpi\Toolbox\URL;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\OidcRepository;
@@ -57,7 +58,7 @@ class Oidc extends CommonDBTM
         $oidc_db['ClientSecret'] = @Toolbox::sodiumDecrypt((string)($oidc_db['ClientSecret'] ?? ''));
         $oidc_db['scope'] = explode(',', addslashes(str_replace(' ', '', (string)($oidc_db['scope'] ?? ''))));
 
-        $oidc = new Jumbojett\OpenIDConnectClient(
+        $oidc = new OpenIDConnectClient(
             $oidc_db["Provider"],
             $oidc_db["ClientID"],
             $oidc_db["ClientSecret"],

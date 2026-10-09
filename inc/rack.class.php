@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\DCBreadcrumb;
 use itsmng\Database\MappedReads;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\PlacementRepository;
@@ -44,7 +45,7 @@ if (!defined('GLPI_ROOT')) {
  **/
 class Rack extends CommonDBTM
 {
-    use Glpi\Features\DCBreadcrumb;
+    use DCBreadcrumb;
 
     public const FRONT    = 0;
     public const REAR     = 1;

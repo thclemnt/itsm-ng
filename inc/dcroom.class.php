@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\DCBreadcrumb;
 use itsmng\Database\MappedReads;
 
 if (!defined('GLPI_ROOT')) {
@@ -42,7 +43,7 @@ if (!defined('GLPI_ROOT')) {
 **/
 class DCRoom extends CommonDBTM
 {
-    use Glpi\Features\DCBreadcrumb;
+    use DCBreadcrumb;
 
     // From CommonDBTM
     public $dohistory                   = true;

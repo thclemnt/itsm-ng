@@ -35,6 +35,7 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use Glpi\Features\PlanningEvent;
 use Glpi\CalDAV\Contracts\CalDAVCompatibleItemInterface;
 use Glpi\CalDAV\Traits\VobjectConverterTrait;
 use Sabre\VObject\Component\VCalendar;
@@ -51,7 +52,7 @@ class Reminder extends CommonDBVisible implements
     CalDAVCompatibleItemInterface,
     ExtraVisibilityCriteria
 {
-    use Glpi\Features\PlanningEvent {
+    use PlanningEvent {
         post_getEmpty as trait_post_getEmpty;
     }
     use VobjectConverterTrait;

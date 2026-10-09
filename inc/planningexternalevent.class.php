@@ -35,6 +35,7 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use Glpi\Features\PlanningEvent;
 use Glpi\CalDAV\Contracts\CalDAVCompatibleItemInterface;
 use Glpi\CalDAV\Traits\VobjectConverterTrait;
 use Sabre\VObject\Component\VCalendar;
@@ -46,7 +47,7 @@ use itsmng\Database\Repository\PlanningRepository;
 
 class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemInterface
 {
-    use Glpi\Features\PlanningEvent {
+    use PlanningEvent {
         rawSearchOptions as protected trait_rawSearchOptions;
         post_getEmpty as private planningPostGetEmpty;
         post_addItem as private planningPostAddItem;

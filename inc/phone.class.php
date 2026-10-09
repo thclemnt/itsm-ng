@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\Clonable;
 use itsmng\Database\ComputerItemReadOperation;
 use itsmng\Domain\SoftwareAllocationSubjectLifecycle;
 
@@ -44,7 +45,7 @@ if (!defined('GLPI_ROOT')) {
 **/
 class Phone extends CommonDBTM
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
     use SoftwareAllocationSubjectLifecycle;
 
     // From CommonDBTM

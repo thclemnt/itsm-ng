@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\Clonable;
 use itsmng\Database\MappedReads;
 use itsmng\Database\MappedStorage;
 use itsmng\Database\Orm;
@@ -48,7 +49,7 @@ if (!defined('GLPI_ROOT')) {
  **/
 class Cartridge extends CommonDBChild
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     // From CommonDBTM
     protected static $forward_entity_to = ['Infocom'];

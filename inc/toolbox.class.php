@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Toolbox\URL;
 use Glpi\Console\Application;
 use Glpi\Event;
 use Glpi\Mail\Protocol\ProtocolInterface;
@@ -1987,7 +1988,7 @@ class Toolbox
                 }
             }
             if (array_key_exists('path', $parsed_url) && $parsed_url['path'][0] == '/') {
-                return Glpi\Toolbox\URL::isITSMNGRelativeURL($where) ? $CFG_GLPI['root_doc'] . $where : null;
+                return URL::isITSMNGRelativeURL($where) ? $CFG_GLPI['root_doc'] . $where : null;
             }
         }
 

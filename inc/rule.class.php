@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\Clonable;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\RuleRepository;
@@ -49,7 +50,7 @@ if (!defined('GLPI_ROOT')) {
 **/
 class Rule extends CommonDBTM
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     public $dohistory             = true;
 

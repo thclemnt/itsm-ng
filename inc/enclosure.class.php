@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\Clonable;
+use Glpi\Features\DCBreadcrumb;
 use itsmng\Database\MappedReads;
 
 if (!defined('GLPI_ROOT')) {
@@ -42,8 +44,8 @@ if (!defined('GLPI_ROOT')) {
 **/
 class Enclosure extends CommonDBTM
 {
-    use Glpi\Features\DCBreadcrumb;
-    use Glpi\Features\Clonable;
+    use DCBreadcrumb;
+    use Clonable;
 
     // From CommonDBTM
     public $dohistory                   = true;

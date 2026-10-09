@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\Clonable;
+use Glpi\Features\DCBreadcrumb;
 use itsmng\Database\ComputerItemReadOperation;
 use itsmng\Domain\SoftwareAllocationSubjectLifecycle;
 
@@ -43,8 +45,8 @@ if (!defined('GLPI_ROOT')) {
 **/
 class Monitor extends CommonDBTM
 {
-    use Glpi\Features\DCBreadcrumb;
-    use Glpi\Features\Clonable;
+    use DCBreadcrumb;
+    use Clonable;
     use SoftwareAllocationSubjectLifecycle;
 
     // From CommonDBTM

@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Jumbojett\OpenIDConnectClient;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\OidcRepository;
 
@@ -106,7 +107,7 @@ if (isset($_SESSION["itsm_is_oidc"]) && $_SESSION["itsm_is_oidc"] == 1) {
         $oidc_db['ClientSecret'] = Toolbox::sodiumDecrypt((string)$oidc_db['ClientSecret']);
         $oidc_db['scope'] = explode(',', addslashes((string)$oidc_db['scope']));
         $oidc_db['logout'] = $oidc_db['logout'] ?: null;
-        $oidc = new Jumbojett\OpenIDConnectClient($oidc_db['Provider'], $oidc_db['ClientID'], $oidc_db['ClientSecret']);
+        $oidc = new OpenIDConnectClient($oidc_db['Provider'], $oidc_db['ClientID'], $oidc_db['ClientSecret']);
         if (is_array($oidc_db['scope'])) {
             $oidc->addScope($oidc_db['scope']);
         }
