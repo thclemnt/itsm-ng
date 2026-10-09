@@ -42,7 +42,6 @@ use DBmysql;
 use DBpgsql;
 use DbTestCase;
 use Doctrine\Common\EventManager;
-use Doctrine\DBAL\Cache\QueryCacheProfile;
 use Doctrine\DBAL\Configuration;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
@@ -51,8 +50,6 @@ use Doctrine\DBAL\Logging\Middleware;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
-use Doctrine\DBAL\Query\QueryBuilder;
-use Doctrine\DBAL\Result;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Types\BigIntType;
 use Doctrine\DBAL\Types\BooleanType;
@@ -121,12 +118,15 @@ use Symfony\Component\Cache\Psr16Cache;
 use Symfony\Component\Console\Exception\InvalidArgumentException as ConsoleInvalidArgumentException;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Tester\CommandTester;
+use tests\fixtures\ScalarReadProbe;
 use Throwable;
 use Toolbox;
 use User;
 
 use function exportArrayToDB;
 use function importArrayFromDB;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/config.class.php */
 
@@ -142,7 +142,7 @@ class Config extends DbTestCase
         $id = (int)$user->getID();
         $manager = Orm::forConnection($connection);
         $ordinary = new OidcRepository($manager);
-        $probe = new ConfigOidcScalarReadProbe($connection);
+        $probe = new ScalarReadProbe($connection);
         $reader = new OidcRefreshReadOperation($probe);
         $bigint = Type::getType('bigint');
         $integer = Type::getType('integer');
@@ -195,7 +195,7 @@ class Config extends DbTestCase
                     $this->boolean($connection->ownsApplicationEntityManager($outer))->isTrue();
                 });
 
-                $custom = new class ($connection) extends ConfigOidcScalarReadProbe {
+                $custom = new class ($connection) extends ScalarReadProbe {
                     public ?Closure $beforePlatform = null;
                     private ?EventManager $events = null;
 
@@ -297,7 +297,7 @@ class Config extends DbTestCase
             $this->boolean($reader->needsRefresh($id))->isFalse();
             $this->boolean($ordinary->needsRefresh($id))->isFalse();
             Type::overrideType('boolean', $boolean);
-            $extension = new class ($connection) extends ConfigOidcScalarReadProbe {
+            $extension = new class ($connection) extends ScalarReadProbe {
                 private ?EventManager $events = null;
                 public function getEventManager(): EventManager
                 {
@@ -625,7 +625,7 @@ class Config extends DbTestCase
 
         $this->login();
         $this->boolean((bool)ConfigModel::canUpdate())->isTrue();
-        $rows = static fn (string $table, array $criteria): array => (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))->matching($table, $criteria, ['id ASC']);
+        $rows = static fn (string $table, array $criteria): array => (new RecordRepository(Orm::create($DB)))->matching($table, $criteria, ['id ASC']);
         ConfigModel::setConfigurationValues('core', ['is_ids_visible' => 0]);
         $before = $rows('glpi_configs', ['context' => 'core']);
         $setting = $rows('glpi_configs', ['context' => 'core', 'name' => 'is_ids_visible']);
@@ -1473,7 +1473,7 @@ class Config extends DbTestCase
     public function testMatchingAdmissionOnlyReturnsItsOwnCompilerDiagnostic(): void
     {
         global $DB;
-        $probe = new class ($DB->getDoctrineConnection()) extends ConfigOidcScalarReadProbe {
+        $probe = new class ($DB->getDoctrineConnection()) extends ScalarReadProbe {
             public ?UnsupportedCriteria $platformFailure = null;
             public function getDatabasePlatform(): AbstractPlatform
             {
@@ -1834,7 +1834,7 @@ class Config extends DbTestCase
         $literalName = $context . '-key';
         $manager = Orm::forConnection($connection);
         $ordinary = new ConfigurationRepository($manager);
-        $probe = new ConfigOidcScalarReadProbe($connection);
+        $probe = new ScalarReadProbe($connection);
         $this->mockGenerator()->orphanize('__construct');
         $adapter = new ConfigurationAdapter();
         $this->calling($adapter)->getDoctrineConnection = $probe;
@@ -1873,7 +1873,7 @@ class Config extends DbTestCase
             $this->array(ConfigModel::getConfigurationValues($context, ['absent']))->isEmpty();
             $connection->insert('glpi_configs', ['context' => 'NULL', 'name' => $literalName, 'value' => null]);
             $this->array(ConfigModel::getConfigurationValues('NULL', [$literalName]))->isIdenticalTo([$literalName => null]);
-            $otherProbe = new ConfigOidcScalarReadProbe($connection);
+            $otherProbe = new ScalarReadProbe($connection);
             $otherAdapter = new ConfigurationAdapter();
             $this->calling($otherAdapter)->getDoctrineConnection = $otherProbe;
             $contextCallback = new class ($context, $otherAdapter, $factories) {
@@ -1949,7 +1949,7 @@ class Config extends DbTestCase
                 ->isIdenticalTo($ordinary->values($context, ['z-key']))->isIdenticalTo(['z-key' => 'array-name']);
             Type::overrideType('string', $string);
 
-            $extension = new class ($connection) extends ConfigOidcScalarReadProbe {
+            $extension = new class ($connection) extends ScalarReadProbe {
                 private ?EventManager $events = null;
 
                 public function getEventManager(): EventManager
@@ -2736,33 +2736,4 @@ class ConfigReadPostgreSQLPlatform extends PostgreSQLPlatform
 
 class ConfigReadMySQLPlatform extends MySQLPlatform
 {
-}
-
-/** Observe the actual selected connection without opening another transaction or socket. */
-class ConfigOidcScalarReadProbe extends Connection
-{
-    public int $builders = 0;
-    public array $queries = [];
-
-    public function __construct(private readonly Connection $selected)
-    {
-        parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
-    }
-
-    public function getDatabasePlatform(): AbstractPlatform
-    {
-        return $this->selected->getDatabasePlatform();
-    }
-
-    public function createQueryBuilder(): QueryBuilder
-    {
-        ++$this->builders;
-        return parent::createQueryBuilder();
-    }
-
-    public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
-    {
-        $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
-        return $this->selected->executeQuery($sql, $params, $types, $qcp);
-    }
 }

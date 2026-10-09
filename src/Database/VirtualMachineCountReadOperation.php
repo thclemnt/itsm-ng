@@ -32,7 +32,6 @@ final class VirtualMachineCountReadOperation
             $this->manager = Orm::forConnection($connection);
             return;
         }
-        $connection->getDatabasePlatform();
         $this->project = Orm::ownsReadMapping($connection);
         if ($this->project) {
             // Keep the previous eager Type registration before argument callbacks.

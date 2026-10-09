@@ -13,6 +13,7 @@ use Doctrine\DBAL\Schema\Column;
 use Doctrine\DBAL\Schema\Comparator;
 use Doctrine\DBAL\Schema\DefaultExpression;
 use Doctrine\DBAL\Schema\Index;
+use Doctrine\DBAL\Schema\Index\IndexedColumn;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Schema\SchemaConfig;
 use Doctrine\DBAL\Schema\Table;
@@ -338,8 +339,7 @@ class CurrentSchema extends test
         ];
     }
 
-    /** @dataProvider ownedTableProvider */
-    public function testOwnedTablesPreserveEveryCurrentColumnAndIndexAcrossProviders(string $table, int $columnCount, int $indexCount, array $emptyReferences, array $references, array $logicalTypes = []): void
+    public function testOwnedTablesPreserveEveryCurrentColumnAndIndexAcrossProviders(): void
     {
         foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
             $manager = $this->manager($platform);
@@ -347,65 +347,70 @@ class CurrentSchema extends test
             $frozenSql = $frozen->toSql($platform);
             // The existing current identity policy widens frozen IDs before inspection.
             IdentifierColumns::configureSchema($frozen);
-            $historical = $frozen->getTable($table);
-            // Already-installed current policies, independent of the new owner declaration.
-            foreach ($emptyReferences as $column) {
-                $historical->getColumn($column)->setNotnull(false)->setDefault(null);
-            }
-            foreach ($references as $column => $target) {
-                $historical->addForeignKeyConstraint(
-                    $target,
-                    [$column],
-                    ['id'],
-                    ['onDelete' => 'RESTRICT', 'onUpdate' => 'RESTRICT'],
-                    ForeignKeys::name($table, trim($column, '`'))
-                );
-            }
-            foreach ($logicalTypes as $column => $type) {
-                // The existing entity clock mapping preserves 24:00:00 as a string.
-                // Its native declaration must remain identical to frozen TIME.
-                $historicalColumn = $historical->getColumn($column);
-                $logical = Type::getType($type);
-                $this->string($logical->getSQLDeclaration($historicalColumn->toArray(true), $platform))
-                    ->isIdenticalTo($historicalColumn->getType()->getSQLDeclaration($historicalColumn->toArray(true), $platform));
-                $historicalColumn->setType($logical);
-            }
-            $current = (new BaselineSchema($manager))->build($platform)->getTable($table);
+            $schema = (new BaselineSchema($manager))->build($platform);
             $comparator = new Comparator($platform);
-            $this->boolean($comparator->compareTables($historical, $current)->isEmpty())->isTrue();
-            $this->integer(count($current->getColumns()))->isIdenticalTo($columnCount);
-            $this->integer(count($current->getIndexes()))->isIdenticalTo($indexCount);
-            $this->integer(count($current->getForeignKeys()))->isIdenticalTo(count($references));
-            foreach ($historical->getForeignKeys() as $foreignKey) {
-                $this->boolean($current->hasForeignKey($foreignKey->getName()))->isTrue();
+            foreach ($this->ownedTableProvider() as $case) {
+                [$table, $columnCount, $indexCount, $emptyReferences, $references] = $case;
+                $logicalTypes = $case[5] ?? [];
+                $historical = clone $frozen->getTable($table);
+                // Already-installed current policies, independent of the new owner declaration.
+                foreach ($emptyReferences as $column) {
+                    $historical->getColumn($column)->setNotnull(false)->setDefault(null);
+                }
+                foreach ($references as $column => $target) {
+                    $historical->addForeignKeyConstraint(
+                        $target,
+                        [$column],
+                        ['id'],
+                        ['onDelete' => 'RESTRICT', 'onUpdate' => 'RESTRICT'],
+                        ForeignKeys::name($table, trim($column, '`'))
+                    );
+                }
+                foreach ($logicalTypes as $column => $type) {
+                    // The existing entity clock mapping preserves 24:00:00 as a string.
+                    // Its native declaration must remain identical to frozen TIME.
+                    $historicalColumn = $historical->getColumn($column);
+                    $logical = Type::getType($type);
+                    $this->string($logical->getSQLDeclaration($historicalColumn->toArray(true), $platform))
+                        ->isIdenticalTo($historicalColumn->getType()->getSQLDeclaration($historicalColumn->toArray(true), $platform));
+                    $historicalColumn->setType($logical);
+                }
+                $current = $schema->getTable($table);
+                $this->boolean($comparator->compareTables($historical, $current)->isEmpty())->isTrue($table . ' on ' . $platform::class);
+                $this->integer(count($current->getColumns()))->isIdenticalTo($columnCount);
+                $this->integer(count($current->getIndexes()))->isIdenticalTo($indexCount);
+                $this->integer(count($current->getForeignKeys()))->isIdenticalTo(count($references));
+                foreach ($historical->getForeignKeys() as $foreignKey) {
+                    $this->boolean($current->hasForeignKey($foreignKey->getName()))->isTrue();
+                }
+                foreach ($historical->getColumns() as $column) {
+                    $actual = $current->getColumn($column->getName());
+                    $this->string(Type::lookupName($actual->getType()))->isIdenticalTo(Type::lookupName($column->getType()));
+                    $this->boolean($actual->getNotnull())->isIdenticalTo($column->getNotnull());
+                    $default = static fn ($value) => $value instanceof DefaultExpression
+                        ? $value->toSQL($platform) : $value;
+                    $this->variable($default($actual->getDefault()))->isEqualTo($default($column->getDefault()));
+                    $this->variable($actual->getComment())->isIdenticalTo($column->getComment());
+                    $this->variable($actual->getLength())->isIdenticalTo($column->getLength());
+                    $this->boolean($actual->getAutoincrement())->isIdenticalTo($column->getAutoincrement());
+                    $this->variable($actual->getColumnDefinition())->isIdenticalTo($column->getColumnDefinition());
+                    $this->variable($actual->getCharset())->isIdenticalTo($column->getCharset());
+                    $this->variable($actual->getCollation())->isIdenticalTo($column->getCollation());
+                }
+                // These physical names are lowercase on both providers; compare
+                // identifiers and prefix lengths, not DBAL's original quote markers.
+                $columns = static fn (Index $index): array => array_map(
+                    static fn (IndexedColumn $column): array => [
+                        $column->getColumnName()->getIdentifier()->getValue(), $column->getLength(),
+                    ],
+                    $index->getIndexedColumns(),
+                );
+                foreach ($historical->getIndexes() as $index) {
+                    $this->boolean($current->hasIndex($index->getName()))->isTrue();
+                    $this->array($columns($current->getIndex($index->getName())))->isIdenticalTo($columns($index));
+                }
+                $this->array($current->getOptions())->isEqualTo($historical->getOptions());
             }
-            foreach ($historical->getColumns() as $column) {
-                $actual = $current->getColumn($column->getName());
-                $this->string(Type::lookupName($actual->getType()))->isIdenticalTo(Type::lookupName($column->getType()));
-                $this->boolean($actual->getNotnull())->isIdenticalTo($column->getNotnull());
-                $default = static fn ($value) => $value instanceof DefaultExpression
-                    ? $value->toSQL($platform) : $value;
-                $this->variable($default($actual->getDefault()))->isEqualTo($default($column->getDefault()));
-                $this->variable($actual->getComment())->isIdenticalTo($column->getComment());
-                $this->variable($actual->getLength())->isIdenticalTo($column->getLength());
-                $this->boolean($actual->getAutoincrement())->isIdenticalTo($column->getAutoincrement());
-                $this->variable($actual->getColumnDefinition())->isIdenticalTo($column->getColumnDefinition());
-                $this->variable($actual->getCharset())->isIdenticalTo($column->getCharset());
-                $this->variable($actual->getCollation())->isIdenticalTo($column->getCollation());
-            }
-            // These physical names are lowercase on both providers; compare
-            // identifiers and prefix lengths, not DBAL's original quote markers.
-            $columns = static fn (Index $index): array => array_map(
-                static fn (Index\IndexedColumn $column): array => [
-                    $column->getColumnName()->getIdentifier()->getValue(), $column->getLength(),
-                ],
-                $index->getIndexedColumns(),
-            );
-            foreach ($historical->getIndexes() as $index) {
-                $this->boolean($current->hasIndex($index->getName()))->isTrue();
-                $this->array($columns($current->getIndex($index->getName())))->isIdenticalTo($columns($index));
-            }
-            $this->array($current->getOptions())->isEqualTo($historical->getOptions());
             $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozenSql);
             $this->boolean($manager->getConnection()->isConnected())->isFalse();
         }

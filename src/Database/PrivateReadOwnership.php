@@ -64,7 +64,6 @@ trait PrivateReadOwnership
         if ($this->pool instanceof CacheInterface && ($fingerprint = MappingFingerprint::current()) !== null) {
             $this->context = hash('sha256', $fingerprint . "\0" . $connection->getDatabasePlatform()::class
                 . "\0" . $configuration->getMetadataDriverImpl()::class . "\0" . $configuration->getProxyDir());
-            $this->queryCache = new SerializedMetadataCache($this->pool, 'orm_record_query_' . $this->context);
         }
     }
 
@@ -129,7 +128,7 @@ trait PrivateReadOwnership
         if ($query->getEntityManager() !== $this->manager) {
             throw new LogicException('A compiled read plan belongs to its private operation.');
         }
-        if ($this->queryCache === null || $this->defaultIdentifiers($metadata) === null) {
+        if ($this->context === null || $this->defaultIdentifiers($metadata) === null) {
             return;
         }
         // Every metadata class already used by a fixed query participates,
@@ -150,7 +149,7 @@ trait PrivateReadOwnership
                 return;
             }
         }
-        $query->setQueryCache($this->queryCache);
+        $query->setQueryCache($this->queryCache ??= new SerializedMetadataCache($this->pool, 'orm_record_query_' . $this->context));
     }
 
     public function close(): void
