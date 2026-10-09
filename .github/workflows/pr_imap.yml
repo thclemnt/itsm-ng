@@ -86,8 +86,6 @@ jobs:
 
       - name: Load IMAP fixtures
         run: |
-          docker exec dovecot doveadm expunge -u testuser mailbox 'INBOX' all || true
-          docker exec dovecot doveadm purge -u testuser || true
           for f in tests/emails-tests/*.eml; do
             docker exec -i dovecot doveadm save -u testuser -m INBOX < "$f"
           done
