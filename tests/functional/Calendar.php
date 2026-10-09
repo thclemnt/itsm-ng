@@ -470,8 +470,10 @@ class Calendar extends DbTestCase
         $manager = Orm::forConnection($connection);
         try {
             $repository = new CalendarRepository($manager);
-            $annual = array_values(array_filter($repository->closures((int)$calendar->getID()),
-                static fn (CalendarHolidayRecord $link): bool => $link->holidays->is_perpetual));
+            $annual = array_values(array_filter(
+                $repository->closures((int)$calendar->getID()),
+                static fn (CalendarHolidayRecord $link): bool => $link->holidays->is_perpetual
+            ));
             $this->array($annual)->hasSize(1);
             $link = $annual[0];
             $holiday = $link->holidays;
