@@ -588,51 +588,6 @@ class CurrentSchema extends test
         }
     }
 
-    public function testAssetTypePropertiesAndIndexesOwnCurrentExpectation(): void
-    {
-        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
-            $manager = $this->manager($platform);
-            $frozen = (new Baseline())->build($platform)->toSql($platform);
-            $tables = [];
-            foreach ([
-                ComputerType::class, MonitorType::class,
-                NetworkEquipmentType::class, PeripheralType::class,
-                PhoneType::class, PrinterType::class,
-            ] as $class) {
-                $metadata = $manager->getClassMetadata($class);
-                $table = $metadata->getTableName();
-                $tables[] = $table;
-                $metadata->fieldMappings['name']->length = 173;
-                $metadata->fieldMappings['name']->nullable = false;
-                $metadata->fieldMappings['name']->options['default'] = 'Current type';
-                $metadata->fieldMappings['comment']->type = Types::STRING;
-                $metadata->fieldMappings['comment']->length = 311;
-                $index = $platform instanceof PostgreSQLPlatform ? $table . '_name' : 'name';
-                unset($metadata->table['indexes'][$index]);
-                $metadata->table['indexes'][$table . '_current_label']['columns'] = ['name', 'date_mod'];
-            }
-            $current = (new BaselineSchema($manager))->build($platform);
-            $fresh = (new BaselineSchema($this->manager($platform)))->build($platform);
-            foreach ($tables as $table) {
-                $declaration = $current->getTable($table);
-                $index = $platform instanceof PostgreSQLPlatform ? $table . '_name' : 'name';
-                $this->integer($declaration->getColumn('name')->getLength())->isIdenticalTo(173);
-                $this->boolean($declaration->getColumn('name')->getNotnull())->isTrue();
-                $this->string($declaration->getColumn('name')->getDefault())->isIdenticalTo('Current type');
-                $this->string(Type::lookupName($declaration->getColumn('comment')->getType()))->isIdenticalTo(Types::STRING);
-                $this->integer($declaration->getColumn('comment')->getLength())->isIdenticalTo(311);
-                $this->boolean($declaration->hasIndex($index))->isFalse();
-                $this->array($declaration->getIndex($table . '_current_label')->getColumns())->isIdenticalTo(['name', 'date_mod']);
-                $this->integer($fresh->getTable($table)->getColumn('name')->getLength())->isIdenticalTo(255);
-                $this->boolean($fresh->getTable($table)->getColumn('name')->getNotnull())->isFalse();
-                $this->boolean($fresh->getTable($table)->hasIndex($index))->isTrue();
-                $this->boolean($fresh->getTable($table)->hasIndex($table . '_current_label'))->isFalse();
-            }
-            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
-            $this->boolean($manager->getConnection()->isConnected())->isFalse();
-        }
-    }
-
     public function testCalendarPropertiesAndAssociationsOwnCurrentExpectation(): void
     {
         foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
@@ -799,17 +754,30 @@ class CurrentSchema extends test
         }
     }
 
-    public function testDeviceTypePropertiesAndIndexesOwnCurrentExpectation(): void
+    public function typeDeclarationProvider(): array
+    {
+        return [
+            'assets' => [[
+                ComputerType::class, MonitorType::class,
+                NetworkEquipmentType::class, PeripheralType::class,
+                PhoneType::class, PrinterType::class,
+            ], 'Current type', ['name', 'date_mod']],
+            'devices' => [[
+                DeviceBatteryType::class, DeviceCaseType::class, DeviceFirmwareType::class,
+                DeviceGenericType::class, DeviceMemoryType::class, DeviceSensorType::class,
+                DeviceSimcardType::class,
+            ], 'Current device type', ['name', 'comment']],
+        ];
+    }
+
+    /** @dataProvider typeDeclarationProvider */
+    public function testTypePropertiesAndIndexesOwnCurrentExpectation(array $classes, string $label, array $indexColumns): void
     {
         foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
             $manager = $this->manager($platform);
             $frozen = (new Baseline())->build($platform)->toSql($platform);
             $types = [];
-            foreach ([
-                DeviceBatteryType::class, DeviceCaseType::class, DeviceFirmwareType::class,
-                DeviceGenericType::class, DeviceMemoryType::class, DeviceSensorType::class,
-                DeviceSimcardType::class,
-            ] as $class) {
+            foreach ($classes as $class) {
                 $metadata = $manager->getClassMetadata($class);
                 $table = $metadata->getTableName();
                 $name = $metadata->fieldMappings['name'];
@@ -817,12 +785,12 @@ class CurrentSchema extends test
                 $default = $name->options['default'] ?? null;
                 $name->length = 173;
                 $name->nullable = !$nullable;
-                $name->options['default'] = 'Current device type';
+                $name->options['default'] = $label;
                 $metadata->fieldMappings['comment']->type = Types::STRING;
                 $metadata->fieldMappings['comment']->length = 311;
                 $index = $platform instanceof PostgreSQLPlatform ? $table . '_name' : 'name';
                 unset($metadata->table['indexes'][$index]);
-                $metadata->table['indexes'][$table . '_current_label']['columns'] = ['name', 'comment'];
+                $metadata->table['indexes'][$table . '_current_label']['columns'] = $indexColumns;
                 $types[] = [$metadata, $nullable, $default, $index];
             }
             $current = (new BaselineSchema($manager))->build($platform);
@@ -833,11 +801,11 @@ class CurrentSchema extends test
                 $declaration = $current->getTable($table);
                 $this->integer($declaration->getColumn('name')->getLength())->isIdenticalTo(173);
                 $this->boolean($declaration->getColumn('name')->getNotnull())->isIdenticalTo($nullable);
-                $this->string($declaration->getColumn('name')->getDefault())->isIdenticalTo('Current device type');
+                $this->string($declaration->getColumn('name')->getDefault())->isIdenticalTo($label);
                 $this->string(Type::lookupName($declaration->getColumn('comment')->getType()))->isIdenticalTo(Types::STRING);
                 $this->integer($declaration->getColumn('comment')->getLength())->isIdenticalTo(311);
                 $this->boolean($declaration->hasIndex($index))->isFalse();
-                $this->array($declaration->getIndex($table . '_current_label')->getUnquotedColumns())->isIdenticalTo(['name', 'comment']);
+                $this->array($declaration->getIndex($table . '_current_label')->getUnquotedColumns())->isIdenticalTo($indexColumns);
                 $original = $fresh->getTable($table);
                 $this->integer($original->getColumn('name')->getLength())->isIdenticalTo(255);
                 $this->boolean($original->getColumn('name')->getNotnull())->isIdenticalTo(!$nullable);
