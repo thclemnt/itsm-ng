@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\DropdownChoiceContext;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ContractAssetRepository;
@@ -492,15 +493,15 @@ class Contract_Item extends CommonDBRelation
                 if ($item->maybeTemplate()) {
                     $criteria['is_template'] = false;
                 }
-                $bindings = (new ContractAssetRepository(Orm::create($DB)))
-                    ->assets(
+                $bindings = Orm::read($DB, static fn (EntityManager $manager): array =>
+                    (new ContractAssetRepository($manager))->assets(
                         (int)$instID,
                         $itemtype,
                         $criteria,
                         $item->getNameField(),
                         (int)$_SESSION['glpilist_limit'],
                         $item instanceof Item_Devices ? $itemtype::$items_id_2 : null
-                    );
+                    ));
                 $nb = $bindings['count'];
 
                 if ($nb > $_SESSION['glpilist_limit']) {

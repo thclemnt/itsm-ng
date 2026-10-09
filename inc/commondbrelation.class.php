@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\ComputerItemReadOperation;
 use itsmng\Database\ConnexityInput;
 use itsmng\Database\EntityRegistry;
@@ -2030,8 +2031,9 @@ abstract class CommonDBRelation extends CommonDBConnexity
                 );
             }
             return new RowIterator(
-                (new RecordRepository(Orm::create($DB)))
-                    ->distinctValues(static::getTable(), 'itemtype', $params['WHERE'], $params['ORDER'] ?? [])
+                Orm::read($DB, static fn (EntityManager $manager): array =>
+                    (new RecordRepository($manager))
+                        ->distinctValues(static::getTable(), 'itemtype', $params['WHERE'], $params['ORDER'] ?? []))
             );
         }
         $types_iterator = $DB->request($params);

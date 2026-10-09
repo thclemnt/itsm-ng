@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ITILStatisticsRepository;
 use itsmng\Database\Repository\RecordRepository;
@@ -872,8 +873,9 @@ class Stat extends CommonGLPI
         }
         $start = isset($_GET['export_all']) ? 0 : max(0, (int)$start);
         $limit = isset($_GET['export_all']) ? null : max(0, (int)$_SESSION['glpilist_limit']);
-        $page = (new TicketAssetStatisticsRepository(Orm::create($DB)))
-            ->page($date1, $date2, Criteria::entities(), $start, $limit);
+        $page = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new TicketAssetStatisticsRepository($manager))
+                ->page($date1, $date2, Criteria::entities(), $start, $limit));
         $numrows = $page['total'];
 
         if ($numrows > 0) {
@@ -922,8 +924,8 @@ class Stat extends CommonGLPI
                     if ($view_entities) {
                         $ent = $item->getEntityID();
                         if (!array_key_exists($ent, $entities)) {
-                            $entity = (new RecordRepository(Orm::create($DB)))
-                                ->find('glpi_entities', 'id', (int)$ent);
+                            $entity = Orm::read($DB, static fn (EntityManager $manager): ?array =>
+                                (new RecordRepository($manager))->find('glpi_entities', 'id', (int)$ent));
                             $entities[$ent] = $entity['completename'] ?? '';
                         }
                         $ent = $entities[$ent];
