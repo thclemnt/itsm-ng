@@ -1651,8 +1651,8 @@ class Config extends DbTestCase
         global $DB, $PLUGIN_HOOKS;
         $connection = $DB->getDoctrineConnection();
         $key = 'command_value_' . bin2hex(random_bytes(6));
-        $hadSecuredHooks = array_key_exists('secured_configs', $PLUGIN_HOOKS);
-        $securedHooks = $PLUGIN_HOOKS['secured_configs'] ?? [];
+        $hooks = $PLUGIN_HOOKS;
+        $PLUGIN_HOOKS ??= [];
         $tester = new CommandTester(new SetCommand());
         $values = [
             "C:\\new\\temp\\fixture'\"first\nsecond",
@@ -1704,11 +1704,7 @@ class Config extends DbTestCase
             $this->string(ConfigModel::getConfigurationValues('plugin:configcli', [$quotedKey])[$quotedKey])
                 ->isIdenticalTo($values[0]);
         } finally {
-            if ($hadSecuredHooks) {
-                $PLUGIN_HOOKS['secured_configs'] = $securedHooks;
-            } else {
-                unset($PLUGIN_HOOKS['secured_configs']);
-            }
+            $PLUGIN_HOOKS = $hooks;
             // DbTestCase rolls back these synthetic configurations and their audit rows.
         }
     }
