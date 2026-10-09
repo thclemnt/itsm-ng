@@ -2945,6 +2945,7 @@ class Ticket extends DbTestCase
                     $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
                     $otherTicket = $this->createItem('Ticket', [
                         'name' => 'Timeline live subject change',
+                        'content' => 'Subject for the live followup change',
                         'entities_id' => $item->getEntityID(),
                     ]);
                     $beforeFactories = $factories->getValue();
