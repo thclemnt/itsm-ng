@@ -72,6 +72,7 @@ use QueryExpression;
 use ReflectionProperty;
 use ReservationItem;
 use Search as LegacySearch;
+use SearchSortPluginFixture;
 use Session;
 use Software;
 use Ticket;
@@ -126,6 +127,71 @@ class Search extends DbTestCase
         $this->checkSearchResult($data);
 
         return $data;
+    }
+
+    public function testPluginColumnRetainsItsSortAndJoinHooks(): void
+    {
+        global $DB, $CFG_GLPI;
+
+        require_once __DIR__ . '/../fixtures/pluginsearchsort.php';
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $session = $_SESSION;
+        $configuration = $CFG_GLPI;
+        $options = LegacySearch::$search;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $marker = 'Plugin sort ' . $this->getUniqueString();
+        $option = 9842;
+        try {
+            $ids = [];
+            foreach (['A', 'Z'] as $serial) {
+                $computer = new Computer();
+                $this->integer($ids[$serial] = $computer->add([
+                    'name' => $marker . ' ' . $serial,
+                    'serial' => $serial,
+                    'entities_id' => $_SESSION['glpiactive_entity'],
+                ]))->isGreaterThan(0);
+            }
+            $plugins->setValue(null, [...$active, 'searchsort']);
+            SearchOption::getOptions('Computer');
+            LegacySearch::$search['Computer'][$option] = [
+                'table' => 'glpi_plugin_searchsort_values', 'field' => 'serial',
+                'name' => 'Plugin serial', 'datatype' => 'string',
+                'linkfield' => 'computers_id', 'joinparams' => [],
+            ];
+            // Typed expressions run through the full native compiler on both providers.
+            // Legacy SQL projection strings remain a supported MySQL-only contract.
+            foreach ($DB->getProvider() === 'mysql' ? [false, true] : [false] as $raw) {
+                SearchSortPluginFixture::$rawProjection = $raw;
+                $CFG_GLPI['disable_two_phase_search'] = false;
+                foreach ([0 => 'Z', 1 => 'A'] as $start => $serial) {
+                    SearchSortPluginFixture::$orders = [];
+                    SearchSortPluginFixture::$joins = [];
+                    $data = $this->doSearch('Computer', [
+                        'sort' => $option, 'order' => 'ASC', 'start' => $start, 'list_limit' => 1,
+                        'criteria' => [['field' => 1, 'searchtype' => 'contains', 'value' => $marker]],
+                    ], [1, $option]);
+                    $this->array(array_map('intval', array_keys($data['data']['items'])))
+                        ->isIdenticalTo([$ids[$serial]]);
+                    $this->integer((int)$data['data']['totalcount'])->isIdenticalTo(2);
+                    $this->string($data['data']['rows'][$start]['raw']['ITEM_Computer_' . $option])
+                        ->isIdenticalTo($serial);
+                    $this->array(SearchSortPluginFixture::$orders)
+                        ->isIdenticalTo([['Computer', $option, 'ASC', 'Computer_' . $option]]);
+                    $this->array(SearchSortPluginFixture::$joins)
+                        ->isIdenticalTo([['Computer', 'glpi_computers', 'glpi_plugin_searchsort_values', 'computers_id']]);
+                }
+            }
+        } finally {
+            SearchSortPluginFixture::$rawProjection = false;
+            SearchSortPluginFixture::$orders = [];
+            SearchSortPluginFixture::$joins = [];
+            $plugins->setValue(null, $active);
+            LegacySearch::$search = $options;
+            $CFG_GLPI = $configuration;
+            $_SESSION = $session;
+        }
     }
 
     public function testConfigSearchKeepsEveryActivePluginContextInBothPlans(): void
