@@ -561,7 +561,10 @@ class Impact extends \DbTestCase
                 $this->loaded[] = $metadata->name;
                 if ($metadata->name === Entity\ChangeItem::class) {
                     if ($this->changeParent === 'redirect') {
-                        $metadata->associationMappings['changes']->targetEntity = Entity\Problem::class;
+                        $association = $metadata->associationMappings['changes'];
+                        $definition = $association->toArray();
+                        $definition['targetEntity'] = Entity\Problem::class;
+                        $metadata->associationMappings['changes'] = $association::fromMappingArray($definition);
                     } elseif ($this->changeParent === 'remove') {
                         unset($metadata->associationMappings['changes']);
                     }
