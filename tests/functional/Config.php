@@ -93,11 +93,13 @@ use itsmng\Database\MySQLConnection;
 use itsmng\Database\OidcRefreshReadOperation;
 use itsmng\Database\Orm;
 use itsmng\Database\PostgresConnection;
+use itsmng\Database\ReadQueryOwner;
 use itsmng\Database\RecordReadOperation;
 use itsmng\Database\Repository\ConfigurationRepository;
 use itsmng\Database\Repository\OidcRepository;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\SchemaCheck;
+use itsmng\Database\UnsupportedCriteria;
 use JsonException;
 use Log;
 use LogicException;
@@ -105,6 +107,7 @@ use mock\DBmysql as ConfigurationAdapter;
 use PHPMailer\PHPMailer\PHPMailer;
 use Psr\Cache\CacheItemInterface;
 use Psr\Log\AbstractLogger;
+use QuerySubQuery;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionProperty;
@@ -117,6 +120,7 @@ use Symfony\Component\Cache\Psr16Cache;
 use Symfony\Component\Console\Exception\InvalidArgumentException as ConsoleInvalidArgumentException;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Tester\CommandTester;
+use Throwable;
 use Toolbox;
 use User;
 
@@ -1159,6 +1163,245 @@ class Config extends DbTestCase
         }
     }
 
+
+    public function testCompilerRejectionKeepsTheOwnedMatchingManager(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $context = 'matching-admission-' . bin2hex(random_bytes(6));
+        $previous = $GLOBALS['GLPI_CACHE'] ?? null;
+        $memory = new ConfigRecordPlanCache(storeSerialized: false);
+        try {
+            ConfigModel::setConfigurationValues($context, ['probe' => 'before']);
+            $GLOBALS['GLPI_CACHE'] = new Psr16Cache($memory);
+            $read = static fn (): array => MappedReads::matching($DB, 'glpi_configs', ['context' => $context], ['id']);
+            $expected = array_column($read(), null, 'id');
+            $before = null;
+            Orm::withConnection($connection, static function (EntityManager $manager) use (&$before): void {
+                $before = $manager;
+            });
+            $writes = $memory->planWrites;
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $constructions = $factories->getValue();
+            $criteria = ['context' => $context, 'id' => new QuerySubQuery([
+                'SELECT' => 'id', 'FROM' => 'glpi_configs', 'WHERE' => ['context' => $context],
+            ])];
+            // This is the ordinary public fallback, including typed, ID-keyed rows.
+            $this->array((new ConfigModel())->find($criteria, ['id']))->isIdenticalTo($expected);
+            $this->integer($memory->planWrites)->isIdenticalTo($writes);
+            $this->array($before->getUnitOfWork()->getIdentityMap())->isEmpty();
+            $connection->update('glpi_configs', ['value' => 'after'], ['context' => $context]);
+            $this->string($read()[0]['value'])->isIdenticalTo('after');
+            $after = null;
+            Orm::withConnection($connection, static function (EntityManager $manager) use (&$after): void {
+                $after = $manager;
+            });
+            // Expected to fail on genuine 8b6 BEFORE: it replaces the manager after rejection.
+            $this->object($after)->isIdenticalTo($before);
+            $this->integer($factories->getValue() - $constructions)->isIdenticalTo(0);
+        } finally {
+            $GLOBALS['GLPI_CACHE'] = $previous;
+            $connection->delete('glpi_configs', ['context' => $context]);
+        }
+    }
+
+    public function testMatchingRejectionsKeepDirectSuppliedAndNestedContracts(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $context = 'matching-contract-' . bin2hex(random_bytes(6));
+        $supplied = null;
+        try {
+            ConfigModel::setConfigurationValues($context, ['probe' => 'current']);
+            $id = (int)$connection->fetchOne('SELECT id FROM glpi_configs WHERE context = ?', [$context]);
+            $criteria = ['id' => new QuerySubQuery(['SELECT' => 'id', 'FROM' => 'glpi_configs', 'WHERE' => ['context' => $context]])];
+            Orm::withConnection($connection, function (EntityManager $manager) use ($connection, $id, $criteria, $DB): void {
+                $sentinel = $manager->find(ConfigRecord::class, $id);
+                $operation = new RecordReadOperation($connection, $manager);
+                try {
+                    // The public operation must still throw even with the active shared manager.
+                    $this->exception(static fn () => $operation->matching('glpi_configs', $criteria, [], null, 0))
+                        ->isInstanceOf(UnsupportedCriteria::class);
+                    $this->boolean($manager->contains($sentinel))->isTrue();
+                    $this->exception(static fn () => (new RecordRepository($manager))->matching('glpi_configs', $criteria))
+                        ->isInstanceOf(UnsupportedCriteria::class);
+                    // Reentrant public work owns an isolated manager and must not clear the outer one.
+                    $this->exception(static fn () => MappedReads::matching($DB, 'glpi_configs', $criteria))
+                        ->isInstanceOf(UnsupportedCriteria::class);
+                    $this->boolean($manager->contains($sentinel))->isTrue();
+                    $this->boolean($connection->ownsApplicationEntityManager($manager))->isTrue();
+                } finally {
+                    $operation->close();
+                }
+            });
+            $supplied = Orm::forConnection($connection);
+            $sentinel = $supplied->find(ConfigRecord::class, $id);
+            $operation = new RecordReadOperation($connection, $supplied);
+            try {
+                $this->exception(static fn () => $operation->matching('glpi_configs', $criteria, [], null, 0))
+                    ->isInstanceOf(UnsupportedCriteria::class);
+                $this->boolean($supplied->contains($sentinel))->isTrue();
+            } finally {
+                $operation->close();
+            }
+            $this->boolean($supplied->contains($sentinel))->isTrue();
+        } finally {
+            $supplied?->clear();
+            $connection->delete('glpi_configs', ['context' => $context]);
+        }
+    }
+
+    public function testMatchingCompilationRetainsFirstFailureOrder(): void
+    {
+        global $DB;
+        $manager = Orm::create($DB);
+        try {
+            $records = new RecordRepository($manager);
+            $subquery = new QuerySubQuery(['SELECT' => 'id', 'FROM' => 'glpi_configs']);
+            $this->exception(static fn () => $records->matching('glpi_configs', [['id' => []], ['id' => $subquery]]))
+                ->isInstanceOf(RuntimeException::class)->hasMessage('Empty IN are not allowed');
+            $this->exception(static fn () => $records->matching('glpi_configs', [['id' => $subquery], ['id' => []]]))
+                ->isInstanceOf(UnsupportedCriteria::class)->hasMessage('Expressions and subqueries require mapped queries.');
+            $this->exception(static fn () => $records->matching('glpi_configs', [['missing_admission_field' => 1], ['id' => $subquery]]))
+                ->isInstanceOf(UnsupportedCriteria::class)->hasMessage('Unmapped column in record criteria: missing_admission_field');
+            $this->exception(static fn () => $records->matching('glpi_configs', ['id' => 0], ['name; SELECT 1']))
+                ->isInstanceOf(UnsupportedCriteria::class)->hasMessage('Invalid mapped ordering.');
+            $failure = static function (callable $read): Throwable {
+                try {
+                    $read();
+                } catch (Throwable $error) {
+                    return $error;
+                }
+                throw new LogicException('Expected the first invalid temporal value to fail.');
+            };
+            $invalidDate = $failure(static fn () => $records->matching('glpi_computers', ['date_mod' => 'not-a-calendar-value']));
+            $beforeSubquery = $failure(static fn () => $records->matching('glpi_computers', [
+                ['date_mod' => 'not-a-calendar-value'], ['id' => $subquery],
+            ]));
+            $this->string($beforeSubquery::class)->isIdenticalTo($invalidDate::class);
+            $this->string($beforeSubquery->getMessage())->isIdenticalTo($invalidDate->getMessage());
+            $this->exception(static fn () => $records->matching('glpi_computers', [
+                ['id' => $subquery], ['date_mod' => 'not-a-calendar-value'],
+            ]))->isInstanceOf(UnsupportedCriteria::class)->hasMessage('Expressions and subqueries require mapped queries.');
+        } finally {
+            $manager->clear();
+        }
+    }
+
+    public function testMatchingCallbackFailuresStillResetTheOwnedManager(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $context = 'matching-failure-' . bin2hex(random_bytes(6));
+        $originalText = Type::getType('text');
+        $failed = null;
+        try {
+            ConfigModel::setConfigurationValues($context, ['probe' => 'current']);
+            foreach (['metadata', 'sql', 'postLoad', 'prepare'] as $phase) {
+                // Each phase begins with fresh metadata and query cache on the real owned route.
+                Orm::withConnection($connection, static function (EntityManager $manager): void {
+                    $manager->close();
+                });
+                $expected = new UnsupportedCriteria('Foreign ' . $phase . ' callback failure');
+                $caught = null;
+                $failed = null;
+                try {
+                    Orm::withConnection($connection, static function (EntityManager $manager) use ($phase, $expected, $context, &$failed): void {
+                        $failed = $manager;
+                        if ($phase === 'metadata' || $phase === 'postLoad') {
+                            $listener = new class ($expected) {
+                                public function __construct(private UnsupportedCriteria $error)
+                                {
+                                }
+                                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
+                                {
+                                    if ($event->getClassMetadata()->name === ConfigRecord::class) {
+                                        throw $this->error;
+                                    }
+                                }
+                                public function postLoad(PostLoadEventArgs $event): void
+                                {
+                                    if ($event->getObject() instanceof ConfigRecord) {
+                                        throw $this->error;
+                                    }
+                                }
+                            };
+                            $manager->getEventManager()->addEventListener([
+                                $phase === 'metadata' ? Events::loadClassMetadata : Events::postLoad,
+                            ], $listener);
+                        } elseif ($phase === 'sql') {
+                            // Install after ownership admission to exercise its actual error guard.
+                            Type::overrideType('text', new class ($expected) extends TextType {
+                                public function __construct(private UnsupportedCriteria $error)
+                                {
+                                }
+                                public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                                {
+                                    throw $this->error;
+                                }
+                            });
+                        }
+                        $owner = $phase === 'prepare' ? new class ($expected) implements ReadQueryOwner {
+                            public function __construct(private UnsupportedCriteria $error)
+                            {
+                            }
+                            public function prepareQuery(Query $query, ClassMetadata $metadata): void
+                            {
+                                throw $this->error;
+                            }
+                        } : null;
+                        (new RecordRepository($manager))->matching('glpi_configs', ['context' => $context], operation: $owner);
+                    });
+                } catch (Throwable $error) {
+                    $caught = $error;
+                } finally {
+                    Type::overrideType('text', $originalText);
+                }
+                $this->object($caught)->isIdenticalTo($expected);
+                $this->array($failed->getUnitOfWork()->getIdentityMap())->isEmpty();
+                $next = null;
+                Orm::withConnection($connection, static function (EntityManager $manager) use (&$next): void {
+                    $next = $manager;
+                });
+                $this->object($next)->isNotIdenticalTo($failed);
+                $this->object($next->getConfiguration()->getQueryCache())->isNotIdenticalTo($failed->getConfiguration()->getQueryCache());
+                $this->string(MappedReads::matching($DB, 'glpi_configs', ['context' => $context])[0]['value'])->isIdenticalTo('current');
+            }
+            // A PHP-only converter remains eligible for the real public shared read.
+            // Keep it installed through the identity check: restoring the registry first
+            // would itself reset the owner and conceal an incorrectly swallowed error.
+            $expected = new UnsupportedCriteria('Public scalar PHP callback failure');
+            Type::overrideType('text', new class ($expected) extends TextType {
+                public function __construct(private UnsupportedCriteria $error)
+                {
+                }
+                public function convertToPHPValue(mixed $value, AbstractPlatform $platform): ?string
+                {
+                    throw $this->error;
+                }
+            });
+            Orm::withConnection($connection, static function (EntityManager $manager) use (&$failed): void {
+                $failed = $manager;
+            });
+            $caught = null;
+            try {
+                MappedReads::matching($DB, 'glpi_configs', ['context' => $context]);
+            } catch (Throwable $error) {
+                $caught = $error;
+            }
+            $this->object($caught)->isIdenticalTo($expected);
+            $this->array($failed->getUnitOfWork()->getIdentityMap())->isEmpty();
+            $next = null;
+            Orm::withConnection($connection, static function (EntityManager $manager) use (&$next): void {
+                $next = $manager;
+            });
+            $this->object($next)->isNotIdenticalTo($failed);
+            $this->object($next->getConfiguration()->getQueryCache())->isNotIdenticalTo($failed->getConfiguration()->getQueryCache());
+        } finally {
+            Type::overrideType('text', $originalText);
+            $connection->delete('glpi_configs', ['context' => $context]);
+        }
+    }
 
     public function testOwnedMatchingPlansKeepRowsParametersAndPaginationLive(): void
     {
