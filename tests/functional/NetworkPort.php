@@ -33,12 +33,18 @@
 
 namespace tests\units;
 
+use DateTime;
 use DbTestCase;
 use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\Events;
+use HTMLTableMain;
 use InvalidArgumentException;
 use NetworkPort as LegacyNetworkPort;
 use NetworkPortAggregate;
+use NetworkPortAlias;
+use NetworkPortEthernet;
+use NetworkPortInstantiation;
+use ReflectionProperty;
 use NetworkPort_Vlan;
 use itsmng\Database\Entity\NetworkPort as NetworkPortEntity;
 use itsmng\Database\Entity\NetworkPortAggregate as NetworkPortAggregateEntity;
@@ -56,7 +62,7 @@ class NetworkPort extends DbTestCase
         $this->login();
 
         $computer1 = getItemByTypeName('Computer', '_test_pc01');
-        $networkport = new \NetworkPort();
+        $networkport = new LegacyNetworkPort();
 
         // Be sure added
         $nb_log = (int)countElementsInTable('glpi_logs');
@@ -119,7 +125,7 @@ class NetworkPort extends DbTestCase
         $computer1 = getItemByTypeName('Computer', '_test_pc01');
 
         // Do some installations
-        $networkport = new \NetworkPort();
+        $networkport = new LegacyNetworkPort();
 
         // Be sure added
         $nb_log = (int)countElementsInTable('glpi_logs');
@@ -240,7 +246,7 @@ class NetworkPort extends DbTestCase
         $computer1 = getItemByTypeName('Computer', '_test_pc01');
 
         // Do some installations
-        $networkport = new \NetworkPort();
+        $networkport = new LegacyNetworkPort();
 
         // Be sure added
         $nb_log = (int)countElementsInTable('glpi_logs');
@@ -272,7 +278,7 @@ class NetworkPort extends DbTestCase
         $added = $networkport->clone();
         $this->integer((int)$added)->isGreaterThan(0);
 
-        $clonedNetworkport = new \NetworkPort();
+        $clonedNetworkport = new LegacyNetworkPort();
         $this->boolean($clonedNetworkport->getFromDB($added))->isTrue();
 
         $fields = $networkport->fields;
@@ -285,8 +291,8 @@ class NetworkPort extends DbTestCase
                     break;
                 case 'date_mod':
                 case 'date_creation':
-                    $dateClone = new \DateTime($clonedNetworkport->getField($k));
-                    $expectedDate = new \DateTime($date);
+                    $dateClone = new DateTime($clonedNetworkport->getField($k));
+                    $expectedDate = new DateTime($date);
                     $this->dateTime($dateClone)->isEqualTo($expectedDate);
                     break;
                 case 'name':
@@ -313,8 +319,8 @@ class NetworkPort extends DbTestCase
                     break;
                 case 'date_mod':
                 case 'date_creation':
-                    $dateClone = new \DateTime($clonedInstantiation->getField($k));
-                    $expectedDate = new \DateTime($date);
+                    $dateClone = new DateTime($clonedInstantiation->getField($k));
+                    $expectedDate = new DateTime($date);
                     $this->dateTime($dateClone)->isEqualTo($expectedDate);
                     break;
                 default:
@@ -328,7 +334,7 @@ class NetworkPort extends DbTestCase
         $this->login();
 
         $computer = getItemByTypeName('Computer', '_test_pc01');
-        $networkport = new \NetworkPort();
+        $networkport = new LegacyNetworkPort();
 
         $origin_port_id = $networkport->add([
            'items_id'           => $computer->getID(),
@@ -353,7 +359,7 @@ class NetworkPort extends DbTestCase
         ]);
         $this->integer($alias_port_id)->isGreaterThan(0);
 
-        $alias = new \NetworkPortAlias();
+        $alias = new NetworkPortAlias();
         $alias_id = $alias->add([
            'networkports_id'       => $alias_port_id,
            'networkports_id_alias' => $origin_port_id,
@@ -361,9 +367,42 @@ class NetworkPort extends DbTestCase
         $this->integer($alias_id)->isGreaterThan(0);
 
         // Check that the alias port's MAC is updated to origin port's MAC
-        $aliasNetworkPort = new \NetworkPort();
+        $aliasNetworkPort = new LegacyNetworkPort();
         $this->boolean($aliasNetworkPort->getFromDB($alias_port_id))->isTrue();
         $this->string($aliasNetworkPort->fields['mac'])->isEqualTo('00:24:81:eb:c7:10');
+
+        // Both virtual-port labels and origin choices must reflect scalar writes between renders.
+        $origin = new LegacyNetworkPort();
+        $this->boolean($origin->getFromDB($origin_port_id))->isTrue();
+        $render = static function () use ($origin, $computer, $alias): string {
+            $table = new HTMLTableMain();
+            $header = $table->addHeader('Instantiation', 'Ports');
+            $group = $table->createGroup('ports', 'Ports');
+            $group->addHeader('VirtualPorts', 'Virtual ports', $header);
+            (new NetworkPortInstantiation())->getInstantiationHTMLTable($origin, $group->createRow(), null, [
+                'display_options' => ['virtual_ports' => true, 'vlans' => false, 'internet' => false, 'mac' => false],
+            ]);
+            ob_start();
+            try {
+                $table->display([]);
+                $alias->showNetworkPortSelector([$computer], 'NetworkPortAlias');
+                return ob_get_contents();
+            } finally {
+                ob_end_clean();
+            }
+        };
+        $first = $render();
+        $this->string($first)->contains('alias-port')->contains('origin-port')->contains('00:24:81:eb:c7:10');
+        $connection = $GLOBALS['DB']->getDoctrineConnection();
+        $connection->update('glpi_networkports', ['name' => 'fresh-virtual-port'], ['id' => $alias_port_id]);
+        $connection->update('glpi_networkports', ['name' => 'fresh-origin-port', 'mac' => '00:24:81:eb:c7:20'], ['id' => $origin_port_id]);
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $before = $factories->getValue();
+        $fresh = $render();
+        $this->string($fresh)->contains('fresh-virtual-port')->contains('fresh-origin-port')->contains('00:24:81:eb:c7:20');
+        $this->string($fresh)->notContains('alias-port');
+        // Keep the genuine old-runtime allocation failure after every positive rendering check.
+        $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
     }
 
     public function testAggregateStoresPortList()
@@ -371,7 +410,7 @@ class NetworkPort extends DbTestCase
         $this->login();
 
         $networkequipment = getItemByTypeName('NetworkEquipment', '_test_networkequipment_1');
-        $networkport = new \NetworkPort();
+        $networkport = new LegacyNetworkPort();
 
         $port1 = (int)$networkport->add([
            'name'         => 'agg-if1',
@@ -403,7 +442,7 @@ class NetworkPort extends DbTestCase
         $this->integer($port3)->isGreaterThan(0);
         $this->integer($agg_parent_port)->isGreaterThan(0);
 
-        $aggregate = new \NetworkPortAggregate();
+        $aggregate = new NetworkPortAggregate();
         $aggregate_id = $aggregate->add([
            'networkports_id'      => $agg_parent_port,
            'networkports_id_list' => [$port1, $port2],
@@ -501,7 +540,7 @@ class NetworkPort extends DbTestCase
         $this->login();
 
         $computer = getItemByTypeName('Computer', '_test_pc01');
-        $networkport = new \NetworkPort();
+        $networkport = new LegacyNetworkPort();
 
         $port_1_id = $networkport->add([
            'items_id'           => $computer->getID(),
@@ -604,7 +643,7 @@ class NetworkPort extends DbTestCase
         $this->setEntity('_test_root_entity', false);
 
         $computer = getItemByTypeName('Computer', '_test_pc01');
-        $networkport = new \NetworkPort();
+        $networkport = new LegacyNetworkPort();
         $port_id = $networkport->add([
            'items_id'           => $computer->getID(),
            'itemtype'           => 'Computer',

@@ -34,6 +34,10 @@
 namespace tests\units;
 
 use Auth;
+use Closure;
+use Computer;
+use DbTestCase;
+use Doctrine\Common\EventManager;
 use CommonDBTM;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
@@ -43,15 +47,112 @@ use Group_User as LegacyGroup_User;
 use Plugin;
 use Profile_User;
 use ReflectionProperty;
+use mock\DBmysql as GroupRouteAdapter;
+use tests\fixtures\ScalarReadProbe;
 use User;
 use itsmng\Database\Entity\User as UserEntity;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\GroupMembershipRepository;
 
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
+
 /* Test for inc/group_user.class.php */
 
-class Group_User extends \DbTestCase
+class Group_User extends DbTestCase
 {
+    public function testGroupItemsSelectCallbackRoutesAndClearEachOwnerAtTheEnd(): void
+    {
+        global $DB, $CFG_GLPI;
+        $original = $DB;
+        $session = $_SESSION;
+        $tables = $CFG_GLPI['glpitablesitemtype'];
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        try {
+            $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $group = $this->createItem(Group::class, ['name' => 'Route group ' . $this->getUniqueString(), 'entities_id' => $entity]);
+            $computer = $this->createItem(Computer::class, [
+                'name' => 'Route computer ' . $this->getUniqueString(), 'entities_id' => $entity, 'groups_id' => $group->getID(),
+            ]);
+            foreach ([GroupRouteComputer::class, GroupRouteComputerSecond::class] as $type) {
+                $CFG_GLPI['glpitablesitemtype'][$type] = 'glpi_computers';
+            }
+            $connection = $DB->getDoctrineConnection();
+            $probes = $adapters = $listeners = [];
+            $this->mockGenerator()->orphanize('__construct');
+            for ($route = 0; $route < 3; ++$route) {
+                $probe = new class ($connection) extends ScalarReadProbe {
+                    public EventManager $events;
+                    public function getEventManager(): EventManager
+                    {
+                        return $this->events;
+                    }
+                };
+                $probe->events = new EventManager();
+                $listener = new class () {
+                    public int $clears = 0;
+                    public function onClear(): void
+                    {
+                        ++$this->clears;
+                    }
+                };
+                $probe->events->addEventListener(['onClear'], $listener);
+                $adapter = new GroupRouteAdapter();
+                $this->calling($adapter)->getDoctrineConnection = $probe;
+                $this->calling($adapter)->getProvider = $original->getProvider();
+                $probes[] = $probe;
+                $adapters[] = $adapter;
+                $listeners[] = $listener;
+            }
+            $_SESSION['glpilist_limit'] = 10;
+            GroupRouteComputer::$onView = static function (string $type) use ($adapters): bool {
+                $GLOBALS['DB'] = $adapters[$type === GroupRouteComputer::class ? 1 : 2];
+                return true;
+            };
+            $rows = [];
+            $DB = $adapters[0];
+            $this->integer($group->getDataItems([GroupRouteComputer::class], 'groups_id', false, false, 0, $rows))->isIdenticalTo(1);
+            $this->array($rows)->isIdenticalTo([['itemtype' => GroupRouteComputer::class, 'items_id' => (int)$computer->getID()]]);
+            $this->array($probes[0]->queries)->isEmpty('Group item queries follow the callback-selected route');
+            $this->array($probes[1]->queries)->hasSize(2);
+            $this->integer($listeners[0]->clears)->isIdenticalTo(0);
+            $this->integer($listeners[1]->clears)->isIdenticalTo(1);
+
+            foreach ($probes as $probe) {
+                $probe->queries = [];
+            }
+            foreach ($listeners as $listener) {
+                $listener->clears = 0;
+            }
+            $atSecondCallback = null;
+            GroupRouteComputer::$onView = static function (string $type) use ($adapters, $listeners, &$atSecondCallback): bool {
+                if ($type === GroupRouteComputerSecond::class) {
+                    $atSecondCallback = $listeners[1]->clears;
+                }
+                $GLOBALS['DB'] = $adapters[$type === GroupRouteComputer::class ? 1 : 2];
+                return true;
+            };
+            $DB = $adapters[0];
+            $types = [GroupRouteComputer::class, GroupRouteComputerSecond::class];
+            $this->integer($group->getDataItems($types, 'groups_id', false, false, 0, $rows))->isIdenticalTo(2);
+            $this->array($rows)->isIdenticalTo(array_map(static fn (string $type): array =>
+                ['itemtype' => $type, 'items_id' => (int)$computer->getID()], $types));
+            // Counts follow each callback; both ID reads follow the last selected route, as before the ORM conversion.
+            $this->array($probes[0]->queries)->isEmpty();
+            $this->array($probes[1]->queries)->hasSize(1);
+            $this->array($probes[2]->queries)->hasSize(3);
+            $this->integer($atSecondCallback)->isIdenticalTo(0);
+            $this->integer($listeners[0]->clears)->isIdenticalTo(0);
+            $this->integer($listeners[1]->clears)->isIdenticalTo(1);
+            $this->integer($listeners[2]->clears)->isIdenticalTo(1);
+        } finally {
+            GroupRouteComputer::$onView = null;
+            $DB = $original;
+            $_SESSION = $session;
+            $CFG_GLPI['glpitablesitemtype'] = $tables;
+        }
+    }
+
     public function testPaginatedMemberLinksKeepTreeScopeAndCurrentLabels(): void
     {
         global $DB, $PLUGIN_HOOKS;
@@ -419,4 +520,24 @@ class Group_User extends \DbTestCase
         $this->boolean(\Group_User::isUserInGroup(getItemByTypeName('User', 'glpi', true), $groups_id))->isFalse();
     }
 
+}
+
+/** Fixed Computer fields isolate route selection from unrelated physical-column discovery. */
+class GroupRouteComputer extends Computer
+{
+    public static ?Closure $onView = null;
+
+    public function __construct()
+    {
+        $this->fields = ['id' => 0, 'groups_id' => null, 'entities_id' => 0, 'is_template' => 0, 'is_deleted' => 0];
+    }
+
+    public static function canView()
+    {
+        return self::$onView !== null && (self::$onView)(static::class);
+    }
+}
+
+class GroupRouteComputerSecond extends GroupRouteComputer
+{
 }
