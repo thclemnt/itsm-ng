@@ -588,8 +588,8 @@ class SLM extends DbTestCase
                 $this->string($selected[0]['date'])->isIdenticalTo('2030-01-10 09:00:00');
                 $this->boolean($manager->contains($managed))->isTrue();
                 $manager->flush();
-                $this->string($manager->getConnection()->fetchOne('SELECT date FROM ' . $table . ' WHERE id = ?', [$queueId]))
-                    ->isIdenticalTo('2030-01-10 09:00:00');
+                $storedDate = $manager->getConnection()->fetchOne('SELECT date FROM ' . $table . ' WHERE id = ?', [$queueId]);
+                $this->dateTime(new DateTime($storedDate))->isEqualTo(new DateTime('2030-01-10 09:00:00'));
             } finally {
                 $manager->clear();
             }
