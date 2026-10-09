@@ -34,8 +34,11 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\ORM\EntityManager;
+use ReflectionProperty;
 use SavedSearch;
 use SavedSearch_User as LegacySavedSearch_User;
+use itsmng\Database\Entity\User as OrmUser;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\SavedSearchRepository;
 
@@ -97,6 +100,25 @@ class SavedSearch_User extends DbTestCase
                                             ],
                       'reset'            => 'reset',
                      ]);
+
+        // Warm value reads borrow the owner; a nested read must preserve its outer identity map.
+        $connection = $DB->getDoctrineConnection();
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $this->array(SavedSearch::getDefaultParameters((int)$uid, 'Ticket'))->isIdenticalTo($bk);
+        $beforeFactories = $factories->getValue();
+        for ($repeat = 0; $repeat < 3; ++$repeat) {
+            $this->array(SavedSearch::getDefaultParameters((int)$uid, 'Ticket'))->isIdenticalTo($bk);
+        }
+        $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+        Orm::withReadConnection($connection, function (?EntityManager $outer) use ($connection, $uid, $bk, $factories): void {
+            $sentinel = $outer->find(OrmUser::class, (int)$uid);
+            $this->object($sentinel)->isInstanceOf(OrmUser::class);
+            $beforeNested = $factories->getValue();
+            $this->array(SavedSearch::getDefaultParameters((int)$uid, 'Ticket'))->isIdenticalTo($bk);
+            $this->integer($factories->getValue() - $beforeNested)->isIdenticalTo(1);
+            $this->boolean($connection->ownsApplicationEntityManager($outer))->isTrue();
+            $this->boolean($outer->contains($sentinel))->isTrue();
+        });
 
         $reader = Orm::create($DB);
         $defaults = new SavedSearchRepository($reader);

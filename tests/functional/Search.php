@@ -43,15 +43,19 @@ use CommonITILActor;
 use Computer;
 use Config;
 use DbTestCase;
+use DisplayPreference;
 use Doctrine\DBAL\Types\BigIntType;
 use Doctrine\DBAL\Types\BooleanType;
 use Doctrine\DBAL\Types\DecimalType;
 use Doctrine\DBAL\Types\FloatType;
 use Doctrine\DBAL\Types\IntegerType;
 use Doctrine\DBAL\Types\SmallIntType;
+use Doctrine\ORM\EntityManager;
 use Dropdown;
 use Entity;
 use Item_Disk;
+use itsmng\Database\Entity\User as OrmUser;
+use itsmng\Database\Orm;
 use itsmng\Search\Output\LegacyOutput;
 use itsmng\Search\Provider\CriteriaBuilder;
 use itsmng\Search\Provider\FieldReference;
@@ -2337,6 +2341,7 @@ class Search extends DbTestCase
 
     public function testSearchWGroups()
     {
+        global $DB;
         $this->login();
         $this->setEntity('_test_root_entity', true);
 
@@ -2357,6 +2362,35 @@ class Search extends DbTestCase
               'num'       => 49, //Computer groups_id_tech SO
         ];
         $this->integer((int)$displaypref->add($input))->isGreaterThan(0);
+
+        $owner = (int)Session::getLoginUserID();
+        $connection = $DB->getDoctrineConnection();
+        $columns = DisplayPreference::getForTypeUser('Computer', $owner);
+        $this->array($columns)->contains(49);
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeFactories = $factories->getValue();
+        for ($repeat = 0; $repeat < 3; ++$repeat) {
+            $this->array(DisplayPreference::getForTypeUser('Computer', $owner))->isIdenticalTo($columns);
+        }
+        $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+        Orm::withReadConnection($connection, function (?EntityManager $outer) use ($connection, $owner, $columns, $factories): void {
+            $sentinel = $outer->find(OrmUser::class, $owner);
+            $this->object($sentinel)->isInstanceOf(OrmUser::class);
+            $beforeNested = $factories->getValue();
+            $this->array(DisplayPreference::getForTypeUser('Computer', $owner))->isIdenticalTo($columns);
+            $this->integer($factories->getValue() - $beforeNested)->isIdenticalTo(1);
+            $this->boolean($connection->ownsApplicationEntityManager($outer))->isTrue();
+            $this->boolean($outer->contains($sentinel))->isTrue();
+        });
+        $preferenceId = (int)$displaypref->getID();
+        try {
+            $this->boolean($DB->update('glpi_displaypreferences', ['num' => 987654321], ['id' => $preferenceId]))->isTrue();
+            $changed = array_map(static fn ($num) => $num === 49 ? 987654321 : $num, $columns);
+            $this->array(DisplayPreference::getForTypeUser('Computer', $owner))->isIdenticalTo($changed);
+        } finally {
+            $DB->update('glpi_displaypreferences', ['num' => 49], ['id' => $preferenceId]);
+        }
+        $this->array(DisplayPreference::getForTypeUser('Computer', $owner))->isIdenticalTo($columns);
 
         $data = $this->doSearch('Computer', $search_params);
 

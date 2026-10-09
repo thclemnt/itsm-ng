@@ -34,6 +34,7 @@
 namespace tests\units;
 
 use Calendar_Holiday;
+use CalendarSegment as CalendarSegmentModel;
 use Doctrine\Common\EventManager;
 use DbTestCase;
 use Doctrine\DBAL\Connection;
@@ -42,7 +43,9 @@ use Doctrine\DBAL\Types\DateImmutableType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Event\PostLoadEventArgs;
 use itsmng\Database\Entity\Config;
+use itsmng\Database\Entity\CalendarSegment as CalendarSegmentRecord;
 use itsmng\Database\Orm;
 use ReflectionProperty;
 use mock\DBmysql as CalendarAdapterProbe;
@@ -352,13 +355,22 @@ class Calendar extends DbTestCase
         $events = new EventManager();
         $listener = new class () {
             public int $clears = 0;
+            public int $segmentLoads = 0;
+
+            public function postLoad(PostLoadEventArgs $event): void
+            {
+                if ($event->getObject() instanceof CalendarSegmentRecord) {
+                    ++$this->segmentLoads;
+                    $event->getObject()->end = '09:00:00';
+                }
+            }
 
             public function onClear(): void
             {
                 ++$this->clears;
             }
         };
-        $events->addEventListener(['onClear'], $listener);
+        $events->addEventListener(['onClear', 'postLoad'], $listener);
         $probe = new class ($connection) extends ScalarReadProbe {
             public EventManager $events;
 
@@ -386,6 +398,19 @@ class Calendar extends DbTestCase
             $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(3);
             $this->integer($getters)->isIdenticalTo(3);
             $this->array($probe->queries)->hasSize(3);
+            $this->integer($listener->clears)->isIdenticalTo(0);
+            $this->object($GLOBALS['DB'])->isIdenticalTo($originalAdapter);
+            $beforeFactories = $factories->getValue();
+            for ($repeat = 0; $repeat < 3; ++$repeat) {
+                $GLOBALS['DB'] = $adapter;
+                // The selected custom manager must dispatch its segment postLoad before calculating.
+                $this->integer(CalendarSegmentModel::getActiveTimeBetween((int)$calendar->getID(), 1, '00:00:00', '24:00:00'))
+                    ->isIdenticalTo(HOUR_TIMESTAMP);
+            }
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(3);
+            $this->integer($getters)->isIdenticalTo(6);
+            $this->array($probe->queries)->hasSize(6);
+            $this->integer($listener->segmentLoads)->isIdenticalTo(3);
             $this->integer($listener->clears)->isIdenticalTo(0);
             $this->object($GLOBALS['DB'])->isIdenticalTo($originalAdapter);
         } finally {
@@ -443,5 +468,37 @@ class Calendar extends DbTestCase
         //should have been duplicated too.
         $this->checkXmas($calendar);
 
+        // The cloned segment schedule is read afresh within each scalar ownership scope.
+        $expected = (int)$calendar->getDurationsCache()[1];
+        $this->integer($expected)->isGreaterThan(HOUR_TIMESTAMP);
+        $read = static fn (): int => CalendarSegmentModel::getActiveTimeBetween($other_id, 1, '00:00:00', '24:00:00');
+        $this->integer($read())->isIdenticalTo($expected);
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeFactories = $factories->getValue();
+        for ($repeat = 0; $repeat < 3; ++$repeat) {
+            $this->integer($read())->isIdenticalTo($expected);
+        }
+        $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0, 'Warmed cloned-segment reads reuse their scalar owner');
+
+        $connection = $GLOBALS['DB']->getDoctrineConnection();
+        $segments = $connection->fetchAllAssociative('SELECT id, ' . $connection->quoteIdentifier('end')
+            . ' FROM glpi_calendarsegments WHERE calendars_id = ? AND day = ?', [$other_id, 1]);
+        $this->array($segments)->hasSize(1);
+        $segment = $segments[0];
+        $update = 'UPDATE glpi_calendarsegments SET ' . $connection->quoteIdentifier('end') . ' = ? WHERE id = ?';
+        try {
+            $connection->executeStatement($update, [date('H:i:s', strtotime($segment['end']) - HOUR_TIMESTAMP), $segment['id']]);
+            $this->integer($read())->isIdenticalTo($expected - HOUR_TIMESTAMP);
+        } finally {
+            $connection->executeStatement($update, [$segment['end'], $segment['id']]);
+        }
+        $this->integer($read())->isIdenticalTo($expected);
+        Orm::withConnection($connection, function (EntityManager $outer) use ($read, $expected, $factories): void {
+            $sentinel = $outer->getReference(Config::class, 1);
+            $beforeFactories = $factories->getValue();
+            $this->integer($read())->isIdenticalTo($expected);
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(1);
+            $this->boolean($outer->contains($sentinel))->isTrue();
+        });
     }
 }
