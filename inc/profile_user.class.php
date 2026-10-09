@@ -756,11 +756,12 @@ class Profile_User extends CommonDBRelation
         $ids = $sqlfilter === [] && $table === 'glpi_profiles_users'
             ? Orm::withReadConnection($connection, static fn (?EntityManager $manager): array =>
                 (new ProfileUserReadOperation($connection, $manager))->profileIds($user_ID))
-            : (new RecordRepository(Orm::forConnection($connection)))->identifiers(
-                $table,
-                'profiles_id',
-                ['users_id' => $user_ID] + $sqlfilter
-            );
+            : Orm::withReadConnection($connection, static fn (?EntityManager $manager): array =>
+                (new RecordRepository($manager ?? Orm::forConnection($connection)))->identifiers(
+                    $table,
+                    'profiles_id',
+                    ['users_id' => $user_ID] + $sqlfilter
+                ));
         $profiles = [];
         foreach ($ids as $id) {
             $profiles[$id] = $id;
