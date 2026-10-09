@@ -34,7 +34,7 @@
 namespace tests\units;
 
 use DbTestCase;
-use DateTimeImmutable;
+use DateTime;
 use itsmng\Database\Entity\SlaLevelTicket as SlaLevelTicketEntity;
 use itsmng\Database\Entity\OlaLevelTicket as OlaLevelTicketEntity;
 use itsmng\Database\Orm;
@@ -582,7 +582,7 @@ class SLM extends DbTestCase
             $manager = Orm::create($DB);
             try {
                 $managed = $manager->find($class, (int)$queueId);
-                $managed->date = new DateTimeImmutable('2030-01-10 09:00:00');
+                $managed->date = new DateTime('2030-01-10 09:00:00');
                 $selected = (new ServiceLevelRepository($manager, $kind))->scheduled((int)$ticket_id, \SLM::TTR);
                 $this->integer(count($selected))->isEqualTo(1);
                 $this->string($selected[0]['date'])->isIdenticalTo('2030-01-10 09:00:00');
