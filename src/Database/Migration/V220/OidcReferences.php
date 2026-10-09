@@ -8,6 +8,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Types\BooleanType;
+use RuntimeException;
 
 /** One refresh state per existing user; audit every change before any DDL. */
 final class OidcReferences
@@ -19,7 +20,7 @@ final class OidcReferences
         if (!$table->hasIndex('oidc_users_user')) {
             $table->addUniqueIndex(['user_id'], 'oidc_users_user');
         } elseif (!$table->getIndex('oidc_users_user')->isUnique() || $table->getIndex('oidc_users_user')->getColumns() !== ['user_id']) {
-            throw new \RuntimeException('Unexpected OIDC user uniqueness definition');
+            throw new RuntimeException('Unexpected OIDC user uniqueness definition');
         }
     }
 
@@ -27,14 +28,14 @@ final class OidcReferences
     {
         foreach (['glpi_oidc_config', 'glpi_oidc_mapping'] as $table) {
             if ($connection->fetchOne('SELECT COUNT(*) FROM ' . $table . ' WHERE id <> 0')) {
-                throw new \RuntimeException('Non-singleton OIDC configuration requires correction: ' . $table);
+                throw new RuntimeException('Non-singleton OIDC configuration requires correction: ' . $table);
             }
         }
         if ($connection->fetchOne('SELECT COUNT(*) FROM glpi_oidc_users o LEFT JOIN glpi_users u ON u.id = o.user_id WHERE u.id IS NULL')) {
-            throw new \RuntimeException('Orphaned OIDC user states require correction');
+            throw new RuntimeException('Orphaned OIDC user states require correction');
         }
         if ($connection->fetchOne('SELECT COUNT(*) FROM (SELECT user_id FROM glpi_oidc_users GROUP BY user_id HAVING COUNT(*) > 1) duplicates')) {
-            throw new \RuntimeException('Duplicate OIDC user states require correction');
+            throw new RuntimeException('Duplicate OIDC user states require correction');
         }
         $manager = $connection->createSchemaManager();
         $platform = $connection->getDatabasePlatform();
@@ -48,7 +49,7 @@ final class OidcReferences
                 }
                 $field = $quote($column);
                 if ($connection->fetchOne('SELECT COUNT(*) FROM ' . $quote($table) . ' WHERE ' . $field . ' IS NULL OR ' . $field . ' NOT IN (0, 1)')) {
-                    throw new \RuntimeException('Invalid OIDC boolean: ' . $table . '.' . $column);
+                    throw new RuntimeException('Invalid OIDC boolean: ' . $table . '.' . $column);
                 }
                 if ($platform instanceof PostgreSQLPlatform) {
                     $sql[] = 'ALTER TABLE ' . $quote($table) . ' ALTER ' . $field . ' DROP DEFAULT';
@@ -70,7 +71,7 @@ final class OidcReferences
         $sql = $this->plan($connection);
         $postgres = $connection->getDatabasePlatform() instanceof PostgreSQLPlatform;
         if ($sql && !$postgres && $connection->isTransactionActive()) {
-            throw new \RuntimeException('MySQL OIDC DDL must run outside an application transaction');
+            throw new RuntimeException('MySQL OIDC DDL must run outside an application transaction');
         }
         $apply = static function () use ($connection, $sql): array {
             foreach ($sql as $statement) {

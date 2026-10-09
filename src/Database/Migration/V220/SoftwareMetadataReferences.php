@@ -5,6 +5,7 @@
 namespace itsmng\Database\Migration\V220;
 
 use Doctrine\DBAL\Connection;
+use RuntimeException;
 
 final class SoftwareMetadataReferences
 {
@@ -17,7 +18,7 @@ final class SoftwareMetadataReferences
             $path = [];
             while ($id && !isset($finished[$id])) {
                 if (isset($path[$id])) {
-                    throw new \RuntimeException('Cyclic software license parents at ' . $id);
+                    throw new RuntimeException('Cyclic software license parents at ' . $id);
                 }
                 $path[$id] = true;
                 $id = (int)($parents[$id] ?? 0);

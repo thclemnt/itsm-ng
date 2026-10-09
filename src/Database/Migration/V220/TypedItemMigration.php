@@ -9,7 +9,9 @@ use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use Doctrine\DBAL\Schema\Table;
+use InvalidArgumentException;
 use itsmng\Database\MySQLGeneratedColumnInspection;
+use RuntimeException;
 
 /** Shared frozen 2.2.0 typed-reference DDL; subclasses own subject and stock policy. */
 abstract class TypedItemMigration
@@ -126,7 +128,7 @@ abstract class TypedItemMigration
     public static function checkSql(string $table, ?AbstractPlatform $platform = null): string
     {
         if (!in_array($table, (new static())->tables(), true)) {
-            throw new \InvalidArgumentException('Unsupported frozen typed item reference table');
+            throw new InvalidArgumentException('Unsupported frozen typed item reference table');
         }
         return 'ALTER TABLE ' . $table . ' ADD CONSTRAINT ' . static::constraintName($table) . ' CHECK (' . self::validReferenceSql(null, $platform) . ')';
     }
@@ -136,7 +138,7 @@ abstract class TypedItemMigration
     {
         foreach (self::planInspectedTable($connection, null) as $table => $plan) {
             if ($plan['sql'] || $plan['key_sql'] || $plan['constraint_sql'] || $plan['copy_legacy']) {
-                throw new \RuntimeException('Frozen typed subject conversion did not converge: ' . $table);
+                throw new RuntimeException('Frozen typed subject conversion did not converge: ' . $table);
             }
         }
     }
@@ -150,7 +152,7 @@ abstract class TypedItemMigration
     protected function planInspectedTable(Connection $connection, ?Table $inspection, ?IncomingProjectionReferences $incomingReferences = null): array
     {
         if ($inspection !== null && !in_array($inspection->getName(), $this->tables(), true)) {
-            throw new \InvalidArgumentException('Typed item inspection belongs to a different table.');
+            throw new InvalidArgumentException('Typed item inspection belongs to a different table.');
         }
         $manager = $connection->createSchemaManager();
         $platform = $connection->getDatabasePlatform();
@@ -170,7 +172,7 @@ abstract class TypedItemMigration
             }
             $hasKey = $before->hasColumn('items_id');
             if (!$hasKey && array_filter(static::targets(), static fn ($target) => !$before->hasColumn(static::column($target)))) {
-                throw new \RuntimeException('Missing typed item identity without recoverable canonical columns: ' . $table);
+                throw new RuntimeException('Missing typed item identity without recoverable canonical columns: ' . $table);
             }
             $generated = $hasKey && ($postgres
                 ? (bool)$connection->fetchOne("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = 'items_id' AND is_generated = 'ALWAYS'", [$schema, $table])
@@ -189,20 +191,20 @@ abstract class TypedItemMigration
             $count = (int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $table . ' r' . implode('', $joins) . ' WHERE ' . $invalidSql);
             if ($count) {
                 $samples = $connection->fetchAllAssociative('SELECT r.id, r.itemtype, ' . $identity . ' AS items_id FROM ' . $table . ' r' . implode('', $joins) . ' WHERE ' . $invalidSql . ' LIMIT 5');
-                throw new \RuntimeException('Invalid or unsupported legacy typed item references: ' . $table . ' (' . $count . '); samples: ' . json_encode($samples, JSON_THROW_ON_ERROR));
+                throw new RuntimeException('Invalid or unsupported legacy typed item references: ' . $table . ' (' . $count . '); samples: ' . json_encode($samples, JSON_THROW_ON_ERROR));
             }
             foreach (static::targets() as $kind => $target) {
                 $column = static::column($target);
                 if ($before->hasColumn($column) && $connection->fetchOne('SELECT COUNT(*) FROM ' . $table . ' r WHERE r.' . $column
                     . " IS NOT NULL AND (r.itemtype IS NULL OR r.itemtype <> '" . $kind . "' OR r." . $column . ' <> ' . $identity . ')')) {
-                    throw new \RuntimeException('Canonical and legacy typed item references disagree: ' . $table . '.' . $column);
+                    throw new RuntimeException('Canonical and legacy typed item references disagree: ' . $table . '.' . $column);
                 }
             }
             $canonicalTargets = $this->expandsTargets()
                 ? array_filter(static::targets(), static fn ($target) => $before->hasColumn(static::column($target)))
                 : null;
             if (($generated || !$hasKey) && $connection->fetchOne('SELECT COUNT(*) FROM ' . $table . ' WHERE NOT (' . self::validReferenceSql($canonicalTargets, $platform) . ')')) {
-                throw new \RuntimeException('Invalid canonical typed item references: ' . $table);
+                throw new RuntimeException('Invalid canonical typed item references: ' . $table);
             }
             $after = clone $before;
             self::configureColumns($after);
@@ -212,11 +214,11 @@ abstract class TypedItemMigration
             if (!$generated || $this->rebuildsProjection($connection)) {
                 $incomingReferences ??= new IncomingProjectionReferences($connection);
                 if ($incomingReferences->has($schema, $table)) {
-                    throw new \RuntimeException('Incoming typed legacy item foreign key requires an explicit migration');
+                    throw new RuntimeException('Incoming typed legacy item foreign key requires an explicit migration');
                 }
                 foreach ($before->getForeignKeys() as $foreign) {
                     if (in_array('items_id', $foreign->getLocalColumns(), true)) {
-                        throw new \RuntimeException('Custom typed legacy item foreign key requires an explicit migration');
+                        throw new RuntimeException('Custom typed legacy item foreign key requires an explicit migration');
                     }
                 }
                 $without = clone $after;
@@ -272,7 +274,7 @@ abstract class TypedItemMigration
                     if ($existing->getLocalColumns() !== [$column] || $existing->getForeignTableName() !== 'glpi_' . $target
                         || $existing->getForeignColumns() !== ['id'] || !in_array($existing->onDelete(), [null, 'RESTRICT', 'NO ACTION'], true)
                         || !in_array($existing->onUpdate(), [null, 'RESTRICT', 'NO ACTION'], true)) {
-                        throw new \RuntimeException('Existing typed item reference FK has a different definition: ' . $name);
+                        throw new RuntimeException('Existing typed item reference FK has a different definition: ' . $name);
                     }
                 }
             }
@@ -286,7 +288,7 @@ abstract class TypedItemMigration
         $plan = $this->plan($connection);
         $postgres = $connection->getDatabasePlatform() instanceof PostgreSQLPlatform;
         if (!$postgres && $connection->isTransactionActive() && array_filter($plan, static fn ($entry) => $entry['sql'] || $entry['key_sql'] || $entry['constraint_sql'])) {
-            throw new \RuntimeException('MySQL typed item reference DDL must run outside an application transaction');
+            throw new RuntimeException('MySQL typed item reference DDL must run outside an application transaction');
         }
         $apply = static function () use ($connection, $plan): array {
             foreach ($plan as $table => $entry) {

@@ -9,6 +9,8 @@ use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use itsmng\Database\Migration\Ledger;
 use itsmng\Database\MutationRollbackFailure;
 use itsmng\Database\OwnedMutationFrame;
+use RuntimeException;
+use Throwable;
 
 /** Archive only the three unchanged children left by the released marketplace removal. */
 final class RetiredMarketplaceDefaults
@@ -43,7 +45,7 @@ final class RetiredMarketplaceDefaults
         if ($receipt !== null) {
             if (($receipt['complete'] ?? false) !== true || ($receipt['format'] ?? null) !== self::FORMAT
                 || !$this->matches($receipt['rows'] ?? []) || $rows || in_array(true, $parents, true)) {
-                throw new \RuntimeException('Retired marketplace archive differs from its frozen original rows or live ownership; reconcile the retained receipt before retry.');
+                throw new RuntimeException('Retired marketplace archive differs from its frozen original rows or live ownership; reconcile the retained receipt before retry.');
             }
             return [];
         }
@@ -63,7 +65,7 @@ final class RetiredMarketplaceDefaults
                     }
                 }
             }
-            throw new \RuntimeException('Orphaned retired marketplace ownership does not match all three complete released defaults with both parents absent. Reconcile customized, partial or mixed ownership using original installation records; no rows were archived or removed. Samples: ' . json_encode($samples, JSON_THROW_ON_ERROR));
+            throw new RuntimeException('Orphaned retired marketplace ownership does not match all three complete released defaults with both parents absent. Reconcile customized, partial or mixed ownership using original installation records; no rows were archived or removed. Samples: ' . json_encode($samples, JSON_THROW_ON_ERROR));
         }
         $this->assertIsolatedRetirement($connection);
         $this->assertTransactional($connection);
@@ -89,24 +91,24 @@ final class RetiredMarketplaceDefaults
             $this->rows($connection, true);
             $plan = $this->plan($connection);
             if (!$plan) {
-                throw new \RuntimeException('Retired marketplace source changed after preview; stop writers and retry.');
+                throw new RuntimeException('Retired marketplace source changed after preview; stop writers and retry.');
             }
             Ledger::save($connection, self::RECEIPT, ['complete' => true, 'format' => self::FORMAT, 'rows' => $plan['rows']]);
             $progress && $progress('Archived three original retired marketplace default rows; retirement is in the same transaction.');
             $frame->assertActive();
             foreach (self::ROWS as $table => $row) {
                 if ($connection->delete($table, ['id' => $row['id']]) !== 1) {
-                    throw new \RuntimeException('Retired marketplace source row changed while archiving: ' . $table . '.' . $row['id']);
+                    throw new RuntimeException('Retired marketplace source row changed while archiving: ' . $table . '.' . $row['id']);
                 }
                 $progress && $progress('Retired archived marketplace default: ' . $table . '.' . $row['id']);
                 $frame->assertActive();
             }
             $this->plan($connection); // Verify the archive and absence before commit.
             $frame->commit();
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             try {
                 $frame->rollBack();
-            } catch (\Throwable $cleanup) {
+            } catch (Throwable $cleanup) {
                 throw new MutationRollbackFailure($error, $cleanup);
             }
             throw $error;
@@ -171,19 +173,19 @@ final class RetiredMarketplaceDefaults
                 ? $connection->fetchAssociative('SELECT TABLE_SCHEMA AS owner_schema, TABLE_NAME AS owner_table, CONSTRAINT_NAME AS owner_key FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME = ? LIMIT 1', [$table])
                 : $connection->fetchAssociative("SELECT conrelid::regclass::text AS owner_table, conname AS owner_key FROM pg_constraint WHERE contype = 'f' AND confrelid = to_regclass(?) LIMIT 1", [$table]);
             if ($owner !== false) {
-                throw new \RuntimeException('Retired marketplace archival refuses an incoming foreign key to ' . $table
+                throw new RuntimeException('Retired marketplace archival refuses an incoming foreign key to ' . $table
                     . ': ' . json_encode($owner, JSON_THROW_ON_ERROR) . '. Custom owners may cascade or change on deletion; no rows were archived or removed.');
             }
             $trigger = $mysql
                 ? $connection->fetchOne('SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE EVENT_OBJECT_SCHEMA = DATABASE() AND EVENT_OBJECT_TABLE = ? LIMIT 1', [$table])
                 : $connection->fetchOne('SELECT tgname FROM pg_trigger WHERE tgrelid = to_regclass(?) AND NOT tgisinternal LIMIT 1', [$table]);
             if ($trigger !== false) {
-                throw new \RuntimeException('Retired marketplace archival refuses a custom trigger on ' . $table . ': ' . $trigger
+                throw new RuntimeException('Retired marketplace archival refuses a custom trigger on ' . $table . ': ' . $trigger
                     . '. Its effects are outside the frozen archive; no rows were archived or removed.');
             }
             // PostgreSQL rules can rewrite a DELETE without using a trigger.
             if (!$mysql && ($rule = $connection->fetchOne('SELECT rulename FROM pg_rewrite WHERE ev_class = to_regclass(?) LIMIT 1', [$table])) !== false) {
-                throw new \RuntimeException('Retired marketplace archival refuses a custom rewrite rule on ' . $table . ': ' . $rule
+                throw new RuntimeException('Retired marketplace archival refuses a custom rewrite rule on ' . $table . ': ' . $rule
                     . '. Its effects are outside the frozen archive; no rows were archived or removed.');
             }
         }
@@ -197,7 +199,7 @@ final class RetiredMarketplaceDefaults
         foreach (array_keys(self::ROWS) as $table) {
             $engine = $connection->fetchOne('SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$table]);
             if (strcasecmp((string)$engine, 'InnoDB') !== 0) {
-                throw new \RuntimeException('Retired marketplace archival requires transactional InnoDB source table: ' . $table);
+                throw new RuntimeException('Retired marketplace archival requires transactional InnoDB source table: ' . $table);
             }
         }
     }

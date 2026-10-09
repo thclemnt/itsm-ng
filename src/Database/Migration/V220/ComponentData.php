@@ -9,9 +9,11 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
+use InvalidArgumentException;
 use itsmng\Database\BooleanCheckExpression;
 use itsmng\Database\BooleanDomainSchema;
 use itsmng\Database\Migration\Ledger;
+use RuntimeException;
 
 /** Frozen family-local data preflight; completed older receipts cannot bypass these audits. */
 final class ComponentData
@@ -25,7 +27,7 @@ final class ComponentData
     public static function planInspectedTable(Connection $connection, array $snapshot, Table $before): array
     {
         if ($before->getName() !== $snapshot['table']) {
-            throw new \InvalidArgumentException('Historical component inspection belongs to a different table.');
+            throw new InvalidArgumentException('Historical component inspection belongs to a different table.');
         }
         $platform = $connection->getDatabasePlatform();
         $quote = $platform->quoteIdentifier(...);
@@ -37,15 +39,15 @@ final class ComponentData
         $frozen = (new Baseline())->build($platform)->getTable($snapshot['table']);
         foreach ($snapshot['booleans'] as $column) {
             if (!$before->hasColumn($column)) {
-                throw new \RuntimeException('Missing historical component boolean: ' . $snapshot['table'] . '.' . $column);
+                throw new RuntimeException('Missing historical component boolean: ' . $snapshot['table'] . '.' . $column);
             }
             $actual = $before->getColumn($column);
             $type = Type::lookupName($actual->getType());
             if (!in_array($type, [Types::BOOLEAN, Types::SMALLINT, Types::INTEGER, Types::BIGINT], true)) {
-                throw new \RuntimeException('Unsupported historical component boolean storage: ' . $snapshot['table'] . '.' . $column . ' (' . $type . ')');
+                throw new RuntimeException('Unsupported historical component boolean storage: ' . $snapshot['table'] . '.' . $column . ' (' . $type . ')');
             }
             if (!in_array($actual->getDefault(), [null, false, true, 0, 1, '0', '1'], true)) {
-                throw new \RuntimeException('Invalid historical component boolean default: ' . $snapshot['table'] . '.' . $column);
+                throw new RuntimeException('Invalid historical component boolean default: ' . $snapshot['table'] . '.' . $column);
             }
             $field = $quote($column);
             $invalid = $field . ' IS NULL';
@@ -58,7 +60,7 @@ final class ComponentData
         }
         foreach ($snapshot['references'] as $column => $reference) {
             if (!$before->hasColumn($column)) {
-                throw new \RuntimeException('Missing historical component owner: ' . $snapshot['table'] . '.' . $column);
+                throw new RuntimeException('Missing historical component owner: ' . $snapshot['table'] . '.' . $column);
             }
             $field = 'r.' . $quote($column);
             $valid = $reference['policy'] === 'empty'
@@ -84,7 +86,7 @@ final class ComponentData
                 $name = $definition['check'];
                 if (!isset($checks[$name]) || $checks[$name]['enforced'] !== 'YES'
                     || !BooleanCheckExpression::matches($checks[$name]['clause'], $column, $definition['nullable'], $ansiQuotes)) {
-                    throw new \RuntimeException('Completed historical component boolean CHECK is missing, changed or unenforced: '
+                    throw new RuntimeException('Completed historical component boolean CHECK is missing, changed or unenforced: '
                         . $snapshot['table'] . '.' . $column . ' (' . $name . ')');
                 }
             }
@@ -97,14 +99,14 @@ final class ComponentData
                 $actual = $before->getColumn($column);
                 if (Type::lookupName($actual->getType()) !== Types::BIGINT || $actual->getNotnull() || $actual->getDefault() !== null
                     || $actual->getUnsigned() || $actual->getAutoincrement()) {
-                    throw new \RuntimeException('Existing historical component subject column is incompatible: ' . $snapshot['table'] . '.' . $column);
+                    throw new RuntimeException('Existing historical component subject column is incompatible: ' . $snapshot['table'] . '.' . $column);
                 }
             }
             // Absent new FKs are enforced by the frozen staged producer. A
             // preexisting same-named FK is not validation evidence by itself.
             if ($before->hasForeignKey($target['constraint'])) {
                 if (!$before->hasColumn($column)) {
-                    throw new \RuntimeException('Existing historical component subject FK has no owning column: ' . $snapshot['table'] . '.' . $column);
+                    throw new RuntimeException('Existing historical component subject FK has no owning column: ' . $snapshot['table'] . '.' . $column);
                 }
                 $ownedReferences[$column] = $target;
             }
@@ -121,7 +123,7 @@ final class ComponentData
                 }
             } else {
                 if ((int)$connection->fetchOne('SELECT @@SESSION.foreign_key_checks') !== 1) {
-                    throw new \RuntimeException('Completed historical component FK enforcement is disabled: ' . $snapshot['table']);
+                    throw new RuntimeException('Completed historical component FK enforcement is disabled: ' . $snapshot['table']);
                 }
                 // DBAL intentionally normalizes MySQL RESTRICT actions to null.
                 // Inspect native actions instead of treating that null as proof.
@@ -136,7 +138,7 @@ final class ComponentData
                 $name = $reference['constraint'];
                 $role = isset($reference['policy']) ? 'Completed historical component' : 'Existing historical component subject';
                 if ($actual->getNotnull() !== !$reference['nullable'] || !$before->hasForeignKey($name)) {
-                    throw new \RuntimeException($role . ' owner shape is missing or changed: ' . $snapshot['table'] . '.' . $column . ' (' . $name . ')');
+                    throw new RuntimeException($role . ' owner shape is missing or changed: ' . $snapshot['table'] . '.' . $column . ' (' . $name . ')');
                 }
                 $foreign = $before->getForeignKey($name);
                 if (array_map(static fn (string $value): string => trim($value, '`"'), $foreign->getLocalColumns()) !== [$column]
@@ -153,7 +155,7 @@ final class ComponentData
                     || ($platform instanceof PostgreSQLPlatform && (!isset($native[$name])
                         || !in_array($native[$name]['convalidated'], [true, 1, '1', 't'], true)
                         || !in_array($native[$name]['condeferrable'], [false, 0, '0', 'f'], true)))) {
-                    throw new \RuntimeException($role . ' FK is missing, changed or unvalidated: ' . $snapshot['table'] . '.' . $column . ' (' . $name . ')');
+                    throw new RuntimeException($role . ' FK is missing, changed or unvalidated: ' . $snapshot['table'] . '.' . $column . ' (' . $name . ')');
                 }
             }
         }
@@ -180,7 +182,7 @@ final class ComponentData
                     [$table, $actual->getName()]
                 );
                 if ($checks !== []) {
-                    throw new \RuntimeException('Historical component boolean conversion requires explicit CHECK adoption: '
+                    throw new RuntimeException('Historical component boolean conversion requires explicit CHECK adoption: '
                         . $snapshot['table'] . '.' . $actual->getName() . '; constraints: ' . json_encode($checks, JSON_THROW_ON_ERROR));
                 }
                 $sql[] = 'ALTER TABLE ' . $table . ' ALTER COLUMN ' . $field . ' DROP DEFAULT, ALTER COLUMN ' . $field
@@ -213,7 +215,7 @@ final class ComponentData
         }
         $samples = $connection->fetchAllAssociative('SELECT ' . $alias . $quote('id') . ', ' . $alias . $quote($column)
             . ' FROM ' . $from . ' WHERE ' . $predicate . ' ORDER BY ' . $alias . $quote('id') . ' LIMIT 5');
-        throw new \RuntimeException('Invalid historical component data: ' . $table . '.' . $column . ' (' . $count
+        throw new RuntimeException('Invalid historical component data: ' . $table . '.' . $column . ' (' . $count
             . ' rows); samples: ' . json_encode($samples, JSON_THROW_ON_ERROR));
     }
 }

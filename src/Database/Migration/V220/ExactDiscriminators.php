@@ -12,6 +12,7 @@ use Doctrine\DBAL\Schema\Table;
 use itsmng\Database\BooleanDomainSchema;
 use itsmng\Database\CheckConstraintSupport;
 use itsmng\Database\Migration\Ledger;
+use RuntimeException;
 
 /** Frozen byte-exact subject identities; application properties own current policy. */
 final class ExactDiscriminators
@@ -46,11 +47,11 @@ final class ExactDiscriminators
             // Incomplete historical owners still need physical diagnostics;
             // a successful inspection cannot replace missing retained proof.
             $this->inspectPlan($connection, verify: true);
-            throw new \RuntimeException('The experimental exact-subject receipt lacks retained post-DDL native policy. Its CHECK and generated expressions cannot be certified from completion flags. Restore the genuine 2.1.3 source and apply the supported transition; no receipt or data was rewritten.');
+            throw new RuntimeException('The experimental exact-subject receipt lacks retained post-DDL native policy. Its CHECK and generated expressions cannot be certified from completion flags. Restore the genuine 2.1.3 source and apply the supported transition; no receipt or data was rewritten.');
         }
         foreach (self::definitions()['tables'] as $table => $definition) {
             if ($policy[$table] !== self::nativePolicy($connection, $table, $definition)) {
-                throw new \RuntimeException('Frozen subject native policy changed after authoritative DDL: ' . $table);
+                throw new RuntimeException('Frozen subject native policy changed after authoritative DDL: ' . $table);
             }
         }
         $this->inspectPlan($connection, verify: true);
@@ -71,7 +72,7 @@ final class ExactDiscriminators
             || !is_array($state['policy'] ?? null)
             || array_keys($state['policy']) !== array_slice(array_keys(self::definitions()['tables']), 0, $state['next'])
             || array_filter($state['policy'], static fn ($entry): bool => !is_array($entry)))) {
-            throw new \RuntimeException('Invalid exact subject journal; inspect the original receipt and native schema before retrying.');
+            throw new RuntimeException('Invalid exact subject journal; inspect the original receipt and native schema before retrying.');
         }
         $states = Ledger::states($connection);
         // Existing adoption records inherited baseline/seeds only after all
@@ -82,7 +83,7 @@ final class ExactDiscriminators
         // inspect a completed owner while another checkpoint is being retried;
         // release-wide Postconditions separately requires every phase complete.
         if ($priorPending && !$preAdoption && !$verify) {
-            throw new \RuntimeException('Complete the preceding canonical migration history before exact subject adoption.');
+            throw new RuntimeException('Complete the preceding canonical migration history before exact subject adoption.');
         }
         $platform = $connection->getDatabasePlatform();
         $mysql = $platform instanceof AbstractMySQLPlatform;
@@ -214,7 +215,7 @@ final class ExactDiscriminators
                 'incoming_projection_references' => $incoming->has($schema, $table)];
         }
         if ($problems) {
-            throw new \RuntimeException("Exact subject preflight failed before DDL or receipt:\n" . implode("\n", $problems));
+            throw new RuntimeException("Exact subject preflight failed before DDL or receipt:\n" . implode("\n", $problems));
         }
         return ['complete' => false, 'tables' => $tables, 'deferred' => $deferred];
     }
@@ -226,7 +227,7 @@ final class ExactDiscriminators
         }
         $mysql = $connection->getDatabasePlatform() instanceof AbstractMySQLPlatform;
         if ($mysql && $connection->isTransactionActive()) {
-            throw new \RuntimeException('MySQL exact subject DDL must run outside an application transaction.');
+            throw new RuntimeException('MySQL exact subject DDL must run outside an application transaction.');
         }
         $apply = function () use ($connection, $progress, $mysql): void {
             $plan = $this->inspectPlan($connection);
@@ -242,7 +243,7 @@ final class ExactDiscriminators
                     $connection->executeStatement($entry['sql']);
                 }
                 if (self::preservation($connection, $connection->createSchemaManager()->introspectTable($table)) !== $entry['preservation']) {
-                    throw new \RuntimeException('Exact subject DDL changed ownership/index/comment: ' . $table);
+                    throw new RuntimeException('Exact subject DDL changed ownership/index/comment: ' . $table);
                 }
                 // Native output is captured only after the authoritative frozen
                 // ALTER succeeds. This journal cache is not a second declaration
@@ -252,7 +253,7 @@ final class ExactDiscriminators
                 // idempotent table ALTER, including its preserved comment/indexes.
                 $progress && $progress('Exact subject: ' . $table);
                 if (self::nativePolicy($connection, $table, self::definitions()['tables'][$table]) !== $policy) {
-                    throw new \RuntimeException('Exact subject native policy changed before checkpoint: ' . $table);
+                    throw new RuntimeException('Exact subject native policy changed before checkpoint: ' . $table);
                 }
                 $state['policy'][$table] = $policy;
                 $state['next'] = $offset + 1;
@@ -260,7 +261,7 @@ final class ExactDiscriminators
             }
             $remaining = $this->inspectPlan($connection);
             if ($remaining['deferred']) {
-                throw new \RuntimeException('Exact subject history remained deferred; completion was not recorded.');
+                throw new RuntimeException('Exact subject history remained deferred; completion was not recorded.');
             }
             Ledger::save($connection, self::PHASE, ['complete' => true, 'policy' => $state['policy']]);
         };

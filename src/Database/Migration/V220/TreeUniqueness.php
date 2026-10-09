@@ -8,6 +8,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
+use RuntimeException;
 
 /** NULL parents still share a single root-level sibling namespace. */
 final class TreeUniqueness
@@ -45,7 +46,7 @@ final class TreeUniqueness
                 return;
             }
             if (!$index->isUnique() || $existing !== self::TABLES[$name]) {
-                throw new \RuntimeException('Unexpected tree uniqueness definition: ' . $name);
+                throw new RuntimeException('Unexpected tree uniqueness definition: ' . $name);
             }
             $table->dropIndex($indexName);
         }
@@ -63,7 +64,7 @@ final class TreeUniqueness
             $group = array_map(static fn ($column) => $column === $parent ? 'COALESCE(' . $quote($column) . ', 0)' : $quote($column), $columns);
             $duplicates = $connection->fetchOne('SELECT COUNT(*) FROM (SELECT 1 FROM ' . $quote($table) . ' WHERE name IS NOT NULL GROUP BY ' . implode(', ', $group) . ' HAVING COUNT(*) > 1) duplicates');
             if ($duplicates) {
-                throw new \RuntimeException('Duplicate tree siblings: ' . $table);
+                throw new RuntimeException('Duplicate tree siblings: ' . $table);
             }
             $before = $manager->introspectTable($table);
             $after = clone $before;

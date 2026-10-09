@@ -7,6 +7,8 @@ namespace itsmng\Database\Migration\V220;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Schema;
+use InvalidArgumentException;
+use RuntimeException;
 
 /** Audited nullable-reference migration; run with application writers stopped. */
 final class NullableReferences
@@ -14,7 +16,7 @@ final class NullableReferences
     public function __construct(private array $relations, private string $label, private int $emptySelection = 0)
     {
         if (!in_array($emptySelection, [0, -1], true)) {
-            throw new \InvalidArgumentException('Unsupported empty reference policy');
+            throw new InvalidArgumentException('Unsupported empty reference policy');
         }
     }
 
@@ -33,11 +35,11 @@ final class NullableReferences
             $after = clone $before;
             foreach ($relations as $column => $target) {
                 if ($connection->fetchOne('SELECT COUNT(*) FROM ' . $quote($target) . ' WHERE id = ' . $this->emptySelection)) {
-                    throw new \RuntimeException('Empty selection is a real ' . $this->label . ' identifier: ' . $target);
+                    throw new RuntimeException('Empty selection is a real ' . $this->label . ' identifier: ' . $target);
                 }
                 $orphans = $connection->fetchOne('SELECT COUNT(*) FROM ' . $quote($table) . ' c LEFT JOIN ' . $quote($target) . ' p ON c.' . $quote($column) . ' = p.id WHERE c.' . $quote($column) . ' IS NOT NULL AND c.' . $quote($column) . ' ' . $present . ' AND p.id IS NULL');
                 if ($orphans) {
-                    throw new \RuntimeException('Nonzero orphaned ' . $this->label . ' references: ' . $table . '.' . $column . ' (' . $orphans . ')');
+                    throw new RuntimeException('Nonzero orphaned ' . $this->label . ' references: ' . $table . '.' . $column . ' (' . $orphans . ')');
                 }
                 $after->getColumn($column)->setNotnull(false)->setDefault(null);
                 $count = (int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $quote($table) . ' WHERE ' . $quote($column) . ' ' . $empty);
@@ -57,7 +59,7 @@ final class NullableReferences
         // retries use the current schema, then normalize data in a transaction.
         $plan = $this->plan($connection);
         if ($plan['sql'] && $connection->isTransactionActive() && !$connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
-            throw new \RuntimeException('MySQL ' . $this->label . ' DDL must run outside an application transaction.');
+            throw new RuntimeException('MySQL ' . $this->label . ' DDL must run outside an application transaction.');
         }
         $empty = $this->emptySelection === -1 ? '< 0' : '= 0';
         $apply = static function () use ($connection, $plan, $empty): array {

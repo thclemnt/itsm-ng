@@ -9,6 +9,7 @@ use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\Ledger;
+use RuntimeException;
 
 /** Internal reference conversion for Version220, including captured experimental retries. */
 final class References
@@ -134,7 +135,7 @@ final class References
                     $identity = isset($columns[strtolower($table)]['id']) ? 'id' : $column;
                     $samples = $connection->fetchAllAssociative('SELECT c.' . $quote($identity) . ' AS source_id, c.' . $quote($column)
                         . ' AS missing_id' . $source . ' ORDER BY c.' . $quote($identity) . ' LIMIT 5');
-                    throw new \RuntimeException('Orphaned required reference: ' . $table . '.' . $column . ' (' . $count . '); target: ' . $target . '.id; samples: '
+                    throw new RuntimeException('Orphaned required reference: ' . $table . '.' . $column . ' (' . $count . '); target: ' . $target . '.id; samples: '
                         . json_encode($samples, JSON_THROW_ON_ERROR)
                         . '. Reconcile the original source ownership using installation records or backups before retrying. No row was deleted, relinked or reconstructed.');
                 }
@@ -198,7 +199,7 @@ final class References
         $inspection = $connection->createSchemaManager()->introspectSchema();
         if ((new WideIdentifiers())->plan($connection, $inspection)
             || (new ForeignKeys(IdentifierColumns::history()['relations']))->plan($connection)) {
-            throw new \RuntimeException('Frozen identifier/reference conversion did not converge.');
+            throw new RuntimeException('Frozen identifier/reference conversion did not converge.');
         }
         foreach (self::stages() as $stage) {
             // DomainDocuments owns the final expanded document subject set.
@@ -207,7 +208,7 @@ final class References
             }
             if ($stage instanceof NormalizeOptionalReferences) {
                 if ($stage->plan($connection)) {
-                    throw new \RuntimeException('Frozen optional model references retain zero sentinels.');
+                    throw new RuntimeException('Frozen optional model references retain zero sentinels.');
                 }
             } elseif ($stage instanceof TypedItemMigration) {
                 $stage->verify($connection);
@@ -227,7 +228,7 @@ final class References
                     $pending = $pending || $count > 0;
                 });
                 if ($pending) {
-                    throw new \RuntimeException('Frozen reference conversion did not converge: ' . $stage::class);
+                    throw new RuntimeException('Frozen reference conversion did not converge: ' . $stage::class);
                 }
             }
         }
@@ -236,11 +237,11 @@ final class References
     public function apply(Connection $connection, ?callable $progress = null): void
     {
         if (PHP_INT_SIZE < 8) {
-            throw new \RuntimeException('The ORM schema requires 64-bit PHP integers.');
+            throw new RuntimeException('The ORM schema requires 64-bit PHP integers.');
         }
         $postgres = $connection->getDatabasePlatform() instanceof PostgreSQLPlatform;
         if (!$postgres && $connection->isTransactionActive()) {
-            throw new \RuntimeException('Run the legacy-to-ORM migration outside an application transaction; MySQL DDL commits implicitly.');
+            throw new RuntimeException('Run the legacy-to-ORM migration outside an application transaction; MySQL DDL commits implicitly.');
         }
         $apply = function () use ($connection, $progress): void {
             $state = $this->state($connection);
@@ -274,7 +275,7 @@ final class References
             $progress && $progress('Installing audited foreign keys');
             (new ForeignKeys(IdentifierColumns::history()['relations']))->apply($connection);
             if ((new WideIdentifiers())->plan($connection) !== []) {
-                throw new \RuntimeException('Identifier widening did not converge; the migration was not marked complete.');
+                throw new RuntimeException('Identifier widening did not converge; the migration was not marked complete.');
             }
             $state = ['complete' => true];
             $save();
@@ -287,14 +288,14 @@ final class References
                 });
             } catch (DriverException $error) {
                 if ($error->getSQLState() === '53200' && str_contains($error->getMessage(), 'out of shared memory')) {
-                    throw new \RuntimeException('PostgreSQL exhausted relation locks. Increase max_locks_per_transaction on the server and retry; this upgrade transaction was rolled back.', 0, $error);
+                    throw new RuntimeException('PostgreSQL exhausted relation locks. Increase max_locks_per_transaction on the server and retry; this upgrade transaction was rolled back.', 0, $error);
                 }
                 throw $error;
             }
         } else {
             $lock = 'itsmng_orm_' . sha1($connection->getDatabase());
             if ((int)$connection->fetchOne('SELECT GET_LOCK(?, 0)', [$lock]) !== 1) {
-                throw new \RuntimeException('Another legacy-to-ORM migration is running.');
+                throw new RuntimeException('Another legacy-to-ORM migration is running.');
             }
             try {
                 $apply();

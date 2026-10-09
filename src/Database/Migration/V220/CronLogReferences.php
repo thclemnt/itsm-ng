@@ -5,13 +5,14 @@
 namespace itsmng\Database\Migration\V220;
 
 use Doctrine\DBAL\Connection;
+use RuntimeException;
 
 final class CronLogReferences
 {
     public function plan(Connection $connection): array
     {
         if ($connection->fetchOne('SELECT COUNT(*) FROM glpi_crontasklogs l LEFT JOIN glpi_crontasks t ON t.id = l.crontasks_id WHERE t.id IS NULL')) {
-            throw new \RuntimeException('Orphaned cron task references; no log schema changes applied.');
+            throw new RuntimeException('Orphaned cron task references; no log schema changes applied.');
         }
         $plan = (new NullableReferences(ReferenceHistory::get('optional', 'CRON_LOG_PARENTS'), 'cron log'))->plan($connection);
         $parents = $connection->fetchAllKeyValue('SELECT id, crontasklogs_id FROM glpi_crontasklogs');
@@ -20,7 +21,7 @@ final class CronLogReferences
             $path = [];
             while ($id && !isset($finished[$id])) {
                 if (isset($path[$id])) {
-                    throw new \RuntimeException('Cyclic cron log parents at ' . $id);
+                    throw new RuntimeException('Cyclic cron log parents at ' . $id);
                 }
                 $path[$id] = true;
                 $id = (int)($parents[$id] ?? 0);

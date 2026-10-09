@@ -8,6 +8,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Types\Types;
+use RuntimeException;
 
 /** SLM owns calendar policy; SLA/OLA have inherited it since the SLM split. */
 final class ServiceLevelCalendars
@@ -48,19 +49,19 @@ final class ServiceLevelCalendars
         $platform = $connection->getDatabasePlatform();
         $before = $manager->introspectTable('glpi_slms');
         if ($connection->fetchOne('SELECT COUNT(*) FROM glpi_calendars WHERE id = 0')) {
-            throw new \RuntimeException('Zero is a real calendar identifier');
+            throw new RuntimeException('Zero is a real calendar identifier');
         }
         $invalid = $connection->fetchOne('SELECT COUNT(*) FROM glpi_slms s LEFT JOIN glpi_calendars c ON c.id = s.calendars_id WHERE s.calendars_id < -1 OR (s.calendars_id > 0 AND c.id IS NULL)');
         if ($invalid) {
-            throw new \RuntimeException('Invalid service-level calendar references: ' . $invalid);
+            throw new RuntimeException('Invalid service-level calendar references: ' . $invalid);
         }
         if ($before->hasColumn('use_ticket_calendar') && $connection->fetchOne('SELECT COUNT(*) FROM glpi_slms WHERE use_ticket_calendar = ? AND calendars_id > 0', [true], [Types::BOOLEAN])) {
-            throw new \RuntimeException('Conflicting service-level calendar policies');
+            throw new RuntimeException('Conflicting service-level calendar policies');
         }
         // No agreement's effective calendar is lost: all must have an existing SLM.
         foreach (['glpi_slas', 'glpi_olas'] as $table) {
             if ($connection->fetchOne('SELECT COUNT(*) FROM ' . $table . ' a LEFT JOIN glpi_slms s ON s.id = a.slms_id WHERE s.id IS NULL')) {
-                throw new \RuntimeException('Agreement without service-level parent: ' . $table);
+                throw new RuntimeException('Agreement without service-level parent: ' . $table);
             }
         }
         $sql = [];
@@ -85,7 +86,7 @@ final class ServiceLevelCalendars
         $plan = $this->plan($connection);
         $postgres = $connection->getDatabasePlatform() instanceof PostgreSQLPlatform;
         if (($plan['sql'] || $plan['check_sql']) && !$postgres && $connection->isTransactionActive()) {
-            throw new \RuntimeException('MySQL service-level calendar DDL must run outside an application transaction.');
+            throw new RuntimeException('MySQL service-level calendar DDL must run outside an application transaction.');
         }
         $apply = static function () use ($connection, $plan): array {
             foreach ($plan['sql'] as $sql) {

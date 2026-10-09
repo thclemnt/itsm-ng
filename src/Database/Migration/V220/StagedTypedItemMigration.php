@@ -10,7 +10,9 @@ use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
+use InvalidArgumentException;
 use itsmng\Database\Migration\Ledger;
+use RuntimeException;
 
 /** Internal 2.2.0 DDL checkpoints preserve projection data and MySQL retry state. */
 abstract class StagedTypedItemMigration extends TypedItemMigration
@@ -38,7 +40,7 @@ abstract class StagedTypedItemMigration extends TypedItemMigration
     protected function planInspectedTable(Connection $connection, ?Table $inspection, ?IncomingProjectionReferences $incomingReferences = null): array
     {
         if ($inspection !== null && $inspection->getName() !== $this->table()) {
-            throw new \InvalidArgumentException('Staged typed item inspection belongs to a different table.');
+            throw new InvalidArgumentException('Staged typed item inspection belongs to a different table.');
         }
         $state = Ledger::state($connection, $this->phase());
         if (($state['complete'] ?? false) === true) {
@@ -57,12 +59,12 @@ abstract class StagedTypedItemMigration extends TypedItemMigration
             . (static::allowsEmptyReference() ? ' AND NOT (' . static::emptyReferenceSql('', $platform) . ')' : '')
             . ' LIMIT 5', [array_keys(static::targets())], [ArrayParameterType::STRING]);
         if ($unsupported) {
-            throw new \RuntimeException('Unsupported typed relationship kinds in ' . $this->table() . '; samples: ' . json_encode($unsupported, JSON_THROW_ON_ERROR)
+            throw new RuntimeException('Unsupported typed relationship kinds in ' . $this->table() . '; samples: ' . json_encode($unsupported, JSON_THROW_ON_ERROR)
                 . '. ' . $this->unsupportedKindGuidance());
         }
         $entry = parent::planInspectedTable($connection, $inspection, $incomingReferences)[$this->table()];
         if ($entry['key_sql'] === [] && !is_string($this->projectionProof($connection, $state))) {
-            throw new \RuntimeException('Generated typed subject has no retained authoritative projection proof: ' . $this->table()
+            throw new RuntimeException('Generated typed subject has no retained authoritative projection proof: ' . $this->table()
                 . '. Restore the genuine 2.1.3 source or the original owned migration journal; no current expression was certified.');
         }
         // A matching name does not prove the constraint's expression or MySQL
@@ -102,7 +104,7 @@ abstract class StagedTypedItemMigration extends TypedItemMigration
         }
         $postgres = $connection->getDatabasePlatform() instanceof PostgreSQLPlatform;
         if (!$postgres && $connection->isTransactionActive()) {
-            throw new \RuntimeException('MySQL typed relationship adoption must run outside an application transaction.');
+            throw new RuntimeException('MySQL typed relationship adoption must run outside an application transaction.');
         }
         $apply = function () use ($connection, $progress, $plan): array {
             $state = Ledger::state($connection, $this->phase());
@@ -168,11 +170,11 @@ abstract class StagedTypedItemMigration extends TypedItemMigration
         }
         $policy = Ledger::state($connection, $this->phase())['policy'] ?? null;
         if (!is_array($policy)) {
-            throw new \RuntimeException('Experimental typed-subject receipt lacks retained post-DDL native policy: ' . $this->table()
+            throw new RuntimeException('Experimental typed-subject receipt lacks retained post-DDL native policy: ' . $this->table()
                 . '. Restore the genuine 2.1.3 source and apply the supported transition; no receipt or data was rewritten.');
         }
         if ($policy !== $this->nativePolicy($connection)) {
-            throw new \RuntimeException('Frozen subject native policy changed after authoritative DDL: ' . $this->table());
+            throw new RuntimeException('Frozen subject native policy changed after authoritative DDL: ' . $this->table());
         }
     }
 
@@ -190,12 +192,12 @@ abstract class StagedTypedItemMigration extends TypedItemMigration
             return;
         }
         if (!is_array($state['policy'])) {
-            throw new \RuntimeException('Invalid typed subject checkpoint native policy: ' . $this->table());
+            throw new RuntimeException('Invalid typed subject checkpoint native policy: ' . $this->table());
         }
         $actual = $this->nativePolicy($connection);
         foreach ($state['policy'] as $field => $expected) {
             if (!array_key_exists($field, $actual) || $actual[$field] !== $expected) {
-                throw new \RuntimeException('Typed subject checkpoint native policy changed: ' . $this->table() . '.' . $field);
+                throw new RuntimeException('Typed subject checkpoint native policy changed: ' . $this->table() . '.' . $field);
             }
         }
     }
@@ -221,7 +223,7 @@ abstract class StagedTypedItemMigration extends TypedItemMigration
         $state = Ledger::state($connection, $this->phase());
         $policy = $state['policy'] ?? [];
         if (!is_string($policy['projection'] ?? null) || $policy['projection'] === '' || !is_array($policy['check'] ?? null)) {
-            throw new \RuntimeException('Typed subject completion requires retained projection and CHECK proof: ' . $this->table());
+            throw new RuntimeException('Typed subject completion requires retained projection and CHECK proof: ' . $this->table());
         }
         $this->assertRetainedPolicy($connection, $state);
         Ledger::save($connection, $this->phase(), ['complete' => true, 'policy' => $policy]);

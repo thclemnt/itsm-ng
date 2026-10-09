@@ -6,6 +6,7 @@ namespace itsmng\Database\Migration\V220;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use RuntimeException;
 
 /** Frozen 20261001 scope for the thirty core lockable objects. */
 final class ObjectLockSubjects extends TypedItemMigration
@@ -35,7 +36,7 @@ final class ObjectLockSubjects extends TypedItemMigration
         }
         $postgres = $connection->getDatabasePlatform() instanceof PostgreSQLPlatform;
         if (!$postgres && $connection->isTransactionActive()) {
-            throw new \RuntimeException('MySQL typed item reference DDL must run outside an application transaction');
+            throw new RuntimeException('MySQL typed item reference DDL must run outside an application transaction');
         }
         $upgrade = function () use ($connection, $postgres): array {
             $snapshot = $connection->quoteIdentifier('port_lock_dates_' . bin2hex(random_bytes(8)));

@@ -5,6 +5,7 @@
 namespace itsmng\Database\Migration\V220;
 
 use Doctrine\DBAL\Connection;
+use RuntimeException;
 
 /** Frozen export reader and fingerprint, never delegated to the current importer. */
 final class DomainsPluginSnapshot
@@ -22,16 +23,16 @@ final class DomainsPluginSnapshot
     {
         $manager = $connection->createSchemaManager();
         if ($manager->tablesExist(['glpi_plugin_domains_profiles'])) {
-            throw new \RuntimeException('Complete the pinned historical Domains 2.1.0 plugin upgrade before adoption: glpi_plugin_domains_profiles remains.');
+            throw new RuntimeException('Complete the pinned historical Domains 2.1.0 plugin upgrade before adoption: glpi_plugin_domains_profiles remains.');
         }
         $result = [];
         foreach (self::definition()['source'] as $table => $fields) {
             if (!$manager->tablesExist([$table])) {
-                throw new \RuntimeException('Missing frozen Domains source table: ' . $table);
+                throw new RuntimeException('Missing frozen Domains source table: ' . $table);
             }
             $actual = array_keys($manager->listTableColumns($table));
             if (array_diff($fields, $actual) || array_diff($actual, $fields)) {
-                throw new \RuntimeException('Unsupported frozen Domains source layout: ' . $table . '; missing=' . implode(',', array_diff($fields, $actual)) . '; unexpected=' . implode(',', array_diff($actual, $fields)));
+                throw new RuntimeException('Unsupported frozen Domains source layout: ' . $table . '; missing=' . implode(',', array_diff($fields, $actual)) . '; unexpected=' . implode(',', array_diff($actual, $fields)));
             }
             $quote = $connection->quoteIdentifier(...);
             $rows = $connection->fetchAllAssociative('SELECT ' . implode(', ', array_map($quote, $fields)) . ' FROM ' . $quote($table) . ' ORDER BY id');
@@ -53,11 +54,11 @@ final class DomainsPluginSnapshot
     public static function integer(mixed $value, string $field, int $minimum = 0): int
     {
         if ((!is_int($value) && !is_string($value)) || !preg_match('/^-?(?:0|[1-9][0-9]*)$/D', (string)$value)) {
-            throw new \RuntimeException('Invalid frozen Domains integer: ' . $field);
+            throw new RuntimeException('Invalid frozen Domains integer: ' . $field);
         }
         $integer = filter_var($value, FILTER_VALIDATE_INT);
         if ($integer === false || $integer < $minimum) {
-            throw new \RuntimeException('Frozen Domains integer outside supported range: ' . $field);
+            throw new RuntimeException('Frozen Domains integer outside supported range: ' . $field);
         }
         return $integer;
     }
@@ -66,7 +67,7 @@ final class DomainsPluginSnapshot
     {
         $integer = self::integer($value, $field);
         if ($integer > 1) {
-            throw new \RuntimeException('Invalid frozen Domains boolean: ' . $field);
+            throw new RuntimeException('Invalid frozen Domains boolean: ' . $field);
         }
         return $integer === 1;
     }

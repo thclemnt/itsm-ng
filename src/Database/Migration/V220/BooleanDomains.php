@@ -10,6 +10,7 @@ use Doctrine\DBAL\Platforms\MySQLPlatform;
 use itsmng\Database\BooleanCheckExpression;
 use itsmng\Database\BooleanDomainSchema;
 use itsmng\Database\Migration\Ledger;
+use RuntimeException;
 
 /** Frozen zero/one flag domains; integer storage, valid NULLs and defaults survive. */
 final class BooleanDomains
@@ -36,7 +37,7 @@ final class BooleanDomains
     {
         $plan = $this->inspect($connection, false);
         if ($plan['sql'] || $plan['deferred_columns']) {
-            throw new \RuntimeException('Frozen boolean domains did not converge.');
+            throw new RuntimeException('Frozen boolean domains did not converge.');
         }
     }
 
@@ -122,7 +123,7 @@ final class BooleanDomains
             }
         }
         if ($problems) {
-            throw new \RuntimeException("Boolean domain preflight failed before this migration's DDL:\n" . implode("\n", $problems));
+            throw new RuntimeException("Boolean domain preflight failed before this migration's DDL:\n" . implode("\n", $problems));
         }
         return ['sql' => $sql, 'deferred_columns' => $deferred];
     }
@@ -134,7 +135,7 @@ final class BooleanDomains
         }
         $mysql = $connection->getDatabasePlatform() instanceof AbstractMySQLPlatform;
         if ($mysql && $connection->isTransactionActive()) {
-            throw new \RuntimeException('MySQL boolean domain DDL must run outside an application transaction.');
+            throw new RuntimeException('MySQL boolean domain DDL must run outside an application transaction.');
         }
         $apply = function () use ($connection, $progress): void {
             $plan = $this->plan($connection);
@@ -147,7 +148,7 @@ final class BooleanDomains
             // partial batches need no rewrite on retry; wrong checks refuse.
             $remaining = $this->plan($connection);
             if ($remaining['sql'] || $remaining['deferred_columns']) {
-                throw new \RuntimeException('Boolean domain migration did not converge; completion was not recorded.');
+                throw new RuntimeException('Boolean domain migration did not converge; completion was not recorded.');
             }
             Ledger::save($connection, self::PHASE, ['complete' => true]);
         };

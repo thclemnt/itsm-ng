@@ -4,12 +4,15 @@
 
 namespace itsmng\Database\Migration\V220;
 
+use DateTimeImmutable;
+use DateTimeZone;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use itsmng\Database\Migration\Ledger;
+use RuntimeException;
 
 /** Frozen data prerequisite; validates the remapped graph before adoption DDL. */
 final class DomainsPluginAdoption
@@ -46,10 +49,10 @@ final class DomainsPluginAdoption
         }
         if ($receipt === null && ($validated['complete'] ?? false) === true
             && (($validated['format'] ?? null) !== DomainDocuments::GENERAL_FORMAT || $general)) {
-            throw new \RuntimeException('New or unrecognized historical Domain document bindings after committed deferral; reconcile the retained receipt before retry.');
+            throw new RuntimeException('New or unrecognized historical Domain document bindings after committed deferral; reconcile the retained receipt before retry.');
         }
         if ($validated !== null && ($validated['complete'] ?? false) !== true && ($validated['phase'] ?? null) !== 'validated') {
-            throw new \RuntimeException('Unrecognized interrupted frozen Domains prerequisite journal.');
+            throw new RuntimeException('Unrecognized interrupted frozen Domains prerequisite journal.');
         }
         if (!$bindings && !$general && !$sourcePresent) {
             return [];
@@ -57,7 +60,7 @@ final class DomainsPluginAdoption
         $plugin = (bool)$bindings || $sourcePresent;
         $source = $plugin ? DomainsPluginSnapshot::read($connection) : [];
         if ($validated !== null && ($validated['complete'] ?? false) !== true && ($validated['format'] ?? null) !== ($plugin ? DomainsPluginSnapshot::FORMAT : DomainDocuments::GENERAL_FORMAT)) {
-            throw new \RuntimeException('Interrupted frozen Domains prerequisite format does not match its source.');
+            throw new RuntimeException('Interrupted frozen Domains prerequisite format does not match its source.');
         }
         $records = $plugin ? $this->records($connection, $source) : [];
         $incoming = [];
@@ -86,7 +89,7 @@ final class DomainsPluginAdoption
             }
             if ($table === 'glpi_impactrelations') {
                 if (!$domain || !in_array($field, ['itemtype_source', 'itemtype_impacted'], true)) {
-                    throw new \RuntimeException('Unsupported frozen Domains impact role: ' . $row['id'] . '.' . $field);
+                    throw new RuntimeException('Unsupported frozen Domains impact role: ' . $row['id'] . '.' . $field);
                 }
                 $id = DomainsPluginSnapshot::integer($row[$field === 'itemtype_source' ? 'items_id_source' : 'items_id_impacted'], 'impact.' . $row['id'], 1);
                 $this->incoming($incoming, $targetTable, $id, $table . '.' . $row['id']);
@@ -100,7 +103,7 @@ final class DomainsPluginAdoption
                 continue;
             }
             if ($field !== 'itemtype') {
-                throw new \RuntimeException('Unsupported frozen Domains identity role: ' . $table . '.' . $field);
+                throw new RuntimeException('Unsupported frozen Domains identity role: ' . $table . '.' . $field);
             }
             if (array_key_exists('items_id', $row)) {
                 $id = DomainsPluginSnapshot::integer($row['items_id'], $table . '.' . $row['id'] . '.items_id', 1);
@@ -114,7 +117,7 @@ final class DomainsPluginAdoption
                     $this->coherent($connection, $this->coreScope($connection, $owner, (int)$row[$owner['column']]), $domainScopes[$id], $table . '.' . $row['id']);
                 }
                 if (!$domain && $table !== 'glpi_dropdowntranslations') {
-                    throw new \RuntimeException('Unsupported frozen Domains type binding: ' . $table . '.' . $row['id']);
+                    throw new RuntimeException('Unsupported frozen Domains type binding: ' . $table . '.' . $row['id']);
                 }
                 if ($table === 'glpi_documents_items') {
                     $documents[] = $this->document($connection, $row, $id);
@@ -128,11 +131,11 @@ final class DomainsPluginAdoption
         }
         foreach ($general as $row) {
             if ($row['itemtype'] !== 'Domain') {
-                throw new \RuntimeException('Noncanonical historical Domain document kind: ' . $row['id']);
+                throw new RuntimeException('Noncanonical historical Domain document kind: ' . $row['id']);
             }
             $id = DomainsPluginSnapshot::integer($row['items_id'], 'document.' . $row['id'], 1);
             if (!$connection->fetchOne('SELECT 1 FROM glpi_domains WHERE id = ?', [$id])) {
-                throw new \RuntimeException('Missing historical core Domain document subject: ' . $row['id']);
+                throw new RuntimeException('Missing historical core Domain document subject: ' . $row['id']);
             }
             $this->coherent(
                 $connection,
@@ -153,7 +156,7 @@ final class DomainsPluginAdoption
         foreach ($documents as $document) {
             $key = implode(':', [$document['original']['documents_id'], $document['domain_id'], $document['original']['timeline_position']]);
             if (isset($identities[$key])) {
-                throw new \RuntimeException('Duplicate deferred frozen Domain document binding: ' . $document['id']);
+                throw new RuntimeException('Duplicate deferred frozen Domain document binding: ' . $document['id']);
             }
             $identities[$key] = true;
         }
@@ -171,7 +174,7 @@ final class DomainsPluginAdoption
             'deferred_domains' => $deferred, 'deferred_documents' => $documents, 'documents_restored' => false, 'timestamp_timezone' => '+00:00'];
         $receipt['source_plugin'] = $registration;
         if ($validated !== null && ($validated['complete'] ?? false) !== true && ($validated['fingerprint'] ?? null) !== $receipt['fingerprint']) {
-            throw new \RuntimeException('Frozen Domains source changed after the validated prerequisite journal.');
+            throw new RuntimeException('Frozen Domains source changed after the validated prerequisite journal.');
         }
         $this->transactionalTables($connection, array_unique([...array_column($records, 'table'), ...array_column($updates, 'table'), ...array_column($policy['updates'], 'table'), ...($policy['grants'] ? ['glpi_profilerights'] : []), ...($documents ? ['glpi_documents_items'] : []), ...($plugin ? array_keys(DomainsPluginSnapshot::definition()['source']) : [])]));
         return ['kind' => 'data_prerequisite', 'description' => $plugin ? 'Frozen Domains export adoption with stable IDs; source registrations and unrelated core records are retained.' : 'Frozen pre-existing core Domain document deferral and restoration; no plugin source is required.',
@@ -209,7 +212,7 @@ final class DomainsPluginAdoption
             $this->lockSource($connection, $plan);
             $retry = $this->plan($connection);
             if (!$retry || $retry['receipt']['fingerprint'] !== $plan['receipt']['fingerprint']) {
-                throw new \RuntimeException('Frozen Domains source changed after validation; stop writers and reconcile before retry.');
+                throw new RuntimeException('Frozen Domains source changed after validation; stop writers and reconcile before retry.');
             }
             $this->remap($connection, $retry);
             // Pending canonical stages validate the full deferred values from
@@ -237,7 +240,7 @@ final class DomainsPluginAdoption
             $domains[$id] = true;
             $type = DomainsPluginSnapshot::integer($row['plugin_domains_domaintypes_id'], 'domain.type');
             if ($type > 0 && !isset($types[$type])) {
-                throw new \RuntimeException('Missing frozen plugin DomainType: domain ' . $id . ' -> ' . $type);
+                throw new RuntimeException('Missing frozen plugin DomainType: domain ' . $id . ' -> ' . $type);
             }
             $entity = DomainsPluginSnapshot::integer($row['entities_id'], 'domain.entity');
             $domainScopes[$id] = ['entity' => $entity, 'recursive' => DomainsPluginSnapshot::flag($row['is_recursive'], 'domain.recursion')];
@@ -247,7 +250,7 @@ final class DomainsPluginAdoption
             foreach (['users_id_tech' => 'glpi_users', 'groups_id_tech' => 'glpi_groups', 'suppliers_id' => 'glpi_suppliers'] as $field => $table) {
                 $parent = DomainsPluginSnapshot::integer($row[$field], 'domain.' . $id . '.' . $field);
                 if ($parent > 0 && !$connection->fetchOne('SELECT 1 FROM ' . $table . ' WHERE id = ?', [$parent])) {
-                    throw new \RuntimeException('Missing frozen Domains source parent: ' . $id . '.' . $field);
+                    throw new RuntimeException('Missing frozen Domains source parent: ' . $id . '.' . $field);
                 }
                 if ($field === 'suppliers_id' && $parent > 0) {
                     $supplier = $connection->fetchAssociative('SELECT entities_id, is_recursive FROM glpi_suppliers WHERE id = ?', [$parent]);
@@ -268,7 +271,7 @@ final class DomainsPluginAdoption
             $owner = DomainsPluginSnapshot::integer($row['plugin_domains_domains_id'], 'link.owner', 1);
             $subject = DomainsPluginSnapshot::integer($row['items_id'], 'link.subject', 1);
             if (!isset($domains[$owner]) || !isset($subjects[$row['itemtype']]) || !$connection->fetchOne('SELECT 1 FROM ' . ($subjects[$row['itemtype']] ?? 'glpi_domains') . ' WHERE id = ?', [$subject])) {
-                throw new \RuntimeException('Invalid or unsupported frozen Domains asset link: ' . $row['id'] . '.' . $row['itemtype']);
+                throw new RuntimeException('Invalid or unsupported frozen Domains asset link: ' . $row['id'] . '.' . $row['itemtype']);
             }
             $this->coherent($connection, $domainScopes[$owner], $this->coreScope($connection, DomainsPluginSnapshot::definition()['impact_kinds'][$row['itemtype']], $subject), 'glpi_domains_items.' . $row['id']);
             $row['domains_id'] = $owner;
@@ -282,11 +285,11 @@ final class DomainsPluginAdoption
                 $record['values'] += $typed;
             }
             if ($connection->fetchOne('SELECT 1 FROM glpi_domains_items WHERE domains_id = ? AND itemtype = ? AND items_id = ?', [$owner, $row['itemtype'], $subject])) {
-                throw new \RuntimeException('Frozen Domains asset link duplicates an existing binding: ' . $row['id']);
+                throw new RuntimeException('Frozen Domains asset link duplicates an existing binding: ' . $row['id']);
             }
             $key = $owner . ':' . $row['itemtype'] . ':' . $subject;
             if (isset($incoming[$key])) {
-                throw new \RuntimeException('Duplicate frozen Domains asset link: ' . $row['id']);
+                throw new RuntimeException('Duplicate frozen Domains asset link: ' . $row['id']);
             }
             $incoming[$key] = true;
             $result[] = $record;
@@ -295,7 +298,7 @@ final class DomainsPluginAdoption
         foreach ($result as $record) {
             $id = $record['values']['id'];
             if (isset($ids[$record['table']][$id])) {
-                throw new \RuntimeException('Duplicate frozen Domains aggregate identifier: ' . $record['table'] . '.' . $id);
+                throw new RuntimeException('Duplicate frozen Domains aggregate identifier: ' . $record['table'] . '.' . $id);
             }
             $ids[$record['table']][$id] = true;
         }
@@ -309,11 +312,11 @@ final class DomainsPluginAdoption
         $values['id'] = $id;
         $types = [];
         foreach ($values as $field => &$value) {
-            $column = $columns[$field] ?? throw new \RuntimeException('Unsupported frozen Domains target layout: ' . $table . '.' . $field);
+            $column = $columns[$field] ?? throw new RuntimeException('Unsupported frozen Domains target layout: ' . $table . '.' . $field);
             $type = Type::lookupName($column->getType());
             if ($value === null) {
                 if ($column->getNotnull()) {
-                    throw new \RuntimeException('Frozen Domains null cannot fit required target: ' . $table . '.' . $field);
+                    throw new RuntimeException('Frozen Domains null cannot fit required target: ' . $table . '.' . $field);
                 }
                 continue;
             }
@@ -328,13 +331,13 @@ final class DomainsPluginAdoption
                 $value = DomainsPluginSnapshot::integer($value, $table . '.' . $field);
                 $maximum = $type === Types::SMALLINT ? 32767 : ($type === Types::INTEGER ? ($column->getUnsigned() ? 4294967295 : 2147483647) : PHP_INT_MAX);
                 if ($value > $maximum) {
-                    throw new \RuntimeException('Frozen Domains identifier exceeds native target width: ' . $table . '.' . $field . '; adoption cannot insert it before widening.');
+                    throw new RuntimeException('Frozen Domains identifier exceeds native target width: ' . $table . '.' . $field . '; adoption cannot insert it before widening.');
                 }
                 if ($value === 0 && in_array($field, $optional, true) && !$column->getNotnull()) {
                     $value = null;
                 }
             } elseif ($type === Types::STRING && $column->getLength() !== null && mb_strlen((string)$value) > $column->getLength()) {
-                throw new \RuntimeException('Frozen Domains text exceeds supported target length: ' . $table . '.' . $field);
+                throw new RuntimeException('Frozen Domains text exceeds supported target length: ' . $table . '.' . $field);
             }
         }
         unset($value);
@@ -342,10 +345,10 @@ final class DomainsPluginAdoption
         // PostgreSQL column: otherwise the driver throws instead of reporting
         // the supported pre-adoption boundary without writes.
         if ($connection->fetchOne('SELECT 1 FROM ' . $table . ' WHERE id = ?', [$id])) {
-            throw new \RuntimeException('Frozen Domains target identifier collision: ' . $table . '.' . $id . '; names/content never establish ownership.');
+            throw new RuntimeException('Frozen Domains target identifier collision: ' . $table . '.' . $id . '; names/content never establish ownership.');
         }
         if (isset($values['entities_id']) && !$connection->fetchOne('SELECT 1 FROM glpi_entities WHERE id = ?', [$values['entities_id']])) {
-            throw new \RuntimeException('Missing frozen Domains entity: ' . $table . '.' . $id);
+            throw new RuntimeException('Missing frozen Domains entity: ' . $table . '.' . $id);
         }
         return ['table' => $table, 'values' => $values, 'types' => $types];
     }
@@ -356,12 +359,12 @@ final class DomainsPluginAdoption
             return null;
         }
         if (!preg_match('/^[1-9][0-9]{3}-[0-9]{2}-[0-9]{2}(?: [0-9]{2}:[0-9]{2}:[0-9]{2})?$/D', $value)) {
-            throw new \RuntimeException('Invalid frozen Domains calendar date: ' . $field . '; zero dates require explicit reconciliation.');
+            throw new RuntimeException('Invalid frozen Domains calendar date: ' . $field . '; zero dates require explicit reconciliation.');
         }
         $full = strlen($value) === 10 ? $value . ' 00:00:00' : $value;
-        $date = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $full, new \DateTimeZone('UTC'));
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $full, new DateTimeZone('UTC'));
         if ($date === false || $date->format('Y-m-d H:i:s') !== $full) {
-            throw new \RuntimeException('Invalid frozen Domains calendar date: ' . $field);
+            throw new RuntimeException('Invalid frozen Domains calendar date: ' . $field);
         }
         if ($connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
             $instant = $utc ? $date->getTimestamp() : $connection->fetchOne('SELECT UNIX_TIMESTAMP(?)', [$full]);
@@ -371,7 +374,7 @@ final class DomainsPluginAdoption
             $maximum = !$connection->getDatabasePlatform() instanceof MySQLPlatform && version_compare($version, '11.5.0', '>=')
                 ? 4294967295 : 2147483647;
             if ($instant === null || (int)$instant < 1 || (int)$instant > $maximum) {
-                throw new \RuntimeException('Frozen Domains calendar date exceeds native TIMESTAMP: ' . $field . '; calendar schema policy must be resolved before adoption.');
+                throw new RuntimeException('Frozen Domains calendar date exceeds native TIMESTAMP: ' . $field . '; calendar schema policy must be resolved before adoption.');
             }
         }
         return $full;
@@ -380,7 +383,7 @@ final class DomainsPluginAdoption
     private function incoming(array $incoming, string $table, int $id, string $binding): void
     {
         if (!isset($incoming[$table][$id])) {
-            throw new \RuntimeException('Missing frozen Domains plugin binding subject: ' . $binding . ' -> ' . $table . '.' . $id);
+            throw new RuntimeException('Missing frozen Domains plugin binding subject: ' . $binding . ' -> ' . $table . '.' . $id);
         }
     }
 
@@ -391,7 +394,7 @@ final class DomainsPluginAdoption
             return [];
         }
         if (!isset($typed[$kind])) {
-            throw new \RuntimeException('Frozen typed binding cannot own ' . $kind . ': ' . $table);
+            throw new RuntimeException('Frozen typed binding cannot own ' . $kind . ': ' . $table);
         }
         $columns = $connection->createSchemaManager()->listTableColumns($table);
         $known = array_column($typed, 'column');
@@ -400,7 +403,7 @@ final class DomainsPluginAdoption
             return []; // The historical scalar is converted by canonical replay.
         }
         if (count($present) !== count($known)) {
-            throw new \RuntimeException('Ambiguous partially adopted frozen Domains ownership: ' . $table);
+            throw new RuntimeException('Ambiguous partially adopted frozen Domains ownership: ' . $table);
         }
         $values = array_fill_keys($known, null);
         $values[$typed[$kind]['column']] = $id;
@@ -430,7 +433,7 @@ final class DomainsPluginAdoption
                 $quote = $connection->quoteIdentifier(...);
                 foreach ($connection->fetchAllAssociative('SELECT * FROM ' . $quote($table) . ' WHERE LOWER(TRIM(' . $quote($field) . ')) LIKE ? ORDER BY id', ['plugindomains%']) as $row) {
                     if (!in_array($row[$field], DomainsPluginSnapshot::KINDS, true)) {
-                        throw new \RuntimeException('Unsupported frozen Domains identity spelling: ' . $table . '.' . $row['id'] . '.' . $field . '=' . $row[$field]);
+                        throw new RuntimeException('Unsupported frozen Domains identity spelling: ' . $table . '.' . $row['id'] . '.' . $field . '=' . $row[$field]);
                     }
                     $result[] = ['table' => $table, 'field' => $field, 'row' => $row];
                 }
@@ -450,7 +453,7 @@ final class DomainsPluginAdoption
                 $quote = $connection->quoteIdentifier(...);
                 $row = $connection->fetchAssociative('SELECT * FROM ' . $quote($table) . ' WHERE LOWER(TRIM(' . $quote($column->getName()) . ')) LIKE ? LIMIT 1', ['plugindomains%']);
                 if ($row) {
-                    throw new \RuntimeException('Unsupported external frozen Domains identity: ' . $table . '.' . ($row['id'] ?? '?') . '.' . $column->getName());
+                    throw new RuntimeException('Unsupported external frozen Domains identity: ' . $table . '.' . ($row['id'] ?? '?') . '.' . $column->getName());
                 }
             }
         }
@@ -465,14 +468,14 @@ final class DomainsPluginAdoption
         $subjects = DomainsPluginSnapshot::definition()['identities']['glpi_documents_items']['typed']['items_id']['selections'];
         $old = array_diff(array_column($subjects, 'column'), ['domains_id']);
         if (array_diff($base, array_keys($columns)) || array_diff(array_keys($columns), [...$base, ...$old])) {
-            throw new \RuntimeException('Unsupported frozen Domain document physical layout: ' . $row['id']);
+            throw new RuntimeException('Unsupported frozen Domain document physical layout: ' . $row['id']);
         }
         $previous = null;
         if ($connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
             $native = $connection->fetchAllKeyValue("SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='glpi_documents_items'");
             foreach (['date_mod', 'date_creation', 'date'] as $field) {
                 if (($native[$field] ?? null) !== 'timestamp') {
-                    throw new \RuntimeException('Frozen Domain document dates require native TIMESTAMP: ' . $field);
+                    throw new RuntimeException('Frozen Domain document dates require native TIMESTAMP: ' . $field);
                 }
             }
             $previous = (string)$connection->fetchOne('SELECT @@session.time_zone');
@@ -481,7 +484,7 @@ final class DomainsPluginAdoption
         try {
             $row = $connection->fetchAssociative('SELECT * FROM glpi_documents_items WHERE id = ?', [$row['id']]);
             if ($row === false) {
-                throw new \RuntimeException('Frozen Domain document disappeared during inspection.');
+                throw new RuntimeException('Frozen Domain document disappeared during inspection.');
             }
             $original = DomainsPluginSnapshot::rawRow($row);
         } finally {
@@ -491,21 +494,21 @@ final class DomainsPluginAdoption
         }
         foreach ($old as $field) {
             if (($original[$field] ?? null) !== null) {
-                throw new \RuntimeException('Frozen Domain document has a conflicting owning subject: ' . $row['id'] . '.' . $field);
+                throw new RuntimeException('Frozen Domain document has a conflicting owning subject: ' . $row['id'] . '.' . $field);
             }
         }
         if (!in_array($original['is_recursive'], ['0', '1'], true)) {
-            throw new \RuntimeException('Invalid frozen Domain document recursion flag: ' . $row['id']);
+            throw new RuntimeException('Invalid frozen Domain document recursion flag: ' . $row['id']);
         }
         foreach (['documents_id' => 'glpi_documents', 'entities_id' => 'glpi_entities', 'users_id' => 'glpi_users'] as $field => $table) {
             $id = $original[$field] === null && $field === 'users_id' ? 0 : DomainsPluginSnapshot::integer($original[$field], 'document.' . $row['id'] . '.' . $field, $field === 'documents_id' ? 1 : 0);
             if (($field !== 'users_id' || $id > 0) && !$connection->fetchOne('SELECT 1 FROM ' . $table . ' WHERE id = ?', [$id])) {
-                throw new \RuntimeException('Missing frozen Domain document parent: ' . $row['id'] . '.' . $field);
+                throw new RuntimeException('Missing frozen Domain document parent: ' . $row['id'] . '.' . $field);
             }
         }
         $position = DomainsPluginSnapshot::integer($original['timeline_position'], 'document.timeline');
         if ($position > 32767) {
-            throw new \RuntimeException('Unsupported frozen Domain document timeline: ' . $row['id']);
+            throw new RuntimeException('Unsupported frozen Domain document timeline: ' . $row['id']);
         }
         foreach (['date_mod', 'date_creation', 'date'] as $field) {
             if ($original[$field] !== null) {
@@ -519,14 +522,14 @@ final class DomainsPluginAdoption
     {
         foreach (IdentifierColumns::history()['relations'] as $table => $relations) {
             if (in_array('glpi_documents_items', $relations, true)) {
-                throw new \RuntimeException('Frozen schema has an unsupported incoming document binding owner: ' . $table);
+                throw new RuntimeException('Frozen schema has an unsupported incoming document binding owner: ' . $table);
             }
         }
         $incoming = $connection->getDatabasePlatform() instanceof AbstractMySQLPlatform
             ? $connection->fetchAllAssociative("SELECT TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_SCHEMA=DATABASE() AND REFERENCED_TABLE_NAME='glpi_documents_items'")
             : $connection->fetchAllAssociative("SELECT conrelid::regclass::text AS table_name, conname AS constraint_name, pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE contype='f' AND confrelid=to_regclass('glpi_documents_items')");
         if ($incoming) {
-            throw new \RuntimeException('Frozen Domain document deferral refuses incoming foreign keys: ' . json_encode($incoming, JSON_THROW_ON_ERROR));
+            throw new RuntimeException('Frozen Domain document deferral refuses incoming foreign keys: ' . json_encode($incoming, JSON_THROW_ON_ERROR));
         }
     }
 
@@ -538,7 +541,7 @@ final class DomainsPluginAdoption
         $engines = $connection->fetchAllKeyValue('SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()');
         foreach ($tables as $table) {
             if (strcasecmp($engines[$table] ?? '', 'InnoDB') !== 0) {
-                throw new \RuntimeException('Frozen Domains prerequisite requires transactional core storage before any data writes: ' . $table . ' must use InnoDB.');
+                throw new RuntimeException('Frozen Domains prerequisite requires transactional core storage before any data writes: ' . $table . ' must use InnoDB.');
             }
         }
     }
@@ -573,7 +576,7 @@ final class DomainsPluginAdoption
         }
         foreach ($plan['receipt']['deferred_documents'] as $row) {
             if ($connection->delete('glpi_documents_items', ['id' => $row['id']]) !== 1) {
-                throw new \RuntimeException('Frozen Domain document changed during deferral: ' . $row['id']);
+                throw new RuntimeException('Frozen Domain document changed during deferral: ' . $row['id']);
             }
         }
     }
@@ -583,10 +586,10 @@ final class DomainsPluginAdoption
         return match ($table) {
             'glpi_displaypreferences' => $this->display($row),
             'glpi_savedsearches' => $this->savedSearch($row, $target),
-            'glpi_notifications', 'glpi_notificationtemplates', 'glpi_links_itemtypes' => $target === 'Domain' ? [] : throw new \RuntimeException('Unsupported frozen DomainType class binding: ' . $table . '.' . $row['id']),
+            'glpi_notifications', 'glpi_notificationtemplates', 'glpi_links_itemtypes' => $target === 'Domain' ? [] : throw new RuntimeException('Unsupported frozen DomainType class binding: ' . $table . '.' . $row['id']),
             'glpi_fieldblacklists' => ['field' => $this->property($row['field'])],
             'glpi_fieldunicities' => ['fields' => json_encode(array_map($this->property(...), DomainsPluginPolicy::array((string)($row['fields'] ?? ''), 'unique.' . $row['id'])), JSON_THROW_ON_ERROR)],
-            default => throw new \RuntimeException('Unsupported frozen Domains class-only role: ' . $table . '.' . $row['id']),
+            default => throw new RuntimeException('Unsupported frozen Domains class-only role: ' . $table . '.' . $row['id']),
         };
     }
 
@@ -596,7 +599,7 @@ final class DomainsPluginAdoption
             return 'domaintypes_id';
         }
         if (!in_array($field, ['name', 'entities_id', 'is_recursive', 'date_creation', 'date_expiration', 'users_id_tech', 'groups_id_tech', 'suppliers_id', 'comment', 'others', 'is_helpdesk_visible', 'date_mod', 'is_deleted'], true)) {
-            throw new \RuntimeException('Unsupported frozen Domains source property: ' . $field);
+            throw new RuntimeException('Unsupported frozen Domains source property: ' . $field);
         }
         return $field;
     }
@@ -610,19 +613,19 @@ final class DomainsPluginAdoption
     private function searchField(mixed $field): void
     {
         if (!is_scalar($field) || !in_array((string)$field, ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '18', '30', '80', '81', 'all', 'view'], true)) {
-            throw new \RuntimeException('Unsupported frozen Domains search option.');
+            throw new RuntimeException('Unsupported frozen Domains search option.');
         }
     }
 
     private function savedSearch(array $row, string $target): array
     {
         if ($target !== 'Domain' || (int)$row['type'] !== 1) {
-            throw new \RuntimeException('Unsupported frozen Domains saved search: ' . $row['id']);
+            throw new RuntimeException('Unsupported frozen Domains saved search: ' . $row['id']);
         }
         $query = [];
         parse_str((string)($row['query'] ?? ''), $query);
         if (!$query || ($query['itemtype'] ?? 'PluginDomainsDomain') !== 'PluginDomainsDomain' || !empty($query['metacriteria'])) {
-            throw new \RuntimeException('Invalid frozen Domains saved search: ' . $row['id']);
+            throw new RuntimeException('Invalid frozen Domains saved search: ' . $row['id']);
         }
         $this->criteria($query['criteria'] ?? []);
         if (isset($query['sort'])) {
@@ -636,14 +639,14 @@ final class DomainsPluginAdoption
     {
         foreach ($criteria as $criterion) {
             if (!is_array($criterion)) {
-                throw new \RuntimeException('Invalid frozen Domains saved criterion.');
+                throw new RuntimeException('Invalid frozen Domains saved criterion.');
             }
             if (isset($criterion['criteria'])) {
                 $this->criteria($criterion['criteria']);
             } elseif (isset($criterion['field'])) {
                 $this->searchField($criterion['field']);
             } else {
-                throw new \RuntimeException('Missing frozen Domains search field.');
+                throw new RuntimeException('Missing frozen Domains search field.');
             }
         }
     }
@@ -651,15 +654,15 @@ final class DomainsPluginAdoption
     private function verifyReceipt(Connection $connection, array $receipt, array $bindings): void
     {
         if (($receipt['complete'] ?? false) !== true || ($receipt['format'] ?? null) !== DomainsPluginSnapshot::FORMAT) {
-            throw new \RuntimeException('Unrecognized completed frozen Domains receipt.');
+            throw new RuntimeException('Unrecognized completed frozen Domains receipt.');
         }
         $source = DomainsPluginSnapshot::read($connection);
         if (($receipt['fingerprint'] ?? null) !== DomainsPluginSnapshot::fingerprint($source)) {
-            throw new \RuntimeException('Frozen Domains source changed after completed adoption/import; explicit reconciliation is required.');
+            throw new RuntimeException('Frozen Domains source changed after completed adoption/import; explicit reconciliation is required.');
         }
         $counts = ['types' => count($source['glpi_plugin_domains_domaintypes']), 'domains' => count($source['glpi_plugin_domains_domains']), 'items' => count($source['glpi_plugin_domains_domains_items']), 'configs' => count($source['glpi_plugin_domains_configs'])];
         if (($receipt['counts'] ?? null) !== $counts) {
-            throw new \RuntimeException('Frozen Domains receipt counts differ from its source.');
+            throw new RuntimeException('Frozen Domains receipt counts differ from its source.');
         }
         $known = [];
         foreach ($receipt['retained_bindings'] ?? [] as $binding) {
@@ -667,7 +670,7 @@ final class DomainsPluginAdoption
         }
         foreach ($bindings as $binding) {
             if (!isset($known[$binding['table']][$binding['row']['id']][$binding['field']])) {
-                throw new \RuntimeException('New frozen Domains source identity after completed adoption: ' . $binding['table'] . '.' . $binding['row']['id'] . '.' . $binding['field']);
+                throw new RuntimeException('New frozen Domains source identity after completed adoption: ' . $binding['table'] . '.' . $binding['row']['id'] . '.' . $binding['field']);
             }
         }
         $known = [];
@@ -677,14 +680,14 @@ final class DomainsPluginAdoption
         foreach ($connection->fetchAllAssociative('SELECT id, profiles_id, name, rights FROM glpi_profilerights WHERE name IN (?, ?, ?) ORDER BY id', ['plugin_domains', 'plugin_domains_dropdown', 'plugin_domains_open_ticket']) as $right) {
             $right = ['id' => (int)$right['id'], 'profiles_id' => (int)$right['profiles_id'], 'name' => $right['name'], 'rights' => (int)$right['rights']];
             if (($known[$right['id']] ?? null) !== $right) {
-                throw new \RuntimeException('Changed or new frozen Domains source grant after completed adoption: ' . $right['id']);
+                throw new RuntimeException('Changed or new frozen Domains source grant after completed adoption: ' . $right['id']);
             }
         }
         foreach ($connection->fetchAllAssociative('SELECT id, helpdesk_item_type FROM glpi_profiles ORDER BY id') as $profile) {
             $values = DomainsPluginPolicy::array((string)($profile['helpdesk_item_type'] ?? ''), 'profile.' . $profile['id']);
             array_walk_recursive($values, static function ($value) use ($profile): void {
                 if (is_string($value) && strncasecmp(trim($value), 'PluginDomains', 13) === 0) {
-                    throw new \RuntimeException('New frozen Domains helpdesk binding after committed adoption: glpi_profiles.' . $profile['id']);
+                    throw new RuntimeException('New frozen Domains helpdesk binding after committed adoption: glpi_profiles.' . $profile['id']);
                 }
             });
         }
@@ -693,7 +696,7 @@ final class DomainsPluginAdoption
     private function scoped(Connection $connection, int $entity, int $owner, bool $recursive, string $field): void
     {
         if (!$this->available($connection, $entity, $owner, $recursive, $field)) {
-            throw new \RuntimeException('Frozen Domains scoped owner is unavailable: ' . $field);
+            throw new RuntimeException('Frozen Domains scoped owner is unavailable: ' . $field);
         }
     }
 
@@ -706,7 +709,7 @@ final class DomainsPluginAdoption
             $seen = [];
             while ($entity !== 0) {
                 if (isset($seen[$entity])) {
-                    throw new \RuntimeException('Cyclic frozen Domains entity scope: ' . $field);
+                    throw new RuntimeException('Cyclic frozen Domains entity scope: ' . $field);
                 }
                 $seen[$entity] = true;
                 $parent = $connection->fetchOne('SELECT entities_id FROM glpi_entities WHERE id = ?', [$entity]);
@@ -730,21 +733,21 @@ final class DomainsPluginAdoption
             || $this->available($connection, $second['entity'], $first['entity'], $first['recursive'], $field)) {
             return;
         }
-        throw new \RuntimeException('Frozen Domains relationship entity incoherence: ' . $field . '; preserve same-entity or a recursive ancestor endpoint before adoption.');
+        throw new RuntimeException('Frozen Domains relationship entity incoherence: ' . $field . '; preserve same-entity or a recursive ancestor endpoint before adoption.');
     }
 
     private function coreScope(Connection $connection, array $definition, int $id): ?array
     {
         $row = $connection->fetchAssociative('SELECT * FROM ' . $connection->quoteIdentifier($definition['table']) . ' WHERE id = ?', [$id]);
         if (!$row) {
-            throw new \RuntimeException('Missing frozen Domains relationship owner: ' . $definition['table'] . '.' . $id);
+            throw new RuntimeException('Missing frozen Domains relationship owner: ' . $definition['table'] . '.' . $id);
         }
         if ($definition['entity_column'] === null) {
             return null; // Non-scoped public objects do not acquire an invented entity owner.
         }
         $recursive = $definition['recursive_column'];
         if (!array_key_exists($definition['entity_column'], $row) || ($recursive !== null && !array_key_exists($recursive, $row))) {
-            throw new \RuntimeException('Unsupported frozen Domains scope layout: ' . $definition['table']);
+            throw new RuntimeException('Unsupported frozen Domains scope layout: ' . $definition['table']);
         }
         return ['entity' => DomainsPluginSnapshot::integer($row[$definition['entity_column']], 'scope.' . $definition['table']),
             'recursive' => $definition['always_recursive'] || ($recursive !== null && DomainsPluginSnapshot::flag(DomainsPluginSnapshot::rawRow($row)[$recursive], 'scope.' . $definition['table'] . '.recursion'))];
@@ -753,9 +756,9 @@ final class DomainsPluginAdoption
     private function impactScope(Connection $connection, string $kind, int $id, array $incoming): ?array
     {
         if ($kind === 'PluginDomainsDomain') {
-            return $incoming[$id] ?? throw new \RuntimeException('Missing frozen Domains impact subject: ' . $id);
+            return $incoming[$id] ?? throw new RuntimeException('Missing frozen Domains impact subject: ' . $id);
         }
-        $definition = DomainsPluginSnapshot::definition()['impact_kinds'][$kind] ?? throw new \RuntimeException('Unsupported frozen Domains impact kind: ' . $kind);
+        $definition = DomainsPluginSnapshot::definition()['impact_kinds'][$kind] ?? throw new RuntimeException('Unsupported frozen Domains impact kind: ' . $kind);
         return $this->coreScope($connection, $definition, $id);
     }
 
@@ -763,14 +766,14 @@ final class DomainsPluginAdoption
     {
         $rows = $connection->fetchAllAssociative("SELECT id, directory, name, version, state, author, homepage, license FROM glpi_plugins WHERE LOWER(TRIM(directory)) = ? ORDER BY id", ['domains']);
         if (count($rows) > 1) {
-            throw new \RuntimeException('Ambiguous frozen Domains source plugin registrations.');
+            throw new RuntimeException('Ambiguous frozen Domains source plugin registrations.');
         }
         if (!$rows) {
             return null;
         }
         $row = $rows[0];
         if ($row['directory'] !== 'domains' || in_array((int)$row['state'], [1, 3], true)) {
-            throw new \RuntimeException('Frozen Domains adoption requires the source domains plugin inactive with its exact directory spelling. Deactivate it with the compatible historical application before maintenance/export and keep source/application writers stopped. Its record and other plugins are preserved; uninstall hooks must not run.');
+            throw new RuntimeException('Frozen Domains adoption requires the source domains plugin inactive with its exact directory spelling. Deactivate it with the compatible historical application before maintenance/export and keep source/application writers stopped. Its record and other plugins are preserved; uninstall hooks must not run.');
         }
         $row['id'] = (int)$row['id'];
         $row['state'] = (int)$row['state'];

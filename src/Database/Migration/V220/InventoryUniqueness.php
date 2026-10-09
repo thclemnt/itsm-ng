@@ -8,6 +8,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
+use RuntimeException;
 
 /** Keep OS/architecture uniqueness when missing dropdowns become NULL. */
 final class InventoryUniqueness
@@ -29,7 +30,7 @@ final class InventoryUniqueness
                 return;
             }
             if (!$index->isUnique() || $existing !== ['items_id', 'itemtype', 'operatingsystems_id', 'operatingsystemarchitectures_id']) {
-                throw new \RuntimeException('Unexpected OS uniqueness definition: ' . $indexName);
+                throw new RuntimeException('Unexpected OS uniqueness definition: ' . $indexName);
             }
             $table->dropIndex($indexName);
         }
@@ -48,7 +49,7 @@ final class InventoryUniqueness
         // compatibility column is absent. It never follows runtime metadata.
         $duplicates = $connection->fetchAllAssociative('SELECT ' . $identity . ' AS items_id, itemtype, COALESCE(operatingsystems_id, 0) AS os, COALESCE(operatingsystemarchitectures_id, 0) AS architecture, COUNT(*) AS duplicates FROM glpi_items_operatingsystems WHERE itemtype IS NOT NULL GROUP BY ' . $identity . ', itemtype, COALESCE(operatingsystems_id, 0), COALESCE(operatingsystemarchitectures_id, 0) HAVING COUNT(*) > 1');
         if ($duplicates) {
-            throw new \RuntimeException('Duplicate OS/architecture assignments: ' . json_encode($duplicates));
+            throw new RuntimeException('Duplicate OS/architecture assignments: ' . json_encode($duplicates));
         }
     }
 

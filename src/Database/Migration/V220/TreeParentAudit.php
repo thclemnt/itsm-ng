@@ -5,6 +5,7 @@
 namespace itsmng\Database\Migration\V220;
 
 use Doctrine\DBAL\Connection;
+use RuntimeException;
 
 /** Audit complete parent chains before changing a tree's schema. */
 final class TreeParentAudit
@@ -20,7 +21,7 @@ final class TreeParentAudit
                 $path = [];
                 while ($id && !isset($finished[$id])) {
                     if (isset($path[$id])) {
-                        throw new \RuntimeException('Cyclic tree parents: ' . $table . ' at ' . $id);
+                        throw new RuntimeException('Cyclic tree parents: ' . $table . ' at ' . $id);
                     }
                     $path[$id] = true;
                     $id = (int)($parents[$id] ?? 0);

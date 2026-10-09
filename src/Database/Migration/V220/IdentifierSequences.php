@@ -7,6 +7,7 @@ namespace itsmng\Database\Migration\V220;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use itsmng\Database\Migration\Ledger;
+use RuntimeException;
 
 /** Repair partial sequence adoption even when the original width migration completed. */
 final class IdentifierSequences
@@ -29,7 +30,7 @@ final class IdentifierSequences
         }
         $postgres = $connection->getDatabasePlatform() instanceof PostgreSQLPlatform;
         if (!$postgres && $connection->isTransactionActive()) {
-            throw new \RuntimeException('MySQL identifier sequence migration must run outside an application transaction.');
+            throw new RuntimeException('MySQL identifier sequence migration must run outside an application transaction.');
         }
         $sql = $this->plan($connection);
         $apply = static function () use ($connection, $progress, $sql): void {

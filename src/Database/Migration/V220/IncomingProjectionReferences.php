@@ -7,6 +7,8 @@ namespace itsmng\Database\Migration\V220;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use InvalidArgumentException;
+use RuntimeException;
 
 /** Native incoming items_id references for one read-only migration planning call. */
 final class IncomingProjectionReferences
@@ -21,7 +23,7 @@ final class IncomingProjectionReferences
     public static function mysqlSnapshots(Connection $connection, array $tables): array
     {
         if (!$connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
-            throw new \InvalidArgumentException('MySQL native incoming snapshots require the actual MySQL platform.');
+            throw new InvalidArgumentException('MySQL native incoming snapshots require the actual MySQL platform.');
         }
         if ($tables === []) {
             return [];
@@ -33,12 +35,12 @@ final class IncomingProjectionReferences
         foreach ($rows as $row) {
             $selected = $row['selected_projection'];
             if (!in_array($selected, [false, true, 0, 1, '0', '1'], true)) {
-                throw new \RuntimeException('Invalid native projection reference selection');
+                throw new RuntimeException('Invalid native projection reference selection');
             }
             unset($row['selected_projection']);
             $target = $row['REFERENCED_TABLE_NAME'];
             if (!array_key_exists($target, $snapshots)) {
-                throw new \RuntimeException('Native referenced table spelling differs from the requested schema snapshot');
+                throw new RuntimeException('Native referenced table spelling differs from the requested schema snapshot');
             }
             $key = json_encode([$target, $row['CONSTRAINT_SCHEMA'], $row['TABLE_NAME'], $row['CONSTRAINT_NAME']], JSON_THROW_ON_ERROR);
             $constraints[$key]['rows'][] = $row;

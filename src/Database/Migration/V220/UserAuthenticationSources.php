@@ -9,6 +9,7 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use Doctrine\DBAL\Schema\Table;
 use itsmng\Database\MySQLGeneratedColumnInspection;
+use RuntimeException;
 
 /** Frozen upgrade: authentication server branches are FKs; non-server kinds retain opaque codes. */
 final class UserAuthenticationSources
@@ -61,7 +62,7 @@ final class UserAuthenticationSources
         $before = $manager->introspectTable('glpi_users');
         $hasKey = $before->hasColumn('auths_id');
         if (!$hasKey && (!$before->hasColumn('authldaps_id') || !$before->hasColumn('authmails_id') || !$before->hasColumn('auth_source_code'))) {
-            throw new \RuntimeException('Missing authentication identity without recoverable canonical columns');
+            throw new RuntimeException('Missing authentication identity without recoverable canonical columns');
         }
         $platform = $connection->getDatabasePlatform();
         $postgres = $platform instanceof PostgreSQLPlatform;
@@ -74,26 +75,26 @@ final class UserAuthenticationSources
             . ' LEFT JOIN glpi_authldaps g ON g.id = ' . $identity . ' LEFT JOIN glpi_authmails p ON p.id = ' . $identity
             . ' WHERE (r.authtype IN (0, 3, 4, 5, 6) AND (' . $identity . ' > 0 AND g.id IS NULL)) OR (r.authtype = 2 AND (' . $identity . ' > 0 AND p.id IS NULL))');
         if ($invalid) {
-            throw new \RuntimeException('Invalid legacy authentication LDAP/mail sources: ' . $invalid);
+            throw new RuntimeException('Invalid legacy authentication LDAP/mail sources: ' . $invalid);
         }
         foreach (['authldaps_id' => '0, 3, 4, 5, 6', 'authmails_id' => '2'] as $column => $kinds) {
             if ($before->hasColumn($column)) {
                 $invalid = (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_users r WHERE r.' . $column
                     . ' IS NOT NULL AND (r.' . $column . ' <= 0 OR r.authtype NOT IN (' . $kinds . ') OR r.' . $column . ' <> ' . $identity . ')');
                 if ($invalid) {
-                    throw new \RuntimeException('Canonical and legacy authentication sources disagree: ' . $column);
+                    throw new RuntimeException('Canonical and legacy authentication sources disagree: ' . $column);
                 }
             }
         }
         if ($generated || !$hasKey) {
             $invalid = (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_users WHERE NOT (' . self::validSourceSql() . ')');
             if ($invalid) {
-                throw new \RuntimeException('Invalid canonical authentication sources: ' . $invalid);
+                throw new RuntimeException('Invalid canonical authentication sources: ' . $invalid);
             }
         } elseif ($before->hasColumn('auth_source_code')) {
             $invalid = (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_users WHERE auth_source_code IS NOT NULL AND auth_source_code <> 0 AND (authtype IN (0, 2, 3, 4, 5, 6) OR auth_source_code <> auths_id)');
             if ($invalid) {
-                throw new \RuntimeException('Canonical and legacy authentication source codes disagree');
+                throw new RuntimeException('Canonical and legacy authentication source codes disagree');
             }
         }
         // Normalizing old negative no-server sentinels to zero must not merge distinct logins.
@@ -102,7 +103,7 @@ final class UserAuthenticationSources
         $duplicates = $connection->fetchOne('SELECT COUNT(*) FROM (SELECT r.name, r.authtype, ' . $selection
             . ' FROM glpi_users r WHERE r.name IS NOT NULL GROUP BY r.name, r.authtype, ' . $selection . ' HAVING COUNT(*) > 1) collisions');
         if ($duplicates) {
-            throw new \RuntimeException('Authentication source normalization would merge distinct login keys: ' . $duplicates);
+            throw new RuntimeException('Authentication source normalization would merge distinct login keys: ' . $duplicates);
         }
         $after = clone $before;
         self::configureColumns($after);
@@ -150,7 +151,7 @@ final class UserAuthenticationSources
                 if ($existing->getLocalColumns() !== $foreign->getLocalColumns() || $existing->getForeignTableName() !== $foreign->getForeignTableName()
                     || $existing->getForeignColumns() !== ['id'] || !in_array($existing->onDelete(), [null, 'RESTRICT', 'NO ACTION'], true)
                     || !in_array($existing->onUpdate(), [null, 'RESTRICT', 'NO ACTION'], true)) {
-                    throw new \RuntimeException('Existing authentication source FK has a different definition');
+                    throw new RuntimeException('Existing authentication source FK has a different definition');
                 }
             }
         }
@@ -164,7 +165,7 @@ final class UserAuthenticationSources
         $plan = $this->plan($connection);
         $postgres = $connection->getDatabasePlatform() instanceof PostgreSQLPlatform;
         if (($plan['sql'] || $plan['key_sql'] || $plan['constraint_sql']) && !$postgres && $connection->isTransactionActive()) {
-            throw new \RuntimeException('MySQL authentication-source DDL must run outside an application transaction');
+            throw new RuntimeException('MySQL authentication-source DDL must run outside an application transaction');
         }
         $apply = static function () use ($connection, $plan): array {
             foreach ($plan['sql'] as $statement) {

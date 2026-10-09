@@ -8,6 +8,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Schema\Table;
+use RuntimeException;
 
 /** Frozen upgrade from a serialized selection to ordered, FK-backed memberships. */
 final class PlanningEventGuests
@@ -42,11 +43,11 @@ final class PlanningEventGuests
             $values = [];
             foreach (explode(' ', trim($value)) as $pair) {
                 if (!str_contains($pair, '=>')) {
-                    throw new \RuntimeException('Malformed legacy event guest list');
+                    throw new RuntimeException('Malformed legacy event guest list');
                 }
                 [$key, $id] = explode('=>', $pair, 2);
                 if ($key === '') {
-                    throw new \RuntimeException('Malformed legacy event guest key');
+                    throw new RuntimeException('Malformed legacy event guest key');
                 }
                 $values[] = urldecode($id);
             }
@@ -54,7 +55,7 @@ final class PlanningEventGuests
         $ids = [];
         foreach ($values as $id) {
             if ((!is_int($id) && !is_string($id)) || filter_var($id, FILTER_VALIDATE_INT) === false || (int)$id <= 0) {
-                throw new \RuntimeException('Invalid legacy event guest ID');
+                throw new RuntimeException('Invalid legacy event guest ID');
             }
             $ids[(int)$id] = (int)$id;
         }
@@ -68,7 +69,7 @@ final class PlanningEventGuests
         $hasList = $legacy->hasColumn('users_id_guests');
         $exists = $manager->tablesExist([self::TABLE]);
         if (!$hasList && !$exists) {
-            throw new \RuntimeException('Event guest storage is missing');
+            throw new RuntimeException('Event guest storage is missing');
         }
         $rows = [];
         if ($hasList) {
@@ -76,13 +77,13 @@ final class PlanningEventGuests
                 $ids = self::decode($row['users_id_guests']);
                 foreach ($ids as $id) {
                     if (!$connection->fetchOne('SELECT id FROM glpi_users WHERE id = ?', [$id])) {
-                        throw new \RuntimeException('Orphaned legacy event guest: ' . $id);
+                        throw new RuntimeException('Orphaned legacy event guest: ' . $id);
                     }
                 }
                 if ($exists) {
                     $actual = array_map('intval', $connection->fetchFirstColumn('SELECT users_id FROM ' . self::TABLE . ' WHERE planningexternalevents_id = ? ORDER BY position, id', [$row['id']]));
                     if ($actual && $actual !== $ids) {
-                        throw new \RuntimeException('Canonical and legacy event guests disagree');
+                        throw new RuntimeException('Canonical and legacy event guests disagree');
                     }
                 }
                 $rows[(int)$row['id']] = $ids;
@@ -105,7 +106,7 @@ final class PlanningEventGuests
                 if ($found->getForeignTableName() !== $key->getForeignTableName() || $found->getLocalColumns() !== $key->getLocalColumns()
                     || $found->getForeignColumns() !== ['id'] || !in_array($found->onDelete(), [null, 'RESTRICT', 'NO ACTION'], true)
                     || !in_array($found->onUpdate(), [null, 'RESTRICT', 'NO ACTION'], true)) {
-                    throw new \RuntimeException('Event membership table has incompatible foreign keys');
+                    throw new RuntimeException('Event membership table has incompatible foreign keys');
                 }
             }
             foreach ($table->getIndexes() as $index) {
@@ -116,14 +117,14 @@ final class PlanningEventGuests
                 $matches = array_filter($actual->getIndexes(), static fn ($found): bool => $found->isUnique()
                     && array_map(static fn (string $column): string => trim($column, '`"'), $found->getColumns()) === $columns);
                 if (!$matches) {
-                    throw new \RuntimeException('Event membership table lacks its identity/uniqueness constraint');
+                    throw new RuntimeException('Event membership table lacks its identity/uniqueness constraint');
                 }
             }
             if ($connection->fetchOne('SELECT COUNT(*) FROM ' . self::TABLE . ' o LEFT JOIN glpi_users p ON p.id = o.users_id LEFT JOIN glpi_planningexternalevents a ON a.id = o.planningexternalevents_id WHERE p.id IS NULL OR a.id IS NULL')) {
-                throw new \RuntimeException('Orphaned canonical event guests');
+                throw new RuntimeException('Orphaned canonical event guests');
             }
             if ($connection->fetchOne('SELECT COUNT(*) FROM ' . self::TABLE . ' WHERE users_id <= 0 OR position < 0')) {
-                throw new \RuntimeException('Invalid canonical event guest or position');
+                throw new RuntimeException('Invalid canonical event guest or position');
             }
         }
         $after = clone $legacy;
@@ -139,7 +140,7 @@ final class PlanningEventGuests
         $plan = $this->plan($connection);
         $postgres = $connection->getDatabasePlatform() instanceof PostgreSQLPlatform;
         if (($plan['create_sql'] || $plan['constraint_sql'] || $plan['drop_sql']) && !$postgres && $connection->isTransactionActive()) {
-            throw new \RuntimeException('MySQL event guest DDL must run outside an application transaction');
+            throw new RuntimeException('MySQL event guest DDL must run outside an application transaction');
         }
         $apply = static function () use ($connection, $plan): array {
             foreach ($plan['create_sql'] as $statement) {

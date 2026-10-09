@@ -7,6 +7,7 @@ namespace itsmng\Database\Migration\V220;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\BooleanType;
+use RuntimeException;
 
 final class ImpactGraphReferences
 {
@@ -30,7 +31,7 @@ final class ImpactGraphReferences
                 }
                 $field = $quote($column);
                 if ($connection->fetchOne('SELECT COUNT(*) FROM ' . $quote($table) . ' WHERE ' . $field . ' IS NULL OR ' . $field . ' NOT IN (0, 1)')) {
-                    throw new \RuntimeException('Invalid impact graph boolean: ' . $table . '.' . $column);
+                    throw new RuntimeException('Invalid impact graph boolean: ' . $table . '.' . $column);
                 }
                 if ($platform instanceof PostgreSQLPlatform) {
                     $sql[] = 'ALTER TABLE ' . $quote($table) . ' ALTER ' . $field . ' DROP DEFAULT';

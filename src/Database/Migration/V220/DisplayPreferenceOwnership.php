@@ -8,6 +8,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
+use RuntimeException;
 
 /** NULL means default display preferences; its identity must remain unique after migration. */
 final class DisplayPreferenceOwnership
@@ -38,7 +39,7 @@ final class DisplayPreferenceOwnership
     {
         $plan = $this->plan($connection); // Audit owners and duplicate states before changing either.
         if ($plan['sql'] && $connection->isTransactionActive() && !$connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
-            throw new \RuntimeException('MySQL display preference DDL must run outside an application transaction.');
+            throw new RuntimeException('MySQL display preference DDL must run outside an application transaction.');
         }
         $apply = function () use ($connection): array {
             $counts = (new NullableReferences(ReferenceHistory::get('optional', 'DISPLAY_PREFERENCE_OWNERS'), 'display preference owner'))->apply($connection);

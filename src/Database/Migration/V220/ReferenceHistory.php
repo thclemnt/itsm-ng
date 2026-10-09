@@ -4,6 +4,8 @@
 
 namespace itsmng\Database\Migration\V220;
 
+use InvalidArgumentException;
+
 /** Frozen upgrade inputs. Historical migrations never inspect current ORM entities. */
 final class ReferenceHistory
 {
@@ -12,6 +14,6 @@ final class ReferenceHistory
     public static function get(string $section, string $name = 'RELATIONS'): array
     {
         self::$definitions ??= json_decode(file_get_contents(__DIR__ . '/history/20260930-reference-upgrades.json'), true, flags: JSON_THROW_ON_ERROR);
-        return self::$definitions[$section][$name] ?? throw new \InvalidArgumentException('Unknown historical reference definition: ' . $section . '.' . $name);
+        return self::$definitions[$section][$name] ?? throw new InvalidArgumentException('Unknown historical reference definition: ' . $section . '.' . $name);
     }
 }

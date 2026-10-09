@@ -6,6 +6,7 @@ namespace itsmng\Database\Migration\V220;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use RuntimeException;
 
 final class ActorReferences
 {
@@ -20,7 +21,7 @@ final class ActorReferences
     {
         $plan = $this->plan($connection); // Audit references and uniqueness before either migration writes.
         if ($plan['sql'] && $connection->isTransactionActive() && !$connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
-            throw new \RuntimeException('MySQL ITIL actor DDL must run outside an application transaction.');
+            throw new RuntimeException('MySQL ITIL actor DDL must run outside an application transaction.');
         }
         $apply = static function () use ($connection): array {
             $counts = (new NullableReferences(ReferenceHistory::get('optional', 'ITIL_ACTORS'), 'ITIL actor'))->apply($connection);

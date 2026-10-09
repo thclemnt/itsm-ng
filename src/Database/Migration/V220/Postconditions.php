@@ -10,6 +10,7 @@ use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\Ledger;
 use itsmng\Database\Migration\Version220;
 use itsmng\Database\NativeTimestampSchema;
+use RuntimeException;
 
 /** Verify the frozen conversion's actual owners; never inspect future entity metadata. */
 final class Postconditions
@@ -17,12 +18,12 @@ final class Postconditions
     public static function assert(Connection $connection): void
     {
         if (Version220::pendingPhases(Ledger::states($connection))) {
-            throw new \RuntimeException('The 2.2.0 transition has unfinished internal checkpoints.');
+            throw new RuntimeException('The 2.2.0 transition has unfinished internal checkpoints.');
         }
         (new ExactDiscriminators())->verify($connection);
         (new References())->verify($connection);
         if ((new ForeignKeys(['glpi_domains' => ['suppliers_id' => 'glpi_suppliers']]))->plan($connection)) {
-            throw new \RuntimeException('Frozen direct Domain supplier ownership did not converge.');
+            throw new RuntimeException('Frozen direct Domain supplier ownership did not converge.');
         }
         (new BooleanDomains())->verify($connection);
         foreach ([new ProjectAssets(), new ApplianceAssets(), new ApplianceRecipients(),
@@ -37,7 +38,7 @@ final class Postconditions
                 . ' THEN NEW.' . $date . ' = CURRENT_TIMESTAMP; END IF; RETURN NEW; END']]];
         $differences = NativeTimestampSchema::touchDifferences($connection, $touch);
         if ($differences) {
-            throw new \RuntimeException(implode("\n", $differences));
+            throw new RuntimeException(implode("\n", $differences));
         }
         // DBAL maps native MySQL TIMESTAMP and DATETIME to the same logical type.
         // This historical check takes its declarations from the frozen input.
@@ -50,7 +51,7 @@ final class Postconditions
                 foreach ($table->getColumns() as $column) {
                     if (str_starts_with($column->getColumnDefinition() ?? '', 'TIMESTAMP')
                         && ($types[$table->getName()][$column->getName()] ?? null) !== 'timestamp') {
-                        throw new \RuntimeException('Expected frozen native TIMESTAMP: ' . $table->getName() . '.' . $column->getName());
+                        throw new RuntimeException('Expected frozen native TIMESTAMP: ' . $table->getName() . '.' . $column->getName());
                     }
                 }
             }

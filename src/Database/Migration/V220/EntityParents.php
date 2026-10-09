@@ -9,6 +9,7 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use Doctrine\DBAL\Schema\Table;
 use itsmng\Database\ForeignKeys;
+use RuntimeException;
 
 /** Frozen hierarchy upgrade: root has no parent; every other parent is a real ID. */
 final class EntityParents
@@ -30,13 +31,13 @@ final class EntityParents
     {
         $parents = $connection->fetchAllKeyValue('SELECT id, entities_id FROM glpi_entities');
         if (!array_key_exists(0, $parents) || ($parents[0] !== null && !in_array((int)$parents[0], [-1, 0], true))) {
-            throw new \RuntimeException('Entity hierarchy requires the real root with no selected parent');
+            throw new RuntimeException('Entity hierarchy requires the real root with no selected parent');
         }
         $normalize = $parents[0] === null ? 0 : 1;
         $parents[0] = null;
         foreach ($parents as $id => $parent) {
             if ((int)$id !== 0 && ($parent === null || (int)$parent < 0 || !array_key_exists((int)$parent, $parents))) {
-                throw new \RuntimeException('Invalid entity parent at ' . $id . ': ' . var_export($parent, true));
+                throw new RuntimeException('Invalid entity parent at ' . $id . ': ' . var_export($parent, true));
             }
         }
         $finished = [];
@@ -44,7 +45,7 @@ final class EntityParents
             $path = [];
             while ($id !== null && !isset($finished[$id])) {
                 if (isset($path[$id])) {
-                    throw new \RuntimeException('Cyclic entity parents at ' . $id);
+                    throw new RuntimeException('Cyclic entity parents at ' . $id);
                 }
                 $path[$id] = true;
                 $id = $parents[$id] === null ? null : (int)$parents[$id];
@@ -67,7 +68,7 @@ final class EntityParents
             $foreign = $before->getForeignKey($name);
             if ($foreign->getLocalColumns() !== ['entities_id'] || $foreign->getForeignTableName() !== 'glpi_entities' || $foreign->getForeignColumns() !== ['id']
                 || !in_array($foreign->onDelete(), [null, 'RESTRICT', 'NO ACTION'], true) || !in_array($foreign->onUpdate(), [null, 'RESTRICT', 'NO ACTION'], true)) {
-                throw new \RuntimeException('Existing entity-parent foreign key has a different definition');
+                throw new RuntimeException('Existing entity-parent foreign key has a different definition');
             }
         }
         return ['sql' => $sql, 'constraint_sql' => $constraints, 'root_rows' => $normalize];
@@ -78,7 +79,7 @@ final class EntityParents
         $plan = $this->plan($connection);
         $postgres = $connection->getDatabasePlatform() instanceof PostgreSQLPlatform;
         if (($plan['sql'] || $plan['constraint_sql']) && !$postgres && $connection->isTransactionActive()) {
-            throw new \RuntimeException('MySQL entity-parent DDL must run outside an application transaction');
+            throw new RuntimeException('MySQL entity-parent DDL must run outside an application transaction');
         }
         $apply = static function () use ($connection, $plan): array {
             foreach ($plan['sql'] as $statement) {

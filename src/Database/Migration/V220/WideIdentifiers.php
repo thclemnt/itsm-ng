@@ -11,6 +11,7 @@ use Doctrine\DBAL\Schema\Column;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Types\Type;
 use itsmng\Database\MySQLGeneratedColumnInspection;
+use RuntimeException;
 
 /** Widen in place, preserving data, sequences and all existing constraint definitions. */
 final class WideIdentifiers
@@ -23,7 +24,7 @@ final class WideIdentifiers
     public function plan(Connection $connection, ?Schema $inspection = null): array
     {
         if (PHP_INT_SIZE < 8) {
-            throw new \RuntimeException('The ORM schema requires 64-bit PHP integers.');
+            throw new RuntimeException('The ORM schema requires 64-bit PHP integers.');
         }
         $manager = $connection->createSchemaManager();
         $platform = $connection->getDatabasePlatform();
@@ -58,7 +59,7 @@ final class WideIdentifiers
                 }
                 $type = Type::lookupName($tables[$name]->getColumn($column)->getType());
                 if (!in_array($type, ['smallint', 'integer', 'bigint'], true)) {
-                    throw new \RuntimeException('Unexpected identifier type: ' . $name . '.' . $column . ' (' . $type . ')');
+                    throw new RuntimeException('Unexpected identifier type: ' . $name . '.' . $column . ' (' . $type . ')');
                 }
                 if ($type !== 'bigint') {
                     $widen[$name][] = $column;
@@ -128,7 +129,7 @@ final class WideIdentifiers
             foreach ($generatedNames === [] ? [] : $manager->listTableIndexes($name) as $index) {
                 if (array_intersect($index->getColumns(), $generatedNames)) {
                     if ($index->isPrimary()) {
-                        throw new \RuntimeException('Generated primary key requires explicit upgrade handling: ' . $name);
+                        throw new RuntimeException('Generated primary key requires explicit upgrade handling: ' . $name);
                     }
                     $indexes[] = $index;
                     $dropGenerated[] = $operation($platform->getDropIndexSQL($index->getQuotedName($platform), $quote($name)), 'drop_index', $name, $index->getName());
@@ -256,7 +257,7 @@ final class WideIdentifiers
                 default => [$definition['type']],
             };
             if (!in_array(Type::lookupName($column->getType()), $allowed, true)) {
-                throw new \RuntimeException('Unexpected legacy storage type for ' . $column->getName());
+                throw new RuntimeException('Unexpected legacy storage type for ' . $column->getName());
             }
             $column->setType(Type::getType($definition['type']))->setLength($definition['length'])
                 ->setPrecision($definition['precision'])->setScale($definition['scale']);

@@ -9,6 +9,7 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use itsmng\Database\Migration\Ledger;
+use RuntimeException;
 
 /** Adopt early PostgreSQL integer flags using the frozen baseline's flag semantics. */
 final class Booleans
@@ -40,7 +41,7 @@ final class Booleans
                 }
                 $type = Type::lookupName($installed->getType());
                 if (!in_array($type, [Types::SMALLINT, Types::INTEGER, Types::BIGINT], true)) {
-                    throw new \RuntimeException('Unsupported legacy boolean type: ' . $table->getName() . '.' . $name . ' (' . $type . ')');
+                    throw new RuntimeException('Unsupported legacy boolean type: ' . $table->getName() . '.' . $name . ' (' . $type . ')');
                 }
                 $field = $quote($name);
                 $relation = $quote($table->getName());
@@ -48,11 +49,11 @@ final class Booleans
                 if ($invalid) {
                     $id = $table->hasColumn('id') ? $quote('id') : $field;
                     $sample = $connection->fetchAllAssociative('SELECT ' . $id . ', ' . $field . ' FROM ' . $relation . ' WHERE ' . $field . ' NOT IN (0, 1) LIMIT 5');
-                    throw new \RuntimeException('Invalid legacy boolean: ' . $table->getName() . '.' . $name . ' (' . $invalid . ' rows); samples: ' . json_encode($sample, JSON_THROW_ON_ERROR));
+                    throw new RuntimeException('Invalid legacy boolean: ' . $table->getName() . '.' . $name . ' (' . $invalid . ' rows); samples: ' . json_encode($sample, JSON_THROW_ON_ERROR));
                 }
                 $default = $installed->getDefault();
                 if (!in_array($default, [null, 0, 1, '0', '1', false, true], true)) {
-                    throw new \RuntimeException('Invalid legacy boolean default: ' . $table->getName() . '.' . $name);
+                    throw new RuntimeException('Invalid legacy boolean default: ' . $table->getName() . '.' . $name);
                 }
                 $sql[] = 'ALTER TABLE ' . $relation . ' ALTER COLUMN ' . $field . ' DROP DEFAULT, ALTER COLUMN ' . $field
                     . ' TYPE BOOLEAN USING (' . $field . ' = 1)'

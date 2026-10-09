@@ -8,6 +8,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
+use RuntimeException;
 
 /** Preserve shared defaults' unique identity when their absent owner becomes NULL. */
 final class SharedOwnerUniqueness
@@ -32,7 +33,7 @@ final class SharedOwnerUniqueness
                 return;
             }
             if (!$index->isUnique() || $existing !== $definition['columns']) {
-                throw new \RuntimeException('Unexpected shared owner uniqueness definition: ' . $table->getName());
+                throw new RuntimeException('Unexpected shared owner uniqueness definition: ' . $table->getName());
             }
             $table->dropIndex($name);
         }
@@ -48,7 +49,7 @@ final class SharedOwnerUniqueness
         $notNull = array_map(static fn ($column) => $quote($column) . ' IS NOT NULL', array_filter($definition['columns'], static fn ($column) => $column !== 'users_id'));
         $group = implode(', ', $columns);
         if ($connection->fetchOne('SELECT COUNT(*) FROM (SELECT ' . $group . ' FROM ' . $quote($table) . ' WHERE ' . implode(' AND ', $notNull) . ' GROUP BY ' . $group . ' HAVING COUNT(*) > 1) duplicates')) {
-            throw new \RuntimeException('Duplicate ' . $definition['label'] . '; reconcile them before migration.');
+            throw new RuntimeException('Duplicate ' . $definition['label'] . '; reconcile them before migration.');
         }
         $manager = $connection->createSchemaManager();
         $before = $manager->introspectTable($table);

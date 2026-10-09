@@ -8,6 +8,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Schema\Table;
+use RuntimeException;
 
 /** Frozen software assignment policy; runtime ownership remains entity-local. */
 abstract class SoftwareAssignmentSubjects extends StagedTypedItemMigration
@@ -98,7 +99,7 @@ abstract class SoftwareAssignmentSubjects extends StagedTypedItemMigration
                             && !($subjectRecursive && $ancestor($owner, $peer))) {
                             $reason = 'Assignment ends are outside the public relation entity scope';
                         }
-                    } catch (\RuntimeException $error) {
+                    } catch (RuntimeException $error) {
                         $reason = $error->getMessage();
                     }
                 }
@@ -112,7 +113,7 @@ abstract class SoftwareAssignmentSubjects extends StagedTypedItemMigration
             }
         }
         if ($invalid) {
-            throw new \RuntimeException('Invalid software assignment ownership: ' . $this->table() . ' (' . $invalid . '); samples: '
+            throw new RuntimeException('Invalid software assignment ownership: ' . $this->table() . ' (' . $invalid . '); samples: '
                 . json_encode($samples, JSON_THROW_ON_ERROR) . '. Resolve these rows in the source application before adoption; no source row was changed.');
         }
         return $plan;
@@ -133,7 +134,7 @@ abstract class SoftwareAssignmentSubjects extends StagedTypedItemMigration
     private static function boolean(mixed $value): bool
     {
         if (!in_array($value, [false, true, 0, 1, '0', '1'], true)) {
-            throw new \RuntimeException('Software assignment ownership requires actual zero/one recursive flags.');
+            throw new RuntimeException('Software assignment ownership requires actual zero/one recursive flags.');
         }
         return (bool)$value;
     }

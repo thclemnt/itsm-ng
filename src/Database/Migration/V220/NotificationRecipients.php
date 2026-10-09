@@ -9,6 +9,7 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use Doctrine\DBAL\Schema\Table;
 use itsmng\Database\MySQLGeneratedColumnInspection;
+use RuntimeException;
 
 /** Frozen upgrade: recipient constants remain payloads; profile/group kinds select real rows. */
 final class NotificationRecipients
@@ -60,7 +61,7 @@ final class NotificationRecipients
         $before = $manager->introspectTable('glpi_notificationtargets');
         $hasKey = $before->hasColumn('items_id');
         if (!$hasKey && (!$before->hasColumn('groups_id') || !$before->hasColumn('profiles_id') || !$before->hasColumn('recipient_code'))) {
-            throw new \RuntimeException('Missing notification identity without recoverable canonical columns');
+            throw new RuntimeException('Missing notification identity without recoverable canonical columns');
         }
         $platform = $connection->getDatabasePlatform();
         $postgres = $platform instanceof PostgreSQLPlatform;
@@ -73,26 +74,26 @@ final class NotificationRecipients
             . ' LEFT JOIN glpi_groups g ON g.id = ' . $identity . ' LEFT JOIN glpi_profiles p ON p.id = ' . $identity
             . ' WHERE (r.type IN (3, 5, 6) AND (' . $identity . ' IS NULL OR ' . $identity . ' <= 0 OR g.id IS NULL)) OR (r.type = 2 AND (' . $identity . ' IS NULL OR ' . $identity . ' <= 0 OR p.id IS NULL))');
         if ($invalid) {
-            throw new \RuntimeException('Invalid legacy notification group/profile recipients: ' . $invalid);
+            throw new RuntimeException('Invalid legacy notification group/profile recipients: ' . $invalid);
         }
         foreach (['groups_id' => '3, 5, 6', 'profiles_id' => '2'] as $column => $kinds) {
             if ($before->hasColumn($column)) {
                 $invalid = (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_notificationtargets r WHERE r.' . $column
                     . ' IS NOT NULL AND (r.type NOT IN (' . $kinds . ') OR r.' . $column . ' <> ' . $identity . ')');
                 if ($invalid) {
-                    throw new \RuntimeException('Canonical and legacy notification recipients disagree: ' . $column);
+                    throw new RuntimeException('Canonical and legacy notification recipients disagree: ' . $column);
                 }
             }
         }
         if ($generated || !$hasKey) {
             $invalid = (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_notificationtargets WHERE NOT (' . self::validRecipientSql() . ')');
             if ($invalid) {
-                throw new \RuntimeException('Invalid canonical notification recipients: ' . $invalid);
+                throw new RuntimeException('Invalid canonical notification recipients: ' . $invalid);
             }
         } elseif ($before->hasColumn('recipient_code')) {
             $invalid = (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_notificationtargets WHERE recipient_code IS NOT NULL AND recipient_code <> 0 AND (type IN (2, 3, 5, 6) OR recipient_code <> items_id)');
             if ($invalid) {
-                throw new \RuntimeException('Canonical and legacy notification recipient codes disagree');
+                throw new RuntimeException('Canonical and legacy notification recipient codes disagree');
             }
         }
         $after = clone $before;
@@ -141,7 +142,7 @@ final class NotificationRecipients
                 if ($existing->getLocalColumns() !== $foreign->getLocalColumns() || $existing->getForeignTableName() !== $foreign->getForeignTableName()
                     || $existing->getForeignColumns() !== ['id'] || !in_array($existing->onDelete(), [null, 'RESTRICT', 'NO ACTION'], true)
                     || !in_array($existing->onUpdate(), [null, 'RESTRICT', 'NO ACTION'], true)) {
-                    throw new \RuntimeException('Existing notification recipient FK has a different definition');
+                    throw new RuntimeException('Existing notification recipient FK has a different definition');
                 }
             }
         }
@@ -155,7 +156,7 @@ final class NotificationRecipients
         $plan = $this->plan($connection);
         $postgres = $connection->getDatabasePlatform() instanceof PostgreSQLPlatform;
         if (($plan['sql'] || $plan['key_sql'] || $plan['constraint_sql']) && !$postgres && $connection->isTransactionActive()) {
-            throw new \RuntimeException('MySQL notification-recipient DDL must run outside an application transaction');
+            throw new RuntimeException('MySQL notification-recipient DDL must run outside an application transaction');
         }
         $apply = static function () use ($connection, $plan): array {
             foreach ($plan['sql'] as $statement) {

@@ -8,6 +8,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use Doctrine\DBAL\Schema\Table;
+use RuntimeException;
 
 /** Qualified actual FK graph for one read-only identifier planning operation. */
 final class NativeIdentifierForeignKeys
@@ -20,7 +21,7 @@ final class NativeIdentifierForeignKeys
         $postgres = $connection->getDatabasePlatform() instanceof PostgreSQLPlatform;
         $this->namespace = (string)$connection->fetchOne($postgres ? 'SELECT current_schema()' : 'SELECT DATABASE()');
         if ($this->namespace === '') {
-            throw new \RuntimeException('Identifier adoption requires an actual configured namespace.');
+            throw new RuntimeException('Identifier adoption requires an actual configured namespace.');
         }
         if ($postgres) {
             $rows = $connection->fetchAllAssociative("SELECT ln.nspname AS local_schema, lt.relname AS local_table, f.conname AS constraint_name,
@@ -50,14 +51,14 @@ final class NativeIdentifierForeignKeys
                 FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=? OR UNIQUE_CONSTRAINT_SCHEMA=?', [$this->namespace, $this->namespace]) as $action) {
                 $key = self::key($action);
                 if (isset($actions[$key])) {
-                    throw new \RuntimeException('Ambiguous native identifier foreign key actions: ' . $key);
+                    throw new RuntimeException('Ambiguous native identifier foreign key actions: ' . $key);
                 }
                 $actions[$key] = $action;
             }
             foreach ($rows as &$row) {
                 $action = $actions[self::key($row)] ?? null;
                 if ($action === null || $action['target_schema'] !== $row['target_schema'] || $action['target_table'] !== $row['target_table']) {
-                    throw new \RuntimeException('Native identifier foreign key target/actions disagree: ' . self::key($row));
+                    throw new RuntimeException('Native identifier foreign key target/actions disagree: ' . self::key($row));
                 }
                 $row += $action;
             }
@@ -67,11 +68,11 @@ final class NativeIdentifierForeignKeys
             $key = self::key($row);
             $position = (int)$row['position'];
             if ($position !== count($this->constraints[$key]['columns'] ?? []) + 1) {
-                throw new \RuntimeException('Incomplete native identifier foreign key ordinals: ' . $key);
+                throw new RuntimeException('Incomplete native identifier foreign key ordinals: ' . $key);
             }
             $identity = array_diff_key($row, array_flip(['position', 'local_column', 'target_column']));
             if (isset($this->constraints[$key]) && $this->constraints[$key]['identity'] !== $identity) {
-                throw new \RuntimeException('Inconsistent native identifier foreign key identity: ' . $key);
+                throw new RuntimeException('Inconsistent native identifier foreign key identity: ' . $key);
             }
             $this->constraints[$key]['identity'] = $identity;
             $this->constraints[$key]['columns'][] = [$row['local_column'], $row['target_column']];
@@ -125,7 +126,7 @@ final class NativeIdentifierForeignKeys
         $constraint = $this->constraints[$key] ?? null;
         if ($constraint === null || array_column($constraint['columns'], 0) !== $foreign->getUnquotedLocalColumns()
             || array_column($constraint['columns'], 1) !== $foreign->getUnquotedForeignColumns()) {
-            throw new \RuntimeException('Native/portable identifier foreign key columns disagree: ' . $key);
+            throw new RuntimeException('Native/portable identifier foreign key columns disagree: ' . $key);
         }
         return $constraint['identity']['target_schema'] === $this->namespace ? $constraint['identity']['target_table'] : null;
     }
@@ -134,7 +135,7 @@ final class NativeIdentifierForeignKeys
     public function restorationSql(Table $table, ForeignKeyConstraint $foreign): string
     {
         if ($this->ownedTarget($table, $foreign) === null) {
-            throw new \RuntimeException('External identifier foreign key cannot be reconstructed.');
+            throw new RuntimeException('External identifier foreign key cannot be reconstructed.');
         }
         $platform = $this->connection->getDatabasePlatform();
         if (!$platform instanceof PostgreSQLPlatform) {
@@ -159,7 +160,7 @@ final class NativeIdentifierForeignKeys
         foreach ($widen as $name => $_) {
             $table = $tables[$name] ?? null;
             if ($table !== null && ($table->getNamespaceName() ?? $this->namespace) !== $this->namespace) {
-                throw new \RuntimeException('Identifier adoption cannot change a table outside its configured namespace: ' . $name);
+                throw new RuntimeException('Identifier adoption cannot change a table outside its configured namespace: ' . $name);
             }
         }
         foreach ($this->constraints as $constraint) {
@@ -190,7 +191,7 @@ final class NativeIdentifierForeignKeys
                     || (bool)array_intersect($target, array_column($generated[$table] ?? [], 'column_name'));
             }
             if ($affected) {
-                throw new \RuntimeException('Identifier adoption cannot change a foreign key outside its configured namespace: '
+                throw new RuntimeException('Identifier adoption cannot change a foreign key outside its configured namespace: '
                     . json_encode(['owner' => [$identity['local_schema'], $identity['local_table'], $identity['constraint_name']],
                         'columns' => $constraint['columns'], 'target' => [$identity['target_schema'], $identity['target_table']]], JSON_THROW_ON_ERROR));
             }

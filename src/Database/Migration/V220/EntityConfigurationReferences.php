@@ -8,6 +8,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Types\Types;
+use RuntimeException;
 
 /** Split inheritance policy from selected IDs with writers stopped during upgrade. */
 final class EntityConfigurationReferences
@@ -52,11 +53,11 @@ final class EntityConfigurationReferences
             $present = $definition['empty_zero'] ? '> 0' : '>= 0';
             $sentinels = $definition['empty_zero'] ? '-2' : '-2, -10';
             if ($definition['empty_zero'] && $connection->fetchOne('SELECT COUNT(*) FROM ' . $quote($definition['target']) . ' WHERE id = 0')) {
-                throw new \RuntimeException('Empty entity setting is a real target identifier: ' . $column);
+                throw new RuntimeException('Empty entity setting is a real target identifier: ' . $column);
             }
             $invalid = $connection->fetchOne('SELECT COUNT(*) FROM glpi_entities e LEFT JOIN ' . $quote($definition['target']) . " p ON e.$field = p.id WHERE (e.$field < 0 AND e.$field NOT IN ($sentinels)) OR (e.$field $present AND p.id IS NULL)");
             if ($invalid) {
-                throw new \RuntimeException('Invalid entity configuration reference: ' . $column . ' (' . $invalid . ')');
+                throw new RuntimeException('Invalid entity configuration reference: ' . $column . ' (' . $invalid . ')');
             }
             $checked = in_array(self::checkName($column), $existing, true);
             if ($before->hasColumn($definition['mode'])) {
@@ -70,7 +71,7 @@ final class EntityConfigurationReferences
                     $policy .= " OR ($mode <> 'explicit' AND $field IS NOT NULL)";
                 }
                 if ($connection->fetchOne('SELECT COUNT(*) FROM glpi_entities WHERE ' . $policy)) {
-                    throw new \RuntimeException('Invalid entity configuration mode: ' . $column);
+                    throw new RuntimeException('Invalid entity configuration mode: ' . $column);
                 }
             }
             $counts[$column] = [
@@ -93,7 +94,7 @@ final class EntityConfigurationReferences
         $plan = $this->plan($connection);
         $postgres = $connection->getDatabasePlatform() instanceof PostgreSQLPlatform;
         if (($plan['sql'] || $plan['check_sql']) && !$postgres && $connection->isTransactionActive()) {
-            throw new \RuntimeException('MySQL entity configuration DDL must run outside an application transaction');
+            throw new RuntimeException('MySQL entity configuration DDL must run outside an application transaction');
         }
         $apply = static function () use ($connection, $plan): array {
             foreach ($plan['sql'] as $statement) {

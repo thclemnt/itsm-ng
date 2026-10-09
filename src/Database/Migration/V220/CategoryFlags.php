@@ -12,6 +12,7 @@ use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use itsmng\Database\BooleanCheckExpression;
 use itsmng\Database\Migration\Ledger;
+use RuntimeException;
 
 /** Frozen category flags; current entity metadata cannot rewrite this upgrade. */
 final class CategoryFlags
@@ -56,21 +57,21 @@ final class CategoryFlags
             }
         }
         foreach (self::COLUMNS as $name) {
-            $column = $columns[$name] ?? throw new \RuntimeException('Missing category flag: glpi_itilcategories.' . $name);
+            $column = $columns[$name] ?? throw new RuntimeException('Missing category flag: glpi_itilcategories.' . $name);
             $type = Type::lookupName($column->getType());
             if (!in_array($type, [Types::BOOLEAN, Types::SMALLINT, Types::INTEGER, Types::BIGINT], true)) {
-                throw new \RuntimeException('Unsupported category flag type: glpi_itilcategories.' . $name . ' (' . $type . ')');
+                throw new RuntimeException('Unsupported category flag type: glpi_itilcategories.' . $name . ' (' . $type . ')');
             }
             $field = $platform->quoteIdentifier($name);
             $invalid = $field . ' IS NULL' . ($postgres && $type === Types::BOOLEAN ? '' : ' OR ' . $field . ' NOT IN (0, 1)');
             $count = (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_itilcategories WHERE ' . $invalid);
             if ($count > 0) {
                 $samples = $connection->fetchAllAssociative('SELECT id, ' . $field . ' FROM glpi_itilcategories WHERE ' . $invalid . ' ORDER BY id LIMIT 5');
-                throw new \RuntimeException('Invalid category flag: glpi_itilcategories.' . $name . ' (' . $count . ' rows); samples: ' . json_encode($samples, JSON_THROW_ON_ERROR));
+                throw new RuntimeException('Invalid category flag: glpi_itilcategories.' . $name . ' (' . $count . ' rows); samples: ' . json_encode($samples, JSON_THROW_ON_ERROR));
             }
             $default = $column->getDefault();
             if (!in_array($default, [null, 0, 1, '0', '1', false, true], true)) {
-                throw new \RuntimeException('Invalid category flag default: glpi_itilcategories.' . $name);
+                throw new RuntimeException('Invalid category flag default: glpi_itilcategories.' . $name);
             }
             if ($postgres) {
                 if ($type !== Types::BOOLEAN) {
@@ -93,13 +94,13 @@ final class CategoryFlags
                 if (isset($checks[$constraint])) {
                     $check = $checks[$constraint];
                     if (!BooleanCheckExpression::matches($check['clause'], $name, false, $ansiQuotes)) {
-                        throw new \RuntimeException('Conflicting category flag constraint: ' . $constraint);
+                        throw new RuntimeException('Conflicting category flag constraint: ' . $constraint);
                     }
                     if ($platform instanceof MySQLPlatform) {
                         if ($check['enforced'] === 'NO') {
                             $sql[] = 'ALTER TABLE glpi_itilcategories ALTER CHECK ' . $platform->quoteIdentifier($constraint) . ' ENFORCED';
                         } elseif ($check['enforced'] !== 'YES') {
-                            throw new \RuntimeException('Cannot establish category flag enforcement: ' . $constraint);
+                            throw new RuntimeException('Cannot establish category flag enforcement: ' . $constraint);
                         }
                     }
                 } else {
@@ -117,7 +118,7 @@ final class CategoryFlags
         }
         $postgres = $connection->getDatabasePlatform() instanceof PostgreSQLPlatform;
         if (!$postgres && $connection->isTransactionActive()) {
-            throw new \RuntimeException('MySQL category flag migration must run outside an application transaction.');
+            throw new RuntimeException('MySQL category flag migration must run outside an application transaction.');
         }
         $sql = $this->plan($connection);
         $apply = static function () use ($connection, $progress, $sql): void {

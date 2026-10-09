@@ -5,6 +5,7 @@
 namespace itsmng\Database\Migration\V220;
 
 use Doctrine\DBAL\Connection;
+use RuntimeException;
 
 /** Idempotent data migration; existing nullable column definitions stay unchanged. */
 final class NormalizeOptionalReferences
@@ -18,14 +19,14 @@ final class NormalizeOptionalReferences
             $columns = $manager->listTableColumns($table);
             foreach ($relations as $column => $target) {
                 if ($columns[$column]->getNotnull()) {
-                    throw new \RuntimeException('Expected a nullable optional reference: ' . $table . '.' . $column);
+                    throw new RuntimeException('Expected a nullable optional reference: ' . $table . '.' . $column);
                 }
                 if ($connection->fetchOne('SELECT COUNT(*) FROM ' . $quote($target) . ' WHERE id = 0')) {
-                    throw new \RuntimeException('Zero is a real model identifier; resolve it before normalization: ' . $target);
+                    throw new RuntimeException('Zero is a real model identifier; resolve it before normalization: ' . $target);
                 }
                 $orphans = $connection->fetchOne('SELECT COUNT(*) FROM ' . $quote($table) . ' c LEFT JOIN ' . $quote($target) . ' p ON c.' . $quote($column) . ' = p.id WHERE c.' . $quote($column) . ' IS NOT NULL AND c.' . $quote($column) . ' <> 0 AND p.id IS NULL');
                 if ($orphans) {
-                    throw new \RuntimeException('Nonzero orphaned references require correction before normalization: ' . $table . '.' . $column . ' (' . $orphans . ')');
+                    throw new RuntimeException('Nonzero orphaned references require correction before normalization: ' . $table . '.' . $column . ' (' . $orphans . ')');
                 }
                 $count = (int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $quote($table) . ' WHERE ' . $quote($column) . ' = 0');
                 if ($count) {

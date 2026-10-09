@@ -8,6 +8,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Schema\Table;
+use RuntimeException;
 
 /** Frozen upgrade from a serialized selection to ordered, FK-backed memberships. */
 final class NetworkPortAggregateOrigins
@@ -42,11 +43,11 @@ final class NetworkPortAggregateOrigins
             $values = [];
             foreach (explode(' ', trim($value)) as $pair) {
                 if (!str_contains($pair, '=>')) {
-                    throw new \RuntimeException('Malformed legacy aggregate origin list');
+                    throw new RuntimeException('Malformed legacy aggregate origin list');
                 }
                 [$key, $id] = explode('=>', $pair, 2);
                 if ($key === '') {
-                    throw new \RuntimeException('Malformed legacy aggregate origin key');
+                    throw new RuntimeException('Malformed legacy aggregate origin key');
                 }
                 $values[] = urldecode($id);
             }
@@ -54,7 +55,7 @@ final class NetworkPortAggregateOrigins
         $ids = [];
         foreach ($values as $id) {
             if (filter_var($id, FILTER_VALIDATE_INT) === false || (int)$id <= 0) {
-                throw new \RuntimeException('Invalid legacy aggregate origin ID');
+                throw new RuntimeException('Invalid legacy aggregate origin ID');
             }
             $ids[(int)$id] = (int)$id;
         }
@@ -68,7 +69,7 @@ final class NetworkPortAggregateOrigins
         $hasList = $legacy->hasColumn('networkports_id_list');
         $exists = $manager->tablesExist([self::TABLE]);
         if (!$hasList && !$exists) {
-            throw new \RuntimeException('Aggregate origin storage is missing');
+            throw new RuntimeException('Aggregate origin storage is missing');
         }
         $rows = [];
         if ($hasList) {
@@ -76,13 +77,13 @@ final class NetworkPortAggregateOrigins
                 $ids = self::decode($row['networkports_id_list']);
                 foreach ($ids as $id) {
                     if (!$connection->fetchOne('SELECT id FROM glpi_networkports WHERE id = ?', [$id])) {
-                        throw new \RuntimeException('Orphaned legacy aggregate origin: ' . $id);
+                        throw new RuntimeException('Orphaned legacy aggregate origin: ' . $id);
                     }
                 }
                 if ($exists) {
                     $actual = array_map('intval', $connection->fetchFirstColumn('SELECT networkports_id FROM ' . self::TABLE . ' WHERE networkportaggregates_id = ? ORDER BY position, id', [$row['id']]));
                     if ($actual && $actual !== $ids) {
-                        throw new \RuntimeException('Canonical and legacy aggregate origins disagree');
+                        throw new RuntimeException('Canonical and legacy aggregate origins disagree');
                     }
                 }
                 $rows[(int)$row['id']] = $ids;
@@ -105,7 +106,7 @@ final class NetworkPortAggregateOrigins
                 if ($found->getForeignTableName() !== $key->getForeignTableName() || $found->getLocalColumns() !== $key->getLocalColumns()
                     || $found->getForeignColumns() !== ['id'] || !in_array($found->onDelete(), [null, 'RESTRICT', 'NO ACTION'], true)
                     || !in_array($found->onUpdate(), [null, 'RESTRICT', 'NO ACTION'], true)) {
-                    throw new \RuntimeException('Aggregate membership table has incompatible foreign keys');
+                    throw new RuntimeException('Aggregate membership table has incompatible foreign keys');
                 }
             }
             foreach ($table->getIndexes() as $index) {
@@ -116,14 +117,14 @@ final class NetworkPortAggregateOrigins
                 $matches = array_filter($actual->getIndexes(), static fn ($found): bool => $found->isUnique()
                     && array_map(static fn (string $column): string => trim($column, '`"'), $found->getColumns()) === $columns);
                 if (!$matches) {
-                    throw new \RuntimeException('Aggregate membership table lacks its identity/uniqueness constraint');
+                    throw new RuntimeException('Aggregate membership table lacks its identity/uniqueness constraint');
                 }
             }
             if ($connection->fetchOne('SELECT COUNT(*) FROM ' . self::TABLE . ' o LEFT JOIN glpi_networkports p ON p.id = o.networkports_id LEFT JOIN glpi_networkportaggregates a ON a.id = o.networkportaggregates_id WHERE p.id IS NULL OR a.id IS NULL')) {
-                throw new \RuntimeException('Orphaned canonical aggregate origins');
+                throw new RuntimeException('Orphaned canonical aggregate origins');
             }
             if ($connection->fetchOne('SELECT COUNT(*) FROM ' . self::TABLE . ' WHERE networkports_id <= 0 OR position < 0')) {
-                throw new \RuntimeException('Invalid canonical aggregate origin or position');
+                throw new RuntimeException('Invalid canonical aggregate origin or position');
             }
         }
         $after = clone $legacy;
@@ -139,7 +140,7 @@ final class NetworkPortAggregateOrigins
         $plan = $this->plan($connection);
         $postgres = $connection->getDatabasePlatform() instanceof PostgreSQLPlatform;
         if (($plan['create_sql'] || $plan['constraint_sql'] || $plan['drop_sql']) && !$postgres && $connection->isTransactionActive()) {
-            throw new \RuntimeException('MySQL aggregate origin DDL must run outside an application transaction');
+            throw new RuntimeException('MySQL aggregate origin DDL must run outside an application transaction');
         }
         $apply = static function () use ($connection, $plan): array {
             foreach ($plan['create_sql'] as $statement) {

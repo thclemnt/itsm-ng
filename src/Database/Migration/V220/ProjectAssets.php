@@ -8,6 +8,7 @@ use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use itsmng\Database\Migration\Ledger;
+use RuntimeException;
 
 /** Frozen 20261003 project asset upgrade; container and Project subject have separate ownership. */
 final class ProjectAssets extends TypedItemMigration
@@ -24,7 +25,7 @@ final class ProjectAssets extends TypedItemMigration
         $unsupported = $connection->fetchAllAssociative('SELECT id, itemtype, ' . $identity
             . ' FROM glpi_items_projects WHERE itemtype IS NOT NULL AND itemtype NOT IN (?) LIMIT 5', [array_keys(self::targets())], [ArrayParameterType::STRING]);
         if ($unsupported) {
-            throw new \RuntimeException('Unsupported project asset kinds in glpi_items_projects; samples: ' . json_encode($unsupported, JSON_THROW_ON_ERROR)
+            throw new RuntimeException('Unsupported project asset kinds in glpi_items_projects; samples: ' . json_encode($unsupported, JSON_THROW_ON_ERROR)
                 . '. Resolve these links before adoption. Legacy appliance plugin import requires a compatible historical application and legacy MySQL schema before switching to modernized source and db:migrate. The canonical ORM importer requires completed migration history and cannot bypass this legacy-data preflight.');
         }
         $entry = parent::plan($connection, $incomingReferences)['glpi_items_projects'];
@@ -45,7 +46,7 @@ final class ProjectAssets extends TypedItemMigration
         }
         $postgres = $connection->getDatabasePlatform() instanceof PostgreSQLPlatform;
         if (!$postgres && $connection->isTransactionActive()) {
-            throw new \RuntimeException('MySQL project asset adoption must run outside an application transaction.');
+            throw new RuntimeException('MySQL project asset adoption must run outside an application transaction.');
         }
         $apply = function () use ($connection, $progress, $plan): array {
             $state = Ledger::state($connection, self::PHASE);

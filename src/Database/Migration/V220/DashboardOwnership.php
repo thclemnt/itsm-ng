@@ -8,6 +8,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
+use RuntimeException;
 
 final class DashboardOwnership
 {
@@ -18,7 +19,7 @@ final class DashboardOwnership
         $primary = array_map(static fn ($column) => trim($column, '`"'), $table->getPrimaryKey()->getColumns());
         if ($primary !== ['id']) {
             if ($primary !== ['profileId', 'userId']) {
-                throw new \RuntimeException('Unexpected dashboard primary key');
+                throw new RuntimeException('Unexpected dashboard primary key');
             }
             $table->dropPrimaryKey();
             $table->setPrimaryKey(['id']);
@@ -33,7 +34,7 @@ final class DashboardOwnership
         if (!$table->hasIndex('dashboard_owners')) {
             $table->addUniqueIndex(array_keys(self::KEYS), 'dashboard_owners');
         } elseif (!$table->getIndex('dashboard_owners')->isUnique() || $table->getIndex('dashboard_owners')->getColumns() !== array_keys(self::KEYS)) {
-            throw new \RuntimeException('Unexpected dashboard owner uniqueness definition');
+            throw new RuntimeException('Unexpected dashboard owner uniqueness definition');
         }
     }
 
@@ -44,7 +45,7 @@ final class DashboardOwnership
         $quote = $platform->quoteIdentifier(...);
         $keys = implode(', ', array_map(static fn ($column) => 'COALESCE(' . $quote($column) . ', 0)', self::KEYS));
         if ($connection->fetchOne('SELECT COUNT(*) FROM (SELECT ' . $keys . ' FROM glpi_dashboards GROUP BY ' . $keys . ' HAVING COUNT(*) > 1) duplicates')) {
-            throw new \RuntimeException('Duplicate normalized dashboard owners');
+            throw new RuntimeException('Duplicate normalized dashboard owners');
         }
         $manager = $connection->createSchemaManager();
         $before = $manager->introspectTable('glpi_dashboards');
@@ -65,7 +66,7 @@ final class DashboardOwnership
     {
         $plan = $this->plan($connection);
         if ($plan['sql'] && $connection->isTransactionActive() && !$connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
-            throw new \RuntimeException('MySQL dashboard DDL must run outside an application transaction.');
+            throw new RuntimeException('MySQL dashboard DDL must run outside an application transaction.');
         }
         $apply = static function () use ($connection, $plan): array {
             foreach ($plan['sql'] as $sql) {

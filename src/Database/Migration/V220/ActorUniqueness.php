@@ -8,6 +8,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
+use RuntimeException;
 
 /** One named actor, or one anonymous email, per parent and role. */
 final class ActorUniqueness
@@ -57,7 +58,7 @@ final class ActorUniqueness
                 $legacy[] = 'alternative_email';
             }
             if (!$index->isUnique() || $existing !== $legacy) {
-                throw new \RuntimeException('Unexpected actor uniqueness definition: ' . $name);
+                throw new RuntimeException('Unexpected actor uniqueness definition: ' . $name);
             }
             $table->dropIndex($indexName);
         }
@@ -72,7 +73,7 @@ final class ActorUniqueness
         foreach (self::TABLES as $table => [$parent, $actor]) {
             $duplicates = $connection->fetchOne('SELECT COUNT(*) FROM (SELECT 1 FROM ' . $table . ' GROUP BY ' . $parent . ', type, COALESCE(' . $actor . ', 0), ' . self::emailExpression($actor) . ' HAVING COUNT(*) > 1) duplicates');
             if ($duplicates) {
-                throw new \RuntimeException('Duplicate ITIL actors: ' . $table);
+                throw new RuntimeException('Duplicate ITIL actors: ' . $table);
             }
             $before = $manager->introspectTable($table);
             $after = clone $before;
