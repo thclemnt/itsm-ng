@@ -2006,7 +2006,7 @@ class User extends DbTestCase
     /**
      * @dataProvider prepareInputForUpdatePasswordProvider
      */
-    public function testPrepareInputForUpdatePassword(array $input, $expected, array $messages = null)
+    public function testPrepareInputForUpdatePassword(array $input, $expected, ?array $messages = null)
     {
         $this->login();
         $user = $this->newTestedInstance();
