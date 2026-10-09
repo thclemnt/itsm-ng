@@ -103,6 +103,75 @@ SQL;
            ->then
               ->boolean($this->testedInstance->tableExists('glpi_configs'))->isTrue()
               ->boolean($this->testedInstance->tableExists('fakeTable'))->isFalse();
+
+        $hadTimezone = array_key_exists('glpi_tz', $_SESSION);
+        $timezone = $_SESSION['glpi_tz'] ?? null;
+        $probe = null;
+        $created = false;
+        try {
+            unset($_SESSION['glpi_tz']);
+            $probe = new class () extends LegacyDB {
+                public array $tableScans = [];
+
+                public function listTables($table = 'glpi\\_%', array $where = [])
+                {
+                    $this->tableScans[] = $table;
+                    return parent::listTables($table, $where);
+                }
+            };
+            $this->boolean($probe->connected)->isTrue();
+            $this->array($probe->tableScans)->isIdenticalTo(['glpi_configs']);
+            $probe->tableScans = [];
+            $this->boolean($probe->tableExists('glpi_configs'))->isTrue();
+            $this->array($probe->tableScans)->isEmpty('The targeted bootstrap result remains positively cached');
+
+            $probe->clearSchemaCache();
+            $this->boolean($probe->tableExists('glpi_configs', false))->isTrue();
+            $this->array($probe->tableScans)->isIdenticalTo(['glpi_configs']);
+            $this->boolean($probe->tableExists('glpi_configs'))->isTrue();
+            $this->array($probe->tableScans)->isIdenticalTo(['glpi_configs']);
+            $this->boolean($probe->tableExists('fakeTable', false))->isFalse();
+            $this->array($probe->tableScans)->isIdenticalTo(['glpi_configs', 'fakeTable']);
+
+            $probe->clearSchemaCache();
+            $probe->tableScans = [];
+            $this->boolean($probe->tableExists('glpi_configs'))->isTrue();
+            $this->array($probe->tableScans)->isIdenticalTo(['glpi\\_%']);
+            $probe->tableScans = [];
+            $this->boolean($probe->tableExists('glpi_configs'))->isTrue();
+            $this->array($probe->tableScans)->isEmpty();
+
+            $table = 'glpi_timezone_probe_' . bin2hex(random_bytes(4));
+            $native = $probe->getDoctrineConnection();
+            $quoted = $native->quoteIdentifier($table);
+            $this->boolean($probe->tableExists($table, false))->isFalse();
+            $native->executeStatement('CREATE TABLE ' . $quoted . ' (id INTEGER NOT NULL)');
+            $created = true;
+            $this->boolean($probe->tableExists($table, false))->isTrue();
+            $native->executeStatement('DROP TABLE ' . $quoted);
+            $created = false;
+            $this->boolean($probe->tableExists($table))->isTrue('The positive cache remains intact');
+            $this->boolean($probe->tableExists($table, false))->isFalse('Forced lookup sees the fresh catalog');
+            $probe->tableScans = [];
+
+            $_SESSION['glpi_tz'] = 'Pacific/Auckland';
+            $this->string($probe->guessTimezone())->isIdenticalTo('Pacific/Auckland');
+            $this->array($probe->tableScans)->isEmpty('A session timezone needs no catalog read');
+            $probe->disableTableCaching();
+            $this->boolean($probe->tableExists('glpi_configs'))->isTrue();
+            $this->boolean($probe->tableExists('glpi_configs'))->isTrue();
+            $this->array($probe->tableScans)->isIdenticalTo(['glpi_configs', 'glpi_configs']);
+        } finally {
+            if ($created) {
+                $native->executeStatement('DROP TABLE ' . $quoted);
+            }
+            $probe?->close();
+            if ($hadTimezone) {
+                $_SESSION['glpi_tz'] = $timezone;
+            } else {
+                unset($_SESSION['glpi_tz']);
+            }
+        }
     }
 
     public function testFieldExists()
