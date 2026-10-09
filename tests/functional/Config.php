@@ -535,22 +535,22 @@ class Config extends DbTestCase
 
     public function testGetTypeName()
     {
-        $this->string(\Config::getTypeName())->isIdenticalTo('Setup');
+        $this->string(ConfigModel::getTypeName())->isIdenticalTo('Setup');
     }
 
     public function testAcls()
     {
         //check ACLs when not logged
-        $this->boolean(\Config::canView())->isFalse();
-        $this->boolean(\Config::canCreate())->isFalse();
+        $this->boolean(ConfigModel::canView())->isFalse();
+        $this->boolean(ConfigModel::canCreate())->isFalse();
 
-        $conf = new \Config();
+        $conf = new ConfigModel();
         $this->boolean($conf->canViewItem())->isFalse();
 
         //check ACLs from superadmin profile
         $this->login();
-        $this->boolean((bool)\Config::canView())->isTrue();
-        $this->boolean(\Config::canCreate())->isFalse();
+        $this->boolean((bool)ConfigModel::canView())->isTrue();
+        $this->boolean(ConfigModel::canCreate())->isFalse();
         $this->boolean($conf->canViewItem())->isFalse();
 
         $this->boolean($conf->getFromDB(1))->isTrue();
@@ -559,17 +559,17 @@ class Config extends DbTestCase
         //check ACLs from tech profile
         $auth = new \Auth();
         $this->boolean((bool)$auth->login('tech', 'tech', true))->isTrue();
-        $this->boolean((bool)\Config::canView())->isFalse();
-        $this->boolean(\Config::canCreate())->isFalse();
+        $this->boolean((bool)ConfigModel::canView())->isFalse();
+        $this->boolean(ConfigModel::canCreate())->isFalse();
         $this->boolean($conf->canViewItem())->isTrue();
     }
 
     public function testGetMenuContent()
     {
-        $this->boolean(\Config::getMenuContent())->isFalse();
+        $this->boolean(ConfigModel::getMenuContent())->isFalse();
 
         $this->login();
-        $this->array(\Config::getMenuContent())
+        $this->array(ConfigModel::getMenuContent())
            ->hasSize(4)
            ->hasKeys(['title', 'page', 'options', 'icon']);
     }
@@ -637,7 +637,7 @@ class Config extends DbTestCase
 
         // The actual default-values form stores configuration during preparation
         // and deliberately returns false to stop the outer record update.
-        $config = new \Config();
+        $config = new ConfigModel();
         $this->boolean($config->prepareInputForUpdate([
             'id' => $setting[0]['id'],
             'is_ids_visible' => 1,
@@ -698,7 +698,7 @@ class Config extends DbTestCase
         ];
         $expected = $input;
 
-        \Config::unsetUndisclosedFields($input);
+        ConfigModel::unsetUndisclosedFields($input);
         $this->array($input)->isIdenticalTo($expected);
 
         $input = [
@@ -709,7 +709,7 @@ class Config extends DbTestCase
         $expected = $input;
         unset($expected['value']);
 
-        \Config::unsetUndisclosedFields($input);
+        ConfigModel::unsetUndisclosedFields($input);
         $this->array($input)->isIdenticalTo($expected);
 
         $input = [
@@ -720,7 +720,7 @@ class Config extends DbTestCase
         $expected = $input;
         unset($expected['value']);
 
-        \Config::unsetUndisclosedFields($input);
+        ConfigModel::unsetUndisclosedFields($input);
         $this->array($input)->isIdenticalTo($expected);
     }
 
@@ -729,7 +729,7 @@ class Config extends DbTestCase
         global $CFG_GLPI;
         $this->boolean((bool)$CFG_GLPI['use_password_security'])->isFalse();
 
-        $this->boolean(\Config::validatePassword('mypass'))->isTrue();
+        $this->boolean(ConfigModel::validatePassword('mypass'))->isTrue();
 
         $CFG_GLPI['use_password_security'] = 1;
         $this->integer((int)$CFG_GLPI['password_min_length'])->isIdenticalTo(8);
@@ -737,7 +737,7 @@ class Config extends DbTestCase
         $this->integer((int)$CFG_GLPI['password_need_letter'])->isIdenticalTo(1);
         $this->integer((int)$CFG_GLPI['password_need_caps'])->isIdenticalTo(1);
         $this->integer((int)$CFG_GLPI['password_need_symbol'])->isIdenticalTo(1);
-        $this->boolean(\Config::validatePassword(''))->isFalse();
+        $this->boolean(ConfigModel::validatePassword(''))->isFalse();
 
         $expected = [
            'Password too short!',
@@ -752,11 +752,11 @@ class Config extends DbTestCase
            'Password must include at least a uppercase letter!',
            'Password must include at least a symbol!'
         ];
-        $this->boolean(\Config::validatePassword('mypassword'))->isFalse();
+        $this->boolean(ConfigModel::validatePassword('mypassword'))->isFalse();
         $this->hasSessionMessages(ERROR, $expected);
 
         $CFG_GLPI['password_min_length'] = strlen('mypass');
-        $this->boolean(\Config::validatePassword('mypass'))->isFalse();
+        $this->boolean(ConfigModel::validatePassword('mypass'))->isFalse();
         $CFG_GLPI['password_min_length'] = 8; //reset
 
         $this->hasSessionMessages(ERROR, $expected);
@@ -765,30 +765,30 @@ class Config extends DbTestCase
            'Password must include at least a uppercase letter!',
            'Password must include at least a symbol!'
         ];
-        $this->boolean(\Config::validatePassword('my1password'))->isFalse();
+        $this->boolean(ConfigModel::validatePassword('my1password'))->isFalse();
         $this->hasSessionMessages(ERROR, $expected);
 
         $CFG_GLPI['password_need_number'] = 0;
-        $this->boolean(\Config::validatePassword('mypassword'))->isFalse();
+        $this->boolean(ConfigModel::validatePassword('mypassword'))->isFalse();
         $CFG_GLPI['password_need_number'] = 1; //reset
         $this->hasSessionMessages(ERROR, $expected);
 
         $expected = [
            'Password must include at least a symbol!'
         ];
-        $this->boolean(\Config::validatePassword('my1paSsword'))->isFalse();
+        $this->boolean(ConfigModel::validatePassword('my1paSsword'))->isFalse();
         $this->hasSessionMessages(ERROR, $expected);
 
         $CFG_GLPI['password_need_caps'] = 0;
-        $this->boolean(\Config::validatePassword('my1password'))->isFalse();
+        $this->boolean(ConfigModel::validatePassword('my1password'))->isFalse();
         $CFG_GLPI['password_need_caps'] = 1; //reset
         $this->hasSessionMessages(ERROR, $expected);
 
-        $this->boolean(\Config::validatePassword('my1paSsw@rd'))->isTrue();
+        $this->boolean(ConfigModel::validatePassword('my1paSsw@rd'))->isTrue();
         $this->hasNoSessionMessage(ERROR);
 
         $CFG_GLPI['password_need_symbol'] = 0;
-        $this->boolean(\Config::validatePassword('my1paSsword'))->isTrue();
+        $this->boolean(ConfigModel::validatePassword('my1paSsword'))->isTrue();
         $CFG_GLPI['password_need_symbol'] = 1; //reset
         $this->hasNoSessionMessage(ERROR);
     }
@@ -796,7 +796,7 @@ class Config extends DbTestCase
     public function testGetLibraries()
     {
         $actual = $expected = [];
-        $deps = \Config::getLibraries(true);
+        $deps = ConfigModel::getLibraries(true);
         foreach ($deps as $dep) {
             // composer names only (skip htmlLawed)
             if (strpos((string) $dep['name'], '/')) {
@@ -819,19 +819,19 @@ class Config extends DbTestCase
 
     public function testGetLibraryDir()
     {
-        $this->boolean(\Config::getLibraryDir(''))->isFalse();
-        $this->boolean(\Config::getLibraryDir('abcde'))->isFalse();
+        $this->boolean(ConfigModel::getLibraryDir(''))->isFalse();
+        $this->boolean(ConfigModel::getLibraryDir('abcde'))->isFalse();
 
         $expected = realpath(__DIR__ . '/../../vendor/phpmailer/phpmailer/src');
         if (is_dir($expected)) { // skip when system library is used
-            $this->string(\Config::getLibraryDir('PHPMailer\PHPMailer\PHPMailer'))->isIdenticalTo($expected);
+            $this->string(ConfigModel::getLibraryDir('PHPMailer\PHPMailer\PHPMailer'))->isIdenticalTo($expected);
 
             $mailer = new PHPMailer();
-            $this->string(\Config::getLibraryDir($mailer))->isIdenticalTo($expected);
+            $this->string(ConfigModel::getLibraryDir($mailer))->isIdenticalTo($expected);
         }
 
         $expected = realpath(__DIR__ . '/../');
-        $this->string(\Config::getLibraryDir('getItemByTypeName'))->isIdenticalTo($expected);
+        $this->string(ConfigModel::getLibraryDir('getItemByTypeName'))->isIdenticalTo($expected);
     }
 
     public function testDatabaseConfigurationRequiresSelectedPdoDriver(): void
@@ -877,7 +877,7 @@ class Config extends DbTestCase
 
     public function testCheckExtensions()
     {
-        $this->array(\Config::checkExtensions())
+        $this->array(ConfigModel::checkExtensions())
            ->hasKeys(['error', 'good', 'missing', 'may']);
 
         $expected = [
@@ -896,7 +896,7 @@ class Config extends DbTestCase
               'class'     => JsonException::class
            ]
         ];
-        $report = \Config::checkExtensions($list);
+        $report = ConfigModel::checkExtensions($list);
         $this->array($report)->isIdenticalTo($expected);
 
         //check extension from method name
@@ -906,7 +906,7 @@ class Config extends DbTestCase
               'function'  => 'json_encode'
            ]
         ];
-        $report = \Config::checkExtensions($list);
+        $report = ConfigModel::checkExtensions($list);
         $this->array($report)->isIdenticalTo($expected);
 
         //check extension from its name
@@ -915,14 +915,14 @@ class Config extends DbTestCase
               'required'  => true
            ]
         ];
-        $report = \Config::checkExtensions($list);
+        $report = ConfigModel::checkExtensions($list);
         $this->array($report)->isIdenticalTo($expected);
 
         //required, missing extension
         $list['notantext'] = [
            'required'  => true
         ];
-        $report = \Config::checkExtensions($list);
+        $report = ConfigModel::checkExtensions($list);
         $expected = [
            'error'     => 2,
            'good'      => [
@@ -938,7 +938,7 @@ class Config extends DbTestCase
         //not required, missing extension
         unset($list['notantext']);
         $list['totally_optionnal'] = ['required' => false];
-        $report = \Config::checkExtensions($list);
+        $report = ConfigModel::checkExtensions($list);
         $expected = [
            'error'     => 1,
            'good'      => [
@@ -1103,7 +1103,7 @@ class Config extends DbTestCase
             foreach ([['pdo_mysql', '8.0.0'], ['pdo_pgsql', '15.0'], ['pdo_mysql', '8.0.0']] as [$driver, $version]) {
                 $connection = DriverManager::getConnection(['driver' => $driver, 'serverVersion' => $version]);
                 $this->mockGenerator->orphanize('__construct');
-                $adapter = new \mock\DBmysql();
+                $adapter = new ConfigurationAdapter();
                 $this->calling($adapter)->getDoctrineConnection = $connection;
                 try {
                     $manager = Orm::create($adapter);
@@ -1818,12 +1818,12 @@ class Config extends DbTestCase
 
     public function testGetConfigurationValues()
     {
-        $conf = \Config::getConfigurationValues('core');
+        $conf = ConfigModel::getConfigurationValues('core');
         $this->array($conf)
            ->hasKeys(['version', 'dbversion'])
            ->size->isGreaterThan(170);
 
-        $conf = \Config::getConfigurationValues('core', ['version', 'dbversion']);
+        $conf = ConfigModel::getConfigurationValues('core', ['version', 'dbversion']);
         $this->array($conf)->isEqualTo([
            'dbversion' => \ITSM_SCHEMA_VERSION,
            'version'   => \ITSM_VERSION
@@ -2091,7 +2091,7 @@ class Config extends DbTestCase
 
     public function testGetRights()
     {
-        $conf = new \Config();
+        $conf = new ConfigModel();
         $this->array($conf->getRights())->isIdenticalTo([
            READ     => 'Read',
            UPDATE   => 'Update'
@@ -2253,7 +2253,7 @@ class Config extends DbTestCase
         $item = new $itemtype();
         $item->fields = ['id' => 15];
 
-        \Config::setConfigurationValues('core', [$key => $item->fields['id']]);
+        ConfigModel::setConfigurationValues('core', [$key => $item->fields['id']]);
 
         if (is_a($itemtype, 'CommonDropdown', true)) {
             $this->boolean($item->isUsed())->isTrue();
@@ -2262,7 +2262,7 @@ class Config extends DbTestCase
         if (is_a($itemtype, 'CommonDropdown', true)) {
             $this->boolean($item->isUsed())->isFalse();
         }
-        $this->array(\Config::getConfigurationValues('core', [$key]))
+        $this->array(ConfigModel::getConfigurationValues('core', [$key]))
            ->hasKey($key)
            ->variable[$key]->isEqualTo(0);
 
@@ -2272,7 +2272,7 @@ class Config extends DbTestCase
 
         $random_id = mt_rand(20, 100);
 
-        \Config::setConfigurationValues('core', [$key => $random_id]);
+        ConfigModel::setConfigurationValues('core', [$key => $random_id]);
 
         if (is_a($itemtype, 'CommonDropdown', true)) {
             $this->boolean($item->isUsed())->isFalse();
@@ -2281,7 +2281,7 @@ class Config extends DbTestCase
         if (is_a($itemtype, 'CommonDropdown', true)) {
             $this->boolean($item->isUsed())->isFalse();
         }
-        $this->array(\Config::getConfigurationValues('core', [$key]))
+        $this->array(ConfigModel::getConfigurationValues('core', [$key]))
            ->hasKey($key)
            ->variable[$key]->isEqualTo($random_id);
 
@@ -2294,14 +2294,14 @@ class Config extends DbTestCase
             $item->fields = ['id' => 15];
             $item->input = ['_replace_by' => $replacement_item->fields['id']];
 
-            \Config::setConfigurationValues('core', [$key => $item->fields['id']]);
+            ConfigModel::setConfigurationValues('core', [$key => $item->fields['id']]);
 
             $this->boolean($item->isUsed())->isTrue();
             $this->boolean($replacement_item->isUsed())->isFalse();
             $item->cleanRelationData();
             $this->boolean($item->isUsed())->isFalse();
             $this->boolean($replacement_item->isUsed())->isTrue();
-            $this->array(\Config::getConfigurationValues('core', [$key]))
+            $this->array(ConfigModel::getConfigurationValues('core', [$key]))
                ->hasKey($key)
                ->variable[$key]
                   ->isEqualTo($replacement_item->fields['id']);
@@ -2312,7 +2312,7 @@ class Config extends DbTestCase
     {
         global $CFG_GLPI, $DB;
 
-        $conf = new \Config();
+        $conf = new ConfigModel();
         $this->array($CFG_GLPI['devices_in_menu'])->isIdenticalTo([
            'Item_DeviceSimcard'
         ]);
@@ -2342,7 +2342,7 @@ class Config extends DbTestCase
     {
         global $DB;
 
-        $conf = new \Config();
+        $conf = new ConfigModel();
         $crontask = new \CronTask();
 
         // create some non local users for the test
@@ -2374,7 +2374,7 @@ class Config extends DbTestCase
         //  - password expiration is not active
         //  - users from installation data have no value for password_last_update
         //  - crontask is not active
-        $values = \Config::getConfigurationValues('core');
+        $values = ConfigModel::getConfigurationValues('core');
         $this->array($values)->hasKey('password_expiration_delay');
         $this->integer((int)$values['password_expiration_delay'])->isIdenticalTo(-1);
         $this->integer(
@@ -2405,7 +2405,7 @@ class Config extends DbTestCase
          ]
         );
         $_SESSION['glpi_currenttime'] = $current_time;
-        $values = \Config::getConfigurationValues('core');
+        $values = ConfigModel::getConfigurationValues('core');
         $this->array($values)->hasKey('password_expiration_delay');
         $this->integer((int)$values['password_expiration_delay'])->isIdenticalTo(30);
         $this->integer(
@@ -2435,7 +2435,7 @@ class Config extends DbTestCase
          ]
         );
         $_SESSION['glpi_currenttime'] = $current_time;
-        $values = \Config::getConfigurationValues('core');
+        $values = ConfigModel::getConfigurationValues('core');
         $this->array($values)->hasKey('password_expiration_delay');
         $this->integer((int)$values['password_expiration_delay'])->isIdenticalTo(45);
         $this->integer(
@@ -2485,11 +2485,11 @@ class Config extends DbTestCase
      */
     public function testLogConfigChange(string $context, string $name, bool $is_secured, string $old_value_prefix)
     {
-        $history_crit = ['itemtype' => \Config::getType(), 'old_value' => ['LIKE', $name . ' %']];
+        $history_crit = ['itemtype' => ConfigModel::getType(), 'old_value' => ['LIKE', $name . ' %']];
 
         $expected_history = [];
         $history_entry_fields = [
-           'itemtype'         => \Config::getType(),
+           'itemtype'         => ConfigModel::getType(),
            'items_id'         => 1,
            'itemtype_link'    => '',
            'linked_action'    => 0,
@@ -2503,7 +2503,7 @@ class Config extends DbTestCase
         };
 
         // History on first value
-        \Config::setConfigurationValues($context, [$name => 'first value']);
+        ConfigModel::setConfigurationValues($context, [$name => 'first value']);
         $expected_history = [
            $history_entry_fields + [
               'old_value' => $old_value_prefix . ($is_secured ? '********' : ''),
@@ -2516,7 +2516,7 @@ class Config extends DbTestCase
         $this->array($found_history)->isEqualTo($expected_history);
 
         // History on updated value
-        \Config::setConfigurationValues($context, [$name => 'new value']);
+        ConfigModel::setConfigurationValues($context, [$name => 'new value']);
         $expected_history[] = $history_entry_fields + [
            'old_value' => $old_value_prefix . ($is_secured ? '********' : 'first value'),
            'new_value' => $is_secured ? '********' : 'new value',
@@ -2527,7 +2527,7 @@ class Config extends DbTestCase
         $this->array($found_history)->isEqualTo($expected_history);
 
         // History on config deletion
-        \Config::deleteConfigurationValues($context, [$name]);
+        ConfigModel::deleteConfigurationValues($context, [$name]);
         $expected_history[] = $history_entry_fields + [
            'old_value' => $old_value_prefix . ($is_secured ? '********' : 'new value'),
            'new_value' => $is_secured ? '********' : '',
