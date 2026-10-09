@@ -696,8 +696,10 @@ class Auth extends CommonGLPI
         global $DB;
         //Return all the authentication methods in an array
         $this->authtypes = [
-           'ldap' => array_column((new RecordRepository(Orm::create($DB)))->matching('glpi_authldaps', order: ['id']), null, 'id'),
-           'mail' => array_column((new MailAuthenticationRepository(Orm::create($DB)))->servers(), null, 'id')
+           'ldap' => Orm::read($DB, static fn (EntityManager $manager): array =>
+               array_column((new RecordRepository($manager))->matching('glpi_authldaps', order: ['id']), null, 'id')),
+           'mail' => Orm::read($DB, static fn (EntityManager $manager): array =>
+               array_column((new MailAuthenticationRepository($manager))->servers(), null, 'id'))
         ];
     }
 
@@ -1123,12 +1125,14 @@ class Auth extends CommonGLPI
            self::DB_GLPI => __('Authentication on ITSM-NG database'),
         ];
 
-        if ((new LdapRepository(Orm::create($DB)))->activeCount() > 0) {
+        if (Orm::read($DB, static fn (EntityManager $manager): int =>
+            (new LdapRepository($manager))->activeCount()) > 0) {
             $methods[self::LDAP]     = __('Authentication on a LDAP directory');
             $methods[self::EXTERNAL] = __('External authentications');
         }
 
-        if ((new MailAuthenticationRepository(Orm::create($DB)))->activeCount() > 0) {
+        if (Orm::read($DB, static fn (EntityManager $manager): int =>
+            (new MailAuthenticationRepository($manager))->activeCount()) > 0) {
             $methods[self::MAIL] = __('Authentication on mail server');
         }
 
