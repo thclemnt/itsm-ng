@@ -231,7 +231,7 @@ abstract class DBAdapter
         } else {
             $conf_tz = ['value' => null];
             if (
-                $this->tableExists(Config::getTable())
+                $this->tableExists(Config::getTable(), false)
                 && $this->fieldExists(Config::getTable(), 'value')
             ) {
                 $conf_tz = $this->request([
@@ -587,7 +587,7 @@ abstract class DBAdapter
 
         // Retrieve all tables if cache is empty but enabled, in order to fill cache
         // with all known tables
-        $retrieve_all = !$this->cache_disabled && empty($this->table_cache);
+        $retrieve_all = $usecache && !$this->cache_disabled && empty($this->table_cache);
 
         $result = $this->listTables($retrieve_all ? 'glpi\_%' : $tablename);
         $found_tables = [];
