@@ -10,10 +10,13 @@ for ($i = 5; $i >= 0; $i--) {
 }
 
 // SQL request for 6 last months tickets
+$expressions = $DB->expressions();
+$month = $expressions->yearMonth('date');
+$cutoff = $expressions->dateAdd('CURRENT_TIMESTAMP', -6, 'MONTH');
 $sql = "
-SELECT DATE_FORMAT(date, '%Y-%m') AS month, COUNT(*) AS ticket_count
+SELECT $month AS month, COUNT(*) AS ticket_count
 FROM glpi_tickets
-WHERE date >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+WHERE date >= $cutoff
 GROUP BY month
 ORDER BY month;
 ";

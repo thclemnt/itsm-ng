@@ -5914,8 +5914,11 @@ class Ticket extends CommonITILObject
                       ['OR'                   => [
                          'glpi_entities.inquest_duration' => 0,
                          new QueryExpression(
-                             'DATEDIFF(ADDDATE(' . $DB->quoteName('glpi_ticketsatisfactions.date_begin') .
-                               ', INTERVAL ' . $DB->quoteName('glpi_entities.inquest_duration')  . ' DAY), CURDATE()) > 0'
+                             'CAST(' . $DB->expressions()->dateAdd(
+                                 $DB->quoteName('glpi_ticketsatisfactions.date_begin'),
+                                 $DB->quoteName('glpi_entities.inquest_duration'),
+                                 'DAY'
+                             ) . ' AS DATE) > CURRENT_DATE'
                          )
                       ]],
                       'glpi_ticketsatisfactions.date_answered'  => null
