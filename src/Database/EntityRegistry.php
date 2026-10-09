@@ -461,7 +461,7 @@ final class EntityRegistry
                     if ($logicalDiscriminator !== null) {
                         $lifecycle[$target][$child][] = $logicalDiscriminator;
                     }
-                    $attributes = (new ReflectionProperty($record->name, $property))->getAttributes(ReferencePolicy::class);
+                    $attributes = $propertyMetadata->getAttributes(ReferencePolicy::class);
                     if ($attributes) {
                         $policy = $attributes[0]->newInstance();
                         if (in_array($policy->kind, [ReferenceKind::RootEntity, ReferenceKind::Audience, ReferenceKind::GlobalScope, ReferenceKind::RootParent], true) && $target !== 'glpi_entities') {
