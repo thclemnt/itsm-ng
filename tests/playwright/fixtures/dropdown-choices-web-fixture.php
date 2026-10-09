@@ -2,6 +2,11 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\DropdownChoiceContext;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\RecordWriter;
+
 // HTTP actions are available only through an explicitly enabled private test router.
 define('GLPI_ROOT', dirname(__DIR__, 3));
 if (!defined('PLUGINS_DIRECTORIES')) {
@@ -19,8 +24,8 @@ if (!str_starts_with($DB->dbdefault, 'itsm_port_')) {
     throw new RuntimeException('Disposable test database required');
 }
 $CFG_GLPI['use_notifications'] = false;
-$records = new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB));
-$writer = new \itsmng\Database\Repository\RecordWriter(\itsmng\Database\Orm::create($DB));
+$records = new RecordRepository(Orm::create($DB));
+$writer = new RecordWriter(Orm::create($DB));
 $prefix = 'DropdownHTTPFixture';
 $find = static function (string $table, string $suffix) use ($records, $prefix): ?int {
     return $records->matching($table, ['name' => $prefix . $suffix])[0]['id'] ?? null;
@@ -115,5 +120,5 @@ if ($kind === 'Computer') {
 $html = Dropdown::show($kind, $options);
 // A real caller passes numeric User grants through the same component-issued factory.
 $user = ['itemtype' => 'User', 'entity_restrict' => [$state()['entityA'], $state()['entityB']], 'right' => READ, 'permit_select_parent' => false];
-$user['_idor_token'] = \itsmng\Database\DropdownChoiceContext::token('User', $user);
+$user['_idor_token'] = DropdownChoiceContext::token('User', $user);
 echo json_encode(['html' => $html, 'user' => $user, 'fixture' => $state(), 'scope' => $_SESSION['glpiactiveentities']], JSON_THROW_ON_ERROR);

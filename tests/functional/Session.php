@@ -33,6 +33,11 @@
 
 namespace tests\units;
 
+use itsmng\Translation\Translator;
+use Laminas\I18n\Translator\TextDomain;
+use Plugin;
+use Rule;
+use Session as SessionModel;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Psr16Cache;
 
@@ -198,7 +203,7 @@ class Session extends \DbTestCase
                 $_SESSION['glpimenu'] = ['stale profile menu'];
                 $expected_session = $_SESSION;
                 unset($expected_session['glpimenu']);
-                \Session::changeProfile($profile_id);
+                SessionModel::changeProfile($profile_id);
                 $this->array($_SESSION)->isIdenticalTo($expected_session);
             }
         } finally {
@@ -289,7 +294,7 @@ class Session extends \DbTestCase
         file_put_contents($file, '<?php return ' . var_export($messages, true) . ';');
         try {
             // A plugin domain may be registered after core translation has begun.
-            \Session::loadLanguage('en_GB', false);
+            SessionModel::loadLanguage('en_GB', false);
             $this->string(__('Login'))->isIdenticalTo('Login');
             // Before registration, v2 used raw strict identity for the default rule.
             foreach ([null, '', '1', 1, 1.0, 1.9, 2, false, true] as $count) {
@@ -298,7 +303,7 @@ class Session extends \DbTestCase
                 $this->string(_nx('menu', 'Unregistered', 'Unregistered entries', $count, $domain))->isIdenticalTo($expected);
             }
             $this->string(__('Late message', $domain))->isIdenticalTo('Late message');
-            \Plugin::loadLang($domain, 'en_GB', 'en_GB');
+            Plugin::loadLang($domain, 'en_GB', 'en_GB');
             $this->string(__('Late message', $domain))->isIdenticalTo('Late plugin translation');
             $this->string(__('Entry', $domain))->isIdenticalTo('First entry');
             $this->string(_n('Entry', 'Entries', 0, $domain))->isIdenticalTo('First entry');
@@ -311,9 +316,9 @@ class Session extends \DbTestCase
                 $this->string(_n('Missing entry', 'Missing entries', $count, $domain))->isIdenticalTo($missing);
                 $this->string(_nx('menu', 'Missing entry', 'Missing entries', $count, $domain))->isIdenticalTo($missing);
             }
-            $this->string(\Rule::getTypeName())->isIdenticalTo('Rules');
-            $this->string(\Rule::getTypeName(null))->isIdenticalTo('Rules');
-            $this->string(\Rule::getTypeName(1.9))->isIdenticalTo('Rule');
+            $this->string(Rule::getTypeName())->isIdenticalTo('Rules');
+            $this->string(Rule::getTypeName(null))->isIdenticalTo('Rules');
+            $this->string(Rule::getTypeName(1.9))->isIdenticalTo('Rule');
             $loadedTranslator = $TRANSLATE;
             try {
                 $TRANSLATE = null;
@@ -329,20 +334,20 @@ class Session extends \DbTestCase
             // Cached TextDomain objects retain their plural AST when serialized.
             $raw = new ArrayAdapter();
             $cache = new Psr16Cache($raw);
-            $cached = new \itsmng\Translation\Translator('en_GB', $cache);
+            $cached = new Translator('en_GB', $cache);
             $cached->addTranslationFile('phparray', $file, $domain, 'en_GB');
             $this->string($cached->translatePlural('Entry', 'Entries', 0, $domain))->isIdenticalTo('First entry');
             $key = 'itsmng-i18n3-' . $domain . '-en_GB';
             $catalogue = $cache->get($key);
-            $this->object($catalogue)->isInstanceOf(\Laminas\I18n\Translator\TextDomain::class);
+            $this->object($catalogue)->isInstanceOf(TextDomain::class);
             $cache->set($key, unserialize(serialize($catalogue)));
             unlink($file);
-            $warm = new \itsmng\Translation\Translator('en_GB', $cache);
+            $warm = new Translator('en_GB', $cache);
             $warm->addTranslationFile('phparray', $file, $domain, 'en_GB');
             $this->string($warm->translatePlural('Entry', 'Entries', 2, $domain))->isIdenticalTo('Many entries');
             $this->array($warm->translate('Entry', $domain))->isIdenticalTo(['First entry', 'Many entries']);
             $this->string($warm->translate('Missing', $domain))->isIdenticalTo('Missing');
-            $cacheOnly = new \itsmng\Translation\Translator('en_GB', $cache);
+            $cacheOnly = new Translator('en_GB', $cache);
             $this->string($cacheOnly->translatePlural('Entry', 'Entries', '1', $domain))->isIdenticalTo('First entry');
             $this->string($cacheOnly->translatePlural('Entry', 'Entries', '1', $domain, ''))->isIdenticalTo('Entries');
             $this->string($cacheOnly->translatePlural('Missing entry', 'Missing entries', 0, $domain))->isIdenticalTo('Missing entry');

@@ -33,9 +33,13 @@
 
 namespace tests\units;
 
+use Auth;
+use AuthLDAP as AuthLdapModel;
 use DbTestCase;
 use Group;
 use Group_User;
+use InvalidArgumentException;
+use User;
 
 /* Test for inc/authldap.class.php */
 
@@ -1265,7 +1269,7 @@ class AuthLDAP extends DbTestCase
 
         // The duplicate must own a real different directory. A copied row also
         // contains the canonical source, which must agree with auths_id.
-        $otherDirectory = new \AuthLDAP();
+        $otherDirectory = new AuthLdapModel();
         $otherId = (int)$otherDirectory->add([
             'name' => 'Duplicate DN directory',
             'is_active' => 0,
@@ -1278,16 +1282,16 @@ class AuthLDAP extends DbTestCase
         $contradictory['auths_id'] = $otherId;
         $this->exception(
             static function () use ($contradictory) {
-                (new \User())->add($contradictory);
+                (new User())->add($contradictory);
             }
-        )->isInstanceOf(\InvalidArgumentException::class)
+        )->isInstanceOf(InvalidArgumentException::class)
             ->hasMessage('Legacy and canonical authentication servers disagree');
         $this->boolean(
-            (new \User())->getFromDBbyNameAndAuth($dup['name'], \Auth::LDAP, $otherId)
+            (new User())->getFromDBbyNameAndAuth($dup['name'], Auth::LDAP, $otherId)
         )->isFalse();
 
         $dup['auths_id'] = $dup['authldaps_id'] = $otherId;
-        $duplicate = new \User();
+        $duplicate = new User();
 
         $this->integer(
             (int)$duplicate->add($dup)

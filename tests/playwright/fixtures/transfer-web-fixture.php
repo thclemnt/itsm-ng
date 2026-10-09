@@ -2,6 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+
 // CLI owns data setup/readback/cleanup only. The browser establishes its own
 // ordinary login, entity scope, CSRF tokens and transfer list through real routes.
 if (PHP_SAPI !== 'cli') {
@@ -26,7 +29,7 @@ if (!(new Auth())->login('itsm', 'itsm', true)) {
 }
 $CFG_GLPI['use_notifications'] = false;
 $connection = $DB->getDoctrineConnection();
-$records = new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB));
+$records = new RecordRepository(Orm::create($DB));
 $input = isset($argv[3]) ? json_decode($argv[3], true, flags: JSON_THROW_ON_ERROR) : [];
 if ($action === 'guard') {
     $token = bin2hex(random_bytes(20));

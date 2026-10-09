@@ -34,14 +34,33 @@
 namespace tests\units\Glpi\Api;
 
 use APIBaseClass;
+use Auth;
+use Computer;
+use DateTime;
+use DOMDocument;
+use DOMXPath;
+use GuzzleHttp;
+use GuzzleHttp\Exception\ClientException;
+use Html;
+use Infocom;
+use ITILFollowup;
+use itsmng\Database\Entity as OrmEntity;
+use itsmng\Database\MutationCleanupFailure;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NetworkNameRepository;
+use itsmng\Database\Repository\UserRepository;
 use Itsmng\Tests\Web\Deprecated\Computer_SoftwareLicense;
 use Itsmng\Tests\Web\Deprecated\Computer_SoftwareVersion;
 use Itsmng\Tests\Web\Deprecated\TicketFollowup;
-use GuzzleHttp;
-use GuzzleHttp\Exception\ClientException;
-use ITILFollowup;
-use itsmng\Database\Entity as OrmEntity;
-use itsmng\Database\Orm;
+use ProfileRight;
+use Psr\Http\Message\ResponseInterface;
+use Reservation;
+use ReservationItem;
+use RuntimeException;
+use Software;
+use SoftwareLicense;
+use SoftwareVersion;
+use Throwable;
 
 /* Test for inc/api/api.class.php */
 
@@ -248,9 +267,9 @@ class APIRest extends APIBaseClass
                 $path = 'front/report.infocom.conso.php';
                 $response = $browser->get($path);
                 $this->integer($response->getStatusCode())->isIdenticalTo(200);
-                $document = new \DOMDocument();
+                $document = new DOMDocument();
                 @$document->loadHTML((string)$response->getBody());
-                $xpath = new \DOMXPath($document);
+                $xpath = new DOMXPath($document);
                 $forms = $xpath->query('//form[.//input[@name="date1"] and .//input[@name="date2"]]');
                 $this->integer($forms->length)->isIdenticalTo(1);
                 $data = [];
@@ -263,9 +282,9 @@ class APIRest extends APIBaseClass
                 $response = $browser->post($path, ['form_params' => $data,
                     'headers' => ['Referer' => (string)$browser->getConfig('base_uri') . $path]]);
                 $this->integer($response->getStatusCode())->isIdenticalTo(200);
-                $document = new \DOMDocument();
+                $document = new DOMDocument();
                 @$document->loadHTML((string)$response->getBody());
-                $xpath = new \DOMXPath($document);
+                $xpath = new DOMXPath($document);
                 $headings = $xpath->query('//h3');
                 $prefix = explode('%1$s', __('Total: Value=%1$s - Account net value=%2$s'))[0];
                 $totals = [];
@@ -279,7 +298,7 @@ class APIRest extends APIBaseClass
             };
             $totalPrefix = static fn (float $value): string => explode('%2$s', str_replace(
                 '%1$s',
-                \Html::formatNumber($value),
+                Html::formatNumber($value),
                 __('Total: Value=%1$s - Account net value=%2$s')
             ))[0];
             // Admit the existing entity/date window before adding any committed fixtures.
@@ -299,7 +318,7 @@ class APIRest extends APIBaseClass
                         'name' => $marker . '-' . $index, 'softwares_id' => $software, 'entities_id' => $entity,
                         'serial' => $serial, 'number' => $number,
                     ]]], 201)['id'];
-                $financial = new \Infocom();
+                $financial = new Infocom();
                 $existing = $financial->getFromDBforDevice('SoftwareLicense', $license);
                 $input = ['itemtype' => 'SoftwareLicense', 'items_id' => $license,
                     'value' => $value, 'buy_date' => $buy, 'use_date' => $use,
@@ -314,38 +333,38 @@ class APIRest extends APIBaseClass
             }
             // 12.5 * 3 + 7.25 + 4.125 + 2.5; the fifth license is outside both date bounds.
             $this->string($report())->startWith($totalPrefix(51.375));
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $primary = $error;
         } finally {
             // Recover exact owned descendants even if an HTTP response failed before returning its ID.
             try {
-                foreach ((new \Software())->find(['name' => $marker]) as $software) {
-                    foreach ((new \SoftwareLicense())->find(['softwares_id' => $software['id']]) as $license) {
-                        foreach ((new \Infocom())->find(['itemtype' => 'SoftwareLicense', 'items_id' => $license['id']]) as $financial) {
+                foreach ((new Software())->find(['name' => $marker]) as $software) {
+                    foreach ((new SoftwareLicense())->find(['softwares_id' => $software['id']]) as $license) {
+                        foreach ((new Infocom())->find(['itemtype' => 'SoftwareLicense', 'items_id' => $license['id']]) as $financial) {
                             try {
                                 $this->reservationHttpDelete('Infocom', (int)$financial['id']);
-                            } catch (\Throwable $error) {
+                            } catch (Throwable $error) {
                                 $cleanup[] = $error;
                             }
                         }
                         try {
                             $this->reservationHttpDelete('SoftwareLicense', (int)$license['id']);
-                        } catch (\Throwable $error) {
+                        } catch (Throwable $error) {
                             $cleanup[] = $error;
                         }
                     }
                     try {
                         $this->reservationHttpDelete('Software', (int)$software['id']);
-                    } catch (\Throwable $error) {
+                    } catch (Throwable $error) {
                         $cleanup[] = $error;
                     }
                 }
-            } catch (\Throwable $error) {
+            } catch (Throwable $error) {
                 $cleanup[] = $error;
             }
         }
         foreach ($cleanup as $error) {
-            $primary = $primary === null ? $error : new \itsmng\Database\MutationCleanupFailure($primary, $error);
+            $primary = $primary === null ? $error : new MutationCleanupFailure($primary, $error);
         }
         if ($primary !== null) {
             throw $primary;
@@ -371,7 +390,7 @@ class APIRest extends APIBaseClass
             $created = json_decode((string)$response->getBody(), true, 512, JSON_THROW_ON_ERROR);
             $this->array($created)->hasKeys(['id', 'message']);
             $this->integer($created['id'])->isGreaterThan(0);
-            $read = new \Reservation();
+            $read = new Reservation();
             $this->boolean($read->getFromDB($created['id']))->isTrue();
             foreach ($input as $field => $value) {
                 $this->variable($read->fields[$field])->isIdenticalTo($value);
@@ -424,7 +443,7 @@ class APIRest extends APIBaseClass
             $calendar = $browser->get('front/reservation.php?' . http_build_query([
                 'reservationitems_id' => $items[0], 'mois_courant' => 5, 'annee_courante' => 2031,
             ]));
-            $document = new \DOMDocument();
+            $document = new DOMDocument();
             @$document->loadHTML((string)$calendar->getBody());
             $newForm = null;
             foreach ($document->getElementsByTagName('a') as $anchor) {
@@ -536,15 +555,15 @@ class APIRest extends APIBaseClass
                     'headers' => ['Session-Token' => $this->session_token],
                     'json' => ['input' => ['name' => $marker, 'interface' => 'helpdesk']]], 201)['id'];
                 $this->integer($profile)->isGreaterThan(0);
-                \ProfileRight::updateProfileRights($profile, ['reservation' => \ReservationItem::RESERVEANITEM]);
-                $item = new \ReservationItem();
+                ProfileRight::updateProfileRights($profile, ['reservation' => ReservationItem::RESERVEANITEM]);
+                $item = new ReservationItem();
                 $this->boolean($item->getFromDB($items[0]))->isTrue();
                 $password = 'Reservation-' . bin2hex(random_bytes(12)) . '-9aA!';
                 $user = $this->query('createItems', ['verb' => 'POST', 'itemtype' => 'User',
                     'headers' => ['Session-Token' => $this->session_token], 'json' => ['input' => [
                         'name' => $marker, 'password' => $password, 'password2' => $password,
                         '_profiles_id' => $profile, '_entities_id' => $item->getEntityID(),
-                        'entities_id' => $item->getEntityID(), '_is_recursive' => 0, 'authtype' => \Auth::DB_GLPI,
+                        'entities_id' => $item->getEntityID(), '_is_recursive' => 0, 'authtype' => Auth::DB_GLPI,
                     ]]], 201)['id'];
                 $this->integer($user)->isGreaterThan(0);
                 $browser = $this->reservationHttpLogin($marker, $password);
@@ -592,7 +611,7 @@ class APIRest extends APIBaseClass
                 $this->string($sessionData['session']['glpiactiveprofile']['interface'])->isIdenticalTo('helpdesk');
                 $this->array($sessionData['session']['glpiactiveprofile'])->notHasKey('computer');
                 $this->array($sessionData['session']['glpiactiveentities'])->notContains($outsideEntity);
-                $this->integer((int)$sessionData['session']['glpiactiveprofile']['reservation'])->isIdenticalTo(\ReservationItem::RESERVEANITEM);
+                $this->integer((int)$sessionData['session']['glpiactiveprofile']['reservation'])->isIdenticalTo(ReservationItem::RESERVEANITEM);
                 $token = $sessionData['session_token'];
                 try {
                     $foreign = ['reservationitems_id' => $items[0],
@@ -629,12 +648,12 @@ class APIRest extends APIBaseClass
                 $this->integer($response->getStatusCode())->isIdenticalTo(201);
                 $created = json_decode((string)$response->getBody(), true, 512, JSON_THROW_ON_ERROR);
                 $this->integer($created['id'])->isGreaterThan(0);
-                $booking = new \Reservation();
+                $booking = new Reservation();
                 $this->boolean($booking->getFromDB($created['id']))->isTrue();
                 $this->integer($booking->fields['users_id'])->isIdenticalTo($user);
                 $before = $this->reservationHttpRows($items);
                 $this->array($before)->hasSize(3);
-                \ProfileRight::updateProfileRights($profile, ['reservation' => 0]);
+                ProfileRight::updateProfileRights($profile, ['reservation' => 0]);
                 $browser = $this->reservationHttpLogin($marker, $password); // Fresh actual session reads the revoked right.
                 $response = $browser->get('front/reservation.form.php?' . http_build_query([
                     'id' => '', 'item' => [$items[0] => $items[0]], 'begin' => '2031-06-02 09:00:00',
@@ -655,13 +674,13 @@ class APIRest extends APIBaseClass
                 } finally {
                     $this->doHttpRequest('GET', 'killSession/', ['headers' => ['Session-Token' => $token]]);
                 }
-            } catch (\Throwable $error) {
+            } catch (Throwable $error) {
                 $primary = $error;
             } finally {
                 $cleanup = $this->cleanupReservationHttpFixtures($marker, $items, $outsideComputer);
             }
             foreach ($cleanup as $error) {
-                $primary = $primary === null ? $error : new \itsmng\Database\MutationCleanupFailure($primary, $error);
+                $primary = $primary === null ? $error : new MutationCleanupFailure($primary, $error);
             }
             if ($primary !== null) {
                 throw $primary;
@@ -677,7 +696,7 @@ class APIRest extends APIBaseClass
         $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
         $computer = null;
         $items = [];
-        $failure = new \RuntimeException('Owned reservation operation failed after changing API scope.');
+        $failure = new RuntimeException('Owned reservation operation failed after changing API scope.');
         $primary = null;
         try {
             $child = $this->query('createItems', ['verb' => 'POST', 'itemtype' => 'Entity',
@@ -711,11 +730,11 @@ class APIRest extends APIBaseClass
             $this->array($active['active_entity']['active_entities'])->notContains(['id' => $child]);
             // The same owner finally must work when an operation stops with its child out of scope.
             throw $failure;
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $primary = $error;
         } finally {
             foreach ($this->cleanupReservationHttpFixtures($marker, $items, $computer) as $error) {
-                $primary = $primary === null ? $error : new \itsmng\Database\MutationCleanupFailure($primary, $error);
+                $primary = $primary === null ? $error : new MutationCleanupFailure($primary, $error);
             }
         }
         // A cleanup error stays visible instead of replacing or swallowing the original failure.
@@ -752,32 +771,32 @@ class APIRest extends APIBaseClass
                     'entities_id' => (int)getItemByTypeName('Entity', '_test_root_entity', true),
                     'is_recursive' => true,
                 ]]);
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $cleanup[] = $error;
         }
         try {
             $this->string(file_get_contents($this->getLogFilePath()))->isEmpty();
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $cleanup[] = $error;
         }
         // Bookings must be removed before the owned user; scope uses only the owned endpoints.
         $ownedBookings = [];
         try {
             $ownedBookings = $this->reservationHttpRows($items);
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $cleanup[] = $error;
         }
         foreach ($ownedBookings as $row) {
             try {
                 $this->reservationHttpDelete('Reservation', (int)$row['id']);
-            } catch (\Throwable $error) {
+            } catch (Throwable $error) {
                 $cleanup[] = $error;
             }
         }
         try {
             $this->boolean($DB->delete('glpi_events', ['type' => 'system', 'service' => 'login',
                 'message' => ['LIKE', '%' . $marker . '%']]))->isTrue();
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $cleanup[] = $error;
         }
         if ($outsideComputer !== null) {
@@ -787,28 +806,28 @@ class APIRest extends APIBaseClass
                     $ownedBookings = [];
                     try {
                         $ownedBookings = $this->reservationHttpRows([(int)$row['id']]);
-                    } catch (\Throwable $error) {
+                    } catch (Throwable $error) {
                         $cleanup[] = $error;
                     }
                     foreach ($ownedBookings as $booking) {
                         try {
                             $this->reservationHttpDelete('Reservation', (int)$booking['id']);
-                        } catch (\Throwable $error) {
+                        } catch (Throwable $error) {
                             $cleanup[] = $error;
                         }
                     }
                     try {
                         $this->reservationHttpDelete('ReservationItem', (int)$row['id']);
-                    } catch (\Throwable $error) {
+                    } catch (Throwable $error) {
                         $cleanup[] = $error;
                     }
                 }
-            } catch (\Throwable $error) {
+            } catch (Throwable $error) {
                 $cleanup[] = $error;
             }
             try {
                 $this->reservationHttpDelete('Computer', $outsideComputer);
-            } catch (\Throwable $error) {
+            } catch (Throwable $error) {
                 $cleanup[] = $error;
             }
         }
@@ -819,7 +838,7 @@ class APIRest extends APIBaseClass
                 foreach ($model->find(['name' => $marker]) as $row) {
                     $this->reservationHttpDelete($type, (int)$row['id']);
                 }
-            } catch (\Throwable $error) {
+            } catch (Throwable $error) {
                 $cleanup[] = $error;
             }
         }
@@ -853,12 +872,12 @@ class APIRest extends APIBaseClass
                 $items[] = $data['id'];
             }
             $operation($items);
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $primary = $error;
         } finally {
             try {
                 $this->string(file_get_contents($this->getLogFilePath()))->isEmpty();
-            } catch (\Throwable $error) {
+            } catch (Throwable $error) {
                 $cleanup[] = $error;
             }
             // Endpoint ownership also recovers rows whose failed HTTP response hid their ID.
@@ -869,25 +888,25 @@ class APIRest extends APIBaseClass
                         $ownedBookings = [];
                         try {
                             $ownedBookings = $this->reservationHttpRows([(int)$row['id']]);
-                        } catch (\Throwable $error) {
+                        } catch (Throwable $error) {
                             $cleanup[] = $error;
                         }
                         foreach ($ownedBookings as $booking) {
                             try {
                                 $this->reservationHttpDelete('Reservation', (int)$booking['id']);
-                            } catch (\Throwable $error) {
+                            } catch (Throwable $error) {
                                 $cleanup[] = $error;
                             }
                         }
                         $this->reservationHttpDelete('ReservationItem', (int)$row['id']);
                     }
-                } catch (\Throwable $error) {
+                } catch (Throwable $error) {
                     $cleanup[] = $error;
                 }
             }
         }
         foreach ($cleanup as $error) {
-            $primary = $primary === null ? $error : new \itsmng\Database\MutationCleanupFailure($primary, $error);
+            $primary = $primary === null ? $error : new MutationCleanupFailure($primary, $error);
         }
         if ($primary !== null) {
             throw $primary;
@@ -916,7 +935,7 @@ class APIRest extends APIBaseClass
             'allow_redirects' => false, 'http_errors' => false]);
         $response = $browser->get('index.php');
         $this->integer($response->getStatusCode())->isIdenticalTo(200);
-        $document = new \DOMDocument();
+        $document = new DOMDocument();
         @$document->loadHTML((string)$response->getBody());
         $data = [];
         foreach ($document->getElementsByTagName('input') as $input) {
@@ -945,14 +964,14 @@ class APIRest extends APIBaseClass
         string $comment,
         array $periodicity = [],
         bool $invalidCsrf = false
-    ): \Psr\Http\Message\ResponseInterface {
+    ): ResponseInterface {
         $query = ['id' => '', 'item' => array_combine($items, $items), 'begin' => $day . ' 09:00:00'];
         $path = 'front/reservation.form.php?' . http_build_query($query);
         $response = $browser->get($path);
         $this->integer($response->getStatusCode())->isIdenticalTo(200);
-        $document = new \DOMDocument();
+        $document = new DOMDocument();
         @$document->loadHTML((string)$response->getBody());
-        $xpath = new \DOMXPath($document);
+        $xpath = new DOMXPath($document);
         $forms = $xpath->query('//form[.//input[@name="items[' . $items[0] . ']"]]');
         $this->integer($forms->length)->isIdenticalTo(1);
         $data = [];
@@ -972,7 +991,7 @@ class APIRest extends APIBaseClass
             'headers' => ['Referer' => (string)$browser->getConfig('base_uri') . $path]]);
     }
 
-    private function reservationHttpRedirect(\Psr\Http\Message\ResponseInterface $response): string
+    private function reservationHttpRedirect(ResponseInterface $response): string
     {
         $this->array([200, 302, 303])->contains($response->getStatusCode());
         $target = $response->getHeaderLine('Location');
@@ -1104,7 +1123,7 @@ class APIRest extends APIBaseClass
 
             $read = Orm::create($DB);
             try {
-                $repository = new \itsmng\Database\Repository\NetworkNameRepository($read);
+                $repository = new NetworkNameRepository($read);
                 $this->array($repository->apiDetailsForPorts([]))->isEmpty();
                 $details = $repository->apiDetailsForPorts([$ports[0]->id, $ports[1]->id]);
                 $this->integer($read->getUnitOfWork()->size())->isIdenticalTo(0);
@@ -1211,12 +1230,12 @@ class APIRest extends APIBaseClass
             $owned->name = $name . '_grant_visibility';
             $owned->entities = $root;
             $owned->access_custom_shortcuts = ['quoted' => 'native "JSON" value'];
-            $owned->date_creation = new \DateTime('2026-10-05 12:34:56');
+            $owned->date_creation = new DateTime('2026-10-05 12:34:56');
             $fixture->persist($owned);
             $fixture->flush();
             $read = Orm::create($DB);
             try {
-                $repository = new \itsmng\Database\Repository\UserRepository($read);
+                $repository = new UserRepository($read);
                 $options = ['is_deleted' => false, 'searchText' => ['id' => '^' . $owned->id . '$'],
                     'sort' => 'id', 'order' => 'ASC', 'start' => 0, 'list_limit' => 1];
                 $all = $repository->apiPage($options, null);
@@ -1767,14 +1786,14 @@ class APIRest extends APIBaseClass
                 $fixture['updated']['content'] = $fixture['add']['content'];
             }
             if ($provider === Computer_SoftwareVersion::class || $provider === Computer_SoftwareLicense::class) {
-                $source = new \Computer();
+                $source = new Computer();
                 $this->boolean($source->getFromDB($fixture['add']['items_id']))->isTrue();
                 $entity = $source->fields['entities_id'];
                 foreach (['source', 'target'] as $role) {
-                    $computer = new \Computer();
+                    $computer = new Computer();
                     $id = $computer->add(['name' => "$name-$role", 'entities_id' => $entity]);
                     if (!is_int($id) || $id <= 0) {
-                        throw new \RuntimeException('Cannot create the owned deprecated API computer');
+                        throw new RuntimeException('Cannot create the owned deprecated API computer');
                     }
                     $parents[] = $computer;
                     $computers[] = $id;
@@ -1786,16 +1805,16 @@ class APIRest extends APIBaseClass
                 $fixture['updated']['items_id'] = $computers[1];
 
                 if ($provider === Computer_SoftwareVersion::class) {
-                    $source_version = new \SoftwareVersion();
+                    $source_version = new SoftwareVersion();
                     $this->boolean($source_version->getFromDB($fixture['add']['softwareversions_id']))->isTrue();
-                    $version = new \SoftwareVersion();
+                    $version = new SoftwareVersion();
                     $id = $version->add([
                         'name' => $name,
                         'softwares_id' => $source_version->fields['softwares_id'],
                         'entities_id' => $source_version->fields['entities_id'],
                     ]);
                     if (!is_int($id) || $id <= 0) {
-                        throw new \RuntimeException('Cannot create the owned deprecated API software version');
+                        throw new RuntimeException('Cannot create the owned deprecated API software version');
                     }
                     $parents[] = $version;
                     $fixture['add']['softwareversions_id'] = $id;
@@ -1803,9 +1822,9 @@ class APIRest extends APIBaseClass
                     $fixture['inserted']['softwareversions_id'] = $id;
                     $fixture['updated']['softwareversions_id'] = $id;
                 } else {
-                    $source_license = new \SoftwareLicense();
+                    $source_license = new SoftwareLicense();
                     $this->boolean($source_license->getFromDB($fixture['add']['softwarelicenses_id']))->isTrue();
-                    $license = new \SoftwareLicense();
+                    $license = new SoftwareLicense();
                     $id = $license->add([
                         'name' => $name,
                         'softwares_id' => $source_license->fields['softwares_id'],
@@ -1814,7 +1833,7 @@ class APIRest extends APIBaseClass
                         'number' => $source_license->fields['number'],
                     ]);
                     if (!is_int($id) || $id <= 0) {
-                        throw new \RuntimeException('Cannot create the owned deprecated API software license');
+                        throw new RuntimeException('Cannot create the owned deprecated API software license');
                     }
                     $parents[] = $license;
                     $fixture['add']['softwarelicenses_id'] = $id;
@@ -1824,7 +1843,7 @@ class APIRest extends APIBaseClass
                 }
             }
             $test($fixture, $item);
-        } catch (\Throwable $error) {
+        } catch (Throwable $error) {
             $failure = $error;
             throw $error;
         } finally {
@@ -1849,13 +1868,13 @@ class APIRest extends APIBaseClass
                 foreach ($rows as $row) {
                     $this->boolean($item->delete(['id' => $row['id']], true))->isTrue();
                 }
-            } catch (\Throwable $error) {
+            } catch (Throwable $error) {
                 $cleanup_error = $error;
             }
             foreach (array_reverse($parents) as $parent) {
                 try {
                     $this->boolean($parent->delete(['id' => $parent->getID()], true))->isTrue();
-                } catch (\Throwable $error) {
+                } catch (Throwable $error) {
                     $cleanup_error ??= $error;
                 }
             }

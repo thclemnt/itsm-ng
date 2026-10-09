@@ -37,6 +37,7 @@ use ArrayAccess;
 use ArrayIterator;
 use ArrayObject;
 use DateInterval;
+use Glpi\Cache\SimpleCache as SimpleCacheModel;
 use IteratorAggregate;
 use itsmng\Cache\SessionAdapter;
 use itsmng\Cache\StorageFactory;
@@ -224,7 +225,7 @@ class SimpleCache extends \GLPITestCase
     {
         vfsStream::setup('glpi', null, ['cache' => []]);
         $storage = new Psr16Cache(StorageFactory::create(['adapter' => 'memory']));
-        $cache = new \Glpi\Cache\SimpleCache($storage, vfsStream::url('glpi/cache'));
+        $cache = new SimpleCacheModel($storage, vfsStream::url('glpi/cache'));
         $values = static function () {
             yield 'one' => 1;
             yield 'two' => 2;
@@ -248,7 +249,7 @@ class SimpleCache extends \GLPITestCase
         $file = $directory . '/' . $namespace . '.json';
         file_put_contents($file, '{"retained_null":null}');
         $storage = new Psr16Cache(new ArrayAdapter());
-        $cache = new \Glpi\Cache\SimpleCache($storage, $directory, true, $namespace);
+        $cache = new SimpleCacheModel($storage, $directory, true, $namespace);
         $this->boolean($cache->setMultiple(['live' => 'value', 'zero' => 0, 'null' => null]))->isTrue();
         // Known SHA-1 footprints for serialized "value", 0 and null. Existing
         // null entries and deleted keys are retained by the footprint writer.
@@ -286,8 +287,8 @@ class SimpleCache extends \GLPITestCase
         $directory = vfsStream::url('glpi/cache');
         $file = $directory . '/' . $namespace . '.json';
         $storage = new Psr16Cache(new ArrayAdapter());
-        $cache = new \Glpi\Cache\SimpleCache($storage, $directory, true, $namespace);
-        $other = new \Glpi\Cache\SimpleCache($storage, $directory, true, $namespace);
+        $cache = new SimpleCacheModel($storage, $directory, true, $namespace);
+        $other = new SimpleCacheModel($storage, $directory, true, $namespace);
         $cache->set('one', 'first');
         $this->string($cache->get('one'))->isIdenticalTo('first');
         $this->string($cache->get('one'))->isIdenticalTo('first');

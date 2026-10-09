@@ -33,14 +33,18 @@
 
 namespace tests\units;
 
+use CommonITILObject;
 use DbTestCase;
 use ITILFollowup;
 use Laminas\Mail\Storage\Message;
+use MailCollector as MailCollectorModel;
 use NotificationTarget;
 use NotificationTargetSoftwareLicense;
 use NotificationTargetTicket;
 use SoftwareLicense;
 use Ticket;
+use Ticket_Ticket;
+use UserEmail;
 
 class MailCollector extends DbTestCase
 {
@@ -404,44 +408,44 @@ class MailCollector extends DbTestCase
         $this->login();
         $_SESSION['glpicronuserrunning'] = 'cron_phpunit';
         $requester = getItemByTypeName('User', 'normal', true);
-        $email = new \UserEmail();
+        $email = new UserEmail();
         $this->integer((int)$email->add([
             'users_id' => $requester,
             'is_default' => 1,
             'email' => 'subject-reference@example.test',
         ]))->isGreaterThan(0);
 
-        $collector = new \MailCollector();
+        $collector = new MailCollectorModel();
         $collectorId = (int)$collector->add([
             'name' => 'Subject reference collector',
             'filesize_max' => 0,
-            'requester_field' => \MailCollector::REQUESTER_FIELD_FROM,
+            'requester_field' => MailCollectorModel::REQUESTER_FIELD_FROM,
         ]);
         $this->integer($collectorId)->isGreaterThan(0);
         $this->boolean($collector->getFromDB($collectorId))->isTrue();
 
-        $open = new \Ticket();
+        $open = new Ticket();
         $openId = (int)$open->add([
             'name' => 'Open subject reference', 'content' => 'Open reference body', 'entities_id' => 0,
         ]);
         $this->integer($openId)->isGreaterThan(0);
-        $closed = new \Ticket();
+        $closed = new Ticket();
         $closedId = (int)$closed->add([
             'name' => 'Closed subject reference', 'content' => 'Closed reference body', 'entities_id' => 0,
-            'status' => \CommonITILObject::CLOSED,
+            'status' => CommonITILObject::CLOSED,
         ]);
         $this->integer($closedId)->isGreaterThan(0);
         $this->boolean($closed->getFromDB($closedId))->isTrue();
-        $this->integer($closed->fields['status'])->isIdenticalTo(\CommonITILObject::CLOSED);
+        $this->integer($closed->fields['status'])->isIdenticalTo(CommonITILObject::CLOSED);
 
         // A real purged ticket supplies a stale reference; no guessed target.
-        $removed = new \Ticket();
+        $removed = new Ticket();
         $removedId = (int)$removed->add([
             'name' => 'Purged subject reference', 'content' => 'Purged reference body', 'entities_id' => 0,
         ]);
         $this->integer($removedId)->isGreaterThan(0);
         $this->boolean($removed->delete(['id' => $removedId], true))->isTrue();
-        $this->boolean((new \Ticket())->getFromDB($removedId))->isFalse();
+        $this->boolean((new Ticket())->getFromDB($removedId))->isFalse();
 
         foreach (['open' => $openId, 'closed' => $closedId, 'purged' => $removedId] as $kind => $target) {
             $message = new Message([
@@ -465,10 +469,10 @@ class MailCollector extends DbTestCase
                 $this->integer($input['tickets_id'])->isIdenticalTo($openId);
                 $this->array($input)->notHasKey('_linkedto');
                 // Use the same public followup input conversion as collect().
-                $input['itemtype'] = \Ticket::class;
+                $input['itemtype'] = Ticket::class;
                 $input['items_id'] = $input['tickets_id'];
                 unset($input['tickets_id']);
-                $followup = new \ITILFollowup();
+                $followup = new ITILFollowup();
                 $this->integer((int)$followup->add($input))->isGreaterThan(0);
                 $this->boolean($followup->getFromDB($followup->getID()))->isTrue();
                 $this->integer($followup->fields['items_id'])->isIdenticalTo($openId);
@@ -484,16 +488,16 @@ class MailCollector extends DbTestCase
             // This focused builder test supplies normal routing explicitly;
             // the unchanged full collect test exercises actual collection rules.
             $input['entities_id'] = 0;
-            $created = new \Ticket();
+            $created = new Ticket();
             $createdId = (int)$created->add($input);
             $this->integer($createdId)->isGreaterThan(0);
-            $links = \Ticket_Ticket::getLinkedTicketsTo($createdId);
+            $links = Ticket_Ticket::getLinkedTicketsTo($createdId);
             if ($kind === 'closed') {
                 $this->array($links)->hasSize(1);
                 $this->integer(array_values($links)[0]['tickets_id'])->isIdenticalTo($closedId);
             } else {
                 $this->array($links)->isEmpty();
-                $this->boolean((new \Ticket())->getFromDB($removedId))->isFalse();
+                $this->boolean((new Ticket())->getFromDB($removedId))->isFalse();
             }
         }
     }

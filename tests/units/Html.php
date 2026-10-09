@@ -36,8 +36,11 @@ namespace tests\units;
 use Glpi\Cache\SimpleCache;
 use Html as HtmlModel;
 use org\bovigo\vfs\vfsStream;
+use Session as SessionModel;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Psr16Cache;
+use Symfony\Component\Filesystem\Filesystem;
+use Twig;
 
 /* Test for inc/html.class.php */
 
@@ -56,7 +59,7 @@ class Html extends \GLPITestCase
             $CFG_GLPI['root_doc'] = '/first';
             $_SESSION['glpiactive_entity'] = 1;
             $_SESSION['glpiactive_entity_recursive'] = false;
-            $first = \Twig::load($directory);
+            $first = Twig::load($directory);
             $this->string($first->getCache())->isEqualTo(GLPI_CACHE_DIR . '/twig');
             $this->boolean($first->isAutoReload())->isTrue();
             $this->string($first->render('context.twig', ['value' => '<first>']))
@@ -67,7 +70,7 @@ class Html extends \GLPITestCase
             $CFG_GLPI['root_doc'] = '/second';
             $_SESSION['glpiactive_entity'] = 2;
             $_SESSION['glpiactive_entity_recursive'] = true;
-            $second = \Twig::load($directory);
+            $second = Twig::load($directory);
             $this->object($second)->isNotIdenticalTo($first);
             $this->string($second->render('context.twig', ['value' => 'second']))
                 ->isEqualTo('/second|2|yes|second');
@@ -78,15 +81,15 @@ class Html extends \GLPITestCase
             clearstatcache(true, $template);
             $this->boolean($second->isTemplateFresh('context.twig', time()))->isFalse();
 
-            $uncached = \Twig::load($directory, false, true);
+            $uncached = Twig::load($directory, false, true);
             $this->boolean($uncached->getCache())->isFalse();
             $this->boolean($uncached->isDebug())->isTrue();
             $this->string($uncached->render('context.twig', ['value' => 'uncached']))
                 ->isEqualTo('/second|2|yes|uncached');
         } finally {
             $CFG_GLPI['root_doc'] = $root;
-            \Twig::clearCache();
-            (new \Symfony\Component\Filesystem\Filesystem())->remove($directory);
+            Twig::clearCache();
+            (new Filesystem())->remove($directory);
         }
     }
 
@@ -94,7 +97,7 @@ class Html extends \GLPITestCase
     {
         require_once GLPI_ROOT . '/src/twig/twig.class.php';
         require_once GLPI_ROOT . '/src/twig/twig.utils.php';
-        \Twig::clearCache();
+        Twig::clearCache();
         ob_start();
         try {
             renderTwigTemplate('install/error.twig', [], '/templates', false);
@@ -109,7 +112,7 @@ class Html extends \GLPITestCase
     public function testTwigOptionalMacroArgumentsKeepTheirNullDefaults(): void
     {
         require_once GLPI_ROOT . '/src/twig/twig.class.php';
-        $twig = \Twig::load(GLPI_ROOT . '/templates', false);
+        $twig = Twig::load(GLPI_ROOT . '/templates', false);
         $deprecations = [];
         set_error_handler(static function ($severity, $message) use (&$deprecations) {
             if ($severity === E_USER_DEPRECATED) {
@@ -143,10 +146,10 @@ class Html extends \GLPITestCase
         }
         file_put_contents($directory . '/compiled.php', '<?php // compiled template');
         try {
-            \Twig::clearCache();
+            Twig::clearCache();
             $this->boolean(is_dir(GLPI_CACHE_DIR . '/twig'))->isFalse();
             $this->string(file_get_contents($sentinel))->isEqualTo('keep');
-            \Twig::clearCache(); // Clearing an absent directory is harmless.
+            Twig::clearCache(); // Clearing an absent directory is harmless.
         } finally {
             unlink($sentinel);
         }
@@ -621,7 +624,7 @@ class Html extends \GLPITestCase
                 ['file.min.css', $base_attrs],
                 $base_expected
             );
-            $this->string(\Html::css($dir . '/file.css'))->isIdenticalTo($expected);
+            $this->string(HtmlModel::css($dir . '/file.css'))->isIdenticalTo($expected);
 
             //explicitely require not minified file
             $expected = str_replace(
@@ -629,17 +632,17 @@ class Html extends \GLPITestCase
                 ['file.css', $base_attrs],
                 $base_expected
             );
-            $this->string(\Html::css($dir . '/file.css', [], false))->isIdenticalTo($expected);
+            $this->string(HtmlModel::css($dir . '/file.css', [], false))->isIdenticalTo($expected);
 
             //activate debug mode: expect not minified file
-            $_SESSION['glpi_use_mode'] = \Session::DEBUG_MODE;
+            $_SESSION['glpi_use_mode'] = SessionModel::DEBUG_MODE;
             $expected = str_replace(
                 ['%url', '%attrs'],
                 ['file.css', $base_attrs],
                 $base_expected
             );
-            $this->string(\Html::css($dir . '/file.css'))->isIdenticalTo($expected);
-            $_SESSION['glpi_use_mode'] = \Session::NORMAL_MODE;
+            $this->string(HtmlModel::css($dir . '/file.css'))->isIdenticalTo($expected);
+            $_SESSION['glpi_use_mode'] = SessionModel::NORMAL_MODE;
 
             //expect original file
             $expected = str_replace(
@@ -647,7 +650,7 @@ class Html extends \GLPITestCase
                 ['nofile.css', $base_attrs],
                 $base_expected
             );
-            $this->string(\Html::css($dir . '/nofile.css'))->isIdenticalTo($expected);
+            $this->string(HtmlModel::css($dir . '/nofile.css'))->isIdenticalTo($expected);
 
             //expect original file
             $expected = str_replace(
@@ -655,7 +658,7 @@ class Html extends \GLPITestCase
                 ['other.css', $base_attrs],
                 $base_expected
             );
-            $this->string(\Html::css($dir . '/other.css'))->isIdenticalTo($expected);
+            $this->string(HtmlModel::css($dir . '/other.css'))->isIdenticalTo($expected);
 
             //expect original file
             $expected = str_replace(
@@ -663,7 +666,7 @@ class Html extends \GLPITestCase
                 ['other-min.css', $base_attrs],
                 $base_expected
             );
-            $this->string(\Html::css($dir . '/other-min.css'))->isIdenticalTo($expected);
+            $this->string(HtmlModel::css($dir . '/other-min.css'))->isIdenticalTo($expected);
 
             //expect minified file, print media
             $expected = str_replace(
@@ -671,7 +674,7 @@ class Html extends \GLPITestCase
                 ['file.min.css', 'media="print"'],
                 $base_expected
             );
-            $this->string(\Html::css($dir . '/file.css', ['media' => 'print']))->isIdenticalTo($expected);
+            $this->string(HtmlModel::css($dir . '/file.css', ['media' => 'print']))->isIdenticalTo($expected);
 
             //expect minified file, screen media
             $expected = str_replace(
@@ -679,7 +682,7 @@ class Html extends \GLPITestCase
                 ['file.min.css', $base_attrs],
                 $base_expected
             );
-            $this->string(\Html::css($dir . '/file.css', ['media' => '']))->isIdenticalTo($expected);
+            $this->string(HtmlModel::css($dir . '/file.css', ['media' => '']))->isIdenticalTo($expected);
 
             //expect minified file and specific version
             $fake_version = '0.0.1';
@@ -688,7 +691,7 @@ class Html extends \GLPITestCase
                 ['file.min.css', $base_attrs, $fake_version],
                 $base_expected
             );
-            $this->string(\Html::css($dir . '/file.css', ['version' => $fake_version]))->isIdenticalTo($expected);
+            $this->string(HtmlModel::css($dir . '/file.css', ['version' => $fake_version]))->isIdenticalTo($expected);
 
             //expect minified file with added attributes
             $expected = str_replace(
@@ -696,7 +699,7 @@ class Html extends \GLPITestCase
                 ['file.min.css', 'attribute="one" ' . $base_attrs],
                 $base_expected
             );
-            $this->string(\Html::css($dir . '/file.css', ['attribute' => 'one']))->isIdenticalTo($expected);
+            $this->string(HtmlModel::css($dir . '/file.css', ['attribute' => 'one']))->isIdenticalTo($expected);
         });
     }
 
@@ -721,7 +724,7 @@ class Html extends \GLPITestCase
                 'file.min.js',
                 $base_expected
             );
-            $this->string(\Html::script($dir . '/file.js'))->isIdenticalTo($expected);
+            $this->string(HtmlModel::script($dir . '/file.js'))->isIdenticalTo($expected);
 
             //explicitely require not minified file
             $expected = str_replace(
@@ -729,17 +732,17 @@ class Html extends \GLPITestCase
                 'file.js',
                 $base_expected
             );
-            $this->string(\Html::script($dir . '/file.js', [], false))->isIdenticalTo($expected);
+            $this->string(HtmlModel::script($dir . '/file.js', [], false))->isIdenticalTo($expected);
 
             //activate debug mode: expect not minified file
-            $_SESSION['glpi_use_mode'] = \Session::DEBUG_MODE;
+            $_SESSION['glpi_use_mode'] = SessionModel::DEBUG_MODE;
             $expected = str_replace(
                 '%url',
                 'file.js',
                 $base_expected
             );
-            $this->string(\Html::script($dir . '/file.js'))->isIdenticalTo($expected);
-            $_SESSION['glpi_use_mode'] = \Session::NORMAL_MODE;
+            $this->string(HtmlModel::script($dir . '/file.js'))->isIdenticalTo($expected);
+            $_SESSION['glpi_use_mode'] = SessionModel::NORMAL_MODE;
 
             //expect original file
             $expected = str_replace(
@@ -747,7 +750,7 @@ class Html extends \GLPITestCase
                 'nofile.js',
                 $base_expected
             );
-            $this->string(\Html::script($dir . '/nofile.js'))->isIdenticalTo($expected);
+            $this->string(HtmlModel::script($dir . '/nofile.js'))->isIdenticalTo($expected);
 
             //expect original file
             $expected = str_replace(
@@ -755,7 +758,7 @@ class Html extends \GLPITestCase
                 'other.js',
                 $base_expected
             );
-            $this->string(\Html::script($dir . '/other.js'))->isIdenticalTo($expected);
+            $this->string(HtmlModel::script($dir . '/other.js'))->isIdenticalTo($expected);
 
             //expect original file
             $expected = str_replace(
@@ -763,7 +766,7 @@ class Html extends \GLPITestCase
                 'other-min.js',
                 $base_expected
             );
-            $this->string(\Html::script($dir . '/other-min.js'))->isIdenticalTo($expected);
+            $this->string(HtmlModel::script($dir . '/other-min.js'))->isIdenticalTo($expected);
 
             //expect minified file and specific version
             $fake_version = '0.0.1';
@@ -772,7 +775,7 @@ class Html extends \GLPITestCase
                 ['file.min.js', $fake_version],
                 $base_expected
             );
-            $this->string(\Html::script($dir . '/file.js', ['version' => $fake_version]))->isIdenticalTo($expected);
+            $this->string(HtmlModel::script($dir . '/file.js', ['version' => $fake_version]))->isIdenticalTo($expected);
         });
     }
 
@@ -790,7 +793,7 @@ class Html extends \GLPITestCase
             foreach ($files as $file) {
                 $this->boolean(touch($path . '/' . $file))->isTrue();
             }
-            $_SESSION['glpi_use_mode'] = \Session::NORMAL_MODE;
+            $_SESSION['glpi_use_mode'] = SessionModel::NORMAL_MODE;
             $test($dir);
         } finally {
             if ($hadMode) {

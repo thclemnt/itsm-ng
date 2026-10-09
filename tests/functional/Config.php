@@ -33,31 +33,88 @@
 
 namespace tests\units;
 
+use atoum\atoum\php\mocker\funktion;
 use Closure;
+use CommonDBTM;
 use Config as ConfigModel;
+use DBAdapter;
+use DBmysql;
+use DBpgsql;
 use DbTestCase;
 use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\DBAL\Configuration;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\DriverManager;
+use Doctrine\DBAL\Exception\DriverException;
+use Doctrine\DBAL\Logging\Middleware;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Platforms\MySQLPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Query\QueryBuilder;
+use Doctrine\DBAL\Result;
+use Doctrine\DBAL\Schema\Schema;
+use Doctrine\DBAL\Types\BigIntType;
+use Doctrine\DBAL\Types\BooleanType;
+use Doctrine\DBAL\Types\IntegerType;
 use Doctrine\DBAL\Types\StringType;
 use Doctrine\DBAL\Types\TextType;
 use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use Doctrine\ORM\Event\PostLoadEventArgs;
+use Doctrine\ORM\Events;
+use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\ORM\NoResultException;
+use Doctrine\ORM\Query;
+use Doctrine\ORM\Query\AST\DeleteStatement;
+use Doctrine\ORM\Query\AST\SelectStatement;
+use Doctrine\ORM\Query\AST\UpdateStatement;
+use Doctrine\ORM\Query\Exec\SqlFinalizer;
+use Doctrine\ORM\Query\SqlOutputWalker;
+use Glpi\Console\Database\InstallCommand;
+use Group;
+use Infocom;
+use Item_Devices;
+use itsmng\Cache\SessionAdapter;
+use itsmng\Database\BaselineSchema;
+use itsmng\Database\Entity\Computer as ComputerRecord;
 use itsmng\Database\Entity\Config as ConfigRecord;
+use itsmng\Database\Entity\Entity as EntityRecord;
+use itsmng\Database\Entity\GroupMembership;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\MappedReads;
+use itsmng\Database\MySQLConnection;
 use itsmng\Database\OidcRefreshReadOperation;
 use itsmng\Database\Orm;
+use itsmng\Database\PostgresConnection;
+use itsmng\Database\RecordReadOperation;
 use itsmng\Database\Repository\ConfigurationRepository;
+use itsmng\Database\Repository\OidcRepository;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\SchemaCheck;
+use JsonException;
 use Log;
 use LogicException;
 use mock\DBmysql as ConfigurationAdapter;
 use PHPMailer\PHPMailer\PHPMailer;
+use Psr\Cache\CacheItemInterface;
+use Psr\Log\AbstractLogger;
+use ReflectionClass;
+use ReflectionMethod;
 use ReflectionProperty;
+use RuntimeException;
 use Session;
 use Symfony\Component\Cache\Adapter\AbstractAdapter;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Adapter\FilesystemAdapter;
 use Symfony\Component\Cache\Psr16Cache;
+use Symfony\Component\Console\Exception\InvalidArgumentException as ConsoleInvalidArgumentException;
+use Symfony\Component\Console\Input\ArrayInput;
+use Toolbox;
+use User;
 
 /* Test for inc/config.class.php */
 
@@ -69,15 +126,15 @@ class Config extends DbTestCase
         $this->login();
         $connection = $DB->getDoctrineConnection();
         $pendingColumn = $connection->getDatabasePlatform()->quoteSingleIdentifier('update');
-        $user = $this->createItem(\User::class, ['name' => $this->getUniqueString()]);
+        $user = $this->createItem(User::class, ['name' => $this->getUniqueString()]);
         $id = (int)$user->getID();
-        $manager = \itsmng\Database\Orm::forConnection($connection);
-        $ordinary = new \itsmng\Database\Repository\OidcRepository($manager);
+        $manager = Orm::forConnection($connection);
+        $ordinary = new OidcRepository($manager);
         $probe = new ConfigOidcScalarReadProbe($connection);
-        $reader = new \itsmng\Database\OidcRefreshReadOperation($probe);
-        $bigint = \Doctrine\DBAL\Types\Type::getType('bigint');
-        $integer = \Doctrine\DBAL\Types\Type::getType('integer');
-        $boolean = \Doctrine\DBAL\Types\Type::getType('boolean');
+        $reader = new OidcRefreshReadOperation($probe);
+        $bigint = Type::getType('bigint');
+        $integer = Type::getType('integer');
+        $boolean = Type::getType('boolean');
         try {
             foreach ([0, -1] as $missing) {
                 $this->boolean($reader->needsRefresh($missing))->isIdenticalTo($ordinary->needsRefresh($missing));
@@ -171,71 +228,71 @@ class Config extends DbTestCase
                     unset($_SESSION['glpiID']);
                 }
             }
-            $observed = new class () extends \Doctrine\DBAL\Types\BigIntType {
+            $observed = new class () extends BigIntType {
                 public int $conversions = 0;
                 public int $sql = 0;
-                public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+                public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                 {
                     ++$this->sql;
                     return '(' . $sqlExpr . ' + 0)';
                 }
-                public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): int|string|null
+                public function convertToPHPValue(mixed $value, AbstractPlatform $platform): int|string|null
                 {
                     ++$this->conversions;
                     return parent::convertToPHPValue($value, $platform);
                 }
             };
-            \Doctrine\DBAL\Types\Type::overrideType('bigint', $observed);
+            Type::overrideType('bigint', $observed);
             $this->boolean($reader->needsRefresh($id))->isTrue();
             $this->integer($observed->conversions)->isIdenticalTo(1);
             $this->boolean($ordinary->needsRefresh($id))->isTrue();
             $this->integer($observed->conversions)->isIdenticalTo(2);
             $this->integer($observed->sql)->isIdenticalTo(2);
-            \Doctrine\DBAL\Types\Type::overrideType('bigint', new class () extends \Doctrine\DBAL\Types\BigIntType {
-                public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): int|string|null
+            Type::overrideType('bigint', new class () extends BigIntType {
+                public function convertToPHPValue(mixed $value, AbstractPlatform $platform): int|string|null
                 {
-                    throw new \LogicException('OIDC scalar PHP conversion remains observable');
+                    throw new LogicException('OIDC scalar PHP conversion remains observable');
                 }
             });
-            $this->exception(static fn () => $reader->needsRefresh($id))->isInstanceOf(\LogicException::class)
+            $this->exception(static fn () => $reader->needsRefresh($id))->isInstanceOf(LogicException::class)
                 ->hasMessage('OIDC scalar PHP conversion remains observable');
-            $this->exception(static fn () => $ordinary->needsRefresh($id))->isInstanceOf(\LogicException::class)
+            $this->exception(static fn () => $ordinary->needsRefresh($id))->isInstanceOf(LogicException::class)
                 ->hasMessage('OIDC scalar PHP conversion remains observable');
-            \Doctrine\DBAL\Types\Type::overrideType('bigint', new class () extends \Doctrine\DBAL\Types\BigIntType {
-                public function convertToPHPValue(mixed $value, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): int|string|null
+            Type::overrideType('bigint', new class () extends BigIntType {
+                public function convertToPHPValue(mixed $value, AbstractPlatform $platform): int|string|null
                 {
-                    throw new \Doctrine\ORM\NoResultException();
+                    throw new NoResultException();
                 }
             });
             $this->boolean($reader->needsRefresh($id))->isFalse();
             $this->boolean($ordinary->needsRefresh($id))->isFalse();
-            \Doctrine\DBAL\Types\Type::overrideType('bigint', $bigint);
-            \Doctrine\DBAL\Types\Type::overrideType('integer', new class () extends \Doctrine\DBAL\Types\IntegerType {
-                public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+            Type::overrideType('bigint', $bigint);
+            Type::overrideType('integer', new class () extends IntegerType {
+                public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                 {
                     return '(' . $sqlExpr . ' * 0 - 1)';
                 }
             });
             $this->boolean($reader->needsRefresh($id))->isFalse();
             $this->boolean($ordinary->needsRefresh($id))->isFalse();
-            \Doctrine\DBAL\Types\Type::overrideType('integer', $integer);
-            \Doctrine\DBAL\Types\Type::overrideType('boolean', new class () extends \Doctrine\DBAL\Types\BooleanType {
-                public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+            Type::overrideType('integer', $integer);
+            Type::overrideType('boolean', new class () extends BooleanType {
+                public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                 {
                     return '(NOT ' . $sqlExpr . ')';
                 }
             });
             $this->boolean($reader->needsRefresh($id))->isFalse();
             $this->boolean($ordinary->needsRefresh($id))->isFalse();
-            \Doctrine\DBAL\Types\Type::overrideType('boolean', $boolean);
+            Type::overrideType('boolean', $boolean);
             $extension = new class ($connection) extends ConfigOidcScalarReadProbe {
-                private ?\Doctrine\Common\EventManager $events = null;
-                public function getEventManager(): \Doctrine\Common\EventManager
+                private ?EventManager $events = null;
+                public function getEventManager(): EventManager
                 {
-                    return $this->events ??= new \Doctrine\Common\EventManager();
+                    return $this->events ??= new EventManager();
                 }
             };
-            $local = new \itsmng\Database\OidcRefreshReadOperation($extension);
+            $local = new OidcRefreshReadOperation($extension);
             $listener = new class () {
                 public int $loads = 0;
                 public bool $absent = false;
@@ -243,28 +300,28 @@ class Config extends DbTestCase
                 {
                     ++$this->loads;
                     if ($this->absent) {
-                        throw new \Doctrine\ORM\NoResultException();
+                        throw new NoResultException();
                     }
                 }
             };
-            $extension->getEventManager()->addEventListener([\Doctrine\ORM\Events::loadClassMetadata], $listener);
+            $extension->getEventManager()->addEventListener([Events::loadClassMetadata], $listener);
             $this->boolean($local->needsRefresh($id))->isTrue();
             $this->integer($listener->loads)->isGreaterThan(0);
             $this->integer($extension->builders)->isIdenticalTo(0);
             $local->close();
             $listener->absent = true;
-            $absent = new \itsmng\Database\OidcRefreshReadOperation($extension);
-            $ordinaryManager = \itsmng\Database\Orm::forConnection($extension);
+            $absent = new OidcRefreshReadOperation($extension);
+            $ordinaryManager = Orm::forConnection($extension);
             $this->boolean($absent->needsRefresh($id))->isFalse();
-            $this->boolean((new \itsmng\Database\Repository\OidcRepository($ordinaryManager))->needsRefresh($id))->isFalse();
+            $this->boolean((new OidcRepository($ordinaryManager))->needsRefresh($id))->isFalse();
             $absent->close();
             $ordinaryManager->clear();
             $connection->delete('glpi_oidc_users', ['user_id' => $id]);
             $this->boolean($reader->needsRefresh($id))->isFalse();
         } finally {
-            \Doctrine\DBAL\Types\Type::overrideType('bigint', $bigint);
-            \Doctrine\DBAL\Types\Type::overrideType('integer', $integer);
-            \Doctrine\DBAL\Types\Type::overrideType('boolean', $boolean);
+            Type::overrideType('bigint', $bigint);
+            Type::overrideType('integer', $integer);
+            Type::overrideType('boolean', $boolean);
             $reader->close();
             $manager->clear();
         }
@@ -277,14 +334,14 @@ class Config extends DbTestCase
         $originalConfig = $CFG_GLPI;
         $parameters = $original->getDoctrineConnection()->getParams();
         $postgres = $original->getProvider() === 'pgsql';
-        $factory = $postgres ? \itsmng\Database\PostgresConnection::class : \itsmng\Database\MySQLConnection::class;
+        $factory = $postgres ? PostgresConnection::class : MySQLConnection::class;
         $admin = $factory::create($parameters);
         $namespace = 'itsm_test_config_catalog_' . bin2hex(random_bytes(6));
         $quotedNamespace = $admin->quoteIdentifier($namespace);
         $connection = null;
         $created = false;
         $roleCreated = false;
-        $logger = new class () extends \Psr\Log\AbstractLogger {
+        $logger = new class () extends AbstractLogger {
             public array $queries = [];
             public function log($level, $message, array $context = []): void
             {
@@ -294,8 +351,8 @@ class Config extends DbTestCase
                 }
             }
         };
-        $configuration = new \Doctrine\DBAL\Configuration();
-        $configuration->setMiddlewares([new \Doctrine\DBAL\Logging\Middleware($logger)]);
+        $configuration = new Configuration();
+        $configuration->setMiddlewares([new Middleware($logger)]);
         try {
             // A private physical namespace keeps DDL out of the suite's transaction.
             // CI grants MySQL DDL only on itsm_test_config_catalog_* databases.
@@ -309,7 +366,7 @@ class Config extends DbTestCase
             }
             $connection = $factory::create($parameters, $configuration);
             $probe = clone $original;
-            (new \ReflectionProperty(\DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
+            (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
             $probe->clearSchemaCache();
             if ($postgres) {
                 $probe->dbschema = $namespace;
@@ -322,7 +379,7 @@ class Config extends DbTestCase
             $DB = $probe;
             $load = function (bool $olderFirst, ?string $marker) use (&$CFG_GLPI): void {
                 $CFG_GLPI = [];
-                $this->boolean(\Config::loadLegacyConfiguration($olderFirst, false))->isIdenticalTo($marker !== null);
+                $this->boolean(ConfigModel::loadLegacyConfiguration($olderFirst, false))->isIdenticalTo($marker !== null);
                 $this->variable($CFG_GLPI['catalog_probe'] ?? null)->isIdenticalTo($marker);
             };
             $load(false, null);
@@ -351,7 +408,7 @@ class Config extends DbTestCase
             $targetedCatalog = array_values(array_filter($catalog, static fn (string $sql): bool =>
                 preg_match('/table_name\s+in\s*\(\s*(?:\?|\$[0-9]+)\s*,\s*(?:\?|\$[0-9]+)\s*\)/', $sql) === 1));
             $this->array($targetedCatalog)->hasSize(1);
-            $this->array((new \ReflectionProperty(\DBAdapter::class, 'table_cache'))->getValue($probe))->isEmpty();
+            $this->array((new ReflectionProperty(DBAdapter::class, 'table_cache'))->getValue($probe))->isEmpty();
 
             if ($postgres) {
                 // Empty search_path must not discover a same-named table in
@@ -378,8 +435,8 @@ class Config extends DbTestCase
                 $this->array($connection->createSchemaManager()->listTableNames())->contains('glpi_config');
                 // A column grant exposes the table, but SELECT * still fails;
                 // the loader must not mistake partial access for absence.
-                $this->exception(static fn () => \Config::loadLegacyConfiguration(true, false))
-                    ->isInstanceOf(\Doctrine\DBAL\Exception\DriverException::class);
+                $this->exception(static fn () => ConfigModel::loadLegacyConfiguration(true, false))
+                    ->isInstanceOf(DriverException::class);
                 $connection->executeStatement('RESET ROLE');
             }
 
@@ -405,7 +462,7 @@ class Config extends DbTestCase
             // Unsignaled DDL between loading configuration and cache bootstrap
             // must remain visible to the adapter's formerly fresh first scan.
             $manager->renameTable('glpi_configs', 'saved_configs');
-            $this->object(\Config::getCache('cache_db', 'core', false))
+            $this->object(ConfigModel::getCache('cache_db', 'core', false))
                 ->isInstanceOf(FilesystemAdapter::class);
             $this->boolean($probe->tableExists('glpi_configs', false))->isFalse();
             $connection->executeStatement('CREATE TABLE glpi_configs (id INTEGER NOT NULL, catalog_probe VARCHAR(40))');
@@ -443,14 +500,14 @@ class Config extends DbTestCase
         // Compare digests so a failed read-only check cannot print configuration secrets.
         $beforeRows = $rowsHash();
         $level = $connection->getTransactionNestingLevel();
-        $manager = \itsmng\Database\Orm::create($DB);
+        $manager = Orm::create($DB);
         try {
-            $metadata = $manager->getClassMetadata(\itsmng\Database\Entity\Config::class);
+            $metadata = $manager->getClassMetadata(ConfigRecord::class);
             $metadata->fieldMappings['context']->length = 173;
-            $expected = (new \itsmng\Database\BaselineSchema($manager))->build($platform)->getTable('glpi_configs');
-            $this->array((new \itsmng\Database\SchemaCheck())->differences(
+            $expected = (new BaselineSchema($manager))->build($platform)->getTable('glpi_configs');
+            $this->array((new SchemaCheck())->differences(
                 $connection,
-                new \Doctrine\DBAL\Schema\Schema([clone $expected])
+                new Schema([clone $expected])
             ))->isIdenticalTo(['Changed column: glpi_configs.context']);
             $after = $schemaManager->introspectTable('glpi_configs');
             $this->boolean($schemaManager->createComparator()->compareTables($before, $after)->isEmpty())->isTrue();
@@ -555,19 +612,19 @@ class Config extends DbTestCase
         global $DB;
 
         $this->login();
-        $this->boolean((bool)\Config::canUpdate())->isTrue();
-        $rows = static fn (string $table, array $criteria): array => (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))->matching($table, $criteria, ['id ASC']);
-        \Config::setConfigurationValues('core', ['is_ids_visible' => 0]);
+        $this->boolean((bool)ConfigModel::canUpdate())->isTrue();
+        $rows = static fn (string $table, array $criteria): array => (new RecordRepository(Orm::create($DB)))->matching($table, $criteria, ['id ASC']);
+        ConfigModel::setConfigurationValues('core', ['is_ids_visible' => 0]);
         $before = $rows('glpi_configs', ['context' => 'core']);
         $setting = $rows('glpi_configs', ['context' => 'core', 'name' => 'is_ids_visible']);
         $this->array($setting)->hasSize(1);
         $this->string($setting[0]['value'])->isIdenticalTo('0');
-        $historyCriteria = ['itemtype' => \Config::getType(), 'old_value' => ['LIKE', 'is_ids_visible %']];
+        $historyCriteria = ['itemtype' => ConfigModel::getType(), 'old_value' => ['LIKE', 'is_ids_visible %']];
         $historyBefore = $rows('glpi_logs', $historyCriteria);
 
         // The actual default-values form stores configuration during preparation
         // and deliberately returns false to stop the outer record update.
-        $config = new \Config();
+        $config = new ConfigModel();
         $this->boolean($config->prepareInputForUpdate([
             'id' => $setting[0]['id'],
             'is_ids_visible' => 1,
@@ -575,7 +632,7 @@ class Config extends DbTestCase
             '_glpi_csrf_token' => $_SESSION['_glpi_csrf_token'],
             '_no_history' => 1,
         ]))->isFalse();
-        $this->array(\Config::getConfigurationValues('core', ['is_ids_visible']))->isIdenticalTo(['is_ids_visible' => '1']);
+        $this->array(ConfigModel::getConfigurationValues('core', ['is_ids_visible']))->isIdenticalTo(['is_ids_visible' => '1']);
 
         $expected = $before;
         foreach ($expected as &$row) {
@@ -742,12 +799,12 @@ class Config extends DbTestCase
 
     public function testDatabaseConfigurationRequiresSelectedPdoDriver(): void
     {
-        $command = new \Glpi\Console\Database\InstallCommand();
-        $validate = new \ReflectionMethod($command, 'validateConfigInput');
-        $functions = new \atoum\atoum\php\mocker\funktion('Glpi\\Console\\Database');
+        $command = new InstallCommand();
+        $validate = new ReflectionMethod($command, 'validateConfigInput');
+        $functions = new funktion('Glpi\\Console\\Database');
         try {
             foreach (['mysql' => 'pdo_mysql', 'pgsql' => 'pdo_pgsql'] as $provider => $extension) {
-                $input = new \Symfony\Component\Console\Input\ArrayInput([
+                $input = new ArrayInput([
                     '--db-type' => $provider, '--db-name' => 'requirements_only', '--db-user' => 'test',
                 ], $command->getDefinition());
                 $functions->extension_loaded = static fn (string $name): bool => $name === $extension;
@@ -755,7 +812,7 @@ class Config extends DbTestCase
                 // MySQLi cannot substitute for either actual PDO transport.
                 $functions->extension_loaded = static fn (string $name): bool => $name === 'mysqli';
                 $this->exception(static fn () => $validate->invoke($command, $input))
-                    ->isInstanceOf(\Symfony\Component\Console\Exception\InvalidArgumentException::class)
+                    ->isInstanceOf(ConsoleInvalidArgumentException::class)
                     ->hasMessage('The ' . $extension . ' PHP extension is required for this database provider.');
             }
         } finally {
@@ -768,10 +825,10 @@ class Config extends DbTestCase
         global $DB;
         $database = $DB;
         try {
-            foreach ([\DBmysql::class => 'pdo_mysql', \DBpgsql::class => 'pdo_pgsql'] as $adapter => $extension) {
+            foreach ([DBmysql::class => 'pdo_mysql', DBpgsql::class => 'pdo_pgsql'] as $adapter => $extension) {
                 // Select the configured provider without opening either transport.
-                $DB = (new \ReflectionClass($adapter))->newInstanceWithoutConstructor();
-                $report = \Config::checkExtensions();
+                $DB = (new ReflectionClass($adapter))->newInstanceWithoutConstructor();
+                $report = ConfigModel::checkExtensions();
                 $required = $report['good'] + $report['missing'];
                 $this->array($required)->hasKey($extension)->notHasKey('mysqli');
                 $this->array($required)->notHasKey($extension === 'pdo_mysql' ? 'pdo_pgsql' : 'pdo_mysql');
@@ -799,7 +856,7 @@ class Config extends DbTestCase
         $list = [
            'json' => [
               'required'  => true,
-              'class'     => \JsonException::class
+              'class'     => JsonException::class
            ]
         ];
         $report = \Config::checkExtensions($list);
@@ -865,29 +922,29 @@ class Config extends DbTestCase
         $context = "cache-bootstrap-'" . bin2hex(random_bytes(6));
         $otherContext = $context . '-other';
         $name = 'cache_db';
-        $table = $connection->quoteIdentifier(\Config::getTable());
+        $table = $connection->quoteIdentifier(ConfigModel::getTable());
         $hadCache = array_key_exists('GLPI_CACHE', $GLOBALS);
         $previous = $GLOBALS['GLPI_CACHE'] ?? null;
         $settings = static fn (string $namespace, int $ttl): string => json_encode([
             'adapter' => 'memory',
             'options' => ['namespace' => $namespace, 'ttl' => $ttl],
         ], JSON_THROW_ON_ERROR);
-        $encrypted = \Toolbox::sodiumEncrypt($settings('must-not-decrypt', 99));
-        $memory = new \Symfony\Component\Cache\Adapter\ArrayAdapter(storeSerialized: false);
+        $encrypted = Toolbox::sodiumEncrypt($settings('must-not-decrypt', 99));
+        $memory = new ArrayAdapter(storeSerialized: false);
         try {
             $connection->insert($table, ['context' => $context, 'name' => $name, 'value' => $settings('first', 17)]);
             $connection->insert($table, ['context' => $otherContext, 'name' => $name, 'value' => $settings('wrong-context', 31)]);
             $connection->insert($table, ['context' => $context, 'name' => 'other-cache', 'value' => $settings('wrong-name', 43)]);
             unset($GLOBALS['GLPI_CACHE']);
-            $first = \Config::getCache($name, $context, false);
+            $first = ConfigModel::getCache($name, $context, false);
             $this->object($first)->isInstanceOf(ArrayAdapter::class);
             $firstCache = new Psr16Cache($first);
             $this->boolean($firstCache->set('retained', 'first'))->isTrue();
             $this->integer((new ReflectionProperty(ArrayAdapter::class, 'defaultLifetime'))->getValue($first))->isIdenticalTo(17);
 
-            $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache($memory);
+            $GLOBALS['GLPI_CACHE'] = new Psr16Cache($memory);
             $connection->update($table, ['value' => $settings('second', 29)], ['context' => $context, 'name' => $name]);
-            $second = \Config::getCache($name, $context, false);
+            $second = ConfigModel::getCache($name, $context, false);
             $this->object($second)->isNotIdenticalTo($first);
             $secondCache = new Psr16Cache($second);
             $this->boolean($secondCache->has('retained'))->isFalse();
@@ -896,8 +953,8 @@ class Config extends DbTestCase
 
             $sessionSettings = ['adapter' => 'session', 'options' => ['namespace' => $context, 'ttl' => 23]];
             $connection->update($table, ['value' => json_encode($sessionSettings, JSON_THROW_ON_ERROR)], ['context' => $context, 'name' => $name]);
-            $session = \Config::getCache($name, $context, false);
-            $this->object($session)->isInstanceOf(\itsmng\Cache\SessionAdapter::class);
+            $session = ConfigModel::getCache($name, $context, false);
+            $this->object($session)->isInstanceOf(SessionAdapter::class);
             $this->boolean($session->set('explicit-ttl', 'value', 23))->isTrue();
             $this->string($session->get('explicit-ttl'))->isIdenticalTo('value');
             $session->delete('explicit-ttl');
@@ -908,12 +965,12 @@ class Config extends DbTestCase
             // Neither SQL NULL, JSON null nor ciphertext is an adapter declaration.
             foreach ([null, 'null', $encrypted] as $value) {
                 $connection->update($table, ['value' => $value], ['context' => $context, 'name' => $name]);
-                $fallback = \Config::getCache($name, $context, false);
+                $fallback = ConfigModel::getCache($name, $context, false);
                 $this->object($fallback)->isInstanceOf(FilesystemAdapter::class);
                 $this->integer((new ReflectionProperty(AbstractAdapter::class, 'defaultLifetime'))->getValue($fallback))->isIdenticalTo(600);
             }
             $connection->delete($table, ['context' => $context, 'name' => $name]);
-            $this->object(\Config::getCache($name, $context, false))->isInstanceOf(FilesystemAdapter::class);
+            $this->object(ConfigModel::getCache($name, $context, false))->isInstanceOf(FilesystemAdapter::class);
             $this->array($memory->getValues())->isEmpty('Cache backend construction does not populate the ORM metadata cache');
 
             // Consume only the five deliberate getCache debug messages, after
@@ -955,46 +1012,46 @@ class Config extends DbTestCase
     {
         global $DB;
         $previous = $GLOBALS['GLPI_CACHE'] ?? null;
-        $memory = new \Symfony\Component\Cache\Adapter\ArrayAdapter(storeSerialized: false);
-        $pool = new \Symfony\Component\Cache\Psr16Cache($memory);
+        $memory = new ArrayAdapter(storeSerialized: false);
+        $pool = new Psr16Cache($memory);
         $listener = new class () {
             public int $loads = 0;
             public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
             {
-                if ($event->getClassMetadata()->name === \itsmng\Database\Entity\Config::class) {
+                if ($event->getClassMetadata()->name === ConfigRecord::class) {
                     ++$this->loads;
                 }
             }
         };
-        $owned = static function () use ($DB, $listener): \Doctrine\ORM\EntityManager {
-            $manager = \itsmng\Database\Orm::create($DB);
-            $manager->getEventManager()->addEventListener(\Doctrine\ORM\Events::loadClassMetadata, $listener);
+        $owned = static function () use ($DB, $listener): EntityManager {
+            $manager = Orm::create($DB);
+            $manager->getEventManager()->addEventListener(Events::loadClassMetadata, $listener);
             return $manager;
         };
         try {
             unset($GLOBALS['GLPI_CACHE']);
-            $bootstrap = \itsmng\Database\Orm::create($DB);
-            $this->object($bootstrap->getConfiguration()->getMetadataCache())->isInstanceOf(\Symfony\Component\Cache\Adapter\ArrayAdapter::class);
-            $bootstrap->getClassMetadata(\itsmng\Database\Entity\Config::class);
+            $bootstrap = Orm::create($DB);
+            $this->object($bootstrap->getConfiguration()->getMetadataCache())->isInstanceOf(ArrayAdapter::class);
+            $bootstrap->getClassMetadata(ConfigRecord::class);
             $GLOBALS['GLPI_CACHE'] = $pool;
             $first = $owned();
-            $original = $first->getClassMetadata(\itsmng\Database\Entity\Config::class)->generatorType;
+            $original = $first->getClassMetadata(ConfigRecord::class)->generatorType;
             $this->integer($listener->loads)->isIdenticalTo(1);
-            $first->getClassMetadata(\itsmng\Database\Entity\Config::class)->setIdGeneratorType(\Doctrine\ORM\Mapping\ClassMetadata::GENERATOR_TYPE_NONE);
+            $first->getClassMetadata(ConfigRecord::class)->setIdGeneratorType(ClassMetadata::GENERATOR_TYPE_NONE);
             $second = $owned();
             $this->object($second)->isNotIdenticalTo($first);
             $this->object($second->getConnection())->isIdenticalTo($DB->getDoctrineConnection());
-            $this->integer($second->getClassMetadata(\itsmng\Database\Entity\Config::class)->generatorType)->isIdenticalTo($original);
+            $this->integer($second->getClassMetadata(ConfigRecord::class)->generatorType)->isIdenticalTo($original);
             $this->integer($listener->loads)->isIdenticalTo(2, 'Every mutable public manager dispatches its own mapping listeners');
             $this->array($memory->getValues())->isEmpty();
-            $public = \itsmng\Database\Orm::configuration($DB->getDoctrineConnection()->getDatabasePlatform());
-            $this->object($public->getMetadataCache())->isInstanceOf(\Symfony\Component\Cache\Adapter\ArrayAdapter::class);
+            $public = Orm::configuration($DB->getDoctrineConnection()->getDatabasePlatform());
+            $this->object($public->getMetadataCache())->isInstanceOf(ArrayAdapter::class);
             $this->variable($public->getQueryCache())->isNull();
             $pool->clear(); // The ordinary application cache-clear boundary.
-            $owned()->getClassMetadata(\itsmng\Database\Entity\Config::class);
+            $owned()->getClassMetadata(ConfigRecord::class);
             $this->integer($listener->loads)->isIdenticalTo(3);
-            $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache(new \Symfony\Component\Cache\Adapter\ArrayAdapter(storeSerialized: false));
-            $owned()->getClassMetadata(\itsmng\Database\Entity\Config::class);
+            $GLOBALS['GLPI_CACHE'] = new Psr16Cache(new ArrayAdapter(storeSerialized: false));
+            $owned()->getClassMetadata(ConfigRecord::class);
             $this->integer($listener->loads)->isIdenticalTo(4, 'Public managers do not depend on the application cache pool');
         } finally {
             $GLOBALS['GLPI_CACHE'] = $previous;
@@ -1004,16 +1061,16 @@ class Config extends DbTestCase
     public function testOwnedMetadataCacheKeepsProviderDeclarationsSeparate(): void
     {
         $previous = $GLOBALS['GLPI_CACHE'] ?? null;
-        $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache(new \Symfony\Component\Cache\Adapter\ArrayAdapter(storeSerialized: false));
+        $GLOBALS['GLPI_CACHE'] = new Psr16Cache(new ArrayAdapter(storeSerialized: false));
         try {
             foreach ([['pdo_mysql', '8.0.0'], ['pdo_pgsql', '15.0'], ['pdo_mysql', '8.0.0']] as [$driver, $version]) {
-                $connection = \Doctrine\DBAL\DriverManager::getConnection(['driver' => $driver, 'serverVersion' => $version]);
+                $connection = DriverManager::getConnection(['driver' => $driver, 'serverVersion' => $version]);
                 $this->mockGenerator->orphanize('__construct');
                 $adapter = new \mock\DBmysql();
                 $this->calling($adapter)->getDoctrineConnection = $connection;
                 try {
-                    $manager = \itsmng\Database\Orm::create($adapter);
-                    $metadata = $manager->getClassMetadata(\itsmng\Database\Entity\Computer::class);
+                    $manager = Orm::create($adapter);
+                    $metadata = $manager->getClassMetadata(ComputerRecord::class);
                     $declaration = $metadata->fieldMappings['date_creation']->columnDefinition;
                     if ($driver === 'pdo_mysql') {
                         $this->string($declaration)->contains('TIMESTAMP');
@@ -1035,25 +1092,25 @@ class Config extends DbTestCase
     {
         global $DB;
         $context = 'query-cache-' . bin2hex(random_bytes(6));
-        \Config::setConfigurationValues($context, ['first' => 'before', 'second' => 'other']);
+        ConfigModel::setConfigurationValues($context, ['first' => 'before', 'second' => 'other']);
         ConfigQueryCacheWalker::$compilations = 0;
-        $first = \itsmng\Database\Orm::create($DB);
-        $second = \itsmng\Database\Orm::create($DB);
+        $first = Orm::create($DB);
+        $second = Orm::create($DB);
         $cache = $first->getConfiguration()->getQueryCache();
         $this->variable($cache)->isNull();
         $this->variable($second->getConfiguration()->getQueryCache())->isNull();
         $this->object($first)->isNotIdenticalTo($second);
         $this->object($first->getConnection())->isIdenticalTo($DB->getDoctrineConnection());
         $this->object($second->getConnection())->isIdenticalTo($DB->getDoctrineConnection());
-        $this->variable(\itsmng\Database\Orm::configuration($DB->getDoctrineConnection()->getDatabasePlatform())->getQueryCache())->isNull();
-        $original = $first->getClassMetadata(\itsmng\Database\Entity\Config::class)->generatorType;
-        $first->getClassMetadata(\itsmng\Database\Entity\Config::class)->setIdGeneratorType(\Doctrine\ORM\Mapping\ClassMetadata::GENERATOR_TYPE_NONE);
-        $this->integer($second->getClassMetadata(\itsmng\Database\Entity\Config::class)->generatorType)->isIdenticalTo($original);
-        $read = static function (\Doctrine\ORM\EntityManager $manager, string $name) use ($context): string {
-            return $manager->createQuery('SELECT c.value FROM ' . \itsmng\Database\Entity\Config::class . ' c WHERE c.context = :context AND c.name = :name')
-                ->setParameter('context', $context, \Doctrine\DBAL\Types\Types::STRING)
-                ->setParameter('name', $name, \Doctrine\DBAL\Types\Types::STRING)
-                ->setHint(\Doctrine\ORM\Query::HINT_CUSTOM_OUTPUT_WALKER, ConfigQueryCacheWalker::class)
+        $this->variable(Orm::configuration($DB->getDoctrineConnection()->getDatabasePlatform())->getQueryCache())->isNull();
+        $original = $first->getClassMetadata(ConfigRecord::class)->generatorType;
+        $first->getClassMetadata(ConfigRecord::class)->setIdGeneratorType(ClassMetadata::GENERATOR_TYPE_NONE);
+        $this->integer($second->getClassMetadata(ConfigRecord::class)->generatorType)->isIdenticalTo($original);
+        $read = static function (EntityManager $manager, string $name) use ($context): string {
+            return $manager->createQuery('SELECT c.value FROM ' . ConfigRecord::class . ' c WHERE c.context = :context AND c.name = :name')
+                ->setParameter('context', $context, Types::STRING)
+                ->setParameter('name', $name, Types::STRING)
+                ->setHint(Query::HINT_CUSTOM_OUTPUT_WALKER, ConfigQueryCacheWalker::class)
                 ->getSingleScalarResult();
         };
         try {
@@ -1061,13 +1118,13 @@ class Config extends DbTestCase
             $this->integer(ConfigQueryCacheWalker::$compilations)->isIdenticalTo(1);
             $this->string($read($second, 'second'))->isIdenticalTo('other');
             $this->integer(ConfigQueryCacheWalker::$compilations)->isIdenticalTo(2);
-            \Config::setConfigurationValues($context, ['first' => 'after']);
-            $this->string($read(\itsmng\Database\Orm::create($DB), 'first'))->isIdenticalTo('after');
+            ConfigModel::setConfigurationValues($context, ['first' => 'after']);
+            $this->string($read(Orm::create($DB), 'first'))->isIdenticalTo('after');
             $this->integer(ConfigQueryCacheWalker::$compilations)->isIdenticalTo(3);
-            $this->string($read(\itsmng\Database\Orm::create($DB), 'first'))->isIdenticalTo('after');
+            $this->string($read(Orm::create($DB), 'first'))->isIdenticalTo('after');
             $this->integer(ConfigQueryCacheWalker::$compilations)->isIdenticalTo(4);
         } finally {
-            \Config::deleteConfigurationValues($context, ['first', 'second']);
+            ConfigModel::deleteConfigurationValues($context, ['first', 'second']);
         }
     }
 
@@ -1078,13 +1135,13 @@ class Config extends DbTestCase
         $connection = $DB->getDoctrineConnection();
         $previous = $GLOBALS['GLPI_CACHE'] ?? null;
         $memory = new ConfigRecordPlanCache(storeSerialized: false);
-        $pool = new \Symfony\Component\Cache\Psr16Cache($memory);
+        $pool = new Psr16Cache($memory);
         $context = 'owned-matching-' . bin2hex(random_bytes(6));
-        $originalText = \Doctrine\DBAL\Types\Type::getType('text');
+        $originalText = Type::getType('text');
         try {
-            \Config::setConfigurationValues($context, ['first' => 'before', 'second' => 'other']);
+            ConfigModel::setConfigurationValues($context, ['first' => 'before', 'second' => 'other']);
             $GLOBALS['GLPI_CACHE'] = $pool;
-            $read = static fn (string $selected, int $offset = 0): array => \itsmng\Database\MappedReads::matching(
+            $read = static fn (string $selected, int $offset = 0): array => MappedReads::matching(
                 $DB,
                 'glpi_configs',
                 ['context' => $selected],
@@ -1100,31 +1157,31 @@ class Config extends DbTestCase
             $this->integer($memory->planWrites)->isIdenticalTo(1);
             $connection->update('glpi_configs', ['value' => 'after'], ['context' => $context, 'name' => 'first']);
             $this->string($read($context)[0]['value'])->isIdenticalTo('after');
-            \Doctrine\DBAL\Types\Type::overrideType('text', new ConfigRecordUpperTextType());
+            Type::overrideType('text', new ConfigRecordUpperTextType());
             $this->string($read($context)[0]['value'])->isIdenticalTo('AFTER');
             $this->integer($memory->planWrites)->isIdenticalTo(1);
-            \Doctrine\DBAL\Types\Type::overrideType('text', $originalText);
-            $count = static fn (): int => \itsmng\Database\MappedReads::countMatching($DB, 'glpi_configs', ['context' => $context]);
+            Type::overrideType('text', $originalText);
+            $count = static fn (): int => MappedReads::countMatching($DB, 'glpi_configs', ['context' => $context]);
             $this->integer($count())->isIdenticalTo(2);
             $this->integer($memory->planWrites)->isIdenticalTo(2);
             $connection->insert('glpi_configs', ['context' => $context, 'name' => 'third', 'value' => 'new']);
             $this->integer($count())->isIdenticalTo(3);
             $this->integer($memory->planWrites)->isIdenticalTo(2);
 
-            $owner = new \itsmng\Database\RecordReadOperation($connection);
-            $supplied = \itsmng\Database\Orm::forConnection($connection);
+            $owner = new RecordReadOperation($connection);
+            $supplied = Orm::forConnection($connection);
             try {
-                $query = $supplied->createQuery('SELECT c.id FROM ' . \itsmng\Database\Entity\Config::class . ' c');
-                $metadata = $supplied->getClassMetadata(\itsmng\Database\Entity\Config::class);
+                $query = $supplied->createQuery('SELECT c.id FROM ' . ConfigRecord::class . ' c');
+                $metadata = $supplied->getClassMetadata(ConfigRecord::class);
                 $this->exception(static fn () => $owner->prepareQuery($query, $metadata))
-                    ->isInstanceOf(\LogicException::class)->hasMessage('A compiled read plan belongs to its private operation.');
-                $this->variable((new \ReflectionProperty(\Doctrine\ORM\Query::class, 'queryCache'))->getValue($query))->isNull();
+                    ->isInstanceOf(LogicException::class)->hasMessage('A compiled read plan belongs to its private operation.');
+                $this->variable((new ReflectionProperty(Query::class, 'queryCache'))->getValue($query))->isNull();
             } finally {
                 $owner->close();
                 $supplied->clear();
             }
         } finally {
-            \Doctrine\DBAL\Types\Type::overrideType('text', $originalText);
+            Type::overrideType('text', $originalText);
             $GLOBALS['GLPI_CACHE'] = $previous;
             $connection->delete('glpi_configs', ['context' => $context]);
         }
@@ -1135,30 +1192,30 @@ class Config extends DbTestCase
         global $DB;
         $this->login();
         $connection = $DB->getDoctrineConnection();
-        $group = $this->createItem(\Group::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $group = $this->createItem(Group::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
         $groupId = (int)$group->getID();
-        $connection->insert('glpi_groups_users', ['groups_id' => $groupId, 'users_id' => (int)\Session::getLoginUserID()]);
+        $connection->insert('glpi_groups_users', ['groups_id' => $groupId, 'users_id' => (int)Session::getLoginUserID()]);
         $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_groups_users WHERE groups_id = -1'))->isIdenticalTo(0);
         $previous = $GLOBALS['GLPI_CACHE'] ?? null;
         $memory = new ConfigRecordPlanCache(storeSerialized: false);
-        $original = \Doctrine\DBAL\Types\Type::getType('integer');
+        $original = Type::getType('integer');
         try {
-            $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache($memory);
-            $manager = \itsmng\Database\Orm::forConnection($connection);
-            $types = array_column($manager->getClassMetadata(\itsmng\Database\Entity\GroupMembership::class)->fieldMappings, 'type');
+            $GLOBALS['GLPI_CACHE'] = new Psr16Cache($memory);
+            $manager = Orm::forConnection($connection);
+            $types = array_column($manager->getClassMetadata(GroupMembership::class)->fieldMappings, 'type');
             $this->boolean(in_array('integer', $types, true))->isFalse();
             $manager->clear();
-            $count = static fn (): int => \itsmng\Database\MappedReads::countMatching($DB, 'glpi_groups_users', ['groups_id' => $groupId]);
+            $count = static fn (): int => MappedReads::countMatching($DB, 'glpi_groups_users', ['groups_id' => $groupId]);
             $this->integer($count())->isIdenticalTo(1);
             $this->integer($memory->planWrites)->isIdenticalTo(1);
-            \Doctrine\DBAL\Types\Type::overrideType('integer', new ConfigReadNegativeIntegerType());
+            Type::overrideType('integer', new ConfigReadNegativeIntegerType());
             $this->integer($count())->isIdenticalTo(0);
             $this->integer($memory->planWrites)->isIdenticalTo(1);
-            \Doctrine\DBAL\Types\Type::overrideType('integer', $original);
+            Type::overrideType('integer', $original);
             $this->integer($count())->isIdenticalTo(1);
             $this->integer($memory->planWrites)->isIdenticalTo(1);
         } finally {
-            \Doctrine\DBAL\Types\Type::overrideType('integer', $original);
+            Type::overrideType('integer', $original);
             $GLOBALS['GLPI_CACHE'] = $previous;
         }
     }
@@ -1169,38 +1226,38 @@ class Config extends DbTestCase
         $connection = $DB->getDoctrineConnection();
         $existing = $connection->fetchAssociative('SELECT id, name FROM glpi_configs ORDER BY id LIMIT 1');
         $this->array($existing)->isNotEmpty();
-        \itsmng\Database\EntityRegistry::tables();
+        EntityRegistry::tables();
         $previous = $GLOBALS['GLPI_CACHE'] ?? null;
         try {
             foreach ([ConfigReadExtensionConnection::class, ConfigReadListenerConnection::class] as $wrapper) {
                 $params = $connection->getParams();
                 $params['wrapperClass'] = $wrapper;
-                $selected = \Doctrine\DBAL\DriverManager::getConnection($params, $connection->getConfiguration());
+                $selected = DriverManager::getConnection($params, $connection->getConfiguration());
                 $memory = new ConfigRecordPlanCache(storeSerialized: false);
-                $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache($memory);
+                $GLOBALS['GLPI_CACHE'] = new Psr16Cache($memory);
                 $listener = null;
                 $owner = null;
                 try {
-                    $owner = new \itsmng\Database\RecordReadOperation($selected);
+                    $owner = new RecordReadOperation($selected);
                     if ($selected instanceof ConfigReadListenerConnection) {
                         $listener = new class () {
                             public int $loads = 0;
                             public int $targetLoads = 0;
-                            public ?\Doctrine\ORM\EntityManagerInterface $manager = null;
+                            public ?EntityManagerInterface $manager = null;
                             public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
                             {
-                                if ($event->getClassMetadata()->name === \itsmng\Database\Entity\Config::class) {
+                                if ($event->getClassMetadata()->name === ConfigRecord::class) {
                                     ++$this->loads;
                                     $event->getClassMetadata()->fieldMappings['name']->type = 'text';
                                     $this->manager = $event->getEntityManager();
                                 }
-                                if ($event->getClassMetadata()->name === \itsmng\Database\Entity\Entity::class) {
+                                if ($event->getClassMetadata()->name === EntityRecord::class) {
                                     ++$this->targetLoads;
                                     $event->getClassMetadata()->fieldMappings['id']->type = 'decimal';
                                 }
                             }
                         };
-                        $selected->getEventManager()->addEventListener(\Doctrine\ORM\Events::loadClassMetadata, $listener);
+                        $selected->getEventManager()->addEventListener(Events::loadClassMetadata, $listener);
                     }
                     $row = $owner->row('glpi_configs', 'id', (int)$existing['id']);
                     $this->variable($row['name'])->isIdenticalTo($existing['name']);
@@ -1208,8 +1265,8 @@ class Config extends DbTestCase
                     $this->array($memory->getValues())->isEmpty();
                     if ($listener !== null) {
                         $this->integer($listener->loads)->isIdenticalTo(1);
-                        $this->string($listener->manager->getClassMetadata(\itsmng\Database\Entity\Config::class)->getTypeOfField('name'))->isIdenticalTo('text');
-                        $this->object($listener->manager->getConfiguration()->getMetadataCache())->isInstanceOf(\Symfony\Component\Cache\Adapter\ArrayAdapter::class);
+                        $this->string($listener->manager->getClassMetadata(ConfigRecord::class)->getTypeOfField('name'))->isIdenticalTo('text');
+                        $this->object($listener->manager->getConfiguration()->getMetadataCache())->isInstanceOf(ArrayAdapter::class);
                         $user = $selected->fetchAssociative('SELECT id, entities_id FROM glpi_users ORDER BY id LIMIT 1');
                         $this->array($user)->isNotEmpty();
                         $row = $owner->row('glpi_users', 'id', (int)$user['id']);
@@ -1238,18 +1295,18 @@ class Config extends DbTestCase
         global $DB;
         $previous = $GLOBALS['GLPI_CACHE'] ?? null;
         $memory = new ConfigRecordPlanCache(storeSerialized: false);
-        $pool = new \Symfony\Component\Cache\Psr16Cache($memory);
+        $pool = new Psr16Cache($memory);
         $context = 'private-plan-' . bin2hex(random_bytes(6));
         $connection = $DB->getDoctrineConnection();
         $table = $connection->quoteIdentifier('glpi_configs');
         try {
-            \Config::setConfigurationValues($context, ['probe' => 'before']);
+            ConfigModel::setConfigurationValues($context, ['probe' => 'before']);
             $id = (int)$connection->fetchOne('SELECT id FROM ' . $table . ' WHERE context = ? AND name = ?', [$context, 'probe']);
             $GLOBALS['GLPI_CACHE'] = $pool;
             $read = static function () use ($id): array {
-                $item = new \Config();
+                $item = new ConfigModel();
                 if (!$item->getFromDB($id)) {
-                    throw new \RuntimeException('The private record fixture disappeared.');
+                    throw new RuntimeException('The private record fixture disappeared.');
                 }
                 return $item->fields;
             };
@@ -1261,13 +1318,13 @@ class Config extends DbTestCase
             $connection->update('glpi_configs', ['value' => 'after'], ['id' => $id]);
             $this->string($read()['value'])->isIdenticalTo('after');
             $this->integer($memory->planWrites)->isIdenticalTo(1);
-            $originalText = \Doctrine\DBAL\Types\Type::getType('text');
+            $originalText = Type::getType('text');
             try {
-                \Doctrine\DBAL\Types\Type::overrideType('text', new ConfigRecordUpperTextType());
+                Type::overrideType('text', new ConfigRecordUpperTextType());
                 $this->string($read()['value'])->isIdenticalTo('AFTER');
                 $this->integer($memory->planWrites)->isIdenticalTo(1);
             } finally {
-                \Doctrine\DBAL\Types\Type::overrideType('text', $originalText);
+                Type::overrideType('text', $originalText);
             }
             $this->string($read()['value'])->isIdenticalTo('after');
             $this->integer($memory->planWrites)->isIdenticalTo(1);
@@ -1280,16 +1337,16 @@ class Config extends DbTestCase
 
             // Public manager customization must not poison the private metadata.
             $pool->clear();
-            $manager = \itsmng\Database\Orm::create($DB);
-            $manager->getEventManager()->addEventListener(\Doctrine\ORM\Events::loadClassMetadata, new class () {
+            $manager = Orm::create($DB);
+            $manager->getEventManager()->addEventListener(Events::loadClassMetadata, new class () {
                 public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
                 {
-                    if ($event->getClassMetadata()->name === \itsmng\Database\Entity\Config::class) {
+                    if ($event->getClassMetadata()->name === ConfigRecord::class) {
                         $event->getClassMetadata()->setPrimaryTable(['name' => 'private_plan_wrong_table']);
                     }
                 }
             });
-            $this->string($manager->getClassMetadata(\itsmng\Database\Entity\Config::class)->getTableName())->isIdenticalTo('private_plan_wrong_table');
+            $this->string($manager->getClassMetadata(ConfigRecord::class)->getTableName())->isIdenticalTo('private_plan_wrong_table');
             $this->string($read()['value'])->isIdenticalTo('after');
             $this->integer($memory->planWrites)->isIdenticalTo(4);
             $manager->clear();
@@ -1306,20 +1363,20 @@ class Config extends DbTestCase
         $memory = new ConfigRecordPlanCache(storeSerialized: false);
         $context = 'private-callback-' . bin2hex(random_bytes(6));
         $connection = $DB->getDoctrineConnection();
-        \itsmng\Database\EntityRegistry::tables();
-        $registry = new \ReflectionProperty(\itsmng\Database\EntityRegistry::class, 'model');
+        EntityRegistry::tables();
+        $registry = new ReflectionProperty(EntityRegistry::class, 'model');
         $original = $registry->getValue();
-        $public = \itsmng\Database\Orm::configuration($connection->getDatabasePlatform());
+        $public = Orm::configuration($connection->getDatabasePlatform());
         ConfigRecordCallback::$publicDriver = $public->getMetadataDriverImpl();
         ConfigRecordCallback::$observed = [];
         try {
-            \Config::setConfigurationValues($context, ['probe' => 'live']);
+            ConfigModel::setConfigurationValues($context, ['probe' => 'live']);
             $id = (int)$connection->fetchOne('SELECT id FROM ' . $connection->quoteIdentifier('glpi_configs') . ' WHERE context = ? AND name = ?', [$context, 'probe']);
-            $GLOBALS['GLPI_CACHE'] = new \Symfony\Component\Cache\Psr16Cache($memory);
+            $GLOBALS['GLPI_CACHE'] = new Psr16Cache($memory);
             $model = $original;
             $model['tables']['glpi_configs'] = ConfigRecordCallback::class;
             $registry->setValue(null, $model);
-            $item = new \Config();
+            $item = new ConfigModel();
             $this->boolean($item->getFromDB($id))->isTrue();
             $this->string($item->fields['value'])->isIdenticalTo('callback:live');
             $this->array(ConfigRecordCallback::$observed)->isIdenticalTo([
@@ -1327,7 +1384,7 @@ class Config extends DbTestCase
                 'noPersistentQuery' => true, 'privateDriver' => true,
             ]);
             $this->integer($memory->planWrites)->isIdenticalTo(0);
-            $rows = \itsmng\Database\MappedReads::matching($DB, 'glpi_configs', ['id' => $id]);
+            $rows = MappedReads::matching($DB, 'glpi_configs', ['id' => $id]);
             $this->string($rows[0]['value'])->isIdenticalTo('callback:live');
             $this->array(ConfigRecordCallback::$observed)->isIdenticalTo([
                 'localConfiguration' => true, 'localFactory' => true,
@@ -1338,7 +1395,7 @@ class Config extends DbTestCase
             $this->boolean($item->getFromDB($id))->isTrue();
             $this->string($item->fields['value'])->isIdenticalTo('live');
             $this->integer($memory->planWrites)->isIdenticalTo(1);
-            $this->object(\itsmng\Database\Orm::configuration($connection->getDatabasePlatform())->getMetadataDriverImpl())->isNotIdenticalTo(ConfigRecordCallback::$publicDriver);
+            $this->object(Orm::configuration($connection->getDatabasePlatform())->getMetadataDriverImpl())->isNotIdenticalTo(ConfigRecordCallback::$publicDriver);
         } finally {
             $registry->setValue(null, $original);
             $GLOBALS['GLPI_CACHE'] = $previous;
@@ -1653,9 +1710,9 @@ class Config extends DbTestCase
 
         // The explicit diagnostic input keeps DbTestCase's actual writer and
         // transaction intact throughout every version-provider invocation.
-        $result = \Config::checkDbEngine($raw);
+        $result = ConfigModel::checkDbEngine($raw);
         $this->array($result)->isIdenticalTo([$version => $compat]);
-        $this->array(\Config::checkDbEngine())->isIdenticalTo(\Config::checkDbEngine($DB->getVersion()));
+        $this->array(ConfigModel::checkDbEngine())->isIdenticalTo(ConfigModel::checkDbEngine($DB->getVersion()));
     }
 
     public function testGetLanguage()
@@ -2024,9 +2081,9 @@ class Config extends DbTestCase
 
         $had_auto_create = array_key_exists('auto_create_infocoms', $CFG_GLPI);
         $auto_create_original = $CFG_GLPI['auto_create_infocoms'] ?? null;
-        $em = \itsmng\Database\Orm::create($DB);
+        $em = Orm::create($DB);
         $parents = [];
-        $inputFor = function (\CommonDBTM $item, string $name) use ($em, &$createParent): array {
+        $inputFor = function (CommonDBTM $item, string $name) use ($em, &$createParent): array {
             $input = [];
             if ($item->isField($item::getNameField())) {
                 $input[$item::getNameField()] = $name;
@@ -2034,7 +2091,7 @@ class Config extends DbTestCase
             if ($item->isField('entities_id')) {
                 $input['entities_id'] = (int)$_SESSION['glpiactive_entity'];
             }
-            $metadata = $em->getClassMetadata(\itsmng\Database\EntityRegistry::tables()[$item::getTable()]);
+            $metadata = $em->getClassMetadata(EntityRegistry::tables()[$item::getTable()]);
             foreach ($metadata->associationMappings as $mapping) {
                 if (!$mapping->isToOneOwningSide()) {
                     continue;
@@ -2048,7 +2105,7 @@ class Config extends DbTestCase
             }
             // Item_Devices owns a subject through its actual public role fields.
             // Use an existing, authorized Computer instead of a fabricated ID.
-            if ($item instanceof \Item_Devices) {
+            if ($item instanceof Item_Devices) {
                 $this->array($item::itemAffinity())->contains('Computer');
                 $input[$item::$itemtype_1] = 'Computer';
                 $input[$item::$items_id_1] = $createParent('Computer');
@@ -2066,7 +2123,7 @@ class Config extends DbTestCase
         };
 
         try {
-            $infocom = new \Infocom();
+            $infocom = new Infocom();
             foreach ($infocom_types as $asset_type) {
                 // Prepare public parents before either child control. Required
                 // ownership comes from entity mappings, not a fixture catalogue.
@@ -2095,11 +2152,11 @@ class Config extends DbTestCase
 }
 
 /** Count real SQL compilation while retaining Doctrine's standard finalizer. */
-final class ConfigQueryCacheWalker extends \Doctrine\ORM\Query\SqlOutputWalker
+final class ConfigQueryCacheWalker extends SqlOutputWalker
 {
     public static int $compilations = 0;
 
-    public function getFinalizer(\Doctrine\ORM\Query\AST\DeleteStatement|\Doctrine\ORM\Query\AST\UpdateStatement|\Doctrine\ORM\Query\AST\SelectStatement $AST): \Doctrine\ORM\Query\Exec\SqlFinalizer
+    public function getFinalizer(DeleteStatement|UpdateStatement|SelectStatement $AST): SqlFinalizer
     {
         ++self::$compilations;
         return parent::getFinalizer($AST);
@@ -2107,12 +2164,12 @@ final class ConfigQueryCacheWalker extends \Doctrine\ORM\Query\SqlOutputWalker
 }
 
 /** Count actual persistent plan writes; leave ordinary cache behavior unchanged. */
-final class ConfigRecordPlanCache extends \Symfony\Component\Cache\Adapter\ArrayAdapter
+final class ConfigRecordPlanCache extends ArrayAdapter
 {
     public int $planWrites = 0;
     public array $planKeys = [];
 
-    public function save(\Psr\Cache\CacheItemInterface $item): bool
+    public function save(CacheItemInterface $item): bool
     {
         if (is_string($item->get()) && str_contains($item->get(), 'Doctrine\\ORM\\Query\\ParserResult')) {
             ++$this->planWrites;
@@ -2141,98 +2198,98 @@ final class ConfigRecordCallback
     public ?string $value = null;
 
     #[\Doctrine\ORM\Mapping\PostLoad]
-    public function loaded(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
+    public function loaded(PostLoadEventArgs $event): void
     {
         $manager = $event->getObjectManager();
         $configuration = $manager->getConfiguration();
-        $factoryCache = new \ReflectionMethod($manager->getMetadataFactory(), 'getCache');
+        $factoryCache = new ReflectionMethod($manager->getMetadataFactory(), 'getCache');
         self::$observed = [
-            'localConfiguration' => $configuration->getMetadataCache() instanceof \Symfony\Component\Cache\Adapter\ArrayAdapter,
+            'localConfiguration' => $configuration->getMetadataCache() instanceof ArrayAdapter,
             'localFactory' => $factoryCache->invoke($manager->getMetadataFactory()) === $configuration->getMetadataCache(),
             'noPersistentQuery' => $configuration->getQueryCache() === null,
             'privateDriver' => $configuration->getMetadataDriverImpl() !== self::$publicDriver,
         ];
-        $manager->getEventManager()->addEventListener(\Doctrine\ORM\Events::loadClassMetadata, new class () {
+        $manager->getEventManager()->addEventListener(Events::loadClassMetadata, new class () {
             public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
             {
                 $event->getClassMetadata()->setPrimaryTable(['name' => 'callback_wrong_table']);
             }
         });
-        $manager->getClassMetadata(\itsmng\Database\Entity\Config::class);
+        $manager->getClassMetadata(ConfigRecord::class);
         $this->value = 'callback:' . $this->value;
     }
 }
 
 /** A supported global type extension whose SQL must not inherit a warm core plan. */
-final class ConfigRecordUpperTextType extends \Doctrine\DBAL\Types\TextType
+final class ConfigRecordUpperTextType extends TextType
 {
-    public function convertToPHPValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+    public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
     {
         return 'UPPER(' . $sqlExpr . ')';
     }
 }
 
 
-final class ConfigReadNegativeIntegerType extends \Doctrine\DBAL\Types\IntegerType
+final class ConfigReadNegativeIntegerType extends IntegerType
 {
-    public function convertToDatabaseValueSQL(string $sqlExpr, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
     {
         return '(' . $sqlExpr . ' * 0 - 1)';
     }
 }
 
-class ConfigReadListenerConnection extends \Doctrine\DBAL\Connection
+class ConfigReadListenerConnection extends Connection
 {
-    private ?\Doctrine\Common\EventManager $readEvents = null;
+    private ?EventManager $readEvents = null;
 
-    public function getEventManager(): \Doctrine\Common\EventManager
+    public function getEventManager(): EventManager
     {
-        return $this->readEvents ??= new \Doctrine\Common\EventManager();
+        return $this->readEvents ??= new EventManager();
     }
 }
 
-class ConfigReadExtensionConnection extends \Doctrine\DBAL\Connection
+class ConfigReadExtensionConnection extends Connection
 {
-    private ?\Doctrine\DBAL\Platforms\AbstractPlatform $readPlatform = null;
+    private ?AbstractPlatform $readPlatform = null;
 
-    public function getDatabasePlatform(): \Doctrine\DBAL\Platforms\AbstractPlatform
+    public function getDatabasePlatform(): AbstractPlatform
     {
-        return $this->readPlatform ??= (parent::getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform
+        return $this->readPlatform ??= (parent::getDatabasePlatform() instanceof PostgreSQLPlatform
             ? new ConfigReadPostgreSQLPlatform() : new ConfigReadMySQLPlatform());
     }
 }
 
-class ConfigReadPostgreSQLPlatform extends \Doctrine\DBAL\Platforms\PostgreSQLPlatform
+class ConfigReadPostgreSQLPlatform extends PostgreSQLPlatform
 {
 }
 
-class ConfigReadMySQLPlatform extends \Doctrine\DBAL\Platforms\MySQLPlatform
+class ConfigReadMySQLPlatform extends MySQLPlatform
 {
 }
 
 /** Observe the actual selected connection without opening another transaction or socket. */
-class ConfigOidcScalarReadProbe extends \Doctrine\DBAL\Connection
+class ConfigOidcScalarReadProbe extends Connection
 {
     public int $builders = 0;
     public array $queries = [];
 
-    public function __construct(private readonly \Doctrine\DBAL\Connection $selected)
+    public function __construct(private readonly Connection $selected)
     {
         parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
     }
 
-    public function getDatabasePlatform(): \Doctrine\DBAL\Platforms\AbstractPlatform
+    public function getDatabasePlatform(): AbstractPlatform
     {
         return $this->selected->getDatabasePlatform();
     }
 
-    public function createQueryBuilder(): \Doctrine\DBAL\Query\QueryBuilder
+    public function createQueryBuilder(): QueryBuilder
     {
         ++$this->builders;
         return parent::createQueryBuilder();
     }
 
-    public function executeQuery(string $sql, array $params = [], array $types = [], ?\Doctrine\DBAL\Cache\QueryCacheProfile $qcp = null): \Doctrine\DBAL\Result
+    public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
     {
         $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
         return $this->selected->executeQuery($sql, $params, $types, $qcp);

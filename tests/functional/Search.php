@@ -36,8 +36,8 @@ namespace tests\units;
 use Appliance;
 use Appliance_Item;
 use Change;
-use ChangeCost;
 use Change_Item;
+use ChangeCost;
 use CommonDBTM;
 use CommonITILActor;
 use Computer;
@@ -52,6 +52,14 @@ use Doctrine\DBAL\Types\SmallIntType;
 use Dropdown;
 use Entity;
 use Item_Disk;
+use itsmng\Search\Output\LegacyOutput;
+use itsmng\Search\Provider\CriteriaBuilder;
+use itsmng\Search\Provider\FieldReference;
+use itsmng\Search\Provider\JoinBuilder;
+use itsmng\Search\Provider\ProjectionBuilder;
+use itsmng\Search\Provider\SelectList;
+use itsmng\Search\Provider\UnionMember;
+use itsmng\Search\SearchOption;
 use NetworkEquipment;
 use Plugin;
 use Profile;
@@ -64,14 +72,6 @@ use Session;
 use Software;
 use Ticket;
 use User;
-use itsmng\Search\Output\LegacyOutput;
-use itsmng\Search\Provider\CriteriaBuilder;
-use itsmng\Search\Provider\FieldReference;
-use itsmng\Search\Provider\JoinBuilder;
-use itsmng\Search\Provider\ProjectionBuilder;
-use itsmng\Search\Provider\SelectList;
-use itsmng\Search\Provider\UnionMember;
-use itsmng\Search\SearchOption;
 
 use function getEntitiesRestrictRequest;
 
@@ -97,14 +97,14 @@ class Search extends DbTestCase
 
         // force session in debug mode (to store & retrieve sql errors)
         $glpi_use_mode             = $_SESSION['glpi_use_mode'];
-        $_SESSION['glpi_use_mode'] = \Session::DEBUG_MODE;
+        $_SESSION['glpi_use_mode'] = Session::DEBUG_MODE;
 
         // don't compute last request from session
         $params['reset'] = 'reset';
 
         // do search
-        $params = \Search::manageParams($itemtype, $params);
-        $data   = \Search::getDatas($itemtype, $params, $forcedisplay);
+        $params = LegacySearch::manageParams($itemtype, $params);
+        $data   = LegacySearch::getDatas($itemtype, $params, $forcedisplay);
 
         // append existing errors to returned data
         $data['last_errors'] = [];
@@ -117,7 +117,7 @@ class Search extends DbTestCase
         $_SESSION['glpi_use_mode'] = $glpi_use_mode;
 
         // do not store this search from session
-        \Search::resetSaveSearch();
+        LegacySearch::resetSaveSearch();
 
         $this->checkSearchResult($data);
 
@@ -1369,7 +1369,7 @@ class Search extends DbTestCase
                 $item = new $class();
 
                 //load all options; so rawSearchOptionsToAdd to be tested
-                $options = \Search::getCleanedOptions($item->getType());
+                $options = LegacySearch::getCleanedOptions($item->getType());
 
                 $multi_criteria = [];
                 foreach ($options as $key => $data) {
@@ -1422,7 +1422,7 @@ class Search extends DbTestCase
         foreach ($classes as $class) {
             $itemtype = $class::getType();
             $itemtype_criteria[$itemtype] = [];
-            $metaList = \Search::getMetaItemtypeAvailable($itemtype);
+            $metaList = LegacySearch::getMetaItemtypeAvailable($itemtype);
             foreach ($metaList as $metaitemtype) {
                 $item = getItemForItemtype($metaitemtype);
                 foreach ($item->searchOptions() as $key => $data) {
@@ -1494,7 +1494,7 @@ class Search extends DbTestCase
         if ((array_key_exists('nosearch', $so_data) && $so_data['nosearch'])) {
             return null;
         }
-        $actions = \Search::getActionsFor($item->getType(), $so_key);
+        $actions = LegacySearch::getActionsFor($item->getType(), $so_key);
         $searchtype = array_keys($actions)[0];
 
         switch ($so_data['datatype'] ?? null) {
@@ -1610,7 +1610,7 @@ class Search extends DbTestCase
 
     public function testDateBeforeOrNot()
     {
-        $date_actions = \Search::getActionsFor('Ticket', 15);
+        $date_actions = LegacySearch::getActionsFor('Ticket', 15);
         unset($date_actions['searchopt']);
         $this->array($date_actions)->isIdenticalTo([
            'equals'      => __('is'),
@@ -1621,7 +1621,7 @@ class Search extends DbTestCase
            'notcontains' => __('not contains'),
         ]);
 
-        $numeric_actions = \Search::getActionsFor('Ticket', 2);
+        $numeric_actions = LegacySearch::getActionsFor('Ticket', 2);
         $this->array($numeric_actions)->notHasKeys(['lessthan', 'morethan']);
 
         //tickets created since one week
@@ -1667,12 +1667,12 @@ class Search extends DbTestCase
     {
         global $DB;
 
-        $before = \Search::addHaving(' AND ', 0, 'Ticket', 16, 'lessthan', '2999-01-01');
+        $before = LegacySearch::addHaving(' AND ', 0, 'Ticket', 16, 'lessthan', '2999-01-01');
         $this->string($before)
            ->contains($DB->quoteName('ITEM_Ticket_16') . ' <')
            ->contains("'2999-01-01");
 
-        $after = \Search::addHaving(' AND ', 0, 'Ticket', 16, 'morethan', '1970-01-01');
+        $after = LegacySearch::addHaving(' AND ', 0, 'Ticket', 16, 'morethan', '1970-01-01');
         $this->string($after)
            ->contains($DB->quoteName('ITEM_Ticket_16') . ' >')
            ->contains("'1970-01-01");
@@ -1681,7 +1681,7 @@ class Search extends DbTestCase
     public function testDateSearchValueInputUsesRelativeDates()
     {
         $ticket = new \Ticket();
-        $searchopt = \Search::getOptions('Ticket');
+        $searchopt = LegacySearch::getOptions('Ticket');
 
         $opening_date_input = $ticket->getValueToSelect(
             $searchopt[15],
@@ -1709,10 +1709,10 @@ class Search extends DbTestCase
     public function testGroupSearchValueInputContainsMyGroups()
     {
         foreach (['Ticket', 'Computer'] as $itemtype) {
-            $searchopt = \Search::getOptions($itemtype);
+            $searchopt = LegacySearch::getOptions($itemtype);
 
             ob_start();
-            \Search::displaySearchoptionValue([
+            LegacySearch::displaySearchoptionValue([
                'searchtype' => 'equals',
                'searchopt'  => $searchopt[71],
                'value'      => '',
@@ -1753,7 +1753,7 @@ class Search extends DbTestCase
         $this->login();
         $uid =  getItemByTypeName('User', TU_USER, true);
 
-        $search = \Search::manageParams('Ticket', ['reset' => 1], false, false);
+        $search = LegacySearch::manageParams('Ticket', ['reset' => 1], false, false);
         $this->array(
             $search
         )->isEqualTo(['reset'        => 1,
@@ -1794,7 +1794,7 @@ class Search extends DbTestCase
                                   ])
         )->isTrue();
 
-        $search = \Search::manageParams('Ticket', ['reset' => 1], true, false);
+        $search = LegacySearch::manageParams('Ticket', ['reset' => 1], true, false);
         $this->array(
             $search
         )->isEqualTo(['reset'        => 1,
@@ -1814,7 +1814,7 @@ class Search extends DbTestCase
                      ]);
 
         // let's test for Computers
-        $search = \Search::manageParams('Computer', ['reset' => 1], false, false);
+        $search = LegacySearch::manageParams('Computer', ['reset' => 1], false, false);
         $this->array(
             $search
         )->isEqualTo(['reset'        => 1,
@@ -1857,7 +1857,7 @@ class Search extends DbTestCase
                                   ])
         )->isTrue();
 
-        $search = \Search::manageParams('Computer', ['reset' => 1], true, false);
+        $search = LegacySearch::manageParams('Computer', ['reset' => 1], true, false);
         $this->array(
             $search
         )->isEqualTo(['reset'        => 1,
@@ -1901,7 +1901,7 @@ class Search extends DbTestCase
      */
     public function testAddSelect($provider)
     {
-        $sql_select = \Search::addSelect($provider['itemtype'], $provider['ID']);
+        $sql_select = LegacySearch::addSelect($provider['itemtype'], $provider['ID']);
 
         $this->string($this->cleanSQL($sql_select))
            ->isEqualTo($this->cleanSQL($this->providerQuotedSQL($provider['sql'])));
@@ -1965,7 +1965,7 @@ class Search extends DbTestCase
     {
         $already_link_tables = [];
 
-        $sql_join = \Search::addLeftJoin(
+        $sql_join = LegacySearch::addLeftJoin(
             $lj_provider['itemtype'],
             getTableForItemType($lj_provider['itemtype']),
             $already_link_tables,
@@ -2084,9 +2084,9 @@ class Search extends DbTestCase
         $this->login('tech', 'tech');
 
         // do search and check presence of the created problem
-        $data = \Search::prepareDatasForSearch('Problem', ['reset' => 'reset']);
-        \Search::constructSQL($data);
-        \Search::constructData($data);
+        $data = LegacySearch::prepareDatasForSearch('Problem', ['reset' => 'reset']);
+        LegacySearch::constructSQL($data);
+        LegacySearch::constructData($data);
 
         $this->integer($data['data']['totalcount'])->isEqualTo(1);
         $this->array($data)
@@ -2137,9 +2137,9 @@ class Search extends DbTestCase
         $this->login('tech', 'tech');
 
         // do search and check presence of the created Change
-        $data = \Search::prepareDatasForSearch('Change', ['reset' => 'reset']);
-        \Search::constructSQL($data);
-        \Search::constructData($data);
+        $data = LegacySearch::prepareDatasForSearch('Change', ['reset' => 'reset']);
+        LegacySearch::constructSQL($data);
+        LegacySearch::constructData($data);
 
         $this->integer($data['data']['totalcount'])->isEqualTo(1);
         $this->array($data)
@@ -2245,7 +2245,7 @@ class Search extends DbTestCase
      */
     public function testIsInfocomOption($index, $expected)
     {
-        $this->boolean(\Search::isInfocomOption('Computer', $index))->isIdenticalTo($expected);
+        $this->boolean(LegacySearch::isInfocomOption('Computer', $index))->isIdenticalTo($expected);
     }
 
     protected function makeTextSearchValueProvider()
@@ -2277,7 +2277,7 @@ class Search extends DbTestCase
      */
     public function testMakeTextSearchValue($value, $expected)
     {
-        $this->variable(\Search::makeTextSearchValue($value))->isIdenticalTo($expected);
+        $this->variable(LegacySearch::makeTextSearchValue($value))->isIdenticalTo($expected);
     }
 
     public function providerAddWhere()
@@ -2311,7 +2311,7 @@ class Search extends DbTestCase
      */
     public function testAddWhere($link, $nott, $itemtype, $ID, $searchtype, $val, $meta, $expected)
     {
-        $output = \Search::addWhere($link, $nott, $itemtype, $ID, $searchtype, $val, $meta);
+        $output = LegacySearch::addWhere($link, $nott, $itemtype, $ID, $searchtype, $val, $meta);
         $this->string($output)->isEqualTo($expected);
 
         if ($meta) {
@@ -2353,7 +2353,7 @@ class Search extends DbTestCase
         $displaypref = new \DisplayPreference();
         $input = [
               'itemtype'  => 'Computer',
-              'users_id'  => \Session::getLoginUserID(),
+              'users_id'  => Session::getLoginUserID(),
               'num'       => 49, //Computer groups_id_tech SO
         ];
         $this->integer((int)$displaypref->add($input))->isGreaterThan(0);

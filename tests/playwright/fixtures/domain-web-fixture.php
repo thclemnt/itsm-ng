@@ -2,6 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+
 // Private CLI companion: browser/API requests always use application routes.
 if (PHP_SAPI !== 'cli') {
     http_response_code(404);
@@ -24,7 +27,7 @@ if (!(new Auth())->login('itsm', 'itsm', true)) {
     throw new RuntimeException('Fixture administrator login failed');
 }
 $CFG_GLPI['use_notifications'] = false;
-$records = new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB));
+$records = new RecordRepository(Orm::create($DB));
 $connection = $DB->getDoctrineConnection();
 $input = isset($argv[3]) ? json_decode($argv[3], true, flags: JSON_THROW_ON_ERROR) : [];
 if ($action === 'guard') {

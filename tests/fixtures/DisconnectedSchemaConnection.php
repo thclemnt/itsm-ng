@@ -6,13 +6,14 @@ namespace tests\fixtures;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Driver;
-use Doctrine\DBAL\Driver\Connection as DriverConnection;
 use Doctrine\DBAL\Driver\API\ExceptionConverter;
+use Doctrine\DBAL\Driver\Connection as DriverConnection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\AbstractSchemaManager;
 use Doctrine\DBAL\Schema\PostgreSQLSchemaManager;
 use Doctrine\DBAL\ServerVersionProvider;
+use LogicException;
 
 /** SchemaTool uses the requested provider while every native connection attempt refuses. */
 final class DisconnectedSchemaConnection extends Connection
@@ -26,7 +27,7 @@ final class DisconnectedSchemaConnection extends Connection
 
             public function connect(#[\SensitiveParameter] array $params): DriverConnection
             {
-                throw new \LogicException('Metadata ownership tests cannot connect or execute SQL.');
+                throw new LogicException('Metadata ownership tests cannot connect or execute SQL.');
             }
 
             public function getDatabasePlatform(ServerVersionProvider $versionProvider): AbstractPlatform
@@ -36,7 +37,7 @@ final class DisconnectedSchemaConnection extends Connection
 
             public function getExceptionConverter(): ExceptionConverter
             {
-                throw new \LogicException('A disconnected metadata test has no native exceptions to convert.');
+                throw new LogicException('A disconnected metadata test has no native exceptions to convert.');
             }
         };
         parent::__construct([], $driver);

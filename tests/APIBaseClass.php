@@ -32,6 +32,7 @@
  */
 
 use atoum\atoum;
+use itsmng\Database\MutationCleanupFailure;
 
 abstract class APIBaseClass extends atoum
 {
@@ -76,13 +77,13 @@ abstract class APIBaseClass extends atoum
                     ]);
                     $this->boolean($computer->getFromDB($row['id']))->isFalse();
                 }
-            } catch (\Throwable $error) {
+            } catch (Throwable $error) {
                 $errors[] = $error;
             }
         }
         $this->ownedComputers = [];
         if ($errors !== []) {
-            throw new \RuntimeException('Failed to clean ' . count($errors) . ' owned API computer fixture(s).', 0, $errors[0]);
+            throw new RuntimeException('Failed to clean ' . count($errors) . ' owned API computer fixture(s).', 0, $errors[0]);
         }
     }
 
@@ -1755,17 +1756,17 @@ abstract class APIBaseClass extends atoum
             $this->variable($updateSuccess)->isNotFalse('password update failed');
 
             // Test the new password was saved
-            $this->variable(\Auth::checkPassword('NewPassword', $newHash))->isNotFalse();
-        } catch (\Throwable $error) {
+            $this->variable(Auth::checkPassword('NewPassword', $newHash))->isNotFalse();
+        } catch (Throwable $error) {
             $failure = $error;
         } finally {
-            $record_cleanup = static function (\Throwable $error) use (&$failure): void {
+            $record_cleanup = static function (Throwable $error) use (&$failure): void {
                 $failure = $failure === null ? $error
-                    : new \itsmng\Database\MutationCleanupFailure($failure, $error);
+                    : new MutationCleanupFailure($failure, $error);
             };
             try {
                 Config::setConfigurationValues('core', $saved_config);
-            } catch (\Throwable $error) {
+            } catch (Throwable $error) {
                 $record_cleanup($error);
             } finally {
                 foreach ($saved_runtime_config as $key => $value) {
@@ -1781,7 +1782,7 @@ abstract class APIBaseClass extends atoum
                     $owned_id = $user->getID();
                     $this->integer($owned_id)->isGreaterThan(0);
                 }
-            } catch (\Throwable $error) {
+            } catch (Throwable $error) {
                 $owned_id = null;
                 $record_cleanup($error);
             }
@@ -1792,7 +1793,7 @@ abstract class APIBaseClass extends atoum
                     foreach (array_diff_key($queue_after, array_flip($queue_before)) as $row) {
                         try {
                             $this->boolean($queue->delete(['id' => $row['id']], true))->isTrue();
-                        } catch (\Throwable $error) {
+                        } catch (Throwable $error) {
                             $record_cleanup($error);
                         }
                     }
@@ -1800,7 +1801,7 @@ abstract class APIBaseClass extends atoum
                         $queue->find($queue_filter),
                         array_flip($queue_before)
                     )))->isIdenticalTo(0);
-                } catch (\Throwable $error) {
+                } catch (Throwable $error) {
                     $record_cleanup($error);
                 }
                 try {
@@ -1812,7 +1813,7 @@ abstract class APIBaseClass extends atoum
                         'query' => ['force_purge' => true],
                     ]);
                     $this->boolean($user->getFromDB($owned_id))->isFalse();
-                } catch (\Throwable $error) {
+                } catch (Throwable $error) {
                     $record_cleanup($error);
                 }
             }

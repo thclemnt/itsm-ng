@@ -2,6 +2,7 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\DeletionUnit;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\RecordWriter;
@@ -105,7 +106,7 @@ function plugin_init_sessionhttpfixture(): void
                 return false;
             }
             if (Session::canViewAllEntities() || array_values(array_map('intval', $_SESSION['glpiactiveentities'])) !== [$state['parent']]
-                || !Session::haveRight('user', DELETE) || !\itsmng\Database\DeletionUnit::isActive($DB->getDoctrineConnection())) {
+                || !Session::haveRight('user', DELETE) || !DeletionUnit::isActive($DB->getDoctrineConnection())) {
                 throw new RuntimeException('Deletion fixture requires the real restricted actor and active writer frame');
             }
             $manager = Orm::create($DB);

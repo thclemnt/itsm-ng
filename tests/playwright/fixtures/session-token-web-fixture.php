@@ -2,6 +2,10 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\SequenceSynchronizer;
+
 // Private CLI companion. All browser/API calls use existing application routes.
 if (PHP_SAPI !== 'cli') {
     http_response_code(404);
@@ -37,7 +41,7 @@ if (!(new Auth())->login('itsm', 'itsm', true)) {
 }
 $CFG_GLPI['use_notifications'] = false;
 $connection = $DB->getDoctrineConnection();
-$records = new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB));
+$records = new RecordRepository(Orm::create($DB));
 $input = json_decode(stream_get_contents(STDIN) ?: '{}', true, flags: JSON_THROW_ON_ERROR);
 $path = GLPI_VAR_DIR . '/_tmp/session-http-fixture.json';
 if (is_link($path)) {
@@ -169,7 +173,7 @@ if ($action === 'seed') {
         $event('remember-root', 0, $state['users']['remember'], null);
         $state['plugin'] = $fixtures->create('glpi_plugins', ['directory' => 'sessionhttpfixture', 'name' => 'Session HTTP fixture',
             'version' => '1.0.0', 'state' => Plugin::ACTIVATED]);
-        \itsmng\Database\SequenceSynchronizer::synchronize($DB->getDoctrineConnection());
+        SequenceSynchronizer::synchronize($DB->getDoctrineConnection());
     });
     Config::setConfigurationValues('core', ['login_remember_time' => DAY_TIMESTAMP, 'login_remember_default' => false]);
     $save();

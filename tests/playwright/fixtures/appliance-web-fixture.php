@@ -2,6 +2,10 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\SequenceSynchronizer;
+
 // CLI companion to appliance.spec.mts; never expose a fixture HTTP endpoint.
 if (PHP_SAPI !== 'cli') {
     http_response_code(404);
@@ -26,7 +30,7 @@ if (!(new Auth())->login('itsm', 'itsm', true)) {
     throw new RuntimeException('Fixture administrator login failed');
 }
 $connection = $DB->getDoctrineConnection();
-$records = new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB));
+$records = new RecordRepository(Orm::create($DB));
 if ($action === 'seed') {
     $result = $connection->transactional(static function () use ($DB): array {
         $fixtures = new FixtureRecords($DB);
@@ -60,7 +64,7 @@ if ($action === 'seed') {
         $reader = $create('glpi_users', ['name' => $readerName, 'password' => Auth::getPasswordHash('E2EAppliance1!'), 'authtype' => Auth::DB_GLPI,
             'profiles_id' => $profile, 'entities_id' => 0, 'language' => 'en_GB', 'use_mode' => Session::NORMAL_MODE]);
         $create('glpi_profiles_users', ['profiles_id' => $profile, 'users_id' => $reader, 'entities_id' => 0, 'is_recursive' => false, 'is_default_profile' => true]);
-        \itsmng\Database\SequenceSynchronizer::synchronize($DB->getDoctrineConnection());
+        SequenceSynchronizer::synchronize($DB->getDoctrineConnection());
         return compact('appliance', 'applianceName', 'computers', 'bindings', 'relations', 'newLocation', 'newLocationName', 'domain', 'readerName', 'owned');
     });
 } else {
