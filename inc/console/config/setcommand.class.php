@@ -39,6 +39,7 @@ if (!defined('GLPI_ROOT')) {
 
 use Config;
 use Glpi\Console\AbstractCommand;
+use GLPIKey;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -84,7 +85,7 @@ class SetCommand extends AbstractCommand
 
         $context = $input->getOption('context');
         $key     = Toolbox::addslashes_deep($input->getArgument('key'));
-        $value   = Toolbox::addslashes_deep($input->getArgument('value'));
+        $value   = $input->getArgument('value');
 
         if (!preg_match('/^core|plugin:[a-z]+$/', (string) $context)) {
             $output->writeln(
@@ -97,6 +98,9 @@ class SetCommand extends AbstractCommand
             return self::ERROR_INVALID_CONTEXT;
         }
 
+        if (!(new GLPIKey())->isConfigSecured($context, $key)) {
+            $value = Toolbox::addslashes_deep($value);
+        }
         Config::setConfigurationValues($context, [$key => $value]);
 
         $output->writeln('<info>' . __(sprintf('Configuration "%s" updated.', $key)) . '</info>');

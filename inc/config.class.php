@@ -266,7 +266,10 @@ class Config extends CommonDBTM
         }
 
         if (isset($input[Impact::CONF_ENABLED])) {
-            $input[Impact::CONF_ENABLED] = exportArrayToDB($input[Impact::CONF_ENABLED]);
+            // Itemtypes arrive escaped; protect the completed JSON at the write boundary.
+            $input[Impact::CONF_ENABLED] = Toolbox::addslashes_deep(
+                exportArrayToDB(Toolbox::stripslashes_deep($input[Impact::CONF_ENABLED]))
+            );
         }
 
         // Beware : with new management system, we must update each value
