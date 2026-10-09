@@ -159,7 +159,6 @@ final class DropdownTranslationRepository
         if ($columns === null) {
             $record = $translations ? $result[0] : $result;
             $row = (new RecordRepository($this->em))->toRow($record);
-            $this->em->detach($record);
         } else {
             $row = [];
             foreach ($columns as $index => $column) {

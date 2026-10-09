@@ -88,9 +88,6 @@ class DropdownChoiceRepository extends EntityRepository
                 $row[$translation['output']] = $result[$translation['output']];
             }
             $rows[] = $this->presentChoice($row);
-            if ($record !== null) {
-                $this->getEntityManager()->detach($record);
-            }
         }
         return $rows;
     }

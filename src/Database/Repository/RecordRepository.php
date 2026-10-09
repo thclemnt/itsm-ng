@@ -153,7 +153,6 @@ final class RecordRepository
         }
         foreach ($query->getQuery()->toIterable() as $record) {
             $rows[] = $this->toRow($record);
-            $this->em->detach($record);
         }
         return $rows;
     }

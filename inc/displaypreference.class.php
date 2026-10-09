@@ -31,8 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\LegacyValues;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\DisplayPreferenceRepository;
 
 if (!defined('GLPI_ROOT')) {
@@ -115,8 +117,12 @@ class DisplayPreference extends CommonDBTM
     public static function getForTypeUser($itemtype, $user_id)
     {
         global $DB;
-        return (new DisplayPreferenceRepository(Orm::create($DB)))
-            ->columns($itemtype, (int)$user_id);
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        return Orm::withReadConnection($connection, static fn (?EntityManager $manager): array =>
+            (new DisplayPreferenceRepository($manager ?? Orm::forConnection($connection)))
+                ->columns($itemtype, (int)$user_id));
     }
 
 

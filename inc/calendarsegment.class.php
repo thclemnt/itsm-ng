@@ -31,7 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\CalendarRepository;
 
 if (!defined('GLPI_ROOT')) {
@@ -172,7 +174,13 @@ class CalendarSegment extends CommonDBChild
     **/
     public static function getActiveTimeBetween($calendars_id, $day, $begin_time, $end_time)
     {
-        return self::repository()->activeSeconds((int)$calendars_id, (int)$day, $begin_time, $end_time);
+        global $DB;
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        return Orm::withReadConnection($connection, static fn (?EntityManager $manager): int =>
+            (new CalendarRepository($manager ?? Orm::forConnection($connection)))
+                ->activeSeconds((int)$calendars_id, (int)$day, $begin_time, $end_time));
     }
 
 

@@ -31,8 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Features\Clonable;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\CalendarRepository;
 
 if (!defined('GLPI_ROOT')) {
@@ -280,8 +282,12 @@ class Calendar extends CommonDropdown
         global $DB;
 
         $day = new DateTimeImmutable(date('Y-m-d', strtotime($date)));
-        return (new CalendarRepository(Orm::create($DB)))
-            ->isHoliday((int)$this->fields['id'], $day);
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        return Orm::withReadConnection($connection, fn (?EntityManager $manager): bool =>
+            (new CalendarRepository($manager ?? Orm::forConnection($connection)))
+                ->isHoliday((int)$this->fields['id'], $day));
     }
 
 

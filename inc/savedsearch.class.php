@@ -31,7 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\SavedSearchRepository;
 
 if (!defined('GLPI_ROOT')) {
@@ -679,7 +681,13 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
         if ($users_id <= 0) {
             return false;
         }
-        $row = self::repository()->defaultParameters($users_id, $itemtype);
+        global $DB;
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        $row = Orm::withReadConnection($connection, static fn (?EntityManager $manager): ?array =>
+            (new SavedSearchRepository($manager ?? Orm::forConnection($connection)))
+                ->defaultParameters($users_id, $itemtype));
         if ($row === null) {
             return false;
         }
