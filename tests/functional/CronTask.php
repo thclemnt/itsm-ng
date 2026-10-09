@@ -39,6 +39,8 @@ use DateTimeImmutable;
 use DateTimeZone;
 use DbTestCase;
 use Doctrine\DBAL\Schema\Schema;
+use Glpi\Console\Task\UnlockCommand;
+use Symfony\Component\Console\Tester\CommandTester;
 use itsmng\Database\BaselineSchema;
 use itsmng\Database\Entity\CronTask as CronTaskEntity;
 use itsmng\Database\Entity\CronTaskLog;
@@ -50,6 +52,68 @@ use itsmng\Database\SchemaCheck;
 
 class CronTask extends DbTestCase
 {
+    protected function unlockCommandProvider(): array
+    {
+        return [
+            'whitelist and delay' => [false, false, ['stale']],
+            'all and delay' => [true, false, ['stale', 'slow']],
+            'all and cycle' => [true, true, ['stale']],
+        ];
+    }
+
+    /** @dataProvider unlockCommandProvider */
+    public function testUnlockCommand(bool $all, bool $cycle, array $unlocked): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $session = $_SESSION;
+        $hooks = $PLUGIN_HOOKS;
+        $manager = Orm::create($DB);
+        try {
+            $this->login();
+            $PLUGIN_HOOKS ??= [];
+            // Existing tasks must not produce unlock events; DbTestCase rolls this back.
+            $manager->createQuery('UPDATE ' . CronTaskEntity::class . ' t SET t.state = :waiting')
+                ->setParameter('waiting', LegacyCronTask::STATE_WAITING)->execute();
+            $connection = $DB->getDoctrineConnection();
+            $level = $connection->getTransactionNestingLevel();
+            $now = new DateTimeImmutable((string)$connection->fetchOne('SELECT CURRENT_TIMESTAMP'));
+            $prefix = 'Unlock ' . $this->getUniqueString();
+            $tasks = [];
+            foreach ([
+                'stale' => [60, '-2 hours', LegacyCronTask::STATE_RUNNING],
+                'slow' => [7200, '-1 hour', LegacyCronTask::STATE_RUNNING],
+                'recent' => [7200, '-30 seconds', LegacyCronTask::STATE_RUNNING],
+                'waiting' => [60, '-2 hours', LegacyCronTask::STATE_WAITING],
+            ] as $name => [$frequency, $offset, $state]) {
+                $task = new CronTaskEntity();
+                $task->itemtype = 'CronTask';
+                $task->name = $prefix . ' ' . $name;
+                $task->frequency = $frequency;
+                $task->lastrun = DateTime::createFromImmutable($now->modify($offset));
+                $task->state = $state;
+                $manager->persist($task);
+                $tasks[$name] = $task;
+            }
+            $manager->flush();
+            $options = $all ? ['--all' => true] : ['--task' => ['CronTask::' . $tasks['stale']->name]];
+            $options[$cycle ? '--cycle' : '--delay'] = $cycle ? '2' : '1800';
+            $tester = new CommandTester(new UnlockCommand());
+            $this->integer($tester->execute($options))->isIdenticalTo(0);
+            foreach ($tasks as $name => $task) {
+                $expected = $name === 'waiting' || in_array($name, $unlocked, true)
+                    ? LegacyCronTask::STATE_WAITING : LegacyCronTask::STATE_RUNNING;
+                $this->integer((int)$connection->fetchOne('SELECT state FROM glpi_crontasks WHERE id = ?', [$task->id]))
+                    ->isIdenticalTo($expected);
+            }
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+            $DB->assertManagedTransaction();
+        } finally {
+            $manager->clear();
+            $PLUGIN_HOOKS = $hooks;
+            $_SESSION = $session;
+        }
+    }
+
     public function testSchemaInspectionDetectsCurrentCronLogEditsWithoutChangingStorage(): void
     {
         global $DB;

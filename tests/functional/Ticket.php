@@ -38,6 +38,7 @@ use CommonITILActor;
 use CommonITILObject;
 use CommonITILTask;
 use DateTime;
+use DateTimeImmutable;
 use DbTestCase;
 use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Cache\QueryCacheProfile;
@@ -64,6 +65,7 @@ use Doctrine\ORM\Query;
 use Document;
 use Document_Item;
 use Dropdown;
+use Entity as LegacyEntity;
 use Group;
 use Group_Ticket;
 use ITILFollowup;
@@ -82,6 +84,8 @@ use Ticket_User;
 use UserEmail;
 use itsmng\Database\Entity\DocumentItem;
 use itsmng\Database\Entity\Entity;
+use itsmng\Database\Entity\Group as GroupEntity;
+use itsmng\Database\Entity\GroupTicket;
 use itsmng\Database\Entity\ITILSolution as SolutionRecord;
 use itsmng\Database\Entity\Profile;
 use itsmng\Database\Entity\ProfileUser;
@@ -96,6 +100,8 @@ use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\DocumentRepository;
 use itsmng\Database\Repository\ITILActorRepository;
 use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\TicketCollectionRepository;
+use itsmng\Database\Repository\TicketVisibility;
 use itsmng\Database\Repository\TimelineRepository;
 use itsmng\Database\Repository\UserRepository;
 use itsmng\Database\Repository\UserSelectionRepository;
@@ -120,6 +126,137 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Ticket extends DbTestCase
 {
+    public function testMonthlyCountsRespectTicketCollectionVisibility(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $manager = Orm::create($DB);
+        try {
+            $this->login();
+            $entities = [];
+            foreach (['local', 'other'] as $name) {
+                $entity = $this->createItem(LegacyEntity::class, [
+                    'name' => 'Monthly ' . $name . $this->getUniqueString(),
+                    'entities_id' => (int)getItemByTypeName('Entity', '_test_root_entity', true),
+                ]);
+                $entities[$name] = (int)$entity->getID();
+            }
+            $viewer = (int)Session::getLoginUserID();
+            $actor = $manager->getReference(UserEntity::class, $viewer);
+            $group = new GroupEntity();
+            $group->name = 'Monthly ' . $this->getUniqueString();
+            $group->entities = $manager->getReference(Entity::class, $entities['local']);
+            $manager->persist($group);
+            $now = new DateTime((string)$DB->getDoctrineConnection()->fetchOne('SELECT CURRENT_TIMESTAMP'));
+            foreach (['requester', 'observer', 'assigned', 'group', 'recipient', 'unrelated', 'incoming', 'deleted', 'old', 'other'] as $name) {
+                $ticket = new TicketEntity();
+                $ticket->name = 'Monthly ' . $name . $this->getUniqueString();
+                $ticket->entities = $manager->getReference(Entity::class, $entities[$name === 'other' ? 'other' : 'local']);
+                $ticket->date = $name === 'old' ? (clone $now)->modify('-1 year') : clone $now;
+                $ticket->status = $name === 'incoming' ? CommonITILObject::INCOMING : CommonITILObject::ASSIGNED;
+                $ticket->is_deleted = $name === 'deleted';
+                $ticket->recipient = $name === 'recipient' ? $actor : null;
+                $manager->persist($ticket);
+                $roles = match ($name) {
+                    'requester' => [CommonITILActor::REQUESTER, CommonITILActor::OBSERVER],
+                    'observer' => [CommonITILActor::OBSERVER],
+                    'assigned' => [CommonITILActor::ASSIGN],
+                    'deleted', 'old', 'other' => [CommonITILActor::REQUESTER],
+                    default => [],
+                };
+                foreach ($roles as $role) {
+                    $membership = new TicketUser();
+                    $membership->tickets = $ticket;
+                    $membership->actor = $actor;
+                    $membership->type = $role;
+                    $manager->persist($membership);
+                }
+                if ($name === 'group') {
+                    foreach ([CommonITILActor::REQUESTER, CommonITILActor::OBSERVER] as $role) {
+                        $membership = new GroupTicket();
+                        $membership->tickets = $ticket;
+                        $membership->groups = $group;
+                        $membership->type = $role;
+                        $manager->persist($membership);
+                    }
+                }
+            }
+            $manager->flush();
+            $repository = new TicketCollectionRepository($manager);
+            foreach ([
+                [[$entities['local']], [$group->id], LegacyTicket::READALL, 7],
+                [[$entities['other']], [$group->id], LegacyTicket::READALL, 1],
+                [[$entities['local']], [], LegacyTicket::READMY, 3],
+                [[$entities['local']], [], LegacyTicket::OWN, 1],
+                [[$entities['local']], [], LegacyTicket::READASSIGN | LegacyTicket::ASSIGN, 2],
+                [[$entities['local']], [$group->id], LegacyTicket::READGROUP, 1],
+                [[$entities['local']], [], LegacyTicket::READGROUP, 0],
+                [[$entities['local']], [$group->id], 0, 0],
+                [[], [$group->id], LegacyTicket::READALL, 0],
+            ] as [$scope, $groups, $rights, $expected]) {
+                $visibility = new TicketVisibility($viewer, $scope, $groups, $rights);
+                $this->array($repository->monthlyCounts($visibility))
+                    ->isIdenticalTo($expected ? [$now->format('Y-m') => $expected] : []);
+            }
+            $DB->assertManagedTransaction();
+        } finally {
+            $manager->clear();
+            $_SESSION = $session;
+        }
+    }
+
+    protected function centralSurveyProvider(): array
+    {
+        return [
+            'unlimited' => [0, '-20 days', false, true],
+            'future expiry' => [2, '-1 day', false, true],
+            'expires today' => [2, '-2 days', false, false],
+            'expired' => [2, '-3 days', false, false],
+            'answered' => [2, '-1 day', true, false],
+        ];
+    }
+
+    /** @dataProvider centralSurveyProvider */
+    public function testCentralSurveyList(int $duration, string $offset, bool $answered, bool $visible): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity('_test_child_1', false);
+            $_SESSION['glpidisplay_count_on_home'] = 0;
+            $entity = (int)$_SESSION['glpiactive_entity'];
+            $this->boolean($DB->update('glpi_entities', ['inquest_duration' => $duration], ['id' => $entity]))->isTrue();
+            $today = new DateTimeImmutable((string)$DB->getDoctrineConnection()->fetchOne('SELECT CURRENT_DATE'));
+            $name = 'Survey ' . $this->getUniqueString();
+            $ticket = $this->createItem(LegacyTicket::class, [
+                'name' => $name,
+                'content' => 'Pending survey eligibility',
+                'entities_id' => $entity,
+                'status' => CommonITILObject::CLOSED,
+                '_users_id_requester' => Session::getLoginUserID(),
+                '_disablenotif' => true,
+            ]);
+            $satisfaction = new TicketSatisfaction();
+            $this->integer((int)$satisfaction->add([
+                'tickets_id' => $ticket->getID(),
+                'type' => 1,
+                'date_begin' => $today->modify($offset)->format('Y-m-d 12:00:00'),
+                'date_answered' => $answered ? $today->format('Y-m-d 12:00:00') : null,
+                '_disablenotif' => true,
+            ]))->isGreaterThan(0);
+            $output = $this->output(static fn () => LegacyTicket::showCentralList(0, 'survey', false));
+            if ($visible) {
+                $output->contains($name);
+            } else {
+                $output->notContains($name);
+            }
+            $DB->assertManagedTransaction();
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
     public function testRequestDefaultsReuseManagerAndKeepCurrentSourceAndRoute(): void
     {
         global $DB;

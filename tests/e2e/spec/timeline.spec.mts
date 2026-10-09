@@ -16,7 +16,22 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('shows the seeded ticket timeline context', async ({ page, request, ticketFixtures }) => {
+  const anonymous = await request.get('/ajax/ticketmonths.ajax.php', { maxRedirects: 0 });
+  expect(anonymous.status()).toBe(302);
+  expect(anonymous.headers().location).toContain('/index.php');
+
+  const beforeResponse = await page.request.get('/ajax/ticketmonths.ajax.php');
+  expect(beforeResponse.ok()).toBeTruthy();
+  const before: number[] = await beforeResponse.json();
+  expect(before).toHaveLength(6);
+  expect(before.every((count) => Number.isInteger(count) && count >= 0)).toBeTruthy();
+
   const seed = await seedTicket(request, ticketFixtures);
+
+  const afterResponse = await page.request.get('/ajax/ticketmonths.ajax.php');
+  expect(afterResponse.ok()).toBeTruthy();
+  const after: number[] = await afterResponse.json();
+  expect(after).toEqual([...before.slice(0, 5), before[5] + 1]);
 
   await openTicket(page, seed);
 

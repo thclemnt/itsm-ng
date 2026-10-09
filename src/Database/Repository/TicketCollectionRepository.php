@@ -85,6 +85,24 @@ final class TicketCollectionRepository
         return ['rows' => $rows, 'total' => $total];
     }
 
+    /** Monthly counts of the same visible, nondeleted tickets as the default collection page. */
+    public function monthlyCounts(TicketVisibility $visibility): array
+    {
+        $metadata = $this->em->getClassMetadata(Entity\Ticket::class);
+        $query = $this->em->createQueryBuilder()->from(Entity\Ticket::class, 'r');
+        $compiler = new RecordCriteria($query, $metadata, legacyValues: false);
+        $query->select('YEAR_MONTH(r.date) AS month', 'COUNT(r.id) AS total')
+            ->where($compiler->where(['entities_id' => $visibility->entities ?: [-1], 'is_deleted' => false]))
+            ->andWhere("r.date >= DATE_SUB(CURRENT_TIMESTAMP(), 6, 'MONTH')")
+            ->groupBy('month')->orderBy('month');
+        $this->visibility($query, $visibility);
+        $counts = [];
+        foreach ($query->getQuery()->getScalarResult() as $row) {
+            $counts[$row['month']] = (int)$row['total'];
+        }
+        return $counts;
+    }
+
     private function visibility(QueryBuilder $query, TicketVisibility $access): void
     {
         if ($access->has(Ticket::READALL)) {
