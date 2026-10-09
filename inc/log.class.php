@@ -103,10 +103,7 @@ class Log extends CommonDBTM
             $connection = $database->getDoctrineConnection();
             OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
             $nb = Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $item, $items_id): int {
-                return (new HistoryRepository($manager ?? Orm::forConnection($connection)))->count([
-                    'itemtype' => $item->getType(),
-                    'items_id' => $items_id
-                ]);
+                return (new HistoryRepository($manager ?? Orm::forConnection($connection)))->countForItem($item->getType(), $items_id);
             });
         }
         return self::createTabEntry(self::getTypeName(1), $nb);

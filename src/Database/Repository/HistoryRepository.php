@@ -5,9 +5,16 @@
 namespace itsmng\Database\Repository;
 
 use DateTimeImmutable;
+use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Mapping\DefaultQuoteStrategy;
 use InvalidArgumentException;
 use itsmng\Database\Entity\Log;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\MySQLManagedConnection;
+use itsmng\Database\Orm;
+use itsmng\Database\PostgresConnection;
 use itsmng\Database\RecordCriteria;
 
 final class HistoryRepository
@@ -24,6 +31,43 @@ final class HistoryRepository
     public function count(array $criteria = []): int
     {
         return (new RecordRepository($this->em))->countMatching('glpi_logs', $criteria, legacyValues: false);
+    }
+
+    /** Fixed tab count; custom scopes retain the mapped criteria query. */
+    public function countForItem(mixed $type, mixed $id): int
+    {
+        $criteria = ['itemtype' => $type, 'items_id' => $id];
+        $connection = $this->em->getConnection();
+        $configuration = $this->em->getConfiguration();
+        if ((!$connection instanceof MySQLManagedConnection && !$connection instanceof PostgresConnection)
+            || !$connection->ownsApplicationEntityManager($this->em)
+            || !is_string($type) || (!is_int($id) && !is_string($id))
+            || $configuration->getDefaultQueryHints()
+            || $configuration->getQuoteStrategy()::class !== DefaultQuoteStrategy::class
+            || ($this->em->hasFilters() && $this->em->getFilters()->getEnabledFilters())) {
+            return $this->count($criteria);
+        }
+        $metadata = $this->em->getClassMetadata(EntityRegistry::tables()['glpi_logs']);
+        $typeField = $metadata->getFieldName('itemtype');
+        $idField = $metadata->getFieldName('items_id');
+        if (!$metadata->isInheritanceTypeNone() || !$metadata->hasField('id') || $metadata->associationMappings
+            || $metadata->getTypeOfField($typeField) !== Types::STRING
+            || $metadata->getTypeOfField($idField) !== Types::BIGINT
+            || !Orm::stableSqlConversion(Types::STRING, Type::getType(Types::STRING))
+            || !Orm::stableSqlConversion(Types::BIGINT, Type::getType(Types::BIGINT))) {
+            return $this->count($criteria);
+        }
+        $platform = $connection->getDatabasePlatform();
+        $quote = $configuration->getQuoteStrategy();
+        return (int)$connection->createQueryBuilder()
+            ->select('COUNT(r.' . $quote->getColumnName('id', $metadata, $platform) . ')')
+            ->from($quote->getTableName($metadata, $platform), 'r')
+            ->where('r.' . $quote->getColumnName($typeField, $metadata, $platform) . ' = ?')
+            ->andWhere('r.' . $quote->getColumnName($idField, $metadata, $platform) . ' = ?')
+            // RecordCriteria normalizes both STRING and BIGINT values to strings.
+            ->setParameter(0, $type, Types::STRING)
+            ->setParameter(1, (string)$id, Types::BIGINT)
+            ->executeQuery()->fetchOne();
     }
 
     public function forItem(string $type, int $id, array $filters = [], int $offset = 0, int $limit = 0, string $sort = 'id', string $direction = 'DESC'): array
