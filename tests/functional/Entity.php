@@ -496,6 +496,11 @@ class Entity extends DbTestCase
         $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
         $sibling = (int)getItemByTypeName('Entity', '_test_child_2', true);
 
+        // Warm the ordinary reader before measuring the sixteen public lookups below.
+        LegacyEntity::getEntityIDByTag('_identifier_reader_warmup');
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeFactories = $factories->getValue();
+
         foreach ([
             'ldap_dn' => 'getEntityIDByDN',
             'tag' => 'getEntityIDByTag',
@@ -512,6 +517,7 @@ class Entity extends DbTestCase
             $connection->update('glpi_entities', [$field => $value . '_root'], ['id' => 0]);
             $this->integer(LegacyEntity::$method(addslashes($value . '_root')))->isIdenticalTo(0);
         }
+        $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
     }
 
     public function testEntityIdentifierNullAndEmptyValues(): void
@@ -563,6 +569,7 @@ class Entity extends DbTestCase
             // Read current database values without refreshing or detaching another caller's object.
             $this->integer($settings->uniqueIdentifier('tag', '_identifier_before'))->isIdenticalTo(-1);
             $this->integer($settings->uniqueIdentifier('tag', '_identifier_after'))->isIdenticalTo($child);
+            $this->integer(LegacyEntity::getEntityIDByTag('_identifier_after'))->isIdenticalTo($child);
             $this->string($managed->tag)->isIdenticalTo('_identifier_before');
             $this->boolean($em->contains($managed))->isTrue();
             $this->integer($listener->loaded)->isIdenticalTo(1);
