@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Features\Clonable;
 use itsmng\Database\Entity\Contract as ContractEntity;
 use itsmng\Database\Entity\ContractItem;
@@ -1160,8 +1161,17 @@ class Contract extends CommonDBTM
     **/
     public function getSuppliersNames()
     {
+        global $DB;
+
         $out = '';
-        foreach (self::repository()->supplierNames((int)$this->getID(), Session::haveTranslations('Supplier', 'name') ? ($_SESSION['glpilanguage'] ?? '') : null) as $name) {
+        $names = Orm::read(
+            $DB,
+            fn (EntityManager $manager): array => $manager->getRepository(ContractEntity::class)->supplierNames(
+                (int)$this->getID(),
+                Session::haveTranslations('Supplier', 'name') ? ($_SESSION['glpilanguage'] ?? '') : null
+            )
+        );
+        foreach ($names as $name) {
             $out .= (empty($name) ? '&nbsp;' : $name) . '<br>';
         }
         return $out;

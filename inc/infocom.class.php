@@ -31,11 +31,13 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\Entity\Infocom as InfocomEntity;
 use itsmng\Database\InfocomPresenceReadOperation;
 use itsmng\Database\MappedReads;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\InfocomRepository;
 
 if (!defined('GLPI_ROOT')) {
@@ -2237,12 +2239,13 @@ JS;
     {
         global $DB;
 
-        $em = Orm::create($DB);
-        try {
-            return (new InfocomRepository($em))->types($where);
-        } finally {
-            $em->clear();
-        }
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        return Orm::withConnection(
+            $connection,
+            static fn (EntityManager $manager): array => (new InfocomRepository($manager))->types($where)
+        );
     }
 
 

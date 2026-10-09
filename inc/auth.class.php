@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Event;
 use Glpi\Toolbox\URL;
 use itsmng\Database\AuthenticationType;
@@ -1898,7 +1899,11 @@ class Auth extends CommonGLPI
 
         // Get LDAP
         if (Toolbox::canUseLdap()) {
-            foreach ((new LdapRepository(Orm::create($DB)))->directories(true) as $data) {
+            $directories = Orm::read(
+                $DB,
+                static fn (EntityManager $manager): array => (new LdapRepository($manager))->directories(true)
+            );
+            foreach ($directories as $data) {
                 $elements['ldap-' . $data['id']] = $data['name'];
                 if ($data['is_default'] == 1) {
                     $elements['_default'] = 'ldap-' . $data['id'];
@@ -1907,7 +1912,11 @@ class Auth extends CommonGLPI
         }
 
         // GET Mail servers
-        foreach ((new MailAuthenticationRepository(Orm::create($DB)))->servers(true) as $data) {
+        $servers = Orm::read(
+            $DB,
+            static fn (EntityManager $manager): array => (new MailAuthenticationRepository($manager))->servers(true)
+        );
+        foreach ($servers as $data) {
             $elements['mail-' . $data['id']] = $data['name'];
         }
 

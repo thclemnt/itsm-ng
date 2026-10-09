@@ -9,6 +9,7 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Events;
 use Doctrine\ORM\NonUniqueResultException;
 use Doctrine\ORM\Query;
 use Doctrine\ORM\QueryBuilder;
@@ -30,6 +31,42 @@ final class UserRepository
 {
     public function __construct(private EntityManager $em)
     {
+    }
+
+    /** Current assignment labels, preserving duplicate-login order and hook-owned records. */
+    public function historyNamesByLogin(string $name): array
+    {
+        $metadata = $this->em->getClassMetadata(EntityRegistry::tables()['glpi_users']);
+        if ($this->em->getUnitOfWork()->size() !== 0
+            || count($metadata->identifier) !== 1
+            || !$metadata->hasField($metadata->getSingleIdentifierFieldName())
+            || !isset($metadata->fieldNames['id'], $metadata->fieldNames['realname'], $metadata->fieldNames['firstname'])
+            || $metadata->hasLifecycleCallbacks(Events::postLoad)
+            || !empty($metadata->entityListeners[Events::postLoad])
+            || $this->em->getEventManager()->hasListeners(Events::postLoad)
+            || $this->em->getConfiguration()->getDefaultQueryHints()) {
+            return (new RecordRepository($this->em))->matching('glpi_users', ['name' => $name], 'id', legacyValues: false);
+        }
+        $fields = ['id', 'realname', 'firstname'];
+        $query = $this->em->createQueryBuilder()->from($metadata->name, 'r');
+        $criteria = new RecordCriteria($query, $metadata, legacyValues: false);
+        $query->select(...array_map(
+            static fn (string $column): string => 'r.' . $metadata->getFieldName($column) . ' AS ' . $column,
+            $fields
+        ));
+        $query->where($criteria->where(['name' => $name]));
+        $criteria->order('id');
+        $rows = [];
+        foreach ($query->getQuery()->toIterable([], Query::HYDRATE_ARRAY) as $values) {
+            foreach ($fields as $column) {
+                $values[$column] = RecordRepository::legacyScalarValue(
+                    $values[$column],
+                    $metadata->getTypeOfField($metadata->getFieldName($column))
+                );
+            }
+            $rows[] = $values;
+        }
+        return $rows;
     }
 
     /** Read the current account preference without loading an account graph. */

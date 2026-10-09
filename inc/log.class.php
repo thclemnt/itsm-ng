@@ -36,6 +36,7 @@ use itsmng\Database\Orm;
 use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\HistoryRepository;
 use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\UserRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -402,12 +403,7 @@ class Log extends CommonDBTM
             }
             return Orm::withReadConnection(
                 $connection,
-                static fn (EntityManager $manager): array => (new RecordRepository($manager))->matching(
-                    'glpi_users',
-                    ['name' => $name],
-                    'id',
-                    legacyValues: false
-                )
+                static fn (EntityManager $manager): array => (new UserRepository($manager))->historyNamesByLogin($name)
             );
         };
         $changes = [];

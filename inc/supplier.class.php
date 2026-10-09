@@ -35,9 +35,11 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Toolbox\URL;
 use itsmng\Database\MappedReads;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\DomainRepository;
 use itsmng\Database\Repository\InfocomRepository;
 use itsmng\Reporting\Criteria;
@@ -576,19 +578,20 @@ class Supplier extends CommonDBTM
             if ($item->canView()) {
                 [$linktype, $linkfield] = InfocomRepository::linkFor($itemtype);
                 if (InfocomRepository::supports($itemtype)) {
-                    $em = Orm::create($DB);
-                    try {
-                        $projection = (new InfocomRepository($em))->forSupplier(
+                    $database = $DB;
+                    $connection = $database->getDoctrineConnection();
+                    OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+                    $projection = Orm::withConnection(
+                        $connection,
+                        static fn (EntityManager $manager): array => (new InfocomRepository($manager))->forSupplier(
                             $itemtype,
                             (int)$instID,
                             Criteria::entities(),
                             (int)$_SESSION['glpilist_limit']
-                        );
-                        $nb = $projection['count'];
-                        $iterator = $projection['rows'];
-                    } finally {
-                        $em->clear();
-                    }
+                        )
+                    );
+                    $nb = $projection['count'];
+                    $iterator = $projection['rows'];
                 } else {
                     // Unmapped plugin items retain their registered table and visibility rules.
                     $itemtable = getTableForItemType($itemtype);

@@ -120,8 +120,10 @@ if (GLPI_DEMO_MODE) {
 // Add dropdown for auth (local, LDAPxxx, LDAPyyy, imap...)
 if ($CFG_GLPI['display_login_source']) {
     $twig_vars["display_login_source"] = true;
-    $twig_vars["auth_dropdown"] = Auth::dropdownLogin();
-    $twig_vars["auth_dropdown_default"] = Auth::getDefaultLoginAuthSource();
+    $authMethods = Auth::getLoginAuthMethods();
+    $twig_vars["auth_dropdown_default"] = $authMethods['_default'];
+    unset($authMethods['_default']);
+    $twig_vars["auth_dropdown"] = $authMethods;
 }
 
 if ($CFG_GLPI["login_remember_time"]) {
