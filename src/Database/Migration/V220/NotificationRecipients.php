@@ -8,6 +8,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use Doctrine\DBAL\Schema\Table;
+use itsmng\Database\MySQLGeneratedColumnInspection;
 
 /** Frozen upgrade: recipient constants remain payloads; profile/group kinds select real rows. */
 final class NotificationRecipients
@@ -66,7 +67,7 @@ final class NotificationRecipients
         $schema = $connection->fetchOne($postgres ? 'SELECT current_schema()' : 'SELECT DATABASE()');
         $generated = $hasKey && ($postgres
             ? (bool)$connection->fetchOne("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'glpi_notificationtargets' AND column_name = 'items_id' AND is_generated = 'ALWAYS'", [$schema])
-            : \itsmng\Database\MySQLGeneratedColumnInspection::isGenerated($connection, $schema, 'glpi_notificationtargets', 'items_id'));
+            : MySQLGeneratedColumnInspection::isGenerated($connection, $schema, 'glpi_notificationtargets', 'items_id'));
         $identity = $hasKey ? 'r.items_id' : '(CASE WHEN r.type IN (3, 5, 6) THEN r.groups_id WHEN r.type = 2 THEN r.profiles_id ELSE r.recipient_code END)';
         $invalid = (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_notificationtargets r'
             . ' LEFT JOIN glpi_groups g ON g.id = ' . $identity . ' LEFT JOIN glpi_profiles p ON p.id = ' . $identity

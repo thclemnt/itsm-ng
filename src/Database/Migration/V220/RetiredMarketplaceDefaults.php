@@ -7,6 +7,7 @@ namespace itsmng\Database\Migration\V220;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use itsmng\Database\Migration\Ledger;
+use itsmng\Database\MutationRollbackFailure;
 use itsmng\Database\OwnedMutationFrame;
 
 /** Archive only the three unchanged children left by the released marketplace removal. */
@@ -106,7 +107,7 @@ final class RetiredMarketplaceDefaults
             try {
                 $frame->rollBack();
             } catch (\Throwable $cleanup) {
-                throw new \itsmng\Database\MutationRollbackFailure($error, $cleanup);
+                throw new MutationRollbackFailure($error, $cleanup);
             }
             throw $error;
         }

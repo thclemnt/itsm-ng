@@ -8,6 +8,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\MariaDBPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
+use Doctrine\DBAL\Schema\Table;
 use itsmng\Database\BooleanDomainSchema;
 use itsmng\Database\CheckConstraintSupport;
 use itsmng\Database\Migration\Ledger;
@@ -282,7 +283,7 @@ final class ExactDiscriminators
             . ($definition['empty_value'] === null ? 'NULL' : $definition['empty_value']) . ' END) STORED';
     }
 
-    private static function validSql(Connection $connection, array $definition, \Doctrine\DBAL\Schema\Table $actual, bool $legacy, bool $audit): string
+    private static function validSql(Connection $connection, array $definition, Table $actual, bool $legacy, bool $audit): string
     {
         $platform = $connection->getDatabasePlatform();
         $quote = $platform->quoteIdentifier(...);
@@ -330,7 +331,7 @@ final class ExactDiscriminators
         return implode(' OR ', $branches);
     }
 
-    private static function preservation(Connection $connection, \Doctrine\DBAL\Schema\Table $table, ?array $checks = null, ?array $incomingSnapshot = null): array
+    private static function preservation(Connection $connection, Table $table, ?array $checks = null, ?array $incomingSnapshot = null): array
     {
         $indexes = $foreignKeys = [];
         foreach ($table->getIndexes() as $index) {

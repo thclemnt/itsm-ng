@@ -440,7 +440,7 @@ final class DomainsPluginAdoption
         // generic items_id owner. Exact class values diagnose rather than mutate.
         $knownCore = $definition['core_tables'];
         foreach (array_keys($tables) as $table) {
-            if (in_array($table, $knownCore, true) || isset($definition['source'][$table]) || $table === \itsmng\Database\Migration\Ledger::TABLE) {
+            if (in_array($table, $knownCore, true) || isset($definition['source'][$table]) || $table === Ledger::TABLE) {
                 continue;
             }
             foreach ($manager->listTableColumns($table) as $column) {

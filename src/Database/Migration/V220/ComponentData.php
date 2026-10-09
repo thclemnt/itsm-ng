@@ -9,6 +9,8 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
+use itsmng\Database\BooleanCheckExpression;
+use itsmng\Database\BooleanDomainSchema;
 use itsmng\Database\Migration\Ledger;
 
 /** Frozen family-local data preflight; completed older receipts cannot bypass these audits. */
@@ -75,13 +77,13 @@ final class ComponentData
             && (Ledger::state($connection, BooleanDomains::PHASE)['complete'] ?? false) === true) {
             // Use the already-frozen older declaration, not current entity
             // metadata or a second manually maintained boolean catalogue.
-            $checks = \itsmng\Database\BooleanDomainSchema::checks($connection, $snapshot['table'])[$snapshot['table']] ?? [];
+            $checks = BooleanDomainSchema::checks($connection, $snapshot['table'])[$snapshot['table']] ?? [];
             $ansiQuotes = in_array('ANSI_QUOTES', explode(',', (string)$connection->fetchOne('SELECT @@SESSION.sql_mode')), true);
             foreach ($snapshot['booleans'] as $column) {
                 $definition = BooleanDomains::definitions()[$snapshot['table']][$column];
                 $name = $definition['check'];
                 if (!isset($checks[$name]) || $checks[$name]['enforced'] !== 'YES'
-                    || !\itsmng\Database\BooleanCheckExpression::matches($checks[$name]['clause'], $column, $definition['nullable'], $ansiQuotes)) {
+                    || !BooleanCheckExpression::matches($checks[$name]['clause'], $column, $definition['nullable'], $ansiQuotes)) {
                     throw new \RuntimeException('Completed historical component boolean CHECK is missing, changed or unenforced: '
                         . $snapshot['table'] . '.' . $column . ' (' . $name . ')');
                 }

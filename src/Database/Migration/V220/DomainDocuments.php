@@ -7,6 +7,9 @@ namespace itsmng\Database\Migration\V220;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Schema\Column;
+use Doctrine\DBAL\Schema\Table;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use itsmng\Database\Migration\Ledger;
 
@@ -18,7 +21,7 @@ final class DomainDocuments extends StagedTypedItemMigration implements PendingS
     public const GENERAL_FORMAT = 'infotel-domain-documents-deferred-v1';
 
     /** Frozen old ownership can precede this stage's appended subject column. */
-    public function admitsGeneratedPredecessor(\Doctrine\DBAL\Schema\Table $actual, array $definition, array $states): bool
+    public function admitsGeneratedPredecessor(Table $actual, array $definition, array $states): bool
     {
         if ($actual->getName() !== $this->table() || ($states[self::PHASE]['complete'] ?? false) === true
             || ($definition['column'] ?? null) !== 'items_id' || ($definition['discriminator'] ?? null) !== 'itemtype') {
@@ -35,21 +38,21 @@ final class DomainDocuments extends StagedTypedItemMigration implements PendingS
         }
         // Schema APIs expose exactly the existing historical declarations.
         // No current entity or second table/target catalogue defines this view.
-        $previous = new \Doctrine\DBAL\Schema\Table($this->table());
+        $previous = new Table($this->table());
         $previous->addColumn('items_id', Types::BIGINT, ['notnull' => false]);
         $previous->addColumn('itemtype', Types::STRING, ['length' => 100]);
         DocumentSubjects::configureTable($previous);
         $expanded = clone $previous;
         static::configureTable($expanded);
-        $oldColumns = array_diff(array_map(static fn (\Doctrine\DBAL\Schema\Column $column): string => $column->getName(), $previous->getColumns()), ['items_id', 'itemtype']);
-        $newColumns = array_diff(array_map(static fn (\Doctrine\DBAL\Schema\Column $column): string => $column->getName(), $expanded->getColumns()), ['items_id', 'itemtype']);
+        $oldColumns = array_diff(array_map(static fn (Column $column): string => $column->getName(), $previous->getColumns()), ['items_id', 'itemtype']);
+        $newColumns = array_diff(array_map(static fn (Column $column): string => $column->getName(), $expanded->getColumns()), ['items_id', 'itemtype']);
         $declaredColumns = array_unique(array_column($definition['branches'], 'column'));
         if (array_diff($newColumns, $declaredColumns) || array_diff($declaredColumns, $newColumns)) {
             return false;
         }
         foreach ($oldColumns as $column) {
             if (!$actual->hasColumn($column) || $actual->getColumn($column)->getNotnull()
-                || \Doctrine\DBAL\Types\Type::lookupName($actual->getColumn($column)->getType()) !== Types::BIGINT) {
+                || Type::lookupName($actual->getColumn($column)->getType()) !== Types::BIGINT) {
                 return false;
             }
         }
@@ -64,7 +67,7 @@ final class DomainDocuments extends StagedTypedItemMigration implements PendingS
         return $actual->hasColumn('items_id') && $missing
             && ($state['projection_expanded'] ?? false) !== true
             && !$actual->getColumn('items_id')->getNotnull()
-            && \Doctrine\DBAL\Types\Type::lookupName($actual->getColumn('items_id')->getType()) === Types::BIGINT;
+            && Type::lookupName($actual->getColumn('items_id')->getType()) === Types::BIGINT;
     }
 
     public function plan(Connection $connection, ?IncomingProjectionReferences $incomingReferences = null): array

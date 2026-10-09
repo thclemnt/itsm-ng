@@ -5,6 +5,7 @@
 namespace itsmng\Database\Migration\V220;
 
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\Ledger;
@@ -284,7 +285,7 @@ final class References
                     $connection->executeStatement("SELECT pg_advisory_xact_lock(hashtext('itsmng_legacy_to_orm'))");
                     $apply();
                 });
-            } catch (\Doctrine\DBAL\Exception\DriverException $error) {
+            } catch (DriverException $error) {
                 if ($error->getSQLState() === '53200' && str_contains($error->getMessage(), 'out of shared memory')) {
                     throw new \RuntimeException('PostgreSQL exhausted relation locks. Increase max_locks_per_transaction on the server and retry; this upgrade transaction was rolled back.', 0, $error);
                 }

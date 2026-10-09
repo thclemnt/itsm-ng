@@ -5,6 +5,7 @@
 namespace itsmng\Database\Migration\V220;
 
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 
 final class InventoryMetadataReferences
 {
@@ -25,7 +26,7 @@ final class InventoryMetadataReferences
             }
             return $counts;
         };
-        return $connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform
+        return $connection->getDatabasePlatform() instanceof PostgreSQLPlatform
             ? $connection->transactional($apply) : $apply();
     }
 }

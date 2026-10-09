@@ -9,6 +9,7 @@ use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use Doctrine\DBAL\Schema\Table;
+use itsmng\Database\MySQLGeneratedColumnInspection;
 
 /** Shared frozen 2.2.0 typed-reference DDL; subclasses own subject and stock policy. */
 abstract class TypedItemMigration
@@ -173,7 +174,7 @@ abstract class TypedItemMigration
             }
             $generated = $hasKey && ($postgres
                 ? (bool)$connection->fetchOne("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = 'items_id' AND is_generated = 'ALWAYS'", [$schema, $table])
-                : \itsmng\Database\MySQLGeneratedColumnInspection::isGenerated($connection, $schema, $table, 'items_id'));
+                : MySQLGeneratedColumnInspection::isGenerated($connection, $schema, $table, 'items_id'));
             $identity = $hasKey ? 'r.items_id' : '(' . static::identity('r.', $platform) . ')';
             $joins = $invalid = [];
             foreach (static::targets() as $kind => $target) {

@@ -4,6 +4,7 @@
 
 namespace itsmng\Database\Migration\V220;
 
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use itsmng\Database\Migration\Ledger;
@@ -21,7 +22,7 @@ final class ProjectAssets extends TypedItemMigration
         $manager = $connection->createSchemaManager();
         $identity = isset($manager->listTableColumns('glpi_items_projects')['items_id']) ? 'items_id' : 'NULL AS items_id';
         $unsupported = $connection->fetchAllAssociative('SELECT id, itemtype, ' . $identity
-            . ' FROM glpi_items_projects WHERE itemtype IS NOT NULL AND itemtype NOT IN (?) LIMIT 5', [array_keys(self::targets())], [\Doctrine\DBAL\ArrayParameterType::STRING]);
+            . ' FROM glpi_items_projects WHERE itemtype IS NOT NULL AND itemtype NOT IN (?) LIMIT 5', [array_keys(self::targets())], [ArrayParameterType::STRING]);
         if ($unsupported) {
             throw new \RuntimeException('Unsupported project asset kinds in glpi_items_projects; samples: ' . json_encode($unsupported, JSON_THROW_ON_ERROR)
                 . '. Resolve these links before adoption. Legacy appliance plugin import requires a compatible historical application and legacy MySQL schema before switching to modernized source and db:migrate. The canonical ORM importer requires completed migration history and cannot bypass this legacy-data preflight.');

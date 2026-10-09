@@ -5,6 +5,8 @@
 namespace itsmng\Database\Migration\V220;
 
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
 
 /** Keep OS/architecture uniqueness when missing dropdowns become NULL. */
@@ -34,9 +36,9 @@ final class InventoryUniqueness
         $table->addUniqueIndex($columns, $indexName);
     }
 
-    public static function indexName(\Doctrine\DBAL\Platforms\AbstractPlatform $platform): string
+    public static function indexName(AbstractPlatform $platform): string
     {
-        return $platform instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform ? 'glpi_items_operatingsystems_unicity' : 'unicity';
+        return $platform instanceof PostgreSQLPlatform ? 'glpi_items_operatingsystems_unicity' : 'unicity';
     }
 
 

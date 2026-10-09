@@ -5,9 +5,12 @@
 namespace itsmng\Database\Migration\V220;
 
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\MariaDBPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Schema\Column;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Types\Type;
+use itsmng\Database\MySQLGeneratedColumnInspection;
 
 /** Widen in place, preserving data, sequences and all existing constraint definitions. */
 final class WideIdentifiers
@@ -88,7 +91,7 @@ final class WideIdentifiers
         foreach ($widen as $name => $columns) {
             $generatedColumns[$name] = $columns ? ($postgres
                 ? $connection->fetchAllAssociative("SELECT column_name, generation_expression FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND is_generated = 'ALWAYS' ORDER BY ordinal_position", [$namespace, $name])
-                : \itsmng\Database\MySQLGeneratedColumnInspection::listGeneratedColumns($connection, $namespace, $name)) : [];
+                : MySQLGeneratedColumnInspection::listGeneratedColumns($connection, $namespace, $name)) : [];
         }
         $native->assertOwnedChanges($widen, $generatedColumns, $tables);
         $dropForeign = $restoreForeign = $dropGenerated = $restoreGenerated = $alter = $dropChecks = $restoreChecks = [];
@@ -164,10 +167,10 @@ final class WideIdentifiers
                 $checks = $connection->fetchAllAssociative($postgres
                     ? "SELECT c.conname AS name, pg_get_constraintdef(c.oid) AS definition FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE n.nspname = ? AND t.relname = ? AND c.contype = 'c'"
                     : "SELECT t.constraint_name AS name, CONCAT('CHECK (', c.check_clause, ')') AS definition FROM information_schema.table_constraints t JOIN information_schema.check_constraints c ON c.constraint_schema = t.constraint_schema AND c.constraint_name = t.constraint_name"
-                        . ($platform instanceof \Doctrine\DBAL\Platforms\MariaDBPlatform ? ' AND c.table_name = t.table_name' : '')
+                        . ($platform instanceof MariaDBPlatform ? ' AND c.table_name = t.table_name' : '')
                         . " WHERE t.constraint_schema = ? AND t.table_name = ? AND t.constraint_type = 'CHECK'", [$namespace, $name]);
                 foreach ($checks as $check) {
-                    $drop = $postgres || $platform instanceof \Doctrine\DBAL\Platforms\MariaDBPlatform ? 'DROP CONSTRAINT ' : 'DROP CHECK ';
+                    $drop = $postgres || $platform instanceof MariaDBPlatform ? 'DROP CONSTRAINT ' : 'DROP CHECK ';
                     $dropChecks[] = $operation('ALTER TABLE ' . $quote($name) . ' ' . $drop . $quote($check['name']), 'drop_check', $name, $check['name']);
                     $restoreChecks[] = $operation('ALTER TABLE ' . $quote($name) . ' ADD CONSTRAINT ' . $quote($check['name']) . ' ' . $check['definition'], 'add_check', $name, $check['name']);
                 }
@@ -243,7 +246,7 @@ final class WideIdentifiers
         return $sql;
     }
 
-    private static function configureStorage(\Doctrine\DBAL\Schema\Column $column, array $definition, bool $postgres): void
+    private static function configureStorage(Column $column, array $definition, bool $postgres): void
     {
         if (!$postgres) {
             $allowed = match ($definition['type']) {
@@ -271,7 +274,7 @@ final class WideIdentifiers
     {
         if ($operation['kind'] !== 'sql') {
             [$action, $kind] = explode('_', $operation['kind'], 2);
-            if ($action === 'drop' && $kind === 'check' && $connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\MariaDBPlatform
+            if ($action === 'drop' && $kind === 'check' && $connection->getDatabasePlatform() instanceof MariaDBPlatform
                 && $connection->fetchOne('SELECT level FROM information_schema.check_constraints WHERE constraint_schema = DATABASE() AND table_name = ? AND constraint_name = ?', [$operation['table'], $operation['name']]) === 'Column') {
                 // MariaDB manages inline checks with their column, including JSON aliases.
                 // A dropped generated column loses its inline check automatically; the

@@ -4,6 +4,7 @@
 
 namespace itsmng\Database\Migration\V220;
 
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
@@ -54,7 +55,7 @@ abstract class StagedTypedItemMigration extends TypedItemMigration
         $unsupported = $connection->fetchAllAssociative('SELECT id, itemtype, ' . $identity
             . ' FROM ' . $this->table() . ' WHERE itemtype IS NOT NULL AND ' . static::discriminatorSql($platform) . ' NOT IN (?)'
             . (static::allowsEmptyReference() ? ' AND NOT (' . static::emptyReferenceSql('', $platform) . ')' : '')
-            . ' LIMIT 5', [array_keys(static::targets())], [\Doctrine\DBAL\ArrayParameterType::STRING]);
+            . ' LIMIT 5', [array_keys(static::targets())], [ArrayParameterType::STRING]);
         if ($unsupported) {
             throw new \RuntimeException('Unsupported typed relationship kinds in ' . $this->table() . '; samples: ' . json_encode($unsupported, JSON_THROW_ON_ERROR)
                 . '. ' . $this->unsupportedKindGuidance());

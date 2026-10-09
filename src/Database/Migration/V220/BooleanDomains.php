@@ -5,6 +5,7 @@
 namespace itsmng\Database\Migration\V220;
 
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use itsmng\Database\BooleanCheckExpression;
 use itsmng\Database\BooleanDomainSchema;
@@ -131,7 +132,7 @@ final class BooleanDomains
         if ((Ledger::state($connection, self::PHASE)['complete'] ?? false) === true) {
             return;
         }
-        $mysql = $connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+        $mysql = $connection->getDatabasePlatform() instanceof AbstractMySQLPlatform;
         if ($mysql && $connection->isTransactionActive()) {
             throw new \RuntimeException('MySQL boolean domain DDL must run outside an application transaction.');
         }

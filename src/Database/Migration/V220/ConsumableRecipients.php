@@ -4,6 +4,8 @@
 
 namespace itsmng\Database\Migration\V220;
 
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+
 /** Frozen 20261001 upgrade for assigned and returned consumable stock. */
 final class ConsumableRecipients extends TypedItemMigration
 {
@@ -22,7 +24,7 @@ final class ConsumableRecipients extends TypedItemMigration
         return true;
     }
 
-    protected static function emptyReferenceSql(string $alias = '', ?\Doctrine\DBAL\Platforms\AbstractPlatform $platform = null): string
+    protected static function emptyReferenceSql(string $alias = '', ?AbstractPlatform $platform = null): string
     {
         return parent::emptyReferenceSql($alias) . ' AND ' . $alias . 'date_out IS NULL';
     }

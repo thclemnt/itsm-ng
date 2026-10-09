@@ -8,6 +8,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use Doctrine\DBAL\Schema\Table;
+use itsmng\Database\MySQLGeneratedColumnInspection;
 
 /** Frozen upgrade: authentication server branches are FKs; non-server kinds retain opaque codes. */
 final class UserAuthenticationSources
@@ -67,7 +68,7 @@ final class UserAuthenticationSources
         $schema = $connection->fetchOne($postgres ? 'SELECT current_schema()' : 'SELECT DATABASE()');
         $generated = $hasKey && ($postgres
             ? (bool)$connection->fetchOne("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'glpi_users' AND column_name = 'auths_id' AND is_generated = 'ALWAYS'", [$schema])
-            : \itsmng\Database\MySQLGeneratedColumnInspection::isGenerated($connection, $schema, 'glpi_users', 'auths_id'));
+            : MySQLGeneratedColumnInspection::isGenerated($connection, $schema, 'glpi_users', 'auths_id'));
         $identity = $hasKey ? 'r.auths_id' : '(CASE WHEN r.authtype IN (0, 3, 4, 5, 6) THEN COALESCE(r.authldaps_id, 0) WHEN r.authtype = 2 THEN COALESCE(r.authmails_id, 0) ELSE r.auth_source_code END)';
         $invalid = (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_users r'
             . ' LEFT JOIN glpi_authldaps g ON g.id = ' . $identity . ' LEFT JOIN glpi_authmails p ON p.id = ' . $identity

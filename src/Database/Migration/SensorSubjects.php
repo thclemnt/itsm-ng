@@ -5,6 +5,7 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
+use itsmng\Database\Migration\SensorSubjects\Definition;
 
 /** Forward schema history; the application release remains 2.2.0. */
 final class SensorSubjects implements ReleaseMigration
@@ -18,16 +19,16 @@ final class SensorSubjects implements ReleaseMigration
 
     public function plan(Connection $connection): array
     {
-        return (new SensorSubjects\Definition())->plan($connection);
+        return (new Definition())->plan($connection);
     }
 
     public function apply(Connection $connection, ?callable $progress = null): void
     {
-        (new SensorSubjects\Definition())->apply($connection, $progress);
+        (new Definition())->apply($connection, $progress);
     }
 
     public function verify(Connection $connection): void
     {
-        (new SensorSubjects\Definition())->verify($connection);
+        (new Definition())->verify($connection);
     }
 }
