@@ -92,6 +92,16 @@ class ITILStatisticsType extends test
             ->isInstanceOf(LogicException::class)->hasMessage('Missing ITIL statistics association: Ticket.Tasks');
         $this->boolean(isset($manager->getMetadataFactory()->getLoadedMetadata()[Entity\Software::class]))->isTrue();
         $this->boolean($manager->getConnection()->isConnected())->isFalse();
+
+        $warm = $this->manager($this->canonicalDriver());
+        $this->array(StatisticsType::definition($warm, 'Ticket'))->hasSize(7);
+        $this->boolean(isset($warm->getMetadataFactory()->getLoadedMetadata()[Entity\Software::class]))->isFalse();
+        $listener = array_values($events->getListeners(Events::loadClassMetadata))[0];
+        $warm->getEventManager()->addEventListener(Events::loadClassMetadata, $listener);
+        // The late listener requires full discovery without reloading existing associations.
+        $this->array(StatisticsType::definition($warm, 'Ticket'))->hasSize(7);
+        $this->boolean(isset($warm->getMetadataFactory()->getLoadedMetadata()[Entity\Software::class]))->isTrue();
+        $this->boolean($warm->getConnection()->isConnected())->isFalse();
     }
 
     public function testCanonicalMetadataNotFoundListenersRetainFullDiscovery(): void
@@ -147,6 +157,14 @@ class ITILStatisticsType extends test
                 if ($visibility === 'public') {
                     $this->string($expected['message'])->isIdenticalTo('Ambiguous ITIL statistics association: Ticket.Tasks');
                 }
+                // A class selected through wider paths must not enter a narrower driver's discovery.
+                $narrow = $this->canonicalDriver();
+                $narrowClasses = $narrow->getAllClassNames();
+                $this->boolean(in_array('tests\\fixtures\\StatisticsDiscovery\\Parent' . $suffix, $narrowClasses, true))->isFalse();
+                $this->boolean(in_array('tests\\fixtures\\StatisticsDiscovery\\Child' . $suffix, $narrowClasses, true))->isFalse();
+                $narrowExpected = $outcome($this->manager(new StatisticsMappingDriver($narrow)));
+                $this->array($outcome($this->manager($narrow)))->isIdenticalTo($narrowExpected);
+                $this->array($narrowExpected['definition'])->hasSize(7);
             } finally {
                 unlink($file);
                 rmdir($directory);
@@ -221,15 +239,17 @@ class ITILStatisticsType extends test
 
     public function testCachedStringsDoNotRetainManagersOrDrivers(): void
     {
-        $manager = $this->manager();
-        $driver = $manager->getConfiguration()->getMetadataDriverImpl();
-        StatisticsType::definition($manager, 'Ticket');
-        $managerReference = WeakReference::create($manager);
-        $driverReference = WeakReference::create($driver);
-        unset($manager, $driver);
-        gc_collect_cycles();
-        $this->variable($managerReference->get())->isNull();
-        $this->variable($driverReference->get())->isNull();
+        foreach ([false, true] as $canonical) {
+            $manager = $this->manager($canonical ? $this->canonicalDriver() : null);
+            $driver = $manager->getConfiguration()->getMetadataDriverImpl();
+            StatisticsType::definition($manager, 'Ticket');
+            $managerReference = WeakReference::create($manager);
+            $driverReference = WeakReference::create($driver);
+            unset($manager, $driver);
+            gc_collect_cycles();
+            $this->variable($managerReference->get())->isNull();
+            $this->variable($driverReference->get())->isNull();
+        }
     }
 }
 

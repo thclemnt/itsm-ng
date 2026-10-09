@@ -751,6 +751,9 @@ class Ticket extends DbTestCase
         $manager->getEventManager()->addEventListener([Events::postLoad], $loads);
         $reader = new UserDisplayReadOperation($manager->getConnection());
         $defaultFont = '"Bitstream Vera Sans", arial, Tahoma, "Sans serif"';
+        $fontFactories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $fontAllocations = 0;
+        Orm::withConnection($manager->getConnection(), static fn (EntityManager $scope): mixed => null);
         try {
             $_SESSION['glpiID'] = $id;
             foreach ([['OpenDyslexic', true], ['Custom font', false], ['', true], [null, null]] as [$font, $shortcuts]) {
@@ -761,9 +764,13 @@ class Ticket extends DbTestCase
                 foreach ([0, READ] as $right) {
                     $_SESSION['glpiactiveprofile']['accessibility'] = $right;
                     $expectedFont = $right ? (string)$font : $defaultFont;
+                    $beforeFonts = $fontFactories->getValue();
                     $this->output(fn () => $item->showTimelineHeader())
                         ->contains("<h2 style='font-family: $expectedFont;'>")
                         ->contains("<h3 style='font-family: $expectedFont;'>");
+                    if ($right === READ) {
+                        $fontAllocations += $fontFactories->getValue() - $beforeFonts;
+                    }
                     $this->output(fn () => $item->showTimeline(742))
                         ->contains("<div style='font-family: $expectedFont;' class='h_item middle'>");
                     ob_start();
@@ -796,6 +803,10 @@ class Ticket extends DbTestCase
                     $expected = ['access_font' => $font === null ? 'converted null' : 'converted MIXED FONT', 'access_shortcuts' => null];
                     $this->array($repository->timelinePreferences($id))->isIdenticalTo($expected);
                     $this->array($reader->timelinePreferences($id))->isIdenticalTo($expected);
+                    $convertedFont = $expected['access_font'];
+                    $this->output(fn () => $item->showTimelineHeader())
+                        ->contains("<h2 style='font-family: $convertedFont;'>")
+                        ->contains("<h3 style='font-family: $convertedFont;'>");
                 }
                 Type::overrideType(Types::STRING, new class () extends StringType {
                     public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
@@ -893,6 +904,11 @@ class Ticket extends DbTestCase
                 ->contains("<h3 style='font-family: ;'>");
             $this->output(fn () => $item->showTimeline(744))
                 ->contains("<div style='font-family: ;' class='h_item middle'>");
+            if ($type === LegacyTicket::class) {
+                // Four original fresh-font cases each render header and filter.
+                // Keep the single allocation oracle after all behavioral assertions.
+                $this->integer($fontAllocations)->isIdenticalTo(0);
+            }
         } finally {
             $_SESSION = $session;
             $reader->close();

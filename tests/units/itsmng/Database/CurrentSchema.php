@@ -30,6 +30,12 @@ use RuntimeException;
 use atoum\atoum\test;
 use itsmng\Database\BaselineSchema;
 use itsmng\Database\CurrentSchema as Projection;
+use itsmng\Database\Entity\BudgetType;
+use itsmng\Database\Entity\ContactType;
+use itsmng\Database\Entity\ContractType;
+use itsmng\Database\Entity\ProjectTaskType;
+use itsmng\Database\Entity\ProjectType;
+use itsmng\Database\Entity\SupplierType;
 use itsmng\Database\Entity\Calendar;
 use itsmng\Database\Entity\CalendarHoliday;
 use itsmng\Database\Entity\CalendarSegment;
@@ -293,6 +299,12 @@ class CurrentSchema extends test
             ['glpi_domaintypes', 5, 3, [], ['`entities_id`' => 'glpi_entities']],
             ['glpi_domainrelations', 5, 3, [], ['`entities_id`' => 'glpi_entities']],
             ['glpi_domainrecordtypes', 5, 3, [], ['`entities_id`' => 'glpi_entities']],
+            ['glpi_budgettypes', 5, 4, [], []],
+            ['glpi_contacttypes', 5, 4, [], []],
+            ['glpi_contracttypes', 5, 4, [], []],
+            ['glpi_suppliertypes', 5, 4, [], []],
+            ['glpi_projecttypes', 5, 4, [], []],
+            ['glpi_projecttasktypes', 5, 4, [], []],
             ['glpi_computertypes', 5, 4, [], []],
             ['glpi_computermodels', 14, 5, [], []],
             ['glpi_monitormodels', 14, 5, [], []],
@@ -762,6 +774,10 @@ class CurrentSchema extends test
                 NetworkEquipmentType::class, PeripheralType::class,
                 PhoneType::class, PrinterType::class,
             ], 'Current type', ['name', 'date_mod']],
+            'administration' => [[
+                BudgetType::class, ContactType::class, ContractType::class,
+                SupplierType::class, ProjectType::class, ProjectTaskType::class,
+            ], 'Current administration type', ['name', 'date_mod']],
             'devices' => [[
                 DeviceBatteryType::class, DeviceCaseType::class, DeviceFirmwareType::class,
                 DeviceGenericType::class, DeviceMemoryType::class, DeviceSensorType::class,

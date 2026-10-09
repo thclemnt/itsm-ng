@@ -60,12 +60,66 @@ class Stat extends DbTestCase
         $this->array($measure('inter_total'))->isIdenticalTo(['2025-01' => 1]);
         $this->array($measure('inter_solved'))->isIdenticalTo(['2025-01' => 1]);
         $this->float($measure('inter_avgsolvedtime')['2025-01'])->isEqualTo(200.0);
+        $monthlyFactories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeMonthlyReads = $monthlyFactories->getValue();
         $create($entity, false, '2025-01-31 23:59:59', 600);
         $this->array($measure('inter_total'))->isIdenticalTo(['2025-01' => 2]);
         $this->array($measure('inter_solved'))->isIdenticalTo(['2025-01' => 2]);
         $this->float($measure('inter_avgsolvedtime')['2025-01'])->isEqualTo(400.0);
         $_SESSION['glpiactiveentities'] = [];
         $this->array($measure('inter_total'))->isIdenticalTo(['2025-01' => 0]);
+        $monthlyAllocations = $monthlyFactories->getValue() - $beforeMonthlyReads;
+        $selectorSession = $_SESSION;
+        $connection = $manager->getConnection();
+        $selectorAllocations = 0;
+        try {
+            $_SESSION['glpiactiveentities'] = [$entity];
+            $locations = [];
+            foreach ([[$entity, 'A node', 'A full name'], [$entity, 'Z sibling', 'Z full name'], [0, 'Outside node', 'Outside full name']] as [$scope, $name, $complete]) {
+                $location = new Entity\Location();
+                $location->entities = $manager->getReference(Entity\Entity::class, $scope);
+                $location->name = $name . ' ' . $type;
+                $location->completename = $complete;
+                $manager->persist($location);
+                $locations[] = $location;
+            }
+            $manager->flush();
+            $priorities = static fn (): array => $model->getUsedPriorityBetween('2025-01-01', '2025-01-31');
+            $classifications = static fn (string $dimension = 'locations_id', int $parent = 0): array =>
+                LegacyStat::getItems($type, '2025-01-01', '2025-01-31', $dimension, $parent);
+            $this->array(array_column($priorities(), 'id'))->isIdenticalTo([1]);
+            $labels = array_column($classifications(), 'link', 'id');
+            $this->string($labels[$locations[0]->id])->isIdenticalTo('A full name');
+            $this->string($labels[$locations[1]->id])->isIdenticalTo('Z full name');
+            $this->boolean(array_key_exists($locations[2]->id, $labels))->isFalse();
+            $this->array($classifications('locations_tree', $locations[0]->id))
+                ->isIdenticalTo([['id' => $locations[0]->id, 'link' => 'A node ' . $type]]);
+            $beforeSelectorReads = $monthlyFactories->getValue();
+            $connection->update($model::getTable(), ['priority' => 4], ['entities_id' => $entity]);
+            $connection->update('glpi_locations', ['name' => 'Renamed node', 'completename' => 'Renamed full name'], ['id' => $locations[0]->id]);
+            $this->array(array_column($priorities(), 'id'))->isIdenticalTo([4]);
+            $labels = array_column($classifications(), 'link', 'id');
+            $this->string($labels[$locations[0]->id])->isIdenticalTo('Renamed full name');
+            $this->boolean(array_key_exists($locations[2]->id, $labels))->isFalse();
+            $this->array($classifications('locations_tree', $locations[0]->id))
+                ->isIdenticalTo([['id' => $locations[0]->id, 'link' => 'Renamed node']]);
+            $connection->update('glpi_locations', ['completename' => null], ['id' => $locations[0]->id]);
+            $labels = array_column($classifications(), 'link', 'id');
+            $this->boolean(array_key_exists($locations[0]->id, $labels))->isTrue();
+            $this->variable($labels[$locations[0]->id])->isNull();
+            $_SESSION['glpiactiveentities'] = [];
+            $this->array($priorities())->isEmpty();
+            $this->array($classifications())->isEmpty();
+            $this->array($classifications('locations_tree', $locations[0]->id))->isEmpty();
+            $_SESSION['glpiactiveentities'] = [$entity];
+            $connection->update($model::getTable(), ['priority' => 2], ['entities_id' => $entity]);
+            $this->array(array_column($priorities(), 'id'))->isIdenticalTo([2]);
+            $labels = array_column($classifications(), 'link', 'id');
+            $this->variable($labels[$locations[0]->id])->isNull();
+            $selectorAllocations = $monthlyFactories->getValue() - $beforeSelectorReads;
+        } finally {
+            $_SESSION = $selectorSession;
+        }
         if ($type === 'Ticket') {
             $session = $_SESSION;
             $get = $_GET;
@@ -135,6 +189,9 @@ class Stat extends DbTestCase
                 $_SESSION = $session;
                 $_GET = $get;
             }
+            // Monthly and selector freshness are checked for all three itemtypes;
+            // their canonical read path shares this allocation check.
+            $this->integer($monthlyAllocations + $selectorAllocations)->isIdenticalTo(0);
         }
     }
 }
