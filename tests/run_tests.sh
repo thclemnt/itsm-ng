@@ -117,8 +117,8 @@ if [[ ! -x "$(command -v docker)" ]]; then
   exit 1
 fi
 
-if [[ ! -x "$(command -v docker-compose)" ]] && ! docker compose version >/dev/null 2>&1; then
-  echo "This script requires either \"docker-compose\" or \"docker compose\" to be available"
+if ! docker compose version >/dev/null 2>&1; then
+  echo "This script requires the Docker Compose v2 plugin"
   exit 1
 fi
 
@@ -132,12 +132,11 @@ APPLICATION_ROOT=$(readlink -f "$WORKING_DIR/..")
 [[ ! -z "$APP_CONTAINER_HOME" ]] || APP_CONTAINER_HOME=$(mktemp -d -t glpi-tests-home-XXXXXXXXXX)
 [[ ! -z "$TEST_DB_TYPE" ]] || TEST_DB_TYPE=mysql
 case "$TEST_DB_TYPE" in
-  mysql) [[ ! -z "$DB_IMAGE" ]] || DB_IMAGE=mariadb:10.11 ;;
-  pgsql) [[ ! -z "$DB_IMAGE" ]] || DB_IMAGE=postgres:18 ;;
+  mysql) [[ ! -z "$DB_IMAGE" ]] || DB_IMAGE=public.ecr.aws/docker/library/mariadb:10.11 ;;
+  pgsql) [[ ! -z "$DB_IMAGE" ]] || DB_IMAGE=public.ecr.aws/docker/library/postgres:18 ;;
   *) echo "Unsupported test database provider: $TEST_DB_TYPE" >&2; exit 1 ;;
 esac
 [[ ! -z "$PHP_IMAGE" ]] || PHP_IMAGE=itsm-tests-app:local
-COMPOSE_CMD="$APPLICATION_ROOT/.github/actions/docker-compose.sh"
 if [[ " ${TESTS_TO_RUN[*]} " == *" e2e "* ]]; then
   TEST_DB_NAME="${TEST_DB_NAME:-itsm_port_e2e}"
   PLAYWRIGHT_VAR_DIR=/home/itsm/e2e-var
@@ -183,6 +182,15 @@ for path in "$APPLICATION_ROOT/tests/config/"* "$APPLICATION_ROOT/tests/config/"
 done
 BACKUP_COMPLETE=true
 
+# Start mail and directory services only for their selected suites.
+COMPOSE_PROFILES=""
+for suite in "${TESTS_TO_RUN[@]}"; do
+  case "$suite" in
+    ldap|imap) COMPOSE_PROFILES="${COMPOSE_PROFILES:+$COMPOSE_PROFILES,}$suite" ;;
+  esac
+done
+export COMPOSE_PROFILES
+
 # Export variables to env (required for compose) and start containers
 export COMPOSE_FILE="$APPLICATION_ROOT/.github/actions/docker-compose-app.yml"
 export COMPOSE_FILE="$COMPOSE_FILE:$APPLICATION_ROOT/.github/actions/docker-compose-services.yml"
@@ -203,7 +211,7 @@ CONTAINERS_STARTED=true
 $APPLICATION_ROOT/.github/actions/init_show-versions.sh
 
 # Install dependencies if required
-[[ -z "$BUILD" ]] || "$COMPOSE_CMD" exec -T app .github/actions/init_install-dependencies.sh
+[[ -z "$BUILD" ]] || docker compose exec -T app .github/actions/init_install-dependencies.sh
 
 # Run tests
 for TEST_SUITE in "${TESTS_TO_RUN[@]}";
@@ -212,38 +220,38 @@ do
   LAST_EXIT_CODE=0
   case $TEST_SUITE in
     "install")
-         "$COMPOSE_CMD" exec -T app .github/actions/test_install.sh \
+         docker compose exec -T app .github/actions/test_install.sh \
       || LAST_EXIT_CODE=$?
       ;;
     "update")
-         "$COMPOSE_CMD" exec -T app .github/actions/test_update-from-older-version.sh \
+         docker compose exec -T app .github/actions/test_update-from-older-version.sh \
       || LAST_EXIT_CODE=$?
       ;;
     "units")
-         "$COMPOSE_CMD" exec -T app .github/actions/test_tests-units.sh \
+         docker compose exec -T app .github/actions/test_tests-units.sh \
       || LAST_EXIT_CODE=$?
       ;;
     "functional")
-         "$COMPOSE_CMD" exec -T app .github/actions/test_tests-functional.sh \
+         docker compose exec -T app .github/actions/test_tests-functional.sh \
       || LAST_EXIT_CODE=$?
       ;;
     "e2e")
-         "$COMPOSE_CMD" exec -T app bash .github/actions/test_tests-e2e-prepare.sh \
-      && "$COMPOSE_CMD" exec -T e2e bash .github/actions/test_tests-e2e.sh \
+         docker compose exec -T app bash .github/actions/test_tests-e2e-prepare.sh \
+      && docker compose exec -T e2e bash .github/actions/test_tests-e2e.sh \
       || LAST_EXIT_CODE=$?
       ;;
     "ldap")
          $APPLICATION_ROOT/.github/actions/init_initialize-ldap-fixtures.sh \
-      && "$COMPOSE_CMD" exec -T app .github/actions/test_tests-ldap.sh \
+      && docker compose exec -T app .github/actions/test_tests-ldap.sh \
       || LAST_EXIT_CODE=$?
       ;;
     "imap")
          $APPLICATION_ROOT/.github/actions/init_initialize-imap-fixtures.sh \
-      && "$COMPOSE_CMD" exec -T app .github/actions/test_tests-imap.sh \
+      && docker compose exec -T app .github/actions/test_tests-imap.sh \
       || LAST_EXIT_CODE=$?
       ;;
     "web")
-         "$COMPOSE_CMD" exec -T app .github/actions/test_tests-web.sh \
+         docker compose exec -T app .github/actions/test_tests-web.sh \
       || LAST_EXIT_CODE=$?
       ;;
   esac

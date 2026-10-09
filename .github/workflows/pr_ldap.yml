@@ -19,12 +19,12 @@ jobs:
       matrix:
         php: ['8.2', '8.5']
         database:
-          - image: mariadb:11.8
+          - image: public.ecr.aws/docker/library/mariadb:11.8
             label: MariaDB 11.8
             provider: mysql
             port: 3306
             health: mariadb-admin ping
-          - image: postgres:18
+          - image: public.ecr.aws/docker/library/postgres:18
             label: PostgreSQL 18
             provider: pgsql
             port: 5432
@@ -51,7 +51,7 @@ jobs:
           --health-cmd "${{ matrix.database.health }}"
           --health-interval 5s --health-timeout 5s --health-retries 20
       openldap:
-        image: osixia/openldap:1.5.0
+        image: mirror.gcr.io/osixia/openldap:1.5.0
         ports:
           - 389:389
         env:

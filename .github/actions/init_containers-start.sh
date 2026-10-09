@@ -1,14 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-ROOT_DIR=$(readlink -f "$(dirname "$0")/../..")
-COMPOSE_CMD="$ROOT_DIR/.github/actions/docker-compose.sh"
-
 echo "Init app container home"
 mkdir -p $APP_CONTAINER_HOME
 
 echo "Build and start containers"
-"$COMPOSE_CMD" up --build --detach
+docker compose up --build --detach
 
 if [[ "${UPDATE_FILES_ACL:-false}" = true ]]; then
   echo "Change files rights to give write access to app container user"
@@ -18,7 +15,7 @@ if [[ "${UPDATE_FILES_ACL:-false}" = true ]]; then
 fi
 
 echo "Check services health"
-for CONTAINER_ID in $("$COMPOSE_CMD" ps -a -q); do
+for CONTAINER_ID in $(docker compose ps -a -q); do
   CONTAINER_NAME=`/usr/bin/docker inspect --format='{{print .Name}}{{if .Config.Image}} ({{print .Config.Image}}){{end}}' $CONTAINER_ID`
   HEALTHY=false
   TOTAL_COUNT=0

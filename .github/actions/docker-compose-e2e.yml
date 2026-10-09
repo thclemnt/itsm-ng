@@ -6,6 +6,7 @@ services:
   app-web:
     container_name: "app-web"
     image: "${PHP_IMAGE:-itsm-tests-app:local}"
+    pull_policy: never
     working_dir: "/var/itsm"
     command: ["php", "-S", "127.0.0.1:8088", "tests/router.php"]
     environment:
@@ -31,6 +32,7 @@ services:
       args:
         PHP_VERSION: "${TEST_PHP_VERSION:-8.2}"
     image: "${E2E_IMAGE:-itsm-tests-e2e:local}"
+    pull_policy: build
     working_dir: "/var/itsm"
     command: ["sleep", "infinity"]
     ipc: host

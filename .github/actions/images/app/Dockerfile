@@ -1,5 +1,5 @@
 ARG PHP_VERSION=8.2
-FROM php:${PHP_VERSION}-cli-bookworm AS app
+FROM public.ecr.aws/docker/library/php:${PHP_VERSION}-cli-bookworm AS app
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -15,7 +15,7 @@ RUN apt-get update \
 
 RUN git config --system --add safe.directory /var/itsm
 
-COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
+COPY --from=public.ecr.aws/docker/library/composer:2 /usr/bin/composer /usr/local/bin/composer
 
 RUN useradd --create-home --home-dir /home/itsm --uid 1000 --shell /bin/bash itsm
 
@@ -23,5 +23,5 @@ WORKDIR /var/itsm
 
 FROM app AS e2e
 
-COPY --from=node:22-bookworm /usr/local/bin/node /usr/local/bin/node
+COPY --from=public.ecr.aws/docker/library/node:22-bookworm /usr/local/bin/node /usr/local/bin/node
 RUN npx --yes playwright@1.59.1 install --with-deps chromium

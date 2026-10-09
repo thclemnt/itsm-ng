@@ -16,11 +16,11 @@ jobs:
       matrix:
         php: ['8.2', '8.5']
         database:
-          - image: mariadb:11.8
+          - image: public.ecr.aws/docker/library/mariadb:11.8
             label: MariaDB 11.8
             id: mariadb-11.8
             provider: mysql
-          - image: postgres:18
+          - image: public.ecr.aws/docker/library/postgres:18
             label: PostgreSQL 18
             id: postgres-18
             provider: pgsql

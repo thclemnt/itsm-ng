@@ -98,12 +98,9 @@ Running the test suite on containerized env
 -------------------------------------------
 
 If you want to execute tests in an environment similar to what is done by CI, you can use the `tests/run_tests.sh`.
-This scripts requires both "docker" and "docker-compose" utilities to be installed.
+This script requires Docker and its Docker Compose v2 plugin.
 The harness relies on scripts and compose files located in `.github/actions/`, and builds local test images (app + dovecot) automatically.
-Default services are:
-- `db` (MariaDB),
-- `dovecot` (used by `imap` suite; fixtures are loaded from `tests/emails-tests/*.eml`),
-- `openldap` (used by `ldap` suite fixtures).
+The database service defaults to MariaDB. Selecting `imap` starts Dovecot and loads `tests/emails-tests/*.eml`; selecting `ldap` starts OpenLDAP and loads its fixtures. `--all` starts both services. Local app, browser-runner and mail images are built from their Dockerfiles; `app-web` uses the resulting app image.
 The `e2e` suite uses the same test install data as the `web` suite, but in local containerized mode it runs against a dedicated `app-web` PHP server container and a separate Playwright runner container on the same compose network. Test data setup for E2E scenarios is done through the public REST API, after an app-side prep step enables the API and provisions a dedicated test API client/token for the browser runner.
 LDAP fixtures are now initialized idempotently, so rerunning `tests/run_tests.sh ldap` does not require manual volume cleanup.
 The `update` suite runs `composer test:migration` against the current public installation and a separate, initially empty database. The proper Atoum tests cover frozen DBAL input adoption, refusal of unsupported older provenance, populated data and original-key preservation, interrupted installation, final schema convergence, and retry. The container harness orders `update` immediately after the public `install`, before ordinary fixture-loading suites. Direct invocation refuses a parent containing the ordinary dataset or tester plugin before creating its target; it never resets that parent. Relabeling a modern database with an old version is not upgrade coverage.
