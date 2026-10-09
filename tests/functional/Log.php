@@ -46,6 +46,7 @@ use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Query;
 use Doctrine\ORM\Query\Filter\SQLFilter;
+use itsmng\Database\AuthenticationType;
 use itsmng\Database\Entity\Log as LogRecord;
 use itsmng\Database\Entity\Entity as EntityRecord;
 use itsmng\Database\Entity\User as UserRecord;
@@ -390,6 +391,31 @@ class Log extends DbTestCase
             $this->integer($formats)->isIdenticalTo(2);
             $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
 
+            // Canonical scopes must still hydrate records when a postLoad listener owns their labels.
+            $labelListener = new class () {
+                public int $users = 0;
+                public function postLoad(PostLoadEventArgs $event): void
+                {
+                    if ($event->getObject() instanceof UserRecord) {
+                        ++$this->users;
+                        $event->getObject()->firstname = 'Loaded';
+                    }
+                }
+            };
+            Orm::withReadConnection($connection, static function (EntityManager $manager) use ($labelListener): void {
+                $manager->getEventManager()->addEventListener(['postLoad'], $labelListener);
+            });
+            try {
+                $loaded = LegacyLog::getHistoryData($computer, 0, 0, $filters, $options);
+                $this->string($loaded[1]['change'])->isIdenticalTo('Change Loaded History (1) to Loaded History (2)');
+                $this->string($loaded[2]['change'])->isIdenticalTo('Change Loaded History (1) to Loaded History (3)');
+                $this->integer($labelListener->users)->isIdenticalTo(4);
+            } finally {
+                Orm::withReadConnection($connection, static function (EntityManager $manager) use ($labelListener): void {
+                    $manager->getEventManager()->removeEventListener(['postLoad'], $labelListener);
+                });
+            }
+
             // Custom readers keep both eager managers and the second selected physical route.
             $events = new EventManager();
             $listener = new class () {
@@ -447,6 +473,32 @@ class Log extends DbTestCase
             $this->integer($listener->users)->isIdenticalTo(1);
             $this->integer($listener->clears)->isIdenticalTo(0);
             $this->object($DB)->isIdenticalTo($original);
+
+            // Duplicate logins remain ordered by ID; missing and nullable names retain their fallback labels.
+            $manager = Orm::create($DB);
+            try {
+                $duplicate = new UserRecord();
+                $duplicate->entities = $manager->getReference(EntityRecord::class, (int)$computer->fields['entities_id']);
+                $duplicate->name = $user->name;
+                $duplicate->authtype = AuthenticationType::Local->value;
+                $duplicate->firstname = 'Last';
+                $duplicate->realname = 'Duplicate';
+                $manager->persist($duplicate);
+                $manager->flush();
+            } finally {
+                $manager->clear();
+            }
+            $missing = 'history-missing-' . bin2hex(random_bytes(6));
+            $edge = $this->createLogEntry($computer, [
+                'user_name' => 'history-label-edge', 'id_search_option' => 70,
+                'old_value' => $missing . ' (7)', 'new_value' => $user->name . ' (9)',
+            ]);
+            $edgeFilter = ['id' => (int)$edge->getID()];
+            $labels = LegacyLog::getHistoryData($computer, 0, 0, $edgeFilter, $options);
+            $this->string($labels[0]['change'])->isIdenticalTo('Change ' . $missing . ' (7) to Last Duplicate (9)');
+            $connection->update('glpi_users', ['firstname' => null, 'realname' => null], ['id' => $duplicate->id]);
+            $labels = LegacyLog::getHistoryData($computer, 0, 0, $edgeFilter, $options);
+            $this->string($labels[0]['change'])->isIdenticalTo('Change ' . $missing . ' (7) to ' . $user->name . ' (9)');
         } finally {
             $DB = $original;
             $_SESSION = $session;

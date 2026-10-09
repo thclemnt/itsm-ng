@@ -33,21 +33,75 @@
 
 namespace tests\units;
 
+use Computer;
 use Contact;
 use Contact_Supplier;
 use DbTestCase;
 use Domain;
+use Infocom;
 use InvalidArgumentException;
 use itsmng\Database\Entity\Domain as DomainRecord;
 use itsmng\Database\Entity\Entity as EntityRecord;
 use itsmng\Database\Entity\Supplier as SupplierRecord;
 use itsmng\Database\Orm;
+use Monitor;
+use ReflectionProperty;
 use RuntimeException;
 use Supplier as SupplierModel;
 use Transfer;
 
 class Supplier extends DbTestCase
 {
+    public function testInfocomsReuseWarmProjectionManagerAndReadFreshValues(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $bufferLevel = ob_get_level();
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        try {
+            $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $supplier = $this->createItem(SupplierModel::class, [
+                'name' => 'Projection supplier ' . $this->getUniqueString(), 'entities_id' => $entity,
+            ]);
+            $items = [];
+            foreach ([Computer::class, Monitor::class] as $type) {
+                $item = $this->createItem($type, [
+                    'name' => 'Projection ' . $type . ' ' . $this->getUniqueString(), 'entities_id' => $entity,
+                ]);
+                $this->createItem(Infocom::class, [
+                    'itemtype' => $type, 'items_id' => $item->getID(),
+                    'entities_id' => $entity, 'suppliers_id' => $supplier->getID(),
+                ]);
+                $items[] = $item;
+            }
+            $_SESSION['glpilist_limit'] = 10;
+            ob_start();
+            $supplier->showInfocoms();
+            $first = ob_get_clean();
+            foreach ($items as $item) {
+                $this->string($first)->contains($item->fields['name']);
+            }
+            $this->string($first)->contains('Total = 2');
+            $name = 'Fresh projection ' . $this->getUniqueString();
+            $DB->getDoctrineConnection()->update('glpi_computers', ['name' => $name], ['id' => $items[0]->getID()]);
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $before = $factories->getValue();
+            ob_start();
+            $supplier->showInfocoms();
+            $second = ob_get_clean();
+            $this->string($second)->contains($name)->notContains($items[0]->fields['name']);
+            $this->string($second)->contains($items[1]->fields['name'])->contains('Total = 2');
+            // Enumeration and both materialized projections reuse the warm application manager.
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+        } finally {
+            while (ob_get_level() > $bufferLevel) {
+                ob_end_clean();
+            }
+            $_SESSION = $session;
+        }
+    }
+
     public function testCrud()
     {
         $this->login();

@@ -33,7 +33,14 @@
 
 namespace tests\units;
 
+use Auth as ApplicationAuth;
 use DbTestCase;
+use Doctrine\DBAL\Types\Types;
+use itsmng\Database\Entity\AuthLDAP;
+use itsmng\Database\Entity\AuthMail;
+use itsmng\Database\Orm;
+use ReflectionProperty;
+use Toolbox;
 
 /* Test for inc/auth.class.php */
 
@@ -63,17 +70,96 @@ class Auth extends DbTestCase
      */
     public function testIsValidLogin($login, $isvalid)
     {
-        $this->variable(\Auth::isValidLogin($login))->isIdenticalTo($isvalid);
+        $this->variable(ApplicationAuth::isValidLogin($login))->isIdenticalTo($isvalid);
     }
 
     public function testGetLoginAuthMethods()
     {
-        $methods = \Auth::getLoginAuthMethods();
+        $methods = ApplicationAuth::getLoginAuthMethods();
         $expected = [
            '_default'  => 'local',
            'local'     => 'ITSM-NG internal database'
         ];
         $this->array($methods)->isIdenticalTo($expected);
+        $manager = Orm::create($GLOBALS['DB']);
+        $connection = $manager->getConnection();
+        $mail = new AuthMail();
+        $mail->name = 'Login mail source';
+        $manager->persist($mail);
+        $ldap = null;
+        if (Toolbox::canUseLdap()) {
+            $ldap = new AuthLDAP();
+            $ldap->name = 'Login LDAP source';
+            $manager->persist($ldap);
+        }
+        try {
+            $manager->flush();
+            $manager->clear();
+            // Warm the canonical read owner before measuring repeated enumeration.
+            $this->array(ApplicationAuth::getLoginAuthMethods())->isIdenticalTo($expected);
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $before = $factories->getValue();
+            $this->array(ApplicationAuth::getLoginAuthMethods())->isIdenticalTo($expected);
+            $connection->update(
+                'glpi_authmails',
+                ['is_active' => true],
+                ['id' => $mail->id],
+                ['is_active' => Types::BOOLEAN]
+            );
+            $active = $expected + ['mail-' . $mail->id => $mail->name];
+            $this->array(ApplicationAuth::getLoginAuthMethods())->isIdenticalTo($active);
+            $connection->update(
+                'glpi_authmails',
+                ['name' => 'Fresh login mail'],
+                ['id' => $mail->id]
+            );
+            $active['mail-' . $mail->id] = 'Fresh login mail';
+            $this->array(ApplicationAuth::getLoginAuthMethods())->isIdenticalTo($active);
+            if ($ldap !== null) {
+                $connection->update(
+                    'glpi_authldaps',
+                    ['is_active' => true, 'is_default' => true],
+                    ['id' => $ldap->id],
+                    ['is_active' => Types::BOOLEAN, 'is_default' => Types::BOOLEAN]
+                );
+                $active = [
+                    '_default' => 'ldap-' . $ldap->id,
+                    'local' => $expected['local'],
+                    'ldap-' . $ldap->id => $ldap->name,
+                    'mail-' . $mail->id => 'Fresh login mail',
+                ];
+                $this->array(ApplicationAuth::getLoginAuthMethods())->isIdenticalTo($active);
+                $connection->update(
+                    'glpi_authldaps',
+                    ['name' => 'Fresh login LDAP', 'is_default' => false],
+                    ['id' => $ldap->id],
+                    ['is_default' => Types::BOOLEAN]
+                );
+                $active['_default'] = 'local';
+                $active['ldap-' . $ldap->id] = 'Fresh login LDAP';
+                $this->array(ApplicationAuth::getLoginAuthMethods())->isIdenticalTo($active);
+                $connection->update(
+                    'glpi_authldaps',
+                    ['is_active' => false],
+                    ['id' => $ldap->id],
+                    ['is_active' => Types::BOOLEAN]
+                );
+            }
+            $connection->update(
+                'glpi_authmails',
+                ['is_active' => false],
+                ['id' => $mail->id],
+                ['is_active' => Types::BOOLEAN]
+            );
+            $this->array(ApplicationAuth::getLoginAuthMethods())->isIdenticalTo($expected);
+            // All positive source-selection and freshness checks precede the genuine old-runtime failure.
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(
+                0,
+                'Login source reads reuse the warm application manager'
+            );
+        } finally {
+            $manager->clear();
+        }
     }
 
     /**

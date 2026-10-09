@@ -37,6 +37,7 @@ use Alert;
 use Closure;
 use Contract as ContractModel;
 use ContractCost as ContractCostModel;
+use Contract_Supplier;
 use DBAdapter;
 use DBmysql;
 use DBpgsql;
@@ -100,7 +101,7 @@ class Contract extends DbTestCase
         $suppliers_id = getItemByTypeName('Supplier', '_suplier01_name', true);
         $this->integer($suppliers_id)->isGreaterThan(0);
 
-        $link_supplier = new \Contract_Supplier();
+        $link_supplier = new Contract_Supplier();
         $link_id = $link_supplier->add([
            'suppliers_id' => $suppliers_id,
            'contracts_id' => $cid
@@ -349,7 +350,7 @@ class Contract extends DbTestCase
         $supplier_id = getItemByTypeName('Supplier', '_suplier01_name', true);
         $this->integer((int)$supplier_id)->isGreaterThan(0);
 
-        $relation = new \Contract_Supplier();
+        $relation = new Contract_Supplier();
         $relation_id = $relation->add([
            'contracts_id' => $contract_id,
            'suppliers_id' => $supplier_id,
@@ -357,14 +358,50 @@ class Contract extends DbTestCase
         $this->integer((int)$relation_id)->isGreaterThan(0);
         $this->boolean($relation->getFromDB($relation_id))->isTrue();
 
-        $this->boolean($relation->delete(['id' => $relation_id]))->isTrue();
+        $connection = $GLOBALS['DB']->getDoctrineConnection();
+        $session = $_SESSION;
+        $originalName = $connection->fetchOne('SELECT name FROM glpi_suppliers WHERE id = ?', [$supplier_id]);
+        $translation = ['itemtype' => 'Supplier', 'items_id' => $supplier_id,
+            'language' => 'x_' . bin2hex(random_bytes(4)), 'field' => 'name'];
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $created = 0;
+        $read = static function () use ($contract, $factories, &$created): string {
+            $before = $factories->getValue();
+            $html = $contract->getSuppliersNames();
+            $created += $factories->getValue() - $before;
+            return $html;
+        };
+        try {
+            unset($_SESSION['glpi_dropdowntranslations']['Supplier']['name']);
+            // Warm outside the measured reads: either provider may allocate its first private manager.
+            $this->string($contract->getSuppliersNames())->isIdenticalTo($originalName . '<br>');
+            $this->string($read())->isIdenticalTo($originalName . '<br>');
+            $connection->update('glpi_suppliers', ['name' => 'Fresh contract supplier'], ['id' => $supplier_id]);
+            $this->string($read())->isIdenticalTo('Fresh contract supplier<br>');
+            $connection->insert('glpi_dropdowntranslations', $translation + ['value' => 'Translated contract supplier']);
+            $_SESSION['glpilanguage'] = $translation['language'];
+            $_SESSION['glpi_dropdowntranslations']['Supplier']['name'] = true;
+            $this->string($read())->isIdenticalTo('Translated contract supplier<br>');
+            $connection->update('glpi_dropdowntranslations', ['value' => ''], $translation);
+            $this->string($read())->isIdenticalTo('Fresh contract supplier<br>');
+            $connection->update('glpi_suppliers', ['name' => ''], ['id' => $supplier_id]);
+            $this->string($read())->isIdenticalTo('&nbsp;<br>');
+            $this->boolean($relation->delete(['id' => $relation_id]))->isTrue();
+            $this->string($read())->isIdenticalTo('');
+        } finally {
+            $connection->delete('glpi_dropdowntranslations', $translation);
+            $connection->update('glpi_suppliers', ['name' => $originalName], ['id' => $supplier_id]);
+            $_SESSION = $session;
+        }
         $this->integer((int)countElementsInTable(
-            \Contract_Supplier::getTable(),
+            Contract_Supplier::getTable(),
             [
                 'contracts_id' => $contract_id,
                 'suppliers_id' => $supplier_id,
             ]
         ))->isEqualTo(0);
+        // Keep the genuine old-runtime failure after every positive output and persisted unlink check.
+        $this->integer($created)->isIdenticalTo(0, 'Supplier labels reuse the warm application read manager');
     }
 
     public function testUpdateClearsOutdatedAlerts()
