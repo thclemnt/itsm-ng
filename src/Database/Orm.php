@@ -13,6 +13,17 @@ use Doctrine\ORM\Configuration;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Proxy\ProxyFactory;
 use itsmng\Database\Mapping\AttributeDriver;
+use itsmng\Database\Query\AutoNameNumber;
+use itsmng\Database\Query\BitCount;
+use itsmng\Database\Query\CurrentEpochSeconds;
+use itsmng\Database\Query\EpochSeconds;
+use itsmng\Database\Query\KnowledgeBaseFullText;
+use itsmng\Database\Query\Replace;
+use itsmng\Database\Query\TemporalText;
+use itsmng\Database\Query\YearMonth;
+use itsmng\Database\Repository\DropdownChoiceRepository;
+use itsmng\Database\Type\ClockTimeType;
+use itsmng\Database\Type\FixedStringType;
 use ReflectionClass;
 use ReflectionMethod;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
@@ -74,8 +85,8 @@ final class Orm
     {
         static $classes = [];
         $class = $type::class;
-        if ($name === Type\FixedStringType::NAME || $class === Type\FixedStringType::class) {
-            return $name === Type\FixedStringType::NAME && $class === Type\FixedStringType::class;
+        if ($name === FixedStringType::NAME || $class === FixedStringType::class) {
+            return $name === FixedStringType::NAME && $class === FixedStringType::class;
         }
         return $classes[$class] ??= (new ReflectionMethod($type, 'convertToPHPValueSQL'))->getDeclaringClass()->getName() === DbalType::class
             && (new ReflectionMethod($type, 'convertToDatabaseValueSQL'))->getDeclaringClass()->getName() === DbalType::class;
@@ -112,11 +123,11 @@ final class Orm
     /** @internal Scalar readers need the application types without allocating ORM configuration. */
     public static function registerTypes(): void
     {
-        if (!DbalType::hasType(Type\ClockTimeType::NAME)) {
-            DbalType::addType(Type\ClockTimeType::NAME, Type\ClockTimeType::class);
+        if (!DbalType::hasType(ClockTimeType::NAME)) {
+            DbalType::addType(ClockTimeType::NAME, ClockTimeType::class);
         }
-        if (!DbalType::hasType(Type\FixedStringType::NAME)) {
-            DbalType::addType(Type\FixedStringType::NAME, Type\FixedStringType::class);
+        if (!DbalType::hasType(FixedStringType::NAME)) {
+            DbalType::addType(FixedStringType::NAME, FixedStringType::class);
         }
     }
 
@@ -126,16 +137,16 @@ final class Orm
         $proxyDirectory = defined('GLPI_CACHE_DIR') ? GLPI_CACHE_DIR . '/orm' : sys_get_temp_dir() . '/itsm-orm';
         self::registerTypes();
         $config = new Configuration();
-        $config->setDefaultRepositoryClassName(Repository\DropdownChoiceRepository::class);
-        $config->addCustomStringFunction('REPLACE', Query\Replace::class);
-        $config->addCustomStringFunction('YEAR_MONTH', Query\YearMonth::class);
-        $config->addCustomStringFunction('TEMPORAL_TEXT', Query\TemporalText::class);
-        $config->addCustomNumericFunction('BIT_COUNT', Query\BitCount::class);
-        $config->addCustomNumericFunction('EPOCH_SECONDS', Query\EpochSeconds::class);
-        $config->addCustomNumericFunction('CURRENT_EPOCH_SECONDS', Query\CurrentEpochSeconds::class);
-        $config->addCustomNumericFunction('AUTO_NAME_NUMBER', Query\AutoNameNumber::class);
-        $config->addCustomNumericFunction('KB_MATCH', Query\KnowledgeBaseFullText::class);
-        $config->addCustomNumericFunction('KB_SCORE', Query\KnowledgeBaseFullText::class);
+        $config->setDefaultRepositoryClassName(DropdownChoiceRepository::class);
+        $config->addCustomStringFunction('REPLACE', Replace::class);
+        $config->addCustomStringFunction('YEAR_MONTH', YearMonth::class);
+        $config->addCustomStringFunction('TEMPORAL_TEXT', TemporalText::class);
+        $config->addCustomNumericFunction('BIT_COUNT', BitCount::class);
+        $config->addCustomNumericFunction('EPOCH_SECONDS', EpochSeconds::class);
+        $config->addCustomNumericFunction('CURRENT_EPOCH_SECONDS', CurrentEpochSeconds::class);
+        $config->addCustomNumericFunction('AUTO_NAME_NUMBER', AutoNameNumber::class);
+        $config->addCustomNumericFunction('KB_MATCH', KnowledgeBaseFullText::class);
+        $config->addCustomNumericFunction('KB_SCORE', KnowledgeBaseFullText::class);
         $config->setMetadataDriverImpl(new AttributeDriver([__DIR__ . '/Entity'], $platform));
         // Serialization keeps mutable metadata (e.g. assigned-ID imports) local
         // to each metadata factory, rather than leaking changes between units of work.

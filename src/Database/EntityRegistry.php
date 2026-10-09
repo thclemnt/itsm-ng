@@ -7,9 +7,20 @@ namespace itsmng\Database;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\ORM\EntityManager;
+use itsmng\Database\Entity\ComputerItem;
+use itsmng\Database\Entity\ComputerVirtualMachine;
+use itsmng\Database\Entity\Infocom;
+use itsmng\Database\Entity\ITILFollowup;
+use itsmng\Database\Entity\Reservation;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\DiscriminatedBy;
+use itsmng\Database\Mapping\DiscriminatorKey;
+use itsmng\Database\Mapping\EntityScopeOwner;
 use itsmng\Database\Mapping\MappedReference;
+use itsmng\Database\Mapping\PolymorphicReference;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\VirtualAssetLink;
 use LogicException;
 use Psr\SimpleCache\CacheInterface;
 use ReflectionClass;
@@ -191,7 +202,7 @@ final class EntityRegistry
 
     private static function reservationUserProjection(EntityManager $manager): ?array
     {
-        $reservation = $manager->getClassMetadata(Entity\Reservation::class);
+        $reservation = $manager->getClassMetadata(Reservation::class);
         $owner = $reservation->associationMappings['reservationitems'] ?? null;
         if ($owner === null || !$owner->isToOneOwningSide() || count($owner->joinColumns) !== 1) {
             return null;
@@ -226,7 +237,7 @@ final class EntityRegistry
 
     private static function promotionSourceProjection(EntityManager $manager): ?array
     {
-        $metadata = $manager->getClassMetadata(Entity\ITILFollowup::class);
+        $metadata = $manager->getClassMetadata(ITILFollowup::class);
         if ($metadata->identifier !== ['id'] || !$metadata->isInheritanceTypeNone() || !empty($metadata->table['schema'])) {
             return null;
         }
@@ -254,7 +265,7 @@ final class EntityRegistry
 
     private static function computerItemProjection(EntityManager $manager): ?array
     {
-        $metadata = $manager->getClassMetadata(Entity\ComputerItem::class);
+        $metadata = $manager->getClassMetadata(ComputerItem::class);
         $association = $metadata->associationMappings['computers'] ?? null;
         if (!$metadata->isInheritanceTypeNone() || $metadata->identifier !== ['id']
             || !empty($metadata->table['schema']) || $association === null
@@ -279,7 +290,7 @@ final class EntityRegistry
 
     private static function virtualMachineCountProjection(EntityManager $manager): ?array
     {
-        $metadata = $manager->getClassMetadata(Entity\ComputerVirtualMachine::class);
+        $metadata = $manager->getClassMetadata(ComputerVirtualMachine::class);
         $host = $metadata->associationMappings['computers'] ?? null;
         if ($metadata->identifier !== ['id'] || !$metadata->hasField('id')
             || !$metadata->hasField('is_deleted') || !$metadata->isInheritanceTypeNone()
@@ -301,7 +312,7 @@ final class EntityRegistry
 
     private static function infocomPresenceProjection(EntityManager $manager): ?array
     {
-        $metadata = $manager->getClassMetadata(Entity\Infocom::class);
+        $metadata = $manager->getClassMetadata(Infocom::class);
         if ($metadata->identifier !== ['id'] || !$metadata->isInheritanceTypeNone()
             || !empty($metadata->table['schema'])) {
             return null;
@@ -392,7 +403,7 @@ final class EntityRegistry
                 }
             }
             foreach ($record->fieldMappings as $property => $mapping) {
-                foreach ((new ReflectionProperty($record->name, $property))->getAttributes(Mapping\DiscriminatorKey::class) as $attribute) {
+                foreach ((new ReflectionProperty($record->name, $property))->getAttributes(DiscriminatorKey::class) as $attribute) {
                     $key = $attribute->newInstance();
                     $discriminators[$table][$mapping->columnName]['empty_value'] = $key->emptyValue;
                     $discriminators[$table][$mapping->columnName]['fallback_column'] = $key->fallbackProperty === null
@@ -410,7 +421,7 @@ final class EntityRegistry
                     $target = $em->getClassMetadata($association->targetEntity)->getTableName();
                     $relations[$table][$join->name] = $target;
                     $propertyMetadata = new ReflectionProperty($record->name, $property);
-                    if ($propertyMetadata->getAttributes(Mapping\EntityScopeOwner::class)) {
+                    if ($propertyMetadata->getAttributes(EntityScopeOwner::class)) {
                         if (isset($scopeOwners[$table]) || count($association->joinColumns) !== 1) {
                             throw new LogicException('An entity scope requires one explicit owning parent: ' . $table);
                         }
@@ -418,7 +429,7 @@ final class EntityRegistry
                     }
                     $logicalColumn = $join->name;
                     $logicalDiscriminator = null;
-                    foreach ($propertyMetadata->getAttributes(Mapping\DiscriminatedBy::class) as $attribute) {
+                    foreach ($propertyMetadata->getAttributes(DiscriminatedBy::class) as $attribute) {
                         $binding = $attribute->newInstance();
                         if (isset($componentCounts[$table]) && $binding->legacyColumn === 'items_id'
                             && $binding->discriminator === 'itemtype' && count($association->joinColumns) === 1) {
@@ -445,7 +456,7 @@ final class EntityRegistry
                             }
                         }
                     }
-                    $child = ($propertyMetadata->getAttributes(Mapping\ApplicationManaged::class) ? '_' : '') . $table;
+                    $child = ($propertyMetadata->getAttributes(ApplicationManaged::class) ? '_' : '') . $table;
                     $lifecycle[$target][$child][] = $logicalColumn;
                     if ($logicalDiscriminator !== null) {
                         $lifecycle[$target][$child][] = $logicalDiscriminator;
@@ -475,7 +486,7 @@ final class EntityRegistry
                 }
             }
             foreach ((new ReflectionClass($record->name))->getProperties() as $property) {
-                foreach ($property->getAttributes(Mapping\PolymorphicReference::class) as $attribute) {
+                foreach ($property->getAttributes(PolymorphicReference::class) as $attribute) {
                     $binding = $attribute->newInstance();
                     if (!$record->hasField($property->name) || !$record->hasField($binding->discriminator)) {
                         throw new LogicException('Polymorphic lifecycle link requires mapped ID and discriminator fields');
@@ -485,7 +496,7 @@ final class EntityRegistry
                     $lifecycle[$target][$child][] = $record->getColumnName($property->name);
                     $lifecycle[$target][$child][] = $record->getColumnName($binding->discriminator);
                 }
-                foreach ($property->getAttributes(Mapping\VirtualAssetLink::class) as $attribute) {
+                foreach ($property->getAttributes(VirtualAssetLink::class) as $attribute) {
                     $binding = $attribute->newInstance();
                     if (!$record->hasField($property->name) || !$record->hasField($binding->discriminator)) {
                         throw new LogicException('Virtual asset link requires mapped ID and discriminator fields');

@@ -5,6 +5,11 @@
 namespace itsmng\Database;
 
 use __PHP_Incomplete_Class;
+use itsmng\Database\Mapping\MappedReference;
+use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\UserReferenceAction;
 use Psr\SimpleCache\CacheInterface;
 use ReflectionReference;
 use Throwable;
@@ -61,8 +66,8 @@ final class EntityRegistryCache
         });
         try {
             $model = unserialize($serialized, ['allowed_classes' => [
-                Mapping\MappedReference::class, Mapping\ReferencePolicy::class, Mapping\NativeTimestamp::class,
-                Mapping\ReferenceKind::class, Mapping\UserReferenceAction::class, ReferenceMode::class,
+                MappedReference::class, ReferencePolicy::class, NativeTimestamp::class,
+                ReferenceKind::class, UserReferenceAction::class, ReferenceMode::class,
             ]]);
             if (!is_array($model)) {
                 return null;
