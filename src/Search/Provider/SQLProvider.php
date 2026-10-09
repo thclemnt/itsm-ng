@@ -218,7 +218,6 @@ final class SQLProvider implements SearchProviderInterface
         $selectFields = $SELECT;
         $SELECT = 'SELECT DISTINCT ' . $SELECT->sql($dialect, $GROUPBY !== '');
         $LIMIT = "";
-        $numrows = 0;
         //No search : count number of items using a simple count(ID) request and LIMIT search
         if ($data['search']['no_search']) {
             if ($data['search']['list_limit'] == 0) {

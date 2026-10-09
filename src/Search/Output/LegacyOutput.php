@@ -692,7 +692,6 @@ final class LegacyOutput
         if (isset($so["table"])) {
             $table = $so["table"];
             $field = $so["field"];
-            $linkfield = $so["linkfield"];
             /// TODO try to clean all specific cases using SpecificToDisplay
             switch ($table . '.' . $field) {
                 case "glpi_users.name":
