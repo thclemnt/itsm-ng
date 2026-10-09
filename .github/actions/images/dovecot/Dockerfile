@@ -12,6 +12,7 @@ RUN apt-get update \
 RUN useradd --create-home --home-dir /home/testuser --shell /bin/bash testuser \
  && echo 'testuser:applesauce' | chpasswd \
  && install -d -o testuser -g testuser \
+    /home/testuser/Maildir \
     /home/testuser/Maildir/cur /home/testuser/Maildir/new /home/testuser/Maildir/tmp
 
 RUN sed -ri 's|^#?listen =.*$|listen = *, ::|' /etc/dovecot/dovecot.conf \
