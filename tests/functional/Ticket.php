@@ -2938,6 +2938,53 @@ class Ticket extends DbTestCase
                 ]))->isGreaterThan(0);
                 $this->integer($item->getTimelineItemCount())->isEqualTo(9);
                 $this->integer($item->getTimelineItemCount())->isEqualTo(count($item->getTimelineItems()));
+                if ($type === 'Ticket') {
+                    $connection = $DB->getDoctrineConnection();
+                    // Warm the canonical metadata, then observe legacy writes without another factory.
+                    $this->integer($item->getTimelineItemCount())->isIdenticalTo(9);
+                    $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+                    $beforeFactories = $factories->getValue();
+                    try {
+                        $connection->update('glpi_itilfollowups', ['items_id' => 0], ['id' => $followup_ids_by_role['public']]);
+                        $this->integer($item->getTimelineItemCount())->isIdenticalTo(8);
+                        $connection->update('glpi_itilfollowups', ['items_id' => (int)$item->getID()], ['id' => $followup_ids_by_role['public']]);
+                        $this->integer($item->getTimelineItemCount())->isIdenticalTo(9);
+                        $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+                    } finally {
+                        $connection->update('glpi_itilfollowups', ['items_id' => (int)$item->getID()], ['id' => $followup_ids_by_role['public']]);
+                    }
+
+                    $outerManager = null;
+                    $sentinel = null;
+                    Orm::withReadConnection($connection, function (EntityManager $manager) use ($connection, $item, &$outerManager, &$sentinel): void {
+                        $outerManager = $manager;
+                        $sentinel = $manager->find(TicketEntity::class, (int)$item->getID());
+                        $this->object($sentinel)->isInstanceOf(TicketEntity::class);
+                        $counts = new TimelineCountReadOperation($connection, $manager);
+                        try {
+                            $selectedManager = new ReflectionProperty(TimelineCountReadOperation::class, 'manager');
+                            $this->object($selectedManager->getValue($counts))->isIdenticalTo($manager);
+                            $selection = new TimelineSelection(
+                                ['solutions' => ['itemtype' => 'Ticket', 'items_id' => (int)$item->getID()]],
+                                false,
+                                null,
+                                false,
+                                null
+                            );
+                            $this->integer($counts->solutions(ITILSolution::getTable(), $selection))->isIdenticalTo(1);
+                            $counts->close();
+                            $this->boolean($manager->contains($sentinel))->isTrue();
+                            // A complete public count reenters ownership without clearing the outer read.
+                            $beforeNested = (new ReflectionProperty(Orm::class, 'unitsOfWork'))->getValue();
+                            $this->integer($item->getTimelineItemCount())->isIdenticalTo(9);
+                            $this->integer((new ReflectionProperty(Orm::class, 'unitsOfWork'))->getValue())->isGreaterThan($beforeNested);
+                            $this->boolean($manager->contains($sentinel))->isTrue();
+                        } finally {
+                            $counts->close();
+                        }
+                    });
+                    $this->boolean($outerManager->contains($sentinel))->isFalse();
+                }
                 $originalAdapter = $DB;
                 $probe = new ScalarReadProbe($DB->getDoctrineConnection());
                 $this->mockGenerator()->orphanize('__construct');
@@ -3013,15 +3060,20 @@ class Ticket extends DbTestCase
                         $this->integer($metadataCache->metadataHits)->isGreaterThan(0);
                         $read->close();
 
-                        // Exercise the complete public sequence, including
-                        // Document privacy targets and validation metadata.
-                        $this->integer($item->getTimelineItemCount())->isIdenticalTo(9);
-                        $this->integer($metadataCache->metadataWrites)->isGreaterThan($writes);
-                        $writes = $metadataCache->metadataWrites;
-                        $fullHits = $metadataCache->metadataHits;
-                        $this->integer($item->getTimelineItemCount())->isIdenticalTo(9);
-                        $this->integer($metadataCache->metadataWrites)->isIdenticalTo($writes);
-                        $this->integer($metadataCache->metadataHits)->isGreaterThan($fullHits);
+                        // Keep the independent-reader cache hit/write contract on its explicit custom route.
+                        // Canonical borrowed-manager reuse and current rows are checked separately above.
+                        $DB = $adapter;
+                        try {
+                            $this->integer($item->getTimelineItemCount())->isIdenticalTo(9);
+                            $this->integer($metadataCache->metadataWrites)->isGreaterThan($writes);
+                            $writes = $metadataCache->metadataWrites;
+                            $fullHits = $metadataCache->metadataHits;
+                            $this->integer($item->getTimelineItemCount())->isIdenticalTo(9);
+                            $this->integer($metadataCache->metadataWrites)->isIdenticalTo($writes);
+                            $this->integer($metadataCache->metadataHits)->isGreaterThan($fullHits);
+                        } finally {
+                            $DB = $originalAdapter;
+                        }
 
                         // A local fallback before the first canonical read must
                         // permanently retire deferred private-cache admission.

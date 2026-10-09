@@ -47,12 +47,15 @@ use Doctrine\DBAL\Types\BooleanType;
 use Doctrine\DBAL\Types\IntegerType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\ApplianceOwnerReadOperation;
+use itsmng\Database\Entity\Computer as ComputerEntity;
 use itsmng\Database\EntityScopeReadOperation;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ApplianceAssetRepository;
 use mock\DBmysql;
 use RuntimeException;
+use ReflectionProperty;
 
 class Appliance_Item extends DbTestCase
 {
@@ -133,9 +136,15 @@ class Appliance_Item extends DbTestCase
         try {
             $_SESSION['glpishowallentities'] = true;
             $DB = $adapter;
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $beforeCustom = $factories->getValue();
             $this->integer(ApplianceItemModel::countForItem($computer))->isIdenticalTo($expected);
             $this->array($probe->queries)->hasSize(1);
             $this->integer($probe->builders)->isIdenticalTo(1);
+            $this->integer($factories->getValue() - $beforeCustom)->isIdenticalTo(1);
+            $this->integer(ApplianceItemModel::countForItem($computer))->isIdenticalTo($expected);
+            $this->integer($factories->getValue() - $beforeCustom)->isIdenticalTo(2, 'Custom connections keep independent managers');
+            $this->array($probe->queries)->hasSize(2);
         } finally {
             $DB = $originalAdapter;
             $_SESSION = $originalSession;
@@ -159,6 +168,21 @@ class Appliance_Item extends DbTestCase
             $this->array($criteria)->hasSize(1);
             $this->array(reset($criteria))->hasKey('OR');
             $this->integer($repository->ownerCount('Computer', (int)$scopedComputer->getID(), $criteria))->isIdenticalTo(3);
+            // Warm the canonical count and entity-scope metadata, then observe fresh writes.
+            $this->integer(ApplianceItemModel::countForItem($scopedComputer))->isIdenticalTo(3);
+            $beforeCount = $factories->getValue();
+            try {
+                $connection->update('glpi_appliances', ['is_recursive' => false], ['id' => $recursiveAppliances[1]], ['is_recursive' => Types::BOOLEAN]);
+                $this->integer(ApplianceItemModel::countForItem($scopedComputer))->isIdenticalTo(2);
+            } finally {
+                $connection->update('glpi_appliances', ['is_recursive' => true], ['id' => $recursiveAppliances[1]], ['is_recursive' => Types::BOOLEAN]);
+            }
+            $this->integer(ApplianceItemModel::countForItem($scopedComputer))->isIdenticalTo(3);
+            $nonCronSession = $_SESSION;
+            $_SESSION['glpicronuserrunning'] = true;
+            $this->integer(ApplianceItemModel::countForItem($scopedComputer))->isIdenticalTo(4, 'Cron null scope includes the nonrecursive parent owner');
+            $_SESSION = $nonCronSession;
+            $this->integer($factories->getValue() - $beforeCount)->isIdenticalTo(0, 'Scoped and cron counts reuse the warmed canonical manager');
             $probe->queries = [];
             $probe->queryBuilders = [];
             $DB = $adapter;
@@ -172,6 +196,29 @@ class Appliance_Item extends DbTestCase
             $this->array($scope->wrappedCriteria())->isIdenticalTo($criteria);
             $this->array($scope->entities)->isIdenticalTo([$child]);
             $this->array($scope->ancestors)->isIdenticalTo([0, $parent]);
+
+            $outerManager = null;
+            $sentinel = null;
+            Orm::withReadConnection($connection, function (EntityManager $manager) use ($connection, $scopedComputer, $criteria, $scope, $factories, &$outerManager, &$sentinel): void {
+                $outerManager = $manager;
+                $sentinel = $manager->find(ComputerEntity::class, (int)$scopedComputer->getID());
+                $this->object($sentinel)->isInstanceOf(ComputerEntity::class);
+                $ownedReader = new ApplianceOwnerReadOperation($connection, $manager);
+                try {
+                    $selectedManager = new ReflectionProperty(ApplianceOwnerReadOperation::class, 'manager');
+                    $this->object($selectedManager->getValue($ownedReader))->isIdenticalTo($manager);
+                    $this->integer($ownedReader->ownerCount('Computer', (int)$scopedComputer->getID(), $criteria, $scope))->isIdenticalTo(3);
+                    $ownedReader->close();
+                    $this->boolean($manager->contains($sentinel))->isTrue();
+                    $beforeNested = $factories->getValue();
+                    $this->integer(ApplianceItemModel::countForItem($scopedComputer))->isIdenticalTo(3);
+                    $this->integer($factories->getValue())->isGreaterThan($beforeNested);
+                    $this->boolean($manager->contains($sentinel))->isTrue();
+                } finally {
+                    $ownedReader->close();
+                }
+            });
+            $this->boolean($outerManager->contains($sentinel))->isFalse();
             $scopedReader = new ApplianceOwnerReadOperation($probe);
             $boolean = Type::getType('boolean');
             try {
@@ -226,8 +273,10 @@ class Appliance_Item extends DbTestCase
             }
             $callbackItem = new class () extends Computer {
                 public $readCallback;
+                public static $typeReadCallback;
                 public static function getType()
                 {
+                    (self::$typeReadCallback)();
                     return 'Computer';
                 }
                 public function getID()
@@ -237,13 +286,20 @@ class Appliance_Item extends DbTestCase
                 }
             };
             $callbackItem->fields = $scopedComputer->fields;
-            $callbackItem->readCallback = static function () use ($originalAdapter): void {
+            $factoriesAtType = $factoriesAtId = null;
+            $callbackItem::$typeReadCallback = static function () use ($factories, &$factoriesAtType): void {
+                $factoriesAtType = $factories->getValue();
+            };
+            $callbackItem->readCallback = static function () use ($originalAdapter, $factories, &$factoriesAtId): void {
+                $factoriesAtId = $factories->getValue();
                 $GLOBALS['DB'] = $originalAdapter;
                 $_SESSION['glpiactiveentities'] = [];
             };
             $DB = $adapter;
             $probe->queryBuilders = [];
             $this->integer(ApplianceItemModel::countForItem($callbackItem))->isIdenticalTo(3);
+            $this->integer($factoriesAtId)->isIdenticalTo($factoriesAtType, 'Reader construction precedes both virtual arguments');
+            $this->integer($factories->getValue())->isIdenticalTo($factoriesAtId, 'No manager is created after virtual getID');
             $this->object($DB)->isIdenticalTo($originalAdapter);
             $this->array(array_filter($probe->queryBuilders, static fn ($query) =>
                 str_contains(str_replace(['`', '"'], '', $query->getSQL()), 'FROM glpi_appliances r')))->hasSize(1);

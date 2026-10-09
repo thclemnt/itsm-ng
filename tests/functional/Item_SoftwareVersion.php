@@ -390,6 +390,20 @@ class Item_SoftwareVersion extends DbTestCase
                 unset($row['is_dynamic']);
             }
             unset($row);
+            // The ordinary public path reuses its owner after the first read.
+            $this->array(ItemSoftwareVersionModel::getFromItem($computer))->isIdenticalTo($publicExpected);
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $beforeRead = $factories->getValue();
+            $this->array(ItemSoftwareVersionModel::getFromItem($computer))->isIdenticalTo($publicExpected);
+            $this->integer($factories->getValue() - $beforeRead)->isIdenticalTo(0);
+            Orm::withReadConnection($connection, function (?EntityManager $outer) use ($connection, $computer, $software, $publicExpected, $factories): void {
+                $this->boolean($connection->ownsApplicationEntityManager($outer))->isTrue();
+                $managed = $outer->getReference(SoftwareEntity::class, (int)$software->getID());
+                $beforeNested = $factories->getValue();
+                $this->array(ItemSoftwareVersionModel::getFromItem($computer))->isIdenticalTo($publicExpected);
+                $this->integer($factories->getValue() - $beforeNested)->isIdenticalTo(1);
+                $this->boolean($outer->contains($managed))->isTrue();
+            });
             $reader = null;
             $string = Type::getType('string');
             $bigint = Type::getType('bigint');
@@ -540,7 +554,11 @@ class Item_SoftwareVersion extends DbTestCase
                 $this->integer(preg_match('/<script type="application\/json"[^>]*>(.*?)<\/script>/s', $html, $match))->isIdenticalTo(1);
                 return json_decode($match[1], true, 512, JSON_THROW_ON_ERROR);
             };
+            Orm::withReadConnection($connection, static function (?EntityManager $manager): void {
+            });
+            $beforeRender = $factories->getValue();
             $table = $render();
+            $this->integer($factories->getValue() - $beforeRender)->isIdenticalTo(0);
             $rows = $table['dataSource']['rows'];
             $this->array($rows)->hasSize(2);
             $this->array(array_column($rows, 3))->isIdenticalTo([

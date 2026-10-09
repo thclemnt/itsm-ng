@@ -74,8 +74,11 @@ use Doctrine\ORM\Query\AST\SelectStatement;
 use Doctrine\ORM\Query\AST\UpdateStatement;
 use Doctrine\ORM\Query\Exec\SqlFinalizer;
 use Doctrine\ORM\Query\SqlOutputWalker;
+use Glpi\Console\Config\SetCommand;
 use Glpi\Console\Database\InstallCommand;
+use GLPIKey;
 use Group;
+use Impact as ImpactModel;
 use Infocom;
 use Item_Devices;
 use itsmng\Cache\SessionAdapter;
@@ -113,8 +116,12 @@ use Symfony\Component\Cache\Adapter\FilesystemAdapter;
 use Symfony\Component\Cache\Psr16Cache;
 use Symfony\Component\Console\Exception\InvalidArgumentException as ConsoleInvalidArgumentException;
 use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Tester\CommandTester;
 use Toolbox;
 use User;
+
+use function exportArrayToDB;
+use function importArrayFromDB;
 
 /* Test for inc/config.class.php */
 
@@ -609,11 +616,11 @@ class Config extends DbTestCase
 
     public function testPrepareInputForUpdate()
     {
-        global $DB;
+        global $DB, $CFG_GLPI;
 
         $this->login();
         $this->boolean((bool)ConfigModel::canUpdate())->isTrue();
-        $rows = static fn (string $table, array $criteria): array => (new RecordRepository(Orm::create($DB)))->matching($table, $criteria, ['id ASC']);
+        $rows = static fn (string $table, array $criteria): array => (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))->matching($table, $criteria, ['id ASC']);
         ConfigModel::setConfigurationValues('core', ['is_ids_visible' => 0]);
         $before = $rows('glpi_configs', ['context' => 'core']);
         $setting = $rows('glpi_configs', ['context' => 'core', 'name' => 'is_ids_visible']);
@@ -624,7 +631,7 @@ class Config extends DbTestCase
 
         // The actual default-values form stores configuration during preparation
         // and deliberately returns false to stop the outer record update.
-        $config = new ConfigModel();
+        $config = new \Config();
         $this->boolean($config->prepareInputForUpdate([
             'id' => $setting[0]['id'],
             'is_ids_visible' => 1,
@@ -650,6 +657,30 @@ class Config extends DbTestCase
         $this->string($history[0]['new_value'])->isIdenticalTo('1');
         $actor = Session::getLoginUserID(false);
         $this->string($history[0]['user_name'])->isIdenticalTo(sprintf(__('%1$s (%2$s)'), getUserName($actor), $actor));
+
+        $allowed = $CFG_GLPI['impact_asset_types'];
+        $itemtypes = ['Computer', 'GlpiPlugin\\ConfigFixture\\Device', 'GlpiPlugin\\ConfigFixture\\Équipement'];
+        try {
+            foreach ($itemtypes as $itemtype) {
+                $CFG_GLPI['impact_asset_types'][$itemtype] = true;
+            }
+            foreach ([$itemtypes, array_reverse($itemtypes), []] as $selected) {
+                // inc/includes.php sanitizes the form before config.form.php calls update().
+                $this->boolean($config->update(Toolbox::sanitize([
+                    'id' => 1,
+                    ImpactModel::CONF_ENABLED => $selected,
+                    'update' => 'Save',
+                    '_glpi_csrf_token' => $_SESSION['_glpi_csrf_token'],
+                ])))->isFalse();
+                $stored = ConfigModel::getConfigurationValues('core', [ImpactModel::CONF_ENABLED]);
+                $this->string($stored[ImpactModel::CONF_ENABLED])->isIdenticalTo(exportArrayToDB($selected));
+                $this->array(importArrayFromDB($stored[ImpactModel::CONF_ENABLED]))->isIdenticalTo($selected);
+                $this->array(ImpactModel::getEnabledItemtypes())->isIdenticalTo($selected);
+            }
+        } finally {
+            $CFG_GLPI['impact_asset_types'] = $allowed;
+            // DbTestCase rolls back the form's configuration and audit writes.
+        }
     }
 
     public function testUnsetUndisclosedFields()
@@ -1580,41 +1611,106 @@ class Config extends DbTestCase
 
     public function testSetConfigurationValues()
     {
-        $conf = \Config::getConfigurationValues('core', ['version', 'notification_to_myself']);
+        $conf = ConfigModel::getConfigurationValues('core', ['version', 'notification_to_myself']);
         $this->array($conf)->isEqualTo([
            'notification_to_myself'   => '1',
            'version'                  => \ITSM_VERSION
         ]);
 
         //update configuration value
-        \Config::setConfigurationValues('core', ['notification_to_myself' => 0]);
-        $conf = \Config::getConfigurationValues('core', ['version', 'notification_to_myself']);
+        ConfigModel::setConfigurationValues('core', ['notification_to_myself' => 0]);
+        $conf = ConfigModel::getConfigurationValues('core', ['version', 'notification_to_myself']);
         $this->array($conf)->isEqualTo([
            'notification_to_myself'   => '0',
            'version'                  => \ITSM_VERSION
         ]);
-        \Config::setConfigurationValues('core', ['notification_to_myself' => 1]); //reset
+        ConfigModel::setConfigurationValues('core', ['notification_to_myself' => 1]); //reset
 
         //check new configuration key does not exists
-        $conf = \Config::getConfigurationValues('core', ['version', 'new_configuration_key']);
+        $conf = ConfigModel::getConfigurationValues('core', ['version', 'new_configuration_key']);
         $this->array($conf)->isEqualTo([
            'version' => \ITSM_VERSION
         ]);
 
         //add new configuration key
-        \Config::setConfigurationValues('core', ['new_configuration_key' => 'test']);
-        $conf = \Config::getConfigurationValues('core', ['version', 'new_configuration_key']);
+        ConfigModel::setConfigurationValues('core', ['new_configuration_key' => 'test']);
+        $conf = ConfigModel::getConfigurationValues('core', ['version', 'new_configuration_key']);
         $this->array($conf)->isEqualTo([
            'new_configuration_key' => 'test',
            'version'               => \ITSM_VERSION
         ]);
 
         //drop new configuration key
-        \Config::deleteConfigurationValues('core', ['new_configuration_key']);
-        $conf = \Config::getConfigurationValues('core', ['version', 'new_configuration_key']);
+        ConfigModel::deleteConfigurationValues('core', ['new_configuration_key']);
+        $conf = ConfigModel::getConfigurationValues('core', ['version', 'new_configuration_key']);
         $this->array($conf)->isEqualTo([
            'version' => \ITSM_VERSION
         ]);
+
+        // Bind raw CLI arguments through the real command, including its initialization.
+        global $DB, $PLUGIN_HOOKS;
+        $connection = $DB->getDoctrineConnection();
+        $key = 'command_value_' . bin2hex(random_bytes(6));
+        $hadSecuredHooks = array_key_exists('secured_configs', $PLUGIN_HOOKS);
+        $securedHooks = $PLUGIN_HOOKS['secured_configs'] ?? [];
+        $tester = new CommandTester(new SetCommand());
+        $values = [
+            "C:\\new\\temp\\fixture'\"first\nsecond",
+            json_encode([
+                'itemtype' => 'GlpiPlugin\\Example\\Device',
+                'path' => 'C:\\new\\temp',
+                'text' => "Équipement\nline",
+            ], JSON_THROW_ON_ERROR),
+        ];
+        try {
+            $PLUGIN_HOOKS['secured_configs']['configcli'] = [$key];
+            foreach (['plugin:configcli' => true, 'plugin:configplain' => false] as $context => $secured) {
+                $this->boolean((new GLPIKey())->isConfigSecured($context, $key))->isIdenticalTo($secured);
+                foreach ($values as $value) {
+                    $lastLog = (int)$connection->fetchOne('SELECT MAX(id) FROM glpi_logs');
+                    $this->integer($tester->execute(
+                        ['key' => $key, 'value' => $value, '--context' => $context],
+                        ['interactive' => false]
+                    ))->isIdenticalTo(0);
+                    $stored = ConfigModel::getConfigurationValues($context, [$key])[$key];
+                    if ($secured) {
+                        $this->string($stored)->isNotIdenticalTo($value);
+                        $this->string(Toolbox::sodiumDecrypt($stored))->isIdenticalTo($value);
+                        $this->string($tester->getDisplay())->notContains($value);
+                    } else {
+                        $this->string($stored)->isIdenticalTo($value);
+                    }
+                    $history = $connection->fetchAllAssociative(
+                        'SELECT old_value, new_value FROM glpi_logs WHERE itemtype = ? AND id > ? ORDER BY id',
+                        [ConfigModel::class, $lastLog]
+                    );
+                    $this->array($history)->hasSize(1);
+                    $this->string($history[0]['new_value'])->isIdenticalTo($secured ? '********' : $value);
+                    if ($secured) {
+                        $this->string($history[0]['old_value'])->isIdenticalTo($key . ' (' . $context . ') ********');
+                    }
+                }
+            }
+
+            // Classification uses the exact legacy name passed to the setter.
+            $quotedKey = $key . "'\\suffix";
+            $PLUGIN_HOOKS['secured_configs']['configcli'] = [$quotedKey];
+            $this->boolean((new GLPIKey())->isConfigSecured('plugin:configcli', $quotedKey))->isTrue();
+            $this->boolean((new GLPIKey())->isConfigSecured('plugin:configcli', Toolbox::addslashes_deep($quotedKey)))->isFalse();
+            $this->integer($tester->execute(
+                ['key' => $quotedKey, 'value' => $values[0], '--context' => 'plugin:configcli'],
+                ['interactive' => false]
+            ))->isIdenticalTo(0);
+            $this->string(ConfigModel::getConfigurationValues('plugin:configcli', [$quotedKey])[$quotedKey])
+                ->isIdenticalTo($values[0]);
+        } finally {
+            if ($hadSecuredHooks) {
+                $PLUGIN_HOOKS['secured_configs'] = $securedHooks;
+            } else {
+                unset($PLUGIN_HOOKS['secured_configs']);
+            }
+            // DbTestCase rolls back these synthetic configurations and their audit rows.
+        }
     }
 
     public function testGetRights()
