@@ -54,8 +54,11 @@ use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Adapter\TraceableAdapter;
 use mock\DBmysql as HistoryAdapter;
 use DbTestCase;
+use Doctrine\DBAL\ParameterType;
+use Dropdown;
 use itsmng\Database\Orm;
 use ReflectionProperty;
+use Session;
 use Entity;
 use Log as LegacyLog;
 use User;
@@ -67,6 +70,44 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Log extends DbTestCase
 {
+    public function testNullableUserAssignmentKeepsLegacyAuditLabels(): void
+    {
+        global $DB;
+
+        $this->login();
+        $computer = $this->createComputer();
+        $connection = $DB->getDoctrineConnection();
+        $parameters = ['id' => (int) $computer->getID()];
+        $types = ['id' => ParameterType::INTEGER];
+        $this->variable($connection->fetchOne(
+            'SELECT users_id FROM glpi_computers WHERE id = :id',
+            $parameters,
+            $types
+        ))->isNull();
+
+        $userId = Session::getLoginUserID();
+        $this->boolean($computer->update(['id' => $computer->getID(), 'users_id' => $userId]))->isTrue();
+        $this->boolean($computer->update(['id' => $computer->getID(), 'users_id' => 0]))->isTrue();
+        $this->variable($connection->fetchOne(
+            'SELECT users_id FROM glpi_computers WHERE id = :id',
+            $parameters,
+            $types
+        ))->isNull();
+
+        $history = $connection->fetchAllAssociative(
+            "SELECT old_value, new_value FROM glpi_logs
+             WHERE itemtype = 'Computer' AND items_id = :id AND id_search_option = 70
+             ORDER BY id",
+            $parameters,
+            $types
+        );
+        $userLabel = sprintf('%s (%s)', Dropdown::getDropdownName('glpi_users', $userId), $userId);
+        $this->array($history)->isIdenticalTo([
+            ['old_value' => '&nbsp; (0)', 'new_value' => $userLabel],
+            ['old_value' => $userLabel, 'new_value' => '&nbsp; (0)'],
+        ]);
+    }
+
     public function testHistoryTabCountsOnlySavedItemsIncludingRootEntity(): void
     {
         global $DB;
