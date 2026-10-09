@@ -9,22 +9,16 @@ RUN apt-get update \
     dovecot-pop3d \
  && rm -rf /var/lib/apt/lists/*
 
-RUN useradd --create-home --home-dir /home/itsm --shell /bin/bash itsm \
- && useradd --create-home --home-dir /home/testuser --shell /bin/bash testuser \
- && echo 'itsm:applesauce' | chpasswd \
+RUN useradd --create-home --home-dir /home/testuser --shell /bin/bash testuser \
  && echo 'testuser:applesauce' | chpasswd \
- && mkdir -p /home/itsm/Maildir/{cur,new,tmp} /home/testuser/Maildir/{cur,new,tmp} \
- && chown -R itsm:itsm /home/itsm \
- && chown -R testuser:testuser /home/testuser
+ && install -d -o testuser -g testuser \
+    /home/testuser/Maildir/cur /home/testuser/Maildir/new /home/testuser/Maildir/tmp
 
 RUN sed -ri 's|^#?listen =.*$|listen = *, ::|' /etc/dovecot/dovecot.conf \
  && sed -ri 's|^#?mail_location =.*$|mail_location = maildir:~/Maildir|' /etc/dovecot/conf.d/10-mail.conf \
  && sed -ri 's|^#?disable_plaintext_auth =.*$|disable_plaintext_auth = no|' /etc/dovecot/conf.d/10-auth.conf \
  && sed -ri 's|^auth_mechanisms =.*$|auth_mechanisms = plain login|' /etc/dovecot/conf.d/10-auth.conf \
  && sed -ri 's|^ssl =.*$|ssl = no|' /etc/dovecot/conf.d/10-ssl.conf
-
-COPY .github/actions/images/dovecot/getmail_maildir /usr/local/bin/getmail_maildir
-RUN chmod +x /usr/local/bin/getmail_maildir
 
 EXPOSE 143 110
 

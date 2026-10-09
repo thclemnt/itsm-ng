@@ -44,7 +44,7 @@ jobs:
           node-version: '20'
 
       - name: Run composer install
-        run: export NODE_OPTIONS=--openssl-legacy-provider && php bin/console dependencies install
+        run: php bin/console dependencies install
 
       - name: Run isolated Doctrine and domain unit tests
         run: composer test:units:isolated
@@ -134,7 +134,7 @@ jobs:
           docker exec dovecot doveadm expunge -u testuser mailbox 'INBOX' all || true
           docker exec dovecot doveadm purge -u testuser || true
           for f in tests/emails-tests/*.eml; do
-            docker exec -i --user testuser dovecot getmail_maildir /home/testuser/Maildir/ < "$f"
+            docker exec -i dovecot doveadm save -u testuser -m INBOX < "$f"
           done
 
       - name: Run IMAP tests

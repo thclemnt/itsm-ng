@@ -21,13 +21,11 @@ jobs:
         database:
           - image: mariadb:11.8
             label: MariaDB 11.8
-            id: mariadb-11.8
             provider: mysql
             port: 3306
             health: mariadb-admin ping
           - image: postgres:18
             label: PostgreSQL 18
-            id: postgres-18
             provider: pgsql
             port: 5432
             health: pg_isready -U test -d test_db
@@ -84,7 +82,7 @@ jobs:
         run: echo "127.0.0.1 openldap" | sudo tee -a /etc/hosts
 
       - name: Run composer install
-        run: export NODE_OPTIONS=--openssl-legacy-provider && php bin/console dependencies install
+        run: php bin/console dependencies install
 
       - name: Prepare database and install ITSM-ng
         uses: ./.github/actions/setup-test-database

@@ -21,13 +21,11 @@ jobs:
         database:
           - image: mariadb:11.8
             label: MariaDB 11.8
-            id: mariadb-11.8
             provider: mysql
             port: 3306
             health: mariadb-admin ping
           - image: postgres:18
             label: PostgreSQL 18
-            id: postgres-18
             provider: pgsql
             port: 5432
             health: pg_isready -U test -d test_db
@@ -77,7 +75,7 @@ jobs:
         run: echo "127.0.0.1 dovecot" | sudo tee -a /etc/hosts
 
       - name: Run composer install
-        run: export NODE_OPTIONS=--openssl-legacy-provider && php bin/console dependencies install
+        run: php bin/console dependencies install
 
       - name: Prepare database and install ITSM-ng
         uses: ./.github/actions/setup-test-database
@@ -91,7 +89,7 @@ jobs:
           docker exec dovecot doveadm expunge -u testuser mailbox 'INBOX' all || true
           docker exec dovecot doveadm purge -u testuser || true
           for f in tests/emails-tests/*.eml; do
-            docker exec -i --user testuser dovecot getmail_maildir /home/testuser/Maildir/ < "$f"
+            docker exec -i dovecot doveadm save -u testuser -m INBOX < "$f"
           done
 
       - name: Run IMAP tests

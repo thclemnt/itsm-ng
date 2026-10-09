@@ -69,7 +69,7 @@ jobs:
           node-version: '20'
 
       - name: Run composer install
-        run: export NODE_OPTIONS=--openssl-legacy-provider && php bin/console dependencies install
+        run: php bin/console dependencies install
 
       - name: Prepare database and install ITSM-ng
         uses: ./.github/actions/setup-test-database
