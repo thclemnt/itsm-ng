@@ -785,17 +785,31 @@ class User extends DbTestCase
             $localDisplay = new UserDisplayReadOperation($extension);
             $listener = new class () {
                 public int $loads = 0;
+                public int $clears = 0;
+                public function onClear(): void
+                {
+                    ++$this->clears;
+                }
                 public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
                 {
                     ++$this->loads;
                 }
             };
-            $extension->getEventManager()->addEventListener([Events::loadClassMetadata], $listener);
+            $extension->getEventManager()->addEventListener([Events::loadClassMetadata, Events::onClear], $listener);
             $this->array($sort($localScopes->scopes($id)))->isIdenticalTo($sort($grants->scopes($id)));
             $this->array($localDisplay->displayData($id))->isIdenticalTo($users->displayData($id));
             $this->array($localScopes->profileIds($id))->isIdenticalTo($records->identifiers('glpi_profiles_users', 'profiles_id', ['users_id' => $id]));
             $this->integer($listener->loads)->isGreaterThan(0);
             $this->integer($extension->builders)->isIdenticalTo(0);
+            $this->calling($adapter)->getDoctrineConnection = $extension;
+            try {
+                $DB = $adapter;
+                $this->array($sortedIds(array_values(Profile_User::getUserProfiles($id, ['entities_id' => 0]))))
+                    ->isIdenticalTo($baselineIds);
+                $this->integer($listener->clears)->isIdenticalTo(0);
+            } finally {
+                $DB = $originalAdapter;
+            }
             $localScopes->close();
             $localDisplay->close();
         } finally {
@@ -805,6 +819,22 @@ class User extends DbTestCase
             $display->close();
             $manager->clear();
         }
+
+        // Filtered notification scopes reuse ownership without retaining grant rows.
+        $filter = ['entities_id' => 0, 'profiles_id' => $profileId, 'is_recursive' => false];
+        $grant = ['users_id' => $id, 'profiles_id' => $profileId, 'entities_id' => 0];
+        $connection->update('glpi_profiles_users', ['is_recursive' => false], $grant, ['is_recursive' => 'boolean']);
+        $this->array(Profile_User::getUserProfiles($id, $filter))->isIdenticalTo([$profileId => $profileId]);
+        $beforeFiltered = $managers->getValue();
+        $this->array(Profile_User::getUserProfiles($id, $filter + ['users_id' => PHP_INT_MAX]))
+            ->isIdenticalTo([$profileId => $profileId]);
+        $connection->update('glpi_profiles_users', ['is_recursive' => true], $grant, ['is_recursive' => 'boolean']);
+        $this->array(Profile_User::getUserProfiles($id, $filter))->isEmpty();
+        $this->array(Profile_User::getUserProfiles($id, ['entities_id' => null]))->isEmpty();
+        $this->array(Profile_User::getUserProfiles($id, ['entities_id' => PHP_INT_MAX]))->isEmpty();
+        $connection->update('glpi_profiles_users', ['is_recursive' => false], $grant, ['is_recursive' => 'boolean']);
+        $this->array(Profile_User::getUserProfiles($id, $filter))->isIdenticalTo([$profileId => $profileId]);
+        $this->integer($managers->getValue() - $beforeFiltered)->isIdenticalTo(0);
     }
 
     public function testDefaultAddressSelectionUsesCurrentSurvivorsInCallerTransaction(): void
