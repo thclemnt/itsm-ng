@@ -34,6 +34,9 @@
 namespace tests\units;
 
 use DbTestCase;
+use itsmng\Database\Entity\Contact as ContactEntity;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ContactRepository;
 
 class Contact_Supplier extends DbTestCase
 {
@@ -73,6 +76,23 @@ class Contact_Supplier extends DbTestCase
         $address = $contact->getAddress();
         $this->array($address)->hasKey('address')->hasKey('town')->hasKey('country');
         $this->string($address['address'])->isEqualTo('1 Test street');
+
+        $manager = Orm::create($GLOBALS['DB']);
+        try {
+            $selected = $manager->find(ContactEntity::class, (int)$contact_id);
+            $this->object($selected)->isInstanceOf(ContactEntity::class);
+            $selected->phone = '0102030405';
+            $rows = (new ContactRepository($manager))->related((int)$supplier_id, false, null);
+            $this->array($rows)->hasSize(1);
+            $this->integer((int)$rows[0]['id'])->isIdenticalTo((int)$contact_id);
+            $this->string($rows[0]['phone'])->isIdenticalTo('0102030405');
+            $this->boolean($manager->contains($selected))->isTrue();
+            $manager->flush();
+            $this->boolean($contact->getFromDB($contact_id))->isTrue();
+            $this->string($contact->getField('phone'))->isIdenticalTo('0102030405');
+        } finally {
+            $manager->clear();
+        }
 
         $this->boolean($relation->delete(['id' => $relation_id]))->isTrue();
         $this->integer((int)countElementsInTable(

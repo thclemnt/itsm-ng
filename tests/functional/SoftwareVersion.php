@@ -124,8 +124,18 @@ class SoftwareVersion extends DbTestCase
             ))->isTrue();
             $this->integer($manager->getUnitOfWork()->size())->isEqualTo(0);
             $this->integer($loads->count)->isEqualTo(0);
-            $this->array($repository->versions($software->id)[0])->hasKeys(['entities_id', 'softwares_id', 'comment', 'states_id']);
+            $managedVersion = $manager->find(Entity\SoftwareVersion::class, $versions[0]->id);
+            $managedVersion->name = 'Pending release';
+            $rows = $repository->versions($software->id);
+            $this->array($rows[0])->hasKeys(['entities_id', 'softwares_id', 'comment', 'states_id']);
+            $this->string(array_column($rows, 'name', 'id')[$managedVersion->id])->isEqualTo('Pending release');
+            $this->boolean($manager->contains($managedVersion))->isTrue();
             $this->integer($loads->count)->isGreaterThan(0);
+            $manager->flush();
+            $this->string($manager->getConnection()->fetchOne(
+                'SELECT name FROM glpi_softwareversions WHERE id = ?',
+                [$managedVersion->id]
+            ))->isEqualTo('Pending release');
         } finally {
             $manager->clear();
             $_SESSION = $session;

@@ -35,6 +35,7 @@ namespace tests\units;
 
 use Calendar_Holiday;
 use CalendarSegment as CalendarSegmentModel;
+use DateTimeImmutable;
 use Doctrine\Common\EventManager;
 use DbTestCase;
 use Doctrine\DBAL\Connection;
@@ -45,8 +46,12 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Event\PostLoadEventArgs;
 use itsmng\Database\Entity\Config;
+use itsmng\Database\Entity\Calendar as CalendarRecord;
+use itsmng\Database\Entity\CalendarHoliday as CalendarHolidayRecord;
+use itsmng\Database\Entity\Holiday as HolidayRecord;
 use itsmng\Database\Entity\CalendarSegment as CalendarSegmentRecord;
 use itsmng\Database\Orm;
+use itsmng\Database\Repository\CalendarRepository;
 use ReflectionProperty;
 use mock\DBmysql as CalendarAdapterProbe;
 use tests\fixtures\ScalarReadProbe;
@@ -356,9 +361,20 @@ class Calendar extends DbTestCase
         $listener = new class () {
             public int $clears = 0;
             public int $segmentLoads = 0;
+            public bool $captureClosures = false;
+            public ?EntityManager $holidayManager = null;
+            public array $loadedClosures = [];
 
             public function postLoad(PostLoadEventArgs $event): void
             {
+                $record = $event->getObject();
+                if ($this->captureClosures && ($record instanceof CalendarHolidayRecord || $record instanceof HolidayRecord)) {
+                    $this->holidayManager = $event->getObjectManager();
+                    $this->loadedClosures[] = $record;
+                    if ($record instanceof HolidayRecord) {
+                        $record->comment = 'pending custom holiday callback';
+                    }
+                }
                 if ($event->getObject() instanceof CalendarSegmentRecord) {
                     ++$this->segmentLoads;
                     $event->getObject()->end = '09:00:00';
@@ -413,8 +429,19 @@ class Calendar extends DbTestCase
             $this->integer($listener->segmentLoads)->isIdenticalTo(3);
             $this->integer($listener->clears)->isIdenticalTo(0);
             $this->object($GLOBALS['DB'])->isIdenticalTo($originalAdapter);
+            // The annual May closure is inspected even though July 1 is not a holiday.
+            $listener->captureClosures = true;
+            $GLOBALS['DB'] = $adapter;
+            $this->boolean($calendar->isHoliday('2019-07-01'))->isFalse();
+            $this->array($listener->loadedClosures)->hasSize(2);
+            foreach ($listener->loadedClosures as $record) {
+                $this->boolean($listener->holidayManager->contains($record))
+                    ->isTrue('A custom postLoad owner retains both closure and Holiday identities');
+            }
+            $this->integer($listener->clears)->isIdenticalTo(0);
         } finally {
             $GLOBALS['DB'] = $originalAdapter;
+            $listener->holidayManager?->clear();
         }
 
         $originalDate = Type::getType(Types::DATE_IMMUTABLE);
@@ -438,6 +465,28 @@ class Calendar extends DbTestCase
             $this->integer($converter->sqlCalls)->isIdenticalTo(4);
         } finally {
             Type::getTypeRegistry()->override(Types::DATE_IMMUTABLE, $originalDate);
+        }
+
+        $manager = Orm::forConnection($connection);
+        try {
+            $repository = new CalendarRepository($manager);
+            $annual = array_values(array_filter($repository->closures((int)$calendar->getID()),
+                static fn (CalendarHolidayRecord $link): bool => $link->holidays->is_perpetual));
+            $this->array($annual)->hasSize(1);
+            $link = $annual[0];
+            $holiday = $link->holidays;
+            $holiday->comment = 'pending caller holiday edit';
+            $link->calendars = $manager->getReference(CalendarRecord::class, (int)$default_id);
+            $this->boolean($repository->isHoliday((int)$calendar->getID(), new DateTimeImmutable('2019-07-01')))->isFalse();
+            $this->boolean($manager->contains($link))->isTrue();
+            $this->boolean($manager->contains($holiday))->isTrue();
+            $manager->flush();
+            $this->string($connection->fetchOne('SELECT comment FROM glpi_holidays WHERE id = ?', [$holiday->id]))
+                ->isIdenticalTo('pending caller holiday edit');
+            $this->integer((int)$connection->fetchOne('SELECT calendars_id FROM glpi_calendars_holidays WHERE id = ?', [$link->id]))
+                ->isIdenticalTo((int)$default_id);
+        } finally {
+            $manager->clear();
         }
     }
 

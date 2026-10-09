@@ -34,6 +34,11 @@
 namespace tests\units;
 
 use DbTestCase;
+use DateTimeImmutable;
+use itsmng\Database\Entity\SlaLevelTicket as SlaLevelTicketEntity;
+use itsmng\Database\Entity\OlaLevelTicket as OlaLevelTicketEntity;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ServiceLevelRepository;
 
 class SLM extends DbTestCase
 {
@@ -483,6 +488,7 @@ class SLM extends DbTestCase
 
     public function testSlaAndOlaLevelProgressionSchedulesNextLevel()
     {
+        global $DB;
         $this->login();
 
         $slm = new \SLM();
@@ -568,6 +574,27 @@ class SLM extends DbTestCase
         $this->integer((int)$sla_rows[0]['slalevels_id'])->isEqualTo($slalevel_1_id);
         $this->integer((int)$ola_rows[0]['olalevels_id'])->isEqualTo($olalevel_1_id);
 
+        // Scheduled row projections must leave selected queue changes in the caller's unit of work.
+        foreach ([
+            ['sla', SlaLevelTicketEntity::class, $sla_rows[0]['id'], 'glpi_slalevels_tickets'],
+            ['ola', OlaLevelTicketEntity::class, $ola_rows[0]['id'], 'glpi_olalevels_tickets'],
+        ] as [$kind, $class, $queueId, $table]) {
+            $manager = Orm::create($DB);
+            try {
+                $managed = $manager->find($class, (int)$queueId);
+                $managed->date = new DateTimeImmutable('2030-01-10 09:00:00');
+                $selected = (new ServiceLevelRepository($manager, $kind))->scheduled((int)$ticket_id, \SLM::TTR);
+                $this->integer(count($selected))->isEqualTo(1);
+                $this->string($selected[0]['date'])->isIdenticalTo('2030-01-10 09:00:00');
+                $this->boolean($manager->contains($managed))->isTrue();
+                $manager->flush();
+                $this->string($manager->getConnection()->fetchOne('SELECT date FROM ' . $table . ' WHERE id = ?', [$queueId]))
+                    ->isIdenticalTo('2030-01-10 09:00:00');
+            } finally {
+                $manager->clear();
+            }
+        }
+
         \SlaLevel_Ticket::doLevelForTicket($sla_rows[0], \SLM::TTR);
         \OlaLevel_Ticket::doLevelForTicket($ola_rows[0], \SLM::TTR);
 
@@ -577,6 +604,14 @@ class SLM extends DbTestCase
         $this->integer(count($ola_rows))->isEqualTo(1);
         $this->integer((int)$sla_rows[0]['slalevels_id'])->isEqualTo($slalevel_2_id);
         $this->integer((int)$ola_rows[0]['olalevels_id'])->isEqualTo($olalevel_2_id);
+
+        // Public replay owns each selection across the following legacy queue mutation.
+        $DB->update('glpi_slalevels_tickets', ['date' => '2000-01-01 00:00:00'], ['id' => $sla_rows[0]['id']]);
+        $DB->update('glpi_olalevels_tickets', ['date' => '2000-01-01 00:00:00'], ['id' => $ola_rows[0]['id']]);
+        \SlaLevel_Ticket::replayForTicket($ticket_id, \SLM::TTR);
+        \OlaLevel_Ticket::replayForTicket($ticket_id, \SLM::TTR);
+        $this->integer((int)countElementsInTable('glpi_slalevels_tickets', ['tickets_id' => $ticket_id]))->isEqualTo(0);
+        $this->integer((int)countElementsInTable('glpi_olalevels_tickets', ['tickets_id' => $ticket_id]))->isEqualTo(0);
     }
 
     public function testCronSlaAndOlaTicketProcessOverdueLevels()
