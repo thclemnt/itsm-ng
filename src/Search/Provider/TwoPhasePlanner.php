@@ -24,6 +24,12 @@ final class TwoPhasePlanner
         if (isset($CFG_GLPI['union_search_type'][$data['itemtype']]) || isPluginItemType($data['itemtype']) || !empty($data['search']['as_map'])) {
             return false;
         }
+        $sort = SearchOption::getOptions($data['itemtype'])[$data['search']['sort']] ?? null;
+        if ($sort !== null && preg_match('/^glpi_plugin_([a-z0-9]+)/', (string)($sort['table'] ?? ''))) {
+            // Plugin ordering owns a complete ORDER BY, which the ordinary
+            // search compiler already preserves alongside its select/join hooks.
+            return false;
+        }
         return !$data['search']['all_search'] && !$data['search']['view_search'];
     }
 
