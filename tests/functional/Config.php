@@ -2485,7 +2485,12 @@ class Config extends DbTestCase
      */
     public function testLogConfigChange(string $context, string $name, bool $is_secured, string $old_value_prefix)
     {
-        $history_crit = ['itemtype' => ConfigModel::getType(), 'old_value' => ['LIKE', $name . ' %']];
+        $this->variable(Session::getLoginUserID(false))->isIdenticalTo(false);
+        $history_crit = [
+            'itemtype' => ConfigModel::getType(),
+            'old_value' => ['LIKE', $name . ' %'],
+            'ORDER' => 'id ASC',
+        ];
 
         $expected_history = [];
         $history_entry_fields = [
@@ -2493,7 +2498,7 @@ class Config extends DbTestCase
            'items_id'         => 1,
            'itemtype_link'    => '',
            'linked_action'    => 0,
-           'user_name'        => Session::getLoginUserID(false),
+           'user_name'        => '',
            'date_mod'         => $_SESSION['glpi_currenttime'],
            'id_search_option' => 1,
         ];
