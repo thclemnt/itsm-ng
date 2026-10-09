@@ -211,8 +211,8 @@ class Computer extends DbTestCase
             foreach ([[$host, ['itemtype' => 'Monitor']], [(string)$host, []]] as [$selection, $extra]) {
                 $before = $factories->getValue();
                 $actualTypes = iterator_to_array(Computer_Item::getDistinctTypes($selection, $extra));
-                $this->integer($factories->getValue() - $before)->isIdenticalTo(1);
                 $this->array($actualTypes)->isIdenticalTo($record->distinctValues('glpi_computers_items', 'itemtype', ['computers_id' => $selection] + $extra, 'itemtype'));
+                $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
             }
             $this->boolean($DB->insert('glpi_computers_items', ['computers_id' => $host, 'itemtype' => 'Monitor',
                 'items_id' => $monitor->getID(), 'is_deleted' => true, 'is_dynamic' => false]))->isTrue();

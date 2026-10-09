@@ -38,6 +38,7 @@ use Closure;
 use Contract as ContractModel;
 use ContractCost as ContractCostModel;
 use Contract_Supplier;
+use Contract_Item;
 use DBAdapter;
 use DBmysql;
 use DBpgsql;
@@ -45,6 +46,7 @@ use DbTestCase;
 use Doctrine\DBAL\Connection;
 use Group;
 use Group_User;
+use Monitor as MonitorModel;
 use Notification;
 use NotificationTarget;
 use NotificationTemplate;
@@ -52,6 +54,9 @@ use NotificationTemplateTranslation;
 use Notification_NotificationTemplate;
 use Session;
 use itsmng\Database\Entity\Contract as ContractRecord;
+use itsmng\Database\Entity\Computer as ComputerRecord;
+use itsmng\Database\Entity\Monitor as MonitorRecord;
+use itsmng\Database\Entity\ContractItem as ContractItemRecord;
 use itsmng\Database\Entity\ContractCost as ContractCostRecord;
 use itsmng\Database\Entity\Entity;
 use itsmng\Database\Entity\NotificationTemplate as TemplateRecord;
@@ -136,6 +141,72 @@ class Contract extends DbTestCase
             )->isIdenticalTo(1, 'Missing relation with ' . $rel_class);
         }
         $this->assertEntityForwardingPreservesSelectedWriter();
+        $session = $_SESSION;
+        $manager = Orm::create($GLOBALS['DB']);
+        $connection = $manager->getConnection();
+        try {
+            $_SESSION['glpiactiveentities'] = [0];
+            $_SESSION['glpishowallentities'] = false;
+            $_SESSION['glpilist_limit'] = 20;
+            $assets = [];
+            $links = [];
+            foreach ([ComputerRecord::class => 'computer', MonitorRecord::class => 'monitor'] as $class => $association) {
+                $asset = new $class();
+                $asset->entities = $manager->getReference(Entity::class, 0);
+                $asset->name = 'Contract rendering ' . $association;
+                $manager->persist($asset);
+                $link = new ContractItemRecord();
+                $link->contracts = $manager->getReference(ContractRecord::class, (int)$cid);
+                $link->itemtype = $association === 'computer' ? 'Computer' : 'Monitor';
+                $link->$association = $asset;
+                $manager->persist($link);
+                $assets[$association] = $asset;
+                $links[$association] = $link;
+            }
+            $template = new ComputerRecord();
+            $template->entities = $manager->getReference(Entity::class, 0);
+            $template->name = 'Hidden contract template';
+            $template->is_template = true;
+            $manager->persist($template);
+            $templateLink = new ContractItemRecord();
+            $templateLink->contracts = $manager->getReference(ContractRecord::class, (int)$cid);
+            $templateLink->itemtype = 'Computer';
+            $templateLink->computer = $template;
+            $manager->persist($templateLink);
+            $manager->flush();
+            $manager->clear();
+            // The table embeds rendered links in JSON, which escapes URL slashes.
+            $monitorUrl = str_replace('/', '\\/', MonitorModel::getFormURLWithID($assets['monitor']->id));
+            $read = static function () use ($contract): string {
+                ob_start();
+                try {
+                    Contract_Item::showForContract($contract, 2);
+                    return ob_get_contents();
+                } finally {
+                    ob_end_clean();
+                }
+            };
+            $this->string($read())->contains('Contract rendering computer')
+                ->contains('Contract rendering monitor')->notContains('Hidden contract template');
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $before = $factories->getValue();
+            $connection->update('glpi_computers', ['name' => 'Fresh contract computer'], ['id' => $assets['computer']->id]);
+            $renamed = $read();
+            $this->string($renamed)->contains('Fresh contract computer')->notContains('Contract rendering computer')
+                ->contains('Contract rendering monitor')->notContains('Hidden contract template');
+            $connection->update('glpi_monitors', ['name' => null], ['id' => $assets['monitor']->id]);
+            $unnamed = $read();
+            $this->string($unnamed)->contains('Fresh contract computer')->notContains('Contract rendering monitor')
+                ->contains($monitorUrl);
+            $connection->delete('glpi_contracts_items', ['id' => $links['monitor']->id]);
+            $unlinked = $read();
+            $this->string($unlinked)->contains('Fresh contract computer')
+                ->notContains($monitorUrl)->notContains('Hidden contract template');
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+        } finally {
+            $manager->clear();
+            $_SESSION = $session;
+        }
     }
 
     /** The generic forwarding unit must guard its actual parent/child producers. */
