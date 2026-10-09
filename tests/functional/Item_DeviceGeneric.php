@@ -227,12 +227,11 @@ class Item_DeviceGeneric extends DbTestCase
                 $DB = $countAdapter;
                 $this->string($tab->getTabNameForItem($asset))->isIdenticalTo($expected);
                 $this->integer($factories->getValue() - $before)->isIdenticalTo(1);
-                $this->array($probe->queries)->hasSize(17);
+                $this->array($probe->queries)->hasSize(1);
                 $this->integer($probe->builders)->isIdenticalTo(17);
-                foreach ($probe->queries as $query) {
-                    $this->array($query['params'])->isIdenticalTo([(int)$asset->getID(), 'Computer', false]);
-                    $this->array($query['types'])->isIdenticalTo(['bigint', 'string', 'boolean']);
-                }
+                $this->array($probe->queries[0]['params'])->isIdenticalTo(array_merge(...array_fill(0, 17, [(int)$asset->getID(), 'Computer', false])));
+                $this->array($probe->queries[0]['types'])->isIdenticalTo(array_merge(...array_fill(0, 17, ['bigint', 'string', 'boolean'])));
+                $this->integer(substr_count($probe->queries[0]['sql'], ' UNION ALL '))->isIdenticalTo(16);
             } finally {
                 $DB = $database;
             }
@@ -332,7 +331,10 @@ class Item_DeviceGeneric extends DbTestCase
                 }
                 $this->integer($native->countForAsset([$tables[0], $tables[0]], 'Computer', (int)$asset->getID()))
                     ->isIdenticalTo($repository->countForAsset([$tables[0], $tables[0]], 'Computer', (int)$asset->getID()));
+                $queriesBefore = count($probe->queries);
                 $this->integer($native->countForAsset([], 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
+                $this->integer(count($probe->queries))->isIdenticalTo($queriesBefore);
+                $this->integer($native->countForAsset(['glpi_items_devicememories'], 'Computer', 0))->isIdenticalTo(0);
                 $this->integer($native->countForAsset($tables, 'UnsupportedComponentSubject', (int)$asset->getID()))
                     ->isIdenticalTo($repository->countForAsset($tables, 'UnsupportedComponentSubject', (int)$asset->getID()));
                 $activeId = (int)reset($active)['id'];

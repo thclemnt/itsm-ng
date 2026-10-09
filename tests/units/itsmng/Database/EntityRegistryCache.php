@@ -754,21 +754,34 @@ class EntityRegistryCache extends test
         $previousModel = $model->getValue();
         $pool = new ArrayAdapter(storeSerialized: false);
         $GLOBALS['GLPI_CACHE'] = new Psr16Cache($pool);
-        $snapshot = static fn (): array => [EntityRegistry::tables(), EntityRegistry::legacyTables(), EntityRegistry::relations(), EntityRegistry::lifecycleRelations(), EntityRegistry::nativeTimestamps(), EntityRegistry::booleanColumns(), EntityRegistry::references('glpi_tickets'), EntityRegistry::fieldTypes('glpi_entities'), EntityRegistry::fieldEnums('glpi_entities'), EntityRegistry::promotionSourceMapping(), EntityRegistry::computerItemMapping(), EntityRegistry::virtualMachineCountMapping(), EntityRegistry::infocomPresenceMapping()];
+        $snapshot = static fn (): array => [
+            EntityRegistry::tables(), EntityRegistry::legacyTables(), EntityRegistry::relations(),
+            EntityRegistry::lifecycleRelations(), EntityRegistry::nativeTimestamps(), EntityRegistry::booleanColumns(),
+            EntityRegistry::references('glpi_tickets'), EntityRegistry::fieldTypes('glpi_entities'), EntityRegistry::fieldEnums('glpi_entities'),
+            EntityRegistry::promotionSourceMapping(), EntityRegistry::computerItemMapping(), EntityRegistry::virtualMachineCountMapping(),
+            EntityRegistry::infocomPresenceMapping(), EntityRegistry::scalarIdentifiers(), EntityRegistry::reservationUserMapping(),
+            EntityRegistry::entityScopeOwner('glpi_items_devicememories'), EntityRegistry::componentCountMapping('glpi_items_devicememories'),
+            EntityRegistry::treePointMapping('glpi_entities'), EntityRegistry::booleanFields('glpi_entities'),
+            EntityRegistry::columnNames('glpi_entities'), EntityRegistry::readOnlyColumns('glpi_items_devicememories'),
+            EntityRegistry::discriminatedReferences('glpi_items_devicememories'), EntityRegistry::relationsByPolicy(ReferenceKind::Inherited),
+        ];
         try {
             $model->setValue(null, null);
             $cold = serialize($snapshot());
-            $this->array($pool->getValues())->hasSize(1);
+            $viewCount = count($model->getValue());
+            $this->array(EntityRegistry::tables())->isNotEmpty();
+            $this->array($pool->getValues())->hasSize($viewCount, 'One cold build populates every logical view');
             foreach ($pool->getValues() as $value) {
                 $this->string($value);
             }
             $model->setValue(null, null);
+            EntityRegistry::tables();
+            $this->array(array_keys($model->getValue()))->isIdenticalTo(['tables'], 'A warm table lookup loads only its logical view');
             $this->string(serialize($snapshot()))->isIdenticalTo($cold);
-            // A valid old-format payload has no enum facts and must be rebuilt.
-            $oldModel = $model->getValue();
-            unset($oldModel['enums']);
-            $bytes = serialize($oldModel);
-            $key = array_key_first($pool->getValues());
+            $this->integer(count($model->getValue()))->isIdenticalTo($viewCount);
+            // A valid old-format view has no enum facts and must be rebuilt.
+            $bytes = serialize(['tables' => EntityRegistry::tables()]);
+            $key = 'orm_registry_view_' . MappingFingerprint::current() . '_tables';
             $GLOBALS['GLPI_CACHE']->set($key, '1:' . hash('sha256', $bytes) . ':' . $bytes);
             $model->setValue(null, null);
             $this->string(serialize($snapshot()))->isIdenticalTo($cold);
@@ -776,6 +789,33 @@ class EntityRegistryCache extends test
             $GLOBALS['GLPI_CACHE']->clear();
             $model->setValue(null, null);
             $this->string(serialize($snapshot()))->isIdenticalTo($cold);
+
+            $unavailable = new class (new ArrayAdapter()) extends Psr16Cache {
+                public int $gets = 0;
+                public bool $throws = false;
+
+                public function get($key, $default = null): mixed
+                {
+                    ++$this->gets;
+                    return null;
+                }
+
+                public function setMultiple($values, $ttl = null): bool
+                {
+                    if ($this->throws) {
+                        throw new RuntimeException('Cache unavailable');
+                    }
+                    return false;
+                }
+            };
+            $GLOBALS['GLPI_CACHE'] = $unavailable;
+            foreach ([false, true] as $throws) {
+                $unavailable->throws = $throws;
+                $unavailable->gets = 0;
+                $model->setValue(null, null);
+                $this->string(serialize($snapshot()))->isIdenticalTo($cold);
+                $this->integer($unavailable->gets)->isIdenticalTo(1, 'All views remain local after a failed cache population');
+            }
         } finally {
             $GLOBALS['GLPI_CACHE'] = $previous;
             $model->setValue(null, $previousModel);
