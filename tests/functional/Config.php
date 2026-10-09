@@ -74,6 +74,7 @@ use Doctrine\ORM\Query\Exec\SqlFinalizer;
 use Doctrine\ORM\Query\SqlOutputWalker;
 use Glpi\Console\Config\SetCommand;
 use Glpi\Console\Database\InstallCommand;
+use Glpi\Console\System\ClearCacheCommand;
 use GLPIKey;
 use Group;
 use Impact as ImpactModel;
@@ -115,10 +116,12 @@ use Session;
 use Symfony\Component\Cache\Adapter\AbstractAdapter;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Adapter\FilesystemAdapter;
+use Symfony\Component\Cache\Exception\InvalidArgumentException as CacheConfigurationException;
 use Symfony\Component\Cache\Psr16Cache;
 use Symfony\Component\Console\Exception\InvalidArgumentException as ConsoleInvalidArgumentException;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\Filesystem\Filesystem;
 use tests\fixtures\ScalarReadProbe;
 use Throwable;
 use Toolbox;
@@ -1042,6 +1045,72 @@ class Config extends DbTestCase
             } else {
                 unset($GLOBALS['GLPI_CACHE']);
             }
+        }
+    }
+
+    public function testCacheClearCommandUsesConfiguredBackendAndReportsFailure(): void
+    {
+        global $DB, $GLPI_CACHE, $PHP_LOG_HANDLER;
+        $connection = $DB->getDoctrineConnection();
+        $where = ['context' => 'core', 'name' => 'cache_db'];
+        $original = $connection->fetchAssociative('SELECT value FROM glpi_configs WHERE context = ? AND name = ?', array_values($where));
+        $previous = $GLPI_CACHE;
+        $directory = 'cache-clear-' . bin2hex(random_bytes(6));
+        $unavailable = ['options' => ['ttl' => -1]];
+        $settings = ['adapter' => 'filesystem', 'options' => ['namespace' => 'custom-deployment', 'cache_dir' => $directory]];
+        $blocked = GLPI_CACHE_DIR . '/' . $directory . '/custom-deployment/A/B/blocked';
+        $GLPI_CACHE = new Psr16Cache(new ArrayAdapter());
+        $GLPI_CACHE->set('borrowed', 'retained');
+        try {
+            $this->string($GLPI_CACHE->get('borrowed'))->isIdenticalTo('retained');
+            if ($original === false) {
+                $connection->insert('glpi_configs', $where + ['value' => json_encode($unavailable, JSON_THROW_ON_ERROR)]);
+            } else {
+                $connection->update('glpi_configs', ['value' => json_encode($unavailable, JSON_THROW_ON_ERROR)], $where);
+            }
+            $command = new CommandTester(new ClearCacheCommand());
+            $this->exception(static fn () => $command->execute([]))
+                ->isInstanceOf(CacheConfigurationException::class)
+                ->hasMessage('Cache namespace must be a string and TTL a nonnegative integer.');
+            $this->string($GLPI_CACHE->get('borrowed'))->isIdenticalTo('retained');
+
+            $connection->update('glpi_configs', ['value' => json_encode($settings, JSON_THROW_ON_ERROR)], $where);
+            $cache = ConfigModel::getCache('cache_db');
+            // A real filesystem clear cannot unlink this nonempty directory.
+            $this->boolean(mkdir($blocked, 0700, true))->isTrue();
+            file_put_contents($blocked . '/retained', 'uncleared');
+            $this->integer($command->execute([]))->isIdenticalTo(1);
+            $this->string($command->getDisplay())->contains('The application cache could not be cleared.');
+            $this->string($command->getDisplay())->notContains('Cache reset successful');
+            $this->string(file_get_contents($blocked . '/retained'))->isIdenticalTo('uncleared');
+            $this->string($GLPI_CACHE->get('borrowed'))->isIdenticalTo('retained');
+
+            unlink($blocked . '/retained');
+            rmdir($blocked);
+            $this->boolean($cache->set('mapping', 'previous deployment'))->isTrue();
+            $this->string($cache->get('mapping'))->isIdenticalTo('previous deployment');
+            $this->integer($command->execute([]))->isIdenticalTo(0);
+            $this->string($command->getDisplay())->contains('Cache reset successful');
+            $this->boolean($cache->has('mapping'))->isFalse();
+            $this->string($GLPI_CACHE->get('borrowed'))->isIdenticalTo('retained');
+
+            $records = $PHP_LOG_HANDLER->getRecords();
+            $this->array($records)->hasSize(4);
+            foreach ([$unavailable, $settings, $settings, $settings] as $index => $configuration) {
+                $this->string($records[$index]['level_name'])->isIdenticalTo('DEBUG');
+                $this->string(explode("\n", $records[$index]['message'], 2)[1])->isIdenticalTo(
+                    'CACHE CONFIG  cache_db ' . str_replace("\n", "\n  ", print_r($configuration, true))
+                );
+            }
+            $PHP_LOG_HANDLER->clear();
+        } finally {
+            if ($original === false) {
+                $connection->delete('glpi_configs', $where);
+            } else {
+                $connection->update('glpi_configs', $original, $where);
+            }
+            $GLPI_CACHE = $previous;
+            (new Filesystem())->remove(GLPI_CACHE_DIR . '/' . $directory);
         }
     }
 
