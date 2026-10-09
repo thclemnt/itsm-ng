@@ -104,6 +104,7 @@ jobs:
           test "$ready" = true
 
       - name: Load LDAP fixtures
+        shell: bash
         run: |
           for f in tests/LDAP/ldif/*.ldif; do
             awk '
