@@ -44,7 +44,7 @@ jobs:
       matrix:
         php: ['8.2', '8.5']
         database:
-          - image: public.ecr.aws/docker/library/mariadb:11.8
+          - image: mariadb:11.8
             label: MariaDB 11.8
             id: mariadb-11.8
             provider: mysql
@@ -52,7 +52,7 @@ jobs:
             health: mariadb-admin ping
             client: mariadb
             tzinfo: mariadb-tzinfo-to-sql
-          - image: public.ecr.aws/docker/library/mysql:8.4
+          - image: mysql:8.4
             label: MySQL 8.4
             id: mysql-8.4
             provider: mysql
@@ -60,13 +60,13 @@ jobs:
             health: mysqladmin ping
             client: mysql
             tzinfo: mysql_tzinfo_to_sql
-          - image: public.ecr.aws/docker/library/postgres:14
+          - image: postgres:14
             label: PostgreSQL 14
             id: postgres-14
             provider: pgsql
             port: 5432
             health: pg_isready -U test -d itsm_test_application
-          - image: public.ecr.aws/docker/library/postgres:18
+          - image: postgres:18
             label: PostgreSQL 18
             id: postgres-18
             provider: pgsql

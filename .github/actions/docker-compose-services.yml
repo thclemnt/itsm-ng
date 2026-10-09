@@ -1,7 +1,7 @@
 services:
   db:
     container_name: "db"
-    image: "${DB_IMAGE:-public.ecr.aws/docker/library/mariadb:10.11}"
+    image: "${DB_IMAGE:-mariadb:10.11}"
     environment:
       MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
       MYSQL_DATABASE: "${TEST_DB_NAME:-glpi}"

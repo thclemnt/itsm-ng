@@ -132,8 +132,8 @@ APPLICATION_ROOT=$(readlink -f "$WORKING_DIR/..")
 [[ ! -z "$APP_CONTAINER_HOME" ]] || APP_CONTAINER_HOME=$(mktemp -d -t glpi-tests-home-XXXXXXXXXX)
 [[ ! -z "$TEST_DB_TYPE" ]] || TEST_DB_TYPE=mysql
 case "$TEST_DB_TYPE" in
-  mysql) [[ ! -z "$DB_IMAGE" ]] || DB_IMAGE=public.ecr.aws/docker/library/mariadb:10.11 ;;
-  pgsql) [[ ! -z "$DB_IMAGE" ]] || DB_IMAGE=public.ecr.aws/docker/library/postgres:18 ;;
+  mysql) [[ ! -z "$DB_IMAGE" ]] || DB_IMAGE=mariadb:10.11 ;;
+  pgsql) [[ ! -z "$DB_IMAGE" ]] || DB_IMAGE=postgres:18 ;;
   *) echo "Unsupported test database provider: $TEST_DB_TYPE" >&2; exit 1 ;;
 esac
 [[ ! -z "$PHP_IMAGE" ]] || PHP_IMAGE=itsm-tests-app:local

@@ -19,12 +19,12 @@ jobs:
       matrix:
         php: ['8.2', '8.5']
         database:
-          - image: public.ecr.aws/docker/library/mariadb:11.8
+          - image: mariadb:11.8
             label: MariaDB 11.8
             provider: mysql
             port: 3306
             health: mariadb-admin ping
-          - image: public.ecr.aws/docker/library/postgres:18
+          - image: postgres:18
             label: PostgreSQL 18
             provider: pgsql
             port: 5432

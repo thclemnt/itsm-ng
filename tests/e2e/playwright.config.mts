@@ -10,6 +10,7 @@ export default defineConfig({
   testMatch: '*.spec.mts',
   timeout: 60_000,
   fullyParallel: false,
+  forbidOnly: !!process.env.CI,
   workers: 1,
   retries: process.env.CI ? 2 : 0,
   reporter: [
