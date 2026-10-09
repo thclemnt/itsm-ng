@@ -109,13 +109,8 @@ class Impact extends CommonGLPI
             $total = 0;
         } elseif ($is_enabled_asset) {
             // If on an asset, get the number of its direct dependencies
-            $database = $DB;
-            $connection = $database->getDoctrineConnection();
-            OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
-            $total = Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $item, $enabled): int {
-                return (new ImpactRepository($manager ?? Orm::forConnection($connection)))
-                    ->relationCount(get_class($item), (int)$item->getID(), $enabled);
-            });
+            $total = Orm::read($DB, static fn (EntityManager $manager): int =>
+                (new ImpactRepository($manager))->relationCount(get_class($item), (int)$item->getID(), $enabled));
         }
 
         return self::createTabEntry(__("Impact analysis"), $total);
@@ -331,13 +326,11 @@ class Impact extends CommonGLPI
                         || $itemtype_item['node']['ITILObjects']['problems']
                         || $itemtype_item['node']['ITILObjects']['changes']
                     )) {
-                        $em = Orm::create($DB);
-                        try {
-                            $overrides = (new UserRepository($em))
-                                ->priorityColors((int)Session::getLoginUserID());
-                        } finally {
-                            $em->clear();
-                        }
+                        $database = $DB;
+                        $connection = $database->getDoctrineConnection();
+                        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+                        $overrides = Orm::withConnection($connection, static fn (EntityManager $manager): array =>
+                            (new UserRepository($manager))->priorityColors((int)Session::getLoginUserID()));
                         // Match User::computePreferences: only NULL inherits a default.
                         $priority_colors = [];
                         for ($priority = 1; $priority <= 6; ++$priority) {
@@ -938,18 +931,20 @@ class Impact extends CommonGLPI
             $criteria['is_template'] = false;
         }
         $config = Config::getConfigurationValues('core');
-        return (new ImpactRepository(Orm::create($DB)))->searchAssets(
-            $itemtype::getTable(),
-            $itemtype::getNameField(),
-            $criteria,
-            $used,
-            $filter,
-            $page,
-            ($config['names_format'] ?? User::FIRSTNAME_BEFORE) == User::FIRSTNAME_BEFORE,
-            Session::haveRight('project', Project::READALL),
-            (int)Session::getLoginUserID(),
-            $_SESSION['glpigroups'] ?? [],
-        );
+        return Orm::read($DB, static function (EntityManager $manager) use ($itemtype, $criteria, $used, $filter, $page, $config): array {
+            return (new ImpactRepository($manager))->searchAssets(
+                $itemtype::getTable(),
+                $itemtype::getNameField(),
+                $criteria,
+                $used,
+                $filter,
+                $page,
+                ($config['names_format'] ?? User::FIRSTNAME_BEFORE) == User::FIRSTNAME_BEFORE,
+                Session::haveRight('project', Project::READALL),
+                (int)Session::getLoginUserID(),
+                $_SESSION['glpigroups'] ?? [],
+            );
+        });
     }
 
     /**
@@ -1186,8 +1181,8 @@ class Impact extends CommonGLPI
         }
 
         // Get relations of the current node
-        $relations = (new ImpactRepository(Orm::create($DB)))
-            ->relations(get_class($node), (int)$node->getID(), $target);
+        $relations = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new ImpactRepository($manager))->relations(get_class($node), (int)$node->getID(), $target));
 
         // Add current code to the graph if we found at least one impact relation
         if (count($relations)) {

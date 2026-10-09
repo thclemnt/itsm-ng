@@ -42,6 +42,15 @@ final class Orm
         return self::forConnection($connection);
     }
 
+    /** @internal Read fully materialized values; never return entities, repositories or lazy iterators. */
+    public static function read(DBAdapter $db, callable $operation): mixed
+    {
+        $connection = $db->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($db, $connection);
+        return self::withReadConnection($connection, static fn (?EntityManager $manager): mixed =>
+            $operation($manager ?? self::forConnection($connection)));
+    }
+
     /** @internal Value-only application work; custom configurations use create()/forConnection(). */
     public static function withConnection(Connection $connection, callable $operation): mixed
     {

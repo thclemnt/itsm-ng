@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ImpactRepository;
 
@@ -58,8 +59,8 @@ class ImpactItem extends CommonDBTM
     ) {
         global $DB;
 
-        $id = (new ImpactRepository(Orm::create($DB)))
-            ->itemId(get_class($item), (int)$item->getID());
+        $id = Orm::read($DB, static fn (EntityManager $manager): ?int =>
+            (new ImpactRepository($manager))->itemId(get_class($item), (int)$item->getID()));
         $impact_item = new self();
 
         if ($id === null && $create_if_missing) {

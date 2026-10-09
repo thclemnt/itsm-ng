@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\ReferenceValues;
 use itsmng\Database\Repository\ReservationRepository;
@@ -241,12 +242,6 @@ class Reservation extends CommonDBChild
     }
 
 
-    private static function repository(): ReservationRepository
-    {
-        global $DB;
-        return new ReservationRepository(Orm::create($DB));
-    }
-
     private static function reservationUserName(array $row, bool $link = false): string
     {
         if (empty($row['users_id'])) {
@@ -262,10 +257,13 @@ class Reservation extends CommonDBChild
     **/
     public function getUniqueGroupFor($reservationitems_id)
     {
+        global $DB;
+
         do {
             $rand = mt_rand(1, mt_getrandmax());
 
-        } while (self::repository()->groupExists((int)$reservationitems_id, $rand));
+        } while (Orm::read($DB, static fn (EntityManager $manager): bool =>
+            (new ReservationRepository($manager))->groupExists((int)$reservationitems_id, $rand)));
 
         return $rand;
     }
@@ -278,6 +276,8 @@ class Reservation extends CommonDBChild
     **/
     public function is_reserved()
     {
+        global $DB;
+
         if (
             !isset($this->fields["reservationitems_id"])
             || empty($this->fields["reservationitems_id"])
@@ -285,12 +285,13 @@ class Reservation extends CommonDBChild
             return true;
         }
 
-        return self::repository()->conflicts(
-            (int)$this->fields['reservationitems_id'],
-            $this->fields['begin'],
-            $this->fields['end'],
-            isset($this->fields['id']) ? (int)$this->fields['id'] : null
-        );
+        return Orm::read($DB, fn (EntityManager $manager): bool =>
+            (new ReservationRepository($manager))->conflicts(
+                (int)$this->fields['reservationitems_id'],
+                $this->fields['begin'],
+                $this->fields['end'],
+                isset($this->fields['id']) ? (int)$this->fields['id'] : null
+            ));
     }
 
 
@@ -416,8 +417,11 @@ class Reservation extends CommonDBChild
 
     public function post_purgeItem()
     {
+        global $DB;
+
         if (isset($this->input['_delete_group']) && $this->input['_delete_group']) {
-            $ids = self::repository()->groupIds((int)$this->fields['reservationitems_id'], (int)$this->fields['group']);
+            $ids = Orm::read($DB, fn (EntityManager $manager): array =>
+                (new ReservationRepository($manager))->groupIds((int)$this->fields['reservationitems_id'], (int)$this->fields['group']));
             $rr = clone $this;
             unset($rr->input['_delete_group']);
             foreach ($ids as $id) {
@@ -980,13 +984,16 @@ class Reservation extends CommonDBChild
     **/
     public static function displayReservationDay($ID, $date)
     {
+        global $DB;
+
         if (!empty($ID)) {
             self::displayReservationsForAnItem($ID, $date);
         } else {
             $debut = $date . " 00:00:00";
             $fin   = (new DateTimeImmutable($date))->modify("+1 day")->format("Y-m-d 00:00:00");
 
-            $iterator = self::repository()->activeItemIds($debut, $fin);
+            $iterator = Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new ReservationRepository($manager))->activeItemIds($debut, $fin));
 
             if (count($iterator)) {
                 $m = new ReservationItem();
@@ -1039,12 +1046,15 @@ class Reservation extends CommonDBChild
     **/
     public static function displayReservationsForAnItem($ID, $date)
     {
+        global $DB;
+
         $resa     = new self();
         list($year, $month, $day) = explode("-", (string) $date);
         $debut    = $date . " 00:00:00";
         $fin      = $date . " 23:59:59";
 
-        $iterator = self::repository()->during((int)$ID, $debut, (new DateTimeImmutable($date))->modify("+1 day")->format("Y-m-d 00:00:00"));
+        $iterator = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new ReservationRepository($manager))->during((int)$ID, $debut, (new DateTimeImmutable($date))->modify("+1 day")->format("Y-m-d 00:00:00")));
 
         if (count($iterator)) {
             echo "<table width='100%' aria-label='User Time Interval'>";
@@ -1125,7 +1135,8 @@ class Reservation extends CommonDBChild
             $now = $_SESSION["glpi_currenttime"];
 
             // Print reservation in progress
-            $iterator = self::repository()->forItem((int)$ri->fields['id'], $now, false);
+            $iterator = Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new ReservationRepository($manager))->forItem((int)$ri->fields['id'], $now, false));
 
             echo "<table class='tab_cadre_fixehov' aria-label='Current and future reservations'><tr><th colspan='5'>";
 
@@ -1178,7 +1189,8 @@ class Reservation extends CommonDBChild
             echo "</table></div>\n";
 
             // Print old reservations
-            $iterator = self::repository()->forItem((int)$ri->fields['id'], $now, true);
+            $iterator = Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new ReservationRepository($manager))->forItem((int)$ri->fields['id'], $now, true));
 
             echo "<div class='spaced'><table class='tab_cadre_fixehov' aria-label='Past Reservations'><tr><th colspan='5'>";
 

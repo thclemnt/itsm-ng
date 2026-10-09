@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Event;
 use itsmng\Database\DropdownChoiceContext;
 use itsmng\Database\Entity\DocumentItem;
@@ -2445,8 +2446,9 @@ class Ticket extends CommonITILObject
     {
         global $DB;
 
-        $rows = (new TicketAssetRepository(Orm::create($DB)))
-            ->active((string)$itemtype, (int)$items_id, array_merge($this->getSolvedStatusArray(), $this->getClosedStatusArray()), (int)$type);
+        $rows = Orm::read($DB, fn (EntityManager $manager): array =>
+            (new TicketAssetRepository($manager))
+                ->active((string)$itemtype, (int)$items_id, array_merge($this->getSolvedStatusArray(), $this->getClosedStatusArray()), (int)$type));
         return new RowIterator($rows);
 
     }

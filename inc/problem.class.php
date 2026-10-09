@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ITILAssetRepository;
 use itsmng\Database\RowIterator;
@@ -1946,10 +1947,10 @@ class Problem extends CommonITILObject
     {
         global $DB;
 
-        return new RowIterator(
-            (new ITILAssetRepository(Orm::create($DB)))
-                ->active('Problem', (string)$itemtype, (int)$items_id, array_merge($this->getSolvedStatusArray(), $this->getClosedStatusArray()))
-        );
+        $rows = Orm::read($DB, fn (EntityManager $manager): array =>
+            (new ITILAssetRepository($manager))
+                ->active('Problem', (string)$itemtype, (int)$items_id, array_merge($this->getSolvedStatusArray(), $this->getClosedStatusArray())));
+        return new RowIterator($rows);
     }
 
 
