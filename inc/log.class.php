@@ -188,7 +188,7 @@ class Log extends CommonDBTM
                                                      $val2["table"],
                                                      $oldval
                                                  ),
-                                                 $oldval
+                                                 $oldval ?? 0
                                              )),
                                              addslashes(sprintf(
                                                  __('%1$s (%2$s)'),
@@ -196,7 +196,7 @@ class Log extends CommonDBTM
                                                      $val2["table"],
                                                      $values[$key]
                                                  ),
-                                                 $values[$key]
+                                                 $values[$key] ?? 0
                                              ))];
                         }
                     }
