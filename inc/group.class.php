@@ -33,6 +33,7 @@
 
 use itsmng\Database\MappedReads;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\ConsumableRepository;
 use itsmng\Database\Repository\GroupItemRepository;
 use itsmng\Database\Repository\NotificationRecipientRepository;
@@ -689,9 +690,17 @@ class Group extends CommonTreeDropdown
         $counts = [];
         $scopes = [];
         $total = 0;
-        $em = Orm::create($DB);
+        $managers = [];
+        $repositoryForRead = static function () use (&$managers): GroupItemRepository {
+            global $DB;
+            $database = $DB;
+            $connection = $database->getDoctrineConnection();
+            OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+            $key = spl_object_id($connection);
+            $manager = $managers[$key] ??= Orm::forConnection($connection);
+            return new GroupItemRepository($manager);
+        };
         try {
-            $repository = new GroupItemRepository($em);
             foreach ($types as $type) {
                 $item = getItemForItemtype($type);
                 if (!$item || !$item->canView() || !$item->isField($type === 'Consumable' ? 'items_id' : $field)) {
@@ -711,8 +720,8 @@ class Group extends CommonTreeDropdown
                         $scope['is_deleted'] = 0;
                     }
                 }
-                if ($repository::supports($type)) {
-                    $counts[$type] = $repository->count($type, $field, $groups_ids, (bool)$user, $scope);
+                if (GroupItemRepository::supports($type)) {
+                    $counts[$type] = $repositoryForRead()->count($type, $field, $groups_ids, (bool)$user, $scope);
                 } else {
                     $criteria = [$field => $groups_ids];
                     if ($user) {
@@ -735,8 +744,8 @@ class Group extends CommonTreeDropdown
                     $start -= $count;
                     continue;
                 }
-                if ($repository::supports($type)) {
-                    $ids = $repository->ids($type, $field, $groups_ids, (bool)$user, $scopes[$type], $remaining, $start);
+                if (GroupItemRepository::supports($type)) {
+                    $ids = $repositoryForRead()->ids($type, $field, $groups_ids, (bool)$user, $scopes[$type], $remaining, $start);
                 } else {
                     $item = getItemForItemtype($type);
                     $ids = array_map('intval', array_column(iterator_to_array($DB->request([
@@ -755,7 +764,17 @@ class Group extends CommonTreeDropdown
             }
             return $total;
         } finally {
-            $em->clear();
+            $cleanupError = null;
+            foreach ($managers as $manager) {
+                try {
+                    $manager->clear();
+                } catch (Throwable $error) {
+                    $cleanupError ??= $error;
+                }
+            }
+            if ($cleanupError !== null) {
+                throw $cleanupError;
+            }
         }
     }
 
