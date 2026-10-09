@@ -10,6 +10,7 @@ use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\NonUniqueResultException;
+use Doctrine\ORM\Query;
 use Doctrine\ORM\QueryBuilder;
 use InvalidArgumentException;
 use itsmng\Database\BooleanValue;
@@ -20,6 +21,7 @@ use itsmng\Database\Entity\ProfileUser;
 use itsmng\Database\Entity\User;
 use itsmng\Database\Entity\UserEmail;
 use itsmng\Database\EntityRegistry;
+use itsmng\Database\MappedRowProjection;
 use itsmng\Database\RecordCriteria;
 use LogicException;
 use Search;
@@ -209,7 +211,8 @@ final class UserRepository
             ->select('COUNT(r.id)')
             ->getQuery()
             ->getSingleScalarResult();
-        $query->select('r');
+        $projection = new MappedRowProjection($this->em, $metadata);
+        $projection->select($query);
         $sort = $params['sort'] ?? 'id';
         $compiler->order([$sort . ' ' . strtoupper($params['order'] ?? 'ASC')]);
         if ($sort !== 'id') {
@@ -218,10 +221,9 @@ final class UserRepository
         $query->setFirstResult(max(0, (int)($params['start'] ?? 0)))
             ->setMaxResults(max(1, (int)($params['list_limit'] ?? 50)));
         $rows = [];
-        $records = new RecordRepository($this->em);
         foreach ($query->getQuery()
-            ->toIterable() as $record) {
-            $rows[] = $records->toRow($record);
+            ->toIterable([], Query::HYDRATE_ARRAY) as $values) {
+            $rows[] = $projection->toRow($values);
         }
         return ['rows' => $rows, 'total' => $total];
     }
