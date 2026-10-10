@@ -165,6 +165,40 @@ class Computer extends DbTestCase
             $this->object($em->getConnection())->isIdenticalTo($connection);
             $level = $connection->getTransactionNestingLevel();
 
+            $activeLinks = $repository->activeComputerConnections('Monitor', (string)$monitor->getID());
+            $this->array(array_column($activeLinks, null, 'id'))
+                ->isEqualTo(array_column($selected, null, 'id'));
+            foreach ($activeLinks as $row) {
+                $this->array(array_keys($row))->isIdenticalTo(['id', 'computers_id', 'is_dynamic']);
+            }
+            $this->array($repository->activeComputerConnections('Monitor', PHP_INT_MAX))->isEmpty();
+            $this->array($repository->activeComputerConnections('__missing_connection_type__', (int)$monitor->getID()))->isEmpty();
+            $retainedLink = $em->find(ComputerItemRecord::class, (int)$links[0]->getID());
+            $retainedLink->is_deleted = true;
+            try {
+                $this->boolean($DB->update('glpi_computers_items', ['is_dynamic' => true], ['id' => $links[0]->getID()]))->isTrue();
+                $freshLinks = $repository->activeComputerConnections('Monitor', (int)$monitor->getID());
+                $this->boolean((bool)array_column($freshLinks, 'is_dynamic', 'id')[$links[0]->getID()])->isTrue();
+                $this->boolean((bool)array_column($activeLinks, 'is_dynamic', 'id')[$links[0]->getID()])->isFalse();
+                $this->boolean($em->contains($retainedLink))->isTrue();
+                $this->boolean($retainedLink->is_deleted)->isTrue();
+            } finally {
+                $DB->update('glpi_computers_items', ['is_dynamic' => false], ['id' => $links[0]->getID()]);
+            }
+            $monitorId = (int)$monitor->getID();
+            $firstLinkId = (int)$links[0]->getID();
+            Orm::read($DB, function (EntityManager $outer) use ($monitorId, $firstLinkId): void {
+                $pending = $outer->find(ComputerItemRecord::class, $firstLinkId);
+                $pending->is_dynamic = true;
+                $snapshot = Orm::read($GLOBALS['DB'], static fn (EntityManager $inner): array =>
+                    (new AssetRepository($inner))->activeComputerConnections('Monitor', $monitorId));
+                $this->boolean((bool)array_column($snapshot, 'is_dynamic', 'id')[$firstLinkId])->isFalse();
+                $this->boolean($outer->contains($pending))->isTrue();
+                $this->boolean($pending->is_dynamic)->isTrue();
+            });
+            $this->boolean($em->contains($retainedLink))->isTrue();
+            $this->boolean($retainedLink->is_deleted)->isTrue();
+
             $host = $ids[0];
             $hostModel = $computers[$host];
             $expectedLinks = $repository->linkedItems('Computer', $host);
@@ -405,6 +439,25 @@ class Computer extends DbTestCase
                 ]);
             }
             $this->string($rows[$linkIds[0]]['name'])->contains('&withtemplate=1');
+            try {
+                $this->boolean($DB->update('glpi_computers_items', ['is_deleted' => true], ['id' => $linkIds[1]]))->isTrue();
+                $freshRows = $render();
+                $this->array(array_keys($freshRows))->isIdenticalTo([$linkIds[0]]);
+                $this->array($rows)->hasSize(2);
+                $this->boolean($em->contains($retainedLink))->isTrue();
+                $this->boolean($retainedLink->is_deleted)->isTrue();
+            } finally {
+                $DB->update('glpi_computers_items', ['is_deleted' => false], ['id' => $linkIds[1]]);
+            }
+            $_SESSION['glpiactiveprofile']['monitor'] = 0;
+            ob_start();
+            try {
+                Computer_Item::showForItem($monitor);
+                $this->string(ob_get_contents())->isEmpty();
+            } finally {
+                ob_end_clean();
+                $_SESSION['glpiactiveprofile']['monitor'] = READ;
+            }
             $_SESSION['glpiactiveprofile']['computer'] = 0;
             $denied = $render();
             foreach ($denied as $row) {

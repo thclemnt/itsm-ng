@@ -107,6 +107,20 @@ final class AssetRepository
             ->executeQuery()->fetchAllAssociative();
     }
 
+    /** Active link snapshots for the connected item's ACL-gated computer tab. */
+    public function activeComputerConnections(string $itemtype, int|string $id): array
+    {
+        $metadata = $this->em->getClassMetadata(Entity\ComputerItem::class);
+        return $this->em->createQueryBuilder()
+            ->select('link.id AS id', 'IDENTITY(link.computers) AS computers_id', 'link.is_dynamic AS is_dynamic')
+            ->from(Entity\ComputerItem::class, 'link')
+            ->where('link.itemtype = :type AND link.items_id = :item AND link.is_deleted = :deleted')
+            ->setParameter('type', $itemtype, $metadata->getTypeOfField('itemtype'))
+            ->setParameter('item', $id, $metadata->getTypeOfField('items_id'))
+            ->setParameter('deleted', false, $metadata->getTypeOfField('is_deleted'))
+            ->getQuery()->getScalarResult();
+    }
+
     /** Link and serial fields for already selected connections; callers retain item rights. */
     public function computerDisplayData(array $computers): array
     {
