@@ -76,6 +76,9 @@ use itsmng\Database\Entity\MonitorModel;
 use itsmng\Database\Entity\MonitorType;
 use itsmng\Database\Entity\NetworkEquipmentModel;
 use itsmng\Database\Entity\NetworkEquipmentType;
+use itsmng\Database\Entity\OidcConfig;
+use itsmng\Database\Entity\OidcMapping;
+use itsmng\Database\Entity\OidcUser;
 use itsmng\Database\Entity\PDUModel;
 use itsmng\Database\Entity\PassiveDCEquipmentModel;
 use itsmng\Database\Entity\PeripheralModel;
@@ -91,6 +94,7 @@ use itsmng\Database\Entity\RackModel;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Mapping\AttributeDriver;
 use itsmng\Database\Mapping\BooleanStorage;
+use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\SchemaOwner;
 use itsmng\Database\Migration\V220\Baseline;
@@ -280,6 +284,9 @@ class CurrentSchema extends test
         return [
             ['glpi_crontasks', 16, 5, [], []],
             ['glpi_configs', 4, 2, [], []],
+            ['glpi_oidc_config', 11, 1, [], []],
+            ['glpi_oidc_mapping', 10, 1, [], []],
+            ['glpi_oidc_users', 3, 2, [], ['user_id' => 'glpi_users']],
             ['glpi_profiles', 17, 8, ['tickettemplates_id', 'changetemplates_id', 'problemtemplates_id'], [
                 '`tickettemplates_id`' => 'glpi_tickettemplates', '`changetemplates_id`' => 'glpi_changetemplates',
                 '`problemtemplates_id`' => 'glpi_problemtemplates',
@@ -365,6 +372,9 @@ class CurrentSchema extends test
                 [$table, $columnCount, $indexCount, $emptyReferences, $references] = $case;
                 $logicalTypes = $case[5] ?? [];
                 $historical = clone $frozen->getTable($table);
+                if ($table === 'glpi_oidc_users') {
+                    $historical->addUniqueIndex(['user_id'], 'oidc_users_user');
+                }
                 // Already-installed current policies, independent of the new owner declaration.
                 foreach ($emptyReferences as $column) {
                     $historical->getColumn($column)->setNotnull(false)->setDefault(null);
@@ -425,6 +435,88 @@ class CurrentSchema extends test
             }
             $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozenSql);
             $this->boolean($manager->getConnection()->isConnected())->isFalse();
+        }
+    }
+
+    public function testOidcPropertiesAndAssociationsOwnCurrentSchemaWithoutChangingHistory(): void
+    {
+        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+            $postgres = $platform instanceof PostgreSQLPlatform;
+            $manager = $this->manager($platform);
+            $builder = new BaselineSchema($manager);
+            $frozen = (new Baseline())->build($platform)->toSql($platform);
+            $original = $builder->build($platform);
+            $config = $manager->getClassMetadata(OidcConfig::class);
+            $mapping = $manager->getClassMetadata(OidcMapping::class);
+            $user = $manager->getClassMetadata(OidcUser::class);
+            $config->fieldMappings['Provider']->length = 173;
+            $config->fieldMappings['Provider']->nullable = false;
+            $config->fieldMappings['Provider']->options['default'] = 'Current provider';
+            foreach (['is_activate' => true, 'is_forced' => true, 'sso_link_users' => false] as $property => $default) {
+                $config->fieldMappings[$property]->nullable = true;
+                $config->fieldMappings[$property]->options['default'] = $default;
+            }
+            $mapping->fieldMappings['name']->options['default'] = 'preferred_username';
+            $instant = $mapping->fieldMappings['date_mod'];
+            $instant->nullable = false;
+            $instant->options['default'] = '2001-01-01 00:00:00';
+            // The driver resolves NativeTimestamp when metadata loads. Simulate
+            // the resolved declaration after editing its property-owned inputs.
+            $timestamp = (new ReflectionClass(OidcMapping::class))->getProperty('date_mod')
+                ->getAttributes(NativeTimestamp::class)[0]->newInstance();
+            $instant->columnDefinition = $timestamp->declaration($platform, $instant);
+            unset($user->table['uniqueConstraints']['oidc_users_user']);
+            $join = $user->associationMappings['users']->joinColumns[0];
+            $join->nullable = true;
+            $join->options['default'] = null;
+            $user->fieldMappings['update']->options['default'] = true;
+            // A supplied manager's pending work must survive read-only inspection.
+            $pending = new OidcConfig();
+            $manager->persist($pending);
+            $changed = $builder->build($platform);
+            $withoutKeys = $builder->build($platform, false);
+            $freshManager = $this->manager($platform);
+            $fresh = (new BaselineSchema($freshManager))->build($platform);
+            foreach ([OidcConfig::class, OidcMapping::class, OidcUser::class] as $class) {
+                $metadata = $manager->getClassMetadata($class);
+                $name = $metadata->getTableName();
+                $this->array($withoutKeys->getTable($name)->getForeignKeys())->isEmpty();
+                $this->boolean((new Comparator($platform))->compareTables($original->getTable($name), $fresh->getTable($name))->isEmpty())
+                    ->isTrue($name . ' must restore from fresh metadata');
+            }
+            $declaration = $changed->getTable('glpi_oidc_config');
+            $this->integer($declaration->getColumn('Provider')->getLength())->isIdenticalTo(173);
+            $this->boolean($declaration->getColumn('Provider')->getNotnull())->isTrue();
+            $this->string($declaration->getColumn('Provider')->getDefault())->isIdenticalTo('Current provider');
+            foreach (['is_activate' => true, 'is_forced' => true, 'sso_link_users' => false] as $property => $default) {
+                $field = $config->fieldMappings[$property];
+                $column = $declaration->getColumn($property);
+                $this->string($field->type)->isIdenticalTo(Types::BOOLEAN);
+                $this->variable($column->getDefault())->isIdenticalTo($postgres ? $default : (string)(int)$default);
+                $this->boolean($column->getNotnull())->isFalse();
+            }
+            $declaration = $changed->getTable('glpi_oidc_mapping');
+            $this->string($declaration->getColumn('name')->getDefault())->isIdenticalTo('preferred_username');
+            $this->boolean($declaration->getColumn('date_mod')->getNotnull())->isTrue();
+            $this->string($declaration->getColumn('date_mod')->getDefault())->isIdenticalTo('2001-01-01 00:00:00');
+            $this->variable($declaration->getColumn('date_mod')->getColumnDefinition())
+                ->isIdenticalTo($postgres ? null : "TIMESTAMP NOT NULL DEFAULT '2001-01-01 00:00:00'");
+            $declaration = $changed->getTable('glpi_oidc_users');
+            $this->boolean($declaration->hasIndex('oidc_users_user'))->isFalse('History must not recreate removed current uniqueness');
+            $this->boolean($declaration->getColumn('user_id')->getNotnull())->isFalse();
+            $this->variable($declaration->getColumn('user_id')->getDefault())->isNull();
+            $this->variable($declaration->getColumn('update')->getDefault())->isIdenticalTo($postgres ? true : '1');
+            $this->string($user->fieldMappings['update']->type)->isIdenticalTo(Types::BOOLEAN);
+            $this->integer(count($declaration->getForeignKeys()))->isIdenticalTo(1);
+            $this->boolean($declaration->hasForeignKey('fk_oidc_users_user_id'))->isTrue();
+            $freshWithoutKeys = (new BaselineSchema($freshManager))->build($platform, false)->getTable('glpi_oidc_users');
+            $this->array($freshWithoutKeys->getForeignKeys())->isEmpty();
+            $this->boolean($freshWithoutKeys->getIndex('oidc_users_user')->isUnique())->isTrue();
+            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
+            $this->boolean($manager->contains($pending))->isTrue();
+            $this->boolean($manager->isOpen())->isTrue();
+            $this->boolean($manager->getConnection()->isConnected())->isFalse();
+            $this->boolean($freshManager->getConnection()->isConnected())->isFalse();
         }
     }
 
