@@ -88,8 +88,13 @@ class Contact_Supplier extends DbTestCase
         sort($columns);
         $this->array($columns)->isIdenticalTo(['address', 'country', 'name', 'postcode', 'state', 'town']);
         $this->string($address['name'])->isIdenticalTo($supplier->fields['name']);
-        $this->output(static fn () => ContactSupplierModel::showForContact($contact))->contains('https://example.com');
-        $this->output(static fn () => ContactSupplierModel::showForSupplier($supplier))->contains($contact->fields['name']);
+        $supplierRows = $this->renderLocalTableRows(static fn () => ContactSupplierModel::showForContact($contact));
+        $this->array($supplierRows)->hasSize(1);
+        $this->string($supplierRows[0]['website'])->isIdenticalTo("<a target=_blank href='https://example.com'>https://example.com</a>");
+        $this->string($supplierRows[0]['supplier'])->contains(SupplierModel::getFormURLWithID($supplier_id))->contains($supplier->fields['name']);
+        $contactRows = $this->renderLocalTableRows(static fn () => ContactSupplierModel::showForSupplier($supplier));
+        $this->array($contactRows)->hasSize(1);
+        $this->string($contactRows[0][0])->contains($contact::getFormURLWithID($contact_id))->contains($contact->fields['name'])->contains($contact->fields['firstname']);
 
         // Both company fields choose the first supplier by supplier ID, even with another link.
         $second = $this->createItem(SupplierModel::class, [
@@ -117,7 +122,11 @@ class Contact_Supplier extends DbTestCase
             ], ['id' => $second->getID()]))->isIdenticalTo(1);
             $this->integer(ContactSupplierModel::countForItem($contact))->isIdenticalTo(1);
             $this->integer(ContactSupplierModel::countForItem($second))->isIdenticalTo(1);
-            $this->output(static fn () => ContactSupplierModel::showForContact($contact))->notContains('https://second.example.com');
+            $scopedRows = $this->renderLocalTableRows(static fn () => ContactSupplierModel::showForContact($contact));
+            $this->array($scopedRows)->hasSize(1);
+            $this->string($scopedRows[0]['website'])->isIdenticalTo("<a target=_blank href='https://example.com'>https://example.com</a>");
+            $this->string($scopedRows[0]['supplier'])->contains(SupplierModel::getFormURLWithID($supplier_id))
+                ->notContains(SupplierModel::getFormURLWithID($second->getID()))->notContains($second->fields['name']);
             $_SESSION['glpicronuserrunning'] = true;
             $_SERVER['PHP_SELF'] = '/front/cron.php';
             $this->integer(ContactSupplierModel::countForItem($contact))->isIdenticalTo(2);
@@ -144,6 +153,7 @@ class Contact_Supplier extends DbTestCase
         $this->integer($connection->update('glpi_suppliers', ['website' => 'https://fresh.example.com'], ['id' => $supplier_id]))->isIdenticalTo(1);
         $this->string($contact->getWebsite())->isIdenticalTo('https://fresh.example.com');
 
+        $databasePhone = $contact->getField('phone');
         $manager = Orm::create($GLOBALS['DB']);
         try {
             $selected = $manager->find(ContactEntity::class, (int)$contact_id);
@@ -153,8 +163,14 @@ class Contact_Supplier extends DbTestCase
             $this->integer(ContactSupplierModel::countForItem($supplier))->isIdenticalTo(1);
             $this->string($contact->getWebsite())->isIdenticalTo('https://fresh.example.com');
             $this->array($contact->getAddress())->isIdenticalTo($freshAddress);
-            $this->output(static fn () => ContactSupplierModel::showForSupplier($supplier))->contains($contact->fields['name']);
-            $this->output(static fn () => ContactSupplierModel::showForContact($contact))->contains('https://fresh.example.com');
+            $contactRows = $this->renderLocalTableRows(static fn () => ContactSupplierModel::showForSupplier($supplier));
+            $this->array($contactRows)->hasSize(1);
+            $this->string($contactRows[0][0])->contains($contact::getFormURLWithID($contact_id))->contains($contact->fields['name'])->contains($contact->fields['firstname']);
+            $this->variable($contactRows[0][2])->isIdenticalTo($databasePhone);
+            $supplierRows = $this->renderLocalTableRows(static fn () => ContactSupplierModel::showForContact($contact));
+            $this->array($supplierRows)->hasSize(1);
+            $this->string($supplierRows[0]['website'])->isIdenticalTo("<a target=_blank href='https://fresh.example.com'>https://fresh.example.com</a>");
+            $this->string($supplierRows[0]['supplier'])->contains(SupplierModel::getFormURLWithID($supplier_id))->contains($supplier->fields['name']);
             $this->boolean($manager->contains($selected))->isTrue();
             $this->string($selected->phone)->isIdenticalTo('0102030405');
             $rows = (new ContactRepository($manager))->related((int)$supplier_id, false, null);

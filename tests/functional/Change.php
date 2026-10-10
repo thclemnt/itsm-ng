@@ -33,6 +33,9 @@
 
 namespace tests\units;
 
+use Change as ChangeModel;
+use Problem as ProblemModel;
+use Ticket as TicketModel;
 use Change_Problem;
 use Change_Ticket;
 use DbTestCase;
@@ -449,8 +452,12 @@ class Change extends DbTestCase
             $this->array(Orm::read($DB, static fn (EntityManager $manager): array =>
                 (new ITILTicketLinkRepository($manager))->ticketsForChange($empty)))->isEmpty();
         }
-        $this->output(static fn () => Change_Ticket::showForChange($change))->contains('/front/ticket.form.php?id=' . $first->getID());
-        $this->output(static fn () => Change_Ticket::showForTicket($first))->contains('/front/change.form.php?id=' . $change->getID());
+        $rendered = $this->renderLocalTableRows(static fn () => Change_Ticket::showForChange($change));
+        $this->integer(count($rendered))->isIdenticalTo(2);
+        $this->string($rendered[0][7])->contains(TicketModel::getFormURLWithID($first->getID()))->contains($first->getField('name'));
+        $rendered = $this->renderLocalTableRows(static fn () => Change_Ticket::showForTicket($first));
+        $this->integer(count($rendered))->isIdenticalTo(2);
+        $this->string($rendered[0][7])->contains(ChangeModel::getFormURLWithID($change->getID()))->contains($change->getField('name'));
         $freshName = 'BBB fresh linked ticket ' . $this->getUniqueString();
         $connection->update('glpi_tickets', ['name' => $freshName, 'date_mod' => '2021-02-03 04:05:06', 'is_deleted' => true], ['id' => $first->getID()]);
         $fresh = $read();
@@ -556,14 +563,18 @@ class Change extends DbTestCase
             $this->array(Orm::read($DB, static fn (EntityManager $manager): array =>
                 (new ChangeProblemRepository($manager))->problemsForChange($empty)))->isEmpty();
         }
-        $this->output(static fn () => Change_Problem::showForProblem($problem))
-            ->contains('/front/change.form.php?id=' . $first->getID())->contains('Change' . $first->getID() . 'planning');
-        $this->output(static fn () => Change_Problem::showForChange($first))
-            ->contains('/front/problem.form.php?id=' . $problem->getID())->contains('Problem' . $problem->getID() . 'planning');
+        $rendered = $this->renderLocalTableRows(static fn () => Change_Problem::showForProblem($problem));
+        $this->integer(count($rendered))->isIdenticalTo(2);
+        $this->string($rendered[0][7])->contains(ChangeModel::getFormURLWithID($first->getID()))->contains($first->getField('name'));
+        $this->string($rendered[0][8])->contains('Change' . $first->getID() . 'planning');
+        $rendered = $this->renderLocalTableRows(static fn () => Change_Problem::showForChange($first));
+        $this->integer(count($rendered))->isIdenticalTo(2);
+        $this->string($rendered[1][7])->contains(ProblemModel::getFormURLWithID($problem->getID()))->contains($problem->getField('name'));
+        $this->string($rendered[1][8])->contains('Problem' . $problem->getID() . 'planning');
         $session = $_SESSION;
         try {
             $_SESSION['glpiactiveprofile']['problem'] = 0;
-            $this->output(static fn () => Change_Problem::showForChange($first))->notContains('/front/problem.form.php?id=' . $problem->getID());
+            $this->output(static fn () => Change_Problem::showForChange($first))->isEmpty();
             $_SESSION = $session;
             $_SESSION['glpiactiveentities'] = [];
             $this->integer(count($read()))->isIdenticalTo(2, 'The endpoint projection does not add an entity prefilter');

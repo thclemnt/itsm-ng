@@ -74,9 +74,9 @@ final class ITILTicketLinkRepository
     private function visibility(QueryBuilder $query, string $target, ?EntityRestriction $scope): void
     {
         if ($scope !== null) {
-            $query->innerJoin('r.entities', 'entity')->addSelect('entity.id AS entity')
+            $query->innerJoin('r.entities', 'scopeEntity')->addSelect('scopeEntity.id AS entity')
                 ->andWhere((new RecordCriteria($query, $this->em->getClassMetadata($target)))->where($scope->criteria))
-                ->orderBy('entity.completename');
+                ->orderBy('scopeEntity.completename');
         }
         $query->addOrderBy('r.name');
     }

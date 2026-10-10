@@ -33,6 +33,8 @@
 
 namespace tests\units;
 
+use Problem as ProblemModel;
+use Ticket as TicketModel;
 use DbTestCase;
 use DbUtils;
 use Doctrine\ORM\EntityManager;
@@ -211,13 +213,31 @@ class Problem extends DbTestCase
         $this->integer(count($rows))->isIdenticalTo(1);
         $this->integer((int)$rows[0]['id'])->isIdenticalTo((int)$ticket->getID());
         $this->integer((int)$rows[0]['linkid'])->isIdenticalTo((int)$link->getID());
-        $this->integer((int)$rows[0]['entity'])->isIdenticalTo((int)$ticket->getEntityID());
+        $this->integer((int)$rows[0]['entity'])->isIdenticalTo($entityId);
         $reverseScope = (new DbUtils())->getEntityRestriction('glpi_problems', '', '', 'auto');
         $reverse = Orm::read($DB, static fn (EntityManager $manager): array =>
             (new ITILTicketLinkRepository($manager))->problemsForTicket((int)$ticket->getID(), $reverseScope));
         $this->integer(count($reverse))->isIdenticalTo(1);
         $this->integer((int)$reverse[0]['id'])->isIdenticalTo((int)$problem->getID());
+        $this->integer((int)$reverse[0]['entity'])->isIdenticalTo($entityId);
         $this->variable($reverse[0]['itilcategories_id'])->isNull();
+        $cronRows = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new ITILTicketLinkRepository($manager))->ticketsForProblem((int)$problem->getID(), null));
+        $this->integer(count($cronRows))->isIdenticalTo(1);
+        $this->integer((int)$cronRows[0]['id'])->isIdenticalTo((int)$ticket->getID());
+        $this->array($cronRows[0])->notHasKey('entity');
+        $cronReverse = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new ITILTicketLinkRepository($manager))->problemsForTicket((int)$ticket->getID(), null));
+        $this->integer(count($cronReverse))->isIdenticalTo(1);
+        $this->integer((int)$cronReverse[0]['id'])->isIdenticalTo((int)$problem->getID());
+        $this->array($cronReverse[0])->notHasKey('entity');
+        foreach ([null, 0, -1] as $empty) {
+            $this->array(Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new ITILTicketLinkRepository($manager))->ticketsForProblem($empty, null)))->isEmpty();
+            $this->array(Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new ITILTicketLinkRepository($manager))->problemsForTicket($empty, null)))->isEmpty();
+        }
+
         $tickets = new ReflectionMethod(Problem_Ticket::class, 'getProblemTicketsData');
         $problems = new ReflectionMethod(Problem_Ticket::class, 'getTicketProblemsData');
         $this->integer(count($tickets->invoke(null, $problem->getID())))->isIdenticalTo(1);
@@ -226,8 +246,12 @@ class Problem extends DbTestCase
             $this->array($tickets->invoke(null, $empty))->isEmpty();
             $this->array($problems->invoke(null, $empty))->isEmpty();
         }
-        $this->output(static fn () => Problem_Ticket::showForProblem($problem))->contains('/front/ticket.form.php?id=' . $ticket->getID());
-        $this->output(static fn () => Problem_Ticket::showForTicket($ticket))->contains('/front/problem.form.php?id=' . $problem->getID());
+        $rendered = $this->renderLocalTableRows(static fn () => Problem_Ticket::showForProblem($problem));
+        $this->integer(count($rendered))->isIdenticalTo(1);
+        $this->string($rendered[0][7])->contains(TicketModel::getFormURLWithID($ticket->getID()))->contains($ticket->getField('name'));
+        $rendered = $this->renderLocalTableRows(static fn () => Problem_Ticket::showForTicket($ticket));
+        $this->integer(count($rendered))->isIdenticalTo(1);
+        $this->string($rendered[0][7])->contains(ProblemModel::getFormURLWithID($problem->getID()))->contains($problem->getField('name'));
         $session = $_SESSION;
         try {
             $_SESSION['glpishowallentities'] = false;

@@ -93,10 +93,18 @@ class ProjectTask_Ticket extends DbTestCase
         $this->array($unlinked)->contains((int)$father->getID())->notContains((int)$first->getID(), (int)$last->getID());
         $this->array($read(0))->isEmpty();
         $this->array($read(-1))->isEmpty();
-        $this->output(static fn () => LegacyProjectTaskTicket::showForTicket($ticket))
-            ->contains('/front/project.form.php?id=' . $project->getID())
-            ->contains('/front/projecttask.form.php?id=' . $first->getID())
-            ->contains('/front/projecttask.form.php?id=' . $father->getID());
+        $rendered = $this->renderLocalTableRows(static fn () => LegacyProjectTaskTicket::showForTicket($ticket));
+        $this->integer(count($rendered))->isIdenticalTo(2);
+        $taskHref = "href='" . LegacyProjectTask::getFormURLWithID($first->getID()) . "'";
+        $taskRows = array_values(array_filter($rendered, static fn (array $row): bool => str_contains($row[1], $taskHref)));
+        $this->integer(count($taskRows))->isIdenticalTo(1);
+        $this->string($taskRows[0][0])
+            ->contains("href='" . LegacyProject::getFormURLWithID($project->getID()) . "'")
+            ->contains($project->getField('name'));
+        $this->string($taskRows[0][1])->contains($taskHref)->contains($first->getField('name'));
+        $this->string($taskRows[0][9])
+            ->contains("href='" . LegacyProjectTask::getFormURLWithID($father->getID()) . "'")
+            ->contains($father->getField('name'));
         $session = $_SESSION;
         try {
             $_SESSION['glpishowallentities'] = false;
