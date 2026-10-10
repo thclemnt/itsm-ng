@@ -1220,55 +1220,22 @@ class DbUtils extends DbTestCase
 
         $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
 
-        //test on ent0
-        $expected = [$ent0 => $ent0, $ent1 => $ent1, $ent2 => $ent2];
-
-        if ($cache === true) {
-            $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
-            $this->boolean(Toolbox::useCache())->isTrue();
-            $GLPI_CACHE->set($ckey_ent0, [$ent2 => $ent2]);
-            $this->boolean($GLPI_CACHE->has($ckey_ent0))->isTrue();
-            $this->array($GLPI_CACHE->get($ckey_ent0))->isIdenticalTo([$ent2 => $ent2]);
-        }
-        $sons = $this->testedInstance->getSonsOf('glpi_entities', $ent0);
-        $this->array($sons)->isIdenticalTo($expected);
-
-        if ($cache === true) {
-            $this->boolean($GLPI_CACHE->has($ckey_ent0))->isFalse();
-        }
-
-        //test on ent1
-        $expected = [$ent1 => $ent1];
-
-        if ($cache === true) {
-            $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
-            $this->boolean(Toolbox::useCache())->isTrue();
-            $GLPI_CACHE->set($ckey_ent1, [$ent2 => $ent2]);
-            $this->boolean($GLPI_CACHE->has($ckey_ent1))->isTrue();
-            $this->array($GLPI_CACHE->get($ckey_ent1))->isIdenticalTo([$ent2 => $ent2]);
-        }
-        $sons = $this->testedInstance->getSonsOf('glpi_entities', $ent1);
-        $this->array($sons)->isIdenticalTo($expected);
-
-        if ($cache === true) {
-            $this->boolean($GLPI_CACHE->has($ckey_ent1))->isFalse();
-        }
-
-        //test on ent2
-        $expected = [$ent2 => $ent2];
-
-        if ($cache === true) {
-            $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
-            $this->boolean(Toolbox::useCache())->isTrue();
-            $GLPI_CACHE->set($ckey_ent2, [$ent0 => $ent0]);
-            $this->boolean($GLPI_CACHE->has($ckey_ent2))->isTrue();
-            $this->array($GLPI_CACHE->get($ckey_ent2))->isIdenticalTo([$ent0 => $ent0]);
-        }
-        $sons = $this->testedInstance->getSonsOf('glpi_entities', $ent2);
-        $this->array($sons)->isIdenticalTo($expected);
-
-        if ($cache === true) {
-            $this->boolean($GLPI_CACHE->has($ckey_ent2))->isFalse();
+        foreach ([
+            [$ent0, $ckey_ent0, [$ent0 => $ent0, $ent1 => $ent1, $ent2 => $ent2], [$ent2 => $ent2]],
+            [$ent1, $ckey_ent1, [$ent1 => $ent1], [$ent2 => $ent2]],
+            [$ent2, $ckey_ent2, [$ent2 => $ent2], [$ent0 => $ent0]],
+        ] as [$id, $key, $expected, $poison]) {
+            if ($cache === true) {
+                $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
+                $this->boolean(Toolbox::useCache())->isTrue();
+                $GLPI_CACHE->set($key, $poison);
+                $this->boolean($GLPI_CACHE->has($key))->isTrue();
+                $this->array($GLPI_CACHE->get($key))->isIdenticalTo($poison);
+            }
+            $this->array($this->testedInstance->getSonsOf('glpi_entities', $id))->isIdenticalTo($expected);
+            if ($cache === true) {
+                $this->boolean($GLPI_CACHE->has($key))->isFalse();
+            }
         }
 
         //test with new sub entity

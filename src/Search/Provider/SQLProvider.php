@@ -46,7 +46,7 @@ use itsmng\Search\SearchOption;
 use function getEntitiesRestrictRequest;
 use function getItemForItemtype;
 
-final class SQLProvider implements SearchProviderInterface
+final class SQLProvider
 {
     /**
      * Construct SQL request depending of search parameters

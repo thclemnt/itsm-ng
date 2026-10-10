@@ -39,12 +39,8 @@ use Computer;
 use DbTestCase;
 use Doctrine\Common\EventManager;
 use Doctrine\DBAL\ArrayParameterType;
-use Doctrine\DBAL\Cache\QueryCacheProfile;
-use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Query\QueryBuilder as DBALQueryBuilder;
-use Doctrine\DBAL\Result;
 use Doctrine\DBAL\Types\BigIntType;
 use Doctrine\DBAL\Types\IntegerType;
 use Doctrine\DBAL\Types\StringType;
@@ -91,6 +87,9 @@ use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\TreeRepository;
 use itsmng\Database\TreeReadOperation;
 use mock\DBmysql;
+use tests\fixtures\ScalarReadProbe;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/dropdown.class.php */
 
@@ -2481,36 +2480,11 @@ final class DropdownUnknownRepository extends DropdownChoiceRepository
 
 
 /** Observe the actual selected connection without opening another transaction or socket. */
-class DropdownScalarReadProbe extends Connection
+class DropdownScalarReadProbe extends ScalarReadProbe
 {
-    public int $builders = 0;
-    public array $queries = [];
-
-    public function __construct(private readonly Connection $selected)
-    {
-        parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
-    }
-
-    public function getDatabasePlatform(): AbstractPlatform
-    {
-        return $this->selected->getDatabasePlatform();
-    }
-
     public function isTransactionActive(): bool
     {
         return $this->selected->isTransactionActive();
-    }
-
-    public function createQueryBuilder(): DBALQueryBuilder
-    {
-        ++$this->builders;
-        return parent::createQueryBuilder();
-    }
-
-    public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
-    {
-        $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
-        return $this->selected->executeQuery($sql, $params, $types, $qcp);
     }
 }
 

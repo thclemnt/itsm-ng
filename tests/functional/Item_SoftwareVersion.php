@@ -35,12 +35,9 @@ namespace tests\units;
 
 use DbTestCase;
 use Doctrine\DBAL\ArrayParameterType;
-use Doctrine\DBAL\Cache\QueryCacheProfile;
 use Doctrine\DBAL\Configuration;
-use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Logging\Middleware;
 use Doctrine\DBAL\Query\QueryBuilder;
-use Doctrine\DBAL\Result;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Id\AssignedGenerator;
@@ -83,6 +80,9 @@ use itsmng\Database\Repository\SoftwareInstallationRepository;
 use itsmng\Database\SoftwareRenderingReadOperation;
 use LogicException;
 use mock\DBmysql as SoftwareAdapter;
+use tests\fixtures\ScalarReadProbe;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/item_softwareversion.class.php */
 
@@ -996,36 +996,17 @@ class Item_SoftwareVersion extends DbTestCase
     }
 }
 
-class SoftwareRenderingProbe extends Connection
+class SoftwareRenderingProbe extends ScalarReadProbe
 {
-    public int $builders = 0;
-    public array $queries = [];
     public array $queryBuilders = [];
-
-    public function __construct(private readonly Connection $selected)
-    {
-        parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
-    }
 
     public function isTransactionActive(): bool
     {
         return $this->selected->isTransactionActive();
     }
 
-    public function getDatabasePlatform(): AbstractPlatform
-    {
-        return $this->selected->getDatabasePlatform();
-    }
-
     public function createQueryBuilder(): QueryBuilder
     {
-        ++$this->builders;
         return $this->queryBuilders[] = parent::createQueryBuilder();
-    }
-
-    public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
-    {
-        $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
-        return $this->selected->executeQuery($sql, $params, $types, $qcp);
     }
 }

@@ -33,6 +33,7 @@
 
 namespace tests\units;
 
+use CronTask;
 use DbTestCase;
 use DateTime;
 use OlaLevel_Ticket as OlaLevelTicketModel;
@@ -692,8 +693,8 @@ class SLM extends DbTestCase
         $DB->update('glpi_slalevels_tickets', ['date' => $past_date], ['id' => $sla_rows[0]['id']]);
         $DB->update('glpi_olalevels_tickets', ['date' => $past_date], ['id' => $ola_rows[0]['id']]);
 
-        $this->integer(SlaLevelTicketModel::cronSlaTicket(new \CronTask()))->isEqualTo(1);
-        $this->integer(OlaLevelTicketModel::cronOlaTicket(new \CronTask()))->isEqualTo(1);
+        $this->integer(SlaLevelTicketModel::cronSlaTicket(new CronTask()))->isEqualTo(1);
+        $this->integer(OlaLevelTicketModel::cronOlaTicket(new CronTask()))->isEqualTo(1);
 
         $this->integer((int)countElementsInTable('glpi_slalevels_tickets', ['tickets_id' => $ticket_id]))->isEqualTo(0);
         $this->integer((int)countElementsInTable('glpi_olalevels_tickets', ['tickets_id' => $ticket_id]))->isEqualTo(0);

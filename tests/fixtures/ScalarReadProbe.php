@@ -16,7 +16,7 @@ class ScalarReadProbe extends Connection
     public int $builders = 0;
     public array $queries = [];
 
-    public function __construct(private readonly Connection $selected)
+    public function __construct(protected readonly Connection $selected)
     {
         parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
     }

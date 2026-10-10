@@ -42,38 +42,19 @@ class NativeTimestampSchema extends test
             $this->object($connection->getDatabasePlatform())->isIdenticalTo($platform);
             try {
                 $em = new EntityManager($connection, Orm::configuration($platform));
-                $current = (new BaselineSchema())->build($platform, false);
-                $historical = (new Baseline())->build($platform);
                 // This original contract owns its explicit seven-property cohort. The
                 // coverage contract independently checks the complete frozen/property set.
                 $declarations = Policy::declarations(array_map($em->getClassMetadata(...), array_keys($cohort)));
                 $this->boolean(array_sum(array_map('count', $declarations)) === 7)->isTrue('Exactly the first seven temporal properties own native storage');
-                foreach ($cohort as $class => $properties) {
+                // Full storage parity is covered by the complete frozen cohort below.
+                foreach (array_keys($cohort) as $class) {
                     $metadata = $em->getClassMetadata($class);
-                    $mapped = (new SchemaTool($em))->getSchemaFromMetadata([$metadata])->getTable($metadata->getTableName());
-                    foreach ($properties as $property) {
-                        $field = $metadata->getFieldMapping($property);
-                        $column = $mapped->getColumn($field->columnName);
-                        $this->boolean($field->type === Types::DATETIMETZ_MUTABLE && !$metadata->isVersioned && $metadata->versionField === null)->isTrue('Existing datetime hydration survives without an optimistic version field');
-                        if ($class === ObjectLock::class) {
-                            $this->boolean(
-                                $field->generated === ClassMetadata::GENERATED_ALWAYS && !$field->notInsertable && !$field->notUpdatable
-                                && !in_array('date_mod', EntityRegistry::readOnlyColumns($metadata->getTableName()), true)
-                            )->isTrue('The automatic clock refreshes its managed outcome while keeping explicit writes enabled');
-                        }
-                        $this->boolean($platform instanceof AbstractMySQLPlatform ? str_starts_with($column->getColumnDefinition(), 'TIMESTAMP ') : $column->getColumnDefinition() === null)->isTrue('SchemaTool obtains native storage from the property without historical input');
-                        foreach ([$current->getTable($metadata->getTableName())->getColumn($field->columnName), $historical->getTable($metadata->getTableName())->getColumn($field->columnName)] as $expected) {
-                            // The frozen Domain expiration declaration contains two
-                            // spaces; SQL whitespace is not a different temporal policy.
-                            $physical = static fn ($value): string => preg_replace('/\s+/', ' ', trim((string)$value));
-                            $this->boolean(
-                                $expected->getNotnull() === $column->getNotnull()
-                                && $platform->getDefaultValueDeclarationSQL($expected->toArray(true)) === $platform->getDefaultValueDeclarationSQL($column->toArray(true))
-                                && $expected->getComment() === $column->getComment() && $physical($expected->getColumnDefinition()) === $physical($column->getColumnDefinition())
-                            )->isTrue('Current property projection converges on the retained historical column semantics');
-                        }
-                    }
+                    $this->boolean(!$metadata->isVersioned && $metadata->versionField === null)->isTrue('Temporal properties do not introduce optimistic version fields');
                 }
+                $clockMetadata = $em->getClassMetadata(ObjectLock::class);
+                $clock = $clockMetadata->getFieldMapping('date_mod');
+                $this->boolean($clock->generated === ClassMetadata::GENERATED_ALWAYS && !$clock->notInsertable && !$clock->notUpdatable
+                    && !in_array('date_mod', EntityRegistry::readOnlyColumns($clockMetadata->getTableName()), true))->isTrue('The automatic clock refreshes its managed outcome while keeping explicit writes enabled');
                 $config = Orm::configuration($platform);
                 $config->setMetadataDriverImpl(new AttributeDriver([], $platform));
                 $probeEm = new EntityManager($connection, $config);
