@@ -58,9 +58,18 @@ final class Orm
     public static function withConnection(Connection $connection, callable $operation): mixed
     {
         if (($connection instanceof MySQLManagedConnection || $connection instanceof PostgresConnection)
-            && self::ownsReadMapping($connection)
-            && !array_filter(DbalType::getTypeRegistry()->getMap(), static fn (DbalType $type, string $name): bool => !self::stableSqlConversion($name, $type), ARRAY_FILTER_USE_BOTH)) {
-            return $connection->withApplicationEntityManager($operation);
+            && self::ownsReadMapping($connection)) {
+            static $previousTypes = null;
+            static $stableTypes = false;
+            $types = DbalType::getTypeRegistry()->getMap();
+            if ($previousTypes !== $types) {
+                $stableTypes = !array_filter($types, static fn (DbalType $type, string $name): bool =>
+                    !self::stableSqlConversion($name, $type), ARRAY_FILTER_USE_BOTH);
+                $previousTypes = $types;
+            }
+            if ($stableTypes) {
+                return $connection->withApplicationEntityManager($operation);
+            }
         }
         // Supplied/custom connections retain independently mutable configuration.
         $manager = self::forConnection($connection);
