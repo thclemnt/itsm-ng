@@ -35,9 +35,14 @@ final class NetworkPortAggregateRepository
     public function originIds(int $aggregate): array
     {
         return array_map('intval', array_column($this->em->createQueryBuilder()
-            ->select('IDENTITY(o.port) AS port')->from(NetworkPortAggregateOrigin::class, 'o')
-            ->where('o.aggregate = :aggregate')->setParameter('aggregate', $aggregate, Types::INTEGER)
-            ->orderBy('o.position')->addOrderBy('o.id')->getQuery()->getScalarResult(), 'port'));
+            ->select('IDENTITY(o.port) AS port')
+            ->from(NetworkPortAggregateOrigin::class, 'o')
+            ->where('o.aggregate = :aggregate')
+            ->setParameter('aggregate', $aggregate, Types::INTEGER)
+            ->orderBy('o.position')
+            ->addOrderBy('o.id')
+            ->getQuery()
+            ->getScalarResult(), 'port'));
     }
 
     public function replaceOrigins(int $aggregate, array $values): void
@@ -53,10 +58,13 @@ final class NetworkPortAggregateRepository
             // Only existence is needed. Keep batches bounded and diagnose the
             // first missing origin in selection order before changing membership.
             foreach (array_chunk($ids, 1000) as $batch) {
-                $existing = array_fill_keys($this->em->createQueryBuilder()->select('p.id')
-                    ->from(NetworkPort::class, 'p')->where('p.id IN (:origins)')
+                $existing = array_fill_keys($this->em->createQueryBuilder()
+                    ->select('p.id')
+                    ->from(NetworkPort::class, 'p')
+                    ->where('p.id IN (:origins)')
                     ->setParameter('origins', $batch, ArrayParameterType::INTEGER)
-                    ->getQuery()->getSingleColumnResult(), true);
+                    ->getQuery()
+                    ->getSingleColumnResult(), true);
                 foreach ($batch as $id) {
                     if (!isset($existing[$id])) {
                         throw new InvalidArgumentException('Unknown aggregate origin: ' . $id);
@@ -77,14 +85,22 @@ final class NetworkPortAggregateRepository
 
     public function removeForAggregate(int $aggregate): void
     {
-        $this->em->createQueryBuilder()->delete(NetworkPortAggregateOrigin::class, 'o')
-            ->where('o.aggregate = :id')->setParameter('id', $aggregate, Types::INTEGER)->getQuery()->execute();
+        $this->em->createQueryBuilder()
+            ->delete(NetworkPortAggregateOrigin::class, 'o')
+            ->where('o.aggregate = :id')
+            ->setParameter('id', $aggregate, Types::INTEGER)
+            ->getQuery()
+            ->execute();
     }
 
     public function removeForPort(int $port): void
     {
-        $this->em->createQueryBuilder()->delete(NetworkPortAggregateOrigin::class, 'o')
-            ->where('o.port = :id')->setParameter('id', $port, Types::INTEGER)->getQuery()->execute();
+        $this->em->createQueryBuilder()
+            ->delete(NetworkPortAggregateOrigin::class, 'o')
+            ->where('o.port = :id')
+            ->setParameter('id', $port, Types::INTEGER)
+            ->getQuery()
+            ->execute();
     }
 
     public function replacePort(int $source, int $destination): void
@@ -96,9 +112,14 @@ final class NetworkPortAggregateRepository
             if ($this->em->find(NetworkPort::class, $destination) === null) {
                 throw new InvalidArgumentException('Unknown replacement origin port');
             }
-            $aggregates = $this->em->createQueryBuilder()->select('IDENTITY(o.aggregate) AS id')
-                ->from(NetworkPortAggregateOrigin::class, 'o')->where('o.port = :port')
-                ->setParameter('port', $source, Types::INTEGER)->orderBy('o.aggregate')->getQuery()->getScalarResult();
+            $aggregates = $this->em->createQueryBuilder()
+                ->select('IDENTITY(o.aggregate) AS id')
+                ->from(NetworkPortAggregateOrigin::class, 'o')
+                ->where('o.port = :port')
+                ->setParameter('port', $source, Types::INTEGER)
+                ->orderBy('o.aggregate')
+                ->getQuery()
+                ->getScalarResult();
             foreach ($aggregates as $aggregate) {
                 $id = (int)$aggregate['id'];
                 $board = $this->em->find(NetworkPortAggregate::class, $id);
@@ -114,17 +135,26 @@ final class NetworkPortAggregateRepository
 
     public function aggregatesForPort(int $port): array
     {
-        return $this->em->createQueryBuilder()->select('IDENTITY(a.networkports_id) AS id')
-            ->from(NetworkPortAggregateOrigin::class, 'o')->innerJoin('o.aggregate', 'a')
-            ->where('o.port = :port')->setParameter('port', $port, Types::INTEGER)
-            ->orderBy('a.id')->getQuery()->getScalarResult();
+        return $this->em->createQueryBuilder()
+            ->select('IDENTITY(a.networkports_id) AS id')
+            ->from(NetworkPortAggregateOrigin::class, 'o')
+            ->innerJoin('o.aggregate', 'a')
+            ->where('o.port = :port')
+            ->setParameter('port', $port, Types::INTEGER)
+            ->orderBy('a.id')
+            ->getQuery()
+            ->getScalarResult();
     }
 
     public function virtualPorts(int $port): array
     {
-        $rows = $this->em->createQueryBuilder()->select('IDENTITY(a.networkports_id) AS id')
+        $rows = $this->em->createQueryBuilder()
+            ->select('IDENTITY(a.networkports_id) AS id')
             ->from(NetworkPortAlias::class, 'a')
-            ->where('a.networkports_id_alias = :port')->setParameter('port', $port, Types::INTEGER)->getQuery()->getScalarResult();
+            ->where('a.networkports_id_alias = :port')
+            ->setParameter('port', $port, Types::INTEGER)
+            ->getQuery()
+            ->getScalarResult();
         $ids = [];
         foreach (array_merge($rows, $this->aggregatesForPort($port)) as $row) {
             $ids[(int)$row['id']] = ['networkports_id' => (int)$row['id']];
@@ -135,9 +165,17 @@ final class NetworkPortAggregateRepository
 
     public function availablePorts(string $type, int $item, string $instantiation): array
     {
-        return $this->em->createQueryBuilder()->select('p.id, p.name, p.mac')->from(NetworkPort::class, 'p')
+        return $this->em->createQueryBuilder()
+            ->select('p.id, p.name, p.mac')
+            ->from(NetworkPort::class, 'p')
             ->where('p.itemtype = :type AND p.items_id = :item AND p.instantiation_type = :instantiation')
-            ->setParameter('type', $type)->setParameter('item', $item, Types::INTEGER)->setParameter('instantiation', $instantiation)
-            ->orderBy('p.logical_number')->addOrderBy('p.name')->addOrderBy('p.id')->getQuery()->getScalarResult();
+            ->setParameter('type', $type)
+            ->setParameter('item', $item, Types::INTEGER)
+            ->setParameter('instantiation', $instantiation)
+            ->orderBy('p.logical_number')
+            ->addOrderBy('p.name')
+            ->addOrderBy('p.id')
+            ->getQuery()
+            ->getScalarResult();
     }
 }

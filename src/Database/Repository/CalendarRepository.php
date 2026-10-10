@@ -22,14 +22,22 @@ final class CalendarRepository
     /** @return array<int, array> Calendar segments in their stable weekly order. */
     public function segments(int $calendar, ?int $firstDay = null, ?int $lastDay = null): array
     {
-        $query = $this->em->createQueryBuilder()->select('s')->from(CalendarSegment::class, 's')
-            ->where('s.calendars = :calendar')->setParameter('calendar', $calendar)
-            ->orderBy('s.day')->addOrderBy('s.begin')->addOrderBy('s.end')->addOrderBy('s.id');
+        $query = $this->em->createQueryBuilder()
+            ->select('s')
+            ->from(CalendarSegment::class, 's')
+            ->where('s.calendars = :calendar')
+            ->setParameter('calendar', $calendar)
+            ->orderBy('s.day')
+            ->addOrderBy('s.begin')
+            ->addOrderBy('s.end')
+            ->addOrderBy('s.id');
         if ($firstDay !== null) {
-            $query->andWhere('s.day >= :first')->setParameter('first', $firstDay);
+            $query->andWhere('s.day >= :first')
+                ->setParameter('first', $firstDay);
         }
         if ($lastDay !== null) {
-            $query->andWhere('s.day <= :last')->setParameter('last', $lastDay);
+            $query->andWhere('s.day <= :last')
+                ->setParameter('last', $lastDay);
         }
         $rows = [];
         $records = new RecordRepository($this->em);
@@ -75,16 +83,22 @@ final class CalendarRepository
     {
         $rows = $this->em->createQueryBuilder()
             ->select('s.day AS dayNumber', 's.begin AS startTime', 's.end AS endTime')
-            ->from(CalendarSegment::class, 's')->where('IDENTITY(s.calendars) = :calendar')
+            ->from(CalendarSegment::class, 's')
+            ->where('IDENTITY(s.calendars) = :calendar')
             ->setParameter('calendar', $calendar, Types::INTEGER)
-            ->orderBy('s.day')->addOrderBy('s.begin')->addOrderBy('s.end')->addOrderBy('s.id')
-            ->getQuery()->getArrayResult();
+            ->orderBy('s.day')
+            ->addOrderBy('s.begin')
+            ->addOrderBy('s.end')
+            ->addOrderBy('s.id')
+            ->getQuery()
+            ->getArrayResult();
         $segments = array_map(static fn ($row) => [
             'day' => $row['dayNumber'], 'begin' => $row['startTime'], 'end' => $row['endTime'],
         ], $rows);
         $rows = $this->closureQuery($calendar)
             ->select('holiday.begin_date AS startDate', 'holiday.end_date AS endDate', 'holiday.is_perpetual AS perpetual')
-            ->getQuery()->getArrayResult();
+            ->getQuery()
+            ->getArrayResult();
         $holidays = [];
         foreach ($rows as $row) {
             $holiday = new Holiday();
@@ -99,14 +113,20 @@ final class CalendarRepository
     /** @return list<CalendarHoliday> Every owning membership retains its individual link identity. */
     public function closures(int $calendar): array
     {
-        return $this->closureQuery($calendar)->orderBy('holiday.name')->addOrderBy('link.id')
-            ->getQuery()->getResult();
+        return $this->closureQuery($calendar)
+            ->orderBy('holiday.name')
+            ->addOrderBy('link.id')
+            ->getQuery()
+            ->getResult();
     }
 
     private function closureQuery(int $calendar): QueryBuilder
     {
-        return $this->em->createQueryBuilder()->select('link', 'holiday')->from(CalendarHoliday::class, 'link')
-            ->join('link.holidays', 'holiday')->where('IDENTITY(link.calendars) = :calendar')
+        return $this->em->createQueryBuilder()
+            ->select('link', 'holiday')
+            ->from(CalendarHoliday::class, 'link')
+            ->join('link.holidays', 'holiday')
+            ->where('IDENTITY(link.calendars) = :calendar')
             ->setParameter('calendar', $calendar, Types::INTEGER);
     }
 
@@ -115,7 +135,9 @@ final class CalendarRepository
         $links = $this->closureQuery($calendar)
             ->andWhere('holiday.is_perpetual = :yes OR (holiday.begin_date <= :day AND holiday.end_date >= :day)')
             ->setParameter('yes', true, Types::BOOLEAN)
-            ->setParameter('day', $day, Types::DATE_IMMUTABLE)->getQuery()->toIterable();
+            ->setParameter('day', $day, Types::DATE_IMMUTABLE)
+            ->getQuery()
+            ->toIterable();
         foreach ($links as $link) {
             $holiday = $link->holidays;
             if ($holiday->containsDay($day)) {

@@ -157,35 +157,53 @@ final class ProjectRepository
 
     public function taskDuration(int $task): int
     {
-        $own = $this->em->createQueryBuilder()->select('t.effective_duration')->from(ProjectTask::class, 't')
-            ->where('t.id = :task')->setParameter('task', $task)->getQuery()->getOneOrNullResult();
+        $own = $this->em->createQueryBuilder()
+            ->select('t.effective_duration')
+            ->from(ProjectTask::class, 't')
+            ->where('t.id = :task')
+            ->setParameter('task', $task)
+            ->getQuery()
+            ->getOneOrNullResult();
         return (int)($own['effective_duration'] ?? 0) + $this->ticketDuration($task, false);
     }
 
     public function effectiveDuration(?int $project): int
     {
         // Sum task time separately so multiple tickets cannot multiply the task duration.
-        $query = $this->em->createQueryBuilder()->select('SUM(t.effective_duration)')->from(ProjectTask::class, 't');
-        $own = $this->forProject($query, $project)->getQuery()->getSingleScalarResult();
+        $query = $this->em->createQueryBuilder()
+            ->select('SUM(t.effective_duration)')
+            ->from(ProjectTask::class, 't');
+        $own = $this->forProject($query, $project)
+            ->getQuery()
+            ->getSingleScalarResult();
         return (int)$own + $this->ticketDuration($project, true);
     }
 
     private function ticketDuration(?int $id, bool $project): int
     {
-        $query = $this->em->createQueryBuilder()->select('SUM(ticket.actiontime)')->from(ProjectTaskTicket::class, 'l')
-            ->innerJoin('l.projecttasks', 't')->innerJoin('l.tickets', 'ticket');
+        $query = $this->em->createQueryBuilder()
+            ->select('SUM(ticket.actiontime)')
+            ->from(ProjectTaskTicket::class, 'l')
+            ->innerJoin('l.projecttasks', 't')
+            ->innerJoin('l.tickets', 'ticket');
         if ($project) {
             $this->forProject($query, $id);
         } else {
-            $query->where('t.id = :id')->setParameter('id', $id);
+            $query->where('t.id = :id')
+                ->setParameter('id', $id);
         }
-        return (int)$query->getQuery()->getSingleScalarResult();
+        return (int)$query->getQuery()
+            ->getSingleScalarResult();
     }
 
     public function plannedDuration(?int $project): int
     {
-        $query = $this->em->createQueryBuilder()->select('SUM(t.planned_duration)')->from(ProjectTask::class, 't');
-        return (int)$this->forProject($query, $project)->getQuery()->getSingleScalarResult();
+        $query = $this->em->createQueryBuilder()
+            ->select('SUM(t.planned_duration)')
+            ->from(ProjectTask::class, 't');
+        return (int)$this->forProject($query, $project)
+            ->getQuery()
+            ->getSingleScalarResult();
     }
 
     private function forProject(QueryBuilder $query, ?int $project): QueryBuilder
