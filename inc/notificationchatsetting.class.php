@@ -38,6 +38,10 @@ if (!defined('GLPI_ROOT')) {
 /**
  *  This class manages the chat settings
  */
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NotificationChatConfigurationRepository;
+
 class NotificationChatSetting extends NotificationSetting
 {
     public static function getTypeName($nb = 0)
@@ -202,20 +206,9 @@ class NotificationChatSetting extends NotificationSetting
         ];
         renderTwigForm($form);
 
-        $query = "SELECT * FROM glpi_notificationchatconfigs";
-        $iterators = $DB->request($query);
-
-        $result = [];
-        foreach ($iterators as $key => $iterator) {
-            $res = [];
-            $res['hookurl'] = $iterator['hookurl'];
-            $res['chat'] = $iterator['chat'];
-            $res['type'] = $iterator['type'];
-            $res['value'] = $iterator['value'];
-            $res['id'] = $iterator['id'];
-
-            $result[] = $res;
-        }
+        // Complete the fixed configuration projection before rendering the table.
+        $result = Orm::read($DB, static fn (EntityManager $em): array =>
+            (new NotificationChatConfigurationRepository($em))->settingsRows());
 
         $fields = [
             'chat' => __('Mode'),
