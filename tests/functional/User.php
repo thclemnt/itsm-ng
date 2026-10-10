@@ -1478,6 +1478,151 @@ class User extends DbTestCase
         }
     }
 
+    public function testInterfacePreferencesKeepCurrentValuesAndPendingAccountState(): void
+    {
+        global $DB;
+        $this->login();
+        $user = $this->createItem(UserModel::class, ['name' => 'interface-preferences-' . $this->getUniqueString(),
+            'menu_position' => 'menu-right', 'menu_favorite_on' => '0', 'menu_favorite' => '{"assets":["computer"]}',
+            'menu_open' => '["assets"]', 'menu_small' => 'true', 'compact_mode_ui' => true]);
+        $id = (int)$user->getID();
+        $manager = Orm::create($DB);
+        $owned = $manager->find(UserRecord::class, $id);
+        $owned->name = 'Pending interface account';
+        $before = $manager->getUnitOfWork()->getIdentityMap();
+        $loads = new class () {
+            public int $count = 0;
+            public function postLoad(): void
+            {
+                ++$this->count;
+            }
+        };
+        $manager->getEventManager()->addEventListener([Events::postLoad], $loads);
+        $users = new UserRepository($manager);
+        try {
+            $this->string($users->menuPosition($id))->isIdenticalTo('menu-right');
+            $this->string($users->favoritesEnabled($id))->isIdenticalTo('0');
+            $this->string($users->favoriteMenuItems($id))->isIdenticalTo('{"assets":["computer"]}');
+            $this->string($users->openMenuSections($id))->isIdenticalTo('["assets"]');
+            $this->string($users->smallMenu($id))->isIdenticalTo('true');
+            $this->boolean($users->compactMode($id))->isTrue();
+            $this->boolean($DB->update('glpi_users', ['menu_position' => 'menu-left', 'menu_favorite_on' => null,
+                'menu_favorite' => null, 'menu_open' => null, 'menu_small' => null, 'compact_mode_ui' => null], ['id' => $id]))->isTrue();
+            $this->string($users->menuPosition($id))->isIdenticalTo('menu-left');
+            $this->variable($users->favoritesEnabled($id))->isNull();
+            $this->variable($users->favoriteMenuItems($id))->isNull();
+            $this->variable($users->openMenuSections($id))->isNull();
+            $this->variable($users->smallMenu($id))->isNull();
+            $this->variable($users->compactMode($id))->isNull();
+            $this->variable($users->menuPosition(null))->isNull();
+            $this->variable($users->compactMode(PHP_INT_MAX))->isNull();
+            $this->integer($loads->count)->isIdenticalTo(0);
+            $this->boolean($manager->contains($owned))->isTrue();
+            $this->string($owned->name)->isIdenticalTo('Pending interface account');
+            $this->array($manager->getUnitOfWork()->getIdentityMap())->isIdenticalTo($before);
+        } finally {
+            $manager->clear();
+        }
+    }
+
+    public function testMainMenuReadsPreferencesAfterRedefinitionHook(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $this->login();
+        $session = $_SESSION;
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $user = $this->createItem(UserModel::class, ['name' => 'menu-preferences-' . $this->getUniqueString()]);
+        $id = (int)$user->getID();
+        $enabled = true;
+        $calls = 0;
+        try {
+            $_SESSION['glpiID'] = $id;
+            $_SESSION['glpi_use_mode'] = Session::NORMAL_MODE;
+            $plugins->setValue(null, [...$active, 'interface_preferences_fixture']);
+            $PLUGIN_HOOKS['redefine_menus']['interface_preferences_fixture'] =
+                function (array $menu) use ($DB, $id, &$enabled, &$calls): array {
+                    ++$calls;
+                    $this->boolean($DB->update('glpi_users', [
+                        'menu_favorite' => $enabled ? '{"assets":["computer"]}' : null,
+                        'menu_open' => $enabled ? '["assets"]' : null,
+                        'menu_small' => $enabled ? 'true' : null,
+                    ], ['id' => $id]))->isTrue();
+                    return ['assets' => ['title' => 'Assets', 'default' => '/front/computer.php',
+                        'content' => ['computer' => ['title' => 'Computers', 'page' => '/front/computer.php']]]];
+                };
+            foreach ([true, false] as $enabled) {
+                $args = Html::getMainMenu('assets', 'computer', '')['args'];
+                $this->boolean($args['menu']['assets']['is_open'])->isIdenticalTo($enabled);
+                $this->boolean($args['menu']['assets']['content']['computer']['is_favorite'])->isIdenticalTo($enabled);
+                $this->boolean($args['menu_small'])->isIdenticalTo($enabled);
+            }
+            $this->integer($calls)->isIdenticalTo(2);
+        } finally {
+            $_SESSION = $session;
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+        }
+    }
+
+    public function testCompactCssReadsSelectedRouteThenUsesExistingSessionCache(): void
+    {
+        global $DB;
+        $this->login();
+        $database = $DB;
+        $session = $_SESSION;
+        $user = $this->createItem(UserModel::class, ['name' => 'compact-css-' . $this->getUniqueString(), 'compact_mode_ui' => true]);
+        $id = (int)$user->getID();
+        $connection = $database->getDoctrineConnection();
+        $this->mockGenerator->orphanize('__construct');
+        $routed = new DBmysql();
+        $reads = 0;
+        $this->calling($routed)->fieldExists = true;
+        $this->calling($routed)->getDoctrineConnection = static function () use ($connection, &$reads) {
+            ++$reads;
+            return $connection;
+        };
+        $compactCount = static fn (array $css): int => count(array_filter(
+            $css,
+            static fn (string $url): bool => str_contains($url, 'variant=compact')
+        ));
+        try {
+            $DB = $routed;
+            $_SESSION['glpiID'] = $id;
+            unset($_SESSION['itsm_compact_mode']);
+            $this->integer($compactCount(Html::getCss()))->isIdenticalTo(3);
+            $this->integer($reads)->isGreaterThan(0);
+            $before = $reads;
+            $this->boolean($database->update('glpi_users', ['compact_mode_ui' => false], ['id' => $id]))->isTrue();
+            $this->integer($compactCount(Html::getCss()))->isIdenticalTo(3);
+            $this->integer($reads)->isIdenticalTo($before);
+            unset($_SESSION['itsm_compact_mode']);
+            $this->integer($compactCount(Html::getCss()))->isIdenticalTo(0);
+            $this->integer($reads)->isGreaterThan($before);
+            $this->boolean($_SESSION['itsm_compact_mode'])->isFalse();
+            $this->boolean($database->update('glpi_users', ['compact_mode_ui' => true], ['id' => $id]))->isTrue();
+            unset($_SESSION['itsm_compact_mode']);
+            Orm::read($database, function (EntityManager $outer) use ($id, $compactCount): void {
+                $owned = $outer->find(UserRecord::class, $id);
+                $owned->name = 'Pending nested compact account';
+                $before = $outer->getUnitOfWork()->getIdentityMap();
+                $this->integer($compactCount(Html::getCss()))->isIdenticalTo(3);
+                $this->boolean($outer->contains($owned))->isTrue();
+                $this->string($owned->name)->isIdenticalTo('Pending nested compact account');
+                $this->array($outer->getUnitOfWork()->getIdentityMap())->isIdenticalTo($before);
+            });
+            foreach ([PHP_INT_MAX, null, 0] as $missing) {
+                $_SESSION['glpiID'] = $missing;
+                unset($_SESSION['itsm_compact_mode']);
+                $this->integer($compactCount(Html::getCss()))->isIdenticalTo(0);
+            }
+        } finally {
+            $DB = $database;
+            $_SESSION = $session;
+        }
+    }
+
     public function testAccessibilityHeaderReadsCurrentFontWithoutUserHydration(): void
     {
         global $DB;

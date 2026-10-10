@@ -82,6 +82,49 @@ final class UserRepository
         return $row['access_font'] ?? null;
     }
 
+    public function compactMode(?int $user): ?bool
+    {
+        return $this->interfacePreference($user, 'compact_mode_ui');
+    }
+
+    public function menuPosition(?int $user): ?string
+    {
+        return $this->interfacePreference($user, 'menu_position');
+    }
+
+    public function favoritesEnabled(?int $user): ?string
+    {
+        return $this->interfacePreference($user, 'menu_favorite_on');
+    }
+
+    public function favoriteMenuItems(?int $user): ?string
+    {
+        return $this->interfacePreference($user, 'menu_favorite');
+    }
+
+    public function openMenuSections(?int $user): ?string
+    {
+        return $this->interfacePreference($user, 'menu_open');
+    }
+
+    public function smallMenu(?int $user): ?string
+    {
+        return $this->interfacePreference($user, 'menu_small');
+    }
+
+    /** Fixed account preferences, projected independently at each rendering boundary. */
+    private function interfacePreference(?int $user, string $field): mixed
+    {
+        $row = $this->em->createQueryBuilder()
+            ->select('u.' . $field)
+            ->from(User::class, 'u')
+            ->where('u.id = :user')
+            ->setParameter('user', $user, Types::BIGINT)
+            ->getQuery()
+            ->getOneOrNullResult();
+        return $row[$field] ?? null;
+    }
+
     /** Serialized session display preferences, without loading the account graph. */
     public function displayOptions(int $user): ?string
     {

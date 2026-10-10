@@ -147,17 +147,26 @@ class Html
             return false;
         }
 
-        $result = $DB->request([
-            'SELECT' => 'compact_mode_ui',
-            'FROM'   => 'glpi_users',
-            'WHERE'  => ['id' => $_SESSION['glpiID']],
-        ]);
-
-        $value = $result->next()['compact_mode_ui'] ?? 0;
+        $value = self::interfacePreference(
+            $_SESSION['glpiID'],
+            static fn (UserRepository $users, ?int $user): ?bool => $users->compactMode($user)
+        ) ?? 0;
         $enabled = filter_var($value, FILTER_VALIDATE_BOOLEAN);
         $_SESSION['itsm_compact_mode'] = $enabled;
 
         return $enabled;
+    }
+
+    /** Read only this account's projected preference, outside rendering and plugin callbacks. */
+    private static function interfacePreference(mixed $user, callable $read): mixed
+    {
+        global $DB;
+        return Orm::readPrepared(
+            $DB,
+            static fn (): ?int => $user === null || $user === 'NULL' || $user === 'null'
+                ? null : (int)$user,
+            static fn (EntityManager $manager, ?int $id): mixed => $read(new UserRepository($manager), $id)
+        );
     }
 
     /**
@@ -1929,22 +1938,16 @@ JAVASCRIPT
             $twig_vars["can_update"] = true;
         }
 
-        $twig_vars['menu_position'] = $DB->request(
-            [
-                   'SELECT' => 'menu_position',
-                   'FROM'   => 'glpi_users',
-                   'WHERE'  => ['id' => $_SESSION["glpiID"]]
-               ]
-        )->next()['menu_position'] ?? 'menu-left';
+        $twig_vars['menu_position'] = self::interfacePreference(
+            $_SESSION['glpiID'],
+            static fn (UserRepository $users, ?int $user): ?string => $users->menuPosition($user)
+        ) ?? 'menu-left';
 
         if (isset($_SESSION['glpiID'])) {
-            $twig_vars['menu_favorite_on'] = $DB->request(
-                [
-                        'SELECT' => 'menu_favorite_on',
-                        'FROM'   => 'glpi_users',
-                        'WHERE'  => ['id' => $_SESSION["glpiID"]]
-                     ]
-            )->next()['menu_favorite_on'] ?? '1';
+            $twig_vars['menu_favorite_on'] = self::interfacePreference(
+                $_SESSION['glpiID'],
+                static fn (UserRepository $users, ?int $user): ?string => $users->favoritesEnabled($user)
+            ) ?? '1';
             $twig_vars['menu_favorite_on'] = filter_var($twig_vars['menu_favorite_on'], FILTER_VALIDATE_BOOLEAN);
         }
 
@@ -7300,22 +7303,16 @@ JAVASCRIPT;
         $already_used_shortcut = ['1'];
 
         if (isset($_SESSION['glpiID'])) {
-            $menu_favorites = $DB->request(
-                [
-                   'SELECT' => 'menu_favorite',
-                   'FROM'   => 'glpi_users',
-                   'WHERE'  => ['id' => $_SESSION["glpiID"]]
-                ]
+            $menu_favorites = self::interfacePreference(
+                $_SESSION['glpiID'],
+                static fn (UserRepository $users, ?int $user): ?string => $users->favoriteMenuItems($user)
             );
-            $menu_favorites = json_decode($menu_favorites->next()['menu_favorite'] ?? '{}', true);
-            $menu_collapse = $DB->request(
-                [
-                 'SELECT' => 'menu_open',
-                 'FROM'   => 'glpi_users',
-                 'WHERE'  => ['id' => $_SESSION["glpiID"]]
-                ]
+            $menu_favorites = json_decode($menu_favorites ?? '{}', true);
+            $menu_collapse = self::interfacePreference(
+                $_SESSION['glpiID'],
+                static fn (UserRepository $users, ?int $user): ?string => $users->openMenuSections($user)
             );
-            $menu_collapse = json_decode($menu_collapse->next()['menu_open'] ?? '[]', true);
+            $menu_collapse = json_decode($menu_collapse ?? '[]', true);
         } else {
             $menu_favorites = [];
             $menu_collapse = [];
@@ -7457,13 +7454,10 @@ JAVASCRIPT;
         "option" => $option, "sector" => $sector];
         $twig_vars['links'] = $links;
 
-        $twig_vars['menu_small'] = $DB->request(
-            [
-                    'SELECT' => 'menu_small',
-                    'FROM'   => 'glpi_users',
-                    'WHERE'  => ['id' => $_SESSION["glpiID"]]
-                 ]
-        )->next()['menu_small'] ?? 'false';
+        $twig_vars['menu_small'] = self::interfacePreference(
+            $_SESSION['glpiID'],
+            static fn (UserRepository $users, ?int $user): ?string => $users->smallMenu($user)
+        ) ?? 'false';
         $twig_vars['menu_small'] = filter_var($twig_vars['menu_small'], FILTER_VALIDATE_BOOLEAN);
         $twig_vars['compact_mode_ui'] = self::useCompactMode();
 
