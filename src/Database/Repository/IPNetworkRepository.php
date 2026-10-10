@@ -7,14 +7,46 @@ namespace itsmng\Database\Repository;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\QueryBuilder;
 use itsmng\Database\Entity\IPNetwork;
 use itsmng\Database\Entity\IPAddress;
+use itsmng\Database\Entity\IPNetworkVlan;
 use itsmng\Database\RecordCriteria;
 
 final class IPNetworkRepository
 {
     public function __construct(private EntityManager $em)
     {
+    }
+
+    /** Preserve the relation ID for massive actions and every linked VLAN column. */
+    public function vlansForNetwork(?int $network): array
+    {
+        return $this->vlanLinks($network)
+            ->select('l.id AS assocID', 'v.id AS id', 'IDENTITY(v.entities) AS entities_id',
+                'v.is_recursive AS is_recursive', 'v.name AS name', 'v.comment AS comment', 'v.tag AS tag',
+                "TEMPORAL_TEXT(v.date_mod, 'datetime') AS date_mod",
+                "TEMPORAL_TEXT(v.date_creation, 'datetime') AS date_creation")
+            ->leftJoin('l.vlans', 'v')->getQuery()->getScalarResult();
+    }
+
+    public function vlanIdsForNetwork(?int $network): array
+    {
+        $rows = $this->vlanLinks($network)->select('IDENTITY(l.vlans) AS vlan')->getQuery()->getScalarResult();
+        $ids = [];
+        foreach ($rows as $row) {
+            $ids[$row['vlan']] = $row['vlan'];
+        }
+        return $ids;
+    }
+
+    private function vlanLinks(?int $network): QueryBuilder
+    {
+        $query = $this->em->createQueryBuilder()->from(IPNetworkVlan::class, 'l');
+        if ($network === null) {
+            return $query->where('l.ipnetworks IS NULL');
+        }
+        return $query->where('l.ipnetworks = :network')->setParameter('network', $network, Types::BIGINT);
     }
 
     /** Maintenance operation: callers rebuild all nodes in the same transaction. */

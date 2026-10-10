@@ -3,6 +3,7 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\ORM\EntityManager;
 use Entity;
 use FQDN;
 use IPAddress;
@@ -10,6 +11,7 @@ use IPAddress_IPNetwork;
 use IPNetwork as Network;
 use IPNetwork_Vlan;
 use itsmng\Database\Orm;
+use itsmng\Database\Repository\IPNetworkRepository;
 use Netpoint;
 use NetworkAlias;
 use NetworkName;
@@ -230,7 +232,10 @@ class IPNetwork extends DbTestCase
 
     public function testIpNetworkVlanAssignAndUnassign()
     {
+        global $DB;
+
         $this->login();
+        $this->setEntity(0, true);
 
         $suffix = (int)mt_rand(50, 200);
         $ipnetwork = new Network();
@@ -246,12 +251,67 @@ class IPNetwork extends DbTestCase
         $vlans_id = (int)$vlan->add([
            'name' => 'vlan-' . $this->getUniqueString(),
            'tag'  => (int)mt_rand(200, 3500),
+           'entities_id' => 0,
+           'is_recursive' => 1,
+           'comment' => null,
+           'date_mod' => null,
+           'date_creation' => null,
         ]);
         $this->integer($vlans_id)->isGreaterThan(0);
 
         $relation = new IPNetwork_Vlan();
         $relation_id = (int)$relation->assignVlan($ipnetworks_id, $vlans_id);
         $this->integer($relation_id)->isGreaterThan(0);
+        $this->boolean($ipnetwork->can($ipnetworks_id, READ))->isTrue();
+        $this->array(array_map('intval', IPNetwork_Vlan::getVlansForIPNetwork($ipnetworks_id)))
+            ->isIdenticalTo([$vlans_id => $vlans_id]);
+        $this->array(IPNetwork_Vlan::getVlansForIPNetwork(null))->isEmpty();
+        $this->array(IPNetwork_Vlan::getVlansForIPNetwork('NULL'))->isEmpty();
+
+        $other_network = $this->createItem(Network::class, [
+            'name' => 'other-vlan-net-' . $this->getUniqueString(),
+            'entities_id' => 0, 'network' => "10.$suffix.41.0/24",
+        ]);
+        $other_relation = (int)$relation->assignVlan($other_network->getID(), $vlans_id);
+        $this->integer($other_relation)->isGreaterThan(0);
+        $read = static fn (): array => Orm::read($DB, static fn (EntityManager $em): array =>
+            (new IPNetworkRepository($em))->vlansForNetwork($ipnetworks_id));
+        $rows = $read();
+        $this->integer(count($rows))->isIdenticalTo(1);
+        $keys = array_keys($rows[0]);
+        sort($keys);
+        $expected_keys = ['assocID', 'id', 'entities_id', 'is_recursive', 'name', 'comment',
+            'tag', 'date_mod', 'date_creation'];
+        sort($expected_keys);
+        $this->array($keys)->isIdenticalTo($expected_keys);
+        $this->integer((int)$rows[0]['entities_id'])->isIdenticalTo(0);
+        $this->integer((int)$rows[0]['is_recursive'])->isIdenticalTo(1);
+        $this->variable($rows[0]['comment'])->isNull();
+        $this->variable($rows[0]['date_mod'])->isNull();
+        $this->variable($rows[0]['date_creation'])->isNull();
+        $this->integer((int)$rows[0]['assocID'])->isIdenticalTo($relation_id);
+        $this->integer((int)$rows[0]['id'])->isIdenticalTo($vlans_id);
+        $this->string($rows[0]['name'])->isIdenticalTo($vlan->fields['name']);
+        $this->integer((int)$rows[0]['tag'])->isIdenticalTo((int)$vlan->fields['tag']);
+        $vlan_url = "/front/vlan.form.php?id=$vlans_id";
+        $this->output(static fn () => IPNetwork_Vlan::showForIPNetwork($ipnetwork))
+            ->contains($vlan_url);
+        $fresh_name = 'fresh-vlan-' . $this->getUniqueString();
+        $this->integer($DB->getDoctrineConnection()->update('glpi_vlans', [
+            'name' => $fresh_name, 'comment' => 'fresh VLAN comment',
+            'date_mod' => '2021-02-03 04:05:06', 'date_creation' => '2020-01-02 03:04:05',
+        ], ['id' => $vlans_id]))
+            ->isIdenticalTo(1);
+        $fresh_rows = $read();
+        $this->string($fresh_rows[0]['name'])->isIdenticalTo($fresh_name);
+        $this->string($fresh_rows[0]['comment'])->isIdenticalTo('fresh VLAN comment');
+        $this->string($fresh_rows[0]['date_mod'])->isIdenticalTo('2021-02-03 04:05:06');
+        $this->string($fresh_rows[0]['date_creation'])->isIdenticalTo('2020-01-02 03:04:05');
+        $this->variable($rows[0]['comment'])->isNull();
+        $this->variable($rows[0]['date_mod'])->isNull();
+        $this->variable($rows[0]['date_creation'])->isNull();
+        $this->string($rows[0]['name'])->isIdenticalTo($vlan->fields['name']);
+        $this->output(static fn () => IPNetwork_Vlan::showForIPNetwork($ipnetwork))->contains($fresh_name);
 
         $this->boolean($relation->unassignVlan($ipnetworks_id, $vlans_id))->isTrue();
         $this->integer((int)countElementsInTable(
@@ -261,6 +321,11 @@ class IPNetwork extends DbTestCase
                 'vlans_id'      => $vlans_id,
             ]
         ))->isEqualTo(0);
+        $this->array(IPNetwork_Vlan::getVlansForIPNetwork($ipnetworks_id))->isEmpty();
+        $this->array($read())->isEmpty();
+        $this->array(array_map('intval', IPNetwork_Vlan::getVlansForIPNetwork($other_network->getID())))
+            ->isIdenticalTo([$vlans_id => $vlans_id]);
+        $this->output(static fn () => IPNetwork_Vlan::showForIPNetwork($ipnetwork))->notContains($vlan_url);
     }
 
     public function testNetpointExecuteAddMulti()
