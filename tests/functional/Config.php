@@ -1763,6 +1763,7 @@ class Config extends DbTestCase
         try {
             ConfigModel::setConfigurationValues($context, ['first' => 'before', 'second' => 'other']);
             $GLOBALS['GLPI_CACHE'] = $pool;
+            Orm::withConnection($connection, static fn (EntityManager $manager) => $manager->close());
             $read = static fn (string $selected, int $offset = 0): array => MappedReads::matching(
                 $DB,
                 'glpi_configs',
@@ -1779,8 +1780,10 @@ class Config extends DbTestCase
             $this->integer($memory->planWrites)->isIdenticalTo(1);
             $connection->update('glpi_configs', ['value' => 'after'], ['context' => $context, 'name' => 'first']);
             $this->string($read($context)[0]['value'])->isIdenticalTo('after');
+            $this->integer($memory->planReads)->isIdenticalTo(1);
             Type::overrideType('text', new ConfigRecordUpperTextType());
             $this->string($read($context)[0]['value'])->isIdenticalTo('AFTER');
+            $this->integer($memory->planReads)->isIdenticalTo(2);
             $this->integer($memory->planWrites)->isIdenticalTo(1);
             Type::overrideType('text', $originalText);
             $count = static fn (): int => MappedReads::countMatching($DB, 'glpi_configs', ['context' => $context]);
@@ -1836,6 +1839,7 @@ class Config extends DbTestCase
         $original = Type::getType('integer');
         try {
             $GLOBALS['GLPI_CACHE'] = new Psr16Cache($memory);
+            Orm::withConnection($connection, static fn (EntityManager $manager) => $manager->close());
             $manager = Orm::forConnection($connection);
             $types = array_column($manager->getClassMetadata(GroupMembership::class)->fieldMappings, 'type');
             $this->boolean(in_array('integer', $types, true))->isFalse();
@@ -1938,6 +1942,7 @@ class Config extends DbTestCase
             ConfigModel::setConfigurationValues($context, ['probe' => 'before']);
             $id = (int)$connection->fetchOne('SELECT id FROM ' . $table . ' WHERE context = ? AND name = ?', [$context, 'probe']);
             $GLOBALS['GLPI_CACHE'] = $pool;
+            Orm::withConnection($connection, static fn (EntityManager $manager) => $manager->close());
             $read = static function () use ($id): array {
                 $item = new ConfigModel();
                 if (!$item->getFromDB($id)) {
@@ -1963,14 +1968,36 @@ class Config extends DbTestCase
             }
             $this->string($read()['value'])->isIdenticalTo('after');
             $this->integer($memory->planWrites)->isIdenticalTo(1);
+            $this->integer($memory->planReads)->isIdenticalTo(3);
             $pool->set($key, 'invalid serialized query plan');
+            // A valid local plan survives backend damage; a fresh owner repairs it.
+            $this->string($read()['value'])->isIdenticalTo('after');
+            $this->integer($memory->planReads)->isIdenticalTo(3);
+            $this->integer($memory->planWrites)->isIdenticalTo(1);
+            Orm::withConnection($connection, static fn (EntityManager $manager) => $manager->close());
             $this->string($read()['value'])->isIdenticalTo('after');
             $this->integer($memory->planWrites)->isIdenticalTo(2);
             $pool->clear();
             $this->string($read()['value'])->isIdenticalTo('after');
+            $this->integer($memory->planReads)->isIdenticalTo(4);
+            $this->integer($memory->planWrites)->isIdenticalTo(2);
+            Orm::withConnection($connection, static fn (EntityManager $manager) => $manager->close());
+            $this->string($read()['value'])->isIdenticalTo('after');
             $this->integer($memory->planWrites)->isIdenticalTo(3);
 
-            // Public manager customization must not poison the private metadata.
+            $replacement = new ConfigRecordPlanCache(storeSerialized: false);
+            $GLOBALS['GLPI_CACHE'] = new Psr16Cache($replacement);
+            $this->string($read()['value'])->isIdenticalTo('after');
+            $this->integer($replacement->planReads)->isIdenticalTo(0);
+            $this->integer($replacement->planWrites)->isIdenticalTo(0);
+            Orm::withConnection($connection, static fn (EntityManager $manager) => $manager->close());
+            $this->string($read()['value'])->isIdenticalTo('after');
+            $this->integer($replacement->planReads)->isIdenticalTo(1);
+            $this->integer($replacement->planWrites)->isIdenticalTo(1);
+            $GLOBALS['GLPI_CACHE'] = $pool;
+
+            // Public manager customization must not poison fresh private metadata.
+            Orm::withConnection($connection, static fn (EntityManager $manager) => $manager->close());
             $pool->clear();
             $manager = Orm::create($DB);
             $manager->getEventManager()->addEventListener(Events::loadClassMetadata, new class () {
@@ -1985,7 +2012,18 @@ class Config extends DbTestCase
             $this->string($read()['value'])->isIdenticalTo('after');
             $this->integer($memory->planWrites)->isIdenticalTo(4);
             $manager->clear();
+
+            // A replacement with the same class need not serialize mutable parser objects.
+            Orm::withConnection($connection, static function (EntityManager $manager): void {
+                $manager->getConfiguration()->setQueryCache(new ArrayAdapter(storeSerialized: false));
+            });
+            $reads = $memory->planReads;
+            $this->string($read()['value'])->isIdenticalTo('after');
+            $connection->update('glpi_configs', ['value' => 'replacement-cache'], ['id' => $id]);
+            $this->string($read()['value'])->isIdenticalTo('replacement-cache');
+            $this->integer($memory->planReads)->isIdenticalTo($reads + 2);
         } finally {
+            Orm::withConnection($connection, static fn (EntityManager $manager) => $manager->close());
             $GLOBALS['GLPI_CACHE'] = $previous;
             $connection->delete('glpi_configs', ['context' => $context]);
         }
@@ -2008,6 +2046,7 @@ class Config extends DbTestCase
             ConfigModel::setConfigurationValues($context, ['probe' => 'live']);
             $id = (int)$connection->fetchOne('SELECT id FROM ' . $connection->quoteIdentifier('glpi_configs') . ' WHERE context = ? AND name = ?', [$context, 'probe']);
             $GLOBALS['GLPI_CACHE'] = new Psr16Cache($memory);
+            Orm::withConnection($connection, static fn (EntityManager $manager) => $manager->close());
             $model = $original;
             $model['tables']['glpi_configs'] = ConfigRecordCallback::class;
             $registry->setValue(null, $model);
@@ -2864,11 +2903,22 @@ final class ConfigQueryCacheWalker extends SqlOutputWalker
     }
 }
 
-/** Count actual persistent plan writes; leave ordinary cache behavior unchanged. */
+/** Count actual persistent plan reads/writes; leave ordinary cache behavior unchanged. */
 final class ConfigRecordPlanCache extends ArrayAdapter
 {
     public int $planWrites = 0;
     public array $planKeys = [];
+    public int $planReads = 0;
+
+    public function getItems(array $keys = []): iterable
+    {
+        foreach ($keys as $key) {
+            if (str_starts_with($key, 'orm_record_query_')) {
+                ++$this->planReads;
+            }
+        }
+        return parent::getItems($keys);
+    }
 
     public function save(CacheItemInterface $item): bool
     {

@@ -14,6 +14,8 @@ use Doctrine\ORM\Query;
 use LogicException;
 use Psr\SimpleCache\CacheInterface;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Symfony\Component\Cache\Adapter\ChainAdapter;
+use Symfony\Component\Cache\Adapter\ProxyAdapter;
 
 /** @internal Private implementation shared only by final read operation owners. */
 trait PrivateReadOwnership
@@ -149,7 +151,19 @@ trait PrivateReadOwnership
                 return;
             }
         }
-        $query->setQueryCache($this->queryCache ??= new SerializedMetadataCache($this->pool, 'orm_record_query_' . $this->context));
+        $cache = $this->queryCache ??= new SerializedMetadataCache($this->pool, 'orm_record_query_' . $this->context);
+        $local = $this->sharedManager
+            && ($this->connection instanceof MySQLManagedConnection || $this->connection instanceof PostgresConnection)
+                ? $this->connection->getApplicationQueryCache($this->manager)
+                : null;
+        if ($local !== null) {
+            // Valid private plans live with this manager; backend changes affect cold reads.
+            $cache = new ChainAdapter([
+                new ProxyAdapter($local, 'orm_record_query_' . $this->context),
+                $cache,
+            ]);
+        }
+        $query->setQueryCache($cache);
     }
 
     public function close(): void

@@ -13,6 +13,7 @@ use Throwable;
 trait ApplicationOrmOwnership
 {
     private ?EntityManager $applicationEntityManager = null;
+    private ?ArrayAdapter $applicationQueryCache = null;
     private bool $applicationEntityManagerActive = false;
     /** @var array<string, Type> Actual authoritative registry objects used by this manager. */
     private array $applicationTypes = [];
@@ -33,7 +34,8 @@ trait ApplicationOrmOwnership
         }
         if ($this->applicationEntityManager === null || !$this->applicationEntityManager->isOpen()) {
             $this->applicationEntityManager = Orm::forConnection($this);
-            $this->applicationEntityManager->getConfiguration()->setQueryCache(new ArrayAdapter(storeSerialized: true));
+            $this->applicationQueryCache = new ArrayAdapter(storeSerialized: true);
+            $this->applicationEntityManager->getConfiguration()->setQueryCache($this->applicationQueryCache);
             // Configuration may register the application's two native types.
             $this->applicationTypes = Type::getTypeRegistry()->getMap();
         }
@@ -67,10 +69,20 @@ trait ApplicationOrmOwnership
         return $this->applicationEntityManagerActive && $this->applicationEntityManager === $manager;
     }
 
+    /** @internal Only the original serialized cache of the active private manager may be shared. */
+    public function getApplicationQueryCache(EntityManager $manager): ?ArrayAdapter
+    {
+        return $this->ownsApplicationEntityManager($manager)
+            && $manager->getConfiguration()->getQueryCache() === $this->applicationQueryCache
+                ? $this->applicationQueryCache
+                : null;
+    }
+
     private function resetApplicationEntityManager(): void
     {
         // An in-flight callback retains its local manager until its own finally.
         $this->applicationEntityManager = null;
+        $this->applicationQueryCache = null;
         $this->applicationTypes = [];
     }
 }
