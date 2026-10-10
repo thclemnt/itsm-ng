@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\LinkRepository;
 
@@ -80,7 +81,12 @@ class Link_Itemtype extends CommonDBChild
             return false;
         }
 
-        $iterator = (new LinkRepository(Orm::create($DB)))->itemtypes((int)$links_id);
+        $iterator = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$links_id,
+            static fn (EntityManager $manager, int $link): array =>
+                (new LinkRepository($manager))->itemtypes($link)
+        );
         $types  = [];
         $used   = [];
         $numrows = count($iterator);
@@ -171,7 +177,12 @@ class Link_Itemtype extends CommonDBChild
             switch ($item->getType()) {
                 case 'Link':
                     if ($_SESSION['glpishow_count_on_tabs']) {
-                        $nb = (new LinkRepository(Orm::create($DB)))->countItemtypes((int)$item->getID());
+                        $nb = Orm::readPrepared(
+                            $DB,
+                            static fn (): int => (int)$item->getID(),
+                            static fn (EntityManager $manager, int $link): int =>
+                                (new LinkRepository($manager))->countItemtypes($link)
+                        );
                     }
                     return self::createTabEntry(_n(
                         'Associated item type',

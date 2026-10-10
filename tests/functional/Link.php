@@ -50,9 +50,11 @@ use Doctrine\DBAL\Types\StringType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
 use Link_Itemtype;
 use itsmng\Database\Entity\Link as LinkRecord;
+use itsmng\Database\Entity\LinkItemtype as LinkItemtypeRecord;
 use itsmng\Database\EntityRestriction;
 use itsmng\Database\EntityScopeReadOperation;
 use itsmng\Database\LinkCountReadOperation;
@@ -65,10 +67,70 @@ use ReflectionProperty;
 use Domain;
 use Domain_Item;
 use NetworkEquipment;
+use Monitor;
 use NetworkPort;
 
 class Link extends DbTestCase
 {
+    public function testLinkItemtypesStayCurrentWithoutClearingCallerState(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $external = null;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $link = $this->createItem(LinkModel::class, [
+                'name' => $this->getUniqueString(), 'link' => 'https://example.test/[ID]',
+                'entities_id' => (int)$_SESSION['glpiactive_entity'], 'is_recursive' => 1,
+            ]);
+            $first = $this->createItem(Link_Itemtype::class, ['links_id' => $link->getID(), 'itemtype' => 'Monitor']);
+            $second = $this->createItem(Link_Itemtype::class, ['links_id' => $link->getID(), 'itemtype' => 'Computer']);
+            $external = Orm::create($DB);
+            $retained = $external->find(LinkItemtypeRecord::class, (int)$second->getID());
+            $retained->itemtype = 'PendingCallerValue';
+            $connection = $DB->getDoctrineConnection();
+            $connection->insert('glpi_links_itemtypes', ['links_id' => $link->getID(), 'itemtype' => 'PluginMissingEndpoint']);
+            $_SESSION['glpishow_count_on_tabs'] = true;
+            $_SESSION['glpiactiveprofile']['link'] = READ;
+            $tab = new Link_Itemtype();
+            $expectedTab = static fn (int $count): string => Link_Itemtype::createTabEntry(
+                _n('Associated item type', 'Associated item types', Session::getPluralNumber()),
+                $count
+            );
+            $this->string($tab->getTabNameForItem($link))->isIdenticalTo($expectedTab(3));
+            $rows = $this->renderLocalTableRows(static fn () => Link_Itemtype::showForLink($link));
+            $this->array($rows)->isIdenticalTo([[Computer::getTypeName(1)], [Monitor::getTypeName(1)]]);
+            $connection->update('glpi_links_itemtypes', ['itemtype' => 'NetworkEquipment'], ['id' => $second->getID()]);
+            $fresh = $this->renderLocalTableRows(static fn () => Link_Itemtype::showForLink($link));
+            $this->array($fresh)->isIdenticalTo([[Monitor::getTypeName(1)], [NetworkEquipment::getTypeName(1)]]);
+            $this->array($rows)->isIdenticalTo([[Computer::getTypeName(1)], [Monitor::getTypeName(1)]]);
+            $this->boolean($external->contains($retained))->isTrue();
+            $this->string($retained->itemtype)->isIdenticalTo('PendingCallerValue');
+            $connection->withApplicationEntityManager(function (EntityManager $outer) use ($link, $second, $tab, $expectedTab): void {
+                $managed = $outer->find(LinkItemtypeRecord::class, (int)$second->getID());
+                $managed->itemtype = 'UnflushedOuterValue';
+                $this->string($tab->getTabNameForItem($link))->isIdenticalTo($expectedTab(3));
+                $this->array($this->renderLocalTableRows(static fn () => Link_Itemtype::showForLink($link)))
+                    ->isIdenticalTo([[Monitor::getTypeName(1)], [NetworkEquipment::getTypeName(1)]]);
+                $this->boolean($outer->contains($managed))->isTrue();
+                $this->string($managed->itemtype)->isIdenticalTo('UnflushedOuterValue');
+            });
+            $connection->delete('glpi_links_itemtypes', ['id' => $first->getID()]);
+            $this->string($tab->getTabNameForItem($link))->isIdenticalTo($expectedTab(2));
+            $this->array($this->renderLocalTableRows(static fn () => Link_Itemtype::showForLink($link)))
+                ->isIdenticalTo([[NetworkEquipment::getTypeName(1)]]);
+            $_SESSION['glpiactiveprofile']['link'] = 0;
+            $this->output(static fn () => Link_Itemtype::showForLink($link))->isEmpty();
+            $_SESSION['glpiactiveprofile']['link'] = READ;
+            $_SESSION['glpishow_count_on_tabs'] = false;
+            $this->string($tab->getTabNameForItem($link))->isIdenticalTo($expectedTab(0));
+        } finally {
+            $external?->clear();
+            $_SESSION = $session;
+        }
+    }
+
     public function testDisplayLinksRespectItemTypeAndEntityScope(): void
     {
         global $DB;
