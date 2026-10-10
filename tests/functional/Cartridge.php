@@ -33,7 +33,12 @@
 
 namespace tests\units;
 
+use Alert;
+use CartridgeItem as CartridgeModel;
 use DbTestCase;
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CartridgeRepository;
 
 /* Test for inc/cartridge.class.php */
 
@@ -98,6 +103,7 @@ class Cartridge extends DbTestCase
         ]);
         $this->integer((int)$cid)->isGreaterThan(0);
         $this->boolean($cartridge->getFromDB($cid))->isTrue();
+        $this->integer((int)CartridgeModel::getCount($ciid))->isIdenticalTo(1);
         $this->integer($cartridge->getUsedNumber($ciid))->isIdenticalTo(0);
         $this->integer($cartridge->getTotalNumberForPrinter($pid))->isIdenticalTo(0);
 
@@ -122,7 +128,79 @@ class Cartridge extends DbTestCase
         //check uninstall
         $this->boolean($cartridge->getFromDB($cid))->isTrue();
         $this->string($cartridge->fields['date_out'])->matches('#\d{4}-\d{2}-\d{2}$#');
+        $this->integer((int)CartridgeModel::getCount($ciid))->isIdenticalTo(1);
         $this->integer($cartridge->getUsedNumber($ciid))->isIdenticalTo(0);
+    }
+
+    public function testStockAlarmCandidateScopeAndRepeat()
+    {
+        global $DB;
+
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $model = new CartridgeModel();
+        $models = [];
+        foreach (['fresh' => [], 'expired' => [], 'recent' => [],
+            'disabled' => ['alarm_threshold' => -1], 'deleted' => ['is_deleted' => 1],
+            'other_entity' => ['entities_id' => 0]] as $name => $extra) {
+            $models[$name] = (int)$model->add($extra + [
+                'name' => 'stock-alarm-' . $name . '-' . $this->getUniqueString(),
+                'entities_id' => $entity,
+                'alarm_threshold' => 0,
+            ]);
+            $this->integer($models[$name])->isGreaterThan(0);
+        }
+        $alert = new Alert();
+        $expired = (int)$alert->add([
+            'itemtype' => 'CartridgeItem', 'items_id' => $models['expired'],
+            'type' => Alert::THRESHOLD, 'date' => '2000-01-01 12:00:00',
+        ]);
+        $this->integer($expired)->isGreaterThan(0);
+        $second = (int)$alert->add([
+            'itemtype' => 'CartridgeItem', 'items_id' => $models['expired'],
+            'type' => Alert::END, 'date' => '2000-01-01 13:00:00',
+        ]);
+        $this->integer($second)->isGreaterThan(0);
+        $recent = (int)$alert->add([
+            'itemtype' => 'CartridgeItem', 'items_id' => $models['recent'],
+            'type' => Alert::THRESHOLD, 'date' => '2037-01-01 12:00:00',
+        ]);
+        $this->integer($recent)->isGreaterThan(0);
+
+        $read = static fn (): array => Orm::read($DB, static fn (EntityManager $em): array =>
+            (new CartridgeRepository($em))->alarmCandidates($entity, 3600));
+        $rows = array_values(array_filter($read(), static fn (array $row): bool =>
+            in_array((int)$row['cartID'], $models, true)));
+        $ids = array_map('intval', array_column($rows, 'cartID'));
+        sort($ids);
+        $expected = [$models['fresh'], $models['expired'], $models['expired']];
+        sort($expected);
+        $this->array($ids)->isIdenticalTo($expected);
+        foreach ($rows as $row) {
+            $this->integer((int)$row['entity'])->isIdenticalTo($entity);
+            $this->integer((int)$row['threshold'])->isIdenticalTo(0);
+            if ((int)$row['alertID'] === $expired) {
+                $this->string($row['date'])->isIdenticalTo('2000-01-01 12:00:00');
+            }
+        }
+        $this->boolean($DB->update('glpi_alerts', ['date' => '2000-01-01 12:00:00'], ['id' => $recent]))->isTrue();
+        $this->boolean(in_array($models['recent'], array_map('intval', array_column($read(), 'cartID')), true))->isTrue();
+        $this->boolean($alert->delete(['id' => $expired]))->isTrue();
+        $this->boolean($alert->delete(['id' => $second]))->isTrue();
+        $rows = array_values(array_filter($read(), static fn (array $row): bool =>
+            (int)$row['cartID'] === $models['expired']));
+        $this->integer(count($rows))->isIdenticalTo(1);
+        $this->variable($rows[0]['alertID'])->isNull();
+        $this->variable($rows[0]['date'])->isNull();
+        $this->integer((int)CartridgeModel::getCount($models['fresh']))->isIdenticalTo(0);
+        $null_count = (int)$DB->request([
+            'COUNT' => 'cpt', 'FROM' => 'glpi_cartridges', 'WHERE' => ['cartridgeitems_id' => null],
+        ])->next()['cpt'];
+        $zero_count = (int)$DB->request([
+            'COUNT' => 'cpt', 'FROM' => 'glpi_cartridges', 'WHERE' => ['cartridgeitems_id' => 0],
+        ])->next()['cpt'];
+        $this->integer((int)CartridgeModel::getCount(null))->isIdenticalTo($null_count);
+        $this->integer((int)CartridgeModel::getCount('nUlL'))->isIdenticalTo($null_count);
+        $this->integer((int)CartridgeModel::getCount(0))->isIdenticalTo($zero_count);
     }
 
     public function testInfocomInheritance()

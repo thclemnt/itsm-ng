@@ -18,6 +18,34 @@ final class CartridgeRepository
     {
     }
 
+    public function countForModel(?int $model): int
+    {
+        $query = $this->em->createQueryBuilder()->select('COUNT(c.id)')
+            ->from(Entity\Cartridge::class, 'c');
+        if ($model === null) {
+            $query->where('c.cartridgeitems IS NULL');
+        } else {
+            $query->where('c.cartridgeitems = :model')->setParameter('model', $model, Types::BIGINT);
+        }
+        return (int)$query->getQuery()->getSingleScalarResult();
+    }
+
+    /** Alert candidates retain the database clock and every matching alert type. */
+    public function alarmCandidates(int $entity, int $repeat): array
+    {
+        return $this->em->createQueryBuilder()
+            ->select('c.id AS cartID', 'IDENTITY(c.entities) AS entity', 'c.ref AS ref',
+                'c.name AS name', 'c.alarm_threshold AS threshold', 'a.id AS alertID',
+                "TEMPORAL_TEXT(a.date, 'datetime') AS date")
+            ->from(Entity\CartridgeItem::class, 'c')
+            ->leftJoin(Entity\Alert::class, 'a', 'WITH', 'a.cartridgeItem = c.id AND a.itemtype = :type')
+            ->where('c.is_deleted = :deleted AND c.alarm_threshold >= 0 AND c.entities = :entity')
+            ->andWhere("(a.date IS NULL OR a.date < DATE_SUB(CURRENT_TIMESTAMP(), :repeat, 'SECOND'))")
+            ->setParameter('type', 'CartridgeItem')->setParameter('deleted', false, Types::BOOLEAN)
+            ->setParameter('entity', $entity, Types::BIGINT)->setParameter('repeat', $repeat, Types::INTEGER)
+            ->getQuery()->getScalarResult();
+    }
+
     /** The guarded update prevents two callers from claiming the same stock row. */
     public function install(int $printer, int $model): bool
     {
