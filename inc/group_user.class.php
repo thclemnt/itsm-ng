@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\GroupMembershipRepository;
 use itsmng\Database\Repository\PlanningRepository;
@@ -53,12 +54,6 @@ class Group_User extends CommonDBRelation
 
     public static $itemtype_2                 = 'Group';
     public static $items_id_2                 = 'groups_id';
-
-    private static function repository(): GroupMembershipRepository
-    {
-        global $DB;
-        return new GroupMembershipRepository(Orm::create($DB));
-    }
 
     /**
     * Check if a user belongs to a group
@@ -91,7 +86,9 @@ class Group_User extends CommonDBRelation
     **/
     public static function getUserGroups($users_id, $condition = [])
     {
-        return self::repository()->groupsForUser((int)$users_id, $condition);
+        global $DB;
+        return Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new GroupMembershipRepository($manager))->groupsForUser((int)$users_id, $condition));
     }
 
 
@@ -107,7 +104,9 @@ class Group_User extends CommonDBRelation
     **/
     public static function getGroupUsers($groups_id, $condition = [])
     {
-        return self::repository()->usersForGroup((int)$groups_id, $condition);
+        global $DB;
+        return Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new GroupMembershipRepository($manager))->usersForGroup((int)$groups_id, $condition));
     }
 
 
@@ -322,6 +321,7 @@ class Group_User extends CommonDBRelation
     **/
     public static function getDataForGroup(Group $group, &$members, &$ids, $crit = '', $tree = 0)
     {
+        global $DB;
         $entityrestrict = self::getEntityRestrictForGroup($group);
 
         if ($tree) {
@@ -330,10 +330,12 @@ class Group_User extends CommonDBRelation
             $restrict = $group->getID();
         }
 
-        $iterator = new RowIterator(self::repository()->members(
-            (array)$restrict,
-            getEntitiesRestrictCriteria(Profile_User::getTable(), '', $entityrestrict, true)
-        )['rows']);
+        $page = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new GroupMembershipRepository($manager))->members(
+                (array)$restrict,
+                getEntitiesRestrictCriteria(Profile_User::getTable(), '', $entityrestrict, true)
+            ));
+        $iterator = new RowIterator($page['rows']);
 
         while ($data = $iterator->next()) {
             // Add to display list, according to criterion
@@ -383,10 +385,12 @@ class Group_User extends CommonDBRelation
      */
     private static function getDirectMembersForGroup(Group $group)
     {
-        return self::repository()->directUserIds(
-            (int)$group->getID(),
-            getEntitiesRestrictCriteria(Profile_User::getTable(), '', self::getEntityRestrictForGroup($group), true)
-        );
+        global $DB;
+        return Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new GroupMembershipRepository($manager))->directUserIds(
+                (int)$group->getID(),
+                getEntitiesRestrictCriteria(Profile_User::getTable(), '', self::getEntityRestrictForGroup($group), true)
+            ));
     }
 
     /**
@@ -411,24 +415,25 @@ class Group_User extends CommonDBRelation
         $sort = 'group',
         $order = 'ASC'
     ) {
-        global $CFG_GLPI, $PLUGIN_HOOKS;
+        global $CFG_GLPI, $PLUGIN_HOOKS, $DB;
 
         $entityrestrict = self::getEntityRestrictForGroup($group);
         $restrict       = $tree ? getSonsOf('glpi_groups', $group->getID()) : $group->getID();
         // Hooks receive complete models and can change later rows. Keep their
         // ordinary per-row reads, including hooks loaded lazily by includeHook.
         $withLinkFields = empty($PLUGIN_HOOKS['item_can']);
-        $page = self::repository()->members(
-            (array)$restrict,
-            getEntitiesRestrictCriteria(Profile_User::getTable(), '', $entityrestrict, true),
-            $crit,
-            (int)$offset,
-            (int)$limit,
-            $sort,
-            $order,
-            (bool)$tree,
-            $withLinkFields
-        );
+        $page = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new GroupMembershipRepository($manager))->members(
+                (array)$restrict,
+                getEntitiesRestrictCriteria(Profile_User::getTable(), '', $entityrestrict, true),
+                $crit,
+                (int)$offset,
+                (int)$limit,
+                $sort,
+                $order,
+                (bool)$tree,
+                $withLinkFields
+            ));
         $iterator = new RowIterator($page['rows']);
         $rows     = [];
 
