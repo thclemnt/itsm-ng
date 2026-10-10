@@ -181,7 +181,7 @@ class SimpleCache extends \GLPITestCase
 
     public function testFilesystemValuesUsePortablePhpSerialization(): void
     {
-        vfsStream::setup('portable-codec');
+        $root = vfsStream::setup('portable-codec');
         $configuration = ['adapter' => 'filesystem', 'options' => [
             'cache_dir' => vfsStream::url('portable-codec'), 'namespace' => 'portable', 'ttl' => 600,
         ]];
@@ -198,7 +198,7 @@ class SimpleCache extends \GLPITestCase
                 $read($child);
             }
         };
-        $read(vfsStream::getRoot());
+        $read($root);
         $this->array($files)->hasSize(1);
         $payload = explode("\n", $files[0], 3)[2];
         $this->string($payload)->isIdenticalTo(serialize($value));
