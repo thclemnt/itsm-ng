@@ -89,12 +89,7 @@ final class HistoryRepository
         if ($limit > 0) {
             $query->setMaxResults($limit)->setFirstResult(max(0, $offset));
         }
-        $records = new RecordRepository($this->em);
-        $rows = [];
-        foreach ($query->getQuery()->toIterable() as $record) {
-            $rows[] = $records->toRow($record);
-        }
-        return $rows;
+        return (new RecordRepository($this->em))->toRows($query->getQuery()->toIterable());
     }
 
     /** Distinct facet tuples ordered by their most recent occurrence. */

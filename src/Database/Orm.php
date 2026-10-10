@@ -92,6 +92,18 @@ final class Orm
             && !method_exists($connection, 'getEventManager');
     }
 
+    /** @internal Eager projection admission; extension routes still construct their own manager. */
+    public static function prepareReadProjection(Connection $connection): bool
+    {
+        if ((new ReflectionMethod($connection, 'getDatabasePlatform'))->getDeclaringClass()->getName() !== Connection::class
+            || method_exists($connection, 'getEventManager')
+            || !self::ownsReadMapping($connection)) {
+            return false;
+        }
+        self::registerTypes();
+        return true;
+    }
+
     /** SQL retained by Doctrine persisters must not depend on a live custom converter. */
     public static function stableSqlConversion(string $name, DbalType $type): bool
     {

@@ -23,11 +23,6 @@ final class TicketRecurrentRepository
             ->setParameter('active', true, Types::BOOLEAN)
             ->setParameter('now', $now ?? new DateTimeImmutable(), Types::DATETIMETZ_IMMUTABLE)
             ->orderBy('r.next_creation_date')->addOrderBy('r.id');
-        $records = new RecordRepository($this->em);
-        $rows = [];
-        foreach ($query->getQuery()->toIterable() as $record) {
-            $rows[] = $records->toRow($record);
-        }
-        return $rows;
+        return (new RecordRepository($this->em))->toRows($query->getQuery()->toIterable());
     }
 }

@@ -27,11 +27,6 @@ final class CertificateRepository
             ->setParameter('entity', $entity, Types::INTEGER)->setParameter('false', false, Types::BOOLEAN)
             ->andWhere('a.id IS NULL AND c.date_expiration < :cutoff')->setParameter('cutoff', $cutoff, Types::DATE_IMMUTABLE)
             ->orderBy('c.id');
-        $records = new RecordRepository($this->em);
-        $rows = [];
-        foreach ($query->getQuery()->toIterable() as $record) {
-            $rows[] = $records->toRow($record);
-        }
-        return $rows;
+        return (new RecordRepository($this->em))->toRows($query->getQuery()->toIterable());
     }
 }

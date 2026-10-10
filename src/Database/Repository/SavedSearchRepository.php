@@ -101,12 +101,7 @@ final class SavedSearchRepository
             ->join('a.savedsearches', 's')->join('s.users', 'u')
             ->where('a.is_active = :active AND u.id > 0')->setParameter('active', true, Types::BOOLEAN)
             ->orderBy('a.id');
-        $records = new RecordRepository($this->em);
-        $rows = [];
-        foreach ($query->getQuery()->toIterable() as $record) {
-            $rows[] = $records->toRow($record);
-        }
-        return $rows;
+        return (new RecordRepository($this->em))->toRows($query->getQuery()->toIterable());
     }
 
     public function setCountMode(array $ids, int $mode): void

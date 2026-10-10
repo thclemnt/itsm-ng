@@ -36,11 +36,6 @@ final class MailAuthenticationRepository
                 ->setParameter('yes', true, Types::BOOLEAN)
                 ->orderBy('m.name');
         }
-        $records = new RecordRepository($this->em);
-        $rows = [];
-        foreach ($query->addOrderBy('m.id')->getQuery()->toIterable() as $record) {
-            $rows[] = $records->toRow($record);
-        }
-        return $rows;
+        return (new RecordRepository($this->em))->toRows($query->addOrderBy('m.id')->getQuery()->toIterable());
     }
 }

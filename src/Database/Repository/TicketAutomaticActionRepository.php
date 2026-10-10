@@ -55,12 +55,7 @@ final class TicketAutomaticActionRepository
             ->setParameter('statuses', $statuses)->setParameter('no', false, Types::BOOLEAN);
         $query->andWhere("DATE_ADD(t.date, :days, 'DAY') < " . $this->time($query, $now))->setParameter('days', $days, Types::INTEGER)
             ->orderBy('t.id');
-        $records = new RecordRepository($this->em);
-        $rows = [];
-        foreach ($query->getQuery()->toIterable() as $record) {
-            $rows[] = $records->toRow($record);
-        }
-        return $rows;
+        return (new RecordRepository($this->em))->toRows($query->getQuery()->toIterable());
     }
 
     /** Inherited selection watermark and the entity's own duration gate are distinct. */

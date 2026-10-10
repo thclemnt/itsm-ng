@@ -76,12 +76,7 @@ final class ConsumableRepository
         $query->addSelect('CASE WHEN c.date_in IS NULL THEN 0 ELSE 1 END AS HIDDEN date_order')
             ->addOrderBy('date_order')->addOrderBy('c.date_in')->addOrderBy('c.id')
             ->setMaxResults(max(1, $limit))->setFirstResult(max(0, $offset));
-        $records = new RecordRepository($this->em);
-        $rows = [];
-        foreach ($query->getQuery()->toIterable() as $record) {
-            $rows[] = $records->toRow($record);
-        }
-        return $rows;
+        return (new RecordRepository($this->em))->toRows($query->getQuery()->toIterable());
     }
 
     /** Scope belongs to the consumable model, not a cached child entity or recipient. */

@@ -8,7 +8,6 @@ use DBAdapter;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Repository\ReservationRepository;
-use ReflectionMethod;
 
 /** One display partition owns its captured route; no rows survive the call. */
 final class ReservationUserReadOperation
@@ -25,18 +24,9 @@ final class ReservationUserReadOperation
 
     public function __construct(private readonly Connection $connection)
     {
-        // Extension routes retain exactly the original bare manager creation,
-        // before caller arguments (including current entity scope) are evaluated.
-        if ((new ReflectionMethod($connection, 'getDatabasePlatform'))->getDeclaringClass()->getName() !== Connection::class
-            || method_exists($connection, 'getEventManager')) {
-            $this->manager = Orm::forConnection($connection);
-            return;
-        }
-        $this->project = Orm::ownsReadMapping($connection);
-        if ($this->project) {
-            // Keep the previous eager Type registration before argument callbacks.
-            Orm::registerTypes();
-        } else {
+        // Resolve extension callbacks and types before caller arguments are evaluated.
+        $this->project = Orm::prepareReadProjection($connection);
+        if (!$this->project) {
             $this->manager = Orm::forConnection($connection);
         }
     }

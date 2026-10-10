@@ -21,11 +21,6 @@ final class ObjectLockRepository
         $query = $this->em->createQueryBuilder()->select('r')->from(ObjectLock::class, 'r')
             ->where('r.date_mod < :before')->setParameter('before', $before, Types::DATETIMETZ_IMMUTABLE)
             ->orderBy('r.date_mod')->addOrderBy('r.id');
-        $records = new RecordRepository($this->em);
-        $rows = [];
-        foreach ($query->getQuery()->toIterable() as $lock) {
-            $rows[] = $records->toRow($lock);
-        }
-        return $rows;
+        return (new RecordRepository($this->em))->toRows($query->getQuery()->toIterable());
     }
 }

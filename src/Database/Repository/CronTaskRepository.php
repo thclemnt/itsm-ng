@@ -132,11 +132,6 @@ final class CronTaskRepository
 
     private function rows(QueryBuilder $query): array
     {
-        $records = new RecordRepository($this->em);
-        $rows = [];
-        foreach ($query->getQuery()->toIterable() as $task) {
-            $rows[] = $records->toRow($task);
-        }
-        return $rows;
+        return (new RecordRepository($this->em))->toRows($query->getQuery()->toIterable());
     }
 }

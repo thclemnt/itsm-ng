@@ -8,7 +8,6 @@ use DBAdapter;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Repository\InfocomRepository;
-use ReflectionMethod;
 
 /** One activation presence read owns its selected route, without retaining rows. */
 final class InfocomPresenceReadOperation
@@ -25,18 +24,9 @@ final class InfocomPresenceReadOperation
 
     public function __construct(private readonly Connection $connection)
     {
-        // Extension routes retain exactly the original bare manager creation,
-        // before the caller evaluates its current item type and identifier.
-        if ((new ReflectionMethod($connection, 'getDatabasePlatform'))->getDeclaringClass()->getName() !== Connection::class
-            || method_exists($connection, 'getEventManager')) {
-            $this->manager = Orm::forConnection($connection);
-            return;
-        }
-        $this->project = Orm::ownsReadMapping($connection);
-        if ($this->project) {
-            // Keep the previous eager Type registration before argument callbacks.
-            Orm::registerTypes();
-        } else {
+        // Resolve extension callbacks and types before caller arguments are evaluated.
+        $this->project = Orm::prepareReadProjection($connection);
+        if (!$this->project) {
             $this->manager = Orm::forConnection($connection);
         }
     }

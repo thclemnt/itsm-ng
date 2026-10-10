@@ -215,6 +215,16 @@ final class RecordRepository
         };
     }
 
+    /** Materialize mapped records in iteration order with this manager's metadata. */
+    public function toRows(iterable $records): array
+    {
+        $rows = [];
+        foreach ($records as $record) {
+            $rows[] = $this->toRow($record);
+        }
+        return $rows;
+    }
+
     public function toRow(object $record): array
     {
         $metadata = $this->em->getClassMetadata($record::class);

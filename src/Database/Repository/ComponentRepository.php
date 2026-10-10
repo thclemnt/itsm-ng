@@ -174,12 +174,7 @@ final class ComponentRepository
         $query->orderBy('r.itemtype')
             ->addOrderBy('r.items_id')
             ->addOrderBy('r.id');
-        $records = new RecordRepository($this->em);
-        $rows = [];
-        foreach ($query->getQuery()->toIterable() as $record) {
-            $rows[] = $records->toRow($record);
-        }
-        return $rows;
+        return (new RecordRepository($this->em))->toRows($query->getQuery()->toIterable());
     }
 
     /** Returning components to stock deliberately does not run per-component update hooks. */

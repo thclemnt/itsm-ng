@@ -85,12 +85,7 @@ final class PlanningRepository
             ->andWhere('NOT EXISTS (SELECT a.id FROM ' . Alert::class . ' a WHERE a.planningRecall = r AND a.type = :action)')
             ->setParameter('action', LegacyAlert::ACTION, Types::INTEGER)
             ->orderBy('r.when')->addOrderBy('r.id');
-        $records = new RecordRepository($this->em);
-        $rows = [];
-        foreach ($query->getQuery()->toIterable() as $recall) {
-            $rows[] = $records->toRow($recall);
-        }
-        return $rows;
+        return (new RecordRepository($this->em))->toRows($query->getQuery()->toIterable());
     }
 
     public function updateGroupSubscriptions(int $group, int $currentUser, callable $update): ?array

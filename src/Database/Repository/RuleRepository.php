@@ -47,12 +47,7 @@ final class RuleRepository
         if ($limit > 0) {
             $query->setMaxResults($limit);
         }
-        $records = new RecordRepository($this->em);
-        $rows = [];
-        foreach ($query->getQuery()->toIterable() as $rule) {
-            $rows[] = $records->toRow($rule);
-        }
-        return $rows;
+        return (new RecordRepository($this->em))->toRows($query->getQuery()->toIterable());
     }
 
     public function count(array $criteria): int

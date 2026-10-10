@@ -82,12 +82,7 @@ final class NotificationQueueRepository
         if ($limit > 0) {
             $query->setMaxResults($limit);
         }
-        $records = new RecordRepository($this->em);
-        $rows = [];
-        foreach ($query->getQuery()->toIterable() as $record) {
-            $rows[] = $records->toRow($record);
-        }
-        return $rows;
+        return (new RecordRepository($this->em))->toRows($query->getQuery()->toIterable());
     }
 
     public function purgeExpired(string $kind, DateTimeImmutable $before): int

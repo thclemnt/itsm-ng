@@ -9,7 +9,6 @@ use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Repository\AssetRepository;
 use itsmng\Database\Repository\RecordRepository;
-use ReflectionMethod;
 
 /** Fresh connection identities on one selected route; no retained rows or shared manager. */
 final class ComputerItemReadOperation
@@ -26,16 +25,9 @@ final class ComputerItemReadOperation
 
     public function __construct(private readonly Connection $connection)
     {
-        // Preserve extension callbacks before the caller evaluates getType/getID.
-        if ((new ReflectionMethod($connection, 'getDatabasePlatform'))->getDeclaringClass()->getName() !== Connection::class
-            || method_exists($connection, 'getEventManager')) {
-            $this->manager = Orm::forConnection($connection);
-            return;
-        }
-        $this->project = Orm::ownsReadMapping($connection);
-        if ($this->project) {
-            Orm::registerTypes();
-        } else {
+        // Resolve extension callbacks and types before caller arguments are evaluated.
+        $this->project = Orm::prepareReadProjection($connection);
+        if (!$this->project) {
             $this->manager = Orm::forConnection($connection);
         }
     }
