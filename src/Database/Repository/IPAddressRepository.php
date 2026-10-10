@@ -23,9 +23,8 @@ final class IPAddressRepository
         $metadata = $this->em->getClassMetadata(IPAddress::class);
         $query = $this->em->createQueryBuilder()->select('a.id')->from(IPAddress::class, 'a')
             ->where('a.version = :version')->setParameter('version', $version, $metadata->getTypeOfField('version'));
-        // Preserve legacy matching: IPv4 uses word3, IPv6 uses words1..3.
-        // In particular, this conversion does not change the historical omission of IPv6 word0.
-        for ($word = $version === 4 ? 3 : 1; $word < 4; ++$word) {
+        // IPv4 uses its final word; IPv6 identity requires all four words.
+        for ($word = $version === 4 ? 3 : 0; $word < 4; ++$word) {
             $field = 'binary_' . $word;
             $query->andWhere('a.' . $field . ' = :word' . $word)
                 ->setParameter('word' . $word, $binary[$word], $metadata->getTypeOfField($field));

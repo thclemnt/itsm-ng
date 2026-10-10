@@ -330,15 +330,68 @@ class IPAddress extends DbTestCase
             $this->string($matches[0][1]->getTextual())->isIdenticalTo($expected['name']);
         }
 
-        // Retain the historical IPv6 word0 omission; changing that match is a separate fix.
+        // A changed IPv6 prefix must stop matching the old normalized address.
         $connection = $GLOBALS['DB']->getDoctrineConnection();
         $ipv6Id = (int)$id;
         try {
             $this->integer($connection->update('glpi_ipaddresses', ['binary_0' => $expected['binary_0'] + 1], ['id' => $ipv6Id]))->isIdenticalTo(1);
             $identifiers = array_map(static fn (array $chain): int => (int)$chain[array_key_last($chain)]->getID(), IPAddressModel::getItemsByIPAddress($name));
-            $this->array($identifiers)->contains($ipv6Id);
+            $this->array($identifiers)->notContains($ipv6Id);
+            $changed = new IPAddressModel();
+            $this->boolean($changed->setAddressFromBinary([
+                $expected['binary_0'] + 1, $expected['binary_1'], $expected['binary_2'], $expected['binary_3'],
+            ]))->isTrue();
+            $changedIdentifiers = array_map(static fn (array $chain): int => (int)$chain[array_key_last($chain)]->getID(), IPAddressModel::getItemsByIPAddress($changed->getTextual()));
+            $this->array($changedIdentifiers)->contains($ipv6Id);
         } finally {
             $connection->update('glpi_ipaddresses', ['binary_0' => $expected['binary_0']], ['id' => $ipv6Id]);
+        }
+
+        // Two real assets in the same entity differ only in the first IPv6 word.
+        // Entity filtering cannot mask an incorrect prefix match in the rule path.
+        $entityId = (int)$_SESSION['glpiactive_entity'];
+        $owners = [];
+        foreach (['2001', '2002'] as $prefix) {
+            $computer = $this->createItem('Computer', [
+                'name' => 'exact-ipv6-' . $this->getUniqueString(), 'entities_id' => $entityId,
+            ]);
+            $port = $this->createItem('NetworkPort', [
+                'itemtype' => 'Computer', 'items_id' => $computer->getID(), 'entities_id' => $entityId,
+                'instantiation_type' => 'NetworkPortEthernet', 'name' => 'exact-ipv6-port', 'logical_number' => 1,
+            ]);
+            $ownedName = $this->createItem('NetworkName', [
+                'itemtype' => 'NetworkPort', 'items_id' => $port->getID(), 'entities_id' => $entityId,
+                'name' => 'exact-ipv6-owner',
+            ]);
+            if (!$owners) {
+                $suffix = [$computer->getID() % 65535 + 1, $port->getID() % 65535 + 1];
+            }
+            $compressed = sprintf('%s:db8:5a6b::%x:%x', $prefix, $suffix[0], $suffix[1]);
+            $address = $this->createItem(IPAddressModel::class, [
+                'name' => $compressed, 'itemtype' => 'NetworkName', 'items_id' => $ownedName->getID(),
+            ]);
+            $owners[] = [$computer, $port, $ownedName, $address, $compressed,
+                sprintf('%s:0DB8:5A6B:0000:0000:0000:%04X:%04X', $prefix, $suffix[0], $suffix[1])];
+        }
+        $this->integer((int)$owners[0][3]->getField('binary_0'))
+            ->isNotEqualTo((int)$owners[1][3]->getField('binary_0'));
+        foreach ([1, 2, 3] as $word) {
+            $this->integer((int)$owners[0][3]->getField('binary_' . $word))
+                ->isIdenticalTo((int)$owners[1][3]->getField('binary_' . $word));
+        }
+        foreach ($owners as [$computer, $port, $ownedName, $address, $compressed, $expanded]) {
+            foreach ([$compressed, $expanded, '  ' . $expanded . '  '] as $lookup) {
+                $chains = IPAddressModel::getItemsByIPAddress($lookup);
+                $this->array($chains)->hasSize(1);
+                $this->array(array_map(static fn ($item): string => $item->getType(), $chains[0]))
+                    ->isIdenticalTo(['Computer', 'NetworkPort', 'NetworkName', 'IPAddress']);
+                $this->array(array_map(static fn ($item): int => (int)$item->getID(), $chains[0]))
+                    ->isIdenticalTo([(int)$computer->getID(), (int)$port->getID(), (int)$ownedName->getID(), (int)$address->getID()]);
+                $this->string($chains[0][3]->getTextual())->isIdenticalTo($compressed);
+                $this->array(IPAddressModel::getUniqueItemByIPAddress($lookup, $entityId))
+                    ->isEqualTo(['id' => $computer->getID(), 'itemtype' => 'Computer']);
+                $this->array(IPAddressModel::getUniqueItemByIPAddress($lookup, PHP_INT_MAX))->isEmpty();
+            }
         }
 
         $IPV6ShouldNotWork = [
