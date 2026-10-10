@@ -57,7 +57,9 @@ use RuntimeException;
 use Throwable;
 use itsmng\Appliance\AppliancePluginImport;
 use itsmng\Appliance\PluginApplianceSource;
+use itsmng\Database\Entity\Entity as EntityRecord;
 use itsmng\Database\Migration\Ledger;
+use itsmng\Database\Orm;
 use itsmng\Database\MutationCleanupFailure;
 use itsmng\Database\MutationRollbackFailure;
 use itsmng\Database\OwnedMutationFrame;
@@ -377,7 +379,11 @@ class Domain extends DbTestCase
         $connection = $DB->getDoctrineConnection();
         $this->variable($connection->fetchOne('SELECT entities_id FROM glpi_entities WHERE id = 0'))->isNull();
         $rootValue = $connection->fetchOne('SELECT use_domains_alert FROM glpi_entities WHERE id = 0');
+        $callerManager = Orm::create($DB);
         try {
+            $staleRoot = $callerManager->find(EntityRecord::class, 0);
+            $this->object($staleRoot)->isInstanceOf(EntityRecord::class);
+            $originalSetting = $staleRoot->use_domains_alert;
             // Root has no parent; an inherited setting cannot index a NULL owner.
             $connection->update('glpi_entities', ['use_domains_alert' => Entity::CONFIG_PARENT], ['id' => 0]);
             $this->array(Entity::getEntitiesToNotify('use_domains_alert'))->isEmpty();
@@ -387,9 +393,12 @@ class Domain extends DbTestCase
                 getItemByTypeName('Entity', '_test_child_1', true), getItemByTypeName('Entity', '_test_child_2', true)] as $id) {
                 $this->integer((int)$inherited[$id])->isIdenticalTo(1);
             }
+            $this->boolean($callerManager->contains($staleRoot))->isTrue();
+            $this->integer($staleRoot->use_domains_alert)->isIdenticalTo($originalSetting);
             $connection->update('glpi_entities', ['use_domains_alert' => 0], ['id' => 0]);
             $this->array(Entity::getEntitiesToNotify('use_domains_alert'))->isEmpty();
         } finally {
+            $callerManager->clear();
             $connection->update('glpi_entities', ['use_domains_alert' => $rootValue], ['id' => 0]);
         }
 
@@ -420,6 +429,14 @@ class Domain extends DbTestCase
             'date_expiration' => ['>=', '2026-09-29 00:00:00'],
             ['date_expiration' => ['<', '2026-10-05 00:00:00']],
         ]);
+
+        $expected = Entity::getEntitiesToNotify('use_domains_alert');
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeFactories = $factories->getValue();
+        for ($repeat = 0; $repeat < 16; ++$repeat) {
+            $this->array(Entity::getEntitiesToNotify('use_domains_alert'))->isIdenticalTo($expected);
+        }
+        $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
     }
 
     public function testTransfer()
