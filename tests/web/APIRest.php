@@ -1150,6 +1150,12 @@ class APIRest extends APIBaseClass
     {
         $name = '_api_netpoint_' . bin2hex(random_bytes(8));
         $headers = ['Session-Token' => $this->session_token];
+        // Login selects the user's default child entity; this fixture belongs
+        // to root and the negative parent lookup also needs its child in scope.
+        $this->query('changeActiveEntities', [
+            'verb' => 'POST', 'headers' => $headers,
+            'json' => ['entities_id' => 0, 'is_recursive' => true],
+        ]);
         $created = $this->query('createItems', [
             'itemtype' => 'Netpoint', 'verb' => 'POST', 'headers' => $headers,
             'json' => ['input' => ['name' => $name, 'entities_id' => 0, 'locations_id' => 0]],
