@@ -36,6 +36,7 @@ namespace tests\units;
 use DbTestCase;
 use Project as LegacyProject;
 use ProjectTask as LegacyProjectTask;
+use ProjectTask_Ticket as LegacyProjectTaskTicket;
 use ReflectionProperty;
 use itsmng\Database\Entity\ProjectTask as ProjectTaskEntity;
 use itsmng\Database\Entity\Ticket as TicketEntity;
@@ -52,27 +53,27 @@ class ProjectTask_Ticket extends DbTestCase
         $otherTask = $this->createItem('ProjectTask', ['name' => $this->getUniqueString(), 'projects_id' => $project->getID()]);
         $ticket = $this->createItem('Ticket', ['name' => $this->getUniqueString(), 'content' => 'content', 'actiontime' => 75]);
         $otherTicket = $this->createItem('Ticket', ['name' => $this->getUniqueString(), 'content' => 'content', 'actiontime' => 25]);
-        $this->variable(ProjectTask_Ticket::getTicketsTotalActionTime($task->getID()))->isNull();
+        $this->variable(LegacyProjectTaskTicket::getTicketsTotalActionTime($task->getID()))->isNull();
         $link = $this->createItem('ProjectTask_Ticket', ['projecttasks_id' => $task->getID(), 'tickets_id' => $ticket->getID()]);
         $otherLink = $this->createItem('ProjectTask_Ticket', ['projecttasks_id' => $task->getID(), 'tickets_id' => $otherTicket->getID()]);
         $this->createItem('ProjectTask_Ticket', ['projecttasks_id' => $otherTask->getID(), 'tickets_id' => $ticket->getID()]);
-        $this->integer(ProjectTask_Ticket::getTicketsTotalActionTime($task->getID()))->isIdenticalTo(100);
-        $this->integer(ProjectTask_Ticket::getTicketsTotalActionTime($otherTask->getID()))->isIdenticalTo(75);
+        $this->integer(LegacyProjectTaskTicket::getTicketsTotalActionTime($task->getID()))->isIdenticalTo(100);
+        $this->integer(LegacyProjectTaskTicket::getTicketsTotalActionTime($otherTask->getID()))->isIdenticalTo(75);
         $caller = Orm::create($DB);
         try {
             $retained = $caller->find(TicketEntity::class, (int)$ticket->getID());
             $retained->actiontime = 999;
             $DB->getDoctrineConnection()->update('glpi_tickets', ['actiontime' => 80], ['id' => $ticket->getID()]);
-            $this->integer(ProjectTask_Ticket::getTicketsTotalActionTime($task->getID()))->isIdenticalTo(105);
-            $this->integer(ProjectTask_Ticket::getTicketsTotalActionTime($otherTask->getID()))->isIdenticalTo(80);
+            $this->integer(LegacyProjectTaskTicket::getTicketsTotalActionTime($task->getID()))->isIdenticalTo(105);
+            $this->integer(LegacyProjectTaskTicket::getTicketsTotalActionTime($otherTask->getID()))->isIdenticalTo(80);
             $this->boolean($caller->contains($retained))->isTrue();
             $this->integer($retained->actiontime)->isIdenticalTo(999);
             $this->boolean($otherLink->delete(['id' => $otherLink->getID()], true))->isTrue();
-            $this->integer(ProjectTask_Ticket::getTicketsTotalActionTime($task->getID()))->isIdenticalTo(80);
+            $this->integer(LegacyProjectTaskTicket::getTicketsTotalActionTime($task->getID()))->isIdenticalTo(80);
             $this->boolean($task->delete(['id' => $task->getID()], true))->isTrue();
             $this->boolean($link->getFromDB($link->getID()))->isFalse();
-            $this->variable(ProjectTask_Ticket::getTicketsTotalActionTime($task->getID()))->isNull();
-            $this->integer(ProjectTask_Ticket::getTicketsTotalActionTime($otherTask->getID()))->isIdenticalTo(80);
+            $this->variable(LegacyProjectTaskTicket::getTicketsTotalActionTime($task->getID()))->isNull();
+            $this->integer(LegacyProjectTaskTicket::getTicketsTotalActionTime($otherTask->getID()))->isIdenticalTo(80);
         } finally {
             $caller->clear();
         }
