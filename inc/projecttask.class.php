@@ -35,6 +35,7 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Features\PlanningEvent;
 use Glpi\CalDAV\Contracts\CalDAVCompatibleItemInterface;
 use Glpi\CalDAV\Traits\VobjectConverterTrait;
@@ -776,12 +777,11 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
     {
         global $DB;
 
-        $em = Orm::create($DB);
-        try {
-            return (new ProjectRepository($em))->taskDuration((int)$projecttasks_id);
-        } finally {
-            $em->clear();
-        }
+        return Orm::read(
+            $DB,
+            static fn (EntityManager $em): int => (new ProjectRepository($em))->taskDuration((int)$projecttasks_id),
+            clearCustomManager: true
+        );
     }
 
 
@@ -796,12 +796,11 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
     {
         global $DB;
 
-        $em = Orm::create($DB);
-        try {
-            return (new ProjectRepository($em))->effectiveDuration((int)$projects_id === 0 ? null : (int)$projects_id);
-        } finally {
-            $em->clear();
-        }
+        return Orm::read(
+            $DB,
+            static fn (EntityManager $em): int => (new ProjectRepository($em))->effectiveDuration((int)$projects_id === 0 ? null : (int)$projects_id),
+            clearCustomManager: true
+        );
     }
 
 
@@ -816,12 +815,11 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
     {
         global $DB;
 
-        $em = Orm::create($DB);
-        try {
-            return (new ProjectRepository($em))->plannedDuration((int)$projects_id === 0 ? null : (int)$projects_id);
-        } finally {
-            $em->clear();
-        }
+        return Orm::read(
+            $DB,
+            static fn (EntityManager $em): int => (new ProjectRepository($em))->plannedDuration((int)$projects_id === 0 ? null : (int)$projects_id),
+            clearCustomManager: true
+        );
     }
 
 

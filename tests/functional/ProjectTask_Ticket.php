@@ -34,6 +34,11 @@
 namespace tests\units;
 
 use DbTestCase;
+use Project as LegacyProject;
+use ProjectTask as LegacyProjectTask;
+use ReflectionProperty;
+use itsmng\Database\Entity\ProjectTask as ProjectTaskEntity;
+use itsmng\Database\Orm;
 
 class ProjectTask_Ticket extends DbTestCase
 {
@@ -82,5 +87,48 @@ class ProjectTask_Ticket extends DbTestCase
         ]))->isGreaterThan(0);
 
         $this->integer((int)\ProjectTask_Ticket::getTicketsTotalActionTime($task_id))->isEqualTo(180);
+
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $otherProject = $this->createItem(LegacyProject::class, ['name' => $this->getUniqueString()]);
+        $otherTask = $this->createItem(LegacyProjectTask::class, [
+            'name' => $this->getUniqueString(), 'projects_id' => $otherProject->getID(),
+        ]);
+        $connection->update('glpi_projecttasks', ['effective_duration' => 900, 'planned_duration' => 1200], ['id' => $otherTask->getID()]);
+        $connection->update('glpi_projecttasks', ['effective_duration' => 30, 'planned_duration' => 600], ['id' => $task_id]);
+        $caller = Orm::create($DB);
+        try {
+            $retained = $caller->find(ProjectTaskEntity::class, (int)$task_id);
+            $retained->planned_duration = 777;
+            // Two linked tickets must not multiply the task's own duration.
+            $this->integer(LegacyProjectTask::getTotalEffectiveDuration($task_id))->isIdenticalTo(210);
+            $this->integer(LegacyProjectTask::getTotalEffectiveDurationForProject($project_id))->isIdenticalTo(210);
+            $this->integer(LegacyProjectTask::getTotalPlannedDurationForProject($project_id))->isIdenticalTo(600);
+            $this->integer(LegacyProjectTask::getTotalEffectiveDurationForProject($otherProject->getID()))->isIdenticalTo(900);
+            $this->integer(LegacyProjectTask::getTotalPlannedDurationForProject($otherProject->getID()))->isIdenticalTo(1200);
+
+            $connection->update('glpi_projecttasks', ['effective_duration' => 45, 'planned_duration' => 660], ['id' => $task_id]);
+            $connection->update('glpi_tickets', ['actiontime' => 150], ['id' => $ticket_1_id]);
+            $this->integer(LegacyProjectTask::getTotalEffectiveDuration($task_id))->isIdenticalTo(255);
+            $this->integer(LegacyProjectTask::getTotalEffectiveDurationForProject($project_id))->isIdenticalTo(255);
+            $this->integer(LegacyProjectTask::getTotalPlannedDurationForProject($project_id))->isIdenticalTo(660);
+            $this->integer(LegacyProjectTask::getTotalEffectiveDuration(-1))->isIdenticalTo(0);
+            $this->integer(LegacyProjectTask::getTotalEffectiveDurationForProject(-1))->isIdenticalTo(0);
+            $this->integer(LegacyProjectTask::getTotalPlannedDurationForProject(-1))->isIdenticalTo(0);
+            $this->boolean($caller->contains($retained))->isTrue();
+            $this->integer($retained->planned_duration)->isIdenticalTo(777);
+        } finally {
+            $caller->clear();
+        }
+
+        // Each value boundary is already warm; completed reads must reuse its private manager.
+        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $before = $managers->getValue();
+        for ($repeat = 0; $repeat < 16; ++$repeat) {
+            LegacyProjectTask::getTotalEffectiveDuration($task_id);
+            LegacyProjectTask::getTotalEffectiveDurationForProject($project_id);
+            LegacyProjectTask::getTotalPlannedDurationForProject($project_id);
+        }
+        $this->integer($managers->getValue() - $before)->isIdenticalTo(0);
     }
 }
