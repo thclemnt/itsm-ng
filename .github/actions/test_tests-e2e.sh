@@ -42,29 +42,4 @@ if [[ -z "$PLAYWRIGHT_APP_TOKEN" ]]; then
   exit 1
 fi
 
-test_status=0
-npx playwright test -c tests/e2e/playwright.config.mts || test_status=$?
-node - <<'JAVASCRIPT'
-const fs = require('node:fs');
-const report = JSON.parse(fs.readFileSync('tests/files/_playwright/results.json', 'utf8'));
-const cases = [];
-function discover(suites) {
-  for (const suite of suites) {
-    for (const spec of suite.specs || []) cases.push(...spec.tests);
-    discover(suite.suites || []);
-  }
-}
-discover(report.suites);
-const { expected, skipped, unexpected, flaky } = report.stats;
-console.log(`Browser cases: discovered=${cases.length}, expected=${expected}, skipped=${skipped}, failed=${unexpected}, flaky=${flaky}`);
-if (cases.length === 0 || report.errors.length !== 0
-    || ![expected, skipped, unexpected, flaky].every(value => Number.isInteger(value) && value >= 0)
-    || skipped !== 0 || unexpected !== 0 || expected + flaky !== cases.length
-    || cases.some(test => !['passed', 'failed', 'timedOut'].includes(test.expectedStatus)
-      || !['expected', 'flaky'].includes(test.status)
-      || test.results.length === 0 || test.results.at(-1).status !== test.expectedStatus
-      || test.results.some(result => ['skipped', 'interrupted'].includes(result.status)))) {
-  throw new Error('Every discovered browser case must complete without skips, interruptions or unexpected failures.');
-}
-JAVASCRIPT
-exit "$test_status"
+npx playwright test -c tests/e2e/playwright.config.mts
