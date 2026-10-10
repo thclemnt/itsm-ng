@@ -8,6 +8,7 @@ use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\BooleanStorage;
+use itsmng\Database\Mapping\NonNegative;
 use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
@@ -45,6 +46,7 @@ class IPAddress
     public string $itemtype = '';
 
     #[ORM\Column(name: '`version`', type: 'smallint', nullable: true, options: ['default' => '0'])]
+    #[NonNegative('glpi_ipaddresses_version_check')]
     #[PlatformOptions(AbstractMySQLPlatform::class, ['unsigned' => true])]
     public ?int $version = 0;
 
@@ -52,18 +54,22 @@ class IPAddress
     public ?string $name = null;
 
     #[ORM\Column(name: '`binary_0`', type: 'bigint', nullable: false, options: ['default' => '0'])]
+    #[NonNegative('glpi_ipaddresses_binary_0_check')]
     #[PlatformOptions(AbstractMySQLPlatform::class, ['type' => 'integer', 'unsigned' => true])]
     public int $binary_0 = 0;
 
     #[ORM\Column(name: '`binary_1`', type: 'bigint', nullable: false, options: ['default' => '0'])]
+    #[NonNegative('glpi_ipaddresses_binary_1_check')]
     #[PlatformOptions(AbstractMySQLPlatform::class, ['type' => 'integer', 'unsigned' => true])]
     public int $binary_1 = 0;
 
     #[ORM\Column(name: '`binary_2`', type: 'bigint', nullable: false, options: ['default' => '0'])]
+    #[NonNegative('glpi_ipaddresses_binary_2_check')]
     #[PlatformOptions(AbstractMySQLPlatform::class, ['type' => 'integer', 'unsigned' => true])]
     public int $binary_2 = 0;
 
     #[ORM\Column(name: '`binary_3`', type: 'bigint', nullable: false, options: ['default' => '0'])]
+    #[NonNegative('glpi_ipaddresses_binary_3_check')]
     #[PlatformOptions(AbstractMySQLPlatform::class, ['type' => 'integer', 'unsigned' => true])]
     public int $binary_3 = 0;
 

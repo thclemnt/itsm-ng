@@ -7,6 +7,7 @@ namespace itsmng\Database;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Schema\Schema;
+use RuntimeException;
 
 /** Read-only comparison of the required core schema with DBAL introspection. */
 final class SchemaCheck
@@ -18,19 +19,21 @@ final class SchemaCheck
      *
      * @return list<string>
      */
-    public function differences(Connection $connection, ?Schema $expected = null): array
+    public function differences(Connection $connection, ?Schema $expected = null, array $nativeIndexPolicies = [], array $nonNegativePolicies = []): array
     {
-        return $this->inspect($connection, $expected)->differences;
+        return $this->inspect($connection, $expected, $nativeIndexPolicies, $nonNegativePolicies)->differences;
     }
 
     /** Inspect current native definitions once without retaining a schema cache. */
-    public function inspect(Connection $connection, ?Schema $expected = null): SchemaInspection
+    public function inspect(Connection $connection, ?Schema $expected = null, array $nativeIndexPolicies = [], array $nonNegativePolicies = []): SchemaInspection
     {
         $subjectPolicies = [];
         if ($expected === null) {
             $owner = new BaselineSchema();
             $expected = $owner->build($connection->getDatabasePlatform());
             $subjectPolicies = $owner->subjectPolicies();
+            $nativeIndexPolicies = $owner->nativeIndexPolicies();
+            $nonNegativePolicies = $owner->nonNegativePolicies();
         }
         $manager = $connection->createSchemaManager();
         $actual = $manager->introspectSchema();
@@ -86,12 +89,26 @@ final class SchemaCheck
                 $differences[] = 'Unexpected or changed foreign key: ' . $name . '.' . $key->getName();
             }
         }
+        $checkSnapshot = null;
+        $checkDiagnostics = [];
+        try {
+            $checkSnapshot = NativeCheckCatalog::snapshot($connection);
+        } catch (RuntimeException $error) {
+            // Retain each current family's existing capability diagnostic;
+            // failed ownership inspection cannot be mistaken for empty policy.
+            $checkDiagnostics[] = 'Boolean domain enforcement unavailable: ' . $error->getMessage();
+            if ($subjectPolicies) {
+                $checkDiagnostics[] = 'Native subject enforcement unavailable: ' . $error->getMessage();
+            }
+        }
         return new SchemaInspection($actual, [
             ...$differences,
-            ...BooleanDomainSchema::differences($connection, $expected),
+            ...$checkDiagnostics,
+            ...($checkSnapshot === null ? [] : BooleanDomainSchema::differences($connection, $expected, $checkSnapshot)),
             ...NativeTimestampSchema::differences($connection, $expected),
-            ...NativeSubjectSchema::differences($connection, $subjectPolicies),
-            ...PhysicalIndexSchema::differences($connection, $expected),
+            ...($checkSnapshot === null ? [] : NativeSubjectSchema::differences($connection, $subjectPolicies, $checkSnapshot)),
+            ...($checkSnapshot === null ? [] : NativeNonNegativeSchema::compare($nonNegativePolicies, $checkSnapshot['checks'])),
+            ...PhysicalIndexSchema::differences($connection, $expected, $nativeIndexPolicies),
         ]);
     }
 }

@@ -4,10 +4,8 @@
 
 namespace itsmng\Database;
 
-use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
-use Doctrine\DBAL\Platforms\MariaDBPlatform;
 use Doctrine\DBAL\Schema\Schema;
 use RuntimeException;
 
@@ -21,9 +19,9 @@ final class BooleanDomainSchema
     }
 
     /** One native name/type snapshot per call; no persistent schema cache after DDL. */
-    public static function catalog(Connection $connection): array
+    public static function catalog(Connection $connection, ?array $checkSnapshot = null): array
     {
-        CheckConstraintSupport::assertSupported($connection);
+        $checkSnapshot ??= NativeCheckCatalog::snapshot($connection);
         $mysql = $connection->getDatabasePlatform() instanceof AbstractMySQLPlatform;
         $query = $mysql
             ? 'SELECT TABLE_NAME AS table_name, COLUMN_NAME AS column_name, DATA_TYPE AS data_type, IS_NULLABLE AS is_nullable, COLUMN_DEFAULT AS column_default FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()'
@@ -34,12 +32,12 @@ final class BooleanDomainSchema
         // MariaDB formats CHECK_CLAUSE using the current session's identifier
         // quoting, regardless of the mode when the CHECK was originally created.
         // Snapshot that actual interpretation; never change modes to inspect it.
-        $ansiQuotes = $mysql && in_array('ANSI_QUOTES', explode(',', (string)$connection->fetchOne('SELECT @@SESSION.sql_mode')), true);
+        $ansiQuotes = $checkSnapshot['ansi_quotes'];
         $columns = [];
         foreach ($connection->fetchAllAssociative($query) as $column) {
             $columns[$column['table_name']][$column['column_name']] = $column;
         }
-        $checks = self::readChecks($connection);
+        $checks = $checkSnapshot['checks'];
         // Catalogue row order is not a schema property. Stable maps make
         // read-only comparisons and retry snapshots independent of DDL order.
         ksort($columns);
@@ -55,105 +53,17 @@ final class BooleanDomainSchema
         return ['mysql' => $mysql, 'ansi_quotes' => $ansiQuotes, 'columns' => $columns, 'checks' => $checks];
     }
 
-    /** Fresh physical CHECK inspection; never reuse this across DDL or callbacks. */
+    /** Compatibility entry point retained for frozen migration callers. */
     public static function checks(Connection $connection, string $table): array
     {
-        CheckConstraintSupport::assertSupported($connection);
-        return self::readChecks($connection, $table);
-    }
-
-    /** The full catalogue and selected-table reader share native ownership. */
-    private static function readChecks(Connection $connection, ?string $table = null): array
-    {
-        $checks = [];
-        if ($connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
-            if ($connection->getDatabasePlatform() instanceof MariaDBPlatform) {
-                // MariaDB owns each CHECK's table in this native catalogue.
-                // Enforcement is session-wide and was asserted above.
-                $query = "SELECT cc.TABLE_NAME AS table_name, cc.CONSTRAINT_NAME AS constraint_name, cc.CHECK_CLAUSE AS clause, 'YES' AS enforced "
-                    . 'FROM information_schema.CHECK_CONSTRAINTS cc WHERE cc.CONSTRAINT_SCHEMA = DATABASE()';
-                $parameters = [];
-                if ($table !== null) {
-                    $query .= ' AND cc.TABLE_NAME = ?';
-                    $parameters[] = $table;
-                }
-                foreach ($connection->fetchAllAssociative($query, $parameters) as $check) {
-                    $checks[$check['table_name']][$check['constraint_name']] = $check;
-                }
-            } else {
-                $checks = self::readMySQLChecks($connection, $table);
-            }
-        }
-        ksort($checks);
-        foreach ($checks as &$tableChecks) {
-            ksort($tableChecks);
-        }
-        unset($tableChecks);
-        return $checks;
-    }
-
-    private static function readMySQLChecks(Connection $connection, ?string $table): array
-    {
-        // MySQL CHECK names are unique within a schema. Inspect the native views
-        // independently: joining their lateral owner view can omit whole tables.
-        $query = 'SELECT TABLE_NAME AS table_name, CONSTRAINT_NAME AS constraint_name, ENFORCED AS enforced '
-            . "FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND CONSTRAINT_TYPE = 'CHECK'";
-        $parameters = [];
-        if ($table !== null) {
-            $query .= ' AND TABLE_NAME = ?';
-            $parameters[] = $table;
-        }
-        $owners = [];
-        foreach ($connection->fetchAllAssociative($query, $parameters) as $owner) {
-            $name = $owner['constraint_name'];
-            if (isset($owners[$name])) {
-                throw new RuntimeException('Ambiguous native CHECK ownership: ' . $name);
-            }
-            $owners[$name] = $owner;
-        }
-        if ($table !== null && $owners === []) {
-            return [];
-        }
-        $query = 'SELECT CONSTRAINT_NAME AS constraint_name, CHECK_CLAUSE AS clause '
-            . 'FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE()';
-        $parameters = $types = [];
-        if ($table !== null) {
-            $query .= ' AND CONSTRAINT_NAME IN (?)';
-            $parameters = [array_keys($owners)];
-            $types = [ArrayParameterType::STRING];
-        }
-        $clauses = [];
-        foreach ($connection->fetchAllAssociative($query, $parameters, $types) as $check) {
-            $name = $check['constraint_name'];
-            if (array_key_exists($name, $clauses)) {
-                throw new RuntimeException('Ambiguous native CHECK clause: ' . $name);
-            }
-            $clauses[$name] = $check['clause'];
-        }
-        $checks = [];
-        foreach ($owners as $name => $owner) {
-            if (!isset($clauses[$name])) {
-                throw new RuntimeException('Native CHECK owner lacks a clause: ' . $owner['table_name'] . '.' . $name);
-            }
-            $checks[$owner['table_name']][$name] = [
-                'table_name' => $owner['table_name'],
-                'constraint_name' => $name,
-                'clause' => $clauses[$name],
-                'enforced' => $owner['enforced'],
-            ];
-            unset($clauses[$name]);
-        }
-        if ($clauses !== []) {
-            throw new RuntimeException('Native CHECK clause lacks an owner: ' . array_key_first($clauses));
-        }
-        return $checks;
+        return NativeCheckCatalog::snapshot($connection, $table)['checks'];
     }
 
     /** @return list<string> Read-only logical checks alongside DBAL structural comparison. */
-    public static function differences(Connection $connection, Schema $expected): array
+    public static function differences(Connection $connection, Schema $expected, ?array $checkSnapshot = null): array
     {
         try {
-            $catalog = self::catalog($connection);
+            $catalog = self::catalog($connection, $checkSnapshot);
         } catch (RuntimeException $error) {
             return ['Boolean domain enforcement unavailable: ' . $error->getMessage()];
         }

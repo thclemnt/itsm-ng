@@ -12,7 +12,7 @@ use RuntimeException;
 /** Live native enforcement for subject policies produced by the current schema owner. */
 final class NativeSubjectSchema
 {
-    public static function differences(Connection $connection, array $policies): array
+    public static function differences(Connection $connection, array $policies, ?array $checkSnapshot = null): array
     {
         if (!$policies) {
             return [];
@@ -25,12 +25,12 @@ final class NativeSubjectSchema
             // One catalogue for all subject families; no per-table introspection
             // and no retained receipt is treated as the current declaration.
             try {
-                $catalog = BooleanDomainSchema::catalog($connection);
+                $checkSnapshot ??= NativeCheckCatalog::snapshot($connection);
             } catch (RuntimeException $error) {
                 return ['Native subject enforcement unavailable: ' . $error->getMessage()];
             }
-            $checks = $catalog['checks'];
-            $ansiQuotes = $catalog['ansi_quotes'];
+            $checks = $checkSnapshot['checks'];
+            $ansiQuotes = $checkSnapshot['ansi_quotes'];
             $rows = $connection->fetchAllAssociative(
                 'SELECT TABLE_NAME AS table_name, COLUMN_NAME AS column_name, '
                 . 'EXTRA AS `generated`, GENERATION_EXPRESSION AS `expression` FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (?)',
@@ -49,18 +49,8 @@ final class NativeSubjectSchema
                 $parameters,
                 $types
             );
-            foreach ($connection->fetchAllAssociative(
-                'SELECT t.relname AS table_name, c.conname AS constraint_name, '
-                . 'pg_get_expr(c.conbin, c.conrelid) AS clause, c.convalidated AS validated, '
-                // conenforced is new in PostgreSQL 18; older versions always enforce CHECKs.
-                . "COALESCE(to_jsonb(c)->>'conenforced', 'true') AS enforced "
-                . 'FROM pg_catalog.pg_constraint c JOIN pg_catalog.pg_class t ON t.oid = c.conrelid '
-                . "WHERE c.contype = 'c' AND pg_catalog.pg_table_is_visible(t.oid) AND t.relname IN (?)",
-                $parameters,
-                $types
-            ) as $check) {
-                $checks[$check['table_name']][$check['constraint_name']] = $check;
-            }
+            $checkSnapshot ??= NativeCheckCatalog::snapshot($connection);
+            $checks = $checkSnapshot['checks'];
         }
         foreach ($rows as $column) {
             $columns[$column['table_name']][$column['column_name']] = $column;

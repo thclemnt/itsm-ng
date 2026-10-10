@@ -12,10 +12,12 @@ use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Tools\SchemaTool;
+use LogicException;
 use ReflectionClass;
 use atoum\atoum\test;
 use itsmng\Database\BaselineSchema;
 use itsmng\Database\EntityRegistry;
+use itsmng\Database\Entity\Group;
 use itsmng\Database\Entity\RuleAction;
 use itsmng\Database\Mapping\SchemaIndex as OwnedIndex;
 use itsmng\Database\Migration\V220\ActorUniqueness;
@@ -28,6 +30,69 @@ require_once dirname(__DIR__, 4) . '/fixtures/DisconnectedSchemaConnection.php';
 
 class SchemaIndex extends test
 {
+    public function testOnePrefixTupleOwnsBothProviderPolicies(): void
+    {
+        foreach ([new MySQLPlatform(), new MariaDBPlatform(), new PostgreSQLPlatform()] as $platform) {
+            $connection = new DisconnectedSchemaConnection($platform);
+            try {
+                $manager = new EntityManager($connection, Orm::configuration($platform));
+                $metadata = $manager->getClassMetadata(RuleAction::class);
+                $prefixes = array_filter((new ReflectionClass(RuleAction::class))->getAttributes(OwnedIndex::class),
+                    static fn ($attribute): bool => $attribute->newInstance()->prefixLengths !== null);
+                $this->integer(count($prefixes))->isIdenticalTo(1);
+                $prefix = reset($prefixes)->newInstance();
+                $owner = new BaselineSchema($manager);
+                $owner->build($platform);
+                if ($platform instanceof PostgreSQLPlatform) {
+                    $expected = [
+                        'glpi_groups' => [
+                            'glpi_groups_ldap_value' => ['columns' => ['ldap_value'], 'sourceTypes' => ['text'], 'lengths' => [200]],
+                            'glpi_groups_ldap_group_dn' => ['columns' => ['ldap_group_dn'], 'sourceTypes' => ['text'], 'lengths' => [200]],
+                        ],
+                        'glpi_ruleactions' => ['glpi_ruleactions_field_value' => ['columns' => ['field', 'value'], 'sourceTypes' => ['varchar', 'varchar'], 'lengths' => [50, 50]]],
+                    ];
+                    $actual = $owner->nativeIndexPolicies();
+                    ksort($actual);
+                    ksort($expected);
+                    $this->array($actual)->isIdenticalTo($expected);
+                    $this->boolean(isset($metadata->table['indexes']['glpi_ruleactions_field_value']))->isFalse();
+                } else {
+                    $this->array($owner->nativeIndexPolicies())->isEmpty();
+                    $this->array($metadata->table['indexes']['field_value']['options']['lengths'])->isIdenticalTo([50, 50]);
+                }
+                $groupMetadata = $manager->getClassMetadata(Group::class);
+                foreach (['ldap_value', 'ldap_group_dn'] as $column) {
+                    $name = $platform instanceof PostgreSQLPlatform ? 'glpi_groups_' . $column : $column;
+                    if ($platform instanceof PostgreSQLPlatform) {
+                        $this->boolean(isset($groupMetadata->table['indexes'][$name]))->isFalse();
+                    } else {
+                        $this->array($groupMetadata->table['indexes'][$name]['options']['lengths'])->isIdenticalTo([200]);
+                        $this->array($groupMetadata->table['indexes'][$name]['columns'])->isIdenticalTo([$column]);
+                    }
+                }
+                foreach ([
+                    new OwnedIndex('bad', ['field', 'value'], prefixLengths: [50]),
+                    new OwnedIndex('bad', ['field', 'field'], prefixLengths: [50, 50]),
+                    new OwnedIndex('bad', ['field', 'value'], prefixLengths: [0, 50]),
+                    new OwnedIndex('bad', ['field', 'value'], prefixLengths: ['50', 50]),
+                    new OwnedIndex('bad', ['field', 'value'], prefixLengths: [256, 50]),
+                    new OwnedIndex('bad', ['rules_id'], prefixLengths: [50]),
+                    new OwnedIndex('bad', ['field'], unique: true, prefixLengths: [50]),
+                    new OwnedIndex('bad', ['field'], options: ['where' => 'true'], prefixLengths: [50]),
+                    new OwnedIndex('bad', ['field'], platform: AbstractMySQLPlatform::class, prefixLengths: [50]),
+                ] as $invalid) {
+                    // Validation uses the PostgreSQL policy directly; a platform filter
+                    // cannot silently exclude an ambiguous cross-provider declaration.
+                    $this->exception(static fn () => $invalid->nativePrefixPolicy($metadata, new PostgreSQLPlatform()))
+                        ->isInstanceOf(LogicException::class);
+                }
+                $this->boolean($connection->isConnected())->isFalse();
+            } finally {
+                $connection->close();
+            }
+        }
+    }
+
     public function testActorAndTreeGeneratedKeysRetainFrozenOwnershipAcrossPlatforms(): void
     {
         $expectedGeneratedKeys = [];

@@ -5,11 +5,11 @@
 namespace itsmng\Database\Mapping;
 
 use Attribute;
-use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
-use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\Mapping\ClassMetadata;
 use LogicException;
 use ReflectionClass;
 use ReflectionProperty;
@@ -134,7 +134,7 @@ final readonly class DiscriminatorKey
     }
 
 
-    /** Optional selected servers and an opaque integer fallback derive from the owning branches. */
+    /** Required or optional selected associations and an opaque integer fallback derive from their branches. */
     private function fallbackCheckExpression(AbstractPlatform $platform, ClassMetadata $metadata, string $property): string
     {
         if ($this->emptyValue !== null || $this->emptyRequiredNullProperties || $this->exactDiscriminator
@@ -153,10 +153,10 @@ final readonly class DiscriminatorKey
                 }
                 $field = $metadata->getFieldMapping($binding->discriminator);
                 if (!$association->isToOneOwningSide() || count($association->joinColumns) !== 1
-                    || !$association->joinColumns[0]->nullable || $binding->emptyValue !== 0 || $binding->minimumId !== 1
+                    || !$association->joinColumns[0]->nullable || !in_array($binding->emptyValue, [null, 0], true) || $binding->minimumId !== 1
                     || $field->nullable || !in_array($field->type, [Types::SMALLINT, Types::INTEGER, Types::BIGINT], true)
                     || ($discriminatorProperty !== null && $discriminatorProperty !== $binding->discriminator)) {
-                    throw new LogicException('Fallback subject requires optional owning server branches and one nonnull integer discriminator.');
+                    throw new LogicException('Fallback subject requires nullable owning branches and one nonnull integer discriminator.');
                 }
                 foreach ($binding->values as $kind) {
                     if (!is_int($kind) || $kind < 0 || isset($kinds[$kind])) {
@@ -176,8 +176,13 @@ final readonly class DiscriminatorKey
         $fallback = $platform->quoteIdentifier($metadata->getColumnName($this->fallbackProperty));
         $branches = [];
         foreach ($bindings as $name => $binding) {
-            $branch = [$discriminator . ' IN (' . implode(', ', $binding->values) . ')',
-                '(' . $columns[$name] . ' IS NULL OR ' . $columns[$name] . ' > 0)'];
+            $branch = [$discriminator . ' IN (' . implode(', ', $binding->values) . ')'];
+            if ($binding->emptyValue === null) {
+                $branch[] = $columns[$name] . ' IS NOT NULL';
+                $branch[] = $columns[$name] . ' > 0';
+            } else {
+                $branch[] = '(' . $columns[$name] . ' IS NULL OR ' . $columns[$name] . ' > 0)';
+            }
             foreach ($columns as $other => $column) {
                 if ($other !== $name) {
                     $branch[] = $column . ' IS NULL';

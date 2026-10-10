@@ -10,6 +10,7 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\BooleanStorage;
 use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\NonNegative;
 use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
@@ -67,6 +68,7 @@ class IPNetwork
     public bool $addressable = false;
 
     #[ORM\Column(name: '`version`', type: 'smallint', nullable: true, options: ['default' => '0'])]
+    #[NonNegative('glpi_ipnetworks_version_check')]
     #[PlatformOptions(AbstractMySQLPlatform::class, ['unsigned' => true])]
     public ?int $version = 0;
 
@@ -77,18 +79,22 @@ class IPNetwork
     public ?string $address = null;
 
     #[ORM\Column(name: '`address_0`', type: 'bigint', nullable: false, options: ['default' => '0'])]
+    #[NonNegative('glpi_ipnetworks_address_0_check')]
     #[PlatformOptions(AbstractMySQLPlatform::class, ['type' => 'integer', 'unsigned' => true])]
     public int $address_0 = 0;
 
     #[ORM\Column(name: '`address_1`', type: 'bigint', nullable: false, options: ['default' => '0'])]
+    #[NonNegative('glpi_ipnetworks_address_1_check')]
     #[PlatformOptions(AbstractMySQLPlatform::class, ['type' => 'integer', 'unsigned' => true])]
     public int $address_1 = 0;
 
     #[ORM\Column(name: '`address_2`', type: 'bigint', nullable: false, options: ['default' => '0'])]
+    #[NonNegative('glpi_ipnetworks_address_2_check')]
     #[PlatformOptions(AbstractMySQLPlatform::class, ['type' => 'integer', 'unsigned' => true])]
     public int $address_2 = 0;
 
     #[ORM\Column(name: '`address_3`', type: 'bigint', nullable: false, options: ['default' => '0'])]
+    #[NonNegative('glpi_ipnetworks_address_3_check')]
     #[PlatformOptions(AbstractMySQLPlatform::class, ['type' => 'integer', 'unsigned' => true])]
     public int $address_3 = 0;
 
@@ -96,18 +102,22 @@ class IPNetwork
     public ?string $netmask = null;
 
     #[ORM\Column(name: '`netmask_0`', type: 'bigint', nullable: false, options: ['default' => '0'])]
+    #[NonNegative('glpi_ipnetworks_netmask_0_check')]
     #[PlatformOptions(AbstractMySQLPlatform::class, ['type' => 'integer', 'unsigned' => true])]
     public int $netmask_0 = 0;
 
     #[ORM\Column(name: '`netmask_1`', type: 'bigint', nullable: false, options: ['default' => '0'])]
+    #[NonNegative('glpi_ipnetworks_netmask_1_check')]
     #[PlatformOptions(AbstractMySQLPlatform::class, ['type' => 'integer', 'unsigned' => true])]
     public int $netmask_1 = 0;
 
     #[ORM\Column(name: '`netmask_2`', type: 'bigint', nullable: false, options: ['default' => '0'])]
+    #[NonNegative('glpi_ipnetworks_netmask_2_check')]
     #[PlatformOptions(AbstractMySQLPlatform::class, ['type' => 'integer', 'unsigned' => true])]
     public int $netmask_2 = 0;
 
     #[ORM\Column(name: '`netmask_3`', type: 'bigint', nullable: false, options: ['default' => '0'])]
+    #[NonNegative('glpi_ipnetworks_netmask_3_check')]
     #[PlatformOptions(AbstractMySQLPlatform::class, ['type' => 'integer', 'unsigned' => true])]
     public int $netmask_3 = 0;
 
@@ -115,18 +125,22 @@ class IPNetwork
     public ?string $gateway = null;
 
     #[ORM\Column(name: '`gateway_0`', type: 'bigint', nullable: false, options: ['default' => '0'])]
+    #[NonNegative('glpi_ipnetworks_gateway_0_check')]
     #[PlatformOptions(AbstractMySQLPlatform::class, ['type' => 'integer', 'unsigned' => true])]
     public int $gateway_0 = 0;
 
     #[ORM\Column(name: '`gateway_1`', type: 'bigint', nullable: false, options: ['default' => '0'])]
+    #[NonNegative('glpi_ipnetworks_gateway_1_check')]
     #[PlatformOptions(AbstractMySQLPlatform::class, ['type' => 'integer', 'unsigned' => true])]
     public int $gateway_1 = 0;
 
     #[ORM\Column(name: '`gateway_2`', type: 'bigint', nullable: false, options: ['default' => '0'])]
+    #[NonNegative('glpi_ipnetworks_gateway_2_check')]
     #[PlatformOptions(AbstractMySQLPlatform::class, ['type' => 'integer', 'unsigned' => true])]
     public int $gateway_2 = 0;
 
     #[ORM\Column(name: '`gateway_3`', type: 'bigint', nullable: false, options: ['default' => '0'])]
+    #[NonNegative('glpi_ipnetworks_gateway_3_check')]
     #[PlatformOptions(AbstractMySQLPlatform::class, ['type' => 'integer', 'unsigned' => true])]
     public int $gateway_3 = 0;
 

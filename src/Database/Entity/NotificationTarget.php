@@ -6,21 +6,23 @@ namespace itsmng\Database\Entity;
 
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
-use itsmng\Database\Mapping\PlatformOptions;
-use itsmng\Database\Mapping\SchemaOwner;
-use itsmng\Database\Mapping\SchemaIndex;
 use InvalidArgumentException;
 use ReflectionClass;
 use ReflectionProperty;
 use itsmng\Database\Mapping\ApplicationManaged;
-use itsmng\Database\Mapping\LegacyInput;
 use itsmng\Database\Mapping\DiscriminatedBy;
 use itsmng\Database\Mapping\DiscriminatorKey;
+use itsmng\Database\Mapping\LegacyInput;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\RequiredSubjectConstraint;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_notificationtargets')]
 #[PlatformOptions(AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
 #[SchemaOwner]
+#[RequiredSubjectConstraint('recipient_kind')]
 #[ORM\HasLifecycleCallbacks]
 #[SchemaIndex('groups_id', ['groups_id'])]
 #[SchemaIndex('profiles_id', ['profiles_id'])]

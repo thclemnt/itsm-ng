@@ -5,17 +5,17 @@
 namespace itsmng\Database\Entity;
 
 use DateTimeInterface;
-use Doctrine\ORM\Mapping as ORM;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\BooleanStorage;
-use itsmng\Database\Mapping\PlatformOptions;
-use itsmng\Database\Mapping\SchemaIndex;
-use itsmng\Database\Mapping\SchemaOwner;
 use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_groups')]
@@ -25,8 +25,8 @@ use itsmng\Database\Mapping\ReferencePolicy;
 #[SchemaIndex('ldap_field', ['ldap_field'], postgresqlName: 'glpi_groups_ldap_field')]
 #[SchemaIndex('entities_id', ['entities_id'], postgresqlName: 'glpi_groups_entities_id')]
 #[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_groups_date_mod')]
-#[SchemaIndex('ldap_value', ['ldap_value'], options: ['lengths' => [200]], platform: AbstractMySQLPlatform::class)]
-#[SchemaIndex('ldap_group_dn', ['ldap_group_dn'], options: ['lengths' => [200]], platform: AbstractMySQLPlatform::class)]
+#[SchemaIndex('ldap_value', ['ldap_value'], postgresqlName: 'glpi_groups_ldap_value', prefixLengths: [200])]
+#[SchemaIndex('ldap_group_dn', ['ldap_group_dn'], postgresqlName: 'glpi_groups_ldap_group_dn', prefixLengths: [200])]
 #[SchemaIndex('groups_id', ['groups_id'], postgresqlName: 'glpi_groups_groups_id')]
 #[SchemaIndex('is_requester', ['is_requester'], postgresqlName: 'glpi_groups_is_requester')]
 #[SchemaIndex('is_watcher', ['is_watcher'], postgresqlName: 'glpi_groups_is_watcher')]

@@ -16,7 +16,7 @@ use itsmng\Database\Mapping\SchemaOwner;
 #[PlatformOptions(AbstractMySQLPlatform::class, ['create_options' => [], 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'engine' => 'InnoDB'])]
 #[SchemaOwner]
 #[SchemaIndex('rules_id', ['rules_id'], postgresqlName: 'glpi_ruleactions_rules_id')]
-#[SchemaIndex('field_value', ['field', 'value'], platform: AbstractMySQLPlatform::class, options: ['lengths' => [50, 50]])]
+#[SchemaIndex('field_value', ['field', 'value'], postgresqlName: 'glpi_ruleactions_field_value', prefixLengths: [50, 50])]
 class RuleAction
 {
     #[ORM\ManyToOne(targetEntity: Rule::class)]

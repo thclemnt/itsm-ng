@@ -7,22 +7,27 @@ namespace itsmng\Database;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Schema\Schema;
-use Doctrine\DBAL\Types\Types;
 use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Tools\SchemaTool;
 use InvalidArgumentException;
+use LogicException;
+use ReflectionClass;
+use ReflectionProperty;
 use itsmng\Database\Mapping\BooleanStorage;
 use itsmng\Database\Mapping\DiscriminatedBy;
 use itsmng\Database\Mapping\DiscriminatorKey;
-use ReflectionClass;
-use ReflectionProperty;
+use itsmng\Database\Mapping\NonNegative;
 use itsmng\Database\Mapping\RequiredSubjectConstraint;
+use itsmng\Database\Mapping\SchemaIndex;
 
 /** Current required schema; installation separately replays immutable migration history. */
 final class BaselineSchema
 {
     private array $subjectPolicies = [];
+    private array $nativeIndexPolicies = [];
+    private array $nonNegativePolicies = [];
 
     public function __construct(private readonly ?EntityManager $metadataManager = null)
     {
@@ -34,6 +39,17 @@ final class BaselineSchema
         return $this->subjectPolicies;
     }
 
+    public function nativeIndexPolicies(): array
+    {
+        return $this->nativeIndexPolicies;
+    }
+
+    /** Nonnegative domains belong to the same mapped scalar snapshot as this schema. */
+    public function nonNegativePolicies(): array
+    {
+        return $this->nonNegativePolicies;
+    }
+
     public function build(AbstractPlatform $platform, bool $foreignKeys = true): Schema
     {
         if ($this->metadataManager !== null
@@ -41,6 +57,8 @@ final class BaselineSchema
             throw new InvalidArgumentException('Current schema metadata must use the selected platform.');
         }
         $this->subjectPolicies = [];
+        $this->nativeIndexPolicies = [];
+        $this->nonNegativePolicies = [];
         // Explicit version keeps standalone metadata inspection offline.
         $connection = $this->metadataManager?->getConnection()
             ?? DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
@@ -50,6 +68,18 @@ final class BaselineSchema
             $schema = (new SchemaTool($manager))->getSchemaFromMetadata($metadata);
             foreach ($metadata as $entity) {
                 $table = $schema->getTable($entity->getTableName());
+                foreach ((new ReflectionClass($entity->name))->getAttributes(SchemaIndex::class) as $attribute) {
+                    $index = $attribute->newInstance();
+                    $policy = $index->nativePrefixPolicy($entity, $platform);
+                    if ($policy === null) {
+                        continue;
+                    }
+                    $name = $index->name($platform);
+                    if ($table->hasIndex($name) || isset($this->nativeIndexPolicies[$entity->getTableName()][$name])) {
+                        throw new LogicException('Duplicate native index declaration: ' . $entity->getTableName() . '.' . $name);
+                    }
+                    $this->nativeIndexPolicies[$entity->getTableName()][$name] = $policy;
+                }
                 // SchemaTool removes indexes covered by another constraint.
                 // Explicit declarations still own their physical names and storage.
                 foreach ($entity->table['indexes'] ?? [] as $name => $index) {
@@ -64,6 +94,12 @@ final class BaselineSchema
                 }
                 foreach ($entity->fieldMappings as $property => $field) {
                     $declaration = new ReflectionProperty($entity->name, $property);
+                    foreach ($declaration->getAttributes(NonNegative::class) as $attribute) {
+                        $policy = $attribute->newInstance()->policy($entity, $declaration, $platform);
+                        if ($policy !== null) {
+                            $this->nonNegativePolicies[$entity->getTableName()][$field->columnName] = $policy;
+                        }
+                    }
                     foreach ($declaration->getAttributes(BooleanStorage::class) as $attribute) {
                         $attribute->newInstance()->configure($table->getColumn($field->columnName), $platform, $field);
                     }

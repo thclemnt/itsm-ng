@@ -13,7 +13,11 @@ use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\MariaDBPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Schema\Schema;
 use GLPITestCase;
+use LogicException;
+use RuntimeException;
+use Toolbox;
 use itsmng\Database\BaselineSchema;
 use itsmng\Database\BooleanDomainSchema;
 use itsmng\Database\Installer;
@@ -29,6 +33,8 @@ use itsmng\Database\Migration\V220\NetworkPortAggregateOrigins;
 use itsmng\Database\Migration\V220\PlanningEventGuests;
 use itsmng\Database\Migration\V220\Seeds;
 use itsmng\Database\Migration\Version220;
+use itsmng\Database\NativeCheckCatalog;
+use itsmng\Database\NativeNonNegativeSchema;
 use itsmng\Database\NativeSubjectSchema;
 use itsmng\Database\Orm;
 use itsmng\Database\PhysicalIndexSchema;
@@ -36,9 +42,6 @@ use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\RecordWriter;
 use itsmng\Database\SchemaCheck;
 use itsmng\Database\Upgrade;
-use LogicException;
-use RuntimeException;
-use Toolbox;
 
 /** Native release boundaries; the historical 0.72.3 database tests remain separate. */
 class OrmMigration extends GLPITestCase
@@ -352,6 +355,7 @@ class OrmMigration extends GLPITestCase
             $this->boolean(Ledger::state($connection, PhysicalReferenceIndexes::VERSION)['complete'])->isTrue();
             $this->array((new PhysicalReferenceIndexes())->plan($connection)['sql'])->isEmpty();
             $this->array(Ledger::state($connection, SensorSubjectDefinition::PHASE)['policy'])->hasKeys(['projection', 'check']);
+            $this->assertCurrentPrefixNativeVerification($connection);
             $this->assertCurrentSubjectNativeVerification($connection);
             $this->assertTerminalSensorVerification($connection);
             $this->assertTerminalReleaseOrder($connection);
@@ -376,9 +380,126 @@ class OrmMigration extends GLPITestCase
         $this->fixtureCompleted = true;
     }
 
+    /** The entity-owned native tuple remains mandatory after historical migration receipts. */
+    private function assertCurrentPrefixNativeVerification(Connection $connection): void
+    {
+        $platform = $connection->getDatabasePlatform();
+        if (!$platform instanceof PostgreSQLPlatform) {
+            return;
+        }
+        $owner = new BaselineSchema();
+        $schema = $owner->build($platform);
+        $policies = $owner->nativeIndexPolicies();
+        $this->integer(count($policies))->isIdenticalTo(2);
+        $this->integer(array_sum(array_map('count', $policies)))->isIdenticalTo(3);
+        $rows = $this->rowBags($connection);
+        $ledger = Ledger::states($connection);
+        $quote = $platform->quoteIdentifier(...);
+        foreach ($policies as $table => $indexes) {
+            $selected = new Schema([clone $schema->getTable($table)]);
+            $inspect = static fn (): array => PhysicalIndexSchema::differences($connection, $selected, [$table => $indexes]);
+            $this->array($inspect())->isEmpty();
+            foreach ($indexes as $name => $policy) {
+                $diagnostic = 'Missing or changed native prefix index: ' . $table . '.' . $name;
+                $keys = array_map(static fn (string $column, int $length): string => 'pg_catalog.left('
+                    . $quote($column) . ', ' . $length . ')', $policy['columns'], $policy['lengths']);
+                foreach (['missing', 'shorter', 'descending', 'predicate', 'included', 'operator_class'] as $variant) {
+                    $connection->beginTransaction();
+                    try {
+                        $connection->executeStatement('DROP INDEX ' . $quote($name));
+                        if ($variant !== 'missing') {
+                            $altered = $keys;
+                            if ($variant === 'shorter') {
+                                $altered[0] = 'pg_catalog.left(' . $quote($policy['columns'][0]) . ', ' . ($policy['lengths'][0] - 1) . ')';
+                            } elseif ($variant === 'descending') {
+                                $altered[0] .= ' DESC';
+                            } elseif ($variant === 'operator_class') {
+                                $altered[0] .= ' text_pattern_ops';
+                            }
+                            $sql = 'CREATE INDEX ' . $quote($name) . ' ON ' . $quote($table) . ' (' . implode(', ', $altered) . ')';
+                            if ($variant === 'predicate') {
+                                $sql .= ' WHERE ' . $quote($policy['columns'][0]) . ' IS NOT NULL';
+                            } elseif ($variant === 'included') {
+                                $sql .= ' INCLUDE (' . $quote($policy['columns'][0]) . ')';
+                            }
+                            $connection->executeStatement($sql);
+                        }
+                        $this->array($inspect())->isIdenticalTo([$diagnostic], $variant);
+                        $this->array((new SchemaCheck())->differences($connection))->contains($diagnostic);
+                        $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
+                    } finally {
+                        // Transactional PostgreSQL DDL restores the exact historical
+                        // native expression, dependencies and every original row.
+                        $connection->rollBack();
+                    }
+                    $this->array($inspect())->isEmpty();
+                }
+            }
+        }
+        $this->array($this->rowBags($connection))->isIdenticalTo($rows);
+        $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
+    }
+
+    /** Existing installed domains remain mandatory after every migration receipt is complete. */
+    private function assertCurrentNonnegativeNativeVerification(Connection $connection): void
+    {
+        if (!$connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
+            return;
+        }
+        $platform = $connection->getDatabasePlatform();
+        $owner = new BaselineSchema();
+        $owner->build($platform);
+        $policies = $owner->nonNegativePolicies();
+        $quote = $platform->quoteIdentifier(...);
+        $catalog = static fn (?string $table = null): array => NativeCheckCatalog::snapshot($connection, $table)['checks'];
+        $this->array(NativeNonNegativeSchema::compare($policies, $catalog()))->isEmpty();
+        $ledger = Ledger::states($connection);
+        $rows = [];
+        foreach (array_keys($policies) as $table) {
+            $rows[$table] = $connection->fetchAllAssociative('SELECT * FROM ' . $quote($table) . ' ORDER BY id');
+        }
+        $publishedDiagnostic = false;
+        foreach ($policies as $table => $fields) {
+            foreach ($fields as $column => $policy) {
+                $selected = [$table => [$column => $policy]];
+                $diagnostic = 'Changed, missing or unenforced native nonnegative CHECK: ' . $table . '.' . $policy['constraint'];
+                $drop = 'ALTER TABLE ' . $quote($table) . ' DROP CONSTRAINT ' . $quote($policy['constraint']);
+                foreach ([[null, false], [$quote($column) . ' >= -1', false], [$policy['check'], true]] as [$replacement, $notValid]) {
+                    $connection->beginTransaction();
+                    try {
+                        $connection->executeStatement($drop);
+                        if ($replacement !== null) {
+                            // NOT VALID changes native enforcement evidence even when its expression is exact.
+                            $clause = $replacement;
+                            $connection->executeStatement('ALTER TABLE ' . $quote($table) . ' ADD CONSTRAINT '
+                                . $quote($policy['constraint']) . ' CHECK (' . $clause . ')' . ($notValid ? ' NOT VALID' : ''));
+                        }
+                        $this->array(NativeNonNegativeSchema::compare($selected, $catalog($table)))->isIdenticalTo([$diagnostic]);
+                        if (!$publishedDiagnostic) {
+                            $this->array((new SchemaCheck())->differences($connection))->contains($diagnostic);
+                            $publishedDiagnostic = true;
+                        }
+                        $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
+                    } finally {
+                        // Native DDL, definitions, dependencies and rows return to the original snapshot.
+                        $connection->rollBack();
+                    }
+                    $this->array(NativeNonNegativeSchema::compare($selected, $catalog($table)))->isEmpty();
+                }
+            }
+        }
+        foreach ($rows as $table => $original) {
+            $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $quote($table) . ' ORDER BY id'))->isIdenticalTo($original);
+        }
+        $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
+        $this->array((new SchemaCheck())->differences($connection))->isEmpty();
+    }
+
     /** Nonterminal subjects still belong to current native policy after later releases complete. */
     private function assertCurrentSubjectNativeVerification(Connection $connection): void
     {
+        $this->assertCurrentNotificationRecipientNativeVerification($connection);
+        $this->assertCurrentNonnegativeNativeVerification($connection);
         $this->assertCurrentUserAuthenticationNativeVerification($connection);
         $platform = $connection->getDatabasePlatform();
         $builder = new BaselineSchema();
@@ -443,6 +564,47 @@ class OrmMigration extends GLPITestCase
 
 
     /** Fallback authentication still needs its installed native CHECK after release completion. */
+    private function assertCurrentNotificationRecipientNativeVerification(Connection $connection): void
+    {
+        $platform = $connection->getDatabasePlatform();
+        $builder = new BaselineSchema();
+        $builder->build($platform);
+        $policy = $builder->subjectPolicies()['glpi_notificationtargets']['items_id'];
+        $selected = ['glpi_notificationtargets' => ['items_id' => $policy]];
+        $inspect = static fn (): array => NativeSubjectSchema::differences($connection, $selected);
+        $this->array($inspect())->isEmpty('The actual installed CHECK and generated fallback projection match current property policy');
+        $quote = $platform->quoteIdentifier(...);
+        $drop = 'ALTER TABLE ' . $quote('glpi_notificationtargets') . ' DROP '
+            . ($platform instanceof MySQLPlatform ? 'CHECK ' : 'CONSTRAINT ') . $quote($policy['constraint']);
+        $add = static fn (string $check): string => 'ALTER TABLE ' . $quote('glpi_notificationtargets') . ' ADD CONSTRAINT '
+            . $quote($policy['constraint']) . ' CHECK (' . $check . ')'
+            . ($platform instanceof MySQLPlatform ? ' ENFORCED' : '');
+        $diagnostic = 'Changed, missing or unenforced native subject CHECK: glpi_notificationtargets.' . $policy['constraint'];
+        $ledger = Ledger::states($connection);
+        $rows = $connection->fetchAllAssociative('SELECT * FROM ' . $quote('glpi_notificationtargets') . ' ORDER BY id');
+        $constraintDropped = $weakenedInstalled = false;
+        try {
+            $connection->executeStatement($drop);
+            $constraintDropped = true;
+            $this->array($inspect())->isIdenticalTo([$diagnostic]);
+            $this->array((new SchemaCheck())->differences($connection))->contains($diagnostic);
+            $connection->executeStatement($add('1 = 1'));
+            $weakenedInstalled = true;
+            $this->array($inspect())->isIdenticalTo([$diagnostic]);
+            $this->array((new SchemaCheck())->differences($connection))->contains($diagnostic);
+        } finally {
+            if ($constraintDropped) {
+                if ($weakenedInstalled) {
+                    $connection->executeStatement($drop);
+                }
+                $connection->executeStatement($add($policy['check']));
+            }
+        }
+        $this->array($inspect())->isEmpty();
+        $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $quote('glpi_notificationtargets') . ' ORDER BY id'))->isIdenticalTo($rows);
+        $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
+    }
+
     private function assertCurrentUserAuthenticationNativeVerification(Connection $connection): void
     {
         $platform = $connection->getDatabasePlatform();

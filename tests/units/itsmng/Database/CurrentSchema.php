@@ -6,8 +6,8 @@ namespace tests\units\itsmng\Database;
 
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Platforms\MariaDBPlatform;
+use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Column;
 use Doctrine\DBAL\Schema\Comparator;
@@ -26,28 +26,22 @@ use Doctrine\Persistence\Mapping\ClassMetadata;
 use Doctrine\Persistence\Mapping\Driver\MappingDriver;
 use InvalidArgumentException;
 use LogicException;
-use itsmng\Database\Entity\User as UserEntity;
-use itsmng\Database\Mapping\DiscriminatorKey;
-use itsmng\Database\Migration\V220\UserAuthenticationSources;
+use ReflectionClass;
+use ReflectionProperty;
 use RuntimeException;
 use atoum\atoum\test;
 use itsmng\Database\BaselineSchema;
+use itsmng\Database\BooleanDomainSchema;
 use itsmng\Database\CurrentSchema as Projection;
 use itsmng\Database\Entity\BudgetType;
-use itsmng\Database\Entity\ContactType;
-use itsmng\Database\Entity\ContractType;
-use itsmng\Database\Entity\ProjectTaskType;
-use itsmng\Database\Entity\ProjectType;
-use itsmng\Database\Entity\SupplierType;
 use itsmng\Database\Entity\Calendar;
 use itsmng\Database\Entity\CalendarHoliday;
 use itsmng\Database\Entity\CalendarSegment;
 use itsmng\Database\Entity\ComputerModel;
 use itsmng\Database\Entity\ComputerType;
 use itsmng\Database\Entity\Config;
-use itsmng\Database\Entity\DomainRecordType;
-use itsmng\Database\Entity\DomainRelation;
-use itsmng\Database\Entity\DomainType;
+use itsmng\Database\Entity\ContactType;
+use itsmng\Database\Entity\ContractType;
 use itsmng\Database\Entity\CronTask;
 use itsmng\Database\Entity\CronTaskLog;
 use itsmng\Database\Entity\DeviceBatteryModel;
@@ -73,16 +67,20 @@ use itsmng\Database\Entity\DeviceSensorModel;
 use itsmng\Database\Entity\DeviceSensorType;
 use itsmng\Database\Entity\DeviceSimcardType;
 use itsmng\Database\Entity\DeviceSoundCardModel;
+use itsmng\Database\Entity\DomainRecordType;
+use itsmng\Database\Entity\DomainRelation;
+use itsmng\Database\Entity\DomainType;
 use itsmng\Database\Entity\EnclosureModel;
 use itsmng\Database\Entity\Holiday;
+use itsmng\Database\Entity\IPAddress;
 use itsmng\Database\Entity\MonitorModel;
 use itsmng\Database\Entity\MonitorType;
 use itsmng\Database\Entity\NetworkEquipmentModel;
 use itsmng\Database\Entity\NetworkEquipmentType;
 use itsmng\Database\Entity\Notification;
 use itsmng\Database\Entity\NotificationChatConfig;
-use itsmng\Database\Entity\NotificationTarget;
 use itsmng\Database\Entity\NotificationNotificationTemplate;
+use itsmng\Database\Entity\NotificationTarget;
 use itsmng\Database\Entity\NotificationTemplate;
 use itsmng\Database\Entity\NotificationTemplateTranslation;
 use itsmng\Database\Entity\OidcConfig;
@@ -99,24 +97,31 @@ use itsmng\Database\Entity\PrinterType;
 use itsmng\Database\Entity\Profile;
 use itsmng\Database\Entity\ProfileRight;
 use itsmng\Database\Entity\ProfileUser;
+use itsmng\Database\Entity\ProjectTaskType;
+use itsmng\Database\Entity\ProjectType;
 use itsmng\Database\Entity\RackModel;
+use itsmng\Database\Entity\SupplierType;
+use itsmng\Database\Entity\User as UserEntity;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Mapping\AttributeDriver;
 use itsmng\Database\Mapping\BooleanStorage;
+use itsmng\Database\Mapping\DiscriminatorKey;
 use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\NonNegative;
 use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\SchemaOwner;
 use itsmng\Database\Migration\V220\Baseline;
 use itsmng\Database\Migration\V220\IdentifierColumns;
 use itsmng\Database\Migration\V220\NotificationRecipients;
+use itsmng\Database\Migration\V220\UserAuthenticationSources;
+use itsmng\Database\NativeCheckCatalog;
+use itsmng\Database\NativeNonNegativeSchema;
 use itsmng\Database\NativeSubjectSchema;
 use itsmng\Database\Orm as ApplicationOrm;
-use itsmng\Database\Type\ClockTimeType;
-use ReflectionClass;
-use ReflectionProperty;
 use itsmng\Database\PhysicalIndexSchema;
 use itsmng\Database\PluginImportMutation;
 use itsmng\Database\SubjectPolicyExpression;
+use itsmng\Database\Type\ClockTimeType;
 use mock\Doctrine\DBAL\Connection;
 use tests\fixtures\DisconnectedSchemaConnection;
 
@@ -124,6 +129,102 @@ require_once dirname(__DIR__, 3) . '/fixtures/DisconnectedSchemaConnection.php';
 
 class CurrentSchema extends test
 {
+    public function testNonnegativeDomainsUseTheirActualMappedIntegerProperties(): void
+    {
+        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+            $manager = $this->manager($platform);
+            $owner = new BaselineSchema($manager);
+            $frozen = (new Baseline())->toSql($platform);
+            $schema = $owner->build($platform);
+            $policies = $owner->nonNegativePolicies();
+            $postgres = $platform instanceof PostgreSQLPlatform;
+            if (!$postgres) {
+                $this->array($policies)->isEmpty();
+            } else {
+                $this->integer(count($policies['glpi_ipaddresses']))->isIdenticalTo(5);
+                $this->integer(count($policies['glpi_ipnetworks']))->isIdenticalTo(13);
+                foreach ($policies as $table => $fields) {
+                    foreach ($fields as $column => $policy) {
+                        $this->string($policy['column'])->isIdenticalTo($column);
+                        $this->string($policy['check'])->isIdenticalTo($platform->quoteIdentifier($column) . ' >= 0');
+                        $this->string($policy['type'])->isIdenticalTo($column === 'version' ? Types::SMALLINT : Types::BIGINT);
+                        $this->boolean($policy['nullable'])->isIdenticalTo($column === 'version');
+                        $actual = $schema->getTable($table)->getColumn($column);
+                        $this->boolean($actual->getNotnull())->isIdenticalTo(!$policy['nullable']);
+                        $this->variable($actual->getDefault())->isEqualTo('0');
+                    }
+                }
+                $this->string($policies['glpi_ipaddresses']['version']['constraint'])->isIdenticalTo('glpi_ipaddresses_version_check');
+                $this->string($policies['glpi_ipnetworks']['gateway_3']['constraint'])->isIdenticalTo('glpi_ipnetworks_gateway_3_check');
+                $metadata = $manager->getClassMetadata(IPAddress::class);
+                $metadata->fieldMappings['version']->nullable = false;
+                $metadata->fieldMappings['binary_0']->type = Types::INTEGER;
+                $owner->build($platform);
+                $this->boolean($owner->nonNegativePolicies()['glpi_ipaddresses']['version']['nullable'])->isFalse();
+                $this->string($owner->nonNegativePolicies()['glpi_ipaddresses']['binary_0']['type'])->isIdenticalTo(Types::INTEGER);
+                $fresh = new BaselineSchema($this->manager($platform));
+                $fresh->build($platform);
+                $this->array($fresh->nonNegativePolicies())->isIdenticalTo($policies);
+                $property = new ReflectionProperty(IPAddress::class, 'version');
+                $declaration = $property->getAttributes(NonNegative::class)[0]->newInstance();
+                $metadata->fieldMappings['version']->type = Types::STRING;
+                $this->exception(static fn () => $declaration->policy($metadata, $property, $platform))->isInstanceOf(LogicException::class);
+                $metadata->fieldMappings['version']->type = Types::SMALLINT;
+                $metadata->fieldMappings['version']->generated = ORM\ClassMetadata::GENERATED_ALWAYS;
+                $this->exception(static fn () => $declaration->policy($metadata, $property, $platform))->isInstanceOf(LogicException::class);
+                $metadata->fieldMappings['version']->generated = null;
+                $metadata->fieldMappings['version']->columnDefinition = 'SMALLINT';
+                $this->exception(static fn () => $declaration->policy($metadata, $property, $platform))->isInstanceOf(LogicException::class);
+                $association = new ReflectionProperty(IPAddress::class, 'entities');
+                $this->exception(static fn () => $declaration->policy($metadata, $association, $platform))->isInstanceOf(LogicException::class);
+            }
+            $this->array((new Baseline())->toSql($platform))->isIdenticalTo($frozen);
+            $this->boolean($manager->getConnection()->isConnected())->isFalse();
+            $this->boolean($manager->isOpen())->isTrue();
+        }
+    }
+
+    public function testNonnegativeNativeChecksRequireExactCurrentEnforcement(): void
+    {
+        $owner = new BaselineSchema($this->manager(new PostgreSQLPlatform()));
+        $owner->build(new PostgreSQLPlatform());
+        $policies = $owner->nonNegativePolicies();
+        $checks = [];
+        foreach ($policies as $table => $fields) {
+            foreach ($fields as $column => $policy) {
+                // Synthetic OIDs belong only to this fixture, never production declarations.
+                $checks[$table][$policy['constraint']] = [
+                    'clause' => '(' . $column . ' >= 0)', 'enforced' => 'true', 'validated' => true,
+                    'checked_columns' => json_encode([$column]), 'integer_ge_oids' => '[430,542]',
+                    'native_nodes' => '{OPEXPR :opno 430 :args ({VAR :varattno 7} {CONST :consttype 23})}',
+                ];
+            }
+        }
+        $this->array(NativeNonNegativeSchema::compare($policies, $checks))->isEmpty();
+        foreach ($policies as $table => $fields) {
+            foreach ($fields as $column => $policy) {
+                $selected = [$table => [$column => $policy]];
+                $name = $policy['constraint'];
+                $diagnostic = ['Changed, missing or unenforced native nonnegative CHECK: ' . $table . '.' . $name];
+                $this->array(NativeNonNegativeSchema::compare($selected, []))->isIdenticalTo($diagnostic);
+                foreach ([
+                    ['clause', $column . ' > 0'], ['clause', $column . ' >= 1'],
+                    ['enforced', false], ['validated', false],
+                    ['checked_columns', '[]'], ['checked_columns', '["other"]'],
+                    ['checked_columns', json_encode([$column, 'other'])],
+                    ['integer_ge_oids', '[99999]'],
+                    ['native_nodes', '{OPEXPR :opno 99999 :args ({VAR :varattno 7} {CONST :consttype 23})}'],
+                    ['native_nodes', '{OPEXPR :opno 430 :args ({FUNCEXPR :funcid 9000 :args ({VAR :varattno 7})} {CONST :consttype 23})}'],
+                    ['native_nodes', '{BOOLEXPR :args ({OPEXPR :opno 430 :args ({VAR :varattno 7} {CONST :consttype 23})})}'],
+                ] as [$key, $value]) {
+                    $changed = $checks;
+                    $changed[$table][$name][$key] = $value;
+                    $this->array(NativeNonNegativeSchema::compare($selected, $changed))->isIdenticalTo($diagnostic);
+                }
+            }
+        }
+    }
+
     private function manager(AbstractPlatform $platform, bool $fixture = false): EntityManager
     {
         $configuration = ApplicationOrm::configuration($platform);
@@ -131,6 +232,96 @@ class CurrentSchema extends test
             $configuration->setMetadataDriverImpl(new CurrentDeclarationDriver($configuration->getMetadataDriverImpl()));
         }
         return new EntityManager(new DisconnectedSchemaConnection($platform), $configuration);
+    }
+
+    public function testNativePrefixInspectionRequiresEveryPhysicalSemantic(): void
+    {
+        $policy = ['columns' => ['field', 'value'], 'sourceTypes' => ['varchar', 'varchar'], 'lengths' => [50, 50]];
+        $key = ['source' => 'field', 'source_type' => 'varchar', 'source_type_matches' => true, 'expression' => '"left"((field)::text, 50)',
+            'attribute' => 0, 'options' => 0, 'collation' => true, 'opclass' => true];
+        $physical = ['usable' => true, 'unique' => false, 'primary' => false, 'method' => 'btree',
+            'predicate' => null, 'expressions' => 'left(field::text, 50), left(value::text, 50)',
+            'native_prefix' => ['namespace' => true, 'live' => true, 'key_count' => 2, 'total_count' => 2,
+                'function_oid' => '3060', 'nodes' => '({FUNCEXPR :funcid 3060 } {FUNCEXPR :funcid 3060 })',
+                'keys' => [$key, array_replace($key, ['source' => 'value', 'expression' => 'pg_catalog.left(value::text, 50)'])]]];
+        $this->boolean(PhysicalIndexSchema::coversNativePrefix($policy, $physical))->isTrue();
+        $textPolicy = ['columns' => ['ldap_value'], 'sourceTypes' => ['text'], 'lengths' => [200]];
+        $textPhysical = $physical;
+        $textPhysical['native_prefix']['key_count'] = $textPhysical['native_prefix']['total_count'] = 1;
+        $textPhysical['native_prefix']['nodes'] = '({FUNCEXPR :funcid 3060 })';
+        $textPhysical['native_prefix']['keys'] = [array_replace($key, ['source' => 'ldap_value',
+            'source_type' => 'text', 'expression' => '"left"(ldap_value, 200)'])];
+        $this->boolean(PhysicalIndexSchema::coversNativePrefix($textPolicy, $textPhysical))->isTrue();
+        $textPhysical['native_prefix']['keys'][0]['source_type'] = 'varchar';
+        $this->boolean(PhysicalIndexSchema::coversNativePrefix($textPolicy, $textPhysical))->isFalse('Exact mapped source type is required');
+        foreach (['left(field, 50)', '(left((field)::pg_catalog.text, 50))', 'pg_catalog."left"("field"::text, 50)'] as $expression) {
+            $changed = $physical;
+            $changed['native_prefix']['keys'][0]['expression'] = $expression;
+            $this->boolean(PhysicalIndexSchema::coversNativePrefix($policy, $changed))->isTrue($expression);
+        }
+        foreach (['usable' => false, 'unique' => true, 'primary' => true, 'method' => 'hash',
+            'predicate' => 'rules_id > 0', 'expressions' => null] as $property => $value) {
+            $this->boolean(PhysicalIndexSchema::coversNativePrefix($policy, array_replace($physical, [$property => $value])))->isFalse($property);
+        }
+        foreach (['namespace' => false, 'live' => false, 'key_count' => 1, 'total_count' => 3,
+            'nodes' => '({FUNCEXPR :funcid 9999 } {FUNCEXPR :funcid 3060 })'] as $property => $value) {
+            $changed = $physical;
+            $changed['native_prefix'][$property] = $value;
+            $this->boolean(PhysicalIndexSchema::coversNativePrefix($policy, $changed))->isFalse($property);
+        }
+        foreach (['source' => 'value', 'source_type' => 'text', 'source_type_matches' => false, 'attribute' => 1, 'options' => 1,
+            'collation' => false, 'opclass' => false] as $property => $value) {
+            $changed = $physical;
+            $changed['native_prefix']['keys'][0][$property] = $value;
+            $this->boolean(PhysicalIndexSchema::coversNativePrefix($policy, $changed))->isFalse($property);
+        }
+        foreach (['left(field::text, 49)', 'left(value::text, 50)', 'left(field::varchar(1)::text, 50)',
+            'left(field::text COLLATE "C", 50)', 'left(lower(field::text), 50)', "left(field::text, 50) || ''",
+            'left(field::text, 50) DESC', 'left(field::text, 50);'] as $expression) {
+            $changed = $physical;
+            $changed['native_prefix']['keys'][0]['expression'] = $expression;
+            $this->boolean(PhysicalIndexSchema::coversNativePrefix($policy, $changed))->isFalse($expression);
+        }
+        $changed = $physical;
+        $changed['native_prefix']['keys'][0]['options'] = 2;
+        $this->boolean(PhysicalIndexSchema::coversNativePrefix($policy, $changed))->isFalse('NULLS FIRST');
+        $changed['native_prefix']['nodes'] .= ' {FUNCEXPR :funcid 3060 }';
+        $this->boolean(PhysicalIndexSchema::coversNativePrefix($policy, $changed))->isFalse('Additional function node');
+    }
+
+    public function testCurrentCheckFamiliesShareOneNativeOwnershipSnapshot(): void
+    {
+        $platform = new PostgreSQLPlatform();
+        $connection = new Connection([], (new DisconnectedSchemaConnection($platform))->getDriver());
+        $this->calling($connection)->getDatabasePlatform = $platform;
+        $queries = [];
+        $projection = 'CASE WHEN kind IN (1) THEN selected_id ELSE NULL END';
+        $clause = 'selected_id IS NULL OR selected_id > 0';
+        $row = ['table_name' => 'fixture', 'constraint_name' => 'fixture_selection', 'clause' => $clause,
+            'enforced' => true, 'validated' => true, 'native_nodes' => 'fixture nodes',
+            'checked_columns' => '["selected_id"]', 'integer_ge_oids' => '["524"]'];
+        $this->calling($connection)->fetchAllAssociative = static function (string $sql) use (&$queries, $row, $projection): array {
+            $queries[] = $sql;
+            if (str_contains($sql, 'FROM pg_catalog.pg_constraint')) {
+                return [$row];
+            }
+            if (str_contains($sql, 'pg_catalog.pg_attribute')) {
+                return [['table_name' => 'fixture', 'column_name' => 'items_id', 'generated' => 's', 'expression' => $projection]];
+            }
+            return [];
+        };
+        $snapshot = NativeCheckCatalog::snapshot($connection);
+        $this->array($snapshot['checks']['fixture']['fixture_selection'])->isIdenticalTo($row);
+        $this->boolean($snapshot['mysql'])->isFalse();
+        $this->boolean($snapshot['ansi_quotes'])->isFalse();
+        $this->array(BooleanDomainSchema::differences($connection, new Schema(), $snapshot))->isEmpty();
+        $policies = ['fixture' => ['items_id' => ['constraint' => 'fixture_selection', 'projection' => $projection,
+            'check' => $clause, 'discriminators' => [], 'integer_discriminators' => ['kind']]]];
+        $this->array(NativeSubjectSchema::differences($connection, $policies, $snapshot))->isEmpty();
+        $reads = array_values(array_filter($queries, static fn (string $sql): bool => str_contains($sql, 'FROM pg_catalog.pg_constraint')));
+        $this->integer(count($reads))->isIdenticalTo(1);
+        $this->string($reads[0])->contains('c.conbin::text AS native_nodes')
+            ->contains('WITH ORDINALITY')->contains('pg_catalog.pg_operator')->contains('pg_catalog.pg_table_is_visible');
     }
 
     public function testSubjectIndexesRetainLegacyCoverageWithoutNameCollisions(): void
@@ -1473,6 +1664,74 @@ class CurrentSchema extends test
         $builder = new BaselineSchema($this->manager(new PostgreSQLPlatform()));
         $this->exception(static fn () => $builder->build(new MariaDBPlatform()))
             ->isInstanceOf(InvalidArgumentException::class);
+    }
+
+    public function testNotificationFallbackOwnsRequiredHistoricalRecipientSemantics(): void
+    {
+        $historical = NotificationRecipients::checkSql();
+        $historical = substr($historical, strpos($historical, ' CHECK (') + 8, -1);
+        foreach ([new MySQLPlatform(), new MariaDBPlatform(), new PostgreSQLPlatform()] as $platform) {
+            $builder = new BaselineSchema($this->manager($platform));
+            $builder->build($platform);
+            $policy = $builder->subjectPolicies()['glpi_notificationtargets']['items_id'];
+            $this->string($policy['constraint'])->isIdenticalTo('glpi_notificationtargets_recipient_kind');
+            $this->array($policy['discriminators'])->isEmpty();
+            $this->array($policy['integer_discriminators'])->isIdenticalTo(['type']);
+            $this->string($policy['integer_types']['recipient_code'])->isIdenticalTo('integer');
+            $postgres = $platform instanceof PostgreSQLPlatform;
+            $equivalent = static fn (string $expected, string $actual): bool => SubjectPolicyExpression::equivalent(
+                $expected,
+                $actual,
+                $postgres,
+                integerDiscriminators: $policy['integer_discriminators'],
+                integerTypes: $policy['integer_types']
+            );
+            $this->boolean($equivalent($policy['check'], $historical))->isTrue();
+            $projection = $policy['projection'];
+            if ($postgres) {
+                $projection = str_replace('ELSE "recipient_code" END', 'ELSE ("recipient_code")::bigint END', $projection);
+            }
+            $columns = ['glpi_notificationtargets' => ['items_id' => [
+                'generated' => $postgres ? 's' : 'STORED GENERATED', 'expression' => $projection,
+            ]]];
+            $checks = ['glpi_notificationtargets' => ['glpi_notificationtargets_recipient_kind' => [
+                'clause' => $historical, 'enforced' => true, 'validated' => true,
+            ]]];
+            $selected = ['glpi_notificationtargets' => ['items_id' => $policy]];
+            // Numeric type has no pg_collation row; no deterministic-text check applies.
+            $this->array(NativeSubjectSchema::compare($selected, $columns, $checks, $postgres))->isEmpty();
+            foreach ([
+                str_replace('profiles_id > 0', 'profiles_id > -1', $historical),
+                str_replace('profiles_id IS NOT NULL AND profiles_id > 0', '(profiles_id IS NULL OR profiles_id > 0)', $historical),
+                str_replace('groups_id IS NOT NULL AND groups_id > 0', '(groups_id IS NULL OR groups_id > 0)', $historical),
+                str_replace('recipient_code IS NOT NULL', 'recipient_code IS NULL', $historical),
+                str_replace('groups_id IS NULL', 'groups_id IS NOT NULL', $historical),
+                $historical . ' OR 1 = 1',
+            ] as $weakened) {
+                $changed = $checks;
+                $changed['glpi_notificationtargets']['glpi_notificationtargets_recipient_kind']['clause'] = $weakened;
+                $this->array(NativeSubjectSchema::compare($selected, $columns, $changed, $postgres))->isIdenticalTo([
+                    'Changed, missing or unenforced native subject CHECK: glpi_notificationtargets.glpi_notificationtargets_recipient_kind',
+                ]);
+            }
+            foreach (['enforced', 'validated'] as $flag) {
+                if ($flag === 'validated' && !$postgres) {
+                    continue;
+                }
+                $changed = $checks;
+                $changed['glpi_notificationtargets']['glpi_notificationtargets_recipient_kind'][$flag] = false;
+                $this->array(NativeSubjectSchema::compare($selected, $columns, $changed, $postgres))->isIdenticalTo([
+                    'Changed, missing or unenforced native subject CHECK: glpi_notificationtargets.glpi_notificationtargets_recipient_kind',
+                ]);
+            }
+            $this->array(NativeSubjectSchema::compare($selected, $columns, [], $postgres))->isIdenticalTo([
+                'Changed, missing or unenforced native subject CHECK: glpi_notificationtargets.glpi_notificationtargets_recipient_kind',
+            ]);
+            $columns['glpi_notificationtargets']['items_id']['expression'] = '0';
+            $this->array(NativeSubjectSchema::compare($selected, $columns, $checks, $postgres))->isIdenticalTo([
+                'Changed or missing native subject projection: glpi_notificationtargets.items_id',
+            ]);
+        }
     }
 
     public function testUserFallbackSubjectPolicyOwnsHistoricalAuthenticationSemantics(): void
