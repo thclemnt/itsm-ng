@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
 * */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\NetworkNameRepository;
 use itsmng\Reporting\Criteria;
@@ -596,15 +597,18 @@ class NetworkName extends FQDNLabel
         $options['createRow'] = false;
         $address              = new self();
 
-        $ids = (new NetworkNameRepository(Orm::create($DB)))
-            ->identifiersForItem(
-                $item->getType(),
-                (int)$item->getID(),
-                $options['order'] ?? 'name',
-                isset($options['limit']) ? (int)$options['limit'] : null,
-                (int)($options['offset'] ?? 0),
-                Criteria::entities()
-            );
+        $ids = Orm::read(
+            $DB,
+            static fn (EntityManager $manager): array => (new NetworkNameRepository($manager))
+                ->identifiersForItem(
+                    $item->getType(),
+                    (int)$item->getID(),
+                    $options['order'] ?? 'name',
+                    isset($options['limit']) ? (int)$options['limit'] : null,
+                    (int)($options['offset'] ?? 0),
+                    Criteria::entities()
+                )
+        );
         foreach ($ids as $id) {
             if ($address->getFromDB($id)) {
                 if ($createRow) {
@@ -829,8 +833,11 @@ class NetworkName extends FQDNLabel
     {
         global $DB;
 
-        return (new NetworkNameRepository(Orm::create($DB)))
-            ->countForItem($item->getType(), (int)$item->getID(), Criteria::entities());
+        return Orm::read(
+            $DB,
+            static fn (EntityManager $manager): int => (new NetworkNameRepository($manager))
+                ->countForItem($item->getType(), (int)$item->getID(), Criteria::entities())
+        );
     }
 
 

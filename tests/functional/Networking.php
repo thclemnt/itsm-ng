@@ -3,6 +3,17 @@
 namespace tests\units;
 
 use DbTestCase;
+use FQDN;
+use IPAddress;
+use IPAddress_IPNetwork;
+use IPNetwork as Network;
+use IPNetwork_Vlan;
+use itsmng\Database\Orm;
+use Netpoint;
+use NetworkAlias;
+use NetworkName;
+use ReflectionProperty;
+use Vlan;
 
 class IPNetwork extends DbTestCase
 {
@@ -10,17 +21,21 @@ class IPNetwork extends DbTestCase
     {
         $this->login();
 
-        $fqdn = new \FQDN();
+        $fqdn = new FQDN();
         $domain = 'networking-' . strtolower($this->getUniqueString()) . '.example';
         $fqdns_id = (int)$fqdn->add([
            'name' => 'fqdn-' . $this->getUniqueString(),
+           'entities_id' => $_SESSION['glpiactive_entity'],
            'fqdn' => $domain,
         ]);
         $this->integer($fqdns_id)->isGreaterThan(0);
+        $this->boolean($fqdn->getFromDB($fqdns_id))->isTrue();
+        $this->boolean($fqdn->can($fqdns_id, READ))->isTrue();
 
-        $networkname = new \NetworkName();
+        $networkname = new NetworkName();
         $networknames_id = (int)$networkname->add([
            'name'         => 'host-' . strtolower($this->getUniqueString()),
+           'entities_id' => $_SESSION['glpiactive_entity'],
            'fqdns_id'     => $fqdns_id,
            '_ipaddresses' => ['-1' => '10.42.0.10'],
         ]);
@@ -30,7 +45,7 @@ class IPNetwork extends DbTestCase
         $this->string($networkname->fields['name'])->contains('host-');
 
         $this->integer((int)countElementsInTable(
-            \IPAddress::getTable(),
+            IPAddress::getTable(),
             [
                 'itemtype' => 'NetworkName',
                 'items_id' => $networknames_id,
@@ -38,29 +53,56 @@ class IPNetwork extends DbTestCase
             ]
         ))->isEqualTo(1);
 
-        $alias = new \NetworkAlias();
+        $alias = new NetworkAlias();
         $alias_id = (int)$alias->add([
            'networknames_id' => $networknames_id,
+           'entities_id' => $_SESSION['glpiactive_entity'],
            'name'            => 'alias-' . strtolower($this->getUniqueString()),
            'fqdns_id'        => $fqdns_id,
         ]);
         $this->integer($alias_id)->isGreaterThan(0);
         $this->boolean($alias->getFromDB($alias_id))->isTrue();
-        $this->string(\NetworkAlias::getInternetNameFromID($alias_id))->contains($alias->fields['name']);
+        $this->string(NetworkAlias::getInternetNameFromID($alias_id))->contains($alias->fields['name']);
+
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $entities = $_SESSION['glpiactiveentities'];
+        $this->output(static fn () => NetworkName::showForItem($fqdn))
+            ->contains($networkname->fields['name'])->contains($alias->fields['name'])->contains('10.42.0.10');
+        $this->integer(NetworkName::countForItem($fqdn))->isIdenticalTo(1);
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $before = $factories->getValue();
+        try {
+            $this->integer(NetworkName::countForItem($fqdn))->isIdenticalTo(1);
+            $this->integer($connection->update('glpi_networknames', ['is_deleted' => 1], ['id' => $networknames_id]))
+                ->isIdenticalTo(1);
+            $this->integer(NetworkName::countForItem($fqdn))->isIdenticalTo(0);
+            $this->output(static fn () => NetworkName::getHTMLTableCellsForItem(null, $fqdn))->isEmpty();
+            $this->integer($connection->update('glpi_networknames', ['is_deleted' => 0], ['id' => $networknames_id]))
+                ->isIdenticalTo(1);
+            $this->integer(NetworkName::countForItem($fqdn))->isIdenticalTo(1);
+            $_SESSION['glpiactiveentities'] = [];
+            $this->integer(NetworkName::countForItem($fqdn))->isIdenticalTo(0);
+            $this->output(static fn () => NetworkName::getHTMLTableCellsForItem(null, $fqdn))->isEmpty();
+        } finally {
+            $_SESSION['glpiactiveentities'] = $entities;
+            $connection->update('glpi_networknames', ['is_deleted' => 0], ['id' => $networknames_id]);
+        }
+        $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
     }
 
     public function testFqdnAndFqdnLabelValidation()
     {
         $this->login();
 
-        $fqdn = new \FQDN();
+        $fqdn = new FQDN();
         $this->integer((int)$fqdn->add([
            'name' => 'invalid-fqdn-' . $this->getUniqueString(),
            'fqdn' => 'invalid..example',
         ]))->isEqualTo(0);
         $this->hasSessionMessages(ERROR, ['FQDN is not valid']);
 
-        $networkname = new \NetworkName();
+        $networkname = new NetworkName();
         $this->integer((int)$networkname->add([
            'name' => '-badlabel',
         ]))->isEqualTo(0);
@@ -71,7 +113,7 @@ class IPNetwork extends DbTestCase
     {
         $this->login();
 
-        $net = new \IPNetwork();
+        $net = new Network();
         $suffix = (int)mt_rand(50, 200);
         $id = (int)$net->add([
            'name'       => 'net-' . $this->getUniqueString(),
@@ -96,7 +138,7 @@ class IPNetwork extends DbTestCase
         $this->login();
 
         $suffix = (int)mt_rand(50, 200);
-        $ipnetwork = new \IPNetwork();
+        $ipnetwork = new Network();
         $ipnetworks_id = (int)$ipnetwork->add([
            'name'       => 'autolink-net-' . $this->getUniqueString(),
            'entities_id' => 0,
@@ -105,13 +147,13 @@ class IPNetwork extends DbTestCase
         ]);
         $this->integer($ipnetworks_id)->isGreaterThan(0);
 
-        $networkname = new \NetworkName();
+        $networkname = new NetworkName();
         $networknames_id = (int)$networkname->add([
            'name' => 'autolink-host-' . strtolower($this->getUniqueString()),
         ]);
         $this->integer($networknames_id)->isGreaterThan(0);
 
-        $ipaddress = new \IPAddress();
+        $ipaddress = new IPAddress();
         $ipaddresses_id = (int)$ipaddress->add([
            'itemtype' => 'NetworkName',
            'items_id' => $networknames_id,
@@ -120,7 +162,7 @@ class IPNetwork extends DbTestCase
         $this->integer($ipaddresses_id)->isGreaterThan(0);
 
         $this->integer((int)countElementsInTable(
-            \IPAddress_IPNetwork::getTable(),
+            IPAddress_IPNetwork::getTable(),
             [
                 'ipaddresses_id' => $ipaddresses_id,
                 'ipnetworks_id'  => $ipnetworks_id,
@@ -133,7 +175,7 @@ class IPNetwork extends DbTestCase
         $this->login();
 
         $suffix = (int)mt_rand(50, 200);
-        $ipnetwork = new \IPNetwork();
+        $ipnetwork = new Network();
         $ipnetworks_id = (int)$ipnetwork->add([
            'name'       => 'vlan-net-' . $this->getUniqueString(),
            'entities_id' => 0,
@@ -142,20 +184,20 @@ class IPNetwork extends DbTestCase
         ]);
         $this->integer($ipnetworks_id)->isGreaterThan(0);
 
-        $vlan = new \Vlan();
+        $vlan = new Vlan();
         $vlans_id = (int)$vlan->add([
            'name' => 'vlan-' . $this->getUniqueString(),
            'tag'  => (int)mt_rand(200, 3500),
         ]);
         $this->integer($vlans_id)->isGreaterThan(0);
 
-        $relation = new \IPNetwork_Vlan();
+        $relation = new IPNetwork_Vlan();
         $relation_id = (int)$relation->assignVlan($ipnetworks_id, $vlans_id);
         $this->integer($relation_id)->isGreaterThan(0);
 
         $this->boolean($relation->unassignVlan($ipnetworks_id, $vlans_id))->isTrue();
         $this->integer((int)countElementsInTable(
-            \IPNetwork_Vlan::getTable(),
+            IPNetwork_Vlan::getTable(),
             [
                 'ipnetworks_id' => $ipnetworks_id,
                 'vlans_id'      => $vlans_id,
@@ -170,7 +212,7 @@ class IPNetwork extends DbTestCase
 
         $locations_id = getItemByTypeName('Location', '_location01', true);
         $prefix = 'netpoint-' . strtolower($this->getUniqueString()) . '-';
-        $netpoint = new \Netpoint();
+        $netpoint = new Netpoint();
 
         $netpoint->executeAddMulti([
             'entities_id'  => 0,
@@ -183,7 +225,7 @@ class IPNetwork extends DbTestCase
 
         foreach ([1, 2, 3] as $index) {
             $this->integer((int)countElementsInTable(
-                \Netpoint::getTable(),
+                Netpoint::getTable(),
                 [
                     'name'         => $prefix . $index,
                     'locations_id' => $locations_id,
