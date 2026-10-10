@@ -330,6 +330,108 @@ class CurrentSchema extends test
             ->contains('WITH ORDINALITY')->contains('pg_catalog.pg_operator')->contains('pg_catalog.pg_table_is_visible');
     }
 
+    public function testInheritedChecksAcceptCapturedPostgreSQLVarcharArrayRendering(): void
+    {
+        $facts = json_decode(file_get_contents(dirname(__DIR__, 3) . '/fixtures/native-reference-pg.json'), true, 512, JSON_THROW_ON_ERROR);
+        $this->integer(count($facts['six_policies']))->isIdenticalTo(6);
+        foreach ($facts['six_policies'] as $entry) {
+            $policy = $entry['policy'];
+            $row = $entry['actual'];
+            $selected = ['glpi_entities' => ['captured' => $policy]];
+            $snapshot = ['mysql' => false, 'ansi_quotes' => false,
+                'checks' => ['glpi_entities' => [$policy['constraint'] => $row]]];
+            $equivalent = static fn (string $clause, array $modes): bool => SubjectPolicyExpression::equivalent(
+                $policy['check'],
+                $clause,
+                true,
+                integerTypes: $policy['integer_types'],
+                stringSelections: $modes
+            );
+            $this->boolean($equivalent($row['clause'], $policy['string_selections']))->isTrue();
+            $this->boolean($equivalent($row['clause'], []))->isFalse('Varchar-array rendering is authorized only by declared mode policy');
+            $this->array(NativeReferenceSchema::compare($selected, $snapshot))->isEmpty();
+            $diagnostic = 'Changed, missing or unenforced native inherited reference CHECK: glpi_entities.' . $policy['constraint'];
+            $plain = $snapshot;
+            unset($plain['checks']['glpi_entities'][$policy['constraint']]['reference_text_coercion']);
+            $plain['checks']['glpi_entities'][$policy['constraint']]['native_nodes'] = '{BOOLEXPR {OPEXPR :opno 98 {VAR} {CONST}} {NULLTEST {VAR}}}';
+            $this->array(NativeReferenceSchema::compare($selected, $plain))->isEmpty('Old native shapes do not require coercion identity facts');
+            foreach (['{CASETESTEXPR :typeId 1043 :typeMod -1 :collation 0}', '{ARRAYCOERCEEXPR}'] as $orphan) {
+                $damaged = $plain;
+                $damaged['checks']['glpi_entities'][$policy['constraint']]['native_nodes'] .= ' ' . $orphan;
+                $this->array(NativeReferenceSchema::compare($selected, $damaged))->isIdenticalTo([$diagnostic]);
+            }
+
+            foreach ([
+                str_replace('::character varying', '::character varying(1)', $row['clause']),
+                str_replace('::character varying', '::varchar(1)', $row['clause']),
+                str_replace('::character varying', '::integer', $row['clause']),
+                str_replace('::text[]', '::integer[]', $row['clause']),
+                str_replace('::text[]', '::varchar(1)[]', $row['clause']),
+                str_replace('::text[]', '', $row['clause']),
+                str_replace('(' . $policy['mode_column'] . ')::text', '(' . $policy['mode_column'] . ')::varchar(1)::text', $row['clause']),
+                str_replace("'explicit'::character varying", "lower('explicit')::character varying", $row['clause']),
+                $row['clause'] . ' OR 1 = 1',
+            ] as $clause) {
+                $this->boolean($equivalent($clause, $policy['string_selections']))->isFalse();
+                $damaged = $snapshot;
+                $damaged['checks']['glpi_entities'][$policy['constraint']]['clause'] = $clause;
+                $this->array(NativeReferenceSchema::compare($selected, $damaged))->isIdenticalTo([$diagnostic]);
+            }
+            foreach ([
+                str_replace(':consttypmod -1', ':consttypmod 5', $row['native_nodes']),
+                str_replace(':typeMod -1', ':typeMod 5', $row['native_nodes']),
+                str_replace(':resulttypmod -1', ':resulttypmod 5', $row['native_nodes']),
+                str_replace(':array_typeid 1015', ':array_typeid 999', $row['native_nodes']),
+                str_replace(':element_typeid 1043', ':element_typeid 999', $row['native_nodes']),
+                str_replace(':typeId 1043', ':typeId 999', $row['native_nodes']),
+                str_replace(':multidims false', ':multidims true', $row['native_nodes']),
+                str_replace(':opno 98', ':opno 999', $row['native_nodes']),
+                $row['native_nodes'] . $row['native_nodes'],
+                $row['native_nodes'] . ' {CASETESTEXPR :typeId 1043 :typeMod -1 :collation 0}',
+                $row['native_nodes'] . ' {ARRAYCOERCEEXPR}',
+                $row['native_nodes'] . ' {FUNCEXPR :funcid 999}',
+            ] as $nodes) {
+                $damaged = $snapshot;
+                $damaged['checks']['glpi_entities'][$policy['constraint']]['native_nodes'] = $nodes;
+                $this->array(NativeReferenceSchema::compare($selected, $damaged))->isIdenticalTo([$diagnostic]);
+            }
+            foreach ([null, ['varchar' => '999', 'varchar_array' => '1015', 'text' => '25', 'text_array' => '1009', 'binary' => true],
+                array_replace($row['reference_text_coercion'], ['binary' => false])] as $identity) {
+                $damaged = $snapshot;
+                $damaged['checks']['glpi_entities'][$policy['constraint']]['reference_text_coercion'] = $identity;
+                $this->array(NativeReferenceSchema::compare($selected, $damaged))->isIdenticalTo([$diagnostic]);
+            }
+        }
+        $modes = ['calendar_mode' => ['explicit', 'inherit']];
+        $expected = "calendar_mode IN ('explicit', 'inherit')";
+        $this->boolean(SubjectPolicyExpression::equivalent(
+            $expected,
+            "calendar_mode = ANY ((ARRAY['explicit'::varchar, 'inherit'::varchar])::text[]))",
+            true,
+            stringSelections: $modes
+        ))->isFalse('Trailing token');
+        $this->boolean(SubjectPolicyExpression::equivalent(
+            $expected,
+            "calendar_mode = ANY ((ARRAY['explicit'::varchar, 'inherit'::varchar])::text[])",
+            true,
+            stringSelections: $modes
+        ))->isTrue();
+        $this->boolean(SubjectPolicyExpression::equivalent(
+            $expected,
+            "calendar_mode = ANY (ARRAY['explicit'::text, 'inherit'::text])",
+            true,
+            stringSelections: $modes
+        ))->isTrue('Existing direct text-array form remains supported');
+        $this->boolean(SubjectPolicyExpression::equivalent(
+            $expected,
+            "calendar_mode = ANY (ARRAY[('explicit'::text), 'inherit'::text::text])",
+            true,
+            stringSelections: $modes
+        ))->isTrue('Prior text literal forms remain unchanged');
+        $this->boolean(SubjectPolicyExpression::equivalent("calendar_mode = 'explicit'", "calendar_mode = 'explicit'::character varying", true, stringSelections: $modes))
+            ->isFalse('Literal varchar casts are not accepted outside declared ARRAY choice context');
+    }
+
     public function testInheritedChecksDeriveFromSixOwningModeDeclarations(): void
     {
         foreach ([new MySQLPlatform(), new MariaDBPlatform(), new PostgreSQLPlatform()] as $platform) {

@@ -63,7 +63,7 @@ class CheckCommand extends AbstractCommand
         foreach ($differences as $difference) {
             $output->writeln('<error>' . $difference . '</error>', OutputInterface::VERBOSITY_QUIET);
         }
-        $output->writeln('<comment>Boolean CHECK definitions, enforcement and declared timestamp touch are compared; other platform-specific expressions, triggers and CHECK constraints are not compared.</comment>');
+        $output->writeln('<comment>Mapped core schema and declared native policies are compared; additional native definitions are outside this check.</comment>');
         if ($differences) {
             return self::ERROR_SCHEMA_DIFFERENCES;
         }

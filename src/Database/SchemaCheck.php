@@ -14,8 +14,8 @@ final class SchemaCheck
 {
     /**
      * Additional tables and indexes are allowed for plugins and local tuning.
-     * Boolean domains and declared timestamp touch have native inspectors. Other
-     * platform-specific expressions, triggers and CHECKs are not compared by DBAL.
+     * Declared native policies have dedicated inspectors; additional platform
+     * expressions, triggers and CHECKs are outside this comparison.
      *
      * @return list<string>
      */

@@ -45,7 +45,10 @@ final class NativeReferenceSchema
             // This finite family has boolean junctions, literal choices, null tests,
             // variables and binary varchar-to-text relabels, never user functions.
             preg_match_all('/\{([A-Z][A-Z_0-9]*)\b/', $nodes, $tags);
-            if (!$tags[1] || array_diff($tags[1], ['BOOLEXPR', 'SCALARARRAYOPEXPR', 'OPEXPR', 'NULLTEST', 'VAR', 'CONST', 'ARRAYEXPR', 'RELABELTYPE'])) {
+            if (!$tags[1] || array_diff($tags[1], ['BOOLEXPR', 'SCALARARRAYOPEXPR', 'OPEXPR', 'NULLTEST', 'VAR', 'CONST', 'ARRAYEXPR', 'RELABELTYPE', 'ARRAYCOERCEEXPR', 'CASETESTEXPR'])) {
+                return false;
+            }
+            if (!self::binaryModeArrayCoercions($nodes, $tags[1], $check['reference_text_coercion'] ?? null)) {
                 return false;
             }
             preg_match_all('/:opno ([0-9]+)(?=\s|})/', $nodes, $ids);
@@ -61,6 +64,45 @@ final class NativeReferenceSchema
             integerTypes: $policy['integer_types'],
             stringSelections: $policy['string_selections']
         );
+    }
+
+    /** Recognize only the captured unnarrowed builtin varchar[] -> text[] relabel shape. */
+    private static function binaryModeArrayCoercions(string $nodes, array $tags, mixed $identity): bool
+    {
+        $arrays = count(array_filter($tags, static fn (string $tag): bool => $tag === 'ARRAYCOERCEEXPR'));
+        $elements = count(array_filter($tags, static fn (string $tag): bool => $tag === 'CASETESTEXPR'));
+        if ($arrays === 0) {
+            return $elements === 0;
+        }
+        if ($arrays !== 1 || $elements !== 1) {
+            return false;
+        }
+        if (is_string($identity)) {
+            $identity = json_decode($identity, true);
+        }
+        if (!is_array($identity) || !self::isTrue($identity['binary'] ?? null)) {
+            return false;
+        }
+        foreach (['varchar', 'varchar_array', 'text', 'text_array'] as $type) {
+            if (!is_string($identity[$type] ?? null) || !ctype_digit($identity[$type])) {
+                return false;
+            }
+        }
+        $varchar = preg_quote($identity['varchar'], '/');
+        $varcharArray = preg_quote($identity['varchar_array'], '/');
+        $text = preg_quote($identity['text'], '/');
+        $textArray = preg_quote($identity['text_array'], '/');
+        // All literal and result collations stay equal through the binary
+        // coercion; the actual inherited collation is never replaced here.
+        $constant = '\{CONST :consttype ' . $varchar . ' :consttypmod -1 :constcollid \k<coll> :constlen -1 '
+            . ':constbyval false :constisnull false :location -?[0-9]+ :constvalue [1-9][0-9]* \[ (?:-?[0-9]+ )+\]\}';
+        $pattern = '\{ARRAYCOERCEEXPR :arg \{ARRAYEXPR :array_typeid ' . $varcharArray
+            . ' :array_collid (?<coll>[0-9]+) :element_typeid ' . $varchar . ' :elements \((?:' . $constant . '\s*)+\) '
+            . ':multidims false :location -?[0-9]+\} :elemexpr \{RELABELTYPE :arg \{CASETESTEXPR :typeId '
+            . $varchar . ' :typeMod -1 :collation 0\} :resulttype ' . $text . ' :resulttypmod -1 '
+            . ':resultcollid \k<coll> :relabelformat 2 :location -?[0-9]+\} :resulttype ' . $textArray
+            . ' :resulttypmod -1 :resultcollid \k<coll> :coerceformat 2 :location -?[0-9]+\}';
+        return preg_match_all('/' . $pattern . '/', $nodes, $matches) === $arrays;
     }
 
     private static function nativeList(mixed $value): ?array

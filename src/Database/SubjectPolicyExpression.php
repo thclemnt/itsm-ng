@@ -292,6 +292,9 @@ final class SubjectPolicyExpression
                 if (!$this->postgres || (!$this->isIntegerDiscriminator($left) && !$this->isStringSelection($left))) {
                     throw new UnexpectedValueException();
                 }
+                if ($this->isStringSelection($left)) {
+                    return $this->stringArrayComparison($left, $operator);
+                }
                 $this->expect('(');
                 $this->expect('array');
                 $this->expect('[');
@@ -340,6 +343,55 @@ final class SubjectPolicyExpression
     {
         return $this->isStringSelection($left) && $right[0] === 'string'
             && in_array($right[1], $this->stringSelections[$left[1]], true);
+    }
+
+    /** The varchar-array renderer is permitted only for declared mode literal choices. */
+    private function stringArrayComparison(array $left, string $operator): array
+    {
+        $this->expect('(');
+        $wrapped = $this->take('(');
+        $this->expect('array');
+        $this->expect('[');
+        $choices = [];
+        $varchar = false;
+        do {
+            $literal = $this->tokens[$this->position] ?? null;
+            $cast = $this->tokens[$this->position + 2] ?? null;
+            if (is_array($literal) && $literal[0] === 'string'
+                && ($this->tokens[$this->position + 1] ?? null) === '::'
+                && in_array($cast, ['character', 'varchar'], true)) {
+                $right = $literal;
+                $this->position += 3;
+                if ($cast === 'character') {
+                    $this->expect('varying');
+                }
+                $varchar = true;
+                // A following typmod, function, operator or additional cast is
+                // not a delimiter and therefore cannot be silently discarded.
+            } else {
+                // Retain the existing harmless text-literal forms unchanged.
+                $right = $this->value();
+            }
+            if (!$this->isStringChoice($left, $right) || count($choices) >= 256) {
+                throw new UnexpectedValueException();
+            }
+            $choices[] = [$operator, $left, $right];
+        } while ($this->take(','));
+        $this->expect(']');
+        if ($wrapped) {
+            $this->expect(')');
+        }
+        $textArray = $this->take('::');
+        if ($textArray) {
+            $this->expect('text');
+            $this->expect('[');
+            $this->expect(']');
+        }
+        if ($varchar && (!$wrapped || !$textArray)) {
+            throw new UnexpectedValueException();
+        }
+        $this->expect(')');
+        return $this->junction($operator === '=' ? 'or' : 'and', $choices);
     }
 
     private function value(): array

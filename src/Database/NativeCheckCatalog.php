@@ -59,7 +59,12 @@ final class NativeCheckCatalog
                 . "JOIN pg_catalog.pg_namespace n ON n.oid = o.oprnamespace WHERE n.nspname = 'pg_catalog' AND o.oprname IN ('=', '<>', '>', '>=') "
                 . "AND ((o.oprleft = 'pg_catalog.text'::regtype AND o.oprright = 'pg_catalog.text'::regtype) "
                 . "OR (o.oprleft IN ('pg_catalog.int2'::regtype, 'pg_catalog.int4'::regtype, 'pg_catalog.int8'::regtype) "
-                . "AND o.oprright IN ('pg_catalog.int2'::regtype, 'pg_catalog.int4'::regtype, 'pg_catalog.int8'::regtype))))::text AS reference_operator_oids "
+                . "AND o.oprright IN ('pg_catalog.int2'::regtype, 'pg_catalog.int4'::regtype, 'pg_catalog.int8'::regtype))))::text AS reference_operator_oids, "
+                . "jsonb_build_object('varchar', 'pg_catalog.varchar'::regtype::oid::text, "
+                . "'varchar_array', 'pg_catalog.varchar[]'::regtype::oid::text, 'text', 'pg_catalog.text'::regtype::oid::text, "
+                . "'text_array', 'pg_catalog.text[]'::regtype::oid::text, 'binary', EXISTS (SELECT 1 FROM pg_catalog.pg_cast pc "
+                . "WHERE pc.castsource = 'pg_catalog.varchar'::regtype AND pc.casttarget = 'pg_catalog.text'::regtype "
+                . "AND pc.castmethod = 'b' AND pc.castfunc = 0))::text AS reference_text_coercion "
                 . 'FROM pg_catalog.pg_constraint c JOIN pg_catalog.pg_class t ON t.oid = c.conrelid '
                 . "WHERE c.contype = 'c' AND pg_catalog.pg_table_is_visible(t.oid)";
             $parameters = [];
