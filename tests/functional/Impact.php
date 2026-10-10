@@ -40,6 +40,7 @@ use Computer;
 use Config as ConfigModel;
 use Doctrine\Common\EventManager;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Mapping as Mapping;
 use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use ReflectionProperty;
@@ -61,6 +62,7 @@ use Ticket;
 use Toolbox;
 use itsmng\Database\Entity;
 use itsmng\Database\Entity\User;
+use itsmng\Database\Mapping\DiscriminatedBy;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ITILAssetRepository;
 use itsmng\Database\Repository\TicketAssetRepository;
@@ -687,6 +689,32 @@ class Impact extends \DbTestCase
             return $elem["flag"] == (\Impact::DIRECTION_FORWARD | \Impact::DIRECTION_BACKWARD);
         });
         $this->array($both)->hasSize(2);
+        // A subclass can redeclare its discriminator without changing the parent.
+        $reference = new class () extends Entity\ItemTicket {
+            #[Mapping\ManyToOne(targetEntity: Entity\Computer::class)]
+            #[Mapping\JoinColumn(name: 'extension_computers_id', referencedColumnName: 'id', nullable: true)]
+            #[DiscriminatedBy('itemtype', 'items_id', ['ExtendedComputer'])]
+            public ?Entity\Computer $computer = null;
+        };
+        $this->string($reference::referenceAssociation('ExtendedComputer'))->isIdenticalTo('computer');
+        $this->exception(fn () => $reference::referenceAssociation(Computer::class))
+            ->isInstanceOf(InvalidArgumentException::class);
+        $this->string(Entity\ItemTicket::referenceAssociation(Computer::class))->isIdenticalTo('computer');
+        $this->exception(fn () => Entity\ItemTicket::referenceAssociation('ExtendedComputer'))
+            ->isInstanceOf(InvalidArgumentException::class);
+        $reference->itemtype = 'ExtendedComputer';
+        $reference->computer = new Entity\Computer();
+        $reference->computer->id = 77;
+        $normalized = $reference->normalizeInput(['items_id' => 77]);
+        $this->integer($normalized['extension_computers_id'])->isIdenticalTo(77);
+        $this->array($normalized)->notHasKey('computers_id')->notHasKey('items_id');
+        $this->array($reference::withReference(['extension_computers_id' => 77, 'monitors_id' => 88], 'ExtendedComputer', 77))
+            ->isIdenticalTo(['itemtype' => 'ExtendedComputer', 'items_id' => 77]);
+        $this->array($reference->legacyChanges(['extension_computers_id']))
+            ->isIdenticalTo(['extension_computers_id', 'items_id']);
+        $reference->validateReference();
+        $reference->monitor = new Entity\Monitor();
+        $this->exception(fn () => $reference->validateReference())->isInstanceOf(InvalidArgumentException::class);
         $this->integer($activeQueryPlans)->isIdenticalTo(0);
     }
 
