@@ -687,7 +687,7 @@ class Impact extends \DbTestCase
             return $elem["flag"] == (\Impact::DIRECTION_FORWARD | \Impact::DIRECTION_BACKWARD);
         });
         $this->array($both)->hasSize(2);
-        $this->integer($activeQueryPlans)->isIdenticalTo(0, 'Canonical active lists execute without compiling DQL');
+        $this->integer($activeQueryPlans)->isIdenticalTo(0);
     }
 
     public function testClean()
