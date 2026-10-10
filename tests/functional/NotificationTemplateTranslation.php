@@ -229,8 +229,10 @@ class NotificationTemplateTranslation extends DbTestCase
                 ksort($currentLanguages);
                 $this->array($currentLanguages)->isIdenticalTo($expectedLanguages);
             }
-            $this->integer($creations->getValue() - $beforeCreations)->isIdenticalTo(0,
-                'Template content, translations and locale choices share the completed canonical read manager');
+            $this->integer($creations->getValue() - $beforeCreations)->isIdenticalTo(
+                0,
+                'Template content, translations and locale choices share the completed canonical read manager'
+            );
             $this->string($fallback->subject)->isIdenticalTo('Subject 0');
             $this->string($managed->subject)->isIdenticalTo('Subject 0');
             $this->boolean($writer->contains($managed))->isTrue();

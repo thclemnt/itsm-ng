@@ -148,8 +148,10 @@ class NotificationAjax extends DbTestCase
             $this->boolean($DB->update('glpi_queuednotifications', ['name' => null, 'body_text' => null], ['id' => $ids[1]]))->isTrue();
             $_SESSION['glpiactiveprofile']['queuednotification'] = 0;
             $_SESSION['glpiactiveentities'] = [];
-            $select = static fn (array $messages): array => array_values(array_filter($messages,
-                static fn (BrowserNotificationMessage $message): bool => in_array($message->id, $ids, true)));
+            $select = static fn (array $messages): array => array_values(array_filter(
+                $messages,
+                static fn (BrowserNotificationMessage $message): bool => in_array($message->id, $ids, true)
+            ));
             $snapshot = $select($inbox->pending($recipient));
             $this->array(array_column($snapshot, 'id'))->isIdenticalTo([$ids[0], $ids[1]]);
             foreach ($snapshot as $message) {
@@ -160,9 +162,12 @@ class NotificationAjax extends DbTestCase
             $this->array($inbox->pending(0))->isEmpty();
             $writer = Orm::create($DB);
             $managed = $writer->find(QueuedNotification::class, $ids[0]);
-            $this->integer($connection->update('glpi_queuednotifications', ['name' => 'Current browser title', 'body_text' => 'Current browser body',
+            $this->integer($connection->update(
+                'glpi_queuednotifications',
+                ['name' => 'Current browser title', 'body_text' => 'Current browser body',
                 'itemtype' => BrowserNotificationPresentationItem::class],
-                ['id' => $ids[0]]))->isIdenticalTo(1);
+                ['id' => $ids[0]]
+            ))->isIdenticalTo(1);
             $canonical = null;
             Orm::withConnection($connection, static function (EntityManager $manager) use (&$canonical): void {
                 $canonical = $manager;
@@ -189,8 +194,10 @@ class NotificationAjax extends DbTestCase
             $this->boolean($inbox->acknowledge($ids[0], $recipient))->isTrue();
             $this->boolean($inbox->acknowledge($ids[0], $recipient))->isFalse();
             $this->array(array_column($select($inbox->pending($recipient)), 'id'))->isIdenticalTo([$ids[1]]);
-            $this->integer((new ReflectionProperty(Orm::class, 'unitsOfWork'))->getValue() - $beforeCreations)->isIdenticalTo(0,
-                'Completed browser presentation and acknowledgement scopes reuse the selected private manager');
+            $this->integer((new ReflectionProperty(Orm::class, 'unitsOfWork'))->getValue() - $beforeCreations)->isIdenticalTo(
+                0,
+                'Completed browser presentation and acknowledgement scopes reuse the selected private manager'
+            );
             $this->boolean($writer->contains($managed))->isTrue();
             $this->boolean($managed->is_deleted)->isFalse();
             // An enclosing operation owns its managed reference while nested acknowledgement writes independently.

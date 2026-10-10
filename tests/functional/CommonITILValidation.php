@@ -40,7 +40,6 @@ use DbTestCase;
 
 class CommonITILValidation extends DbTestCase
 {
-
     public function validationWorkflowProvider(): array
     {
         return [['Ticket', 'TicketValidation', 'tickets_id'], ['Change', 'ChangeValidation', 'changes_id']];

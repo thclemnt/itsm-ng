@@ -37,8 +37,10 @@ class SchemaIndex extends test
             try {
                 $manager = new EntityManager($connection, Orm::configuration($platform));
                 $metadata = $manager->getClassMetadata(RuleAction::class);
-                $prefixes = array_filter((new ReflectionClass(RuleAction::class))->getAttributes(OwnedIndex::class),
-                    static fn ($attribute): bool => $attribute->newInstance()->prefixLengths !== null);
+                $prefixes = array_filter(
+                    (new ReflectionClass(RuleAction::class))->getAttributes(OwnedIndex::class),
+                    static fn ($attribute): bool => $attribute->newInstance()->prefixLengths !== null
+                );
                 $this->integer(count($prefixes))->isIdenticalTo(1);
                 $prefix = reset($prefixes)->newInstance();
                 $owner = new BaselineSchema($manager);

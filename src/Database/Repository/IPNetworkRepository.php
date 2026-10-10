@@ -23,10 +23,17 @@ final class IPNetworkRepository
     public function vlansForNetwork(?int $network): array
     {
         return $this->vlanLinks($network)
-            ->select('l.id AS assocID', 'v.id AS id', 'IDENTITY(v.entities) AS entities_id',
-                'v.is_recursive AS is_recursive', 'v.name AS name', 'v.comment AS comment', 'v.tag AS tag',
+            ->select(
+                'l.id AS assocID',
+                'v.id AS id',
+                'IDENTITY(v.entities) AS entities_id',
+                'v.is_recursive AS is_recursive',
+                'v.name AS name',
+                'v.comment AS comment',
+                'v.tag AS tag',
                 "TEMPORAL_TEXT(v.date_mod, 'datetime') AS date_mod",
-                "TEMPORAL_TEXT(v.date_creation, 'datetime') AS date_creation")
+                "TEMPORAL_TEXT(v.date_creation, 'datetime') AS date_creation"
+            )
             ->leftJoin('l.vlans', 'v')->getQuery()->getScalarResult();
     }
 

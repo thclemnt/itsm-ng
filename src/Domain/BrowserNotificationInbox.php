@@ -25,7 +25,11 @@ final class BrowserNotificationInbox
     {
         return Orm::read($this->database, static fn (EntityManager $manager): array => array_map(
             static fn (QueuedNotification $message): BrowserNotificationMessage => new BrowserNotificationMessage(
-                $message->id, $message->itemtype, $message->items_id, $message->name, $message->body_text
+                $message->id,
+                $message->itemtype,
+                $message->items_id,
+                $message->name,
+                $message->body_text
             ),
             (new NotificationQueueRepository($manager))->browserInbox($recipient)
         ));

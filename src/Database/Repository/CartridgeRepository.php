@@ -34,9 +34,15 @@ final class CartridgeRepository
     public function alarmCandidates(int $entity, int $repeat): array
     {
         return $this->em->createQueryBuilder()
-            ->select('c.id AS cartID', 'IDENTITY(c.entities) AS entity', 'c.ref AS ref',
-                'c.name AS name', 'c.alarm_threshold AS threshold', 'a.id AS alertID',
-                "TEMPORAL_TEXT(a.date, 'datetime') AS date")
+            ->select(
+                'c.id AS cartID',
+                'IDENTITY(c.entities) AS entity',
+                'c.ref AS ref',
+                'c.name AS name',
+                'c.alarm_threshold AS threshold',
+                'a.id AS alertID',
+                "TEMPORAL_TEXT(a.date, 'datetime') AS date"
+            )
             ->from(Entity\CartridgeItem::class, 'c')
             ->leftJoin(Entity\Alert::class, 'a', 'WITH', 'a.cartridgeItem = c.id AND a.itemtype = :type')
             ->where('c.is_deleted = :deleted AND c.alarm_threshold >= 0 AND c.entities = :entity')

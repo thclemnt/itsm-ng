@@ -111,8 +111,12 @@ class Notification_NotificationTemplate extends DbTestCase
             $this->array($service->bindingsForTemplate(-1))->isEmpty();
 
             // Native writers do not update an independently managed caller entity.
-            $this->integer($connection->update('glpi_notifications_notificationtemplates', ['mode' => 'mail-current'],
-                ['id' => $bindings[0]->id], ['mode' => Types::STRING, 'id' => Types::BIGINT]))->isIdenticalTo(1);
+            $this->integer($connection->update(
+                'glpi_notifications_notificationtemplates',
+                ['mode' => 'mail-current'],
+                ['id' => $bindings[0]->id],
+                ['mode' => Types::STRING, 'id' => Types::BIGINT]
+            ))->isIdenticalTo(1);
             $creations = new ReflectionProperty(Orm::class, 'unitsOfWork');
             $before = $creations->getValue();
             for ($repeat = 0; $repeat < 2; ++$repeat) {
