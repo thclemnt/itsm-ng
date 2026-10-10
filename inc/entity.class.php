@@ -1429,8 +1429,8 @@ class Entity extends CommonTreeDropdown
     {
         global $DB;
 
-        return (new EntityConfigurationRepository(Orm::create($DB)))
-            ->notificationValues($field);
+        return Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new EntityConfigurationRepository($manager))->notificationValues($field));
     }
 
 
