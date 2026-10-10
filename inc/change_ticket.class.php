@@ -34,6 +34,7 @@
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ITILTicketLinkRepository;
+use itsmng\Database\Repository\ITILTaskRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -416,14 +417,11 @@ class Change_Ticket extends CommonDBRelation
             $cell = '';
             $planned_infos = '';
             $tasktype = $ticket->getType() . "Task";
-            $plan = new $tasktype();
             $items = [];
-            $result = $DB->request([
-               'FROM'  => $plan->getTable(),
-               'WHERE' => [
-                  $ticket->getForeignKeyField() => $ticket->fields['id'],
-               ],
-            ]);
+            $value = $ticket->fields['id'];
+            $identifier = $value === null || (is_string($value) && strtolower($value) === 'null') ? null : (int)$value;
+            $result = Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new ITILTaskRepository($manager))->parentPlanning($tasktype, $identifier));
             foreach ($result as $plan) {
                 if (isset($plan['begin']) && $plan['begin']) {
                     $items[$plan['id']] = $plan['id'];
@@ -677,18 +675,12 @@ class Change_Ticket extends CommonDBRelation
             $newCell  = '';
             $planned_infos = '';
 
-            $tasktype      = $change->getType() . "Task";
-            $plan          = new $tasktype();
-            $items         = [];
-
-            $result = $DB->request(
-                [
-                  'FROM'  => $plan->getTable(),
-                  'WHERE' => [
-                     $change->getForeignKeyField() => $change->fields['id'],
-                  ],
-                ]
-            );
+            $tasktype = $change->getType() . "Task";
+            $items = [];
+            $value = $change->fields['id'];
+            $identifier = $value === null || (is_string($value) && strtolower($value) === 'null') ? null : (int)$value;
+            $result = Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new ITILTaskRepository($manager))->parentPlanning($tasktype, $identifier));
             foreach ($result as $plan) {
                 if (isset($plan['begin']) && $plan['begin']) {
                     $items[$plan['id']] = $plan['id'];

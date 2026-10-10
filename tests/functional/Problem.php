@@ -249,4 +249,24 @@ class Problem extends DbTestCase
         $this->array($problems->invoke(null, $ticket->getID()))->isEmpty();
     }
 
+
+    public function testLinkedTaskPlanningUsesActualParentInRenderedTooltips(): void
+    {
+        global $DB;
+        $this->login();
+        $parent = $this->createItem('Problem', ['name' => 'Planning linked parent ' . $this->getUniqueString(), 'content' => 'Planning tooltip']);
+        $ticket = $this->createItem('Ticket', ['name' => 'Planning linked ticket ' . $this->getUniqueString(), 'content' => 'Planning tooltip']);
+        $this->createItem('Problem_Ticket', ['problems_id' => $parent->getID(), 'tickets_id' => $ticket->getID()]);
+        $parentTask = $this->createItem('ProblemTask', ['problems_id' => $parent->getID(), 'content' => 'Parent planning row']);
+        $ticketTask = $this->createItem('TicketTask', ['tickets_id' => $ticket->getID(), 'content' => 'Ticket planning row']);
+        $connection = $DB->getDoctrineConnection();
+        foreach ([$parentTask, $ticketTask] as $task) {
+            $connection->update($task->getTable(), ['begin' => '2030-02-03 04:05:06', 'end' => '2030-02-03 05:06:07'], ['id' => $task->getID()]);
+        }
+        $this->output(static fn () => Problem_Ticket::showForProblem($parent))->contains('Ticket' . $ticket->getID() . 'planning');
+        $this->output(static fn () => Problem_Ticket::showForTicket($ticket))->contains('Problem' . $parent->getID() . 'planning');
+        $connection->update($parentTask->getTable(), ['begin' => null, 'end' => null], ['id' => $parentTask->getID()]);
+        $this->output(static fn () => Problem_Ticket::showForTicket($ticket))->notContains('Problem' . $parent->getID() . 'planning');
+    }
+
 }

@@ -616,4 +616,53 @@ class TicketTask extends DbTestCase
          ]
         );
     }
+
+    public function testLinkedParentPlanningProjectionKeepsUnfilteredTaskRows(): void
+    {
+        global $DB;
+        $this->login();
+        $session = $_SESSION;
+        try {
+            foreach ([['Ticket', 'TicketTask', 'tickets_id'], ['Change', 'ChangeTask', 'changes_id'],
+                ['Problem', 'ProblemTask', 'problems_id']] as [$parentType, $taskType, $field]) {
+                $parent = $this->createItem($parentType, ['name' => 'Planning projection ' . $this->getUniqueString(), 'content' => 'Linked task parent']);
+                $other = $this->createItem($parentType, ['name' => 'Other planning parent ' . $this->getUniqueString(), 'content' => 'Other task parent']);
+                $first = $this->createItem($taskType, [$field => $parent->getID(), 'content' => 'Private completed task', 'is_private' => 1, 'state' => Planning::DONE]);
+                $second = $this->createItem($taskType, [$field => $parent->getID(), 'content' => 'Same calendar separate task']);
+                $unplanned = $this->createItem($taskType, [$field => $parent->getID(), 'content' => 'Unplanned task']);
+                $outside = $this->createItem($taskType, [$field => $other->getID(), 'content' => 'Different parent task']);
+                $connection = $DB->getDoctrineConnection();
+                $connection->update($first->getTable(), ['begin' => '2030-02-03 04:05:06', 'end' => null, 'users_id_tech' => null], ['id' => $first->getID()]);
+                $connection->update($second->getTable(), ['begin' => '2030-02-03 04:05:06', 'end' => '2030-02-03 05:06:07', 'users_id_tech' => Session::getLoginUserID()], ['id' => $second->getID()]);
+                $read = static fn (): array => Orm::read($DB, static fn (EntityManager $manager): array =>
+                    (new ITILTaskRepository($manager))->parentPlanning($taskType, (int)$parent->getID()));
+                $rows = $read();
+                $this->integer(count($rows))->isIdenticalTo(3);
+                $indexed = array_column($rows, null, 'id');
+                $this->variable($indexed[$first->getID()]['users_id_tech'])->isNull();
+                $this->variable($indexed[$first->getID()]['end'])->isNull();
+                $this->string($indexed[$first->getID()]['begin'])->isIdenticalTo('2030-02-03 04:05:06');
+                $this->integer((int)$indexed[$second->getID()]['users_id_tech'])->isIdenticalTo((int)Session::getLoginUserID());
+                $this->variable($indexed[$unplanned->getID()]['begin'])->isNull();
+                $this->array($indexed)->notHasKey($outside->getID());
+                $this->integer(count(array_filter($rows, static fn (array $row): bool => isset($row['begin']) && (bool)$row['begin'])))->isIdenticalTo(2);
+                foreach ([null, 0, -1] as $empty) {
+                    $this->array(Orm::read($DB, static fn (EntityManager $manager): array =>
+                        (new ITILTaskRepository($manager))->parentPlanning($taskType, $empty)))->isEmpty();
+                }
+                $_SESSION['glpiactiveentities'] = [];
+                $this->integer(count($read()))->isIdenticalTo(3, 'Planning projection adds no target entity admission');
+                $_SESSION = $session;
+                $connection->update($first->getTable(), ['begin' => '2030-03-04 05:06:07', 'end' => '2030-03-04 06:07:08'], ['id' => $first->getID()]);
+                $fresh = array_column($read(), null, 'id');
+                $this->string($fresh[$first->getID()]['begin'])->isIdenticalTo('2030-03-04 05:06:07');
+                $this->string($indexed[$first->getID()]['begin'])->isIdenticalTo('2030-02-03 04:05:06');
+                $this->boolean($second->delete(['id' => $second->getID()], true))->isTrue();
+                $this->integer(count($read()))->isIdenticalTo(2);
+            }
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
 }

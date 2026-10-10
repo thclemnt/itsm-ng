@@ -33,11 +33,13 @@
 
 namespace tests\units;
 
+use Change_Problem;
 use Change_Ticket;
 use DbTestCase;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ITILTicketLinkRepository;
+use itsmng\Database\Repository\ChangeProblemRepository;
 
 /* Test for inc/change.class.php */
 
@@ -466,6 +468,98 @@ class Change extends DbTestCase
         $this->boolean($lastLink->delete(['id' => $lastLink->getID()], true))->isTrue();
         $this->integer(count($read()))->isIdenticalTo(1);
         $this->integer((int)$read()[0]['linkid'])->isIdenticalTo((int)$firstLink->getID());
+    }
+
+
+    public function testLinkedTaskPlanningUsesActualParentInRenderedTooltips(): void
+    {
+        global $DB;
+        $this->login();
+        $parent = $this->createItem('Change', ['name' => 'Planning linked parent ' . $this->getUniqueString(), 'content' => 'Planning tooltip']);
+        $ticket = $this->createItem('Ticket', ['name' => 'Planning linked ticket ' . $this->getUniqueString(), 'content' => 'Planning tooltip']);
+        $this->createItem('Change_Ticket', ['changes_id' => $parent->getID(), 'tickets_id' => $ticket->getID()]);
+        $parentTask = $this->createItem('ChangeTask', ['changes_id' => $parent->getID(), 'content' => 'Parent planning row']);
+        $ticketTask = $this->createItem('TicketTask', ['tickets_id' => $ticket->getID(), 'content' => 'Ticket planning row']);
+        $connection = $DB->getDoctrineConnection();
+        foreach ([$parentTask, $ticketTask] as $task) {
+            $connection->update($task->getTable(), ['begin' => '2030-02-03 04:05:06', 'end' => '2030-02-03 05:06:07'], ['id' => $task->getID()]);
+        }
+        $this->output(static fn () => Change_Ticket::showForChange($parent))->contains('Ticket' . $ticket->getID() . 'planning');
+        $this->output(static fn () => Change_Ticket::showForTicket($ticket))->contains('Change' . $parent->getID() . 'planning');
+        $connection->update($parentTask->getTable(), ['begin' => null, 'end' => null], ['id' => $parentTask->getID()]);
+        $this->output(static fn () => Change_Ticket::showForTicket($ticket))->notContains('Change' . $parent->getID() . 'planning');
+    }
+
+
+    public function testChangeProblemTabsFollowOwningLinksAndPlanning(): void
+    {
+        global $DB;
+        $this->login();
+        $problem = $this->createItem('Problem', ['name' => 'Parent linked problem ' . $this->getUniqueString(), 'content' => 'Linked tab parent']);
+        $other = $this->createItem('Problem', ['name' => 'Other linked problem ' . $this->getUniqueString(), 'content' => 'Other linked parent']);
+        $first = $this->createItem('Change', ['name' => 'AAA linked change ' . $this->getUniqueString(), 'content' => 'First linked change']);
+        $last = $this->createItem('Change', ['name' => 'ZZZ linked change ' . $this->getUniqueString(), 'content' => 'Last linked change']);
+        $firstLink = $this->createItem('Change_Problem', ['changes_id' => $first->getID(), 'problems_id' => $problem->getID()]);
+        $lastLink = $this->createItem('Change_Problem', ['changes_id' => $last->getID(), 'problems_id' => $problem->getID()]);
+        $otherLink = $this->createItem('Change_Problem', ['changes_id' => $first->getID(), 'problems_id' => $other->getID()]);
+        $changeTask = $this->createItem('ChangeTask', ['changes_id' => $first->getID(), 'content' => 'Change tab planning']);
+        $problemTask = $this->createItem('ProblemTask', ['problems_id' => $problem->getID(), 'content' => 'Problem tab planning']);
+        $connection = $DB->getDoctrineConnection();
+        foreach ([$changeTask, $problemTask] as $task) {
+            $connection->update($task->getTable(), ['begin' => '2030-02-03 04:05:06', 'end' => '2030-02-03 05:06:07'], ['id' => $task->getID()]);
+        }
+        $connection->update('glpi_changes', ['date_mod' => null, 'closedate' => null, 'solvedate' => null,
+            'begin_waiting_date' => null, 'time_to_resolve' => null], ['id' => $first->getID()]);
+        $read = static fn (): array => Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new ChangeProblemRepository($manager))->changesForProblem((int)$problem->getID()));
+        $rows = $read();
+        $this->array(array_map('intval', array_column($rows, 'id')))->isIdenticalTo([(int)$first->getID(), (int)$last->getID()]);
+        $this->array(array_map('intval', array_column($rows, 'linkid')))->isIdenticalTo([(int)$firstLink->getID(), (int)$lastLink->getID()]);
+        foreach (['date_mod', 'closedate', 'solvedate', 'begin_waiting_date', 'time_to_resolve'] as $calendar) {
+            $this->variable($rows[0][$calendar])->isNull();
+        }
+        $reverse = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new ChangeProblemRepository($manager))->problemsForChange((int)$first->getID()));
+        $this->integer(count($reverse))->isIdenticalTo(2);
+        $this->integer((int)$reverse[0]['id'])->isIdenticalTo((int)$other->getID());
+        $this->integer((int)$reverse[1]['id'])->isIdenticalTo((int)$problem->getID());
+        foreach ([null, 0, -1] as $empty) {
+            $this->array(Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new ChangeProblemRepository($manager))->changesForProblem($empty)))->isEmpty();
+            $this->array(Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new ChangeProblemRepository($manager))->problemsForChange($empty)))->isEmpty();
+        }
+        $this->output(static fn () => Change_Problem::showForProblem($problem))
+            ->contains('/front/change.form.php?id=' . $first->getID())->contains('Change' . $first->getID() . 'planning');
+        $this->output(static fn () => Change_Problem::showForChange($first))
+            ->contains('/front/problem.form.php?id=' . $problem->getID())->contains('Problem' . $problem->getID() . 'planning');
+        $session = $_SESSION;
+        try {
+            $_SESSION['glpiactiveprofile']['problem'] = 0;
+            $this->output(static fn () => Change_Problem::showForChange($first))->notContains('/front/problem.form.php?id=' . $problem->getID());
+            $_SESSION = $session;
+            $_SESSION['glpiactiveentities'] = [];
+            $this->integer(count($read()))->isIdenticalTo(2, 'The endpoint projection does not add an entity prefilter');
+            $this->output(static fn () => Change_Problem::showForProblem($problem))->isEmpty();
+            $this->output(static fn () => Change_Problem::showForChange($first))->isEmpty();
+        } finally {
+            $_SESSION = $session;
+        }
+        $freshName = 'BBB fresh linked change ' . $this->getUniqueString();
+        $connection->update('glpi_changes', ['name' => $freshName, 'date_mod' => '2021-02-03 04:05:06', 'is_deleted' => true], ['id' => $first->getID()]);
+        $fresh = $read();
+        $this->integer(count($fresh))->isIdenticalTo(2, 'Linked soft-deleted targets remain projected');
+        $this->string($fresh[0]['name'])->isIdenticalTo($freshName);
+        $this->string($fresh[0]['date_mod'])->isIdenticalTo('2021-02-03 04:05:06');
+        $this->variable($rows[0]['date_mod'])->isNull();
+        $this->boolean($lastLink->delete(['id' => $lastLink->getID()], true))->isTrue();
+        $this->integer(count($read()))->isIdenticalTo(1);
+        $this->boolean($problem->delete(['id' => $problem->getID()], true))->isTrue();
+        $this->array($read())->isEmpty();
+        $surviving = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new ChangeProblemRepository($manager))->problemsForChange((int)$first->getID()));
+        $this->integer(count($surviving))->isIdenticalTo(1);
+        $this->integer((int)$surviving[0]['linkid'])->isIdenticalTo((int)$otherLink->getID());
     }
 
 }

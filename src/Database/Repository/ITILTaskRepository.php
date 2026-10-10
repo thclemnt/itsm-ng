@@ -60,6 +60,27 @@ final class ITILTaskRepository
         return $this->rows($query);
     }
 
+
+    /** Linked-object tabs select tasks without calendar, privacy or state admission. */
+    public function parentPlanning(string $type, ?int $parent): array
+    {
+        [$task, , $relation] = $this->definition($type);
+        $query = $this->em->createQueryBuilder()->select(
+            'r.id',
+            'IDENTITY(r.technician) AS users_id_tech',
+            "TEMPORAL_TEXT(r.begin, 'datetime') AS begin",
+            "TEMPORAL_TEXT(r.end, 'datetime') AS end"
+        )
+            ->from($task, 'r');
+        if ($parent === null) {
+            $query->where('r.' . $relation . ' IS NULL');
+        } else {
+            $query->where('IDENTITY(r.' . $relation . ') = :parent')->setParameter('parent', $parent, Types::BIGINT);
+        }
+        // The existing renderer decides which begin values are planned; row order is unspecified.
+        return $query->getQuery()->getScalarResult();
+    }
+
     public function taskList(string $type, array $statuses, bool $todo, int $user, ?array $groups, array $scope, ?int $start, ?int $limit): array
     {
         return $this->taskListQuery($type, $statuses, $todo, $user, $groups, $scope, $start, $limit)
