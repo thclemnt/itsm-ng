@@ -26,6 +26,7 @@ use Psr\Log\AbstractLogger;
 use mock\Symfony\Component\Cache\Psr16Cache as MockCache;
 use ReflectionClass;
 use ReflectionProperty;
+use ReflectionMethod;
 use RuntimeException;
 use atoum\atoum\test;
 use itsmng\Database\EntityRegistry;
@@ -43,6 +44,7 @@ use itsmng\Database\Mapping\ReferencePolicy;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Psr16Cache;
 use itsmng\Database\Orm;
+use itsmng\Database\NativeTimestampSchema;
 use itsmng\Database\Query\BitCount;
 use itsmng\Database\Query\EpochSeconds;
 use itsmng\Database\SerializedMetadataCache;
@@ -835,6 +837,72 @@ class EntityRegistryCache extends test
         ksort($declared);
         ksort($types);
         $this->array($types)->isIdenticalTo($declared);
+    }
+
+    /** Registry facts stay equal to the canonical factory without retaining its manager. */
+    public function testRegistryDeclarationFactsMatchCanonicalMetadataFactory(): void
+    {
+        $connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
+        $manager = new EntityManager($connection, Orm::configuration(new MySQLPlatform()));
+        try {
+            $tables = $types = $enums = $booleans = $booleanFields = $relations = $readOnly = $identifiers = [];
+            $metadata = $manager->getMetadataFactory()->getAllMetadata();
+            foreach ($metadata as $record) {
+                $table = $record->getTableName();
+                $tables[$table] = $record->name;
+                foreach ($record->fieldMappings as $field) {
+                    $types[$table][$field->columnName] = $field->type;
+                    if ($field->enumType !== null) {
+                        $enums[$table][$field->columnName] = $field->enumType;
+                    }
+                    if ($field->type === 'boolean') {
+                        $booleans[$table][] = $field->columnName;
+                        $booleanFields[$table][$field->columnName] = (bool)$field->nullable;
+                    }
+                    if ($field->notInsertable && $field->notUpdatable) {
+                        $readOnly[$table][] = $field->columnName;
+                    }
+                }
+                foreach ($record->associationMappings as $association) {
+                    if (!$association->isToOneOwningSide()) {
+                        continue;
+                    }
+                    foreach ($association->joinColumns as $join) {
+                        $relations[$table][$join->name] = $manager->getClassMetadata($association->targetEntity)->getTableName();
+                    }
+                }
+                if (count($record->identifier) === 1 && $record->hasField($record->identifier[0])) {
+                    $identifier = $record->identifier[0];
+                    $identifiers[$record->name] = ['property' => $identifier,
+                        'column' => $record->getColumnName($identifier), 'type' => $record->getTypeOfField($identifier)];
+                }
+                $this->array(EntityRegistry::fieldTypes($table))->isIdenticalTo($types[$table] ?? []);
+                $this->array(EntityRegistry::fieldEnums($table))->isIdenticalTo($enums[$table] ?? []);
+                $this->array(EntityRegistry::booleanFields($table))->isIdenticalTo($booleanFields[$table] ?? []);
+                $this->array(EntityRegistry::readOnlyColumns($table))->isIdenticalTo($readOnly[$table] ?? []);
+            }
+            ksort($tables);
+            ksort($booleans);
+            ksort($relations);
+            $this->array(EntityRegistry::tables())->isIdenticalTo($tables);
+            $this->array(EntityRegistry::booleanColumns())->isIdenticalTo($booleans);
+            $this->array(EntityRegistry::relations())->isIdenticalTo($relations);
+            $this->array(EntityRegistry::scalarIdentifiers())->isIdenticalTo($identifiers);
+            $this->string(serialize(EntityRegistry::nativeTimestamps()))->isIdenticalTo(
+                serialize(NativeTimestampSchema::declarations($metadata))
+            );
+            foreach (['reservationUser' => 'reservationUserMapping', 'promotionSource' => 'promotionSourceMapping',
+                'computerItem' => 'computerItemMapping', 'virtualMachineCount' => 'virtualMachineCountMapping',
+                'infocomPresence' => 'infocomPresenceMapping'] as $projection => $public) {
+                $helper = new ReflectionMethod(EntityRegistry::class, $projection . 'Projection');
+                $expected = $helper->invoke(null, $manager->getClassMetadata(...));
+                $this->variable(EntityRegistry::$public())->isEqualTo($expected);
+            }
+            $this->boolean($connection->isConnected())->isFalse();
+        } finally {
+            $manager->clear();
+            $connection->close();
+        }
     }
 
     public function testRealRegistryColdAndWarmProjectionsAreIdentical(): void

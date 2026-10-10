@@ -4,9 +4,10 @@
 
 namespace itsmng\Database;
 
-use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
-use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\Persistence\Mapping\RuntimeReflectionService;
+use itsmng\Database\Mapping\AttributeDriver;
 use itsmng\Database\Entity\ComputerItem;
 use itsmng\Database\Entity\ComputerVirtualMachine;
 use itsmng\Database\Entity\Infocom;
@@ -202,14 +203,14 @@ final class EntityRegistry
         return self::$model[$view];
     }
 
-    private static function reservationUserProjection(EntityManager $manager): ?array
+    private static function reservationUserProjection(callable $metadataFor): ?array
     {
-        $reservation = $manager->getClassMetadata(Reservation::class);
+        $reservation = $metadataFor(Reservation::class);
         $owner = $reservation->associationMappings['reservationitems'] ?? null;
         if ($owner === null || !$owner->isToOneOwningSide() || count($owner->joinColumns) !== 1) {
             return null;
         }
-        $item = $manager->getClassMetadata($owner->targetEntity);
+        $item = $metadataFor($owner->targetEntity);
         $projection = [];
         foreach (['r' => [$reservation, ['id', 'begin', 'end', 'comment'], ['users', 'reservationitems']],
             'i' => [$item, ['id', 'itemtype', 'items_id'], ['entities']]] as $alias => [$metadata, $fields, $references]) {
@@ -237,9 +238,9 @@ final class EntityRegistry
         return $projection;
     }
 
-    private static function promotionSourceProjection(EntityManager $manager): ?array
+    private static function promotionSourceProjection(callable $metadataFor): ?array
     {
-        $metadata = $manager->getClassMetadata(ITILFollowup::class);
+        $metadata = $metadataFor(ITILFollowup::class);
         if ($metadata->identifier !== ['id'] || !$metadata->isInheritanceTypeNone() || !empty($metadata->table['schema'])) {
             return null;
         }
@@ -265,9 +266,9 @@ final class EntityRegistry
         return $projection;
     }
 
-    private static function computerItemProjection(EntityManager $manager): ?array
+    private static function computerItemProjection(callable $metadataFor): ?array
     {
-        $metadata = $manager->getClassMetadata(ComputerItem::class);
+        $metadata = $metadataFor(ComputerItem::class);
         $association = $metadata->associationMappings['computers'] ?? null;
         if (!$metadata->isInheritanceTypeNone() || $metadata->identifier !== ['id']
             || !empty($metadata->table['schema']) || $association === null
@@ -290,9 +291,9 @@ final class EntityRegistry
         return $projection;
     }
 
-    private static function virtualMachineCountProjection(EntityManager $manager): ?array
+    private static function virtualMachineCountProjection(callable $metadataFor): ?array
     {
-        $metadata = $manager->getClassMetadata(ComputerVirtualMachine::class);
+        $metadata = $metadataFor(ComputerVirtualMachine::class);
         $host = $metadata->associationMappings['computers'] ?? null;
         if ($metadata->identifier !== ['id'] || !$metadata->hasField('id')
             || !$metadata->hasField('is_deleted') || !$metadata->isInheritanceTypeNone()
@@ -312,9 +313,9 @@ final class EntityRegistry
             'deleted' => [$deleted->columnName, isset($deleted->quoted), $deleted->type]];
     }
 
-    private static function infocomPresenceProjection(EntityManager $manager): ?array
+    private static function infocomPresenceProjection(callable $metadataFor): ?array
     {
-        $metadata = $manager->getClassMetadata(Infocom::class);
+        $metadata = $metadataFor(Infocom::class);
         if ($metadata->identifier !== ['id'] || !$metadata->isInheritanceTypeNone()
             || !empty($metadata->table['schema'])) {
             return null;
@@ -332,13 +333,30 @@ final class EntityRegistry
 
     private static function buildModel(): array
     {
-        // Mapping inspection must also work before installation. The explicit
-        // server version prevents platform discovery from opening a connection.
-        $connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
-        $platform = new MySQLPlatform();
-        $configuration = Orm::configuration($platform);
-        $em = new EntityManager($connection, $configuration);
-        $metadata = $em->getMetadataFactory()->getAllMetadata();
+        // Registry facts belong to canonical declarations, independently of a
+        // selected route or a caller's mutable manager, configuration or events.
+        Orm::registerTypes();
+        $driver = new AttributeDriver([__DIR__ . '/Entity'], new MySQLPlatform());
+        $reflection = new RuntimeReflectionService();
+        $metadata = [];
+        foreach ($driver->getAllClassNames() as $class) {
+            $record = new ClassMetadata($class);
+            $record->initializeReflection($reflection);
+            $driver->loadMetadataForClass($class, $record);
+            // A raw driver does not perform factory-owned hierarchy flattening.
+            // Reject unsupported forms instead of projecting incomplete facts.
+            if ($record->isMappedSuperclass || $record->isEmbeddedClass
+                || !$record->isInheritanceTypeNone() || $record->embeddedClasses !== []
+                || (new ReflectionClass($class))->getParentClass() !== false) {
+                throw new LogicException('Registry declarations require an independent entity without inheritance or embedded fields: ' . $class);
+            }
+            $record->validateIdentifier();
+            $record->validateAssociations();
+            $record->validateLifecycleCallbacks($reflection);
+            $metadata[$class] = $record;
+        }
+        $metadataFor = static fn (string $class): ClassMetadata => $metadata[$class]
+            ?? throw new LogicException('Registry association target is not a canonical mapped entity: ' . $class);
         $nativeTimestamps = NativeTimestampSchema::declarations($metadata);
         $legacyTables = $tables = $types = $enums = $booleans = $booleanFields = $relations = $references = $discriminators = $lifecycle = $readOnly = $scopeOwners = [];
         $scalarIdentifiers = $componentCounts = $treePoints = [];
@@ -420,7 +438,7 @@ final class EntityRegistry
                     if ($join->referencedColumnName !== 'id') {
                         throw new LogicException('Foreign key requires explicit composite-target support: ' . $table . '.' . $join->name);
                     }
-                    $target = $em->getClassMetadata($association->targetEntity)->getTableName();
+                    $target = $metadataFor($association->targetEntity)->getTableName();
                     $relations[$table][$join->name] = $target;
                     $propertyMetadata = new ReflectionProperty($record->name, $property);
                     if ($propertyMetadata->getAttributes(EntityScopeOwner::class)) {
@@ -493,7 +511,7 @@ final class EntityRegistry
                     if (!$record->hasField($property->name) || !$record->hasField($binding->discriminator)) {
                         throw new LogicException('Polymorphic lifecycle link requires mapped ID and discriminator fields');
                     }
-                    $target = $em->getClassMetadata($binding->target)->getTableName();
+                    $target = $metadataFor($binding->target)->getTableName();
                     $child = ($binding->managed ? '_' : '') . $table;
                     $lifecycle[$target][$child][] = $record->getColumnName($property->name);
                     $lifecycle[$target][$child][] = $record->getColumnName($binding->discriminator);
@@ -522,15 +540,13 @@ final class EntityRegistry
             unset($columns);
         }
         unset($children);
-        $reservationUser = self::reservationUserProjection($em);
-        $virtualMachineCount = self::virtualMachineCountProjection($em);
-        $promotionSource = self::promotionSourceProjection($em);
-        $computerItem = self::computerItemProjection($em);
-        $infocomPresence = self::infocomPresenceProjection($em);
-        $connection->close();
-        // Only immutable lookup projections survive bootstrap, not the offline unit of work.
-        unset($em, $metadata, $record);
-        gc_collect_cycles();
+        $reservationUser = self::reservationUserProjection($metadataFor);
+        $virtualMachineCount = self::virtualMachineCountProjection($metadataFor);
+        $promotionSource = self::promotionSourceProjection($metadataFor);
+        $computerItem = self::computerItemProjection($metadataFor);
+        $infocomPresence = self::infocomPresenceProjection($metadataFor);
+        // Only immutable lookup projections survive bootstrap, not mutable metadata.
+        unset($metadataFor, $metadata, $record, $driver);
         return ['legacy_tables' => $legacyTables, 'tables' => $tables, 'types' => $types, 'enums' => $enums, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners, 'native_timestamps' => $nativeTimestamps, 'scalar_identifiers' => $scalarIdentifiers, 'component_counts' => $componentCounts, 'reservation_user' => $reservationUser, 'tree_points' => $treePoints, 'promotion_source' => $promotionSource, 'computer_item' => $computerItem, 'virtual_machine_count' => $virtualMachineCount, 'infocom_presence' => $infocomPresence];
     }
 }
