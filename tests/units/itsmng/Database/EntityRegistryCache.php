@@ -690,6 +690,21 @@ class EntityRegistryCache extends test
         $this->boolean($registry->load('sample', $build)['sample']['left']['flag'])->isTrue();
         $this->integer($builds)->isIdenticalTo(1);
 
+        $scalarShared = ['id' => 0, 'nullable' => null];
+        $validValues = [
+            ['nested' => [[], ['id' => 0, 'name' => '0', 'flag' => false, 'nullable' => null, 'ratio' => 1.5]]],
+            ['literal' => 'O: C: E: R: r: are ordinary string contents'],
+            ['kind' => ReferenceKind::RootEntity],
+            ['left' => &$scalarShared, 'right' => &$scalarShared],
+        ];
+        foreach ($validValues as $valid) {
+            $bytes = serialize(['sample' => $valid]);
+            $cache->set($key, '2:' . hash('sha256', $bytes) . ':' . $bytes);
+            $loaded = $registry->load('sample', $build)['sample'];
+            $this->string(serialize($loaded))->isIdenticalTo(serialize($valid));
+            $this->integer($builds)->isIdenticalTo(1);
+        }
+
         $cycle = [];
         $cycle['self'] = &$cycle;
         $first = [];

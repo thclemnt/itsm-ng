@@ -75,6 +75,11 @@ final class EntityRegistryCache
             if (!is_array($model)) {
                 return null;
             }
+            // Without object, enum or reference tokens, arrays contain only
+            // scalar values and cannot introduce incomplete objects or cycles.
+            if (preg_match('/[OCERr]:/', $serialized) === 0) {
+                return $model;
+            }
             // Traverse arrays without dispatching a callback for every scalar
             // leaf. Track references on each path: shared arrays are valid,
             // recursive arrays remain a corrupt-cache miss.
