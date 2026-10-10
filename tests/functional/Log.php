@@ -41,6 +41,9 @@ use Doctrine\DBAL\Cache\QueryCacheProfile;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Result;
+use Doctrine\DBAL\Types\StringType;
+use Doctrine\DBAL\Types\Type as DbalType;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\Mapping\ClassMetadata;
@@ -390,6 +393,27 @@ class Log extends DbTestCase
             $this->string($formatted[2]['change'])->isIdenticalTo('Change Callback History (1) to Callback History (3)');
             $this->integer($formats)->isIdenticalTo(2);
             $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+
+            // Formatting can replace a live SQL converter after the eager reader selection.
+            $registry = DbalType::getTypeRegistry();
+            $originalString = $registry->get(Types::STRING);
+            $customString = new class () extends StringType {
+                public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                {
+                    return $sqlExpr;
+                }
+            };
+            $formats = 0;
+            $item->formatCallback = static function () use ($registry, $customString, &$formats): void {
+                ++$formats;
+                $registry->override(Types::STRING, $customString);
+            };
+            try {
+                $this->array(LegacyLog::getHistoryData($item, 0, 0, $filters, $options))->isIdenticalTo($formatted);
+                $this->integer($formats)->isIdenticalTo(2);
+            } finally {
+                $registry->override(Types::STRING, $originalString);
+            }
 
             // Canonical scopes must still hydrate records when a postLoad listener owns their labels.
             $labelListener = new class () {

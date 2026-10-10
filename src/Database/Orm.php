@@ -104,10 +104,10 @@ final class Orm
     /** @internal Custom readers retain their original constructor and clear callbacks. */
     public static function withReadConnection(Connection $connection, callable $operation): mixed
     {
-        if (!$connection instanceof MySQLManagedConnection && !$connection instanceof PostgresConnection) {
+        if (!self::canShareReadManager($connection)) {
             return $operation(null);
         }
-        return self::withConnection($connection, $operation);
+        return $connection->withApplicationEntityManager($operation);
     }
 
     /** Canonical declarations cannot depend on externally mutable mapping callbacks. */

@@ -397,13 +397,19 @@ class Log extends CommonDBTM
             static fn (?EntityManager $manager): ?RecordRepository =>
                 $manager === null ? new RecordRepository(Orm::forConnection($connection)) : null
         );
-        $findUsers = static function (string $name) use ($connection, $users): array {
+        $findUsers = static function (string $name) use ($connection, &$users): array {
             if ($users !== null) {
                 return $users->matching('glpi_users', ['name' => $name], 'id', legacyValues: false);
             }
             return Orm::withReadConnection(
                 $connection,
-                static fn (EntityManager $manager): array => (new UserRepository($manager))->historyNamesByLogin($name)
+                static function (?EntityManager $manager) use ($connection, &$users, $name): array {
+                    if ($manager === null) {
+                        $users ??= new RecordRepository(Orm::forConnection($connection));
+                        return $users->matching('glpi_users', ['name' => $name], 'id', legacyValues: false);
+                    }
+                    return (new UserRepository($manager))->historyNamesByLogin($name);
+                }
             );
         };
         $changes = [];

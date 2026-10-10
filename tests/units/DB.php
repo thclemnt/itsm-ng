@@ -103,6 +103,28 @@ class DB extends \GLPITestCase
                 $this->integer($result)->isIdenticalTo(37);
                 $this->integer($factories->getValue() - $allocated)->isIdenticalTo(1);
             }
+            $route = $selected;
+            $clears = new class () {
+                public int $count = 0;
+
+                public function onClear(): void
+                {
+                    ++$this->count;
+                }
+            };
+            $read = function (EntityManager $manager) use ($selected, $clears): int {
+                $this->object($manager->getConnection())->isIdenticalTo($selected);
+                $manager->getEventManager()->addEventListener([Events::onClear], $clears);
+                return 37;
+            };
+            $this->integer(Orm::read($adapter, $read))->isIdenticalTo(37);
+            $defaultClears = $clears->count;
+            $this->integer(Orm::read($adapter, $read, clearCustomManager: true))->isIdenticalTo(37);
+            $explicitClears = $clears->count - $defaultClears;
+            $this->integer(Orm::withConnection($selected, $read))->isIdenticalTo(37);
+            $this->integer($clears->count - $defaultClears - $explicitClears)->isIdenticalTo(1);
+            $this->integer($explicitClears)->isIdenticalTo(1);
+            $this->integer($defaultClears)->isIdenticalTo(0);
             $this->boolean($selected->isConnected())->isFalse();
             $this->boolean($other->isConnected())->isFalse();
         } finally {
