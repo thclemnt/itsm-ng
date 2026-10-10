@@ -41,6 +41,9 @@ use Group;
 use Group_User;
 use Notification;
 use NotificationEventAjax;
+use NotificationTargetSavedSearch_Alert;
+use SavedSearch;
+use SavedSearch_Alert;
 use NotificationTarget as LegacyNotificationTarget;
 use NotificationTargetPlanningRecall;
 use PlanningExternalEvent;
@@ -51,8 +54,10 @@ use Reminder;
 use User;
 use itsmng\Database\Entity\Entity;
 use itsmng\Database\Entity\User as UserEntity;
+use itsmng\Database\Entity\Notification as NotificationEntity;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\NotificationRecipientRepository;
+use itsmng\Database\Repository\NotificationRepository;
 use itsmng\Database\Repository\RecordWriter;
 use mock\DBmysql as RecipientAdapterProbe;
 use tests\fixtures\ScalarReadProbe;
@@ -63,6 +68,139 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class NotificationTarget extends DbTestCase
 {
+    public function testSavedSearchAlertEventsKeepStoredChoicesAndFreshPublicLabels(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $session = $_SESSION;
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $owner = null;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', false);
+            $entity = (int)$_SESSION['glpiactive_entity'];
+            $search = new SavedSearch();
+            $id = $search->add(['name' => 'Event search ' . $this->getUniqueString(),
+                'url' => '/front/computer.php', 'type' => SavedSearch::SEARCH, 'itemtype' => 'Computer', 'entities_id' => $entity, 'is_private' => 1]);
+            $this->integer($id)->isGreaterThan(0);
+            $this->boolean($search->getFromDB($id))->isTrue();
+            $name = $search->getName();
+            $event = 'alert_' . $id;
+            $repeated = 'alert_alert_' . $id;
+            $rule = $this->createItem(Notification::class, ['name' => 'Stored event ' . $this->getUniqueString(),
+                'itemtype' => SavedSearch_Alert::class, 'event' => $event, 'entities_id' => $entity, 'is_active' => 0]);
+            // Event choices are global and retain inactive rules, unlike firing eligibility.
+            $this->createItem(Notification::class, ['name' => 'Duplicate event ' . $this->getUniqueString(),
+                'itemtype' => SavedSearch_Alert::class, 'event' => $event, 'entities_id' => 0, 'is_active' => 1]);
+            $this->createItem(Notification::class, ['name' => 'Repeated marker ' . $this->getUniqueString(),
+                'itemtype' => SavedSearch_Alert::class, 'event' => $repeated, 'entities_id' => 0]);
+            $this->createItem(Notification::class, ['name' => 'Wrong case ' . $this->getUniqueString(),
+                'itemtype' => SavedSearch_Alert::class, 'event' => 'ALERT_' . $id . '_case', 'entities_id' => $entity]);
+            $wrong = 'alert_' . $this->getUniqueString();
+            $this->createItem(Notification::class, ['name' => 'Other target ' . $this->getUniqueString(),
+                'itemtype' => 'Ticket', 'event' => $wrong, 'entities_id' => $entity]);
+            $target = new NotificationTargetSavedSearch_Alert($entity);
+            $expected = sprintf(__('Search  alert for "%1$s" (%2$s)'), $name, $id);
+            $events = $target->getEvents();
+            $this->string($events[$event])->isIdenticalTo($expected);
+            $this->string($events[$repeated])->isIdenticalTo($expected);
+            $this->string($events['alert'])->isIdenticalTo(__('Private search alert'));
+            $this->boolean(isset($events['ALERT_' . $id . '_case']))->isFalse();
+            $this->boolean(isset($events[$wrong]))->isFalse();
+
+            $owner = Orm::create($DB);
+            $live = $owner->find(NotificationEntity::class, (int)$rule->getID());
+            $live->event = 'unflushed choice';
+            $this->string($target->getEvents()[$event])->isIdenticalTo($expected);
+            $this->boolean($owner->contains($live))->isTrue();
+            $this->string($live->event)->isIdenticalTo('unflushed choice');
+            $nested = Orm::read($DB, static fn (EntityManager $em): array => $target->getEvents());
+            $this->string($nested[$repeated])->isIdenticalTo($expected);
+            $this->boolean($owner->contains($live))->isTrue();
+
+            // The outer plugin receives complete labels after the scalar read is closed.
+            $calls = 0;
+            $plugins->setValue(null, [...$active, 'savedsearch_events_fixture']);
+            $PLUGIN_HOOKS['item_get_events'] = ['savedsearch_events_fixture' => [
+                NotificationTargetSavedSearch_Alert::class => function (NotificationTargetSavedSearch_Alert $delivery) use (&$calls, $search, $id, $event, $expected): void {
+                    ++$calls;
+                    if ($calls === 1) {
+                        $this->string($delivery->events[$event])->isIdenticalTo($expected);
+                        $this->boolean($search->update(['id' => $id, 'name' => 'Updated public event label']))->isTrue();
+                    }
+                    $delivery->events['plugin_choice'] = 'Plugin choice';
+                },
+            ]];
+            $this->string($target->getAllEvents()['plugin_choice'])->isIdenticalTo('Plugin choice');
+            $updated = sprintf(__('Search  alert for "%1$s" (%2$s)'), 'Updated public event label', $id);
+            $this->string($target->getAllEvents()[$event])->isIdenticalTo($updated);
+            $this->integer($calls)->isIdenticalTo(2);
+            $this->string($live->event)->isIdenticalTo('unflushed choice');
+        } finally {
+            $owner?->clear();
+            $_SESSION = $session;
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+        }
+    }
+
+    public function testSavedSearchEventProjectionUsesSelectedRouteWithoutHydration(): void
+    {
+        global $DB;
+        $adapter = $DB;
+        $session = $_SESSION;
+        $manager = null;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', false);
+            $entity = (int)$_SESSION['glpiactive_entity'];
+            $event = 'stored choice ' . $this->getUniqueString();
+            $rule = $this->createItem(Notification::class, ['name' => 'Projection route ' . $this->getUniqueString(),
+                'itemtype' => SavedSearch_Alert::class, 'event' => $event, 'entities_id' => $entity, 'is_active' => 0]);
+            $this->createItem(Notification::class, ['name' => 'Projection duplicate ' . $this->getUniqueString(),
+                'itemtype' => SavedSearch_Alert::class, 'event' => $event, 'entities_id' => $entity]);
+            $connection = $DB->getDoctrineConnection();
+            $level = $connection->getTransactionNestingLevel();
+            $probe = new ScalarReadProbe($connection);
+            $manager = Orm::forConnection($probe);
+            $live = $manager->find(NotificationEntity::class, (int)$rule->getID());
+            $live->name = 'Unflushed projection owner';
+            $loads = new class () {
+                public int $count = 0;
+                public function postLoad(): void
+                {
+                    ++$this->count;
+                }
+            };
+            $manager->getEventManager()->addEventListener([Events::postLoad], $loads);
+            $probe->queries = [];
+            $values = (new NotificationRepository($manager))->savedSearchAlertEvents(Notification::getTable(), SavedSearch_Alert::getType());
+            $this->integer(count(array_filter($values, static fn ($value): bool => $value === $event)))->isIdenticalTo(1);
+            $this->integer($loads->count)->isIdenticalTo(0);
+            $this->boolean($manager->contains($live))->isTrue();
+            $this->string($live->name)->isIdenticalTo('Unflushed projection owner');
+            $this->array($probe->queries)->hasSize(1);
+            $this->string($probe->queries[0]['sql'])->contains('DISTINCT')->contains('glpi_notifications')->notContains('ORDER BY');
+            $this->array($probe->queries[0]['params'])->contains(SavedSearch_Alert::class);
+            $this->mockGenerator()->orphanize('__construct');
+            $custom = new RecipientAdapterProbe();
+            $this->calling($custom)->getDoctrineConnection = $probe;
+            $this->calling($custom)->getProvider = $adapter->getProvider();
+            $DB = $custom;
+            $target = new NotificationTargetSavedSearch_Alert($entity);
+            $probe->queries = [];
+            $this->string($target->getEvents()['alert'])->isIdenticalTo(__('Private search alert'));
+            $this->string($probe->queries[0]['sql'])->contains('DISTINCT')->contains('glpi_notifications');
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+            $this->boolean($manager->contains($live))->isTrue();
+        } finally {
+            $DB = $adapter;
+            $manager?->clear();
+            $_SESSION = $session;
+        }
+    }
+
     public function testRecipientAdmissionKeepsEligibilityAndCallbackWrites(): void
     {
         global $DB, $PLUGIN_HOOKS;

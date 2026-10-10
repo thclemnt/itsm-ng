@@ -44,6 +44,26 @@ final class NotificationRepository
         return $query->getQuery()->getResult();
     }
 
+    /**
+     * Stored saved-search alert choices, including inactive and other-entity rules.
+     * Native DISTINCT/collation and the public Notification forceTable route remain
+     * authoritative; no entity hydration or implicit ordering belongs to this read.
+     *
+     * @return list<string>
+     */
+    public function savedSearchAlertEvents(string $table, string $alertType): array
+    {
+        $metadata = $this->em->getClassMetadata(Notification::class);
+        $connection = $this->em->getConnection();
+        $quote = $connection->quoteIdentifier(...);
+        return $connection->createQueryBuilder()
+            ->select($quote($metadata->getColumnName('event')))->distinct()
+            ->from($quote($table))
+            ->where($quote($metadata->getColumnName('itemtype')) . ' = :alert_type')
+            ->setParameter('alert_type', $alertType, $metadata->getTypeOfField('itemtype'))
+            ->executeQuery()->fetchFirstColumn();
+    }
+
     /** @return list<NotificationNotificationTemplate> */
     public function bindingsForNotification(int $notification): array
     {
