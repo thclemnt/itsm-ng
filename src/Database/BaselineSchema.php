@@ -19,6 +19,7 @@ use itsmng\Database\Mapping\BooleanStorage;
 use itsmng\Database\Mapping\DiscriminatedBy;
 use itsmng\Database\Mapping\DiscriminatorKey;
 use itsmng\Database\Mapping\NonNegative;
+use itsmng\Database\Mapping\ReferencePolicy;
 use itsmng\Database\Mapping\RequiredSubjectConstraint;
 use itsmng\Database\Mapping\SchemaIndex;
 
@@ -28,6 +29,7 @@ final class BaselineSchema
     private array $subjectPolicies = [];
     private array $nativeIndexPolicies = [];
     private array $nonNegativePolicies = [];
+    private array $referencePolicies = [];
 
     public function __construct(private readonly ?EntityManager $metadataManager = null)
     {
@@ -50,6 +52,12 @@ final class BaselineSchema
         return $this->nonNegativePolicies;
     }
 
+    /** Inherited CHECKs share the owning association/mode metadata snapshot. */
+    public function referencePolicies(): array
+    {
+        return $this->referencePolicies;
+    }
+
     public function build(AbstractPlatform $platform, bool $foreignKeys = true): Schema
     {
         if ($this->metadataManager !== null
@@ -59,6 +67,7 @@ final class BaselineSchema
         $this->subjectPolicies = [];
         $this->nativeIndexPolicies = [];
         $this->nonNegativePolicies = [];
+        $this->referencePolicies = [];
         // Explicit version keeps standalone metadata inspection offline.
         $connection = $this->metadataManager?->getConnection()
             ?? DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
@@ -68,6 +77,19 @@ final class BaselineSchema
             $schema = (new SchemaTool($manager))->getSchemaFromMetadata($metadata);
             foreach ($metadata as $entity) {
                 $table = $schema->getTable($entity->getTableName());
+                foreach ($entity->associationMappings as $property => $association) {
+                    $declaration = new ReflectionProperty($entity->name, $property);
+                    foreach ($declaration->getAttributes(ReferencePolicy::class) as $attribute) {
+                        $policy = $attribute->newInstance()->nativeSelectionPolicy($entity, $declaration, $table, $platform);
+                        if ($policy === null) {
+                            continue;
+                        }
+                        if (in_array($policy['constraint'], array_column($this->referencePolicies[$entity->getTableName()] ?? [], 'constraint'), true)) {
+                            throw new LogicException('Duplicate inherited native CHECK ownership: ' . $entity->getTableName() . '.' . $policy['constraint']);
+                        }
+                        $this->referencePolicies[$entity->getTableName()][$property] = $policy;
+                    }
+                }
                 foreach ((new ReflectionClass($entity->name))->getAttributes(SchemaIndex::class) as $attribute) {
                     $index = $attribute->newInstance();
                     $policy = $index->nativePrefixPolicy($entity, $platform);

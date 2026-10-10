@@ -12,18 +12,18 @@ final class SubjectPolicyExpression
     private int $position = 0;
     private int $depth = 0;
 
-    private function __construct(private array $tokens, private bool $postgres, private array $integerDiscriminators, private array $integerTypes)
+    private function __construct(private array $tokens, private bool $postgres, private array $integerDiscriminators, private array $integerTypes, private array $stringSelections)
     {
     }
 
     /** $verifiedCheck must independently match an enforced, validated native CHECK. */
-    public static function equivalent(string $expected, string $actual, bool $postgres, bool $ansiQuotes = false, ?string $verifiedCheck = null, array $integerDiscriminators = [], array $integerTypes = []): bool
+    public static function equivalent(string $expected, string $actual, bool $postgres, bool $ansiQuotes = false, ?string $verifiedCheck = null, array $integerDiscriminators = [], array $integerTypes = [], array $stringSelections = []): bool
     {
         try {
-            $left = self::parse($expected, $postgres, $ansiQuotes, integerDiscriminators: $integerDiscriminators, integerTypes: $integerTypes);
-            $right = self::parse($actual, $postgres, $ansiQuotes, true, $integerDiscriminators, $integerTypes);
+            $left = self::parse($expected, $postgres, $ansiQuotes, integerDiscriminators: $integerDiscriminators, integerTypes: $integerTypes, stringSelections: $stringSelections);
+            $right = self::parse($actual, $postgres, $ansiQuotes, true, $integerDiscriminators, $integerTypes, $stringSelections);
             if ($verifiedCheck !== null) {
-                $check = self::parse($verifiedCheck, $postgres, $ansiQuotes, integerDiscriminators: $integerDiscriminators, integerTypes: $integerTypes);
+                $check = self::parse($verifiedCheck, $postgres, $ansiQuotes, integerDiscriminators: $integerDiscriminators, integerTypes: $integerTypes, stringSelections: $stringSelections);
                 $left = self::guardedCoalesce($left, $check, $postgres);
                 $right = self::guardedCoalesce($right, $check, $postgres);
             }
@@ -33,7 +33,7 @@ final class SubjectPolicyExpression
         }
     }
 
-    private static function parse(string $sql, bool $postgres, bool $ansiQuotes, bool $nativeCatalog = false, array $integerDiscriminators = [], array $integerTypes = []): array
+    private static function parse(string $sql, bool $postgres, bool $ansiQuotes, bool $nativeCatalog = false, array $integerDiscriminators = [], array $integerTypes = [], array $stringSelections = []): array
     {
         if (strlen($sql) > 262144) {
             throw new UnexpectedValueException();
@@ -75,7 +75,7 @@ final class SubjectPolicyExpression
                 throw new UnexpectedValueException();
             }
         }
-        $parser = new self($tokens, $postgres, $integerDiscriminators, $integerTypes);
+        $parser = new self($tokens, $postgres, $integerDiscriminators, $integerTypes, $stringSelections);
         $result = $parser->expression();
         if ($parser->position !== count($tokens)) {
             throw new UnexpectedValueException();
@@ -289,7 +289,7 @@ final class SubjectPolicyExpression
                 continue;
             }
             if (($operator === '=' && $this->take('any')) || ($operator === '<>' && $this->take('all'))) {
-                if (!$this->postgres || !$this->isIntegerDiscriminator($left)) {
+                if (!$this->postgres || (!$this->isIntegerDiscriminator($left) && !$this->isStringSelection($left))) {
                     throw new UnexpectedValueException();
                 }
                 $this->expect('(');
@@ -298,17 +298,26 @@ final class SubjectPolicyExpression
                 $choices = [];
                 do {
                     $right = $this->value();
-                    if ($right[0] !== 'integer' || count($choices) >= 256) {
+                    if (!(($this->isIntegerDiscriminator($left) && $right[0] === 'integer') || $this->isStringChoice($left, $right))
+                        || count($choices) >= 256) {
                         throw new UnexpectedValueException();
                     }
                     $choices[] = [$operator, $left, $right];
                 } while ($this->take(','));
                 $this->expect(']');
+                if ($this->take('::')) {
+                    if (!$this->isStringSelection($left)) {
+                        throw new UnexpectedValueException();
+                    }
+                    $this->expect('text');
+                    $this->expect('[');
+                    $this->expect(']');
+                }
                 $this->expect(')');
                 return $this->junction($operator === '=' ? 'or' : 'and', $choices);
             }
             $right = $this->value();
-            if ($operator === '<>' && (!$this->isIntegerDiscriminator($left) || $right[0] !== 'integer')) {
+            if ($operator === '<>' && !(($this->isIntegerDiscriminator($left) && $right[0] === 'integer') || $this->isStringChoice($left, $right))) {
                 throw new UnexpectedValueException();
             }
             return [$operator, $left, $right];
@@ -319,6 +328,18 @@ final class SubjectPolicyExpression
     private function isIntegerDiscriminator(array $value): bool
     {
         return $value[0] === 'identifier' && in_array($value[1], $this->integerDiscriminators, true);
+    }
+
+    /** Only current property policy can authorize string-mode operators/array choices. */
+    private function isStringSelection(array $value): bool
+    {
+        return $value[0] === 'identifier' && isset($this->stringSelections[$value[1]]);
+    }
+
+    private function isStringChoice(array $left, array $right): bool
+    {
+        return $this->isStringSelection($left) && $right[0] === 'string'
+            && in_array($right[1], $this->stringSelections[$left[1]], true);
     }
 
     private function value(): array

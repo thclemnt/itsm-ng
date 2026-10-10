@@ -22,6 +22,7 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Mapping as ORM;
 use Doctrine\ORM\Mapping\ClassMetadataFactory;
+use Doctrine\ORM\Tools\SchemaTool;
 use Doctrine\Persistence\Mapping\ClassMetadata;
 use Doctrine\Persistence\Mapping\Driver\MappingDriver;
 use InvalidArgumentException;
@@ -124,6 +125,12 @@ use itsmng\Database\SubjectPolicyExpression;
 use itsmng\Database\Type\ClockTimeType;
 use mock\Doctrine\DBAL\Connection;
 use tests\fixtures\DisconnectedSchemaConnection;
+
+use itsmng\Database\Entity\Entity as EntityRecord;
+use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\NativeReferenceSchema;
+use itsmng\Database\Migration\V220\EntityConfigurationReferences;
 
 require_once dirname(__DIR__, 3) . '/fixtures/DisconnectedSchemaConnection.php';
 
@@ -322,6 +329,115 @@ class CurrentSchema extends test
         $this->integer(count($reads))->isIdenticalTo(1);
         $this->string($reads[0])->contains('c.conbin::text AS native_nodes')
             ->contains('WITH ORDINALITY')->contains('pg_catalog.pg_operator')->contains('pg_catalog.pg_table_is_visible');
+    }
+
+    public function testInheritedChecksDeriveFromSixOwningModeDeclarations(): void
+    {
+        foreach ([new MySQLPlatform(), new MariaDBPlatform(), new PostgreSQLPlatform()] as $platform) {
+            $manager = $this->manager($platform);
+            $owner = new BaselineSchema($manager);
+            $schema = $owner->build($platform);
+            $policies = $owner->referencePolicies();
+            $this->integer(count($policies['glpi_entities']))->isIdenticalTo(6);
+            $snapshot = ['mysql' => !$platform instanceof PostgreSQLPlatform, 'ansi_quotes' => false, 'checks' => []];
+            $metadata = $manager->getClassMetadata(EntityRecord::class);
+            foreach ($policies['glpi_entities'] as $property => $policy) {
+                $this->array(array_keys($policy['string_selections']))->isIdenticalTo([$policy['mode_column']]);
+                $historical = EntityConfigurationReferences::checkSql($policy['selected_column']);
+                $historical = substr($historical, strpos($historical, ' CHECK (') + 8, -1);
+                $this->boolean(SubjectPolicyExpression::equivalent($policy['check'], $historical, !$snapshot['mysql'],
+                    integerTypes: $policy['integer_types'], stringSelections: $policy['string_selections']))->isTrue();
+                $row = ['clause' => $historical, 'enforced' => true, 'validated' => true,
+                    'checked_columns' => json_encode([$policy['mode_column'], $policy['selected_column']]),
+                    'native_nodes' => '{BOOLEXPR {OPEXPR :opno 10 {VAR} {CONST}} {NULLTEST {VAR}}}',
+                    'reference_operator_oids' => '["10"]'];
+                $snapshot['checks']['glpi_entities'][$policy['constraint']] = $row;
+                $selected = ['glpi_entities' => [$property => $policy]];
+                $this->array(NativeReferenceSchema::compare($selected, $snapshot))->isEmpty();
+                $diagnostic = 'Changed, missing or unenforced native inherited reference CHECK: glpi_entities.' . $policy['constraint'];
+                foreach ([
+                    $historical . ' OR 1 = 1',
+                    str_replace("<> 'explicit'", "= 'explicit'", $historical),
+                    str_replace('> 0', '>= 0', $historical),
+                    str_replace(' IS NULL', ' IS NOT NULL', $historical),
+                    str_replace("'inherit'", "'arbitrary'", $historical),
+                ] as $changedClause) {
+                    if ($changedClause === $historical) {
+                        continue;
+                    }
+                    $damaged = $snapshot;
+                    $damaged['checks']['glpi_entities'][$policy['constraint']]['clause'] = $changedClause;
+                    $this->array(NativeReferenceSchema::compare($selected, $damaged))->isIdenticalTo([$diagnostic]);
+                }
+                foreach (['enforced', 'validated'] as $flag) {
+                    if ($flag === 'validated' && $snapshot['mysql']) {
+                        continue;
+                    }
+                    $damaged = $snapshot;
+                    $damaged['checks']['glpi_entities'][$policy['constraint']][$flag] = false;
+                    $this->array(NativeReferenceSchema::compare($selected, $damaged))->isIdenticalTo([$diagnostic]);
+                }
+                $damaged = $snapshot;
+                unset($damaged['checks']['glpi_entities'][$policy['constraint']]);
+                $this->array(NativeReferenceSchema::compare($selected, $damaged))->isIdenticalTo([$diagnostic]);
+                if (!$snapshot['mysql']) {
+                    foreach (['native_nodes' => '{FUNCEXPR :funcid 10}', 'reference_operator_oids' => '["999"]',
+                        'checked_columns' => '["wrong"]'] as $fact => $value) {
+                        $damaged = $snapshot;
+                        $damaged['checks']['glpi_entities'][$policy['constraint']][$fact] = $value;
+                        $this->array(NativeReferenceSchema::compare($selected, $damaged))->isIdenticalTo([$diagnostic]);
+                    }
+                }
+                $declaration = (new ReflectionProperty(EntityRecord::class, $property))->getAttributes(ReferencePolicy::class)[0]->newInstance();
+                $changed = new ReferencePolicy(ReferenceKind::Inherited, $declaration->modeProperty, $declaration->emptyZero,
+                    nativeConstraint: 'changed_native_name');
+                $newPolicy = $changed->nativeSelectionPolicy($metadata, new ReflectionProperty(EntityRecord::class, $property),
+                    $schema->getTable('glpi_entities'), $platform);
+                $this->string($newPolicy['constraint'])->isIdenticalTo('changed_native_name');
+                $this->string($newPolicy['check'])->isIdenticalTo($policy['check']);
+            }
+            $this->array(NativeReferenceSchema::compare($policies, $snapshot))->isEmpty();
+        }
+    }
+
+    public function testInheritedModeGrammarIsBoundedByDeclaredColumnAndChoices(): void
+    {
+        $modes = ['calendar_mode' => ['explicit', 'inherit']];
+        $expected = "calendar_mode IN ('explicit', 'inherit') AND calendar_mode <> 'explicit'";
+        $native = "calendar_mode::text = ANY (ARRAY['explicit'::text, 'inherit'::text]::text[]) AND calendar_mode::text <> 'explicit'::text";
+        $this->boolean(SubjectPolicyExpression::equivalent($expected, $native, true, stringSelections: $modes))->isTrue();
+        $this->boolean(SubjectPolicyExpression::equivalent($expected, $native, true))->isFalse();
+        foreach ([str_replace("'inherit'::text", "'unchanged'::text", $native),
+            str_replace('calendar_mode', 'wrong_mode', $native), str_replace('::text[]', '::integer[]', $native),
+            str_replace('calendar_mode::text', 'lower(calendar_mode)', $native),
+            str_replace('calendar_mode::text', 'calendar_mode::varchar(1)', $native),
+            $native . ' OR 1 = 1'] as $changed) {
+            $this->boolean(SubjectPolicyExpression::equivalent($expected, $changed, true, stringSelections: $modes))->isFalse();
+        }
+        foreach (['missing_name', 'nullable_mode', 'wrong_enum', 'required_join', 'wrong_type', 'short_mode', 'wrong_default'] as $variant) {
+            $platform = new MySQLPlatform();
+            $manager = $this->manager($platform);
+            $metadata = $manager->getClassMetadata(EntityRecord::class);
+            $table = (new SchemaTool($manager))->getSchemaFromMetadata($manager->getMetadataFactory()->getAllMetadata())->getTable('glpi_entities');
+            $attribute = (new ReflectionProperty(EntityRecord::class, 'calendar'))->getAttributes(ReferencePolicy::class)[0]->newInstance();
+            if ($variant === 'missing_name') {
+                $attribute = new ReferencePolicy(ReferenceKind::Inherited, 'calendar_mode');
+            } elseif ($variant === 'nullable_mode') {
+                $metadata->fieldMappings['calendar_mode']->nullable = true;
+            } elseif ($variant === 'wrong_enum') {
+                $metadata->fieldMappings['calendar_mode']->enumType = null;
+            } elseif ($variant === 'required_join') {
+                $metadata->associationMappings['calendar']->joinColumns[0]->nullable = false;
+            } elseif ($variant === 'wrong_type') {
+                $table->modifyColumn('calendars_id', ['type' => Type::getType(Types::STRING)]);
+            } elseif ($variant === 'short_mode') {
+                $metadata->fieldMappings['calendar_mode']->length = 1;
+            } else {
+                $metadata->fieldMappings['calendar_mode']->options['default'] = 'arbitrary';
+            }
+            $this->exception(static fn () => $attribute->nativeSelectionPolicy($metadata,
+                new ReflectionProperty(EntityRecord::class, 'calendar'), $table, $platform))->isInstanceOf(LogicException::class);
+        }
     }
 
     public function testSubjectIndexesRetainLegacyCoverageWithoutNameCollisions(): void

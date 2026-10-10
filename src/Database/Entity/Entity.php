@@ -113,7 +113,7 @@ class Entity
 
     #[ORM\ManyToOne(targetEntity: AuthLDAP::class)]
     #[ORM\JoinColumn(name: 'authldaps_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_entities_authldaps_id')]
-    #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'ldap_mode', emptyZero: true)]
+    #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'ldap_mode', emptyZero: true, nativeConstraint: 'glpi_entities_ldap_mode_selection')]
     public ?AuthLDAP $authldap = null;
 
     #[ORM\Column(name: '`ldap_mode`', type: 'string', length: 16, nullable: false, enumType: ReferenceMode::class, options: ['default' => 'explicit'])]
@@ -181,7 +181,7 @@ class Entity
 
     #[ORM\ManyToOne(targetEntity: Calendar::class)]
     #[ORM\JoinColumn(name: 'calendars_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_entities_calendars_id')]
-    #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'calendar_mode', emptyZero: true)]
+    #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'calendar_mode', emptyZero: true, nativeConstraint: 'glpi_entities_calendar_mode_selection')]
     public ?Calendar $calendar = null;
 
     #[ORM\Column(name: '`calendar_mode`', type: 'string', length: 16, nullable: false, enumType: ReferenceMode::class, options: ['default' => 'inherit'])]
@@ -226,7 +226,7 @@ class Entity
 
     #[ORM\ManyToOne(targetEntity: TicketTemplate::class)]
     #[ORM\JoinColumn(name: 'tickettemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_entities_tickettemplates_id')]
-    #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'tickettemplate_mode', emptyZero: true)]
+    #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'tickettemplate_mode', emptyZero: true, nativeConstraint: 'glpi_entities_tickettemplate_mode_selection')]
     public ?TicketTemplate $tickettemplate = null;
 
     #[ORM\Column(name: '`tickettemplate_mode`', type: 'string', length: 16, nullable: false, enumType: ReferenceMode::class, options: ['default' => 'inherit'])]
@@ -234,7 +234,7 @@ class Entity
 
     #[ORM\ManyToOne(targetEntity: ChangeTemplate::class)]
     #[ORM\JoinColumn(name: 'changetemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_entities_changetemplates_id')]
-    #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'changetemplate_mode', emptyZero: true)]
+    #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'changetemplate_mode', emptyZero: true, nativeConstraint: 'glpi_entities_changetemplate_mode_selection')]
     public ?ChangeTemplate $changetemplate = null;
 
     #[ORM\Column(name: '`changetemplate_mode`', type: 'string', length: 16, nullable: false, enumType: ReferenceMode::class, options: ['default' => 'inherit'])]
@@ -242,7 +242,7 @@ class Entity
 
     #[ORM\ManyToOne(targetEntity: ProblemTemplate::class)]
     #[ORM\JoinColumn(name: 'problemtemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_entities_problemtemplates_id')]
-    #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'problemtemplate_mode', emptyZero: true)]
+    #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'problemtemplate_mode', emptyZero: true, nativeConstraint: 'glpi_entities_problemtemplate_mode_selection')]
     public ?ProblemTemplate $problemtemplate = null;
 
     #[ORM\Column(name: '`problemtemplate_mode`', type: 'string', length: 16, nullable: false, enumType: ReferenceMode::class, options: ['default' => 'inherit'])]
@@ -250,7 +250,7 @@ class Entity
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id_software', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_entities_entities_id_software', options: ['default' => null])]
-    #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'software_entity_mode', emptyZero: false)]
+    #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'software_entity_mode', emptyZero: false, nativeConstraint: 'glpi_entities_software_entity_mode_selection')]
     public ?Entity $software_entity = null;
 
     #[ORM\Column(name: '`software_entity_mode`', type: 'string', length: 16, nullable: false, enumType: ReferenceMode::class, options: ['default' => 'inherit'])]

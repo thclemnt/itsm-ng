@@ -54,7 +54,12 @@ final class NativeCheckCatalog
                 . "(SELECT jsonb_agg(o.oid::text ORDER BY o.oid) FROM pg_catalog.pg_operator o "
                 . "JOIN pg_catalog.pg_namespace n ON n.oid = o.oprnamespace WHERE n.nspname = 'pg_catalog' AND o.oprname = '>=' "
                 . "AND o.oprleft IN ('pg_catalog.int2'::regtype, 'pg_catalog.int4'::regtype, 'pg_catalog.int8'::regtype) "
-                . "AND o.oprright IN ('pg_catalog.int2'::regtype, 'pg_catalog.int4'::regtype, 'pg_catalog.int8'::regtype))::text AS integer_ge_oids "
+                . "AND o.oprright IN ('pg_catalog.int2'::regtype, 'pg_catalog.int4'::regtype, 'pg_catalog.int8'::regtype))::text AS integer_ge_oids, "
+                . "(SELECT jsonb_agg(o.oid::text ORDER BY o.oid) FROM pg_catalog.pg_operator o "
+                . "JOIN pg_catalog.pg_namespace n ON n.oid = o.oprnamespace WHERE n.nspname = 'pg_catalog' AND o.oprname IN ('=', '<>', '>', '>=') "
+                . "AND ((o.oprleft = 'pg_catalog.text'::regtype AND o.oprright = 'pg_catalog.text'::regtype) "
+                . "OR (o.oprleft IN ('pg_catalog.int2'::regtype, 'pg_catalog.int4'::regtype, 'pg_catalog.int8'::regtype) "
+                . "AND o.oprright IN ('pg_catalog.int2'::regtype, 'pg_catalog.int4'::regtype, 'pg_catalog.int8'::regtype))))::text AS reference_operator_oids "
                 . 'FROM pg_catalog.pg_constraint c JOIN pg_catalog.pg_class t ON t.oid = c.conrelid '
                 . "WHERE c.contype = 'c' AND pg_catalog.pg_table_is_visible(t.oid)";
             $parameters = [];

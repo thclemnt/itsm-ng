@@ -19,13 +19,13 @@ final class SchemaCheck
      *
      * @return list<string>
      */
-    public function differences(Connection $connection, ?Schema $expected = null, array $nativeIndexPolicies = [], array $nonNegativePolicies = []): array
+    public function differences(Connection $connection, ?Schema $expected = null, array $nativeIndexPolicies = [], array $nonNegativePolicies = [], array $referencePolicies = []): array
     {
-        return $this->inspect($connection, $expected, $nativeIndexPolicies, $nonNegativePolicies)->differences;
+        return $this->inspect($connection, $expected, $nativeIndexPolicies, $nonNegativePolicies, $referencePolicies)->differences;
     }
 
     /** Inspect current native definitions once without retaining a schema cache. */
-    public function inspect(Connection $connection, ?Schema $expected = null, array $nativeIndexPolicies = [], array $nonNegativePolicies = []): SchemaInspection
+    public function inspect(Connection $connection, ?Schema $expected = null, array $nativeIndexPolicies = [], array $nonNegativePolicies = [], array $referencePolicies = []): SchemaInspection
     {
         $subjectPolicies = [];
         if ($expected === null) {
@@ -34,6 +34,7 @@ final class SchemaCheck
             $subjectPolicies = $owner->subjectPolicies();
             $nativeIndexPolicies = $owner->nativeIndexPolicies();
             $nonNegativePolicies = $owner->nonNegativePolicies();
+            $referencePolicies = $owner->referencePolicies();
         }
         $manager = $connection->createSchemaManager();
         $actual = $manager->introspectSchema();
@@ -97,6 +98,9 @@ final class SchemaCheck
             // Retain each current family's existing capability diagnostic;
             // failed ownership inspection cannot be mistaken for empty policy.
             $checkDiagnostics[] = 'Boolean domain enforcement unavailable: ' . $error->getMessage();
+            if ($referencePolicies) {
+                $checkDiagnostics[] = 'Native inherited reference enforcement unavailable: ' . $error->getMessage();
+            }
             if ($subjectPolicies) {
                 $checkDiagnostics[] = 'Native subject enforcement unavailable: ' . $error->getMessage();
             }
@@ -108,6 +112,7 @@ final class SchemaCheck
             ...NativeTimestampSchema::differences($connection, $expected),
             ...($checkSnapshot === null ? [] : NativeSubjectSchema::differences($connection, $subjectPolicies, $checkSnapshot)),
             ...($checkSnapshot === null ? [] : NativeNonNegativeSchema::compare($nonNegativePolicies, $checkSnapshot['checks'])),
+            ...($checkSnapshot === null ? [] : NativeReferenceSchema::compare($referencePolicies, $checkSnapshot)),
             ...PhysicalIndexSchema::differences($connection, $expected, $nativeIndexPolicies),
         ]);
     }

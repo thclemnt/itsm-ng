@@ -36,6 +36,7 @@ use itsmng\Database\Migration\Version220;
 use itsmng\Database\NativeCheckCatalog;
 use itsmng\Database\NativeNonNegativeSchema;
 use itsmng\Database\NativeSubjectSchema;
+use itsmng\Database\NativeReferenceSchema;
 use itsmng\Database\Orm;
 use itsmng\Database\PhysicalIndexSchema;
 use itsmng\Database\Repository\RecordRepository;
@@ -498,6 +499,7 @@ class OrmMigration extends GLPITestCase
     /** Nonterminal subjects still belong to current native policy after later releases complete. */
     private function assertCurrentSubjectNativeVerification(Connection $connection): void
     {
+        $this->assertCurrentInheritedNativeVerification($connection);
         $this->assertCurrentNotificationRecipientNativeVerification($connection);
         $this->assertCurrentNonnegativeNativeVerification($connection);
         $this->assertCurrentUserAuthenticationNativeVerification($connection);
@@ -564,6 +566,76 @@ class OrmMigration extends GLPITestCase
 
 
     /** Fallback authentication still needs its installed native CHECK after release completion. */
+    private function assertCurrentInheritedNativeVerification(Connection $connection): void
+    {
+        $platform = $connection->getDatabasePlatform();
+        $owner = new BaselineSchema();
+        $owner->build($platform);
+        $policies = $owner->referencePolicies();
+        $this->integer(count($policies['glpi_entities']))->isIdenticalTo(6);
+        $quote = $platform->quoteIdentifier(...);
+        $ledger = Ledger::states($connection);
+        $rows = $connection->fetchAllAssociative('SELECT * FROM ' . $quote('glpi_entities') . ' ORDER BY id');
+        foreach ($policies as $table => $fields) {
+            foreach ($fields as $property => $policy) {
+                $selected = [$table => [$property => $policy]];
+                $inspect = static fn (): array => NativeReferenceSchema::compare($selected, NativeCheckCatalog::snapshot($connection, $table));
+                $this->array($inspect())->isEmpty();
+                $diagnostic = 'Changed, missing or unenforced native inherited reference CHECK: ' . $table . '.' . $policy['constraint'];
+                $drop = 'ALTER TABLE ' . $quote($table) . ' DROP '
+                    . ($platform instanceof MySQLPlatform ? 'CHECK ' : 'CONSTRAINT ') . $quote($policy['constraint']);
+                $add = static fn (string $check): string => 'ALTER TABLE ' . $quote($table) . ' ADD CONSTRAINT '
+                    . $quote($policy['constraint']) . ' CHECK (' . $check . ')'
+                    . ($platform instanceof MySQLPlatform ? ' ENFORCED' : '');
+                $dropped = $weakened = false;
+                $transactional = $platform instanceof PostgreSQLPlatform;
+                $nativeBefore = $transactional ? NativeCheckCatalog::snapshot($connection, $table) : null;
+                $constraintOid = static fn () => $connection->fetchOne(
+                    'SELECT c.oid::text FROM pg_catalog.pg_constraint c JOIN pg_catalog.pg_class t ON t.oid = c.conrelid '
+                    . 'WHERE t.relname = ? AND c.conname = ? AND pg_catalog.pg_table_is_visible(t.oid)',
+                    [$table, $policy['constraint']]
+                );
+                $oidBefore = $transactional ? $constraintOid() : null;
+                if ($transactional) {
+                    $connection->beginTransaction();
+                }
+                try {
+                    $connection->executeStatement($drop);
+                    $dropped = true;
+                    $this->array($inspect())->isIdenticalTo([$diagnostic]);
+                    if ($property === array_key_first($fields)) {
+                        $this->array((new SchemaCheck())->differences($connection))->contains($diagnostic);
+                    }
+                    $connection->executeStatement($add('1 = 1'));
+                    $weakened = true;
+                    $this->array($inspect())->isIdenticalTo([$diagnostic]);
+                    $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
+                } finally {
+                    if ($transactional) {
+                        // PostgreSQL rollback restores the exact original CHECK,
+                        // including its OID, native definition and every row.
+                        $connection->rollBack();
+                    } elseif ($dropped) {
+                        if ($weakened) {
+                            $connection->executeStatement($drop);
+                        }
+                        $connection->executeStatement($add($policy['check']));
+                    }
+                }
+                $this->array($inspect())->isEmpty();
+                if ($transactional) {
+                    $this->array(NativeCheckCatalog::snapshot($connection, $table))->isIdenticalTo($nativeBefore);
+                    $this->variable($constraintOid())->isIdenticalTo($oidBefore);
+                }
+                $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $quote('glpi_entities') . ' ORDER BY id'))->isIdenticalTo($rows);
+                $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
+            }
+        }
+        $this->array((new SchemaCheck())->differences($connection))->isEmpty();
+        $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $quote('glpi_entities') . ' ORDER BY id'))->isIdenticalTo($rows);
+        $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
+    }
+
     private function assertCurrentNotificationRecipientNativeVerification(Connection $connection): void
     {
         $platform = $connection->getDatabasePlatform();
