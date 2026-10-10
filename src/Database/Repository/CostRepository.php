@@ -39,12 +39,16 @@ final class CostRepository
     public function rows(string $type, int|array $parents, bool $last = false): array
     {
         [$class, $association] = self::definition($type) ?? throw new InvalidArgumentException('Unmapped cost type');
-        $query = $this->em->createQueryBuilder()->select('c')->from($class, 'c')
-            ->where('c.' . $association . ' IN (:parents)')->setParameter('parents', (array)$parents ?: [-1]);
+        $query = $this->em->createQueryBuilder()
+            ->select('c')
+            ->from($class, 'c')
+            ->where('c.' . $association . ' IN (:parents)')
+            ->setParameter('parents', (array)$parents ?: [-1]);
         $date = $last ? 'end_date' : 'begin_date';
         // MySQL's date ordering: NULL first ascending, last descending.
         $query->addSelect('CASE WHEN c.' . $date . ' IS NULL THEN 0 ELSE 1 END AS HIDDEN date_present')
-            ->orderBy('date_present', $last ? 'DESC' : 'ASC')->addOrderBy('c.' . $date, $last ? 'DESC' : 'ASC')
+            ->orderBy('date_present', $last ? 'DESC' : 'ASC')
+            ->addOrderBy('c.' . $date, $last ? 'DESC' : 'ASC')
             ->addOrderBy('c.id', $last ? 'DESC' : 'ASC');
         if ($last) {
             $query->setMaxResults(1);
@@ -84,7 +88,8 @@ final class CostRepository
             ->select('SUM(' . $column($cost, 'actiontime', 'cost_duration') . ')')
             ->from($quote->getTableName($cost, $platform), $platform->quoteIdentifier('cost_duration'));
         if ($parentType === $subjectType) {
-            return $query->where($joinColumn($cost, $parentProperty, 'cost_duration') . ' = ' . $outer)->getSQL();
+            return $query->where($joinColumn($cost, $parentProperty, 'cost_duration') . ' = ' . $outer)
+                ->getSQL();
         }
         [, $linkParent, , , , , $linkClass] = ITILStatisticsType::definition($this->em, $parentType);
         try {
@@ -96,7 +101,8 @@ final class CostRepository
         }
         $link = $this->em->getClassMetadata($linkClass);
         $parentId = $column($parent, $parent->getSingleIdentifierFieldName(), 'cost_parent');
-        $exists = $connection->createQueryBuilder()->select('1')
+        $exists = $connection->createQueryBuilder()
+            ->select('1')
             ->from($quote->getTableName($link, $platform), $platform->quoteIdentifier('cost_link'))
             ->where($joinColumn($link, $linkParent, 'cost_link') . ' = ' . $parentId)
             ->andWhere($joinColumn($link, $assetProperty, 'cost_link') . ' = ' . $outer);
@@ -120,9 +126,13 @@ final class CostRepository
         if (!in_array($type, ['TicketCost', 'ProblemCost', 'ChangeCost'], true)) {
             throw new InvalidArgumentException('Cost type has no action time');
         }
-        $value = $this->em->createQueryBuilder()->select('SUM(c.actiontime)')->from($class, 'c')
-            ->where('c.' . $association . ' = :parent')->setParameter('parent', $parent)
-            ->getQuery()->getSingleScalarResult();
+        $value = $this->em->createQueryBuilder()
+            ->select('SUM(c.actiontime)')
+            ->from($class, 'c')
+            ->where('c.' . $association . ' = :parent')
+            ->setParameter('parent', $parent)
+            ->getQuery()
+            ->getSingleScalarResult();
         return $value === null ? null : (int)$value;
     }
 }
