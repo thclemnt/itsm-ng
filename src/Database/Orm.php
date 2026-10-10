@@ -54,22 +54,43 @@ final class Orm
             $operation($manager ?? self::forConnection($connection)));
     }
 
+    /** @internal Prepare values before a materialized read; never return entities, repositories or lazy iterators. */
+    public static function readPrepared(DBAdapter $db, callable $prepare, callable $operation): mixed
+    {
+        $connection = $db->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($db, $connection);
+        $manager = self::prepareReadProjection($connection) && self::canShareReadManager($connection)
+            ? null : self::forConnection($connection);
+        $prepared = $prepare();
+        if ($manager === null && self::canShareReadManager($connection)) {
+            return $connection->withApplicationEntityManager(static fn (EntityManager $manager): mixed =>
+                $operation($manager, $prepared));
+        }
+        return $operation($manager ?? self::forConnection($connection), $prepared);
+    }
+
+    private static function canShareReadManager(Connection $connection): bool
+    {
+        if ((!$connection instanceof MySQLManagedConnection && !$connection instanceof PostgresConnection)
+            || !self::ownsReadMapping($connection)) {
+            return false;
+        }
+        static $previousTypes = null;
+        static $stableTypes = false;
+        $types = DbalType::getTypeRegistry()->getMap();
+        if ($previousTypes !== $types) {
+            $stableTypes = !array_filter($types, static fn (DbalType $type, string $name): bool =>
+                !self::stableSqlConversion($name, $type), ARRAY_FILTER_USE_BOTH);
+            $previousTypes = $types;
+        }
+        return $stableTypes;
+    }
+
     /** @internal Value-only application work; custom configurations use create()/forConnection(). */
     public static function withConnection(Connection $connection, callable $operation): mixed
     {
-        if (($connection instanceof MySQLManagedConnection || $connection instanceof PostgresConnection)
-            && self::ownsReadMapping($connection)) {
-            static $previousTypes = null;
-            static $stableTypes = false;
-            $types = DbalType::getTypeRegistry()->getMap();
-            if ($previousTypes !== $types) {
-                $stableTypes = !array_filter($types, static fn (DbalType $type, string $name): bool =>
-                    !self::stableSqlConversion($name, $type), ARRAY_FILTER_USE_BOTH);
-                $previousTypes = $types;
-            }
-            if ($stableTypes) {
-                return $connection->withApplicationEntityManager($operation);
-            }
+        if (self::canShareReadManager($connection)) {
+            return $connection->withApplicationEntityManager($operation);
         }
         // Supplied/custom connections retain independently mutable configuration.
         $manager = self::forConnection($connection);

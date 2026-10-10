@@ -34,6 +34,18 @@
 namespace tests\units;
 
 use DB as LegacyDB;
+use Doctrine\DBAL\DriverManager;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Types\StringType;
+use Doctrine\DBAL\Types\Type as DbalType;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Events;
+use LogicException;
+use ReflectionProperty;
+use itsmng\Database\MySQLManagedConnection;
+use itsmng\Database\Orm;
+use mock\DBAdapter as PreparedReadAdapter;
 use InvalidArgumentException;
 use itsmng\Database\PostgresParameters;
 
@@ -41,6 +53,65 @@ use itsmng\Database\PostgresParameters;
 
 class DB extends \GLPITestCase
 {
+    public function testPreparedReadRetainsCustomConstructionRouteAndClearPolicy(): void
+    {
+        $parameters = ['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0', 'wrapperClass' => MySQLManagedConnection::class];
+        $selected = DriverManager::getConnection($parameters);
+        $other = DriverManager::getConnection($parameters);
+        $registry = DbalType::getTypeRegistry();
+        $original = $registry->get(Types::STRING);
+        $custom = new class () extends StringType {
+            public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+            {
+                return $sqlExpr;
+            }
+        };
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new PreparedReadAdapter();
+        try {
+            foreach ([true, false] as $customBeforePrepare) {
+                $route = $selected;
+                $registry->override(Types::STRING, $customBeforePrepare ? $custom : $original);
+                $this->calling($adapter)->getDoctrineConnection = static function () use (&$route) {
+                    return $route;
+                };
+                $allocated = $factories->getValue();
+                $result = Orm::readPrepared($adapter, function () use (
+                    $factories,
+                    $allocated,
+                    $customBeforePrepare,
+                    $registry,
+                    $custom,
+                    &$route,
+                    $other
+                ): int {
+                    $this->integer($factories->getValue() - $allocated)->isIdenticalTo($customBeforePrepare ? 1 : 0);
+                    $registry->override(Types::STRING, $custom);
+                    $route = $other;
+                    return 37;
+                }, function (EntityManager $manager, int $prepared) use ($selected): int {
+                    $this->object($manager->getConnection())->isIdenticalTo($selected);
+                    $manager->getEventManager()->addEventListener([Events::onClear], new class () {
+                        public function onClear(): void
+                        {
+                            throw new LogicException('Custom prepared readers must not acquire a clear callback');
+                        }
+                    });
+                    return $prepared;
+                });
+                $this->integer($result)->isIdenticalTo(37);
+                $this->integer($factories->getValue() - $allocated)->isIdenticalTo(1);
+            }
+            $this->boolean($selected->isConnected())->isFalse();
+            $this->boolean($other->isConnected())->isFalse();
+        } finally {
+            $registry->override(Types::STRING, $original);
+            $selected->close();
+            $other->close();
+        }
+    }
+
     public function testPostgresLexicalPreparationPreservesWideProjectionAndOpaqueRegions(): void
     {
         $columns = implode(', ', array_map(static fn (int $number): string =>

@@ -1791,17 +1791,20 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
         global $DB;
 
         $itemtype = (new static())->getItilObjectItemType();
-        return Orm::read($DB, static fn (EntityManager $em): array =>
-            (new ITILTaskRepository($em))->taskList(
-                static::getType(),
-                $itemtype::getNotSolvedStatusArray(),
+        return Orm::readPrepared(
+            $DB,
+            static fn (): array => [static::getType(), $itemtype::getNotSolvedStatusArray()],
+            static fn (EntityManager $em, array $prepared): array => (new ITILTaskRepository($em))->taskList(
+                $prepared[0],
+                $prepared[1],
                 $status === 'todo',
                 (int)Session::getLoginUserID(),
                 $showgrouptickets ? ($_SESSION['glpigroups'] ?? []) : null,
                 getEntitiesRestrictCriteria($itemtype::getTable()),
                 $start === null ? null : (int)$start,
                 $limit === null ? null : (int)$limit,
-            ));
+            )
+        );
     }
 
 
@@ -1824,16 +1827,19 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
         $projected = in_array($itemtype, [TicketTask::class, ProblemTask::class], true);
         if ($projected) {
             $parenttype = (new static())->getItilObjectItemType();
-            $page = Orm::read($DB, static fn (EntityManager $em): array =>
-                (new ITILTaskRepository($em))->centralList(
+            $page = Orm::readPrepared(
+                $DB,
+                static fn (): array => $parenttype::getNotSolvedStatusArray(),
+                static fn (EntityManager $em, array $statuses): array => (new ITILTaskRepository($em))->centralList(
                     $itemtype,
-                    $parenttype::getNotSolvedStatusArray(),
+                    $statuses,
                     $status === 'todo',
                     (int)Session::getLoginUserID(),
                     $showgrouptickets ? ($_SESSION['glpigroups'] ?? []) : null,
                     getEntitiesRestrictCriteria($parenttype::getTable()),
                     (int)$_SESSION['glpidisplay_count_on_home'],
-                ));
+                )
+            );
             $iterator = $page['rows'];
         } else {
             $iterator = self::getTaskList($status, $showgrouptickets);
