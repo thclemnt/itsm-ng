@@ -4,6 +4,7 @@
 
 namespace itsmng\Database;
 
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Schema\MySQLSchemaManager;
 
 /** Preserve DBAL inspection while recognizing MariaDB's native JSON alias under ANSI_QUOTES. */
@@ -27,11 +28,8 @@ final class MariaDBSchemaManager extends MySQLSchemaManager
         }
         $modes = array_map('strtoupper', array_map('trim', explode(',', (string)$this->connection->fetchOne('SELECT @@SESSION.sql_mode'))));
         $ansiQuotes = in_array('ANSI_QUOTES', $modes, true);
-        $tables = array_keys($longtext);
-        $sql = 'SELECT TABLE_NAME, CHECK_CLAUSE FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = ? AND TABLE_NAME IN ('
-            . implode(', ', array_fill(0, count($tables), '?')) . ')';
-        $parameters = [$databaseName, ...$tables];
-        foreach ($this->connection->fetchAllAssociative($sql, $parameters) as $row) {
+        $sql = 'SELECT TABLE_NAME, CHECK_CLAUSE FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = ? AND TABLE_NAME IN (?)';
+        foreach ($this->connection->fetchAllAssociative($sql, [$databaseName, array_keys($longtext)], [1 => ArrayParameterType::STRING]) as $row) {
             $check = array_change_key_case($row, CASE_LOWER);
             $column = JsonCheckExpression::column($check['check_clause'], $ansiQuotes);
             if ($column !== null && isset($longtext[$check['table_name']][strtolower($column)])) {
