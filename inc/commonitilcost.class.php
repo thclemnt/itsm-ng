@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\CostRepository;
 use itsmng\Timezone;
@@ -374,12 +375,12 @@ abstract class CommonITILCost extends CommonDBChild
         global $DB;
 
         if (CostRepository::supports(static::getType())) {
-            $em = Orm::create($DB);
-            try {
-                return (new CostRepository($em))->actionTime(static::getType(), (int)$items_id);
-            } finally {
-                $em->clear();
-            }
+            return Orm::read(
+                $DB,
+                static fn (EntityManager $manager): ?int => (new CostRepository($manager))
+                    ->actionTime(static::getType(), (int)$items_id),
+                clearCustomManager: true
+            );
         }
         $result = $DB->request([
            'SELECT' => ['SUM' => 'actiontime AS sumtime'],
@@ -765,12 +766,11 @@ abstract class CommonITILCost extends CommonDBChild
             $item = getItemForItemtype($type);
             return $item->find([static::$items_id => $parents], $last ? ['end_date DESC', 'id DESC'] : ['begin_date'], $last ? 1 : null);
         }
-        $em = Orm::create($DB);
-        try {
-            return (new CostRepository($em))->rows($type, $parents, $last);
-        } finally {
-            $em->clear();
-        }
+        return Orm::read(
+            $DB,
+            static fn (EntityManager $manager): array => (new CostRepository($manager))->rows($type, $parents, $last),
+            clearCustomManager: true
+        );
     }
 
     /**
