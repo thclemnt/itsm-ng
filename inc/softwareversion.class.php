@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\SoftwareRepository;
 
@@ -277,8 +278,17 @@ class SoftwareVersion extends CommonDBChild
             }
         }
 
-        $rows = (new SoftwareRepository(Orm::create($DB)))
-            ->versionChoices((int)$p['softwares_id'], $p['used']);
+        $rows = Orm::readPrepared(
+            $DB,
+            static function () use ($p): array {
+                // Excluded IDs may raise conversion warnings: prepare them before
+                // the private materialized scope, retaining the array argument contract.
+                $arguments = static fn (int $software, array $used): array => [$software, array_map('intval', $used)];
+                return $arguments((int)$p['softwares_id'], $p['used']);
+            },
+            static fn (EntityManager $manager, array $arguments): array =>
+                (new SoftwareRepository($manager))->versionChoices(...$arguments)
+        );
 
         $values = [];
         foreach ($rows as $data) {
@@ -327,8 +337,12 @@ class SoftwareVersion extends CommonDBChild
          HTML;
         }
 
-        $rows = (new SoftwareRepository(Orm::create($DB)))
-            ->versions((int)$softwares_id);
+        $rows = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$softwares_id,
+            static fn (EntityManager $manager, int $software): array =>
+                (new SoftwareRepository($manager))->versions($software)
+        );
 
         Session::initNavigateListItems(
             'SoftwareVersion',

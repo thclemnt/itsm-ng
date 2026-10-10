@@ -34,16 +34,157 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\Common\EventManager;
+use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Event\PostLoadEventArgs;
+use Software as CoreSoftware;
+use TypeError;
+use mock\DBmysql as SoftwareVersionAdapterProbe;
+use tests\fixtures\ScalarReadProbe;
 use SoftwareVersion as CoreSoftwareVersion;
 use itsmng\Database\Orm;
 use itsmng\Database\Entity;
 use itsmng\Database\Repository\SoftwareRepository;
 
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
+
 /* Test for inc/softwareversion.class.php */
 
 class SoftwareVersion extends DbTestCase
 {
+    public function testPublicVersionViewsStayFreshAndPreserveLiveOwners(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', false);
+            $software = $this->createItem(CoreSoftware::class, [
+                'name' => 'Version views ' . $this->getUniqueString(),
+                'entities_id' => (int)$_SESSION['glpiactive_entity'],
+            ]);
+            $version = $this->createItem(CoreSoftwareVersion::class, [
+                'name' => 'Initial public release', 'comment' => 'Initial version comment',
+                'softwares_id' => $software->getID(),
+                'entities_id' => (int)$_SESSION['glpiactive_entity'],
+            ]);
+            $options = ['softwares_id' => (string)$software->getID(), 'value' => $version->getID(),
+                'display' => false, 'readonly' => true];
+            $this->string(CoreSoftwareVersion::dropdownForOneSoftware($options))->contains('Initial public release');
+            $this->output(static fn () => CoreSoftwareVersion::showForSoftware($software))
+                ->contains('Initial public release')->contains('Initial version comment')
+                ->contains(CoreSoftwareVersion::getFormURLWithID($version->getID()));
+            $connection = $DB->getDoctrineConnection();
+            $this->integer($connection->update('glpi_softwareversions', [
+                'name' => 'Current public release', 'comment' => 'Current version comment',
+            ], ['id' => $version->getID()]))->isIdenticalTo(1);
+            $writer = Orm::create($DB);
+            $pending = $writer->find(Entity\SoftwareVersion::class, (int)$version->getID());
+            $pending->name = 'Pending independent release';
+            $pending->comment = 'Pending independent comment';
+            Orm::read($DB, function (EntityManager $owner) use ($DB, $software, $version, $options, $writer, $pending): void {
+                $outer = $owner->find(Entity\SoftwareVersion::class, (int)$version->getID());
+                $outer->name = 'Pending outer release';
+                $this->string(CoreSoftwareVersion::dropdownForOneSoftware($options))
+                    ->contains('Current public release')->notContains('Pending independent release')->notContains('Pending outer release');
+                $this->output(static fn () => CoreSoftwareVersion::showForSoftware($software))
+                    ->contains('Current public release')->contains('Current version comment')
+                    ->notContains('Pending independent release')->notContains('Pending outer release');
+                $this->boolean($owner->contains($outer))->isTrue();
+                $this->string($outer->name)->isIdenticalTo('Pending outer release');
+                $this->boolean($writer->contains($pending))->isTrue();
+                $this->string($pending->name)->isIdenticalTo('Pending independent release');
+                $this->string($writer->getConnection()->fetchOne('SELECT name FROM glpi_softwareversions WHERE id=?', [$version->getID()]))
+                    ->isIdenticalTo('Current public release');
+            });
+            $this->string(CoreSoftwareVersion::dropdownForOneSoftware($options))->contains('Current public release');
+            $this->string(CoreSoftwareVersion::dropdownForOneSoftware($options + ['used' => [(string)$version->getID()]]))
+                ->notContains('Current public release');
+            $this->exception(static fn () => CoreSoftwareVersion::dropdownForOneSoftware($options + ['used' => null]))
+                ->isInstanceOf(TypeError::class);
+            $this->string(CoreSoftwareVersion::dropdownForOneSoftware($options))->contains('Current public release');
+            $writer->flush();
+            $this->string(CoreSoftwareVersion::dropdownForOneSoftware($options))->contains('Pending independent release');
+            $this->output(static fn () => CoreSoftwareVersion::showForSoftware($software))
+                ->contains('Pending independent release')->contains('Pending independent comment');
+            $writer->clear();
+            $_SESSION['glpiactiveprofile']['software'] = 0;
+            $this->output(static fn () => CoreSoftwareVersion::showForSoftware($software))->isEmpty();
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
+    public function testPublicVersionViewsKeepCustomRouteAndHydrationCallbacks(): void
+    {
+        global $DB;
+        $originalAdapter = $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', false);
+            $software = $this->createItem(CoreSoftware::class, [
+                'name' => 'Custom version views ' . $this->getUniqueString(),
+                'entities_id' => (int)$_SESSION['glpiactive_entity'],
+            ]);
+            $version = $this->createItem(CoreSoftwareVersion::class, [
+                'name' => 'Stored custom release', 'comment' => 'Stored custom comment',
+                'softwares_id' => $software->getID(),
+                'entities_id' => (int)$_SESSION['glpiactive_entity'],
+            ]);
+            $events = new EventManager();
+            $observer = new class () {
+                public array $versions = [];
+                public int $clears = 0;
+                public function postLoad(PostLoadEventArgs $event): void
+                {
+                    $record = $event->getObject();
+                    if ($record instanceof Entity\SoftwareVersion) {
+                        $this->versions[] = $record->id;
+                        $record->name = 'Custom hydrated release';
+                        $record->comment = 'Custom hydrated comment';
+                    }
+                }
+                public function onClear(): void
+                {
+                    ++$this->clears;
+                }
+            };
+            $events->addEventListener(['postLoad', 'onClear'], $observer);
+            $probe = new class ($DB->getDoctrineConnection()) extends ScalarReadProbe {
+                public EventManager $events;
+                public function getEventManager(): EventManager
+                {
+                    return $this->events;
+                }
+            };
+            $probe->events = $events;
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new SoftwareVersionAdapterProbe();
+            $this->calling($adapter)->getDoctrineConnection = $probe;
+            $this->calling($adapter)->getProvider = $originalAdapter->getProvider();
+            $DB = $adapter;
+            $this->string(CoreSoftwareVersion::dropdownForOneSoftware([
+                'softwares_id' => $software->getID(), 'value' => $version->getID(),
+                'display' => false, 'readonly' => true,
+            ]))->contains('Stored custom release')->notContains('Custom hydrated release');
+            $this->array($observer->versions)->isEmpty();
+            $this->output(static fn () => CoreSoftwareVersion::showForSoftware($software))
+                ->contains('Custom hydrated release')->contains('Custom hydrated comment');
+            $this->array($observer->versions)->isIdenticalTo([(int)$version->getID()]);
+            $this->integer($observer->clears)->isIdenticalTo(0);
+            $this->array(array_values(array_filter($probe->queries, static fn (array $query): bool =>
+                str_contains($query['sql'], 'glpi_softwareversions')
+                && in_array((int)$software->getID(), array_map('intval', $query['params']), true))))->isNotEmpty();
+            $this->string($originalAdapter->getDoctrineConnection()->fetchOne(
+                'SELECT name FROM glpi_softwareversions WHERE id=?', [$version->getID()]
+            ))->isIdenticalTo('Stored custom release');
+        } finally {
+            $DB = $originalAdapter;
+            $_SESSION = $session;
+        }
+    }
+
     public function testVersionChoiceProjectionPreservesDropdownLabels(): void
     {
         global $DB;
