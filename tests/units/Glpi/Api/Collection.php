@@ -5,14 +5,26 @@
 namespace tests\units\Glpi\Api;
 
 use GLPITestCase;
+use Glpi\Api\API;
 use Glpi\Api\APIRest;
+use GlpiPlugin\Collectionprobe\Netpoint as PluginNetpoint;
+use Manufacturer;
+use Netpoint;
 use RuntimeException;
+use Session;
+use UserEmail;
 
 class Collection extends GLPITestCase
 {
+    public function __construct(...$arguments)
+    {
+        parent::__construct(...$arguments);
+        $this->setTestedClassName(API::class);
+    }
+
     public function testOrdinaryCollectionsAdmitWarmAndFreshRoutes(): void
     {
-        foreach ([\Manufacturer::class, \Netpoint::class] as $type) {
+        foreach ([Manufacturer::class, Netpoint::class] as $type) {
             $this->assertOrdinaryCollection($type);
         }
     }
@@ -46,7 +58,7 @@ class Collection extends GLPITestCase
             $this->integer((int)$id)->isGreaterThan(0);
             $table = getTableForItemType($type);
             $CFG_GLPI['debug_sql'] = true;
-            $_SESSION['glpi_use_mode'] = \Session::DEBUG_MODE;
+            $_SESSION['glpi_use_mode'] = Session::DEBUG_MODE;
 
             foreach (['warm', 'fresh'] as $routing) {
                 if ($routing === 'fresh') {
@@ -93,7 +105,7 @@ class Collection extends GLPITestCase
         $debugSql = $DEBUG_SQL ?? [];
         $requestCount = $SQL_TOTAL_REQUEST ?? 0;
         $tables = ConfiguredNetpoint::tableCache();
-        $fixture = new \Manufacturer();
+        $fixture = new Manufacturer();
         $id = null;
         $name = '_api_alias_columns_' . bin2hex(random_bytes(8));
         try {
@@ -109,7 +121,7 @@ class Collection extends GLPITestCase
             $id = $fixture->add(['name' => $name, 'comment' => 'The "selected" physical route']);
             $this->integer((int)$id)->isGreaterThan(0);
             $CFG_GLPI['debug_sql'] = true;
-            $_SESSION['glpi_use_mode'] = \Session::DEBUG_MODE;
+            $_SESSION['glpi_use_mode'] = Session::DEBUG_MODE;
             $DEBUG_SQL['queries'] = [];
             CollectionTrace::$events = [];
             $total = 0;
@@ -141,7 +153,7 @@ class Collection extends GLPITestCase
 
     public function testConfiguredCoreTableRoutesKeepOneScopeDecisionAfterText(): void
     {
-        foreach ([ConfiguredNetpoint::class, ConfiguredNetpoints::class, \GlpiPlugin\Collectionprobe\Netpoint::class] as $type) {
+        foreach ([ConfiguredNetpoint::class, ConfiguredNetpoints::class, PluginNetpoint::class] as $type) {
             $this->assertConfiguredCollection($type);
         }
     }
@@ -184,7 +196,7 @@ class Collection extends GLPITestCase
         $requestCount = $SQL_TOTAL_REQUEST ?? 0;
         $tables = ConfiguredNetpoint::tableCache();
         $name = '_api_route_' . bin2hex(random_bytes(8));
-        $netpoint = new \Netpoint();
+        $netpoint = new Netpoint();
         $id = null;
         try {
             $_SESSION['glpiID'] = $_SESSION['glpiID'] ?? 2;
@@ -217,7 +229,7 @@ class Collection extends GLPITestCase
             // Compatible configured aliases admit scalar filters. Plugin routes
             // retain raw SQL; Stringable inputs above deliberately declined mapping.
             $CFG_GLPI['debug_sql'] = true;
-            $_SESSION['glpi_use_mode'] = \Session::DEBUG_MODE;
+            $_SESSION['glpi_use_mode'] = Session::DEBUG_MODE;
             $DEBUG_SQL['queries'] = [];
             $scalar = $api->collection($type, [
                 'searchText' => ['name' => '^' . $name . '$'],
@@ -291,7 +303,7 @@ class CollectionPattern
     }
 }
 
-class ConfiguredNetpoint extends \Netpoint
+class ConfiguredNetpoint extends Netpoint
 {
     public static function tableCache(): array
     {
@@ -341,7 +353,7 @@ class ConfiguredNetpoints extends ConfiguredNetpoint
 }
 
 /** Exercise CommonDBChild's actual parent-construction path, not a fake scope result. */
-class ConfiguredUserEmail extends \UserEmail
+class ConfiguredUserEmail extends UserEmail
 {
     public static function canView()
     {
@@ -369,7 +381,9 @@ class ConfiguredUserEmail extends \UserEmail
 
 namespace GlpiPlugin\Collectionprobe;
 
+use tests\units\Glpi\Api\ConfiguredNetpoint;
+
 /** The ordinary registered plugin itemtype namespace, routed by public config. */
-class Netpoint extends \tests\units\Glpi\Api\ConfiguredNetpoint
+class Netpoint extends ConfiguredNetpoint
 {
 }
