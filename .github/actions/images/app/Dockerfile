@@ -11,7 +11,10 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && install-php-extensions \
     apcu bcmath bz2 exif gd intl ldap mysqli opcache pcntl \
-    pdo_mysql pdo_pgsql pgsql redis soap xsl zip
+    pdo_mysql pdo_pgsql pgsql soap xsl zip
+
+RUN install-php-extensions redis \
+ || (sleep 5 && install-php-extensions redis)
 
 RUN git config --system --add safe.directory /var/itsm
 
