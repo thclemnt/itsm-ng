@@ -197,8 +197,10 @@ class Problem extends DbTestCase
     {
         global $DB;
         $this->login();
-        $problem = $this->createItem('Problem', ['name' => 'Linked problem ' . $this->getUniqueString(), 'content' => 'Endpoint projection']);
-        $ticket = $this->createItem('Ticket', ['name' => 'Linked problem ticket ' . $this->getUniqueString(), 'content' => 'Endpoint projection']);
+        $this->setEntity('_test_root_entity', true);
+        $entityId = (int)$_SESSION['glpiactive_entity'];
+        $problem = $this->createItem('Problem', ['entities_id' => $entityId, 'name' => 'Linked problem ' . $this->getUniqueString(), 'content' => 'Endpoint projection']);
+        $ticket = $this->createItem('Ticket', ['entities_id' => $entityId, 'name' => 'Linked problem ticket ' . $this->getUniqueString(), 'content' => 'Endpoint projection']);
         $link = $this->createItem('Problem_Ticket', ['problems_id' => $problem->getID(), 'tickets_id' => $ticket->getID()]);
         $this->boolean($problem->canViewItem())->isTrue();
         $this->boolean($ticket->canViewItem())->isTrue();
@@ -254,18 +256,34 @@ class Problem extends DbTestCase
     {
         global $DB;
         $this->login();
-        $parent = $this->createItem('Problem', ['name' => 'Planning linked parent ' . $this->getUniqueString(), 'content' => 'Planning tooltip']);
-        $ticket = $this->createItem('Ticket', ['name' => 'Planning linked ticket ' . $this->getUniqueString(), 'content' => 'Planning tooltip']);
+        $this->setEntity('_test_root_entity', true);
+        $entityId = (int)$_SESSION['glpiactive_entity'];
+        $parent = $this->createItem('Problem', ['entities_id' => $entityId, 'name' => 'Planning linked parent ' . $this->getUniqueString(), 'content' => 'Planning tooltip']);
+        $ticket = $this->createItem('Ticket', ['entities_id' => $entityId, 'name' => 'Planning linked ticket ' . $this->getUniqueString(), 'content' => 'Planning tooltip']);
         $this->createItem('Problem_Ticket', ['problems_id' => $parent->getID(), 'tickets_id' => $ticket->getID()]);
         $parentTask = $this->createItem('ProblemTask', ['problems_id' => $parent->getID(), 'content' => 'Parent planning row']);
         $ticketTask = $this->createItem('TicketTask', ['tickets_id' => $ticket->getID(), 'content' => 'Ticket planning row']);
         $connection = $DB->getDoctrineConnection();
         foreach ([$parentTask, $ticketTask] as $task) {
-            $connection->update($task->getTable(), ['begin' => '2030-02-03 04:05:06', 'end' => '2030-02-03 05:06:07'], ['id' => $task->getID()]);
+            $connection->update(
+                $task->getTable(),
+                [
+                    $connection->quoteIdentifier('begin') => '2030-02-03 04:05:06',
+                    $connection->quoteIdentifier('end') => '2030-02-03 05:06:07'
+                ],
+                ['id' => $task->getID()]
+            );
         }
         $this->output(static fn () => Problem_Ticket::showForProblem($parent))->contains('Ticket' . $ticket->getID() . 'planning');
         $this->output(static fn () => Problem_Ticket::showForTicket($ticket))->contains('Problem' . $parent->getID() . 'planning');
-        $connection->update($parentTask->getTable(), ['begin' => null, 'end' => null], ['id' => $parentTask->getID()]);
+        $connection->update(
+            $parentTask->getTable(),
+            [
+                $connection->quoteIdentifier('begin') => null,
+                $connection->quoteIdentifier('end') => null
+            ],
+            ['id' => $parentTask->getID()]
+        );
         $this->output(static fn () => Problem_Ticket::showForTicket($ticket))->notContains('Problem' . $parent->getID() . 'planning');
     }
 

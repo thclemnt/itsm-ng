@@ -632,8 +632,24 @@ class TicketTask extends DbTestCase
                 $unplanned = $this->createItem($taskType, [$field => $parent->getID(), 'content' => 'Unplanned task']);
                 $outside = $this->createItem($taskType, [$field => $other->getID(), 'content' => 'Different parent task']);
                 $connection = $DB->getDoctrineConnection();
-                $connection->update($first->getTable(), ['begin' => '2030-02-03 04:05:06', 'end' => null, 'users_id_tech' => null], ['id' => $first->getID()]);
-                $connection->update($second->getTable(), ['begin' => '2030-02-03 04:05:06', 'end' => '2030-02-03 05:06:07', 'users_id_tech' => Session::getLoginUserID()], ['id' => $second->getID()]);
+                $connection->update(
+                    $first->getTable(),
+                    [
+                        $connection->quoteIdentifier('begin') => '2030-02-03 04:05:06',
+                        $connection->quoteIdentifier('end') => null,
+                        'users_id_tech' => null
+                    ],
+                    ['id' => $first->getID()]
+                );
+                $connection->update(
+                    $second->getTable(),
+                    [
+                        $connection->quoteIdentifier('begin') => '2030-02-03 04:05:06',
+                        $connection->quoteIdentifier('end') => '2030-02-03 05:06:07',
+                        'users_id_tech' => Session::getLoginUserID()
+                    ],
+                    ['id' => $second->getID()]
+                );
                 $read = static fn (): array => Orm::read($DB, static fn (EntityManager $manager): array =>
                     (new ITILTaskRepository($manager))->parentPlanning($taskType, (int)$parent->getID()));
                 $rows = $read();
@@ -653,7 +669,14 @@ class TicketTask extends DbTestCase
                 $_SESSION['glpiactiveentities'] = [];
                 $this->integer(count($read()))->isIdenticalTo(3, 'Planning projection adds no target entity admission');
                 $_SESSION = $session;
-                $connection->update($first->getTable(), ['begin' => '2030-03-04 05:06:07', 'end' => '2030-03-04 06:07:08'], ['id' => $first->getID()]);
+                $connection->update(
+                    $first->getTable(),
+                    [
+                        $connection->quoteIdentifier('begin') => '2030-03-04 05:06:07',
+                        $connection->quoteIdentifier('end') => '2030-03-04 06:07:08'
+                    ],
+                    ['id' => $first->getID()]
+                );
                 $fresh = array_column($read(), null, 'id');
                 $this->string($fresh[$first->getID()]['begin'])->isIdenticalTo('2030-03-04 05:06:07');
                 $this->string($indexed[$first->getID()]['begin'])->isIdenticalTo('2030-02-03 04:05:06');

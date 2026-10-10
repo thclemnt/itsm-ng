@@ -183,6 +183,11 @@ class RSSFeed extends DbTestCase
             'url' => $prepared['url'], 'comment' => 'Audience ownership fixture',
         ]))->isGreaterThan(0);
         $feedId = (int)$rssfeed->getID();
+        $otherFeed = new RSSFeedModel();
+        $this->integer((int)$otherFeed->add([
+            'url' => $prepared['url'], 'comment' => 'Other audience ownership fixture',
+        ]))->isGreaterThan(0);
+        $otherFeedId = (int)$otherFeed->getID();
         $group = $this->createItem('Group', ['name' => 'RSS group ' . $this->getUniqueString(), 'entities_id' => 0]);
         $profile = $this->createItem('Profile', ['name' => 'RSS profile ' . $this->getUniqueString()]);
         $external = Orm::create($DB);
@@ -227,15 +232,22 @@ class RSSFeed extends DbTestCase
                 $this->array((new ReflectionProperty(RSSFeedModel::class, $property))->getValue($rssfeed))->isIdenticalTo($rows);
 
                 // A new read observes legacy writes; an already returned snapshot does not change.
-                $this->integer($connection->update($table, ['is_recursive' => 1, 'rssfeeds_id' => 0], ['id' => $linkId]))->isIdenticalTo(1);
-                $this->array($class::$read($feedId)[$audienceId])->hasSize(1);
-                $zeroRows = $class::$read(0);
-                $zeroIds = array_map('intval', array_column($zeroRows[$audienceId], 'id'));
-                $this->array($zeroIds)->contains($linkId);
-                $this->array($class::$read(null))->isEmpty();
-                $this->array($class::$read('null'))->isEmpty();
-                $this->integer((int)$rows[$audienceId][0]['is_recursive'])->isIdenticalTo(0);
-                $this->integer($connection->update($table, ['rssfeeds_id' => $feedId], ['id' => $linkId]))->isIdenticalTo(1);
+                $this->array($class::$read(0))->isEmpty();
+                $this->integer($connection->update($table, ['is_recursive' => 1, 'rssfeeds_id' => $otherFeedId], ['id' => $linkId]))->isIdenticalTo(1);
+                try {
+                    $this->array($class::$read($feedId)[$audienceId])->hasSize(1);
+                    $movedRows = $class::$read($otherFeedId);
+                    $this->array($movedRows[$audienceId])->hasSize(1);
+                    $this->integer((int)$movedRows[$audienceId][0]['id'])->isIdenticalTo($linkId);
+                    $this->integer((int)$movedRows[$audienceId][0]['rssfeeds_id'])->isIdenticalTo($otherFeedId);
+                    $this->array($class::$read(0))->isEmpty();
+                    $this->array($class::$read(null))->isEmpty();
+                    $this->array($class::$read('null'))->isEmpty();
+                    $this->integer((int)$rows[$audienceId][0]['is_recursive'])->isIdenticalTo(0);
+                } finally {
+                    $this->integer($connection->update($table, ['rssfeeds_id' => $feedId], ['id' => $linkId]))->isIdenticalTo(1);
+                }
+                $this->array($class::$read($otherFeedId))->isEmpty();
                 $fresh = $class::$read($feedId);
                 $this->integer((int)$fresh[$audienceId][0]['is_recursive'])->isIdenticalTo(1);
                 $this->boolean($link->delete(['id' => $linkId], true))->isTrue();
@@ -259,6 +271,7 @@ class RSSFeed extends DbTestCase
             $this->integer($listener->loads)->isGreaterThanOrEqualTo(2);
             $this->boolean($external->contains($retained))->isTrue();
 
+            $this->boolean($otherFeed->delete(['id' => $otherFeedId], true))->isTrue();
             $this->boolean($rssfeed->delete(['id' => $feedId], true))->isTrue();
             $this->array(Group_RSSFeed::getGroups($feedId))->isEmpty();
             $this->array(Profile_RSSFeed::getProfiles($feedId))->isEmpty();

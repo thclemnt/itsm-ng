@@ -35,6 +35,7 @@ namespace tests\units;
 
 use Contact_Supplier as ContactSupplierModel;
 use DbTestCase;
+use Session;
 use Supplier as SupplierModel;
 use itsmng\Database\Entity\Contact as ContactEntity;
 use itsmng\Database\Orm;
@@ -45,11 +46,12 @@ class Contact_Supplier extends DbTestCase
     public function testLinkAndReadSupplierDataFromContact()
     {
         $this->login();
+        $entityId = (int)Session::getActiveEntity();
 
         $supplier = new \Supplier();
         $supplier_id = $supplier->add([
            'name'        => 'supplier-' . $this->getUniqueString(),
-           'entities_id' => 0,
+           'entities_id' => $entityId,
            'website'     => 'https://example.com',
            'address'     => '1 Test street',
            'town'        => 'Test City',
@@ -62,7 +64,7 @@ class Contact_Supplier extends DbTestCase
         $contact_id = $contact->add([
            'name'        => 'contact-' . $this->getUniqueString(),
            'firstname'   => 'first-' . $this->getUniqueString(),
-           'entities_id' => 0,
+           'entities_id' => $entityId,
         ]);
         $this->integer((int)$contact_id)->isGreaterThan(0);
 
@@ -91,7 +93,7 @@ class Contact_Supplier extends DbTestCase
 
         // Both company fields choose the first supplier by supplier ID, even with another link.
         $second = $this->createItem(SupplierModel::class, [
-            'name' => 'second-supplier-' . $this->getUniqueString(), 'entities_id' => 0,
+            'name' => 'second-supplier-' . $this->getUniqueString(), 'entities_id' => $entityId,
             'website' => 'https://second.example.com', 'address' => 'Second street',
         ]);
         $secondLink = $this->createItem(ContactSupplierModel::class, [
@@ -103,14 +105,13 @@ class Contact_Supplier extends DbTestCase
 
         // Entity scope applies to the opposite endpoint; cron retains its unrestricted count.
         $otherEntity = $this->createItem('Entity', [
-            'name' => 'contact-scope-' . $this->getUniqueString(), 'entities_id' => 0,
+            'name' => 'contact-scope-' . $this->getUniqueString(), 'entities_id' => $entityId,
         ]);
         $originalSession = $_SESSION;
         $originalSelf = $_SERVER['PHP_SELF'] ?? null;
         try {
             unset($_SESSION['glpicronuserrunning']);
-            $_SESSION['glpishowallentities'] = false;
-            $_SESSION['glpiactiveentities'] = [0];
+            $this->setEntity($entityId, false);
             $this->integer($connection->update('glpi_suppliers', [
                 'entities_id' => (int)$otherEntity->getID(), 'is_recursive' => 0,
             ], ['id' => $second->getID()]))->isIdenticalTo(1);
@@ -121,7 +122,7 @@ class Contact_Supplier extends DbTestCase
             $_SERVER['PHP_SELF'] = '/front/cron.php';
             $this->integer(ContactSupplierModel::countForItem($contact))->isIdenticalTo(2);
         } finally {
-            $connection->update('glpi_suppliers', ['entities_id' => 0], ['id' => $second->getID()]);
+            $connection->update('glpi_suppliers', ['entities_id' => $entityId], ['id' => $second->getID()]);
             $_SESSION = $originalSession;
             if ($originalSelf === null) {
                 unset($_SERVER['PHP_SELF']);

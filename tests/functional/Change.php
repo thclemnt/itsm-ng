@@ -415,10 +415,12 @@ class Change extends DbTestCase
     {
         global $DB;
         $this->login();
-        $change = $this->createItem('Change', ['name' => 'Linked change ' . $this->getUniqueString(), 'content' => 'Endpoint projection']);
-        $otherChange = $this->createItem('Change', ['name' => 'Other change ' . $this->getUniqueString(), 'content' => 'Other endpoint']);
-        $first = $this->createItem('Ticket', ['name' => 'AAA linked ticket ' . $this->getUniqueString(), 'content' => 'First endpoint']);
-        $last = $this->createItem('Ticket', ['name' => 'ZZZ linked ticket ' . $this->getUniqueString(), 'content' => 'Last endpoint']);
+        $this->setEntity('_test_root_entity', true);
+        $entityId = (int)$_SESSION['glpiactive_entity'];
+        $change = $this->createItem('Change', ['entities_id' => $entityId, 'name' => 'Linked change ' . $this->getUniqueString(), 'content' => 'Endpoint projection']);
+        $otherChange = $this->createItem('Change', ['entities_id' => $entityId, 'name' => 'Other change ' . $this->getUniqueString(), 'content' => 'Other endpoint']);
+        $first = $this->createItem('Ticket', ['entities_id' => $entityId, 'name' => 'AAA linked ticket ' . $this->getUniqueString(), 'content' => 'First endpoint']);
+        $last = $this->createItem('Ticket', ['entities_id' => $entityId, 'name' => 'ZZZ linked ticket ' . $this->getUniqueString(), 'content' => 'Last endpoint']);
         $firstLink = $this->createItem('Change_Ticket', ['changes_id' => $change->getID(), 'tickets_id' => $first->getID()]);
         $lastLink = $this->createItem('Change_Ticket', ['changes_id' => $change->getID(), 'tickets_id' => $last->getID()]);
         $this->createItem('Change_Ticket', ['changes_id' => $otherChange->getID(), 'tickets_id' => $first->getID()]);
@@ -475,18 +477,34 @@ class Change extends DbTestCase
     {
         global $DB;
         $this->login();
-        $parent = $this->createItem('Change', ['name' => 'Planning linked parent ' . $this->getUniqueString(), 'content' => 'Planning tooltip']);
-        $ticket = $this->createItem('Ticket', ['name' => 'Planning linked ticket ' . $this->getUniqueString(), 'content' => 'Planning tooltip']);
+        $this->setEntity('_test_root_entity', true);
+        $entityId = (int)$_SESSION['glpiactive_entity'];
+        $parent = $this->createItem('Change', ['entities_id' => $entityId, 'name' => 'Planning linked parent ' . $this->getUniqueString(), 'content' => 'Planning tooltip']);
+        $ticket = $this->createItem('Ticket', ['entities_id' => $entityId, 'name' => 'Planning linked ticket ' . $this->getUniqueString(), 'content' => 'Planning tooltip']);
         $this->createItem('Change_Ticket', ['changes_id' => $parent->getID(), 'tickets_id' => $ticket->getID()]);
         $parentTask = $this->createItem('ChangeTask', ['changes_id' => $parent->getID(), 'content' => 'Parent planning row']);
         $ticketTask = $this->createItem('TicketTask', ['tickets_id' => $ticket->getID(), 'content' => 'Ticket planning row']);
         $connection = $DB->getDoctrineConnection();
         foreach ([$parentTask, $ticketTask] as $task) {
-            $connection->update($task->getTable(), ['begin' => '2030-02-03 04:05:06', 'end' => '2030-02-03 05:06:07'], ['id' => $task->getID()]);
+            $connection->update(
+                $task->getTable(),
+                [
+                    $connection->quoteIdentifier('begin') => '2030-02-03 04:05:06',
+                    $connection->quoteIdentifier('end') => '2030-02-03 05:06:07'
+                ],
+                ['id' => $task->getID()]
+            );
         }
         $this->output(static fn () => Change_Ticket::showForChange($parent))->contains('Ticket' . $ticket->getID() . 'planning');
         $this->output(static fn () => Change_Ticket::showForTicket($ticket))->contains('Change' . $parent->getID() . 'planning');
-        $connection->update($parentTask->getTable(), ['begin' => null, 'end' => null], ['id' => $parentTask->getID()]);
+        $connection->update(
+            $parentTask->getTable(),
+            [
+                $connection->quoteIdentifier('begin') => null,
+                $connection->quoteIdentifier('end') => null
+            ],
+            ['id' => $parentTask->getID()]
+        );
         $this->output(static fn () => Change_Ticket::showForTicket($ticket))->notContains('Change' . $parent->getID() . 'planning');
     }
 
@@ -495,10 +513,12 @@ class Change extends DbTestCase
     {
         global $DB;
         $this->login();
-        $problem = $this->createItem('Problem', ['name' => 'Parent linked problem ' . $this->getUniqueString(), 'content' => 'Linked tab parent']);
-        $other = $this->createItem('Problem', ['name' => 'Other linked problem ' . $this->getUniqueString(), 'content' => 'Other linked parent']);
-        $first = $this->createItem('Change', ['name' => 'AAA linked change ' . $this->getUniqueString(), 'content' => 'First linked change']);
-        $last = $this->createItem('Change', ['name' => 'ZZZ linked change ' . $this->getUniqueString(), 'content' => 'Last linked change']);
+        $this->setEntity('_test_root_entity', true);
+        $entityId = (int)$_SESSION['glpiactive_entity'];
+        $problem = $this->createItem('Problem', ['entities_id' => $entityId, 'name' => 'Parent linked problem ' . $this->getUniqueString(), 'content' => 'Linked tab parent']);
+        $other = $this->createItem('Problem', ['entities_id' => $entityId, 'name' => 'Other linked problem ' . $this->getUniqueString(), 'content' => 'Other linked parent']);
+        $first = $this->createItem('Change', ['entities_id' => $entityId, 'name' => 'AAA linked change ' . $this->getUniqueString(), 'content' => 'First linked change']);
+        $last = $this->createItem('Change', ['entities_id' => $entityId, 'name' => 'ZZZ linked change ' . $this->getUniqueString(), 'content' => 'Last linked change']);
         $firstLink = $this->createItem('Change_Problem', ['changes_id' => $first->getID(), 'problems_id' => $problem->getID()]);
         $lastLink = $this->createItem('Change_Problem', ['changes_id' => $last->getID(), 'problems_id' => $problem->getID()]);
         $otherLink = $this->createItem('Change_Problem', ['changes_id' => $first->getID(), 'problems_id' => $other->getID()]);
@@ -506,7 +526,14 @@ class Change extends DbTestCase
         $problemTask = $this->createItem('ProblemTask', ['problems_id' => $problem->getID(), 'content' => 'Problem tab planning']);
         $connection = $DB->getDoctrineConnection();
         foreach ([$changeTask, $problemTask] as $task) {
-            $connection->update($task->getTable(), ['begin' => '2030-02-03 04:05:06', 'end' => '2030-02-03 05:06:07'], ['id' => $task->getID()]);
+            $connection->update(
+                $task->getTable(),
+                [
+                    $connection->quoteIdentifier('begin') => '2030-02-03 04:05:06',
+                    $connection->quoteIdentifier('end') => '2030-02-03 05:06:07'
+                ],
+                ['id' => $task->getID()]
+            );
         }
         $connection->update('glpi_changes', ['date_mod' => null, 'closedate' => null, 'solvedate' => null,
             'begin_waiting_date' => null, 'time_to_resolve' => null], ['id' => $first->getID()]);
