@@ -1,5 +1,6 @@
 <?php
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\Entity\ItemOperatingSystem;
 use itsmng\Database\Orm;
@@ -89,8 +90,16 @@ class Item_OperatingSystem extends CommonDBRelation
     {
         global $DB;
 
-        return (new OperatingSystemAssignmentRepository(Orm::create($DB)))
-            ->forSubject($item->getType(), (int)$item->getID(), (string)($sort ?? 'glpi_items_operatingsystems.id'), (string)($order ?? 'ASC'));
+        return Orm::readPrepared(
+            $DB,
+            static function () use ($item, $sort, $order): array {
+                // Retain the repository's weak argument conversion after all four expressions.
+                $arguments = static fn (string $kind, int $id, string $sort, string $order): array => [$kind, $id, $sort, $order];
+                return $arguments($item->getType(), (int)$item->getID(), (string)($sort ?? 'glpi_items_operatingsystems.id'), (string)($order ?? 'ASC'));
+            },
+            static fn (EntityManager $manager, array $arguments): array =>
+                (new OperatingSystemAssignmentRepository($manager))->forSubject(...$arguments)
+        );
     }
 
     /**

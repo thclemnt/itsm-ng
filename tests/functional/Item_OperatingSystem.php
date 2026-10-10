@@ -34,11 +34,118 @@
 namespace tests\units;
 
 use DbTestCase;
+use Computer as ComputerModel;
+use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
+use Item_OperatingSystem as ItemOperatingSystemModel;
+use itsmng\Database\Entity\Computer as ComputerEntity;
+use itsmng\Database\Entity\Entity;
+use itsmng\Database\Entity\ItemOperatingSystem;
+use itsmng\Database\Entity\OperatingSystem as OperatingSystemEntity;
+use itsmng\Database\Entity\OperatingSystemArchitecture;
+use itsmng\Database\Entity\OperatingSystemServicePack;
+use itsmng\Database\Entity\OperatingSystemVersion;
+use itsmng\Database\Orm;
 
 /* Test for inc/item_operatingsystem.class.php */
 
 class Item_OperatingSystem extends DbTestCase
 {
+    public function testCompletedAssignmentRowsKeepLabelsOrderingAndLiveOwners(): void
+    {
+        global $DB;
+        $this->login();
+        $fixture = Orm::create($DB);
+        $root = $fixture->getReference(Entity::class, (int)getItemByTypeName('Entity', '_test_root_entity', true));
+        $computer = new ComputerEntity();
+        $computer->entities = $root;
+        $computer->name = 'OS row subject';
+        $fixture->persist($computer);
+        $other = new ComputerEntity();
+        $other->entities = $root;
+        $fixture->persist($other);
+        $labels = [];
+        foreach ([OperatingSystemEntity::class => 'Alpha OS', OperatingSystemVersion::class => 'Version label',
+            OperatingSystemArchitecture::class => 'Architecture label', OperatingSystemServicePack::class => 'Service pack label'] as $class => $name) {
+            $label = new $class();
+            $label->name = $name;
+            $fixture->persist($label);
+            $labels[$class] = $label;
+        }
+        $zulu = new OperatingSystemEntity();
+        $zulu->name = 'Zulu OS';
+        $fixture->persist($zulu);
+        $rows = [];
+        foreach ([$labels[OperatingSystemEntity::class], $zulu, null] as $index => $os) {
+            $row = new ItemOperatingSystem();
+            $row->entities = $root;
+            $row->itemtype = 'Computer';
+            $row->computer = $computer;
+            $row->operatingsystems = $os;
+            if ($index === 1) {
+                $row->operatingsystemversions = $labels[OperatingSystemVersion::class];
+                $row->operatingsystemarchitectures = $labels[OperatingSystemArchitecture::class];
+                $row->operatingsystemservicepacks = $labels[OperatingSystemServicePack::class];
+            }
+            $row->is_deleted = $index === 2;
+            $fixture->persist($row);
+            $rows[] = $row;
+        }
+        $unrelated = new ItemOperatingSystem();
+        $unrelated->entities = $root;
+        $unrelated->itemtype = 'Computer';
+        $unrelated->computer = $other;
+        $unrelated->operatingsystems = $labels[OperatingSystemEntity::class];
+        $fixture->persist($unrelated);
+        $fixture->flush();
+        $model = new ComputerModel();
+        $this->boolean($model->getFromDB($computer->id))->isTrue();
+        $expected = [
+            ['assocID' => $rows[0]->id, 'name' => 'Alpha OS', 'version' => null, 'architecture' => null, 'servicepack' => null],
+            ['assocID' => $rows[1]->id, 'name' => 'Zulu OS', 'version' => 'Version label', 'architecture' => 'Architecture label', 'servicepack' => 'Service pack label'],
+            ['assocID' => $rows[2]->id, 'name' => null, 'version' => null, 'architecture' => null, 'servicepack' => null],
+        ];
+        $this->array(ItemOperatingSystemModel::getFromItem($model))->isIdenticalTo($expected);
+        $ascending = [$expected[2], $expected[0], $expected[1]];
+        $this->array(ItemOperatingSystemModel::getFromItem($model, 'name', 'asc'))->isIdenticalTo($ascending);
+        $this->array(ItemOperatingSystemModel::getFromItem($model, '0', 'DESC'))->isIdenticalTo(array_reverse($ascending));
+        $missing = new ComputerModel();
+        $missing->fields['id'] = 0;
+        $this->array(ItemOperatingSystemModel::getFromItem($missing))->isEmpty();
+
+        $computer->name = 'Pending independent OS subject';
+        Orm::read($DB, function (EntityManager $owner) use ($model, $computer, $expected, $fixture): void {
+            $managed = $owner->find(ComputerEntity::class, $computer->id);
+            $managed->name = 'Pending outer OS subject';
+            $this->array(ItemOperatingSystemModel::getFromItem($model))->isIdenticalTo($expected);
+            $this->exception(static fn () => ItemOperatingSystemModel::getFromItem($model, 'unknown'))
+                ->isInstanceOf(InvalidArgumentException::class)->hasMessage('Unsupported OS sort field');
+            $this->boolean($owner->contains($managed))->isTrue();
+            $this->string($managed->name)->isIdenticalTo('Pending outer OS subject');
+            $this->boolean($fixture->contains($computer))->isTrue();
+            $this->string($computer->name)->isIdenticalTo('Pending independent OS subject');
+            $this->string($owner->getConnection()->fetchOne('SELECT name FROM glpi_computers WHERE id=?', [$computer->id]))->isIdenticalTo('OS row subject');
+        });
+        $this->exception(static fn () => ItemOperatingSystemModel::getFromItem($model, null, 'unknown'))
+            ->isInstanceOf(InvalidArgumentException::class)->hasMessage('Unsupported OS sort direction');
+        $this->array(ItemOperatingSystemModel::getFromItem($model))->isIdenticalTo($expected);
+
+        // Public Stringable sort conversion can perform another ordinary read.
+        $sort = new class ($this, $DB) {
+            public function __construct(private $test, private $database)
+            {
+            }
+            public function __toString(): string
+            {
+                Orm::read($this->database, function (EntityManager $manager): void {
+                    $this->test->boolean($manager->getConnection()->ownsApplicationEntityManager($manager))->isTrue();
+                });
+                return 'name';
+            }
+        };
+        $this->array(ItemOperatingSystemModel::getFromItem($model, $sort, 'ASC'))->isIdenticalTo($ascending);
+    }
+
     public function testGetTypeName()
     {
         $this->string(\Item_OperatingSystem::getTypeName())->isIdenticalTo('Item operating systems');
