@@ -4,15 +4,22 @@
 
 namespace itsmng\Database\Entity;
 
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_changetemplatepredefinedfields')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['create_options' => [], 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'engine' => 'InnoDB'])]
+#[SchemaOwner]
+#[SchemaIndex('changetemplates_id', ['changetemplates_id'], postgresqlName: 'glpi_changetemplatepredefinedfields_changetemplates_id')]
 class ChangeTemplatePredefinedField
 {
     #[ORM\ManyToOne(targetEntity: ChangeTemplate::class)]
-    #[ORM\JoinColumn(name: 'changetemplates_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'changetemplates_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', foreignKeyName: 'fk_changetemplatepredefinedfields_changetemplates_id', options: ['default' => '0'])]
     #[ApplicationManaged]
     public ?ChangeTemplate $changetemplates = null;
 

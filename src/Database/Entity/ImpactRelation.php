@@ -4,11 +4,19 @@
 
 namespace itsmng\Database\Entity;
 
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_impactrelations')]
-#[ORM\UniqueConstraint(name: 'impactrelations_unicity', columns: ['itemtype_source', 'items_id_source', 'itemtype_impacted', 'items_id_impacted'])]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['create_options' => [], 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'engine' => 'InnoDB'])]
+#[SchemaOwner]
+#[SchemaIndex('unicity', ['itemtype_source', 'items_id_source', 'itemtype_impacted', 'items_id_impacted'], unique: true, postgresqlName: 'glpi_impactrelations_unicity')]
+#[SchemaIndex('source_asset', ['itemtype_source', 'items_id_source'], postgresqlName: 'glpi_impactrelations_source_asset')]
+#[SchemaIndex('impacted_asset', ['itemtype_impacted', 'items_id_impacted'], postgresqlName: 'glpi_impactrelations_impacted_asset')]
 class ImpactRelation
 {
     #[ORM\Id]

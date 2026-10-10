@@ -4,10 +4,15 @@
 
 namespace itsmng\Database\Entity;
 
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_notificationchatconfigs')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
+#[SchemaOwner]
 class NotificationChatConfig
 {
     #[ORM\Id]

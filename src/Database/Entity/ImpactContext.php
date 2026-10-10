@@ -4,10 +4,18 @@
 
 namespace itsmng\Database\Entity;
 
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\BooleanStorage;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_impactcontexts')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['create_options' => [], 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'engine' => 'InnoDB'])]
+#[SchemaOwner]
 class ImpactContext
 {
     #[ORM\Id]
@@ -16,6 +24,7 @@ class ImpactContext
     public ?int $id = null;
 
     #[ORM\Column(name: '`positions`', type: 'text', nullable: false)]
+    #[PlatformOptions(PostgreSQLPlatform::class, ['default' => ''])]
     public string $positions = '';
 
     #[ORM\Column(name: '`zoom`', type: 'float', nullable: false, options: ['default' => '0'])]
@@ -37,9 +46,11 @@ class ImpactContext
     public string $impact_and_depends_color = '';
 
     #[ORM\Column(name: '`show_depends`', type: 'boolean', nullable: false, options: ['default' => true])]
+    #[BooleanStorage('smallint')]
     public bool $show_depends = true;
 
     #[ORM\Column(name: '`show_impact`', type: 'boolean', nullable: false, options: ['default' => true])]
+    #[BooleanStorage('smallint')]
     public bool $show_impact = true;
 
     #[ORM\Column(name: '`max_depth`', type: 'integer', nullable: false, options: ['default' => '5'])]

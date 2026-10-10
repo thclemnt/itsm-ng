@@ -5,11 +5,21 @@
 namespace itsmng\Database\Entity;
 
 use DateTimeInterface;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\BooleanStorage;
 use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_mailcollectors')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['create_options' => [], 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'engine' => 'InnoDB'])]
+#[SchemaOwner]
+#[SchemaIndex('is_active', ['is_active'], postgresqlName: 'glpi_mailcollectors_is_active')]
+#[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_mailcollectors_date_mod')]
+#[SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_mailcollectors_date_creation')]
 class MailCollector
 {
     #[ORM\Id]
@@ -30,6 +40,7 @@ class MailCollector
     public int $filesize_max = 2097152;
 
     #[ORM\Column(name: '`is_active`', type: 'boolean', nullable: false, options: ['default' => true])]
+    #[BooleanStorage('smallint')]
     public bool $is_active = true;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
@@ -52,6 +63,7 @@ class MailCollector
     public int $errors = 0;
 
     #[ORM\Column(name: '`use_mail_date`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage('smallint')]
     public bool $use_mail_date = false;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
@@ -62,8 +74,10 @@ class MailCollector
     public int $requester_field = 0;
 
     #[ORM\Column(name: '`add_cc_to_observer`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage('smallint')]
     public bool $add_cc_to_observer = false;
 
     #[ORM\Column(name: '`collect_only_unread`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage('smallint')]
     public bool $collect_only_unread = false;
 }

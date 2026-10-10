@@ -6,10 +6,21 @@ namespace itsmng\Database\Entity;
 
 use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Types\Types;
+use itsmng\Database\Mapping\BooleanStorage;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 use itsmng\Database\Mapping\NativeTimestamp;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_plugs')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
+#[SchemaOwner]
+#[SchemaIndex('name', ['name'], postgresqlName: 'glpi_plugs_name')]
+#[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_plugs_date_mod')]
+#[SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_plugs_date_creation')]
 class Plug
 {
     #[ORM\Id]

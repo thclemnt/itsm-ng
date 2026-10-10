@@ -6,6 +6,12 @@ namespace itsmng\Database\Entity;
 
 use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Types\Types;
+use itsmng\Database\Mapping\BooleanStorage;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
@@ -13,6 +19,25 @@ use itsmng\Database\Mapping\UserReferenceAction;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_problems')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
+#[SchemaOwner]
+#[SchemaIndex('name', ['name'], postgresqlName: 'glpi_problems_name')]
+#[SchemaIndex('entities_id', ['entities_id'], postgresqlName: 'glpi_problems_entities_id')]
+#[SchemaIndex('is_recursive', ['is_recursive'], postgresqlName: 'glpi_problems_is_recursive')]
+#[SchemaIndex('is_deleted', ['is_deleted'], postgresqlName: 'glpi_problems_is_deleted')]
+#[SchemaIndex('date', ['date'], postgresqlName: 'glpi_problems_date')]
+#[SchemaIndex('closedate', ['closedate'], postgresqlName: 'glpi_problems_closedate')]
+#[SchemaIndex('status', ['status'], postgresqlName: 'glpi_problems_status')]
+#[SchemaIndex('priority', ['priority'], postgresqlName: 'glpi_problems_priority')]
+#[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_problems_date_mod')]
+#[SchemaIndex('itilcategories_id', ['itilcategories_id'], postgresqlName: 'glpi_problems_itilcategories_id')]
+#[SchemaIndex('users_id_recipient', ['users_id_recipient'], postgresqlName: 'glpi_problems_users_id_recipient')]
+#[SchemaIndex('solvedate', ['solvedate'], postgresqlName: 'glpi_problems_solvedate')]
+#[SchemaIndex('urgency', ['urgency'], postgresqlName: 'glpi_problems_urgency')]
+#[SchemaIndex('impact', ['impact'], postgresqlName: 'glpi_problems_impact')]
+#[SchemaIndex('time_to_resolve', ['time_to_resolve'], postgresqlName: 'glpi_problems_time_to_resolve')]
+#[SchemaIndex('users_id_lastupdater', ['users_id_lastupdater'], postgresqlName: 'glpi_problems_users_id_lastupdater')]
+#[SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_problems_date_creation')]
 class Problem
 {
     #[ORM\Id]
@@ -24,14 +49,16 @@ class Problem
     public ?string $name = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
-    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', foreignKeyName: 'fk_problems_entities_id', options: ['default' => 0])]
     #[ReferencePolicy(ReferenceKind::RootEntity)]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $is_recursive = false;
 
     #[ORM\Column(name: '`is_deleted`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $is_deleted = false;
 
     #[ORM\Column(name: '`status`', type: 'integer', nullable: false, options: ['default' => '1'])]
@@ -61,12 +88,12 @@ class Problem
     public ?DateTimeInterface $time_to_resolve = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
-    #[ORM\JoinColumn(name: 'users_id_recipient', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'users_id_recipient', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_problems_users_id_recipient', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection, userPurge: UserReferenceAction::ReassignHistory)]
     public ?User $recipient = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
-    #[ORM\JoinColumn(name: 'users_id_lastupdater', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'users_id_lastupdater', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_problems_users_id_lastupdater', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection, userPurge: UserReferenceAction::ReassignHistory)]
     public ?User $lastUpdater = null;
 
@@ -80,7 +107,7 @@ class Problem
     public int $priority = 1;
 
     #[ORM\ManyToOne(targetEntity: ITILCategory::class)]
-    #[ORM\JoinColumn(name: 'itilcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'itilcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_problems_itilcategories_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?ITILCategory $itilcategories = null;
 

@@ -7,6 +7,12 @@ namespace itsmng\Database\Entity;
 use DateTimeInterface;
 use Doctrine\ORM\Event\PreUpdateEventArgs;
 use Doctrine\ORM\Mapping as ORM;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Types\Types;
+use itsmng\Database\Mapping\BooleanStorage;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
@@ -15,6 +21,15 @@ use itsmng\Database\Repository\DomainRepository;
 #[ORM\Entity]
 #[ORM\HasLifecycleCallbacks]
 #[ORM\Table(name: 'glpi_suppliers')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['create_options' => [], 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'engine' => 'InnoDB'])]
+#[SchemaOwner]
+#[SchemaIndex('name', ['name'], postgresqlName: 'glpi_suppliers_name')]
+#[SchemaIndex('entities_id', ['entities_id'], postgresqlName: 'glpi_suppliers_entities_id')]
+#[SchemaIndex('suppliertypes_id', ['suppliertypes_id'], postgresqlName: 'glpi_suppliers_suppliertypes_id')]
+#[SchemaIndex('is_deleted', ['is_deleted'], postgresqlName: 'glpi_suppliers_is_deleted')]
+#[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_suppliers_date_mod')]
+#[SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_suppliers_date_creation')]
+#[SchemaIndex('is_active', ['is_active'], postgresqlName: 'glpi_suppliers_is_active')]
 class Supplier
 {
     #[ORM\PreUpdate]
@@ -32,18 +47,19 @@ class Supplier
     public ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
-    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', foreignKeyName: 'fk_suppliers_entities_id', options: ['default' => '0'])]
     #[ReferencePolicy(ReferenceKind::RootEntity)]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $is_recursive = false;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
     public ?string $name = null;
 
     #[ORM\ManyToOne(targetEntity: SupplierType::class)]
-    #[ORM\JoinColumn(name: 'suppliertypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'suppliertypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_suppliers_suppliertypes_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?SupplierType $suppliertypes = null;
 
@@ -72,6 +88,7 @@ class Supplier
     public ?string $comment = null;
 
     #[ORM\Column(name: '`is_deleted`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $is_deleted = false;
 
     #[ORM\Column(name: '`fax`', type: 'string', length: 255, nullable: true)]
@@ -89,5 +106,6 @@ class Supplier
     public ?DateTimeInterface $date_creation = null;
 
     #[ORM\Column(name: '`is_active`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $is_active = false;
 }

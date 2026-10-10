@@ -5,13 +5,22 @@
 namespace itsmng\Database\Entity;
 
 use DateTimeInterface;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_apiclients')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['create_options' => [], 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'engine' => 'InnoDB'])]
+#[SchemaOwner]
+#[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_apiclients_date_mod')]
+#[SchemaIndex('is_active', ['is_active'], postgresqlName: 'glpi_apiclients_is_active')]
+#[SchemaIndex('IDX_D00BB2E4F4829AED', ['entities_id'])]
 class APIClient
 {
     #[ORM\Id]
@@ -20,7 +29,7 @@ class APIClient
     public ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
-    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0], foreignKeyName: 'fk_apiclients_entities_id')]
     #[ReferencePolicy(ReferenceKind::RootEntity)]
     public ?Entity $entities = null;
 

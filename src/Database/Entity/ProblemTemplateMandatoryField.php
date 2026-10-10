@@ -4,16 +4,23 @@
 
 namespace itsmng\Database\Entity;
 
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_problemtemplatemandatoryfields')]
-#[ORM\UniqueConstraint(name: 'problemtemplatemandatoryfields_unicity', columns: ['problemtemplates_id', 'num'])]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['create_options' => [], 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'engine' => 'InnoDB'])]
+#[SchemaOwner]
+#[SchemaIndex('unicity', ['problemtemplates_id', 'num'], unique: true, postgresqlName: 'glpi_problemtemplatemandatoryfields_unicity')]
+#[SchemaIndex('problemtemplates_id', ['problemtemplates_id'], postgresqlName: 'glpi_problemtemplatemandatoryfields_problemtemplates_id')]
 class ProblemTemplateMandatoryField
 {
     #[ORM\ManyToOne(targetEntity: ProblemTemplate::class)]
-    #[ORM\JoinColumn(name: 'problemtemplates_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'problemtemplates_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', foreignKeyName: 'fk_problemtemplatemandatoryfields_problemtemplates_id', options: ['default' => '0'])]
     #[ApplicationManaged]
     public ?ProblemTemplate $problemtemplates = null;
 

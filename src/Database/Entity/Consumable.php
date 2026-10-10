@@ -6,6 +6,12 @@ namespace itsmng\Database\Entity;
 
 use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Types\Types;
+use itsmng\Database\Mapping\BooleanStorage;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 use InvalidArgumentException;
 use itsmng\Database\Mapping\ApplicationManaged;
 use itsmng\Database\Mapping\DiscriminatedBy;
@@ -18,13 +24,24 @@ use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_consumables')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
+#[SchemaOwner]
+#[SchemaIndex('date_in', ['date_in'], postgresqlName: 'glpi_consumables_date_in')]
+#[SchemaIndex('date_out', ['date_out'], postgresqlName: 'glpi_consumables_date_out')]
+#[SchemaIndex('consumableitems_id', ['consumableitems_id'], postgresqlName: 'glpi_consumables_consumableitems_id')]
+#[SchemaIndex('entities_id', ['entities_id'], postgresqlName: 'glpi_consumables_entities_id')]
+#[SchemaIndex('item', ['itemtype', 'items_id'], postgresqlName: 'glpi_consumables_item')]
+#[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_consumables_date_mod')]
+#[SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_consumables_date_creation')]
+#[SchemaIndex('glpi_consumables_users_id', ['users_id'], postgresqlName: 'glpi_consumables_users_id')]
+#[SchemaIndex('glpi_consumables_groups_id', ['groups_id'], postgresqlName: 'glpi_consumables_groups_id')]
 #[ORM\HasLifecycleCallbacks]
 class Consumable implements LegacyInput
 {
     use ItemReference;
 
     #[ORM\ManyToOne(targetEntity: ConsumableItem::class)]
-    #[ORM\JoinColumn(name: 'consumableitems_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'consumableitems_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', foreignKeyName: 'fk_consumables_consumableitems_id', options: ['default' => '0'])]
     #[ApplicationManaged]
     public ?ConsumableItem $consumableitems = null;
 
@@ -34,7 +51,7 @@ class Consumable implements LegacyInput
     public ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
-    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', foreignKeyName: 'fk_consumables_entities_id', options: ['default' => 0])]
     #[ReferencePolicy(ReferenceKind::RootEntity)]
     #[ApplicationManaged]
     public ?Entity $entities = null;
@@ -49,13 +66,13 @@ class Consumable implements LegacyInput
     public ?string $itemtype = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
-    #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_consumables_users_id', options: ['default' => null])]
     #[DiscriminatedBy('itemtype', 'items_id', ['User'])]
     #[ApplicationManaged]
     public ?User $recipientUser = null;
 
     #[ORM\ManyToOne(targetEntity: Group::class)]
-    #[ORM\JoinColumn(name: 'groups_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'groups_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_consumables_groups_id', options: ['default' => null])]
     #[DiscriminatedBy('itemtype', 'items_id', ['Group'])]
     #[ApplicationManaged]
     public ?Group $recipientGroup = null;

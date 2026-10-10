@@ -6,13 +6,26 @@ namespace itsmng\Database\Entity;
 
 use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Types\Types;
+use itsmng\Database\Mapping\BooleanStorage;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_lineoperators')]
-#[ORM\UniqueConstraint(name: 'lineoperators_unicity', columns: ['mcc', 'mnc'])]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
+#[SchemaOwner]
+#[SchemaIndex('name', ['name'], postgresqlName: 'glpi_lineoperators_name')]
+#[SchemaIndex('entities_id', ['entities_id'], postgresqlName: 'glpi_lineoperators_entities_id')]
+#[SchemaIndex('is_recursive', ['is_recursive'], postgresqlName: 'glpi_lineoperators_is_recursive')]
+#[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_lineoperators_date_mod')]
+#[SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_lineoperators_date_creation')]
+#[SchemaIndex('unicity', ['mcc', 'mnc'], unique: true, postgresqlName: 'glpi_lineoperators_unicity')]
 class LineOperator
 {
     #[ORM\Id]
@@ -33,7 +46,7 @@ class LineOperator
     public ?int $mnc = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
-    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', foreignKeyName: 'fk_lineoperators_entities_id', options: ['default' => 0])]
     #[ReferencePolicy(ReferenceKind::RootEntity)]
     public ?Entity $entities = null;
 

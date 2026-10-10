@@ -6,52 +6,28 @@ namespace itsmng\Database;
 
 use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Schema;
-use Doctrine\DBAL\Schema\SchemaConfig;
-use Doctrine\DBAL\Schema\Table;
-use Doctrine\DBAL\Types\Type;
-use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
-use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Tools\SchemaTool;
 use InvalidArgumentException;
 use itsmng\Database\Mapping\BooleanStorage;
 use itsmng\Database\Mapping\DiscriminatedBy;
 use itsmng\Database\Mapping\DiscriminatorKey;
-use itsmng\Database\Mapping\ReferenceKind;
-use itsmng\Database\Mapping\SchemaIndex;
-use itsmng\Database\Mapping\SchemaOwner;
-use itsmng\Database\Migration\V220\Baseline as FrozenBaseline;
-use itsmng\Database\Migration\V220\DashboardOwnership;
-use itsmng\Database\Migration\V220\DisplayPreferenceOwnership;
-use itsmng\Database\Migration\V220\EntityParents;
-use itsmng\Database\Migration\V220\IdentifierColumns;
-use itsmng\Database\Migration\V220\InventoryUniqueness;
-use itsmng\Database\Migration\V220\KanbanOwnership;
-use itsmng\Database\Migration\V220\NetworkPortAggregateOrigins;
-use itsmng\Database\Migration\V220\NotificationRecipients;
-use itsmng\Database\Migration\V220\PlanningEventGuests;
-use itsmng\Database\Migration\V220\ServiceLevelCalendars;
-use itsmng\Database\Migration\V220\UnusedProjectTemplateReference;
-use itsmng\Database\Migration\V220\UserAuthenticationSources;
-use ReflectionClass;
 use ReflectionProperty;
 
-/** Current required schema for read-only inspection; installation replays frozen history. */
+/** Current required schema; installation separately replays immutable migration history. */
 final class BaselineSchema
 {
     private array $subjectPolicies = [];
 
-    /** Native policies from this same current-schema build, never a historical receipt. */
+    public function __construct(private readonly ?EntityManager $metadataManager = null)
+    {
+    }
+
+    /** Native policies from the same authoritative metadata snapshot as the current schema. */
     public function subjectPolicies(): array
     {
         return $this->subjectPolicies;
-    }
-
-    /** Optional mapping source for independently declared current schemas. */
-    public function __construct(private readonly ?EntityManager $metadataManager = null)
-    {
     }
 
     public function build(AbstractPlatform $platform, bool $foreignKeys = true): Schema
@@ -61,240 +37,59 @@ final class BaselineSchema
             throw new InvalidArgumentException('Current schema metadata must use the selected platform.');
         }
         $this->subjectPolicies = [];
-        // Frozen Baseline creates Schema() with the default configuration. Own
-        // that same configuration explicitly when composing current declarations.
-        $configuration = new SchemaConfig();
-        $schema = (new FrozenBaseline())->build($platform);
-        // Adoption retains this redundant historical index on old installations.
-        // It is optional beside the current numeric dashboard primary key.
-        $schema->getTable('glpi_dashboards')->dropIndex('dashboard_legacy_id');
-        foreach (['glpi_slms', 'glpi_slas', 'glpi_olas'] as $tableName) {
-            ServiceLevelCalendars::configureTable($schema->getTable($tableName));
-        }
-        foreach ([
-            ...EntityRegistry::relationsByPolicy(ReferenceKind::Audience),
-            ...EntityRegistry::relationsByPolicy(ReferenceKind::GlobalScope),
-        ] as $name => $relations) {
-            $schema->getTable($name)
-                ->getColumn('entities_id')
-                ->setNotnull(false)
-                ->setDefault(null);
-        }
-        DashboardOwnership::configureTable($schema->getTable('glpi_dashboards'), $platform);
-        $this->configureInheritedReferences($schema);
-        EntityParents::configureTable($schema->getTable('glpi_entities'));
-        NotificationRecipients::configureTable($schema->getTable('glpi_notificationtargets'));
-        UserAuthenticationSources::configureTable($schema->getTable('glpi_users'));
-        NetworkPortAggregateOrigins::configureSchema($schema);
-        PlanningEventGuests::configureSchema($schema);
-        UnusedProjectTemplateReference::configureTable($schema->getTable('glpi_projects'));
-        $ownedTables = $this->configureCurrentMappings($schema, $platform, $foreignKeys);
-        foreach (EntityRegistry::relationsByPolicy(ReferenceKind::EmptySelection) as $tableName => $relations) {
-            if (isset($ownedTables[$tableName])) {
-                continue;
-            }
-            foreach ($relations as $column => $target) {
-                $schema->getTable($tableName)
-                    ->getColumn($column)
-                    ->setNotnull(false)
-                    ->setDefault(null);
-            }
-        }
-        DisplayPreferenceOwnership::addToTable($schema->getTable('glpi_displaypreferences'), $platform);
-        KanbanOwnership::addToTable($schema->getTable('glpi_items_kanbans'), $platform);
-        InventoryUniqueness::addToTable(
-            $schema->getTable('glpi_items_operatingsystems'),
-            InventoryUniqueness::indexName($platform)
-        );
-        // Complete current tables bypass the remaining compatibility-only passes.
-        // Keep configuration, sequences and namespaces for the final composition.
-        $schema = new Schema(
-            array_values(array_filter($schema->getTables(), static fn (Table $table): bool => !isset($ownedTables[$table->getName()]))),
-            $schema->getSequences(),
-            $configuration,
-            $schema->getNamespaces(),
-        );
-        IdentifierColumns::configureSchema($schema);
-        if ($foreignKeys) {
-            (new ForeignKeys(array_diff_key(ForeignKeys::relations(), $ownedTables)))->addToSchema($schema);
-        }
-        return CurrentSchema::replaceTables($schema, $ownedTables, $configuration);
-    }
-
-    /** Current schema inspection uses entity policies; historical replay remains immutable. */
-    private function configureCurrentMappings(Schema $schema, AbstractPlatform $platform, bool $foreignKeys): array
-    {
-        // The explicit version keeps this owned metadata connection offline.
+        // Explicit version keeps standalone metadata inspection offline.
         $connection = $this->metadataManager?->getConnection()
             ?? DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
-        $em = $this->metadataManager ?? new EntityManager($connection, Orm::configuration($platform));
+        $manager = $this->metadataManager ?? new EntityManager($connection, Orm::configuration($platform));
         try {
-            $metadata = $em->getMetadataFactory()->getAllMetadata();
-            $nativeTimestamps = NativeTimestampSchema::declarations($metadata);
-            $mapped = (new SchemaTool($em))->getSchemaFromMetadata($metadata);
-            $declarations = [];
+            $metadata = $manager->getMetadataFactory()->getAllMetadata();
+            $schema = (new SchemaTool($manager))->getSchemaFromMetadata($metadata);
             foreach ($metadata as $entity) {
-                $declarations[$entity->getTableName()] = $entity;
+                $table = $schema->getTable($entity->getTableName());
+                // SchemaTool removes indexes covered by another constraint.
+                // Explicit declarations still own their physical names and storage.
+                foreach ($entity->table['indexes'] ?? [] as $name => $index) {
+                    if (!$table->hasIndex($name)) {
+                        $table->addIndex($index['columns'], $name, $index['flags'] ?? [], $index['options'] ?? []);
+                    }
+                }
+                if (!$foreignKeys) {
+                    foreach ($table->getForeignKeys() as $key) {
+                        $table->removeForeignKey($key->getName());
+                    }
+                }
                 foreach ($entity->fieldMappings as $property => $field) {
-                    foreach ((new ReflectionProperty($entity->name, $property))->getAttributes(BooleanStorage::class) as $attribute) {
-                        $attribute->newInstance()->configure($mapped->getTable($entity->getTableName())->getColumn($field->columnName), $platform, $field);
+                    $declaration = new ReflectionProperty($entity->name, $property);
+                    foreach ($declaration->getAttributes(BooleanStorage::class) as $attribute) {
+                        $attribute->newInstance()->configure($table->getColumn($field->columnName), $platform, $field);
+                    }
+                    foreach ($declaration->getAttributes(DiscriminatorKey::class) as $attribute) {
+                        $key = $attribute->newInstance();
+                        if ($key->fallbackProperty !== null) {
+                            continue;
+                        }
+                        $discriminators = [];
+                        foreach ($entity->associationMappings as $association => $mapping) {
+                            foreach ((new ReflectionProperty($entity->name, $association))->getAttributes(DiscriminatedBy::class) as $binding) {
+                                $binding = $binding->newInstance();
+                                if ($binding->legacyColumn === $field->columnName) {
+                                    $discriminators[] = $entity->getColumnName($binding->discriminator);
+                                }
+                            }
+                        }
+                        $this->subjectPolicies[$entity->getTableName()][$field->columnName] = [
+                            'projection' => $key->projectionExpression($platform, $entity, $property),
+                            'constraint' => $key->subjectConstraintName($entity),
+                            'check' => $key->subjectCheckExpression($platform, $entity, $property),
+                            'discriminators' => array_values(array_unique($discriminators)),
+                        ];
                     }
                 }
             }
-            $ownedTables = [];
-            foreach ($mapped->getTables() as $declaration) {
-                $entity = $declarations[$declaration->getName()];
-                if ((new ReflectionClass($entity->name))->getAttributes(SchemaOwner::class) !== []) {
-                    $owned = clone $declaration;
-                    if (!$foreignKeys) {
-                        foreach ($owned->getForeignKeys() as $foreignKey) {
-                            $owned->removeForeignKey($foreignKey->getName());
-                        }
-                    }
-                    $ownedTables[$declaration->getName()] = $owned;
-                }
-            }
-            foreach ($mapped->getTables() as $declaration) {
-                if (isset($ownedTables[$declaration->getName()])) {
-                    continue;
-                }
-                $table = $schema->getTable($declaration->getName());
-                $entity = $declarations[$declaration->getName()];
-                $ownedIndexes = $ownedIndexColumns = [];
-                foreach ((new ReflectionClass($entity->name))->getAttributes(SchemaIndex::class) as $attribute) {
-                    $index = $attribute->newInstance();
-                    $ownedIndexes[] = $index->name($platform);
-                    array_push($ownedIndexColumns, ...$index->columns);
-                }
-                $subjectColumns = [];
-                NativeTimestampSchema::replaceOwnedColumns($table, $declaration, $nativeTimestamps[$entity->getTableName()] ?? []);
-                $ownedKeys = [];
-                foreach ($entity->fieldMappings as $property => $field) {
-                    $name = trim($field->columnName, '`"');
-                    // An explicitly index-owned read-only generated property owns
-                    // its native declaration. Other compatibility subjects retain
-                    // their platform-aware builders below.
-                    if (in_array($name, $ownedIndexColumns, true)
-                        && $field->notInsertable && $field->notUpdatable
-                        && $field->generated === ClassMetadata::GENERATED_ALWAYS
-                        && $field->columnDefinition !== null) {
-                        $ownedKeys[] = $name;
-                        continue;
-                    }
-                    if ($field->notInsertable && $field->notUpdatable) {
-                        // Compatibility projections retain their platform-aware
-                        // metadata builders below, including legacy index names.
-                        $subjectColumns[] = trim($field->columnName, '`"');
-                    }
-                }
-                foreach ($entity->associationMappings as $property => $association) {
-                    if ((new ReflectionProperty($entity->name, $property))->getAttributes(DiscriminatedBy::class)) {
-                        foreach ($association->joinColumns as $join) {
-                            $subjectColumns[] = $join->name;
-                        }
-                    }
-                }
-                $added = [];
-                foreach ($declaration->getColumns() as $column) {
-                    $owned = in_array($column->getName(), $ownedKeys, true);
-                    if ((!$owned && $table->hasColumn($column->getName())) || in_array($column->getName(), $subjectColumns, true)) {
-                        continue;
-                    }
-                    $options = $column->toArray(true);
-                    unset($options['name'], $options['typeName']);
-                    $options = array_filter($options, static fn ($name) => method_exists($column, 'set' . $name), ARRAY_FILTER_USE_KEY);
-                    if ($table->hasColumn($column->getName())) {
-                        $table->modifyColumn($column->getName(), ['type' => $column->getType()] + $options);
-                    } else {
-                        $table->addColumn($column->getName(), Type::lookupName($column->getType()), $options);
-                    }
-                    $added[] = $column->getName();
-                }
-                // Entity-owned physical indexes can also replace an old index
-                // on existing fields, without consulting migration table lists.
-                foreach ($declaration->getIndexes() as $index) {
-                    $explicit = isset($entity->table['indexes'][$index->getName()]) || isset($entity->table['uniqueConstraints'][$index->getName()]);
-                    $owned = in_array($index->getName(), $ownedIndexes, true);
-                    if ($owned || ($explicit && array_intersect($added, $index->getColumns()) && !$table->hasIndex($index->getName()))) {
-                        if ($owned && $table->hasIndex($index->getName())) {
-                            $table->dropIndex($index->getName());
-                        }
-                        $index->isUnique()
-                            ? $table->addUniqueIndex($index->getColumns(), $index->getName(), $index->getOptions())
-                            : $table->addIndex($index->getColumns(), $index->getName(), $index->getFlags(), $index->getOptions());
-                    }
-                }
-            }
-            // Native policies use the same metadata snapshot as columns and indexes.
-            $this->configureRequiredSubjects($schema, $platform, $metadata, $ownedTables);
-            return $ownedTables;
+            return $schema;
         } finally {
             if ($this->metadataManager === null) {
                 $connection->close();
-            }
-        }
-    }
-
-    /** Current schema inspection uses entity policies; historical replay remains immutable. */
-    private function configureInheritedReferences(Schema $schema): void
-    {
-        foreach (array_keys(EntityRegistry::tables()) as $name) {
-            foreach (EntityRegistry::references($name) as $reference) {
-                if ($reference->policy->kind !== ReferenceKind::Inherited) {
-                    continue;
-                }
-                $table = $schema->getTable($name);
-                $table->getColumn($reference->column)
-                    ->setNotnull(false)
-                    ->setDefault(null);
-                $table->addColumn('`' . $reference->modeColumn . '`', Types::STRING, [
-                    'length' => $reference->modeLength,
-                    'notnull' => true,
-                    'default' => $reference->defaultMode->value,
-                ]);
-            }
-        }
-    }
-
-    /** @param list<ClassMetadata> $declarations One current-build metadata snapshot. */
-    private function configureRequiredSubjects(Schema $schema, AbstractPlatform $platform, array $declarations, array $ownedTables): void
-    {
-        foreach ($declarations as $metadata) {
-            $owned = isset($ownedTables[$metadata->getTableName()]);
-            foreach ($metadata->fieldMappings as $property => $field) {
-                // Logical flags live on their entity properties. MySQL keeps
-                // historical integer storage; PostgreSQL uses native booleans.
-                if (!$owned && $platform instanceof PostgreSQLPlatform && $field->type === Types::BOOLEAN) {
-                    $column = $schema->getTable($metadata->getTableName())->getColumn($field->columnName);
-                    $column->setType(Type::getType(Types::BOOLEAN));
-                    if ($column->getDefault() !== null) {
-                        $column->setDefault((bool)(int)$column->getDefault());
-                    }
-                }
-                foreach ((new ReflectionProperty($metadata->name, $property))->getAttributes(DiscriminatorKey::class) as $attribute) {
-                    $key = $attribute->newInstance();
-                    if ($key->fallbackProperty !== null) {
-                        continue;
-                    }
-                    if (!$owned) {
-                        $key->configureSubjectTable($schema->getTable($metadata->getTableName()), $platform, $metadata, $property);
-                    }
-                    $discriminators = [];
-                    foreach ($metadata->associationMappings as $association => $mapping) {
-                        foreach ((new ReflectionProperty($metadata->name, $association))->getAttributes(DiscriminatedBy::class) as $binding) {
-                            $binding = $binding->newInstance();
-                            if ($binding->legacyColumn === $metadata->getColumnName($property)) {
-                                $discriminators[] = $metadata->getColumnName($binding->discriminator);
-                            }
-                        }
-                    }
-                    $this->subjectPolicies[$metadata->getTableName()][$metadata->getColumnName($property)] = [
-                        'projection' => $key->projectionExpression($platform, $metadata, $property),
-                        'constraint' => $key->subjectConstraintName($metadata),
-                        'check' => $key->subjectCheckExpression($platform, $metadata, $property),
-                        'discriminators' => array_values(array_unique($discriminators)),
-                    ];
-                }
             }
         }
     }

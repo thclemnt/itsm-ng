@@ -76,6 +76,12 @@ use itsmng\Database\Entity\MonitorModel;
 use itsmng\Database\Entity\MonitorType;
 use itsmng\Database\Entity\NetworkEquipmentModel;
 use itsmng\Database\Entity\NetworkEquipmentType;
+use itsmng\Database\Entity\Notification;
+use itsmng\Database\Entity\NotificationChatConfig;
+use itsmng\Database\Entity\NotificationTarget;
+use itsmng\Database\Entity\NotificationNotificationTemplate;
+use itsmng\Database\Entity\NotificationTemplate;
+use itsmng\Database\Entity\NotificationTemplateTranslation;
 use itsmng\Database\Entity\OidcConfig;
 use itsmng\Database\Entity\OidcMapping;
 use itsmng\Database\Entity\OidcUser;
@@ -99,6 +105,7 @@ use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\SchemaOwner;
 use itsmng\Database\Migration\V220\Baseline;
 use itsmng\Database\Migration\V220\IdentifierColumns;
+use itsmng\Database\Migration\V220\NotificationRecipients;
 use itsmng\Database\NativeSubjectSchema;
 use itsmng\Database\Orm as ApplicationOrm;
 use itsmng\Database\Type\ClockTimeType;
@@ -284,6 +291,14 @@ class CurrentSchema extends test
         return [
             ['glpi_crontasks', 16, 5, [], []],
             ['glpi_configs', 4, 2, [], []],
+            ['glpi_notificationchatconfigs', 5, 1, [], []],
+            ['glpi_notificationtargets', 7, 5, [], ['notifications_id' => 'glpi_notifications', 'groups_id' => 'glpi_groups', 'profiles_id' => 'glpi_profiles']],
+            ['glpi_notifications', 11, 8, [], ['`entities_id`' => 'glpi_entities']],
+            ['glpi_notificationtemplates', 7, 5, [], []],
+            ['glpi_notificationtemplatetranslations', 6, 2, [], ['`notificationtemplates_id`' => 'glpi_notificationtemplates']],
+            ['glpi_notifications_notificationtemplates', 4, 5, [], [
+                '`notifications_id`' => 'glpi_notifications', '`notificationtemplates_id`' => 'glpi_notificationtemplates',
+            ]],
             ['glpi_oidc_config', 11, 1, [], []],
             ['glpi_oidc_mapping', 10, 1, [], []],
             ['glpi_oidc_users', 3, 2, [], ['user_id' => 'glpi_users']],
@@ -375,6 +390,17 @@ class CurrentSchema extends test
                 if ($table === 'glpi_oidc_users') {
                     $historical->addUniqueIndex(['user_id'], 'oidc_users_user');
                 }
+                if ($table === 'glpi_notificationtargets') {
+                    NotificationRecipients::configureTable($historical);
+                    // Frozen SQL uses unquoted names and an equality for profile type.
+                    // The current metadata uses provider quoting and IN for every branch.
+                    // Assert the independently spelled equivalent expression below as well.
+                    $quote = $platform->quoteIdentifier(...);
+                    $expression = 'BIGINT GENERATED ALWAYS AS (CASE WHEN ' . $quote('type')
+                        . ' IN (3, 5, 6) THEN ' . $quote('groups_id') . ' WHEN ' . $quote('type')
+                        . ' IN (2) THEN ' . $quote('profiles_id') . ' ELSE ' . $quote('recipient_code') . ' END) STORED';
+                    $historical->getColumn('items_id')->setColumnDefinition($expression);
+                }
                 // Already-installed current policies, independent of the new owner declaration.
                 foreach ($emptyReferences as $column) {
                     $historical->getColumn($column)->setNotnull(false)->setDefault(null);
@@ -434,6 +460,84 @@ class CurrentSchema extends test
                 $this->array($current->getOptions())->isEqualTo($historical->getOptions());
             }
             $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozenSql);
+            $this->boolean($manager->getConnection()->isConnected())->isFalse();
+        }
+    }
+
+    public function testNotificationDeclarationsOwnCurrentSchemaWithoutChangingHistory(): void
+    {
+        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+            $manager = $this->manager($platform);
+            $frozen = (new Baseline())->build($platform)->toSql($platform);
+            $notification = $manager->getClassMetadata(Notification::class);
+            $notification->fieldMappings['event']->length = 173;
+            $notification->fieldMappings['is_active']->options['default'] = true;
+            $notification->associationMappings['entities']->joinColumns[0]->nullable = true;
+            $notification->associationMappings['entities']->joinColumns[0]->options['default'] = null;
+            $template = $manager->getClassMetadata(NotificationTemplate::class);
+            $template->fieldMappings['name']->length = 171;
+            unset($template->fieldMappings['css']);
+            $translation = $manager->getClassMetadata(NotificationTemplateTranslation::class);
+            $translation->fieldMappings['subject']->length = 177;
+            $translation->fieldMappings['subject']->nullable = true;
+            $translation->fieldMappings['subject']->options['default'] = null;
+            $binding = $manager->getClassMetadata(NotificationNotificationTemplate::class);
+            $binding->associationMappings['notificationtemplates']->joinColumns[0]->nullable = true;
+            $binding->associationMappings['notificationtemplates']->joinColumns[0]->options['default'] = null;
+            $unique = $platform instanceof PostgreSQLPlatform ? 'glpi_notifications_notificationtemplates_unicity' : 'unicity';
+            unset($binding->table['uniqueConstraints'][$unique]);
+
+            $chat = $manager->getClassMetadata(NotificationChatConfig::class);
+            $chat->fieldMappings['hookurl']->length = 181;
+            unset($chat->fieldMappings['value']);
+            $target = $manager->getClassMetadata(NotificationTarget::class);
+            $target->fieldMappings['recipient_code']->options['default'] = 7;
+            $target->associationMappings['notifications']->joinColumns[0]->nullable = true;
+            $target->associationMappings['notifications']->joinColumns[0]->options['default'] = null;
+            $itemsIndex = $platform instanceof PostgreSQLPlatform ? 'glpi_notificationtargets_items' : 'items';
+            unset($target->table['indexes'][$itemsIndex]);
+
+            $changed = (new BaselineSchema($manager))->build($platform);
+            $withoutKeys = (new BaselineSchema($manager))->build($platform, false);
+            $table = $changed->getTable('glpi_notificationchatconfigs');
+            $this->integer($table->getColumn('hookurl')->getLength())->isIdenticalTo(181);
+            $this->boolean($table->hasColumn('value'))->isFalse();
+            $table = $changed->getTable('glpi_notificationtargets');
+            $this->variable($table->getColumn('recipient_code')->getDefault())->isEqualTo(7);
+            $this->boolean($table->getColumn('notifications_id')->getNotnull())->isFalse();
+            $this->variable($table->getColumn('notifications_id')->getDefault())->isNull();
+            $this->boolean($table->hasIndex($itemsIndex))->isFalse();
+            $this->string($table->getColumn('items_id')->getColumnDefinition())
+                ->isIdenticalTo($target->fieldMappings['items_id']->columnDefinition);
+            $table = $changed->getTable('glpi_notifications');
+            $this->integer($table->getColumn('event')->getLength())->isIdenticalTo(173);
+            $this->boolean($table->getColumn('entities_id')->getNotnull())->isFalse();
+            $this->variable($table->getColumn('entities_id')->getDefault())->isNull();
+            $this->variable($table->getColumn('is_active')->getDefault())
+                ->isIdenticalTo($platform instanceof PostgreSQLPlatform ? true : '1');
+            $this->string(Type::lookupName($table->getColumn('is_active')->getType()))
+                ->isIdenticalTo($platform instanceof PostgreSQLPlatform ? Types::BOOLEAN : Types::SMALLINT);
+            $table = $changed->getTable('glpi_notificationtemplates');
+            $this->integer($table->getColumn('name')->getLength())->isIdenticalTo(171);
+            $this->boolean($table->hasColumn('css'))->isFalse();
+            $subject = $changed->getTable('glpi_notificationtemplatetranslations')->getColumn('subject');
+            $this->integer($subject->getLength())->isIdenticalTo(177);
+            $this->boolean($subject->getNotnull())->isFalse();
+            $this->variable($subject->getDefault())->isNull();
+            $table = $changed->getTable('glpi_notifications_notificationtemplates');
+            $this->boolean($table->getColumn('notificationtemplates_id')->getNotnull())->isFalse();
+            $this->variable($table->getColumn('notificationtemplates_id')->getDefault())->isNull();
+            $this->boolean($table->hasIndex($unique))->isFalse();
+            foreach ([Notification::class, NotificationTemplate::class, NotificationTemplateTranslation::class,
+                NotificationNotificationTemplate::class, NotificationChatConfig::class, NotificationTarget::class] as $class) {
+                $metadata = $manager->getClassMetadata($class);
+                $this->integer(count((new ReflectionClass($class))->getAttributes(SchemaOwner::class)))->isIdenticalTo(1);
+                $owning = array_filter($metadata->associationMappings, static fn ($mapping): bool => $mapping->isToOneOwningSide());
+                $this->integer(count($changed->getTable($metadata->getTableName())->getForeignKeys()))
+                    ->isIdenticalTo(count($owning));
+                $this->array($withoutKeys->getTable($metadata->getTableName())->getForeignKeys())->isEmpty();
+            }
+            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
             $this->boolean($manager->getConnection()->isConnected())->isFalse();
         }
     }
@@ -995,6 +1099,67 @@ class CurrentSchema extends test
         }
     }
 
+    public function testIdentityAndQueueMetadataOwnCurrentTables(): void
+    {
+        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+            $manager = $this->manager($platform);
+            $frozen = (new Baseline())->build($platform)->toSql($platform);
+            $classes = ['QueuedNotification', 'QueuedChat', 'User', 'UserEmail', 'UserTitle', 'AuthLDAP',
+                'AuthLdapReplicate', 'AuthMail', 'Group', 'GroupMembership', 'Contact', 'ContactSupplier', 'Supplier'];
+            $cases = [];
+            foreach ($classes as $shortName) {
+                $class = 'itsmng\\Database\\Entity\\' . $shortName;
+                $metadata = $manager->getClassMetadata($class);
+                $this->integer(count((new ReflectionClass($class))->getAttributes(SchemaOwner::class)))->isIdenticalTo(1);
+                $property = isset($metadata->fieldMappings['name']) ? 'name' : 'id';
+                $metadata->fieldMappings[$property]->options['comment'] = 'Current identity owner';
+                $indexes = array_keys($metadata->table['indexes'] ?? []);
+                $index = $indexes[0];
+                unset($metadata->table['indexes'][$index]);
+                $metadata->table['indexes']['current_identity_' . strtolower($shortName)] = ['columns' => ['id']];
+                $cases[] = [$metadata, $property, $index, $shortName];
+            }
+            $current = (new BaselineSchema($manager))->build($platform);
+            $withoutKeys = (new BaselineSchema($manager))->build($platform, false);
+            $freshManager = $this->manager($platform);
+            $fresh = (new BaselineSchema($freshManager))->build($platform);
+            foreach ($cases as [$metadata, $property, $index, $shortName]) {
+                $table = $current->getTable($metadata->getTableName());
+                $this->string($table->getColumn($metadata->getColumnName($property))->getComment())->isIdenticalTo('Current identity owner');
+                $this->boolean($table->hasIndex($index))->isFalse();
+                $this->boolean($fresh->getTable($metadata->getTableName())->hasIndex($index))->isTrue();
+                $this->boolean($table->hasIndex('current_identity_' . strtolower($shortName)))->isTrue();
+                $this->array($withoutKeys->getTable($metadata->getTableName())->getForeignKeys())->isEmpty();
+            }
+            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
+            $this->boolean($manager->getConnection()->isConnected())->isFalse();
+            $this->boolean($freshManager->getConnection()->isConnected())->isFalse();
+        }
+    }
+
+    public function testProviderFieldDimensionsPreserveHydrationAndStayOutOfPhysicalOptions(): void
+    {
+        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+            $driver = new AttributeDriver([], $platform);
+            $metadata = new \Doctrine\ORM\Mapping\ClassMetadata(ProviderFieldDimensions::class);
+            $driver->loadMetadataForClass(ProviderFieldDimensions::class, $metadata);
+            $body = $metadata->fieldMappings['body'];
+            $word = $metadata->fieldMappings['word'];
+            $this->variable($body->length)->isIdenticalTo($platform instanceof PostgreSQLPlatform ? null : 4294967295);
+            $this->string($word->type)->isIdenticalTo($platform instanceof PostgreSQLPlatform ? Types::BIGINT : Types::INTEGER);
+            $this->boolean(array_key_exists('length', $body->options ?? []))->isFalse();
+            $this->boolean(array_key_exists('type', $word->options ?? []))->isFalse();
+            $this->string((new ReflectionClass(ProviderFieldDimensions::class))->getProperty('word')->getType()->getName())->isIdenticalTo('int');
+        }
+        foreach ([ProviderAssociationDimension::class, InvalidProviderFieldLength::class,
+            InvalidProviderHydrationType::class] as $class) {
+            $driver = new AttributeDriver([], new PostgreSQLPlatform());
+            $metadata = new \Doctrine\ORM\Mapping\ClassMetadata($class);
+            $this->exception(static fn () => $driver->loadMetadataForClass($class, $metadata))
+                ->isInstanceOf(\LogicException::class);
+        }
+    }
+
     public function testProviderColumnOptionsRejectAmbiguousOrNonOwningProperties(): void
     {
         $driver = new AttributeDriver([], new PostgreSQLPlatform());
@@ -1393,4 +1558,57 @@ final class CurrentSchemaMetadataFactory extends ClassMetadataFactory
         ++$this->enumerations;
         return parent::getAllMetadata();
     }
+}
+
+#[ORM\Entity]
+class ProviderFieldDimensions
+{
+    #[ORM\Id]
+    #[ORM\Column(type: 'integer')]
+    public int $id;
+
+    #[ORM\Column(type: 'text', length: 4294967295, nullable: true)]
+    #[PlatformOptions(PostgreSQLPlatform::class, ['length' => null])]
+    public ?string $body = null;
+
+    #[ORM\Column(type: 'bigint')]
+    #[PlatformOptions(\Doctrine\DBAL\Platforms\AbstractMySQLPlatform::class, ['type' => Types::INTEGER, 'unsigned' => true])]
+    public int $word = 0;
+}
+
+#[ORM\Entity]
+class ProviderAssociationDimension
+{
+    #[ORM\Id]
+    #[ORM\Column(type: 'integer')]
+    public int $id;
+
+    #[ORM\ManyToOne(targetEntity: CronTask::class)]
+    #[ORM\JoinColumn(name: 'task_id')]
+    #[PlatformOptions(PostgreSQLPlatform::class, ['length' => 17])]
+    public ?CronTask $invalid = null;
+}
+
+#[ORM\Entity]
+class InvalidProviderFieldLength
+{
+    #[ORM\Id]
+    #[ORM\Column(type: 'integer')]
+    public int $id;
+
+    #[ORM\Column(type: 'string')]
+    #[PlatformOptions(PostgreSQLPlatform::class, ['length' => -1])]
+    public string $invalid = '';
+}
+
+#[ORM\Entity]
+class InvalidProviderHydrationType
+{
+    #[ORM\Id]
+    #[ORM\Column(type: 'integer')]
+    public int $id;
+
+    #[ORM\Column(type: 'integer')]
+    #[PlatformOptions(PostgreSQLPlatform::class, ['type' => Types::STRING])]
+    public int $invalid = 0;
 }

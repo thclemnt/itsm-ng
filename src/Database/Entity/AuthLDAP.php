@@ -6,10 +6,23 @@ namespace itsmng\Database\Entity;
 
 use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Types\Types;
+use itsmng\Database\Mapping\BooleanStorage;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 use itsmng\Database\Mapping\NativeTimestamp;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_authldaps')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['create_options' => [], 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'engine' => 'InnoDB'])]
+#[SchemaOwner]
+#[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_authldaps_date_mod')]
+#[SchemaIndex('is_default', ['is_default'], postgresqlName: 'glpi_authldaps_is_default')]
+#[SchemaIndex('is_active', ['is_active'], postgresqlName: 'glpi_authldaps_is_active')]
+#[SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_authldaps_date_creation')]
+#[SchemaIndex('sync_field', ['sync_field'], postgresqlName: 'glpi_authldaps_sync_field')]
 class AuthLDAP
 {
     #[ORM\Id]
@@ -42,6 +55,7 @@ class AuthLDAP
     public ?string $sync_field = null;
 
     #[ORM\Column(name: '`use_tls`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $use_tls = false;
 
     #[ORM\Column(name: '`group_field`', type: 'string', length: 255, nullable: true)]
@@ -78,9 +92,10 @@ class AuthLDAP
     public ?string $comment_field = null;
 
     #[ORM\Column(name: '`use_dn`', type: 'boolean', nullable: false, options: ['default' => true])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $use_dn = true;
 
-    #[ORM\Column(name: '`time_offset`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    #[ORM\Column(name: '`time_offset`', type: 'integer', nullable: false, options: ['default' => '0', 'comment' => 'in seconds'])]
     public int $time_offset = 0;
 
     #[ORM\Column(name: '`deref_option`', type: 'integer', nullable: false, options: ['default' => '0'])]
@@ -109,9 +124,11 @@ class AuthLDAP
     public ?string $comment = null;
 
     #[ORM\Column(name: '`is_default`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $is_default = false;
 
     #[ORM\Column(name: '`is_active`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $is_active = false;
 
     #[ORM\Column(name: '`rootdn_passwd`', type: 'string', length: 255, nullable: true)]
@@ -142,6 +159,7 @@ class AuthLDAP
     public int $ldap_maxlimit = 0;
 
     #[ORM\Column(name: '`can_support_pagesize`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $can_support_pagesize = false;
 
     #[ORM\Column(name: '`picture_field`', type: 'string', length: 255, nullable: true)]

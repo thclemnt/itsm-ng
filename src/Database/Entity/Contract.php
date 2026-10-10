@@ -7,6 +7,12 @@ namespace itsmng\Database\Entity;
 use DateTimeImmutable;
 use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Types\Types;
+use itsmng\Database\Mapping\BooleanStorage;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 use InvalidArgumentException;
 use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
@@ -15,6 +21,19 @@ use itsmng\Database\Repository\ContractRepository;
 
 #[ORM\Entity(repositoryClass: ContractRepository::class)]
 #[ORM\Table(name: 'glpi_contracts')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
+#[SchemaOwner]
+#[SchemaIndex('begin_date', ['begin_date'], postgresqlName: 'glpi_contracts_begin_date')]
+#[SchemaIndex('name', ['name'], postgresqlName: 'glpi_contracts_name')]
+#[SchemaIndex('contracttypes_id', ['contracttypes_id'], postgresqlName: 'glpi_contracts_contracttypes_id')]
+#[SchemaIndex('entities_id', ['entities_id'], postgresqlName: 'glpi_contracts_entities_id')]
+#[SchemaIndex('is_deleted', ['is_deleted'], postgresqlName: 'glpi_contracts_is_deleted')]
+#[SchemaIndex('use_monday', ['use_monday'], postgresqlName: 'glpi_contracts_use_monday')]
+#[SchemaIndex('use_saturday', ['use_saturday'], postgresqlName: 'glpi_contracts_use_saturday')]
+#[SchemaIndex('alert', ['alert'], postgresqlName: 'glpi_contracts_alert')]
+#[SchemaIndex('states_id', ['states_id'], postgresqlName: 'glpi_contracts_states_id')]
+#[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_contracts_date_mod')]
+#[SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_contracts_date_creation')]
 class Contract
 {
     /** Contract months clamp to the anniversary day in the target month. */
@@ -62,11 +81,12 @@ class Contract
     public ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
-    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', foreignKeyName: 'fk_contracts_entities_id', options: ['default' => 0])]
     #[ReferencePolicy(ReferenceKind::RootEntity)]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $is_recursive = false;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
@@ -76,7 +96,7 @@ class Contract
     public ?string $num = null;
 
     #[ORM\ManyToOne(targetEntity: ContractType::class)]
-    #[ORM\JoinColumn(name: 'contracttypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'contracttypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_contracts_contracttypes_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?ContractType $contracttypes = null;
 
@@ -102,6 +122,7 @@ class Contract
     public ?string $accounting_number = null;
 
     #[ORM\Column(name: '`is_deleted`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $is_deleted = false;
 
     #[ORM\Column(name: '`week_begin_hour`', type: 'itsm_clock_time', nullable: false, options: ['default' => '00:00:00'])]
@@ -117,6 +138,7 @@ class Contract
     public string $saturday_end_hour = '00:00:00';
 
     #[ORM\Column(name: '`use_saturday`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $use_saturday = false;
 
     #[ORM\Column(name: '`monday_begin_hour`', type: 'itsm_clock_time', nullable: false, options: ['default' => '00:00:00'])]
@@ -126,6 +148,7 @@ class Contract
     public string $monday_end_hour = '00:00:00';
 
     #[ORM\Column(name: '`use_monday`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $use_monday = false;
 
     #[ORM\Column(name: '`max_links_allowed`', type: 'integer', nullable: false, options: ['default' => '0'])]
@@ -141,10 +164,11 @@ class Contract
     public ?string $template_name = null;
 
     #[ORM\Column(name: '`is_template`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $is_template = false;
 
     #[ORM\ManyToOne(targetEntity: State::class)]
-    #[ORM\JoinColumn(name: 'states_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'states_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_contracts_states_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?State $states = null;
 

@@ -5,12 +5,21 @@
 namespace itsmng\Database\Entity;
 
 use DateTimeInterface;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_networkportlocals')]
-#[ORM\UniqueConstraint(name: 'networkportlocals_networkports_id', columns: ['networkports_id'])]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['create_options' => [], 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'engine' => 'InnoDB'])]
+#[SchemaOwner]
+#[SchemaIndex('networkports_id', ['networkports_id'], unique: true, postgresqlName: 'glpi_networkportlocals_networkports_id')]
+#[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_networkportlocals_date_mod')]
+#[SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_networkportlocals_date_creation')]
 class NetworkPortLocal
 {
     #[ORM\Id]
@@ -19,7 +28,7 @@ class NetworkPortLocal
     public ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: NetworkPort::class)]
-    #[ORM\JoinColumn(name: 'networkports_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'networkports_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', foreignKeyName: 'fk_networkportlocals_networkports_id', options: ['default' => '0'])]
     public ?NetworkPort $networkports_id = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]

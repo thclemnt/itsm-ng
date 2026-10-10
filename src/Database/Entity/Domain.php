@@ -7,6 +7,12 @@ namespace itsmng\Database\Entity;
 use DateTimeInterface;
 use Doctrine\ORM\Event\PreFlushEventArgs;
 use Doctrine\ORM\Mapping as ORM;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Types\Types;
+use itsmng\Database\Mapping\BooleanStorage;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 use Doctrine\Persistence\Event\LifecycleEventArgs;
 use InvalidArgumentException;
 use SplObjectStorage;
@@ -18,19 +24,30 @@ use itsmng\Database\Repository\DomainRepository;
 #[ORM\Entity]
 #[ORM\HasLifecycleCallbacks]
 #[ORM\Table(name: 'glpi_domains')]
-#[ORM\Index(name: 'domains_suppliers_id', columns: ['suppliers_id'])]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
+#[SchemaOwner]
+#[SchemaIndex('name', ['name'], postgresqlName: 'glpi_domains_name')]
+#[SchemaIndex('entities_id', ['entities_id'], postgresqlName: 'glpi_domains_entities_id')]
+#[SchemaIndex('domaintypes_id', ['domaintypes_id'], postgresqlName: 'glpi_domains_domaintypes_id')]
+#[SchemaIndex('users_id_tech', ['users_id_tech'], postgresqlName: 'glpi_domains_users_id_tech')]
+#[SchemaIndex('groups_id_tech', ['groups_id_tech'], postgresqlName: 'glpi_domains_groups_id_tech')]
+#[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_domains_date_mod')]
+#[SchemaIndex('is_deleted', ['is_deleted'], postgresqlName: 'glpi_domains_is_deleted')]
+#[SchemaIndex('date_expiration', ['date_expiration'], postgresqlName: 'glpi_domains_date_expiration')]
+#[SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_domains_date_creation')]
+#[SchemaIndex('domains_suppliers_id', ['suppliers_id'], postgresqlName: 'domains_suppliers_id')]
 class Domain
 {
     #[ORM\ManyToOne(targetEntity: Supplier::class)]
-    #[ORM\JoinColumn(name: 'suppliers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'suppliers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_domains_suppliers_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Supplier $suppliers = null;
 
-    #[ORM\Column(name: 'is_helpdesk_visible', type: 'boolean', nullable: false, options: ['default' => true])]
+    #[ORM\Column(name: '`is_helpdesk_visible`', type: 'boolean', nullable: false, options: ['default' => true])]
     public bool $is_helpdesk_visible = true;
 
     #[ORM\ManyToOne(targetEntity: DomainType::class)]
-    #[ORM\JoinColumn(name: 'domaintypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'domaintypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_domains_domaintypes_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?DomainType $domaintypes = null;
 
@@ -43,11 +60,12 @@ class Domain
     public ?string $name = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
-    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', foreignKeyName: 'fk_domains_entities_id', options: ['default' => 0])]
     #[ReferencePolicy(ReferenceKind::RootEntity)]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $is_recursive = false;
 
     #[ORM\Column(name: '`date_expiration`', type: 'datetimetz', nullable: true)]
@@ -55,12 +73,12 @@ class Domain
     public ?DateTimeInterface $date_expiration = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
-    #[ORM\JoinColumn(name: 'users_id_tech', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'users_id_tech', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_domains_users_id_tech', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?User $users_tech = null;
 
     #[ORM\ManyToOne(targetEntity: Group::class)]
-    #[ORM\JoinColumn(name: 'groups_id_tech', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'groups_id_tech', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_domains_groups_id_tech', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Group $groups_tech = null;
 
@@ -68,6 +86,7 @@ class Domain
     public ?string $others = null;
 
     #[ORM\Column(name: '`is_deleted`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $is_deleted = false;
 
     #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]

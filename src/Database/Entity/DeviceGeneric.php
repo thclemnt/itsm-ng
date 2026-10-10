@@ -5,17 +5,35 @@
 namespace itsmng\Database\Entity;
 
 use DateTimeInterface;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\BooleanStorage;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_devicegenerics')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
+#[SchemaOwner]
+#[SchemaIndex('designation', ['designation'], postgresqlName: 'glpi_devicegenerics_designation')]
+#[SchemaIndex('manufacturers_id', ['manufacturers_id'], postgresqlName: 'glpi_devicegenerics_manufacturers_id')]
+#[SchemaIndex('devicegenerictypes_id', ['devicegenerictypes_id'], postgresqlName: 'glpi_devicegenerics_devicegenerictypes_id')]
+#[SchemaIndex('entities_id', ['entities_id'], postgresqlName: 'glpi_devicegenerics_entities_id')]
+#[SchemaIndex('is_recursive', ['is_recursive'], postgresqlName: 'glpi_devicegenerics_is_recursive')]
+#[SchemaIndex('locations_id', ['locations_id'], postgresqlName: 'glpi_devicegenerics_locations_id')]
+#[SchemaIndex('states_id', ['states_id'], postgresqlName: 'glpi_devicegenerics_states_id')]
+#[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_devicegenerics_date_mod')]
+#[SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_devicegenerics_date_creation')]
+#[SchemaIndex('devicegenericmodels_id', ['devicegenericmodels_id'], postgresqlName: 'glpi_devicegenerics_devicegenericmodels_id')]
 class DeviceGeneric
 {
     #[ORM\ManyToOne(targetEntity: DeviceGenericModel::class)]
-    #[ORM\JoinColumn(name: 'devicegenericmodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'devicegenericmodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_devicegenerics_devicegenericmodels_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?DeviceGenericModel $devicegenericmodels = null;
 
@@ -28,7 +46,7 @@ class DeviceGeneric
     public ?string $designation = null;
 
     #[ORM\ManyToOne(targetEntity: DeviceGenericType::class)]
-    #[ORM\JoinColumn(name: 'devicegenerictypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'devicegenerictypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_devicegenerics_devicegenerictypes_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?DeviceGenericType $devicegenerictypes = null;
 
@@ -36,25 +54,26 @@ class DeviceGeneric
     public ?string $comment = null;
 
     #[ORM\ManyToOne(targetEntity: Manufacturer::class)]
-    #[ORM\JoinColumn(name: 'manufacturers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'manufacturers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_devicegenerics_manufacturers_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Manufacturer $manufacturers = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
-    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', foreignKeyName: 'fk_devicegenerics_entities_id', options: ['default' => 0])]
     #[ReferencePolicy(ReferenceKind::RootEntity)]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $is_recursive = false;
 
     #[ORM\ManyToOne(targetEntity: Location::class)]
-    #[ORM\JoinColumn(name: 'locations_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'locations_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_devicegenerics_locations_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Location $locations = null;
 
     #[ORM\ManyToOne(targetEntity: State::class)]
-    #[ORM\JoinColumn(name: 'states_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'states_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_devicegenerics_states_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?State $states = null;
 

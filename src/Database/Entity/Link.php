@@ -5,13 +5,23 @@
 namespace itsmng\Database\Entity;
 
 use DateTimeInterface;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\BooleanStorage;
 use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_links')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['create_options' => [], 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'engine' => 'InnoDB'])]
+#[SchemaOwner]
+#[SchemaIndex('entities_id', ['entities_id'], postgresqlName: 'glpi_links_entities_id')]
+#[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_links_date_mod')]
+#[SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_links_date_creation')]
 class Link
 {
     #[ORM\Id]
@@ -20,11 +30,12 @@ class Link
     public ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
-    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0], foreignKeyName: 'fk_links_entities_id')]
     #[ReferencePolicy(ReferenceKind::RootEntity)]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => true])]
+    #[BooleanStorage('smallint')]
     public bool $is_recursive = true;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
@@ -37,6 +48,7 @@ class Link
     public ?string $data = null;
 
     #[ORM\Column(name: '`open_window`', type: 'boolean', nullable: false, options: ['default' => true])]
+    #[BooleanStorage('smallint')]
     public bool $open_window = true;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]

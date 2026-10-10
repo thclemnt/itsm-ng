@@ -7,14 +7,28 @@ namespace itsmng\Database\Entity;
 use DateTimeInterface;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\BooleanStorage;
 use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_rssfeeds')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['create_options' => [], 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'engine' => 'InnoDB'])]
+#[SchemaOwner]
+#[SchemaIndex('name', ['name'], postgresqlName: 'glpi_rssfeeds_name')]
+#[SchemaIndex('users_id', ['users_id'], postgresqlName: 'glpi_rssfeeds_users_id')]
+#[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_rssfeeds_date_mod')]
+#[SchemaIndex('have_error', ['have_error'], postgresqlName: 'glpi_rssfeeds_have_error')]
+#[SchemaIndex('is_active', ['is_active'], postgresqlName: 'glpi_rssfeeds_is_active')]
+#[SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_rssfeeds_date_creation')]
 class RSSFeed
 {
     /** @var Collection<int, RSSFeedUser> */
@@ -50,7 +64,7 @@ class RSSFeed
     public ?string $name = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
-    #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_rssfeeds_users_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     #[ApplicationManaged]
     public ?User $users = null;
@@ -68,9 +82,11 @@ class RSSFeed
     public int $max_items = 20;
 
     #[ORM\Column(name: '`have_error`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $have_error = false;
 
     #[ORM\Column(name: '`is_active`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $is_active = false;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]

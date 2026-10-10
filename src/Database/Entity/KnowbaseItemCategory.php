@@ -5,15 +5,28 @@
 namespace itsmng\Database\Entity;
 
 use DateTimeInterface;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\BooleanStorage;
 use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\ReferenceKey;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_knowbaseitemcategories')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
+#[SchemaOwner]
+#[SchemaIndex('IDX_60FBD150A48699B3', ['knowbaseitemcategories_id'])]
+#[SchemaIndex('name', ['name'], postgresqlName: 'glpi_knowbaseitemcategories_name')]
+#[SchemaIndex('entities_id', ['entities_id'], postgresqlName: 'glpi_knowbaseitemcategories_entities_id')]
+#[SchemaIndex('is_recursive', ['is_recursive'], postgresqlName: 'glpi_knowbaseitemcategories_is_recursive')]
+#[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_knowbaseitemcategories_date_mod')]
+#[SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_knowbaseitemcategories_date_creation')]
 #[SchemaIndex('unicity', ['entities_id', 'parent_key', 'name'], unique: true, postgresqlName: 'glpi_knowbaseitemcategories_unicity')]
 #[SchemaIndex('glpi_knowbaseitemcategories_tree_entities', ['entities_id'])]
 class KnowbaseItemCategory
@@ -24,15 +37,16 @@ class KnowbaseItemCategory
     public ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
-    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', foreignKeyName: 'fk_knowbaseitemcategories_entities_id', options: ['default' => 0])]
     #[ReferencePolicy(ReferenceKind::RootEntity)]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $is_recursive = false;
 
     #[ORM\ManyToOne(targetEntity: KnowbaseItemCategory::class)]
-    #[ORM\JoinColumn(name: 'knowbaseitemcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'knowbaseitemcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_knowbaseitemcategories_knowbaseitemcategories_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?KnowbaseItemCategory $knowbaseitemcategories = null;
 

@@ -6,6 +6,11 @@ namespace itsmng\Database\Entity;
 
 use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 use itsmng\Database\Mapping\ApplicationManaged;
 use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
@@ -14,7 +19,18 @@ use itsmng\Database\ReferenceMode;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_entities')]
-#[ORM\UniqueConstraint(name: 'entities_unicity', columns: ['entities_id', 'name'])]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['create_options' => [], 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'engine' => 'InnoDB'])]
+#[SchemaOwner]
+#[SchemaIndex('unicity', ['entities_id', 'name'], unique: true, postgresqlName: 'glpi_entities_unicity')]
+#[SchemaIndex('entities_id', ['entities_id'], postgresqlName: 'glpi_entities_entities_id')]
+#[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_entities_date_mod')]
+#[SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_entities_date_creation')]
+#[SchemaIndex('tickettemplates_id', ['tickettemplates_id'], postgresqlName: 'glpi_entities_tickettemplates_id')]
+#[SchemaIndex('changetemplates_id', ['changetemplates_id'], postgresqlName: 'glpi_entities_changetemplates_id')]
+#[SchemaIndex('problemtemplates_id', ['problemtemplates_id'], postgresqlName: 'glpi_entities_problemtemplates_id')]
+#[SchemaIndex('IDX_1A59F36F500D4AFA', ['authldaps_id'])]
+#[SchemaIndex('IDX_1A59F36FBDBA0E81', ['calendars_id'])]
+#[SchemaIndex('IDX_1A59F36FE9573678', ['entities_id_software'])]
 class Entity
 {
     #[ORM\Id]
@@ -25,7 +41,7 @@ class Entity
     public ?string $name = null;
 
     #[ORM\ManyToOne(targetEntity: self::class)]
-    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_entities_entities_id', options: ['default' => 0])]
     #[ReferencePolicy(ReferenceKind::RootParent)]
     #[ApplicationManaged]
     public ?self $parent = null;
@@ -40,9 +56,11 @@ class Entity
     public int $level = 0;
 
     #[ORM\Column(name: '`sons_cache`', type: 'text', length: 4294967295, nullable: true)]
+    #[PlatformOptions(PostgreSQLPlatform::class, ['length' => null])]
     public ?string $sons_cache = null;
 
     #[ORM\Column(name: '`ancestors_cache`', type: 'text', length: 4294967295, nullable: true)]
+    #[PlatformOptions(PostgreSQLPlatform::class, ['length' => null])]
     public ?string $ancestors_cache = null;
 
     #[ORM\Column(name: '`address`', type: 'text', nullable: true)]
@@ -94,11 +112,11 @@ class Entity
     public ?string $tag = null;
 
     #[ORM\ManyToOne(targetEntity: AuthLDAP::class)]
-    #[ORM\JoinColumn(name: 'authldaps_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'authldaps_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_entities_authldaps_id')]
     #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'ldap_mode', emptyZero: true)]
     public ?AuthLDAP $authldap = null;
 
-    #[ORM\Column(type: 'string', length: 16, enumType: ReferenceMode::class, options: ['default' => 'explicit'])]
+    #[ORM\Column(name: '`ldap_mode`', type: 'string', length: 16, nullable: false, enumType: ReferenceMode::class, options: ['default' => 'explicit'])]
     public ReferenceMode $ldap_mode = ReferenceMode::Explicit;
 
     #[ORM\Column(name: '`mail_domain`', type: 'string', length: 255, nullable: true)]
@@ -162,11 +180,11 @@ class Entity
     public int $notclosed_delay = -2;
 
     #[ORM\ManyToOne(targetEntity: Calendar::class)]
-    #[ORM\JoinColumn(name: 'calendars_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'calendars_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_entities_calendars_id')]
     #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'calendar_mode', emptyZero: true)]
     public ?Calendar $calendar = null;
 
-    #[ORM\Column(type: 'string', length: 16, enumType: ReferenceMode::class, options: ['default' => 'inherit'])]
+    #[ORM\Column(name: '`calendar_mode`', type: 'string', length: 16, nullable: false, enumType: ReferenceMode::class, options: ['default' => 'inherit'])]
     public ReferenceMode $calendar_mode = ReferenceMode::Inherit;
 
     #[ORM\Column(name: '`auto_assign_mode`', type: 'integer', nullable: false, options: ['default' => '-2'])]
@@ -207,35 +225,35 @@ class Entity
     public string $autofill_order_date = '-2';
 
     #[ORM\ManyToOne(targetEntity: TicketTemplate::class)]
-    #[ORM\JoinColumn(name: 'tickettemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'tickettemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_entities_tickettemplates_id')]
     #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'tickettemplate_mode', emptyZero: true)]
     public ?TicketTemplate $tickettemplate = null;
 
-    #[ORM\Column(type: 'string', length: 16, enumType: ReferenceMode::class, options: ['default' => 'inherit'])]
+    #[ORM\Column(name: '`tickettemplate_mode`', type: 'string', length: 16, nullable: false, enumType: ReferenceMode::class, options: ['default' => 'inherit'])]
     public ReferenceMode $tickettemplate_mode = ReferenceMode::Inherit;
 
     #[ORM\ManyToOne(targetEntity: ChangeTemplate::class)]
-    #[ORM\JoinColumn(name: 'changetemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'changetemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_entities_changetemplates_id')]
     #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'changetemplate_mode', emptyZero: true)]
     public ?ChangeTemplate $changetemplate = null;
 
-    #[ORM\Column(type: 'string', length: 16, enumType: ReferenceMode::class, options: ['default' => 'inherit'])]
+    #[ORM\Column(name: '`changetemplate_mode`', type: 'string', length: 16, nullable: false, enumType: ReferenceMode::class, options: ['default' => 'inherit'])]
     public ReferenceMode $changetemplate_mode = ReferenceMode::Inherit;
 
     #[ORM\ManyToOne(targetEntity: ProblemTemplate::class)]
-    #[ORM\JoinColumn(name: 'problemtemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'problemtemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_entities_problemtemplates_id')]
     #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'problemtemplate_mode', emptyZero: true)]
     public ?ProblemTemplate $problemtemplate = null;
 
-    #[ORM\Column(type: 'string', length: 16, enumType: ReferenceMode::class, options: ['default' => 'inherit'])]
+    #[ORM\Column(name: '`problemtemplate_mode`', type: 'string', length: 16, nullable: false, enumType: ReferenceMode::class, options: ['default' => 'inherit'])]
     public ReferenceMode $problemtemplate_mode = ReferenceMode::Inherit;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
-    #[ORM\JoinColumn(name: 'entities_id_software', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'entities_id_software', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_entities_entities_id_software', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'software_entity_mode', emptyZero: false)]
     public ?Entity $software_entity = null;
 
-    #[ORM\Column(type: 'string', length: 16, enumType: ReferenceMode::class, options: ['default' => 'inherit'])]
+    #[ORM\Column(name: '`software_entity_mode`', type: 'string', length: 16, nullable: false, enumType: ReferenceMode::class, options: ['default' => 'inherit'])]
     public ReferenceMode $software_entity_mode = ReferenceMode::Inherit;
 
     #[ORM\Column(name: '`default_contract_alert`', type: 'integer', nullable: false, options: ['default' => '-2'])]

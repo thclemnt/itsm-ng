@@ -6,6 +6,13 @@ namespace itsmng\Database\Entity;
 
 use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Types\Types;
+use itsmng\Database\Mapping\BooleanStorage;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 use InvalidArgumentException;
 use ReflectionClass;
 use ReflectionProperty;
@@ -21,10 +28,31 @@ use itsmng\Database\Type\FixedStringType;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_users')]
-#[ORM\UniqueConstraint(name: 'users_unicityloginauth', columns: ['name', 'authtype', 'auths_id'])]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['create_options' => [], 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'engine' => 'InnoDB'])]
+#[SchemaOwner]
+#[SchemaIndex('unicityloginauth', ['name', 'authtype', 'auths_id'], unique: true, postgresqlName: 'glpi_users_unicityloginauth')]
+#[SchemaIndex('firstname', ['firstname'], postgresqlName: 'glpi_users_firstname')]
+#[SchemaIndex('realname', ['realname'], postgresqlName: 'glpi_users_realname')]
+#[SchemaIndex('entities_id', ['entities_id'], postgresqlName: 'glpi_users_entities_id')]
+#[SchemaIndex('profiles_id', ['profiles_id'], postgresqlName: 'glpi_users_profiles_id')]
+#[SchemaIndex('locations_id', ['locations_id'], postgresqlName: 'glpi_users_locations_id')]
+#[SchemaIndex('usertitles_id', ['usertitles_id'], postgresqlName: 'glpi_users_usertitles_id')]
+#[SchemaIndex('usercategories_id', ['usercategories_id'], postgresqlName: 'glpi_users_usercategories_id')]
+#[SchemaIndex('is_deleted', ['is_deleted'], postgresqlName: 'glpi_users_is_deleted')]
+#[SchemaIndex('is_active', ['is_active'], postgresqlName: 'glpi_users_is_active')]
+#[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_users_date_mod')]
+#[SchemaIndex('authitem', ['authtype', 'auths_id'], postgresqlName: 'glpi_users_authitem')]
+#[SchemaIndex('is_deleted_ldap', ['is_deleted_ldap'], postgresqlName: 'glpi_users_is_deleted_ldap')]
+#[SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_users_date_creation')]
+#[SchemaIndex('begin_date', ['begin_date'], postgresqlName: 'glpi_users_begin_date')]
+#[SchemaIndex('end_date', ['end_date'], postgresqlName: 'glpi_users_end_date')]
+#[SchemaIndex('sync_field', ['sync_field'], postgresqlName: 'glpi_users_sync_field')]
+#[SchemaIndex('groups_id', ['groups_id'], postgresqlName: 'glpi_users_groups_id')]
+#[SchemaIndex('users_id_supervisor', ['users_id_supervisor'], postgresqlName: 'glpi_users_users_id_supervisor')]
+#[SchemaIndex('authldaps_id', ['authldaps_id'])]
+#[SchemaIndex('authmails_id', ['authmails_id'])]
+#[SchemaIndex('IDX_F7E175BF7F248429', ['default_requesttypes_id'])]
 #[ORM\HasLifecycleCallbacks]
-#[ORM\Index(name: 'authldaps_id', columns: ['authldaps_id'])]
-#[ORM\Index(name: 'authmails_id', columns: ['authmails_id'])]
 class User implements LegacyInput
 {
     #[ORM\Id]
@@ -58,11 +86,11 @@ class User implements LegacyInput
     public ?string $firstname = null;
 
     #[ORM\ManyToOne(targetEntity: Location::class)]
-    #[ORM\JoinColumn(name: 'locations_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'locations_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_users_locations_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Location $locations = null;
 
-    #[ORM\Column(name: '`language`', type: FixedStringType::NAME, length: 10, nullable: true)]
+    #[ORM\Column(name: '`language`', type: FixedStringType::NAME, length: 10, nullable: true, options: ['fixed' => true, 'comment' => 'see define.php CFG_GLPI[language] array'])]
     public ?string $language = null;
 
     #[ORM\Column(name: '`use_mode`', type: 'integer', nullable: false, options: ['default' => '0'])]
@@ -72,19 +100,20 @@ class User implements LegacyInput
     public ?int $list_limit = null;
 
     #[ORM\Column(name: '`is_active`', type: 'boolean', nullable: false, options: ['default' => true])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $is_active = true;
 
     #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
     public ?string $comment = null;
 
     #[ORM\ManyToOne(targetEntity: AuthLDAP::class)]
-    #[ORM\JoinColumn(name: 'authldaps_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'authldaps_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_users_authldaps_id', options: ['default' => null])]
     #[DiscriminatedBy('authtype', 'auths_id', [AuthenticationType::Pending->value, AuthenticationType::Ldap->value, AuthenticationType::External->value, AuthenticationType::Cas->value, AuthenticationType::X509->value], emptyValue: 0)]
     #[ApplicationManaged]
     public ?AuthLDAP $authldap = null;
 
     #[ORM\ManyToOne(targetEntity: AuthMail::class)]
-    #[ORM\JoinColumn(name: 'authmails_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'authmails_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_users_authmails_id', options: ['default' => null])]
     #[DiscriminatedBy('authtype', 'auths_id', [AuthenticationType::Mail->value], emptyValue: 0)]
     public ?AuthMail $authmail = null;
 
@@ -113,25 +142,26 @@ class User implements LegacyInput
     public ?DateTimeInterface $date_sync = null;
 
     #[ORM\Column(name: '`is_deleted`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $is_deleted = false;
 
     #[ORM\ManyToOne(targetEntity: Profile::class)]
-    #[ORM\JoinColumn(name: 'profiles_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'profiles_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_users_profiles_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Profile $profiles = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
-    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', foreignKeyName: 'fk_users_entities_id', options: ['default' => '0'])]
     #[ReferencePolicy(ReferenceKind::RootEntity)]
     public ?Entity $entities = null;
 
     #[ORM\ManyToOne(targetEntity: UserTitle::class)]
-    #[ORM\JoinColumn(name: 'usertitles_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'usertitles_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_users_usertitles_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?UserTitle $usertitles = null;
 
     #[ORM\ManyToOne(targetEntity: UserCategory::class)]
-    #[ORM\JoinColumn(name: 'usercategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'usercategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_users_usercategories_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?UserCategory $usercategories = null;
 
@@ -144,48 +174,52 @@ class User implements LegacyInput
     #[ORM\Column(name: '`names_format`', type: 'integer', nullable: true)]
     public ?int $names_format = null;
 
-    #[ORM\Column(name: '`csv_delimiter`', type: FixedStringType::NAME, length: 1, nullable: true)]
+    #[ORM\Column(name: '`csv_delimiter`', type: FixedStringType::NAME, length: 1, nullable: true, options: ['fixed' => true])]
     public ?string $csv_delimiter = null;
 
     #[ORM\Column(name: '`is_ids_visible`', type: 'boolean', nullable: true)]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public ?bool $is_ids_visible = null;
 
     #[ORM\Column(name: '`use_flat_dropdowntree`', type: 'boolean', nullable: true)]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public ?bool $use_flat_dropdowntree = null;
 
     #[ORM\Column(name: '`show_jobs_at_login`', type: 'smallint', nullable: true)]
     public ?int $show_jobs_at_login = null;
 
-    #[ORM\Column(name: '`priority_1`', type: FixedStringType::NAME, length: 20, nullable: true)]
+    #[ORM\Column(name: '`priority_1`', type: FixedStringType::NAME, length: 20, nullable: true, options: ['fixed' => true])]
     public ?string $priority_1 = null;
 
-    #[ORM\Column(name: '`priority_2`', type: FixedStringType::NAME, length: 20, nullable: true)]
+    #[ORM\Column(name: '`priority_2`', type: FixedStringType::NAME, length: 20, nullable: true, options: ['fixed' => true])]
     public ?string $priority_2 = null;
 
-    #[ORM\Column(name: '`priority_3`', type: FixedStringType::NAME, length: 20, nullable: true)]
+    #[ORM\Column(name: '`priority_3`', type: FixedStringType::NAME, length: 20, nullable: true, options: ['fixed' => true])]
     public ?string $priority_3 = null;
 
-    #[ORM\Column(name: '`priority_4`', type: FixedStringType::NAME, length: 20, nullable: true)]
+    #[ORM\Column(name: '`priority_4`', type: FixedStringType::NAME, length: 20, nullable: true, options: ['fixed' => true])]
     public ?string $priority_4 = null;
 
-    #[ORM\Column(name: '`priority_5`', type: FixedStringType::NAME, length: 20, nullable: true)]
+    #[ORM\Column(name: '`priority_5`', type: FixedStringType::NAME, length: 20, nullable: true, options: ['fixed' => true])]
     public ?string $priority_5 = null;
 
-    #[ORM\Column(name: '`priority_6`', type: FixedStringType::NAME, length: 20, nullable: true)]
+    #[ORM\Column(name: '`priority_6`', type: FixedStringType::NAME, length: 20, nullable: true, options: ['fixed' => true])]
     public ?string $priority_6 = null;
 
     #[ORM\Column(name: '`followup_private`', type: 'boolean', nullable: true)]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public ?bool $followup_private = null;
 
     #[ORM\Column(name: '`task_private`', type: 'boolean', nullable: true)]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public ?bool $task_private = null;
 
     #[ORM\ManyToOne(targetEntity: RequestType::class)]
-    #[ORM\JoinColumn(name: 'default_requesttypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'default_requesttypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_users_default_requesttypes_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?RequestType $default_requesttypes = null;
 
-    #[ORM\Column(name: '`password_forget_token`', type: FixedStringType::NAME, length: 40, nullable: true)]
+    #[ORM\Column(name: '`password_forget_token`', type: FixedStringType::NAME, length: 40, nullable: true, options: ['fixed' => true])]
     public ?string $password_forget_token = null;
 
     #[ORM\Column(name: '`password_forget_token_date`', type: 'datetimetz', nullable: true)]
@@ -199,6 +233,7 @@ class User implements LegacyInput
     public ?string $registration_number = null;
 
     #[ORM\Column(name: '`show_count_on_tabs`', type: 'boolean', nullable: true)]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public ?bool $show_count_on_tabs = null;
 
     #[ORM\Column(name: '`refresh_views`', type: 'integer', nullable: true)]
@@ -232,6 +267,7 @@ class User implements LegacyInput
     public ?int $display_count_on_home = null;
 
     #[ORM\Column(name: '`notification_to_myself`', type: 'boolean', nullable: true)]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public ?bool $notification_to_myself = null;
 
     #[ORM\Column(name: '`duedateok_color`', type: 'string', length: 255, nullable: true)]
@@ -259,6 +295,7 @@ class User implements LegacyInput
     public ?string $display_options = null;
 
     #[ORM\Column(name: '`is_deleted_ldap`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $is_deleted_ldap = false;
 
     #[ORM\Column(name: '`pdffont`', type: 'string', length: 255, nullable: true)]
@@ -276,9 +313,11 @@ class User implements LegacyInput
     public ?DateTimeInterface $end_date = null;
 
     #[ORM\Column(name: '`keep_devices_when_purging_item`', type: 'boolean', nullable: true)]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public ?bool $keep_devices_when_purging_item = null;
 
     #[ORM\Column(name: '`privatebookmarkorder`', type: 'text', length: 4294967295, nullable: true)]
+    #[PlatformOptions(PostgreSQLPlatform::class, ['length' => null])]
     public ?string $privatebookmarkorder = null;
 
     #[ORM\Column(name: '`backcreated`', type: 'smallint', nullable: true)]
@@ -287,10 +326,10 @@ class User implements LegacyInput
     #[ORM\Column(name: '`task_state`', type: 'integer', nullable: true)]
     public ?int $task_state = null;
 
-    #[ORM\Column(name: '`layout`', type: FixedStringType::NAME, length: 20, nullable: true)]
+    #[ORM\Column(name: '`layout`', type: FixedStringType::NAME, length: 20, nullable: true, options: ['fixed' => true])]
     public ?string $layout = null;
 
-    #[ORM\Column(name: '`palette`', type: FixedStringType::NAME, length: 20, nullable: true)]
+    #[ORM\Column(name: '`palette`', type: FixedStringType::NAME, length: 20, nullable: true, options: ['fixed' => true])]
     public ?string $palette = null;
 
     #[ORM\Column(name: '`set_default_requester`', type: 'smallint', nullable: true)]
@@ -300,6 +339,7 @@ class User implements LegacyInput
     public ?int $lock_autolock_mode = null;
 
     #[ORM\Column(name: '`lock_directunlock_notification`', type: 'boolean', nullable: true)]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public ?bool $lock_directunlock_notification = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
@@ -307,6 +347,7 @@ class User implements LegacyInput
     public ?DateTimeInterface $date_creation = null;
 
     #[ORM\Column(name: '`highcontrast_css`', type: 'boolean', nullable: true, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public ?bool $highcontrast_css = false;
 
     #[ORM\Column(name: '`plannings`', type: 'text', nullable: true)]
@@ -316,12 +357,12 @@ class User implements LegacyInput
     public ?string $sync_field = null;
 
     #[ORM\ManyToOne(targetEntity: Group::class)]
-    #[ORM\JoinColumn(name: 'groups_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'groups_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_users_groups_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Group $groups = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
-    #[ORM\JoinColumn(name: 'users_id_supervisor', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'users_id_supervisor', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_users_users_id_supervisor', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?User $supervisor = null;
 
@@ -347,12 +388,14 @@ class User implements LegacyInput
     public ?string $access_font = null;
 
     #[ORM\Column(name: '`access_shortcuts`', type: 'boolean', nullable: true, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public ?bool $access_shortcuts = false;
 
     #[ORM\Column(name: '`access_custom_shortcuts`', type: 'json', nullable: true)]
     public ?array $access_custom_shortcuts = null;
 
     #[ORM\Column(name: '`menu_favorite`', type: 'text', length: 4294967295, nullable: true)]
+    #[PlatformOptions(PostgreSQLPlatform::class, ['length' => null])]
     public ?string $menu_favorite = null;
 
     #[ORM\Column(name: '`menu_favorite_on`', type: 'text', nullable: true)]
@@ -365,9 +408,11 @@ class User implements LegacyInput
     public ?string $menu_small = null;
 
     #[ORM\Column(name: '`compact_mode_ui`', type: 'boolean', nullable: true, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public ?bool $compact_mode_ui = false;
 
     #[ORM\Column(name: '`menu_open`', type: 'text', length: 4294967295, nullable: true)]
+    #[PlatformOptions(PostgreSQLPlatform::class, ['length' => null])]
     public ?string $menu_open = null;
 
     /**

@@ -5,11 +5,14 @@
 namespace itsmng\Database\Mapping;
 
 use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Types\PhpIntegerMappingType;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\Mapping\Driver\AttributeDriver as DriverAttributeDriver;
 use Doctrine\Persistence\Mapping\ClassMetadata;
 use LogicException;
 use ReflectionClass;
+use ReflectionNamedType;
 
 /** Resolve property-owned native storage and generated references for the provider. */
 final class AttributeDriver extends DriverAttributeDriver
@@ -36,6 +39,27 @@ final class AttributeDriver extends DriverAttributeDriver
             if ($options !== []) {
                 if (isset($metadata->fieldMappings[$property->name])) {
                     $column = $metadata->fieldMappings[$property->name];
+                    if (array_key_exists('length', $options)) {
+                        $length = $options['length'];
+                        if ($length !== null && (!is_int($length) || $length <= 0)) {
+                            throw new LogicException('Provider field length must be null or a positive integer: ' . $className . '::$' . $property->name);
+                        }
+                        $column->length = $length;
+                        unset($options['length']);
+                    }
+                    if (array_key_exists('type', $options)) {
+                        $type = $options['type'];
+                        $propertyType = $property->getType();
+                        if (!is_string($type) || !Type::hasType($type)
+                            || ($type !== $column->type && (!($propertyType instanceof ReflectionNamedType)
+                                || $propertyType->getName() !== 'int'
+                                || !(Type::getType($column->type) instanceof PhpIntegerMappingType)
+                                || !(Type::getType($type) instanceof PhpIntegerMappingType)))) {
+                            throw new LogicException('Provider field type must preserve its declared PHP integer domain: ' . $className . '::$' . $property->name);
+                        }
+                        $column->type = $type;
+                        unset($options['type']);
+                    }
                 } else {
                     $association = $metadata->associationMappings[$property->name] ?? null;
                     if ($association === null || !$association->isToOneOwningSide()
@@ -46,6 +70,9 @@ final class AttributeDriver extends DriverAttributeDriver
                             $property->name,
                         ));
                     }
+                    if (array_key_exists('length', $options) || array_key_exists('type', $options)) {
+                        throw new LogicException('Provider field type and length require a scalar field: ' . $className . '::$' . $property->name);
+                    }
                     $column = $association->joinColumns[0];
                 }
                 $column->options = array_replace($column->options ?? [], $options);
@@ -54,7 +81,12 @@ final class AttributeDriver extends DriverAttributeDriver
                 $metadata->fieldMappings[$property->getName()]->columnDefinition = $attribute->newInstance()->declaration($this->platform);
             }
             foreach ($property->getAttributes(DiscriminatorKey::class) as $attribute) {
-                $metadata->fieldMappings[$property->getName()]->columnDefinition = $attribute->newInstance()->declaration($this->platform, $metadata, $property->getName());
+                $field = $metadata->fieldMappings[$property->getName()];
+                $field->columnDefinition = $attribute->newInstance()->declaration($this->platform, $metadata, $property->getName());
+                // Custom generated DDL bypasses DBAL's ordinary inline comments.
+                if ($this->platform->supportsInlineColumnComments() && ($field->options['comment'] ?? '') !== '') {
+                    $field->columnDefinition .= ' ' . $this->platform->getInlineColumnCommentSQL($field->options['comment']);
+                }
             }
             foreach ($property->getAttributes(NativeTimestamp::class) as $attribute) {
                 $timestamp = $attribute->newInstance();

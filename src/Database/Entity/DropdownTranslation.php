@@ -4,11 +4,20 @@
 
 namespace itsmng\Database\Entity;
 
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_dropdowntranslations')]
-#[ORM\UniqueConstraint(name: 'dropdowntranslations_unicity', columns: ['itemtype', 'items_id', 'language', 'field'])]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['create_options' => [], 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'engine' => 'InnoDB'])]
+#[SchemaOwner]
+#[SchemaIndex('unicity', ['itemtype', 'items_id', 'language', 'field'], unique: true, postgresqlName: 'glpi_dropdowntranslations_unicity')]
+#[SchemaIndex('typeid', ['itemtype', 'items_id'], postgresqlName: 'glpi_dropdowntranslations_typeid')]
+#[SchemaIndex('language', ['language'], postgresqlName: 'glpi_dropdowntranslations_language')]
+#[SchemaIndex('field', ['field'], postgresqlName: 'glpi_dropdowntranslations_field')]
 class DropdownTranslation
 {
     #[ORM\Id]

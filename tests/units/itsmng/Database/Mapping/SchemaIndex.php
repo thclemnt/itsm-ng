@@ -4,6 +4,7 @@
 
 namespace tests\units\itsmng\Database\Mapping;
 
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\MariaDBPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
@@ -15,6 +16,7 @@ use ReflectionClass;
 use atoum\atoum\test;
 use itsmng\Database\BaselineSchema;
 use itsmng\Database\EntityRegistry;
+use itsmng\Database\Entity\RuleAction;
 use itsmng\Database\Mapping\SchemaIndex as OwnedIndex;
 use itsmng\Database\Migration\V220\ActorUniqueness;
 use itsmng\Database\Migration\V220\Baseline;
@@ -37,6 +39,7 @@ class SchemaIndex extends test
             $expectedGeneratedKeys[] = $table . '.parent_key';
         }
         sort($expectedGeneratedKeys, SORT_STRING);
+        $tables = [...array_keys(ActorUniqueness::TABLES), ...array_keys(TreeUniqueness::TABLES)];
         foreach ([new MySQLPlatform(), new MariaDBPlatform(),
             new PostgreSQLPlatform(), new MySQLPlatform()] as $schemaPlatform) {
             $offlineConnection = new DisconnectedSchemaConnection($schemaPlatform);
@@ -49,6 +52,9 @@ class SchemaIndex extends test
                 $historical = (new Baseline())->build($schemaPlatform);
                 $ownedGeneratedKeys = [];
                 foreach ($metadata as $entity) {
+                    if (!in_array($entity->getTableName(), $tables, true)) {
+                        continue;
+                    }
                     $ownedColumns = [];
                     foreach ((new ReflectionClass($entity->name))->getAttributes(OwnedIndex::class) as $attribute) {
                         array_push($ownedColumns, ...$attribute->newInstance()->columns);
@@ -62,11 +68,12 @@ class SchemaIndex extends test
                     }
                 }
                 sort($ownedGeneratedKeys, SORT_STRING);
-                $this->boolean($ownedGeneratedKeys === $expectedGeneratedKeys)->isTrue('Only twelve actor identity properties and five existing tree keys own generated index columns');
+                $this->boolean($ownedGeneratedKeys === $expectedGeneratedKeys)->isTrue('Actor and tree entities retain their twelve actor identity properties and five parent keys');
                 foreach (ActorUniqueness::TABLES as $table => [$parentKey, $actorKey]) {
                     $entity = $schemaEm->getClassMetadata(EntityRegistry::tables()[$table]);
                     $attributes = (new ReflectionClass($entity->name))->getAttributes(OwnedIndex::class);
-                    $this->boolean(count($attributes) === 2)->isTrue('Each actor entity owns its unique and supporting physical indexes: ' . $table);
+                    $names = array_map(static fn ($attribute): string => $attribute->newInstance()->name($schemaPlatform), $attributes);
+                    $this->array($names)->contains(ActorUniqueness::indexName($table, $schemaPlatform))->contains($table . '_actor_parent');
                     $oracle = clone $historical->getTable($table);
                     ActorUniqueness::addToTable($oracle, $schemaPlatform);
                     $unique = ActorUniqueness::indexName($table, $schemaPlatform);
@@ -101,4 +108,98 @@ class SchemaIndex extends test
             }
         }
     }
+    public function testProviderOwnedIndexOptionsAndExclusion(): void
+    {
+        $prefix = new OwnedIndex(
+            'field_value',
+            ['field', 'value'],
+            options: ['lengths' => [50, 50]],
+            platform: AbstractMySQLPlatform::class
+        );
+        $shared = new OwnedIndex(
+            'shared',
+            ['value'],
+            postgresqlName: 'glpi_ruleactions_shared',
+            options: ['lengths' => [50]],
+            postgresqlOptions: ['lengths' => [null]]
+        );
+        foreach ([new MySQLPlatform(), new MariaDBPlatform(), new PostgreSQLPlatform()] as $platform) {
+            $metadata = new ClassMetadata(RuleAction::class);
+            $prefix->addToMetadata($metadata, $platform);
+            $shared->addToMetadata($metadata, $platform);
+            $postgres = $platform instanceof PostgreSQLPlatform;
+            $this->boolean(isset($metadata->table['indexes']['field_value']))->isEqualTo(!$postgres);
+            if (!$postgres) {
+                $this->array($metadata->table['indexes']['field_value']['options']['lengths'])->isIdenticalTo([50, 50]);
+            }
+            $sharedName = $postgres ? 'glpi_ruleactions_shared' : 'shared';
+            $this->array($metadata->table['indexes'][$sharedName]['options']['lengths'])
+                ->isIdenticalTo($postgres ? [null] : [50]);
+        }
+        // Existing declarations retain exactly their prior metadata shape.
+        $metadata = new ClassMetadata(RuleAction::class);
+        (new OwnedIndex('legacy', ['value']))->addToMetadata($metadata, new MySQLPlatform());
+        $this->array($metadata->table['indexes']['legacy'])->isIdenticalTo(['columns' => ['value']]);
+    }
+
+    public function testRuleActionPrefixIndexUsesTheOwningProvider(): void
+    {
+        foreach ([new MySQLPlatform(), new MariaDBPlatform(), new PostgreSQLPlatform()] as $platform) {
+            $connection = new DisconnectedSchemaConnection($platform);
+            try {
+                $manager = new EntityManager($connection, Orm::configuration($platform));
+                $metadata = $manager->getMetadataFactory()->getAllMetadata();
+                $mapped = (new SchemaTool($manager))->getSchemaFromMetadata($metadata);
+                $table = $mapped->getTable('glpi_ruleactions');
+                if ($platform instanceof PostgreSQLPlatform) {
+                    $this->boolean($table->hasIndex('field_value'))->isFalse();
+                    $this->boolean($table->hasIndex('glpi_ruleactions_field_value'))->isFalse();
+                    $this->boolean($table->hasIndex('glpi_ruleactions_rules_id'))->isTrue();
+                } else {
+                    $index = $table->getIndex('field_value');
+                    $this->array($index->getColumns())->isIdenticalTo(['field', 'value']);
+                    $this->array($index->getOptions()['lengths'])->isIdenticalTo([50, 50]);
+                    $sql = $platform->getCreateIndexSQL($index, 'glpi_ruleactions');
+                    $this->boolean(str_contains($sql, 'field(50)') || str_contains($sql, '`field`(50)'))->isTrue();
+                    $this->boolean(str_contains($sql, 'value(50)') || str_contains($sql, '`value`(50)'))->isTrue();
+                }
+                $this->boolean($connection->isConnected())->isFalse();
+            } finally {
+                $connection->close();
+                unset($manager, $metadata, $mapped);
+                gc_collect_cycles();
+            }
+        }
+    }
+
+    public function testKnowledgeFullTextIndexesRemainMySQLOwned(): void
+    {
+        foreach ([new MySQLPlatform(), new MariaDBPlatform(), new PostgreSQLPlatform()] as $platform) {
+            $connection = new DisconnectedSchemaConnection($platform);
+            try {
+                $manager = new EntityManager($connection, Orm::configuration($platform));
+                $metadata = $manager->getMetadataFactory()->getAllMetadata();
+                $mapped = (new SchemaTool($manager))->getSchemaFromMetadata($metadata);
+                foreach (['glpi_knowbaseitems', 'glpi_knowbaseitemtranslations'] as $tableName) {
+                    $table = $mapped->getTable($tableName);
+                    foreach (['fulltext' => ['name', 'answer'], 'name' => ['name'], 'answer' => ['answer']] as $name => $columns) {
+                        if ($platform instanceof PostgreSQLPlatform) {
+                            $this->boolean($table->hasIndex($name))->isFalse();
+                        } else {
+                            $index = $table->getIndex($name);
+                            $this->array($index->getColumns())->isIdenticalTo($columns);
+                            $this->array($index->getFlags())->isIdenticalTo(['fulltext']);
+                            $this->boolean(str_contains($platform->getCreateIndexSQL($index, $tableName), 'FULLTEXT'))->isTrue();
+                        }
+                    }
+                }
+                $this->boolean($connection->isConnected())->isFalse();
+            } finally {
+                $connection->close();
+                unset($manager, $metadata, $mapped);
+                gc_collect_cycles();
+            }
+        }
+    }
+
 }

@@ -4,16 +4,23 @@
 
 namespace itsmng\Database\Entity;
 
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_changetemplatemandatoryfields')]
-#[ORM\UniqueConstraint(name: 'changetemplatemandatoryfields_unicity', columns: ['changetemplates_id', 'num'])]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['create_options' => [], 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'engine' => 'InnoDB'])]
+#[SchemaOwner]
+#[SchemaIndex('unicity', ['changetemplates_id', 'num'], unique: true, postgresqlName: 'glpi_changetemplatemandatoryfields_unicity')]
+#[SchemaIndex('changetemplates_id', ['changetemplates_id'], postgresqlName: 'glpi_changetemplatemandatoryfields_changetemplates_id')]
 class ChangeTemplateMandatoryField
 {
     #[ORM\ManyToOne(targetEntity: ChangeTemplate::class)]
-    #[ORM\JoinColumn(name: 'changetemplates_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'changetemplates_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', foreignKeyName: 'fk_changetemplatemandatoryfields_changetemplates_id', options: ['default' => '0'])]
     #[ApplicationManaged]
     public ?ChangeTemplate $changetemplates = null;
 

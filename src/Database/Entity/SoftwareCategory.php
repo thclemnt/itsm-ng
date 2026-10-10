@@ -4,13 +4,20 @@
 
 namespace itsmng\Database\Entity;
 
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_softwarecategories')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
+#[SchemaOwner]
+#[SchemaIndex('softwarecategories_id', ['softwarecategories_id'], postgresqlName: 'glpi_softwarecategories_softwarecategories_id')]
 class SoftwareCategory
 {
     #[ORM\Id]
@@ -25,7 +32,7 @@ class SoftwareCategory
     public ?string $comment = null;
 
     #[ORM\ManyToOne(targetEntity: SoftwareCategory::class)]
-    #[ORM\JoinColumn(name: 'softwarecategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'softwarecategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_softwarecategories_softwarecategories_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     #[ApplicationManaged]
     public ?SoftwareCategory $softwarecategories = null;

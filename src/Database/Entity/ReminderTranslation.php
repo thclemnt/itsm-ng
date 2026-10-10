@@ -5,18 +5,27 @@
 namespace itsmng\Database\Entity;
 
 use DateTimeInterface;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\ApplicationManaged;
 use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_remindertranslations')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['create_options' => [], 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'engine' => 'InnoDB'])]
+#[SchemaOwner]
+#[SchemaIndex('item', ['reminders_id', 'language'], postgresqlName: 'glpi_remindertranslations_item')]
+#[SchemaIndex('users_id', ['users_id'], postgresqlName: 'glpi_remindertranslations_users_id')]
+#[SchemaIndex('IDX_BE66B0AAF8D051FC', ['reminders_id'], postgresqlName: 'IDX_BE66B0AAF8D051FC')]
 class ReminderTranslation
 {
     #[ORM\ManyToOne(targetEntity: Reminder::class)]
-    #[ORM\JoinColumn(name: 'reminders_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'reminders_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', foreignKeyName: 'fk_remindertranslations_reminders_id', options: ['default' => '0'])]
     #[ApplicationManaged]
     public ?Reminder $reminders = null;
 
@@ -35,7 +44,7 @@ class ReminderTranslation
     public ?string $text = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
-    #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_remindertranslations_users_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     #[ApplicationManaged]
     public ?User $users = null;

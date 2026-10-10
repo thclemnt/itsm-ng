@@ -5,17 +5,23 @@
 namespace itsmng\Database\Entity;
 
 use DateTimeInterface;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\ApplicationManaged;
 use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_ticketsatisfactions')]
-#[ORM\UniqueConstraint(name: 'ticketsatisfactions_tickets_id', columns: ['tickets_id'])]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['create_options' => [], 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'engine' => 'InnoDB'])]
+#[SchemaOwner]
+#[SchemaIndex('tickets_id', ['tickets_id'], unique: true, postgresqlName: 'glpi_ticketsatisfactions_tickets_id')]
 class TicketSatisfaction
 {
     #[ORM\ManyToOne(targetEntity: Ticket::class)]
-    #[ORM\JoinColumn(name: 'tickets_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'tickets_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', foreignKeyName: 'fk_ticketsatisfactions_tickets_id', options: ['default' => '0'])]
     #[ApplicationManaged]
     public ?Ticket $tickets = null;
 

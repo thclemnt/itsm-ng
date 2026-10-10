@@ -69,17 +69,17 @@ class Profile
     public bool $create_ticket_on_login = false;
 
     #[ORM\ManyToOne(targetEntity: TicketTemplate::class)]
-    #[ORM\JoinColumn(name: 'tickettemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_profiles_tickettemplates_id')]
+    #[ORM\JoinColumn(name: 'tickettemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_profiles_tickettemplates_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?TicketTemplate $tickettemplates_id = null;
 
     #[ORM\ManyToOne(targetEntity: ChangeTemplate::class)]
-    #[ORM\JoinColumn(name: 'changetemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_profiles_changetemplates_id')]
+    #[ORM\JoinColumn(name: 'changetemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_profiles_changetemplates_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?ChangeTemplate $changetemplates_id = null;
 
     #[ORM\ManyToOne(targetEntity: ProblemTemplate::class)]
-    #[ORM\JoinColumn(name: 'problemtemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_profiles_problemtemplates_id')]
+    #[ORM\JoinColumn(name: 'problemtemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_profiles_problemtemplates_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?ProblemTemplate $problemtemplates_id = null;
 

@@ -5,13 +5,21 @@
 namespace itsmng\Database\Entity;
 
 use DateTimeInterface;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_operatingsystemkernelversions')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
+#[SchemaOwner]
+#[SchemaIndex('name', ['name'], postgresqlName: 'glpi_operatingsystemkernelversions_name')]
+#[SchemaIndex('operatingsystemkernels_id', ['operatingsystemkernels_id'], postgresqlName: 'glpi_operatingsystemkernelversions_operatingsystemkernels_id')]
 class OperatingSystemKernelVersion
 {
     #[ORM\Id]
@@ -20,7 +28,7 @@ class OperatingSystemKernelVersion
     public ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: OperatingSystemKernel::class)]
-    #[ORM\JoinColumn(name: 'operatingsystemkernels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'operatingsystemkernels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_operatingsystemkernelversions_operatingsystemkernels_id', options: ['default' => null])]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?OperatingSystemKernel $operatingsystemkernels = null;
 

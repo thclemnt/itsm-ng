@@ -4,7 +4,11 @@
 
 namespace itsmng\Database\Entity;
 
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaOwner;
+use itsmng\Database\Mapping\SchemaIndex;
 use InvalidArgumentException;
 use ReflectionClass;
 use ReflectionProperty;
@@ -15,25 +19,29 @@ use itsmng\Database\Mapping\DiscriminatorKey;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_notificationtargets')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
+#[SchemaOwner]
 #[ORM\HasLifecycleCallbacks]
-#[ORM\Index(name: 'groups_id', columns: ['groups_id'])]
-#[ORM\Index(name: 'profiles_id', columns: ['profiles_id'])]
+#[SchemaIndex('groups_id', ['groups_id'])]
+#[SchemaIndex('profiles_id', ['profiles_id'])]
+#[SchemaIndex('items', ['type', 'items_id'], postgresqlName: 'glpi_notificationtargets_items')]
+#[SchemaIndex('notifications_id', ['notifications_id'], postgresqlName: 'glpi_notificationtargets_notifications_id')]
 class NotificationTarget implements LegacyInput
 {
     #[ORM\ManyToOne(targetEntity: Group::class)]
-    #[ORM\JoinColumn(name: 'groups_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'groups_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_notificationtargets_groups_id', options: ['default' => null])]
     #[DiscriminatedBy('type', 'items_id', [3, 5, 6])]
     #[ApplicationManaged]
     public ?Group $group = null;
 
     #[ORM\ManyToOne(targetEntity: Profile::class)]
-    #[ORM\JoinColumn(name: 'profiles_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'profiles_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_notificationtargets_profiles_id', options: ['default' => null])]
     #[DiscriminatedBy('type', 'items_id', [2])]
     #[ApplicationManaged]
     public ?Profile $profile = null;
 
     #[ORM\ManyToOne(targetEntity: Notification::class)]
-    #[ORM\JoinColumn(name: 'notifications_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[ORM\JoinColumn(name: 'notifications_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', foreignKeyName: 'fk_notificationtargets_notifications_id', options: ['default' => 0])]
     #[ApplicationManaged]
     public ?Notification $notifications = null;
 
