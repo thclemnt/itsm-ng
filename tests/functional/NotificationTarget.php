@@ -35,8 +35,10 @@ namespace tests\units;
 
 use Auth;
 use DbTestCase;
+use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
 use Group;
+use Group_User;
 use Notification;
 use NotificationEventAjax;
 use NotificationTarget as LegacyNotificationTarget;
@@ -52,6 +54,10 @@ use itsmng\Database\Entity\User as UserEntity;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\NotificationRecipientRepository;
 use itsmng\Database\Repository\RecordWriter;
+use mock\DBmysql as RecipientAdapterProbe;
+use tests\fixtures\ScalarReadProbe;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/notificationtarget.class.php */
 
@@ -187,6 +193,9 @@ class NotificationTarget extends DbTestCase
                     $this->boolean($DB->update('glpi_users', ['language' => count($seen) === 1 ? 'fr_FR' : 'de_DE'], ['id' => $id]))->isTrue();
                 },
             ]];
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            Orm::read($DB, static fn (EntityManager $manager): int => $manager->getUnitOfWork()->size());
+            $beforeFactories = $factories->getValue();
             $target->obj = $reminder;
             $target->addItemAuthor();
             $target->obj = (object)['fields' => ['itemtype' => Reminder::class, 'items_id' => $reminder->getID()]];
@@ -202,6 +211,7 @@ class NotificationTarget extends DbTestCase
                 $target->addItemAuthor();
             }
             $this->array($seen)->hasSize(3);
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
         } finally {
             $_SESSION = $session;
             $PLUGIN_HOOKS = $hooks;
@@ -296,6 +306,83 @@ class NotificationTarget extends DbTestCase
             $this->array($delivery->target)->isEmpty();
         } finally {
             $em->clear();
+        }
+    }
+
+    public function testGroupRecipientsKeepSelectedRouteAndCallbackEligibility(): void
+    {
+        global $DB;
+        $originalAdapter = $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', false);
+            $entity = (int)$_SESSION['glpiactive_entity'];
+            $group = $this->createItem(Group::class, ['name' => 'Recipient route ' . $this->getUniqueString(),
+                'entities_id' => $entity, 'is_notify' => 1]);
+            $ids = [];
+            foreach (['en_GB', 'fr_FR'] as $language) {
+                $user = $this->createItem(User::class, ['name' => 'Group route ' . $this->getUniqueString(),
+                    'entities_id' => $entity, 'is_active' => 1, 'language' => $language, 'authtype' => Auth::DB_GLPI]);
+                $ids[] = (int)$user->getID();
+                $this->createItem(Profile_User::class, ['users_id' => $user->getID(),
+                    'profiles_id' => $_SESSION['glpiactiveprofile']['id'], 'entities_id' => $entity, 'is_recursive' => 0]);
+                $this->createItem(Group_User::class, ['groups_id' => $group->getID(), 'users_id' => $user->getID()]);
+            }
+            $connection = $DB->getDoctrineConnection();
+            $level = $connection->getTransactionNestingLevel();
+            $criteria = (new LegacyNotificationTarget($entity))->getProfileJoinCriteria();
+            $groupRoute = new ScalarReadProbe($connection);
+            $deliveryRoute = new ScalarReadProbe($connection);
+            $selected = $groupRoute;
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new RecipientAdapterProbe();
+            $this->calling($adapter)->getDoctrineConnection = static function () use (&$selected) {
+                return $selected;
+            };
+            $this->calling($adapter)->getProvider = $originalAdapter->getProvider();
+            $target = new class ($entity) extends LegacyNotificationTarget {
+                public $criteriaHook;
+                public $recipientHook;
+                public function getProfileJoinCriteria()
+                {
+                    return ($this->criteriaHook)();
+                }
+                public function addToRecipientsList(array $data)
+                {
+                    $result = parent::addToRecipientsList($data);
+                    ($this->recipientHook)($data);
+                    return $result;
+                }
+            };
+            $target->setEvent(NotificationEventAjax::class);
+            $target->criteriaHook = static function () use (&$selected, $deliveryRoute, $criteria): array {
+                // The group query already selected its route before this public callback.
+                $selected = $deliveryRoute;
+                return $criteria;
+            };
+            $seen = [];
+            $target->recipientHook = function (array $data) use (&$seen, $ids, $connection): void {
+                $seen[] = (int)$data['users_id'];
+                if (count($seen) === 1) {
+                    $other = array_values(array_diff($ids, $seen))[0];
+                    $this->integer($connection->update('glpi_users', ['is_active' => 0], ['id' => $other]))->isIdenticalTo(1);
+                }
+            };
+            $DB = $adapter;
+            $target->addForGroup(0, (int)$group->getID());
+            $this->array($seen)->hasSize(2);
+            $this->array(array_diff($ids, $seen))->isEmpty();
+            $this->array(array_map('intval', array_keys($target->target)))->isIdenticalTo([$seen[0]]);
+            $this->array($groupRoute->queries)->hasSize(1);
+            $this->string($groupRoute->queries[0]['sql'])->contains('glpi_groups_users');
+            $admissions = array_filter($deliveryRoute->queries, static fn (array $query): bool =>
+                str_contains($query['sql'], 'is_active'));
+            $this->array(array_values($admissions))->hasSize(2);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $DB = $originalAdapter;
+            $_SESSION = $session;
         }
     }
 
