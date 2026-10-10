@@ -1893,6 +1893,16 @@ class User extends DbTestCase
         $this->integer($otherId)->isGreaterThan(0)->isNotEqualTo($ldapId);
         $this->integer($mailId)->isGreaterThan(0);
 
+        // Insertion defaults are not explicit canonical authentication input.
+        foreach ([Auth::LDAP => ['authldaps_id', $ldapId], Auth::MAIL => ['authmails_id', $mailId]] as $type => [$column, $server]) {
+            $user = new UserModel();
+            $id = (int)$user->add(['name' => 'legacy-selected-server-' . $type, 'authtype' => $type, 'auths_id' => $server]);
+            $this->integer($id)->isGreaterThan(0);
+            $this->boolean($user->getFromDB($id))->isTrue();
+            $this->integer($user->fields[$column])->isIdenticalTo($server);
+            $this->integer($user->fields['auths_id'])->isIdenticalTo($server);
+        }
+
         foreach ([[], ['auths_id' => null], ['auths_id' => 0]] as $legacyDefault) {
             $prepared = (new UserModel())->prepareInputForAdd(['name' => 'legacy-authentication-default'] + $legacyDefault);
             $this->integer($prepared['auths_id'])->isIdenticalTo(0);
@@ -1933,6 +1943,7 @@ class User extends DbTestCase
 
         foreach ([
             ['authldaps_id' => $ldapId, 'auths_id' => $otherId],
+            ['authldaps_id' => null, 'auths_id' => $ldapId],
             ['authmails_id' => $mailId],
         ] as $conflict) {
             $input = ['name' => 'rejected-canonical-authentication-input', 'authtype' => Auth::LDAP] + $conflict;

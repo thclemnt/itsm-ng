@@ -42,17 +42,8 @@ final class RecordWriter
                 $record->$field = new DateTime();
             }
         }
-        foreach ($metadata->associationMappings as $mapping) {
-            if (!$mapping->isToOneOwningSide()) {
-                continue;
-            }
-            $join = $mapping->joinColumns[0];
-            if (array_key_exists('default', $join->options ?? []) && !array_key_exists($join->name, $values)) {
-                $values[$join->name] = $join->options['default'];
-            }
-        }
         try {
-            $this->assign($metadata, $record, $values);
+            $this->assign($metadata, $record, $values, applyDefaults: true);
             $this->em->persist($record);
             $this->em->flush();
             return (int)$record->id;
@@ -95,7 +86,7 @@ final class RecordWriter
         }
     }
 
-    private function assign(ClassMetadata $metadata, object $record, array $values): void
+    private function assign(ClassMetadata $metadata, object $record, array $values, bool $applyDefaults = false): void
     {
         if ($record instanceof LegacyInput) {
             $values = $record->normalizeInput($values);
@@ -112,7 +103,14 @@ final class RecordWriter
             if (!$mapping->isToOneOwningSide()) {
                 continue;
             }
-            $associations[$mapping->joinColumns[0]->name] = $field;
+            $join = $mapping->joinColumns[0];
+            $associations[$join->name] = $field;
+            // Physical insertion defaults must not masquerade as supplied
+            // canonical values while an entity resolves its legacy input.
+            if ($applyDefaults && array_key_exists('default', $join->options ?? [])
+                && !array_key_exists($join->name, $values)) {
+                $values[$join->name] = $join->options['default'];
+            }
         }
         foreach ($values as $column => $value) {
             if ($value instanceof QueryExpression || $value instanceof QueryParam) {
