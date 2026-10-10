@@ -9,6 +9,7 @@ use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Schema\SchemaConfig;
+use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
@@ -87,8 +88,11 @@ final class BaselineSchema
         NetworkPortAggregateOrigins::configureSchema($schema);
         PlanningEventGuests::configureSchema($schema);
         UnusedProjectTemplateReference::configureTable($schema->getTable('glpi_projects'));
-        $ownedTables = $this->configureCurrentMappings($schema, $platform, $configuration, $foreignKeys);
+        $ownedTables = $this->configureCurrentMappings($schema, $platform, $foreignKeys);
         foreach (EntityRegistry::relationsByPolicy(ReferenceKind::EmptySelection) as $tableName => $relations) {
+            if (isset($ownedTables[$tableName])) {
+                continue;
+            }
             foreach ($relations as $column => $target) {
                 $schema->getTable($tableName)
                     ->getColumn($column)
@@ -102,15 +106,23 @@ final class BaselineSchema
             $schema->getTable('glpi_items_operatingsystems'),
             InventoryUniqueness::indexName($platform)
         );
+        // Complete current tables bypass the remaining compatibility-only passes.
+        // Keep configuration, sequences and namespaces for the final composition.
+        $schema = new Schema(
+            array_values(array_filter($schema->getTables(), static fn (Table $table): bool => !isset($ownedTables[$table->getName()]))),
+            $schema->getSequences(),
+            $configuration,
+            $schema->getNamespaces(),
+        );
         IdentifierColumns::configureSchema($schema);
         if ($foreignKeys) {
-            (new ForeignKeys())->addToSchema($schema);
+            (new ForeignKeys(array_diff_key(ForeignKeys::relations(), $ownedTables)))->addToSchema($schema);
         }
         return CurrentSchema::replaceTables($schema, $ownedTables, $configuration);
     }
 
     /** Current schema inspection uses entity policies; historical replay remains immutable. */
-    private function configureCurrentMappings(Schema &$schema, AbstractPlatform $platform, SchemaConfig $configuration, bool $foreignKeys): array
+    private function configureCurrentMappings(Schema $schema, AbstractPlatform $platform, bool $foreignKeys): array
     {
         // The explicit version keeps this owned metadata connection offline.
         $connection = $this->metadataManager?->getConnection()
@@ -130,7 +142,6 @@ final class BaselineSchema
                 }
             }
             $ownedTables = [];
-            $newTables = [];
             foreach ($mapped->getTables() as $declaration) {
                 $entity = $declarations[$declaration->getName()];
                 if ((new ReflectionClass($entity->name))->getAttributes(SchemaOwner::class) !== []) {
@@ -140,17 +151,13 @@ final class BaselineSchema
                             $owned->removeForeignKey($foreignKey->getName());
                         }
                     }
-                    $ownedTables[] = $owned;
-                    if (!$schema->hasTable($declaration->getName())) {
-                        $newTables[] = $owned;
-                    }
+                    $ownedTables[$declaration->getName()] = $owned;
                 }
             }
-            // New owned tables also participate in current native-policy projection.
-            // Final replacement keeps complete metadata authoritative after the
-            // remaining legacy overlays have run.
-            $schema = CurrentSchema::replaceTables($schema, $newTables, $configuration);
             foreach ($mapped->getTables() as $declaration) {
+                if (isset($ownedTables[$declaration->getName()])) {
+                    continue;
+                }
                 $table = $schema->getTable($declaration->getName());
                 $entity = $declarations[$declaration->getName()];
                 $ownedIndexes = $ownedIndexColumns = [];
@@ -219,7 +226,7 @@ final class BaselineSchema
                 }
             }
             // Native policies use the same metadata snapshot as columns and indexes.
-            $this->configureRequiredSubjects($schema, $platform, $metadata);
+            $this->configureRequiredSubjects($schema, $platform, $metadata, $ownedTables);
             return $ownedTables;
         } finally {
             if ($this->metadataManager === null) {
@@ -250,13 +257,14 @@ final class BaselineSchema
     }
 
     /** @param list<ClassMetadata> $declarations One current-build metadata snapshot. */
-    private function configureRequiredSubjects(Schema $schema, AbstractPlatform $platform, array $declarations): void
+    private function configureRequiredSubjects(Schema $schema, AbstractPlatform $platform, array $declarations, array $ownedTables): void
     {
         foreach ($declarations as $metadata) {
+            $owned = isset($ownedTables[$metadata->getTableName()]);
             foreach ($metadata->fieldMappings as $property => $field) {
                 // Logical flags live on their entity properties. MySQL keeps
                 // historical integer storage; PostgreSQL uses native booleans.
-                if ($platform instanceof PostgreSQLPlatform && $field->type === Types::BOOLEAN) {
+                if (!$owned && $platform instanceof PostgreSQLPlatform && $field->type === Types::BOOLEAN) {
                     $column = $schema->getTable($metadata->getTableName())->getColumn($field->columnName);
                     $column->setType(Type::getType(Types::BOOLEAN));
                     if ($column->getDefault() !== null) {
@@ -268,7 +276,9 @@ final class BaselineSchema
                     if ($key->fallbackProperty !== null) {
                         continue;
                     }
-                    $key->configureSubjectTable($schema->getTable($metadata->getTableName()), $platform, $metadata, $property);
+                    if (!$owned) {
+                        $key->configureSubjectTable($schema->getTable($metadata->getTableName()), $platform, $metadata, $property);
+                    }
                     $discriminators = [];
                     foreach ($metadata->associationMappings as $association => $mapping) {
                         foreach ((new ReflectionProperty($metadata->name, $association))->getAttributes(DiscriminatedBy::class) as $binding) {

@@ -1018,9 +1018,12 @@ class CurrentSchema extends test
         $this->integer(count($withForeignKeys->getTable('schema_owned_example')->getForeignKeys()))->isIdenticalTo(1);
         $metadata = $manager->getClassMetadata(CurrentDeclaration::class);
         $metadata->mapField(['fieldName' => 'future', 'type' => Types::STRING, 'length' => 39, 'nullable' => false, 'options' => ['default' => 'new']]);
+        $metadata->mapField(['fieldName' => 'active', 'type' => Types::BOOLEAN, 'nullable' => false, 'options' => ['default' => true]]);
         $second = $builder->build($platform, false);
         $this->integer($second->getTable('schema_owned_example')->getColumn('future')->getLength())->isIdenticalTo(39);
         $this->string($second->getTable('schema_owned_example')->getColumn('future')->getDefault())->isIdenticalTo('new');
+        $this->string(Type::lookupName($second->getTable('schema_owned_example')->getColumn('active')->getType()))->isIdenticalTo(Types::BOOLEAN);
+        $this->boolean($second->getTable('schema_owned_example')->getColumn('active')->getDefault())->isTrue();
         $this->boolean($first->getTable('schema_owned_example')->hasColumn('future'))->isFalse();
         $this->boolean((new Baseline())->build($platform)->hasTable('schema_owned_example'))->isFalse();
         $this->boolean($manager->getConnection()->isConnected())->isFalse();
@@ -1318,6 +1321,7 @@ class CurrentDeclaration
     public CronTask $task;
 
     public string $future = '';
+    public bool $active = false;
 }
 
 final class CurrentDeclarationDriver implements MappingDriver
