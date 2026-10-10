@@ -60,6 +60,10 @@ final class TicketAssetRepository
 
     public function active(string $kind, int $asset, array $finished, int $type): array
     {
+        $projected = (new ITILAssetRepository($this->em))->projectActiveForItem(ItemTicket::class, 'tickets', $kind, $asset, $finished, $type);
+        if ($projected !== null) {
+            return $projected;
+        }
         $query = $this->linked($kind, $asset);
         if ($query === null) {
             return [];
