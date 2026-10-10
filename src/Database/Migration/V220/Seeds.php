@@ -10,6 +10,7 @@ use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use itsmng\Database\Migration\Ledger;
+use RuntimeException;
 
 /** Frozen raw seed import before adoption, independent of current ORM metadata. */
 final class Seeds
@@ -28,7 +29,7 @@ final class Seeds
         $inputs = json_decode(file_get_contents(__DIR__ . '/history/20261001-seed-inputs.json'), true, 512, JSON_THROW_ON_ERROR);
         foreach ($inputs as $name => $fields) {
             if (!isset($rows[$name])) {
-                throw new \RuntimeException('Historical seed input has no source rows: ' . $name);
+                throw new RuntimeException('Historical seed input has no source rows: ' . $name);
             }
             foreach ($fields as $field => $value) {
                 $schema->getTable($name)->getColumn($field);
@@ -41,15 +42,15 @@ final class Seeds
                 foreach ($record as $field => $value) {
                     $column = $table->getColumn($field);
                     if ($column->getNotnull() && $value === null) {
-                        throw new \RuntimeException('Historical seed supplies NULL for required field: ' . $name . '.' . $field);
+                        throw new RuntimeException('Historical seed supplies NULL for required field: ' . $name . '.' . $field);
                     }
                     if (Type::lookupName($column->getType()) === Types::BOOLEAN && $value !== null && !in_array($value, [0, 1, '0', '1', false, true], true)) {
-                        throw new \RuntimeException('Invalid historical boolean seed: ' . $name . '.' . $field);
+                        throw new RuntimeException('Invalid historical boolean seed: ' . $name . '.' . $field);
                     }
                 }
                 foreach ($table->getColumns() as $column) {
                     if ($column->getNotnull() && !$column->getAutoincrement() && $column->getDefault() === null && !array_key_exists($column->getName(), $record)) {
-                        throw new \RuntimeException('Historical seed omits required field: ' . $name . '.' . $column->getName());
+                        throw new RuntimeException('Historical seed omits required field: ' . $name . '.' . $column->getName());
                     }
                 }
             }
