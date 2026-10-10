@@ -525,14 +525,26 @@ class Item_SoftwareVersion extends CommonDBRelation
     {
         global $DB;
 
-        $repository = new SoftwareInstallationRepository(Orm::create($DB));
-        $target_types = $repository->itemTypes(false, (int)$softwareversions_id, false);
+        $reads = Orm::readSession($DB);
+        $target_types = $reads->readPrepared(
+            static fn (): int => (int)$softwareversions_id,
+            static fn (EntityManager $manager, int $version): array =>
+                (new SoftwareInstallationRepository($manager))->itemTypes(false, $version, false)
+        );
 
         $count = 0;
         foreach ($target_types as $itemtype) {
             $itemtable = $itemtype::getTable();
             if (isset(EntityRegistry::tables()[$itemtable])) {
-                $count += $repository->count(false, (int)$softwareversions_id, false, $itemtype, $itemtable, getEntitiesRestrictCriteria($itemtable, '', $entity));
+                $count += $reads->readPrepared(
+                    static function () use ($softwareversions_id, $itemtype, $itemtable, $entity): array {
+                        // Preserve argument evaluation and weak conversion before this stage.
+                        $arguments = static fn (int $version, string $kind, string $table, array $scope): array => [$version, $kind, $table, $scope];
+                        return $arguments((int)$softwareversions_id, $itemtype, $itemtable, getEntitiesRestrictCriteria($itemtable, '', $entity));
+                    },
+                    static fn (EntityManager $manager, array $arguments): int =>
+                        (new SoftwareInstallationRepository($manager))->count(false, $arguments[0], false, $arguments[1], $arguments[2], $arguments[3])
+                );
                 continue;
             }
             // Plugin assets without a mapped entity retain their existing query during migration.

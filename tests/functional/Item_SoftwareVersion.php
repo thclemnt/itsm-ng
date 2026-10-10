@@ -35,6 +35,9 @@ namespace tests\units;
 
 use DbTestCase;
 use Doctrine\DBAL\ArrayParameterType;
+use Doctrine\DBAL\Connection;
+use Phone as PhoneModel;
+use InvalidArgumentException;
 use Doctrine\DBAL\Configuration;
 use Doctrine\DBAL\Logging\Middleware;
 use Doctrine\DBAL\Query\QueryBuilder;
@@ -197,6 +200,189 @@ class Item_SoftwareVersion extends DbTestCase
         $this->array($ins->prepareInputForUpdate($input))->isIdenticalTo($expected);
     }
 
+
+    public function testVersionCountStagesStayFreshAndPreserveIndependentLiveOwners(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $originalTable = ComputerModel::getTable();
+        try {
+            [, $versions, $computers] = $this->installationFixtures(['_test_root_entity', '_test_child_1', '_test_child_1']);
+            $version = (int)$versions[0]->getID();
+            $links = [];
+            foreach ($computers as $computer) {
+                $links[] = $this->createItem(ItemSoftwareVersionModel::class, [
+                    'itemtype' => 'Computer', 'items_id' => $computer->getID(), 'softwareversions_id' => $version,
+                ]);
+            }
+            $root = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
+            $this->integer(ItemSoftwareVersionModel::countForVersion((string)$version))->isIdenticalTo(3);
+            $this->integer(ItemSoftwareVersionModel::countForVersion($version, $root))->isIdenticalTo(1);
+            $this->integer(ItemSoftwareVersionModel::countForVersion($version, [$child]))->isIdenticalTo(2);
+            $this->integer(ItemSoftwareVersionModel::countForVersion($version, []))->isIdenticalTo(0);
+            $connection = $DB->getDoctrineConnection();
+            $this->integer($connection->update('glpi_items_softwareversions', ['is_deleted' => true],
+                ['id' => $links[2]->getID()], ['is_deleted' => Types::BOOLEAN]))->isIdenticalTo(1);
+            $this->integer(ItemSoftwareVersionModel::countForVersion($version))->isIdenticalTo(2);
+            $writer = Orm::create($DB);
+            $pending = $writer->find(ItemSoftwareVersion::class, (int)$links[0]->getID());
+            $pending->is_deleted = true;
+            Orm::read($DB, function (EntityManager $outer) use ($version, $links, $writer, $pending): void {
+                $live = $outer->find(ItemSoftwareVersion::class, (int)$links[1]->getID());
+                $live->is_deleted = true;
+                $this->integer(ItemSoftwareVersionModel::countForVersion($version))->isIdenticalTo(2);
+                $this->boolean($outer->contains($live))->isTrue();
+                $this->boolean($live->is_deleted)->isTrue();
+                $this->boolean($writer->contains($pending))->isTrue();
+                $this->boolean($pending->is_deleted)->isTrue();
+            });
+            $this->integer($connection->update('glpi_computers', ['is_template' => true],
+                ['id' => $computers[0]->getID()], ['is_template' => Types::BOOLEAN]))->isIdenticalTo(1);
+            $this->integer(ItemSoftwareVersionModel::countForVersion($version))->isIdenticalTo(1);
+            $this->integer($connection->update('glpi_computers', ['is_template' => false, 'is_deleted' => true],
+                ['id' => $computers[0]->getID()], ['is_template' => Types::BOOLEAN, 'is_deleted' => Types::BOOLEAN]))->isIdenticalTo(1);
+            $this->integer(ItemSoftwareVersionModel::countForVersion($version))->isIdenticalTo(1);
+            ComputerModel::forceTable('glpi_phones');
+            $this->exception(static fn () => ItemSoftwareVersionModel::countForVersion($version))
+                ->isInstanceOf(InvalidArgumentException::class);
+            ComputerModel::forceTable($originalTable);
+            $this->integer(ItemSoftwareVersionModel::countForVersion($version))->isIdenticalTo(1);
+            $writer->clear();
+        } finally {
+            ComputerModel::forceTable($originalTable);
+            $_SESSION = $session;
+        }
+    }
+
+    public function testVersionCountKeepsScopeCallbacksBetweenMaterializedKindStages(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            [, $versions, $computers] = $this->installationFixtures();
+            $version = (int)$versions[0]->getID();
+            $root = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
+            $phone = $this->createItem(PhoneModel::class, ['name' => 'Staged phone ' . $this->getUniqueString(), 'entities_id' => $child]);
+            $computerLink = $this->createItem(ItemSoftwareVersionModel::class, [
+                'itemtype' => 'Computer', 'items_id' => $computers[0]->getID(), 'softwareversions_id' => $version,
+            ]);
+            $this->createItem(ItemSoftwareVersionModel::class, [
+                'itemtype' => 'Phone', 'items_id' => $phone->getID(), 'softwareversions_id' => $version,
+            ]);
+            $connection = $DB->getDoctrineConnection();
+            $scope = new class ($this, $connection, (int)$computerLink->getID(), $root, $child) {
+                public int $calls = 0;
+                public function __construct(private object $test, private Connection $connection, private int $link, private int $root, private int $child)
+                {
+                }
+                public function __toString(): string
+                {
+                    ++$this->calls;
+                    $this->test->boolean($this->connection->isApplicationEntityManagerActive())->isFalse();
+                    // The loose comparison and explicit cast each invoke this
+                    // callback. Keep both conversions for a kind on one scope.
+                    if ($this->calls <= 2) {
+                        $_SESSION['glpiactiveentities'] = [$this->root];
+                    } else {
+                        if ($this->calls === 3) {
+                            // Computer's count must finish before Phone's first conversion.
+                            $this->connection->update('glpi_items_softwareversions', ['is_deleted' => true],
+                                ['id' => $this->link], ['is_deleted' => Types::BOOLEAN]);
+                        }
+                        $_SESSION['glpiactiveentities'] = [$this->child];
+                    }
+                    return '';
+                }
+            };
+            $this->integer(ItemSoftwareVersionModel::countForVersion($version, $scope))->isIdenticalTo(2);
+            $this->integer($scope->calls)->isIdenticalTo(4);
+            $this->integer(ItemSoftwareVersionModel::countForVersion($version, [$root, $child]))->isIdenticalTo(1);
+            $this->integer(ItemSoftwareVersionModel::countForVersion($version, $root))->isIdenticalTo(0);
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
+    public function testVersionCountRetainsCustomMetadataAndSelectedRouteAcrossStages(): void
+    {
+        global $DB;
+        $originalAdapter = $DB;
+        $session = $_SESSION;
+        try {
+            [, $versions, $computers] = $this->installationFixtures(['_test_root_entity', '_test_root_entity']);
+            $version = (int)$versions[0]->getID();
+            $links = [];
+            foreach ($computers as $computer) {
+                $links[] = $this->createItem(ItemSoftwareVersionModel::class, [
+                    'itemtype' => 'Computer', 'items_id' => $computer->getID(), 'softwareversions_id' => $version,
+                ]);
+            }
+            $connection = $DB->getDoctrineConnection();
+            $this->integer($connection->update('glpi_items_softwareversions', ['is_deleted' => true],
+                ['id' => $links[1]->getID()], ['is_deleted' => Types::BOOLEAN]))->isIdenticalTo(1);
+            $this->integer(ItemSoftwareVersionModel::countForVersion($version))->isIdenticalTo(1);
+            $observer = new class () {
+                public int $loads = 0;
+                public int $clears = 0;
+                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
+                {
+                    $metadata = $event->getClassMetadata();
+                    if ($metadata->name === ItemSoftwareVersion::class && ++$this->loads === 1) {
+                        // A custom operation's first mapping selects a different real
+                        // boolean column. Its next stage must retain that exact mapping.
+                        $metadata->fieldMappings['is_deleted']->columnName = 'is_template_item';
+                    }
+                }
+                public function onClear(): void
+                {
+                    ++$this->clears;
+                }
+            };
+            $probe = new class ($connection) extends ScalarReadProbe {
+                public EventManager $events;
+                public function getEventManager(): EventManager
+                {
+                    return $this->events;
+                }
+            };
+            $probe->events = new EventManager();
+            $probe->events->addEventListener([Events::loadClassMetadata, Events::onClear], $observer);
+            $other = new ScalarReadProbe($connection);
+            $route = $probe;
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new SoftwareAdapter();
+            $this->calling($adapter)->getDoctrineConnection = static function () use (&$route) {
+                return $route;
+            };
+            $this->calling($adapter)->getProvider = $originalAdapter->getProvider();
+            $DB = $adapter;
+            $scope = new class ($other, $route) {
+                public function __construct(private Connection $other, private Connection &$route)
+                {
+                }
+                public function __toString(): string
+                {
+                    $this->route = $this->other;
+                    return '';
+                }
+            };
+            $this->integer(ItemSoftwareVersionModel::countForVersion($version, $scope))->isIdenticalTo(2);
+            $this->integer($observer->loads)->isIdenticalTo(1);
+            $this->integer($observer->clears)->isIdenticalTo(0);
+            $this->array($other->queries)->isEmpty();
+            $route = $probe;
+            // A subsequent public operation constructs its own custom metadata.
+            $this->integer(ItemSoftwareVersionModel::countForVersion($version))->isIdenticalTo(1);
+            $this->integer($observer->loads)->isIdenticalTo(2);
+            $this->integer($observer->clears)->isIdenticalTo(0);
+            $this->array($other->queries)->isEmpty();
+        } finally {
+            $DB = $originalAdapter;
+            $_SESSION = $session;
+        }
+    }
 
     public function testCountInstall()
     {

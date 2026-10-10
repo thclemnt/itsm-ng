@@ -69,6 +69,16 @@ final class Orm
         return $operation($manager ?? self::forConnection($connection), $prepared);
     }
 
+    /** @internal Interleaved preparation and materialized reads on one already selected route. */
+    public static function readSession(DBAdapter $db): MaterializedReadSession
+    {
+        $connection = $db->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($db, $connection);
+        $shared = self::prepareReadProjection($connection) && self::canShareReadManager($connection)
+            && !$connection->isApplicationEntityManagerActive();
+        return new MaterializedReadSession($connection, $shared ? null : self::forConnection($connection));
+    }
+
     private static function canShareReadManager(Connection $connection): bool
     {
         if ((!$connection instanceof MySQLManagedConnection && !$connection instanceof PostgresConnection)

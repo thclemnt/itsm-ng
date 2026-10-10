@@ -73,6 +73,12 @@ trait ApplicationOrmOwnership
         }
     }
 
+    /** @internal A staged reader begun inside another scope retains its independent owner. */
+    public function isApplicationEntityManagerActive(): bool
+    {
+        return $this->applicationEntityManagerActive;
+    }
+
     /** Admit only the private manager currently owned by this application scope. */
     public function ownsApplicationEntityManager(EntityManager $manager): bool
     {

@@ -34,6 +34,8 @@
 namespace tests\units;
 
 use DB as LegacyDB;
+use Doctrine\Common\EventManager;
+use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Types\StringType;
@@ -59,6 +61,178 @@ use itsmng\Database\PostgresParameters;
 
 class DB extends \GLPITestCase
 {
+    public function testReadSessionRetainsCustomConfigurationAndEntryRouteAcrossStages(): void
+    {
+        $parameters = ['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0', 'wrapperClass' => MySQLManagedConnection::class];
+        $selected = DriverManager::getConnection($parameters);
+        $other = DriverManager::getConnection($parameters);
+        $custom = new class ($selected->getParams(), $selected->getDriver(), $selected->getConfiguration()) extends MySQLManagedConnection {
+            public EventManager $events;
+            public array $trace = [];
+            public function getEventManager(): EventManager
+            {
+                $this->trace[] = 'construct';
+                return $this->events;
+            }
+        };
+        $custom->events = new EventManager();
+        $listener = new class () {
+            public int $loads = 0;
+            public int $clears = 0;
+            public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
+            {
+                $metadata = $event->getClassMetadata();
+                if ($metadata->name === VlanEntity::class) {
+                    ++$this->loads;
+                    $metadata->setPrimaryTable(['name' => 'staged_custom_vlans']);
+                }
+            }
+            public function onClear(): void
+            {
+                ++$this->clears;
+            }
+        };
+        $custom->events->addEventListener([Events::loadClassMetadata, Events::onClear], $listener);
+        $route = $custom;
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new PreparedReadAdapter();
+        $this->calling($adapter)->getDoctrineConnection = static function () use (&$route) {
+            return $route;
+        };
+        $reads = Orm::readSession($adapter);
+        foreach ([37, 41] as $input) {
+            $result = $reads->readPrepared(function () use ($input, $custom, &$route, $other): int {
+                $this->array($custom->trace)->isIdenticalTo($input === 37 ? ['construct'] : ['construct', 'prepare']);
+                $custom->trace[] = 'prepare';
+                $route = $other;
+                return $input;
+            }, function (EntityManager $manager, int $prepared) use ($custom): array {
+                $this->object($manager->getConnection())->isIdenticalTo($custom);
+                return [$prepared, $manager->getClassMetadata(VlanEntity::class)->getTableName()];
+            });
+            $this->array($result)->isIdenticalTo([$input, 'staged_custom_vlans']);
+        }
+        $this->integer($listener->loads)->isIdenticalTo(1);
+        $this->integer($listener->clears)->isIdenticalTo(0);
+        $this->boolean($custom->isConnected())->isFalse();
+        $this->boolean($other->isConnected())->isFalse();
+    }
+
+    public function testReadSessionStagesPrepareOutsideOwnershipAndRetainFailureCleanup(): void
+    {
+        $connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0', 'wrapperClass' => MySQLManagedConnection::class]);
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new PreparedReadAdapter();
+        $this->calling($adapter)->getDoctrineConnection = $connection;
+        $reads = Orm::readSession($adapter);
+        foreach ([37, 41] as $input) {
+            $this->integer($reads->readPrepared(function () use ($connection, $input): int {
+                $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+                return $input;
+            }, function (EntityManager $manager, int $prepared) use ($connection): int {
+                $this->boolean($connection->ownsApplicationEntityManager($manager))->isTrue();
+                $this->string($manager->getClassMetadata(VlanEntity::class)->getTableName())->isIdenticalTo('glpi_vlans');
+                return $prepared;
+            }))->isIdenticalTo($input);
+            $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+        }
+        $primary = new LogicException('Staged projection failure');
+        $cleanup = new LogicException('Staged cleanup failure');
+        $caught = null;
+        try {
+            $reads->readPrepared(static fn (): int => 43, static function (EntityManager $manager, int $input) use ($primary, $cleanup): int {
+                $manager->getEventManager()->addEventListener([Events::onClear], new class ($cleanup) {
+                    public function __construct(private Throwable $failure)
+                    {
+                    }
+                    public function onClear(): void
+                    {
+                        throw $this->failure;
+                    }
+                });
+                throw $primary;
+            });
+        } catch (Throwable $error) {
+            $caught = $error;
+        }
+        $this->object($caught)->isInstanceOf(MutationCleanupFailure::class);
+        $this->object($caught->primary)->isIdenticalTo($primary);
+        $this->object($caught->cleanup)->isIdenticalTo($cleanup);
+        $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+        $this->integer($reads->readPrepared(static fn (): int => 47, static fn (EntityManager $manager, int $input): int => $input))
+            ->isIdenticalTo(47);
+        $this->boolean($connection->isConnected())->isFalse();
+    }
+
+    public function testReadSessionRetainsOneIndependentNestedOwnerAcrossStages(): void
+    {
+        $connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0', 'wrapperClass' => MySQLManagedConnection::class]);
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new PreparedReadAdapter();
+        $this->calling($adapter)->getDoctrineConnection = $connection;
+        $connection->withApplicationEntityManager(function (EntityManager $outer) use ($connection, $adapter): void {
+            $live = new VlanEntity();
+            $live->name = 'Pending outer staged VLAN';
+            $outer->persist($live);
+            $reads = Orm::readSession($adapter);
+            $this->string($reads->readPrepared(static fn (): string => 'Nested staged VLAN', function (EntityManager $manager, string $name) use ($outer): string {
+                $this->boolean($manager === $outer)->isFalse();
+                $manager->getClassMetadata(VlanEntity::class)->setPrimaryTable(['name' => 'retained_nested_vlans']);
+                $manager->getEventManager()->addEventListener([Events::onClear], new class () {
+                    public function onClear(): void
+                    {
+                        throw new LogicException('The independent staged owner never acquired explicit clear');
+                    }
+                });
+                return $name;
+            }))->isIdenticalTo('Nested staged VLAN');
+            $this->string($reads->readPrepared(static fn (): int => 0, static fn (EntityManager $manager, int $unused): string =>
+                $manager->getClassMetadata(VlanEntity::class)->getTableName()))->isIdenticalTo('retained_nested_vlans');
+            $this->boolean($outer->contains($live))->isTrue();
+            $this->string($live->name)->isIdenticalTo('Pending outer staged VLAN');
+            $this->boolean($connection->ownsApplicationEntityManager($outer))->isTrue();
+        });
+        $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+        $this->boolean($connection->isConnected())->isFalse();
+    }
+
+    public function testReadSessionRetainsLateCustomTypeOwnerAfterPreparation(): void
+    {
+        $connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0', 'wrapperClass' => MySQLManagedConnection::class]);
+        $registry = DbalType::getTypeRegistry();
+        $original = $registry->get(Types::STRING);
+        $custom = new class () extends StringType {
+            public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+            {
+                return $sqlExpr;
+            }
+        };
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new PreparedReadAdapter();
+        $this->calling($adapter)->getDoctrineConnection = $connection;
+        try {
+            $reads = Orm::readSession($adapter);
+            $this->string($reads->readPrepared(static fn (): int => 0, static fn (EntityManager $manager, int $unused): string =>
+                $manager->getClassMetadata(VlanEntity::class)->getTableName()))->isIdenticalTo('glpi_vlans');
+            $this->string($reads->readPrepared(function () use ($connection, $registry, $custom): int {
+                $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+                $registry->override(Types::STRING, $custom);
+                return 0;
+            }, function (EntityManager $manager, int $unused) use ($connection): string {
+                $this->boolean($connection->ownsApplicationEntityManager($manager))->isFalse();
+                $metadata = $manager->getClassMetadata(VlanEntity::class);
+                $metadata->setPrimaryTable(['name' => 'late_retained_vlans']);
+                return $metadata->getTableName();
+            }))->isIdenticalTo('late_retained_vlans');
+            $registry->override(Types::STRING, $original);
+            $this->string($reads->readPrepared(static fn (): int => 0, static fn (EntityManager $manager, int $unused): string =>
+                $manager->getClassMetadata(VlanEntity::class)->getTableName()))->isIdenticalTo('late_retained_vlans');
+            $this->boolean($connection->isConnected())->isFalse();
+        } finally {
+            $registry->override(Types::STRING, $original);
+        }
+    }
+
     public function testPreparedReadRetainsCustomConstructionRouteAndClearPolicy(): void
     {
         $parameters = ['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0', 'wrapperClass' => MySQLManagedConnection::class];
