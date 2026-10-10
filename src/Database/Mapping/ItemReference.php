@@ -87,6 +87,10 @@ trait ItemReference
 
     private static function referenceProperties(): array
     {
+        static $declarations = [];
+        if (isset($declarations[static::class])) {
+            return $declarations[static::class];
+        }
         $properties = [];
         foreach ((new ReflectionClass(static::class))->getProperties() as $property) {
             foreach ($property->getAttributes(DiscriminatedBy::class) as $attribute) {
@@ -98,7 +102,7 @@ trait ItemReference
                 }
             }
         }
-        return $properties;
+        return $declarations[static::class] = $properties;
     }
 
     protected static function allowsEmptyReference(): bool
