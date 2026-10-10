@@ -35,6 +35,9 @@ namespace tests\units;
 
 use DbTestCase;
 use ReflectionClass;
+use RuleAction;
+use RuleCriteria;
+use RuleImportEntity;
 
 /* Test for inc/rule.class.php */
 
@@ -379,7 +382,45 @@ class Rule extends DbTestCase
 
     public function testProcess()
     {
+        global $DB;
+        $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
+        $DB->getDoctrineConnection()->update('glpi_entities', ['tag' => '_process_entity'], ['id' => $child]);
+        $rule = new RuleImportEntity();
+        $rule->fields = ['id' => 0, 'match' => RuleImportEntity::AND_MATCHING];
+        $criterion = new RuleCriteria();
+        $criterion->fields = [
+            'criteria' => '_source',
+            'condition' => RuleImportEntity::PATTERN_IS,
+            'pattern' => 'inventory',
+        ];
+        $rule->criterias = [$criterion];
+        $action = new RuleAction();
+        $action->fields = [
+            'action_type' => 'regex_result',
+            'field' => '_affect_entity_by_tag',
+            'value' => '_process_entity',
+        ];
+        $rule->actions = [$action];
+        $initial = ['marker' => 'kept', '_no_rule_matches' => true];
+        $params = [];
 
+        $input = ['_source' => 'other'];
+        $output = $initial;
+        $rule->process($input, $output, $params);
+        $this->array($output)->isIdenticalTo($initial);
+
+        $input['_source'] = 'inventory';
+        $options = ['only_criteria' => ['name']];
+        $rule->process($input, $output, $params, $options);
+        $this->array($output)->isIdenticalTo($initial);
+
+        $options = ['only_criteria' => ['_source']];
+        $rule->process($input, $output, $params, $options);
+        $this->array($output)->isIdenticalTo([
+            'marker' => 'kept',
+            'entities_id' => $child,
+            '_rule_process' => true,
+        ]);
     }
 
     public function testPrepareInputDataForProcess()
