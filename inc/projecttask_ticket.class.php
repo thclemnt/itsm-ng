@@ -280,19 +280,14 @@ class ProjectTask_Ticket extends CommonDBRelation
                 $ticket->getSolvedStatusArray()
             ))
         ) {
-            $finished_states_it = $DB->request(
-                [
-                  'SELECT' => ['id'],
-                  'FROM'   => ProjectState::getTable(),
-                  'WHERE'  => [
-                     'is_finished' => 1
-                  ],
-                ]
-            );
-            $finished_states_ids = [];
-            foreach ($finished_states_it as $finished_state) {
-                $finished_states_ids[] = $finished_state['id'];
-            }
+            $database = $DB;
+            $stateTable = ProjectState::getTable();
+            $finished_states_ids = Orm::read($database, static fn (EntityManager $manager): array =>
+                (new ProjectRepository($manager))->finishedStateIds($stateTable));
+            $projectConditions = $finished_states_ids ? ['OR' => [
+                'projectstates_id' => null,
+                ['NOT' => ['projectstates_id' => $finished_states_ids]],
+            ]] : [];
 
             $usedValues = json_encode($used);
             $form = [
@@ -318,7 +313,7 @@ class ProjectTask_Ticket extends CommonDBRelation
                            'name' => 'projects_id',
                            'id' => 'DropdownForProjectIdProjectTask',
                            'itemtype' => Project::class,
-                           'conditions' => [ 'NOT' => ['projectstates_id' => $finished_states_ids] ],
+                           'condition' => $projectConditions,
                            'entity' => $ticket->getEntityID(),
                            'col_lg' => 6,
                            'hooks' => [

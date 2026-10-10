@@ -4,11 +4,13 @@
 
 namespace itsmng\Database\Repository;
 
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
 use InvalidArgumentException;
 use itsmng\Database\Entity\Project;
+use itsmng\Database\Entity\ProjectState;
 use itsmng\Database\Entity\ProjectTask;
 use itsmng\Database\Entity\ProjectTaskTicket;
 use itsmng\Database\Entity\ProjectTeam;
@@ -21,6 +23,24 @@ final class ProjectRepository
 {
     public function __construct(private EntityManager $em)
     {
+    }
+
+    /** Finished states excluded from the ticket's project chooser, without session or entity filtering. */
+    public function finishedStateIds(string $table): array
+    {
+        $metadata = $this->em->getClassMetadata(ProjectState::class);
+        $connection = $this->em->getConnection();
+        $quote = $connection->quoteIdentifier(...);
+        $ids = $connection->createQueryBuilder()
+            ->select($quote($metadata->getColumnName('id')))
+            ->from($quote($table))
+            ->where($quote($metadata->getColumnName('is_finished')) . ' = :finished')
+            ->setParameter('finished', true, Types::BOOLEAN)
+            ->executeQuery()->fetchFirstColumn();
+        // The legacy PostgreSQL driver exposes representable int8 identities as integers.
+        return $connection->getDatabasePlatform() instanceof PostgreSQLPlatform
+            ? array_map(static fn ($id) => RecordRepository::legacyScalarValue($id, $metadata->getTypeOfField('id')), $ids)
+            : $ids;
     }
 
     /** Discovery only; showShort still loads each project's team and checks its rich link. */

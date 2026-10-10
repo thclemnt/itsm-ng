@@ -35,6 +35,15 @@ namespace tests\units;
 
 use DbTestCase;
 use Doctrine\ORM\EntityManager;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\ORM\Event\PostLoadEventArgs;
+use ProjectState as LegacyProjectState;
+use Ticket as LegacyTicket;
+use itsmng\Database\Entity\ProjectState as ProjectStateEntity;
+use itsmng\Database\Repository\ProjectRepository;
+use mock\DBmysql as ProjectStateAdapterProbe;
+use tests\fixtures\ScalarReadProbe;
 use Project as LegacyProject;
 use ProjectTask as LegacyProjectTask;
 use ProjectTask_Ticket as LegacyProjectTaskTicket;
@@ -44,8 +53,117 @@ use itsmng\Database\Entity\Ticket as TicketEntity;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ProjectTaskRepository;
 
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
+
 class ProjectTask_Ticket extends DbTestCase
 {
+    public function testTicketProjectChooserExcludesCurrentFinishedStatesWithoutTouchingLiveOwners(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $original = $DB;
+        $writer = null;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $entity = (int)$_SESSION['glpiactive_entity'];
+            $token = $this->getUniqueString();
+            $finished = $this->createItem(LegacyProjectState::class, ['name' => 'Finished ' . $token, 'is_finished' => true]);
+            $open = $this->createItem(LegacyProjectState::class, ['name' => 'Open ' . $token, 'is_finished' => false]);
+            $finishedProject = $this->createItem(LegacyProject::class, ['name' => 'Excluded project ' . $token, 'entities_id' => $entity, 'projectstates_id' => $finished->getID()]);
+            $openProject = $this->createItem(LegacyProject::class, ['name' => 'Selectable project ' . $token, 'entities_id' => $entity, 'projectstates_id' => $open->getID()]);
+            $unconfiguredProject = $this->createItem(LegacyProject::class, ['name' => 'No-state project ' . $token, 'entities_id' => $entity]);
+            $ticket = $this->createItem(LegacyTicket::class, ['name' => 'Chooser ticket ' . $token, 'content' => 'Project chooser', 'entities_id' => $entity]);
+            $connection = $DB->getDoctrineConnection();
+            $writer = Orm::create($DB);
+            $live = $writer->find(ProjectStateEntity::class, (int)$finished->getID());
+            $live->is_finished = false;
+            $stateTable = LegacyProjectState::getTable();
+            $read = static fn (): array => Orm::read($GLOBALS['DB'], static fn (EntityManager $manager): array =>
+                (new ProjectRepository($manager))->finishedStateIds($stateTable));
+            $ids = $read();
+            $this->array(array_map('intval', $ids))->contains((int)$finished->getID())->notContains((int)$open->getID());
+            if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
+                foreach ($ids as $id) { $this->integer($id); }
+            }
+            $render = static fn () => LegacyProjectTaskTicket::showForTicket($ticket);
+            $this->output($render)->contains($openProject->getField('name'))->contains($unconfiguredProject->getField('name'))->notContains($finishedProject->getField('name'));
+            Orm::read($DB, function (EntityManager $outer) use ($finished, $render, $openProject, $finishedProject, $unconfiguredProject): void {
+                $owned = $outer->find(ProjectStateEntity::class, (int)$finished->getID());
+                $owned->is_finished = false;
+                $this->output($render)->contains($openProject->getField('name'))->contains($unconfiguredProject->getField('name'))->notContains($finishedProject->getField('name'));
+                $this->boolean($outer->contains($owned))->isTrue();
+                $this->boolean($owned->is_finished)->isFalse();
+            });
+            $this->boolean($writer->contains($live))->isTrue();
+            $this->boolean($live->is_finished)->isFalse();
+            $this->integer($connection->update('glpi_projectstates', ['is_finished' => false], ['id' => $finished->getID()]))->isIdenticalTo(1);
+            $this->array(array_map('intval', $read()))->notContains((int)$finished->getID());
+            $this->array(array_map('intval', $ids))->contains((int)$finished->getID());
+            $this->output($render)->contains($finishedProject->getField('name'))->contains($openProject->getField('name'));
+            $this->integer($connection->update('glpi_projectstates', ['is_finished' => true], ['id' => $finished->getID()]))->isIdenticalTo(1);
+            // Exercise the real empty-state catalogue without leaving shared fixtures altered.
+            $stateFlags = $connection->fetchAllAssociative('SELECT id, is_finished FROM glpi_projectstates ORDER BY id');
+            $stateDepth = $connection->getTransactionNestingLevel();
+            $finishedIds = $read();
+            try {
+                foreach ($finishedIds as $id) {
+                    $connection->update('glpi_projectstates', ['is_finished' => false], ['id' => $id]);
+                }
+                $this->array($read())->isEmpty();
+                $this->output($render)->contains($finishedProject->getField('name'))
+                    ->contains($openProject->getField('name'))->contains($unconfiguredProject->getField('name'));
+            } finally {
+                foreach ($finishedIds as $id) {
+                    $connection->update('glpi_projectstates', ['is_finished' => true], ['id' => $id]);
+                }
+            }
+            $this->array($connection->fetchAllAssociative('SELECT id, is_finished FROM glpi_projectstates ORDER BY id'))
+                ->isIdenticalTo($stateFlags, 'The empty-catalogue exercise restores every original and fixture state flag');
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($stateDepth);
+            $events = new EventManager();
+            $listener = new class () {
+                public int $loads = 0;
+                public function postLoad(PostLoadEventArgs $event): void
+                {
+                    if ($event->getObject() instanceof ProjectStateEntity) { ++$this->loads; }
+                }
+            };
+            $events->addEventListener(['postLoad'], $listener);
+            $probe = new class ($connection) extends ScalarReadProbe {
+                public EventManager $events;
+                public function getEventManager(): EventManager { return $this->events; }
+            };
+            $probe->events = $events;
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new ProjectStateAdapterProbe();
+            $this->calling($adapter)->getDoctrineConnection = $probe;
+            $this->calling($adapter)->getProvider = $original->getProvider();
+            $depth = $connection->getTransactionNestingLevel();
+            $DB = $adapter;
+            $this->output($render)->contains($openProject->getField('name'))->contains($unconfiguredProject->getField('name'))->notContains($finishedProject->getField('name'));
+            $this->integer($listener->loads)->isIdenticalTo(0);
+            $finishedQueries = array_values(array_filter($probe->queries, static fn (array $query): bool => isset($query['params']['finished'])));
+            $this->array($finishedQueries)->hasSize(1);
+            $this->boolean($finishedQueries[0]['params']['finished'])->isTrue();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+            $DB = $original;
+            foreach ([LegacyTicket::SOLVED, LegacyTicket::CLOSED] as $status) {
+                $ticket->fields['status'] = $status;
+                $DB = $adapter;
+                $probe->queries = [];
+                $this->output($render)->notContains($openProject->getField('name'));
+                $this->array(array_values(array_filter($probe->queries, static fn (array $query): bool => isset($query['params']['finished']))))->isEmpty();
+                $DB = $original;
+            }
+        } finally {
+            $DB = $original;
+            $writer?->clear();
+            $_SESSION = $session;
+        }
+    }
+
+
     public function testTicketTabProjectionKeepsNullableFactsAndOwningLinks(): void
     {
         global $DB;
