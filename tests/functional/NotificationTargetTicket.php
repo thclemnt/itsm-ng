@@ -43,6 +43,7 @@ use NotificationEventMailing;
 use NotificationTarget;
 use NotificationTargetTicket as LegacyNotificationTargetTicket;
 use Notification_NotificationTemplate;
+use ReflectionProperty;
 use Ticket;
 use Ticket_User;
 use User;
@@ -265,14 +266,28 @@ class NotificationTargetTicket extends DbTestCase
             foreach (['openbyuser', 'lastupdater', 'assigntousers'] as $tag) {
                 $this->string($data['##ticket.' . $tag . '##'])->isIdenticalTo('');
             }
+            $selected->fields['users_id_recipient'] = $a;
+            $selected->fields['users_id_lastupdater'] = $b;
+            $selected->selected = [['users_id' => $b], ['users_id' => $a], ['users_id' => $b]];
+            $expected = $target->getDataForObject($selected, $options, true);
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $beforeFactories = $factories->getValue();
+            foreach (range(1, 4) as $round) {
+                $data = $target->getDataForObject($selected, $options, true);
+                foreach (['openbyuser', 'lastupdater', 'assigntousers'] as $tag) {
+                    $this->string($data['##ticket.' . $tag . '##'])->isIdenticalTo($expected['##ticket.' . $tag . '##']);
+                }
+            }
             $this->object($em->getConnection())->isIdenticalTo($connection);
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+            $allocated = $factories->getValue() - $beforeFactories;
         } finally {
             $em->getEventManager()->removeEventListener([Events::postLoad], $loads);
             $em->clear();
             $_SESSION = $session;
             $CFG_GLPI['is_ids_visible'] = $idsVisible;
         }
+        $this->integer($allocated)->isIdenticalTo(0);
     }
 
     public function testgetDataForObject()

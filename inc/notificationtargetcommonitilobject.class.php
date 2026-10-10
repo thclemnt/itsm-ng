@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\ITILDocumentAccess;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\DocumentRepository;
@@ -1059,8 +1060,8 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
         if ($item->getField('users_id_recipient')) {
             $user_tmp = new User();
             $uid = (int)$item->getField('users_id_recipient');
-            $names = (new UserRepository(Orm::create($DB)))
-                ->friendlyNameData([$uid]);
+            $names = Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new UserRepository($manager))->friendlyNameData([$uid]));
             $user_tmp->fields = $names[$uid] ?? [];
             $data["##$objettype.openbyuser##"] = $user_tmp->getName();
         }
@@ -1069,8 +1070,8 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
         if ($item->getField('users_id_lastupdater')) {
             $user_tmp = new User();
             $uid = (int)$item->getField('users_id_lastupdater');
-            $names = (new UserRepository(Orm::create($DB)))
-                ->friendlyNameData([$uid]);
+            $names = Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new UserRepository($manager))->friendlyNameData([$uid]));
             $user_tmp->fields = $names[$uid] ?? [];
             $data["##$objettype.lastupdater##"] = $user_tmp->getName();
         }
@@ -1081,8 +1082,8 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
             $assigned = $item->getUsers(CommonITILActor::ASSIGN);
             // The selected actor list owns order and duplicate handling. Read only
             // after its callback, without sharing a snapshot with other tag stages.
-            $names = (new UserRepository(Orm::create($DB)))
-                ->friendlyNameData(array_column($assigned, 'users_id'));
+            $names = Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new UserRepository($manager))->friendlyNameData(array_column($assigned, 'users_id')));
             foreach ($assigned as $tmp) {
                 $uid      = $tmp['users_id'];
                 $user_tmp = new User();
