@@ -49,12 +49,7 @@ final class CostRepository
         if ($last) {
             $query->setMaxResults(1);
         }
-        $rows = [];
-        $records = new RecordRepository($this->em);
-        foreach ($query->getQuery()->toIterable() as $record) {
-            $rows[] = $records->toRow($record);
-        }
-        return $rows;
+        return (new RecordRepository($this->em))->toRows($query->getQuery()->toIterable());
     }
 
     /**

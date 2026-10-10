@@ -134,12 +134,7 @@ final class UserSelectionRepository
         if ($namesOnly) {
             return new RowIterator($query->getQuery()->getScalarResult());
         }
-        $records = new RecordRepository($this->em);
-        $rows = [];
-        foreach ($query->getQuery()->toIterable() as $record) {
-            $rows[] = $records->toRow($record);
-        }
-        return new RowIterator($rows);
+        return new RowIterator((new RecordRepository($this->em))->toRows($query->getQuery()->toIterable()));
     }
 
     /** Add only joins actually needed by the structured permission predicate. */

@@ -76,11 +76,7 @@ final class TicketCollectionRepository
             $query->addOrderBy('r.id');
         }
         $query->setFirstResult(max(0, (int)($params['start'] ?? 0)))->setMaxResults(max(1, (int)($params['list_limit'] ?? 50)));
-        $rows = [];
-        $records = new RecordRepository($this->em);
-        foreach ($query->getQuery()->toIterable() as $record) {
-            $rows[] = $records->toRow($record);
-        }
+        $rows = (new RecordRepository($this->em))->toRows($query->getQuery()->toIterable());
         return ['rows' => $rows, 'total' => $total];
     }
 
