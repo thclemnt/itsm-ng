@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Features\Clonable;
 use itsmng\Database\LifecycleModelJournal;
 use itsmng\Database\Orm;
@@ -1096,8 +1097,12 @@ class SoftwareLicense extends CommonTreeDropdown
     {
         global $DB;
 
-        return (new SoftwareRepository(Orm::create($DB)))
-            ->licenseQuantity((int)$softwares_id, getEntitiesRestrictCriteria('glpi_softwarelicenses', '', '', true));
+        return Orm::readPrepared(
+            $DB,
+            static fn (): array => [(int)$softwares_id, getEntitiesRestrictCriteria('glpi_softwarelicenses', '', '', true)],
+            static fn (EntityManager $manager, array $prepared): int =>
+                (new SoftwareRepository($manager))->licenseQuantity($prepared[0], $prepared[1])
+        );
     }
 
 

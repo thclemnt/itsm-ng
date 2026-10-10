@@ -65,6 +65,50 @@ use itsmng\Reporting\Criteria;
  */
 class SoftwareLicense extends DbTestCase
 {
+    public function testLicenseQuantityReadsRemainCurrentAndRespectEntityScopes(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $owner = null;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $parent = (int)$_SESSION['glpiactive_entity'];
+            $child = $this->createItem(Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => $parent]);
+            $software = $this->createItem(Software::class, ['name' => $this->getUniqueString(),
+                'entities_id' => $parent, 'is_recursive' => 1]);
+            $this->createItem(LegacySoftwareLicense::class, ['name' => $this->getUniqueString(),
+                'softwares_id' => $software->getID(), 'entities_id' => $parent, 'number' => 2]);
+            $this->createItem(LegacySoftwareLicense::class, ['name' => $this->getUniqueString(),
+                'softwares_id' => $software->getID(), 'entities_id' => $child->getID(), 'number' => 5]);
+            $this->createItem(LegacySoftwareLicense::class, ['name' => $this->getUniqueString(),
+                'softwares_id' => $software->getID(), 'entities_id' => $child->getID(), 'number' => 0]);
+            $unlimited = $this->createItem(LegacySoftwareLicense::class, ['name' => $this->getUniqueString(),
+                'softwares_id' => $software->getID(), 'entities_id' => $child->getID(), 'number' => -1]);
+            $owner = Orm::create($DB);
+            $managed = $owner->find(SoftwareRecord::class, (int)$software->getID());
+            $this->setEntity($parent, false);
+            $this->integer(LegacySoftwareLicense::countForSoftware($software->getID()))->isIdenticalTo(2);
+            $this->setEntity($child->getID(), false);
+            $this->integer(LegacySoftwareLicense::countForSoftware((string)$software->getID()))->isIdenticalTo(-1);
+            $this->boolean($unlimited->update(['id' => $unlimited->getID(), 'number' => 0]))->isTrue();
+            $this->integer(LegacySoftwareLicense::countForSoftware($software->getID()))->isIdenticalTo(5);
+            $this->integer(LegacySoftwareLicense::countForSoftware(PHP_INT_MAX))->isIdenticalTo(0);
+            $this->boolean($owner->contains($managed))->isTrue();
+            $connection = $DB->getDoctrineConnection();
+            $connection->withApplicationEntityManager(function (EntityManager $outer) use ($software): void {
+                $record = $outer->find(SoftwareRecord::class, (int)$software->getID());
+                $this->integer(LegacySoftwareLicense::countForSoftware($software->getID()))->isIdenticalTo(5);
+                $this->boolean($outer->contains($record))->isTrue();
+            });
+            $this->setEntity($parent, true);
+            $this->integer(LegacySoftwareLicense::countForSoftware($software->getID()))->isIdenticalTo(7);
+        } finally {
+            $owner?->clear();
+            $_SESSION = $session;
+        }
+    }
+
     public function testFinancialReportUsesCurrentLicenseQuantitiesWithoutHydration(): void
     {
         global $DB, $CFG_GLPI;
