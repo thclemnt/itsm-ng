@@ -34,8 +34,10 @@
 namespace tests\units;
 
 use Auth as ApplicationAuth;
+use AuthLDAP as ApplicationLdap;
 use DbTestCase;
 use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity\AuthLDAP;
 use itsmng\Database\Entity\AuthMail;
 use itsmng\Database\Orm;
@@ -72,6 +74,92 @@ class Auth extends DbTestCase
     public function testIsValidLogin($login, $isvalid)
     {
         $this->variable(ApplicationAuth::isValidLogin($login))->isIdenticalTo($isvalid);
+    }
+
+    public function testLocalDirectorySelectionReadsStayCurrentAndKeepOwners(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $existing = $connection->fetchAllAssociative('SELECT id, CASE WHEN is_active THEN 1 ELSE 0 END AS active, CASE WHEN is_default THEN 1 ELSE 0 END AS selected FROM glpi_authldaps');
+        $owner = Orm::create($DB);
+        $directories = [];
+        try {
+            $connection->executeStatement(
+                'UPDATE glpi_authldaps SET is_active = ?, is_default = ?',
+                [false, false],
+                [Types::BOOLEAN, Types::BOOLEAN]
+            );
+            foreach ([
+                [true, false, 'mail', ''],
+                [true, true, '', 'mail'],
+                [true, true, 'mail', ''],
+                [true, false, null, null],
+                [false, true, 'mail', ''],
+            ] as $index => [$active, $default, $firstEmail, $secondEmail]) {
+                $directory = new AuthLDAP();
+                $directory->name = 'Local selection ' . $index . ' ' . $this->getUniqueString();
+                $directory->is_active = $active;
+                $directory->is_default = $default;
+                $directory->email1_field = $firstEmail;
+                $directory->email2_field = $secondEmail;
+                $directory->email3_field = null;
+                $directory->email4_field = '';
+                $owner->persist($directory);
+                $directories[] = $directory;
+            }
+            $owner->flush();
+            [$first, $default, $laterDefault, $noEmail] = $directories;
+            $this->integer(ApplicationLdap::getNumberOfServers())->isIdenticalTo(4);
+            $this->boolean(ApplicationLdap::useAuthLdap())->isTrue();
+            $this->integer(ApplicationLdap::getDefault())->isIdenticalTo((int)$default->id);
+            $this->array(array_map('intval', ApplicationLdap::getServersWithImportByEmailActive()))
+                ->isIdenticalTo([(int)$default->id, (int)$laterDefault->id, (int)$first->id]);
+            $connection->update('glpi_authldaps', ['is_active' => false], ['id' => $default->id], ['is_active' => Types::BOOLEAN]);
+            $this->integer(ApplicationLdap::getNumberOfServers())->isIdenticalTo(3);
+            $this->integer(ApplicationLdap::getDefault())->isIdenticalTo((int)$laterDefault->id);
+            $this->array(array_map('intval', ApplicationLdap::getServersWithImportByEmailActive()))
+                ->isIdenticalTo([(int)$laterDefault->id, (int)$first->id]);
+            $connection->update('glpi_authldaps', ['email1_field' => ''], ['id' => $first->id]);
+            $connection->update('glpi_authldaps', ['is_default' => false], ['id' => $laterDefault->id], ['is_default' => Types::BOOLEAN]);
+            $this->integer(ApplicationLdap::getDefault())->isIdenticalTo(0);
+            $this->array(array_map('intval', ApplicationLdap::getServersWithImportByEmailActive()))->isIdenticalTo([(int)$laterDefault->id]);
+            $connection->update('glpi_authldaps', ['is_active' => false], ['id' => $laterDefault->id], ['is_active' => Types::BOOLEAN]);
+            $this->array(ApplicationLdap::getServersWithImportByEmailActive())->isEmpty();
+            $this->boolean($owner->contains($first))->isTrue();
+            Orm::withReadConnection($connection, function (?EntityManager $outer) use ($first): void {
+                $managed = $outer->find(AuthLDAP::class, $first->id);
+                $name = $managed->name . '-unflushed';
+                $managed->name = $name;
+                $this->integer(ApplicationLdap::getNumberOfServers())->isIdenticalTo(2);
+                $this->integer(ApplicationLdap::getDefault())->isIdenticalTo(0);
+                $this->array(ApplicationLdap::getServersWithImportByEmailActive())->isEmpty();
+                $this->boolean($outer->contains($managed))->isTrue();
+                $this->string($managed->name)->isIdenticalTo($name);
+            });
+            foreach ([$first, $noEmail] as $directory) {
+                $connection->update('glpi_authldaps', ['is_active' => false], ['id' => $directory->id], ['is_active' => Types::BOOLEAN]);
+            }
+            $this->integer(ApplicationLdap::getNumberOfServers())->isIdenticalTo(0);
+            $this->boolean(ApplicationLdap::useAuthLdap())->isFalse();
+            $this->integer(ApplicationLdap::getDefault())->isIdenticalTo(0);
+            $this->array(ApplicationLdap::getServersWithImportByEmailActive())->isEmpty();
+        } finally {
+            foreach ($directories as $directory) {
+                if ($directory->id !== null) {
+                    $connection->delete('glpi_authldaps', ['id' => $directory->id]);
+                }
+            }
+            $owner->clear();
+            foreach ($existing as $directory) {
+                $connection->update(
+                    'glpi_authldaps',
+                    ['is_active' => (bool)(int)$directory['active'],
+                    'is_default' => (bool)(int)$directory['selected']],
+                    ['id' => $directory['id']],
+                    ['is_active' => Types::BOOLEAN, 'is_default' => Types::BOOLEAN]
+                );
+            }
+        }
     }
 
     public function testGetLoginAuthMethods()

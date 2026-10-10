@@ -32,6 +32,7 @@
  */
 
 use LDAP\Result;
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\LdapRepository;
 
@@ -3860,7 +3861,8 @@ class AuthLDAP extends CommonDBTM
     public static function getNumberOfServers()
     {
         global $DB;
-        return (new LdapRepository(Orm::create($DB)))->activeCount();
+        return Orm::read($DB, static fn (EntityManager $manager): int =>
+            (new LdapRepository($manager))->activeCount());
     }
 
 
@@ -3985,7 +3987,8 @@ class AuthLDAP extends CommonDBTM
     {
         global $DB;
 
-        return (new LdapRepository(Orm::create($DB)))->defaultId();
+        return Orm::read($DB, static fn (EntityManager $manager): int =>
+            (new LdapRepository($manager))->defaultId());
     }
 
     public function post_updateItem($history = 1)
@@ -4071,7 +4074,8 @@ class AuthLDAP extends CommonDBTM
     {
         global $DB;
 
-        return (new LdapRepository(Orm::create($DB)))->emailImportDirectoryIds();
+        return Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new LdapRepository($manager))->emailImportDirectoryIds());
     }
 
 
