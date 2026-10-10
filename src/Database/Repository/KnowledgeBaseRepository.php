@@ -347,7 +347,11 @@ final class KnowledgeBaseRepository
         $rows = $this->em->createQueryBuilder()->select('t.language')->from(KnowbaseItemTranslation::class, 't')
             ->where('IDENTITY(t.knowbaseitems) = :article')->setParameter('article', $article)
             ->getQuery()->getArrayResult();
-        return array_column($rows, 'language', 'language');
+        $languages = [];
+        foreach ($rows as $row) {
+            $languages[$row['language'] ?? ''] = $row['language'];
+        }
+        return $languages;
     }
 
     /** Count articles once even when user, group, profile and entity grants overlap. */
