@@ -2568,6 +2568,81 @@ class User extends DbTestCase
         $this->integer($allocatedManagers)->isIdenticalTo(0);
     }
 
+    public function testPublicUserSelectionsFollowFreshEmailsAndDelegation(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $connection = $DB->getDoctrineConnection();
+            $left = (int)getItemByTypeName('Entity', '_test_child_1', true);
+            $right = (int)getItemByTypeName('Entity', '_test_child_2', true);
+            $prefix = $this->getUniqueString();
+            $first = (int)$this->createItem(UserModel::class, ['name' => 'selection-a-' . $prefix])->getID();
+            $second = (int)$this->createItem(UserModel::class, ['name' => 'selection-b-' . $prefix])->getID();
+            $email = $prefix . '@example.test';
+            foreach ([[$first, $email], [$first, 'alternate-' . $email], [$second, $email]] as [$id, $address]) {
+                $connection->insert(
+                    'glpi_useremails',
+                    ['users_id' => $id, 'email' => $address, 'is_default' => false, 'is_dynamic' => false],
+                    ['users_id' => Types::BIGINT, 'email' => Types::STRING, 'is_default' => Types::BOOLEAN, 'is_dynamic' => Types::BOOLEAN]
+                );
+            }
+            $this->array(UserModel::getUsersIdByEmails($email))->isIdenticalTo([$first, $second]);
+            $this->integer(UserModel::countUsersByEmail($email))->isIdenticalTo(2);
+            $this->integer(UserModel::getOrImportByEmail($email))->isIdenticalTo($first);
+            $connection->update('glpi_users', ['is_active' => false], ['id' => $first], ['is_active' => Types::BOOLEAN, 'id' => Types::BIGINT]);
+            $this->integer(UserModel::getOrImportByEmail($email))->isIdenticalTo($second);
+            $connection->update(
+                'glpi_users',
+                ['is_active' => true, 'is_deleted' => true],
+                ['id' => $first],
+                ['is_active' => Types::BOOLEAN, 'is_deleted' => Types::BOOLEAN, 'id' => Types::BIGINT]
+            );
+            $this->integer(UserModel::getOrImportByEmail($email))->isIdenticalTo($second);
+            $this->array(UserModel::getUsersIdByEmails($email, ['glpi_users.is_deleted' => false]))->isIdenticalTo([$second]);
+            $connection->update('glpi_users', ['is_active' => false], ['id' => $second], ['is_active' => Types::BOOLEAN, 'id' => Types::BIGINT]);
+            $this->integer(UserModel::getOrImportByEmail($email))->isIdenticalTo($first);
+            $connection->update('glpi_useremails', ['email' => 'changed-' . $email], ['users_id' => $second], ['email' => Types::STRING, 'users_id' => Types::BIGINT]);
+            $this->array(UserModel::getUsersIdByEmails($email))->isIdenticalTo([$first]);
+
+            foreach ([$first, $second] as $id) {
+                $connection->update(
+                    'glpi_users',
+                    ['is_active' => true, 'is_deleted' => false],
+                    ['id' => $id],
+                    ['is_active' => Types::BOOLEAN, 'is_deleted' => Types::BOOLEAN, 'id' => Types::BIGINT]
+                );
+            }
+            $leftGroup = (int)$this->createItem(Group::class, ['name' => 'selection-left-' . $prefix, 'entities_id' => $left, 'is_recursive' => 0])->getID();
+            $rightGroup = (int)$this->createItem(Group::class, ['name' => 'selection-right-' . $prefix, 'entities_id' => $right, 'is_recursive' => 0])->getID();
+            foreach ([[$first, $leftGroup], [$first, $rightGroup], [$second, $rightGroup]] as [$user, $group]) {
+                $this->createItem(Group_User::class, ['users_id' => $user, 'groups_id' => $group, 'is_userdelegate' => 1]);
+            }
+            $_SESSION['glpiID'] = $first;
+            $this->setEntity('_test_child_1', false);
+            $this->array(UserModel::getDelegateGroupsForUser())->isIdenticalTo([$leftGroup => $leftGroup]);
+            $this->array(UserModel::getDelegateGroupsForUser($right))->isIdenticalTo([$rightGroup => $rightGroup]);
+            $this->setEntity('_test_child_2', false);
+            $this->array(UserModel::getDelegateGroupsForUser())->isIdenticalTo([$rightGroup => $rightGroup]);
+            $_SESSION['glpiID'] = $second;
+            $this->array(UserModel::getDelegateGroupsForUser($left))->isEmpty();
+            $this->array(UserModel::getDelegateGroupsForUser())->isIdenticalTo([$rightGroup => $rightGroup]);
+            $connection->update(
+                'glpi_groups_users',
+                ['is_userdelegate' => false],
+                ['users_id' => $second, 'groups_id' => $rightGroup],
+                ['is_userdelegate' => Types::BOOLEAN, 'users_id' => Types::BIGINT, 'groups_id' => Types::BIGINT]
+            );
+            $this->array(UserModel::getDelegateGroupsForUser())->isEmpty();
+            $_SESSION['glpiID'] = $first;
+            $this->array(UserModel::getDelegateGroupsForUser())->isIdenticalTo([$rightGroup => $rightGroup]);
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
     public function testgetAdditionalMenuOptions()
     {
         $this->Login();
