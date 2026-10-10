@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\ReferenceValues;
 use itsmng\Database\DropdownChoiceContext;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\DomainAssetRepository;
@@ -99,35 +101,30 @@ class Domain_Item extends CommonDBRelation
 
     public static function countForDomain(Domain $item)
     {
+        global $DB;
         $types = $item->getTypes();
         if (count($types) == 0) {
             return 0;
         }
-        return countElementsInTable(
-            'glpi_domains_items',
-            [
-              "domains_id"   => $item->getID(),
-              "itemtype"     => $types
-            ]
-        );
+        $domain = self::countIdentifier($item->getID());
+        return Orm::read($DB, static fn (EntityManager $manager): int =>
+            (new DomainAssetRepository($manager))->countForDomain($domain, $types));
     }
 
     public static function countForItem(CommonDBTM $item)
     {
-        $criteria = [];
-        if ($item instanceof DomainRelation) {
-            $criteria = ['domainrelations_id' => $item->fields['id']];
-        } else {
-            $criteria = [
-               'itemtype'  => $item->getType(),
-               'items_id'  => $item->fields['id']
-            ];
-        }
+        global $DB;
+        $relationCategory = $item instanceof DomainRelation;
+        $kind = $relationCategory ? DomainRelation::class : $item->getType();
+        $value = $item->fields['id'];
+        $identifier = $relationCategory && ReferenceValues::isEmptySelection($value) ? null : self::countIdentifier($value);
+        return Orm::read($DB, static fn (EntityManager $manager): int =>
+            (new DomainAssetRepository($manager))->countForItem($kind, $identifier, $relationCategory));
+    }
 
-        return countElementsInTable(
-            self::getTable(),
-            $criteria
-        );
+    private static function countIdentifier(mixed $value): ?int
+    {
+        return $value === null || (is_string($value) && strtolower($value) === 'null') ? null : (int)$value;
     }
 
     public function getFromDBbyDomainsAndItem($domains_id, $items_id, $itemtype)

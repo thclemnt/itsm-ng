@@ -4,6 +4,7 @@
 
 namespace itsmng\Database\Repository;
 
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use InvalidArgumentException;
@@ -15,6 +16,42 @@ final class DomainAssetRepository
 {
     public function __construct(private EntityManager $em)
     {
+    }
+
+    /** Target visibility is resolved before the caller selects its read route. */
+    public function countForDomain(?int $domain, array $types): int
+    {
+        if ($types === []) {
+            return 0;
+        }
+        $query = $this->em->createQueryBuilder()->select('COUNT(l.id)')->from(Entity\DomainItem::class, 'l')
+            ->where('l.itemtype IN (:types)')->setParameter('types', array_values($types), ArrayParameterType::STRING);
+        if ($domain === null) {
+            $query->andWhere('l.domains IS NULL');
+        } else {
+            $query->andWhere('IDENTITY(l.domains) = :domain')->setParameter('domain', $domain, Types::BIGINT);
+        }
+        return (int)$query->getQuery()->getSingleScalarResult();
+    }
+
+    public function countForItem(string $kind, ?int $item, bool $relationCategory = false): int
+    {
+        try {
+            $association = $relationCategory ? 'domainrelations' : Entity\DomainItem::referenceAssociation($kind);
+        } catch (InvalidArgumentException) {
+            // Unsupported targets cannot own a row in this native relationship.
+            return 0;
+        }
+        $query = $this->em->createQueryBuilder()->select('COUNT(l.id)')->from(Entity\DomainItem::class, 'l');
+        if (!$relationCategory) {
+            $query->andWhere('l.itemtype = :kind')->setParameter('kind', $kind, Types::STRING);
+        }
+        if ($item === null) {
+            $query->andWhere('l.' . $association . ' IS NULL');
+        } else {
+            $query->andWhere('IDENTITY(l.' . $association . ') = :item')->setParameter('item', $item, Types::BIGINT);
+        }
+        return (int)$query->getQuery()->getSingleScalarResult();
     }
 
     public function types(int $domain, int $limit): array

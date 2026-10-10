@@ -369,6 +369,62 @@ class Domain extends DbTestCase
         $this->integer((int)countElementsInTable($record->getTable(), ['domains_id' => $domains_id]))->isIdenticalTo(0);
     }
 
+    public function testAssociationTabCountsFollowTargetVisibilityAndCategory(): void
+    {
+        global $DB, $CFG_GLPI;
+        $this->login();
+        $savedSession = $_SESSION;
+        $savedConfig = $CFG_GLPI;
+        try {
+            $domain = $this->createItem('Domain', ['name' => 'Counted domain ' . $this->getUniqueString()]);
+            $category = $this->createItem('DomainRelation', ['name' => 'Counted category ' . $this->getUniqueString()]);
+            $computer = $this->createItem('Computer', ['name' => 'Counted computer ' . $this->getUniqueString(), 'entities_id' => 0]);
+            $link = $this->createItem('Domain_Item', [
+                'domains_id' => $domain->getID(), 'domainrelations_id' => $category->getID(),
+                'itemtype' => 'Computer', 'items_id' => $computer->getID(),
+            ]);
+            $CFG_GLPI['domain_types'] = ['Computer'];
+            $this->integer(Domain_Item::countForDomain($domain))->isIdenticalTo(1);
+            $this->integer(Domain_Item::countForItem($computer))->isIdenticalTo(1);
+            $this->integer(Domain_Item::countForItem($domain))->isIdenticalTo(0);
+            $this->integer(Domain_Item::countForItem($category))->isIdenticalTo(1);
+            $CFG_GLPI['domain_types'] = [];
+            $this->integer(Domain_Item::countForDomain($domain))->isIdenticalTo(0);
+            $CFG_GLPI['domain_types'] = ['Computer'];
+            $_SESSION['glpiactiveprofile']['computer'] = 0;
+            $this->integer(Domain_Item::countForDomain($domain))->isIdenticalTo(0);
+            $_SESSION['glpiactiveprofile'] = $savedSession['glpiactiveprofile'];
+            $_SESSION['glpiactiveentities'] = [];
+            $connection = $DB->getDoctrineConnection();
+            $this->integer($connection->update('glpi_computers', ['is_deleted' => true], ['id' => $computer->getID()]))->isIdenticalTo(1);
+            $this->integer(Domain_Item::countForDomain($domain))->isIdenticalTo(1);
+            $this->integer(Domain_Item::countForItem($computer))->isIdenticalTo(1);
+            $emptyCategory = clone $category;
+            $emptyCategory->fields['id'] = null;
+            $uncategorized = Domain_Item::countForItem($emptyCategory);
+            $this->integer($connection->update('glpi_domains_items', ['domainrelations_id' => null], ['id' => $link->getID()]))->isIdenticalTo(1);
+            $this->integer(Domain_Item::countForItem($category))->isIdenticalTo(0);
+            $this->integer(Domain_Item::countForItem($emptyCategory))->isIdenticalTo($uncategorized + 1);
+            $emptyCategory->fields['id'] = 'nUlL';
+            $this->integer(Domain_Item::countForItem($emptyCategory))->isIdenticalTo($uncategorized + 1);
+            $emptyCategory->fields['id'] = 0;
+            $this->integer(Domain_Item::countForItem($emptyCategory))->isIdenticalTo($uncategorized + 1);
+            $this->integer(Domain_Item::countForDomain($domain))->isIdenticalTo(1);
+            $this->integer(Domain_Item::countForItem($computer))->isIdenticalTo(1);
+            foreach ([null, 'nUlL', 0, -1] as $identifier) {
+                $emptyDomain = clone $domain;
+                $emptyDomain->fields['id'] = $identifier;
+                $emptyComputer = clone $computer;
+                $emptyComputer->fields['id'] = $identifier;
+                $this->integer(Domain_Item::countForDomain($emptyDomain))->isIdenticalTo(0);
+                $this->integer(Domain_Item::countForItem($emptyComputer))->isIdenticalTo(0);
+            }
+        } finally {
+            $_SESSION = $savedSession;
+            $CFG_GLPI = $savedConfig;
+        }
+    }
+
     public function testGetEntitiesToNotify()
     {
         global $DB;
