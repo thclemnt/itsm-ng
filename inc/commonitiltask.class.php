@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Features\PlanningEvent;
 use Ramsey\Uuid\Uuid;
 use itsmng\Database\MappedReads;
@@ -1790,16 +1791,17 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
         global $DB;
 
         $itemtype = (new static())->getItilObjectItemType();
-        return (new ITILTaskRepository(Orm::create($DB)))->taskList(
-            static::getType(),
-            $itemtype::getNotSolvedStatusArray(),
-            $status === 'todo',
-            (int)Session::getLoginUserID(),
-            $showgrouptickets ? ($_SESSION['glpigroups'] ?? []) : null,
-            getEntitiesRestrictCriteria($itemtype::getTable()),
-            $start === null ? null : (int)$start,
-            $limit === null ? null : (int)$limit,
-        );
+        return Orm::read($DB, static fn (EntityManager $em): array =>
+            (new ITILTaskRepository($em))->taskList(
+                static::getType(),
+                $itemtype::getNotSolvedStatusArray(),
+                $status === 'todo',
+                (int)Session::getLoginUserID(),
+                $showgrouptickets ? ($_SESSION['glpigroups'] ?? []) : null,
+                getEntitiesRestrictCriteria($itemtype::getTable()),
+                $start === null ? null : (int)$start,
+                $limit === null ? null : (int)$limit,
+            ));
     }
 
 
@@ -1822,15 +1824,16 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
         $projected = in_array($itemtype, [TicketTask::class, ProblemTask::class], true);
         if ($projected) {
             $parenttype = (new static())->getItilObjectItemType();
-            $page = (new ITILTaskRepository(Orm::create($DB)))->centralList(
-                $itemtype,
-                $parenttype::getNotSolvedStatusArray(),
-                $status === 'todo',
-                (int)Session::getLoginUserID(),
-                $showgrouptickets ? ($_SESSION['glpigroups'] ?? []) : null,
-                getEntitiesRestrictCriteria($parenttype::getTable()),
-                (int)$_SESSION['glpidisplay_count_on_home'],
-            );
+            $page = Orm::read($DB, static fn (EntityManager $em): array =>
+                (new ITILTaskRepository($em))->centralList(
+                    $itemtype,
+                    $parenttype::getNotSolvedStatusArray(),
+                    $status === 'todo',
+                    (int)Session::getLoginUserID(),
+                    $showgrouptickets ? ($_SESSION['glpigroups'] ?? []) : null,
+                    getEntitiesRestrictCriteria($parenttype::getTable()),
+                    (int)$_SESSION['glpidisplay_count_on_home'],
+                ));
             $iterator = $page['rows'];
         } else {
             $iterator = self::getTaskList($status, $showgrouptickets);
