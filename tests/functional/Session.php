@@ -33,6 +33,10 @@
 
 namespace tests\units;
 
+use Doctrine\DBAL\Types\Types;
+use itsmng\Database\Entity\Group as GroupEntity;
+use itsmng\Database\Entity\ProfileUser;
+use itsmng\Database\Orm;
 use itsmng\Translation\Translator;
 use Laminas\I18n\Translator\TextDomain;
 use Plugin;
@@ -240,6 +244,83 @@ class Session extends \DbTestCase
             $groups = $_SESSION['glpigroups'];
             $_SESSION = $session_backup;
             $this->array($groups)->isEqualTo($expected_groups);
+        }
+        global $DB;
+        $session_backup = $_SESSION;
+        $writer = Orm::create($DB);
+        try {
+            $firstGroup = (int)$user_groups[0]['id'];
+            $managed = $writer->find(GroupEntity::class, $firstGroup);
+            $connection = $DB->getDoctrineConnection();
+            $_SESSION['glpiactiveentities'] = [$entid_1];
+            SessionModel::loadGroups();
+            $this->boolean(in_array($firstGroup, $_SESSION['glpigroups'], true))->isFalse();
+            $this->integer($connection->update('glpi_groups', ['is_recursive' => true], ['id' => $firstGroup], ['is_recursive' => Types::BOOLEAN]))->isIdenticalTo(1);
+            SessionModel::loadGroups();
+            $this->boolean(in_array($firstGroup, $_SESSION['glpigroups'], true))->isTrue();
+            $this->boolean($writer->contains($managed))->isTrue();
+            $this->boolean($managed->is_recursive)->isFalse();
+            $this->integer($connection->delete('glpi_groups_users', ['groups_id' => $firstGroup, 'users_id' => $uid]))->isIdenticalTo(1);
+            SessionModel::loadGroups();
+            $this->boolean(in_array($firstGroup, $_SESSION['glpigroups'], true))->isFalse();
+            // A stale all-entities flag must not broaden an explicit empty scope.
+            $_SESSION['glpishowallentities'] = 1;
+            $_SESSION['glpiactiveentities'] = [];
+            SessionModel::loadGroups();
+            $this->array($_SESSION['glpigroups'])->isEmpty();
+            $_SESSION['glpiactiveentities'] = $entities_ids;
+            unset($_SESSION['glpiID']);
+            SessionModel::loadGroups();
+            $this->array($_SESSION['glpigroups'])->isEmpty();
+            $this->boolean($writer->contains($managed))->isTrue();
+        } finally {
+            $writer->clear();
+            $_SESSION = $session_backup;
+        }
+    }
+
+    public function testEntityProfileSnapshotsStayFresh(): void
+    {
+        global $DB;
+        $this->login();
+        $savedSession = $_SESSION;
+        $writer = null;
+        try {
+            $user = (int)SessionModel::getLoginUserID();
+            $profile = $this->createItem('Profile', ['name' => 'Session profile ' . $this->getUniqueString(), 'interface' => 'central']);
+            $grant = $this->createItem('Profile_User', [
+                'users_id' => $user, 'profiles_id' => $profile->getID(), 'entities_id' => 0, 'is_recursive' => 0,
+            ]);
+            $profileId = (int)$profile->getID();
+            SessionModel::initEntityProfiles((string)$user);
+            $snapshot = $_SESSION['glpiprofiles'];
+            $this->string($snapshot[$profileId]['name'])->isIdenticalTo($profile->fields['name']);
+            $this->integer($snapshot[$profileId]['entities'][0]['id'])->isIdenticalTo(0);
+            $this->integer($snapshot[$profileId]['entities'][0]['is_recursive'])->isIdenticalTo(0);
+            $writer = Orm::create($DB);
+            $managed = $writer->find(ProfileUser::class, (int)$grant->getID());
+            $connection = $DB->getDoctrineConnection();
+            $this->integer($connection->update('glpi_profiles', ['name' => 'Updated session profile'], ['id' => $profileId]))->isIdenticalTo(1);
+            $this->integer($connection->update('glpi_profiles_users', ['is_recursive' => true], ['id' => $grant->getID()], ['is_recursive' => Types::BOOLEAN]))->isIdenticalTo(1);
+            for ($repeat = 0; $repeat < 2; ++$repeat) {
+                SessionModel::initEntityProfiles($user);
+                $this->string($_SESSION['glpiprofiles'][$profileId]['name'])->isIdenticalTo('Updated session profile');
+                $this->integer($_SESSION['glpiprofiles'][$profileId]['entities'][0]['is_recursive'])->isIdenticalTo(1);
+            }
+            $this->string($snapshot[$profileId]['name'])->isIdenticalTo($profile->fields['name']);
+            $this->boolean($writer->contains($managed))->isTrue();
+            $this->boolean($managed->is_recursive)->isFalse();
+            $this->boolean($grant->delete(['id' => $grant->getID()], true))->isTrue();
+            SessionModel::initEntityProfiles($user);
+            $this->array($_SESSION['glpiprofiles'])->notHasKey($profileId);
+            foreach ([null, false, '0', -1] as $noUser) {
+                SessionModel::initEntityProfiles($noUser);
+                $this->array($_SESSION['glpiprofiles'])->isEmpty();
+            }
+            $this->boolean($writer->contains($managed))->isTrue();
+        } finally {
+            $writer?->clear();
+            $_SESSION = $savedSession;
         }
     }
 

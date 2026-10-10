@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Event;
 use itsmng\Csrf;
 use Psr\Cache\CacheItemPoolInterface;
@@ -529,9 +530,12 @@ class Session
             return;
         }
 
-        $_SESSION['glpiprofiles'] = (new ProfileUserRepository(
-            Orm::create($DB)
-        ))->sessionProfiles((int)$userID);
+        $_SESSION['glpiprofiles'] = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$userID,
+            static fn (EntityManager $manager, int $user): array =>
+                (new ProfileUserRepository($manager))->sessionProfiles($user)
+        );
     }
 
 
@@ -548,9 +552,12 @@ class Session
 
         // Explicit active entities stay authoritative even when the all-entities flag is stale.
         $scope = getEntitiesRestrictCriteria(Group::getTable(), 'entities_id', $_SESSION['glpiactiveentities'], true);
-        $_SESSION['glpigroups'] = (new GroupMembershipRepository(
-            Orm::create($DB)
-        ))->sessionGroupIds((int)self::getLoginUserID(), $scope);
+        $_SESSION['glpigroups'] = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)self::getLoginUserID(),
+            static fn (EntityManager $manager, int $user): array =>
+                (new GroupMembershipRepository($manager))->sessionGroupIds($user, $scope)
+        );
     }
 
 
