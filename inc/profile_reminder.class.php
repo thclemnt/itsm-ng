@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 
@@ -64,8 +65,8 @@ class Profile_Reminder extends CommonDBRelation
         global $DB;
 
         $prof  = [];
-        $rows = (new RecordRepository(Orm::create($DB)))
-            ->matching(self::getTable(), ['reminders_id' => $reminders_id], 'id');
+        $rows = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new RecordRepository($manager))->matching(self::getTable(), ['reminders_id' => $reminders_id], 'id'));
         foreach ($rows as $data) {
             $prof[$data['profiles_id']][] = $data;
         }

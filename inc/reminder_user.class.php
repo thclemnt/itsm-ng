@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 
@@ -65,8 +66,8 @@ class Reminder_User extends CommonDBRelation
 
         $users = [];
 
-        $rows = (new RecordRepository(Orm::create($DB)))
-            ->matching(self::getTable(), ['reminders_id' => $reminders_id], 'id');
+        $rows = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new RecordRepository($manager))->matching(self::getTable(), ['reminders_id' => $reminders_id], 'id'));
         foreach ($rows as $data) {
             $users[$data['users_id']][] = $data;
         }
