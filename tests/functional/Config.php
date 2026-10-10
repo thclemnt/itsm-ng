@@ -1781,10 +1781,19 @@ class Config extends DbTestCase
             $connection->update('glpi_configs', ['value' => 'after'], ['context' => $context, 'name' => 'first']);
             $this->string($read($context)[0]['value'])->isIdenticalTo('after');
             $this->integer($memory->planReads)->isIdenticalTo(1);
+            // An admitted replacement object retires the old private manager and L1.
+            $replacementText = new TextType();
+            Type::overrideType('text', $replacementText);
+            $this->string($read($context)[0]['value'])->isIdenticalTo('after');
+            $this->integer($memory->planReads)->isIdenticalTo(2);
             Type::overrideType('text', new ConfigRecordUpperTextType());
             $this->string($read($context)[0]['value'])->isIdenticalTo('AFTER');
             $this->integer($memory->planReads)->isIdenticalTo(2);
             $this->integer($memory->planWrites)->isIdenticalTo(1);
+            // SQL-converter fallback never replaced the admitted manager's type snapshot.
+            Type::overrideType('text', $replacementText);
+            $this->string($read($context)[0]['value'])->isIdenticalTo('after');
+            $this->integer($memory->planReads)->isIdenticalTo(2);
             Type::overrideType('text', $originalText);
             $count = static fn (): int => MappedReads::countMatching($DB, 'glpi_configs', ['context' => $context]);
             $this->integer($count())->isIdenticalTo(2);
@@ -1960,9 +1969,17 @@ class Config extends DbTestCase
             $this->integer($memory->planWrites)->isIdenticalTo(1);
             $originalText = Type::getType('text');
             try {
+                $replacementText = new TextType();
+                Type::overrideType('text', $replacementText);
+                $this->string($read()['value'])->isIdenticalTo('after');
+                $this->integer($memory->planReads)->isIdenticalTo(2);
                 Type::overrideType('text', new ConfigRecordUpperTextType());
                 $this->string($read()['value'])->isIdenticalTo('AFTER');
                 $this->integer($memory->planWrites)->isIdenticalTo(1);
+                $this->integer($memory->planReads)->isIdenticalTo(2);
+                Type::overrideType('text', $replacementText);
+                $this->string($read()['value'])->isIdenticalTo('after');
+                $this->integer($memory->planReads)->isIdenticalTo(2);
             } finally {
                 Type::overrideType('text', $originalText);
             }
