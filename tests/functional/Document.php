@@ -34,6 +34,12 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
+use ItsmngUploadHandler;
+use ReflectionMethod;
+use itsmng\Database\Entity\DocumentType as DocumentTypeRecord;
+use itsmng\Database\Orm;
 
 /* Test for inc/document.class.php */
 
@@ -778,5 +784,78 @@ class Document extends DbTestCase
         $this->boolean($doc->getFromDB($did1))->isFalse();
         $this->boolean($doc->getFromDB($did2))->isFalse();
         $this->boolean($doc->getFromDB($did3))->isTrue();
+    }
+
+    public function testUploadableExtensionPolicyFreshnessAndReadOwnership()
+    {
+        global $DB;
+
+        $connection = $DB->getDoctrineConnection();
+        // Isolate this upload policy corpus; DbTestCase rolls the transaction back.
+        $connection->executeStatement(
+            'UPDATE glpi_documenttypes SET is_uploadable = :disabled',
+            ['disabled' => false],
+            ['disabled' => Types::BOOLEAN]
+        );
+        $writer = Orm::create($DB);
+        try {
+            $literal = new DocumentTypeRecord();
+            $literal->ext = 'sol-upload-ext';
+            $regex = new DocumentTypeRecord();
+            $regex->ext = '/sol-regex-[0-9]+/';
+            $nullable = new DocumentTypeRecord();
+            $disabled = new DocumentTypeRecord();
+            $disabled->ext = 'sol-disabled-ext';
+            $disabled->is_uploadable = false;
+            foreach ([$literal, $regex, $nullable, $disabled] as $record) {
+                $writer->persist($record);
+            }
+            $writer->flush();
+            $literal->ext = 'sol-pending-ext';
+
+            // Exercise the actual private consumer without attempting an HTTP upload.
+            $policy = new ReflectionMethod(ItsmngUploadHandler::class, 'getValidExtPatterns');
+            $patterns = $policy->invoke(null);
+            $this->array($patterns)->hasSize(3)
+                ->contains('\\.sol\\-upload\\-ext$')
+                ->contains('(sol-regex-[0-9]+)')->contains('\\.$')
+                ->notContains('\\.sol\\-disabled\\-ext$');
+            $expression = '/(' . implode('|', $patterns) . ')$/';
+            $this->integer(preg_match($expression, 'report.sol-upload-ext'))->isIdenticalTo(1);
+            $this->integer(preg_match($expression, 'report.sol-regex-42'))->isIdenticalTo(1);
+            $this->integer(preg_match($expression, 'report.'))->isIdenticalTo(1);
+            $this->integer(preg_match($expression, 'report.sol-disabled-ext'))->isIdenticalTo(0);
+            $this->integer(preg_match($expression, 'report.sol-pending-ext'))->isIdenticalTo(0);
+            $this->boolean($writer->contains($literal))->isTrue();
+            $this->string($literal->ext)->isIdenticalTo('sol-pending-ext');
+
+            $connection->update('glpi_documenttypes', ['ext' => 'sol-fresh-ext'], ['id' => $literal->id]);
+            $fresh = $policy->invoke(null);
+            $this->array($fresh)->contains('\\.sol\\-fresh\\-ext$')
+                ->notContains('\\.sol\\-upload\\-ext$');
+            $this->array($patterns)->contains('\\.sol\\-upload\\-ext$');
+
+            // A nested read must neither flush nor clear the caller's live unit of work.
+            Orm::read($DB, function (EntityManager $outer) use ($policy, $literal): void {
+                $pending = $outer->find(DocumentTypeRecord::class, $literal->id);
+                $pending->ext = 'sol-outer-pending-ext';
+                $nested = $policy->invoke(null);
+                $this->array($nested)->contains('\\.sol\\-fresh\\-ext$')
+                    ->notContains('\\.sol\\-outer\\-pending\\-ext$');
+                $this->boolean($outer->contains($pending))->isTrue();
+                $this->string($pending->ext)->isIdenticalTo('sol-outer-pending-ext');
+            });
+
+            $connection->executeStatement(
+                'UPDATE glpi_documenttypes SET is_uploadable = :disabled',
+                ['disabled' => false],
+                ['disabled' => Types::BOOLEAN]
+            );
+            $this->array($policy->invoke(null))->isEmpty();
+            $this->boolean($writer->contains($literal))->isTrue();
+            $this->string($literal->ext)->isIdenticalTo('sol-pending-ext');
+        } finally {
+            $writer->clear();
+        }
     }
 }

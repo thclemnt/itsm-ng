@@ -47,6 +47,15 @@ final class DocumentRepository
             ->setParameter('yes', true, Types::BOOLEAN)->orderBy('t.id')->getQuery()->getScalarResult();
     }
 
+    /** NULL extensions retain the legacy trailing-dot upload pattern. */
+    public function uploadableExtensions(): array
+    {
+        $rows = $this->em->createQueryBuilder()->select('t.ext')->from(Entity\DocumentType::class, 't')
+            ->where('t.is_uploadable = :yes')->setParameter('yes', true, Types::BOOLEAN)
+            ->getQuery()->getScalarResult();
+        return array_column($rows, 'ext');
+    }
+
     public function categories(array $criteria): array
     {
         $query = $this->em->createQueryBuilder()->select('DISTINCT c.id', 'c.name')->from(Entity\Document::class, 'r')
