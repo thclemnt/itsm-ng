@@ -361,6 +361,8 @@ class Calendar extends DbTestCase
         $listener = new class () {
             public int $clears = 0;
             public int $segmentLoads = 0;
+            public ?EntityManager $segmentManager = null;
+            public ?CalendarSegmentRecord $segment = null;
             public bool $captureClosures = false;
             public ?EntityManager $holidayManager = null;
             public array $loadedClosures = [];
@@ -377,6 +379,8 @@ class Calendar extends DbTestCase
                 }
                 if ($event->getObject() instanceof CalendarSegmentRecord) {
                     ++$this->segmentLoads;
+                    $this->segmentManager = $event->getObjectManager();
+                    $this->segment = $record;
                     $event->getObject()->end = '09:00:00';
                 }
             }
@@ -429,6 +433,23 @@ class Calendar extends DbTestCase
             $this->integer($listener->segmentLoads)->isIdenticalTo(3);
             $this->integer($listener->clears)->isIdenticalTo(0);
             $this->object($GLOBALS['DB'])->isIdenticalTo($originalAdapter);
+            $calendarId = (int)$calendar->getID();
+            foreach ([
+                [static fn () => array_column(CalendarSegmentModel::getSegmentsBetween($calendarId, 1, '00:00:00', 1, '24:00:00'), 'end'), ['09:00:00']],
+                [static fn () => CalendarSegmentModel::addDelayInDay($calendarId, 1, '08:00:00', 1800), '08:30:00'],
+                [static fn () => CalendarSegmentModel::getFirstWorkingHour($calendarId, 1), '08:00:00'],
+                [static fn () => CalendarSegmentModel::getLastWorkingHour($calendarId, 1), '09:00:00'],
+                [static fn () => CalendarSegmentModel::isAWorkingHour($calendarId, 1, '09:30:00'), false],
+            ] as [$selectedRead, $expectedValue]) {
+                $GLOBALS['DB'] = $adapter;
+                $this->variable($selectedRead())->isIdenticalTo($expectedValue);
+                $this->boolean($listener->segmentManager->contains($listener->segment))->isTrue();
+            }
+            $this->integer($getters)->isIdenticalTo(11);
+            $this->array($probe->queries)->hasSize(11);
+            $this->integer($listener->segmentLoads)->isIdenticalTo(8);
+            $this->integer($listener->clears)->isIdenticalTo(0);
+            $this->object($GLOBALS['DB'])->isIdenticalTo($originalAdapter);
             // The annual May closure is inspected even though July 1 is not a holiday.
             $listener->captureClosures = true;
             $GLOBALS['DB'] = $adapter;
@@ -442,6 +463,7 @@ class Calendar extends DbTestCase
         } finally {
             $GLOBALS['DB'] = $originalAdapter;
             $listener->holidayManager?->clear();
+            $listener->segmentManager?->clear();
         }
 
         $originalDate = Type::getType(Types::DATE_IMMUTABLE);
@@ -532,16 +554,33 @@ class Calendar extends DbTestCase
         $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0, 'Warmed cloned-segment reads reuse their scalar owner');
 
         $connection = $GLOBALS['DB']->getDoctrineConnection();
-        $segments = $connection->fetchAllAssociative('SELECT id, ' . $connection->quoteIdentifier('end')
+        $segments = $connection->fetchAllAssociative('SELECT id, ' . $connection->quoteIdentifier('begin') . ', ' . $connection->quoteIdentifier('end')
             . ' FROM glpi_calendarsegments WHERE calendars_id = ? AND day = ?', [$other_id, 1]);
         $this->array($segments)->hasSize(1);
         $segment = $segments[0];
+        $this->string(CalendarSegmentModel::getFirstWorkingHour($other_id, 1))->isIdenticalTo($segment['begin']);
+        $this->string(CalendarSegmentModel::getLastWorkingHour($other_id, 1))->isIdenticalTo($segment['end']);
+        $this->array(array_column(CalendarSegmentModel::getSegmentsBetween($other_id, 1, '00:00:00', 1, '24:00:00'), 'end'))
+            ->isIdenticalTo([$segment['end']]);
+        $this->boolean(CalendarSegmentModel::isAWorkingHour($other_id, 1, $segment['begin']))->isTrue();
+        $this->string(CalendarSegmentModel::addDelayInDay($other_id, 1, $segment['begin'], $expected))
+            ->isIdenticalTo($segment['end']);
         $update = 'UPDATE glpi_calendarsegments SET ' . $connection->quoteIdentifier('end') . ' = ? WHERE id = ?';
         try {
             $connection->executeStatement($update, [date('H:i:s', strtotime($segment['end']) - HOUR_TIMESTAMP), $segment['id']]);
             $this->integer($read())->isIdenticalTo($expected - HOUR_TIMESTAMP);
+            $shortEnd = date('H:i:s', strtotime($segment['end']) - HOUR_TIMESTAMP);
+            $this->string(CalendarSegmentModel::getLastWorkingHour($other_id, 1))->isIdenticalTo($shortEnd);
+            $this->array(array_column(CalendarSegmentModel::getSegmentsBetween($other_id, 1, '00:00:00', 1, '24:00:00'), 'end'))
+                ->isIdenticalTo([$shortEnd]);
+            $this->boolean(CalendarSegmentModel::isAWorkingHour($other_id, 1, $segment['end']))->isFalse();
+            $this->boolean(CalendarSegmentModel::addDelayInDay($other_id, 1, $segment['begin'], $expected))->isFalse();
+            $lateBegin = date('H:i:s', strtotime($segment['begin']) + HOUR_TIMESTAMP);
+            $connection->update('glpi_calendarsegments', [$connection->quoteIdentifier('begin') => $lateBegin], ['id' => $segment['id']]);
+            $this->string(CalendarSegmentModel::getFirstWorkingHour($other_id, 1))->isIdenticalTo($lateBegin);
         } finally {
             $connection->executeStatement($update, [$segment['end'], $segment['id']]);
+            $connection->update('glpi_calendarsegments', [$connection->quoteIdentifier('begin') => $segment['begin']], ['id' => $segment['id']]);
         }
         $this->integer($read())->isIdenticalTo($expected);
         Orm::withConnection($connection, function (EntityManager $outer) use ($read, $expected, $factories): void {
@@ -551,5 +590,15 @@ class Calendar extends DbTestCase
             $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(1);
             $this->boolean($outer->contains($sentinel))->isTrue();
         });
+
+        $beforeFactories = $factories->getValue();
+        for ($repeat = 0; $repeat < 16; ++$repeat) {
+            CalendarSegmentModel::getSegmentsBetween($other_id, 1, '00:00:00', 1, '24:00:00');
+            CalendarSegmentModel::addDelayInDay($other_id, 1, $segment['begin'], 1800);
+            CalendarSegmentModel::getFirstWorkingHour($other_id, 1);
+            CalendarSegmentModel::getLastWorkingHour($other_id, 1);
+            CalendarSegmentModel::isAWorkingHour($other_id, 1, $segment['begin']);
+        }
+        $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
     }
 }

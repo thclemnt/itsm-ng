@@ -65,13 +65,6 @@ class CalendarSegment extends CommonDBChild
     }
 
 
-    private static function repository(): CalendarRepository
-    {
-        global $DB;
-        return new CalendarRepository(Orm::create($DB));
-    }
-
-
     public static function getTypeName($nb = 0)
     {
         return _n('Time range', 'Time ranges', $nb);
@@ -112,7 +105,9 @@ class CalendarSegment extends CommonDBChild
     public static function cloneCalendar($oldid, $newid)
     {
         Toolbox::deprecated('Use clone');
-        $result = self::repository()->segments((int)$oldid);
+        global $DB;
+        $result = Orm::read($DB, static fn (EntityManager $em): array =>
+            (new CalendarRepository($em))->segments((int)$oldid));
 
         foreach ($result as $data) {
             $c                    = new self();
@@ -158,7 +153,9 @@ class CalendarSegment extends CommonDBChild
     **/
     public static function getSegmentsBetween($calendars_id, $begin_day, $begin_time, $end_day, $end_time)
     {
-        return self::repository()->between((int)$calendars_id, (int)$begin_day, $begin_time, (int)$end_day, $end_time);
+        global $DB;
+        return Orm::read($DB, static fn (EntityManager $em): array =>
+            (new CalendarRepository($em))->between((int)$calendars_id, (int)$begin_day, $begin_time, (int)$end_day, $end_time));
     }
 
 
@@ -196,7 +193,9 @@ class CalendarSegment extends CommonDBChild
     **/
     public static function addDelayInDay($calendars_id, $day, $begin_time, $delay)
     {
-        return self::repository()->addDelay((int)$calendars_id, (int)$day, $begin_time, (int)$delay);
+        global $DB;
+        return Orm::read($DB, static fn (EntityManager $em): string|false =>
+            (new CalendarRepository($em))->addDelay((int)$calendars_id, (int)$day, $begin_time, (int)$delay));
     }
 
 
@@ -210,7 +209,9 @@ class CalendarSegment extends CommonDBChild
     **/
     public static function getFirstWorkingHour($calendars_id, $day)
     {
-        return self::repository()->boundary((int)$calendars_id, (int)$day, false);
+        global $DB;
+        return Orm::read($DB, static fn (EntityManager $em): ?string =>
+            (new CalendarRepository($em))->boundary((int)$calendars_id, (int)$day, false));
     }
 
 
@@ -224,7 +225,9 @@ class CalendarSegment extends CommonDBChild
     **/
     public static function getLastWorkingHour($calendars_id, $day)
     {
-        return self::repository()->boundary((int)$calendars_id, (int)$day, true);
+        global $DB;
+        return Orm::read($DB, static fn (EntityManager $em): ?string =>
+            (new CalendarRepository($em))->boundary((int)$calendars_id, (int)$day, true));
     }
 
 
@@ -239,7 +242,9 @@ class CalendarSegment extends CommonDBChild
     **/
     public static function isAWorkingHour($calendars_id, $day, $hour)
     {
-        return self::repository()->contains((int)$calendars_id, (int)$day, $hour);
+        global $DB;
+        return Orm::read($DB, static fn (EntityManager $em): bool =>
+            (new CalendarRepository($em))->contains((int)$calendars_id, (int)$day, $hour));
     }
 
 
@@ -258,7 +263,9 @@ class CalendarSegment extends CommonDBChild
         $canedit = $calendar->can($ID, UPDATE);
         $rand    = mt_rand();
 
-        $rows = self::repository()->segments((int)$ID);
+        global $DB;
+        $rows = Orm::read($DB, static fn (EntityManager $em): array =>
+            (new CalendarRepository($em))->segments((int)$ID));
         $numrows = count($rows);
 
         if ($canedit) {
