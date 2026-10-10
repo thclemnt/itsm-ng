@@ -34,6 +34,9 @@
 namespace tests\units;
 
 use DbTestCase;
+use IPAddress as IPAddressModel;
+use itsmng\Database\Entity\IPAddress as IPAddressEntity;
+use itsmng\Database\Orm;
 
 /* Test for inc/networkport.class.php */
 
@@ -136,6 +139,78 @@ class IPAddress extends DbTestCase
             unset($currentIP['mainitems_id']);
             unset($currentIP['mainitemtype']);
             $this->array($currentIP)->isIdenticalTo($expected);
+            $matches = array_values(array_filter(
+                IPAddressModel::getItemsByIPAddress($name),
+                static fn (array $chain): bool => (int)$chain[array_key_last($chain)]->getID() === (int)$id
+            ));
+            $this->array($matches)->hasSize(1);
+            $this->array($matches[0])->hasSize(2);
+            $this->string($matches[0][0]->getType())->isIdenticalTo('NetworkName');
+            $this->integer((int)$matches[0][0]->getID())->isIdenticalTo((int)$networkName_id);
+            $this->string($matches[0][1]->getType())->isIdenticalTo('IPAddress');
+            $this->string($matches[0][1]->getTextual())->isIdenticalTo($expected['name']);
+        }
+
+        // Exercise the production rule path with an actual asset/port/name/address chain.
+        $entityId = (int)$_SESSION['glpiactive_entity'];
+        $computer = $this->createItem('Computer', [
+            'name' => 'parsed-ip-' . $this->getUniqueString(), 'entities_id' => $entityId,
+        ]);
+        $port = $this->createItem('NetworkPort', [
+            'itemtype' => 'Computer', 'items_id' => $computer->getID(), 'entities_id' => $entityId,
+            'instantiation_type' => 'NetworkPortEthernet', 'name' => 'parsed-ip-port', 'logical_number' => 1,
+        ]);
+        $ownedName = $this->createItem('NetworkName', [
+            'itemtype' => 'NetworkPort', 'items_id' => $port->getID(), 'entities_id' => $entityId,
+            'name' => 'parsed-ip-owner',
+        ]);
+        $lookup = sprintf('198.18.%d.%d', $computer->getID() % 255, $port->getID() % 254 + 1);
+        $ownedAddress = $this->createItem(IPAddressModel::class, [
+            'name' => $lookup, 'itemtype' => 'NetworkName', 'items_id' => $ownedName->getID(),
+        ]);
+        $addressId = (int)$ownedAddress->getID();
+        $chains = IPAddressModel::getItemsByIPAddress('  ' . $lookup . '  ');
+        $ownedChains = array_values(array_filter($chains, static fn (array $chain): bool =>
+            (int)$chain[array_key_last($chain)]->getID() === $addressId));
+        $this->array($ownedChains)->hasSize(1);
+        $this->array(array_map(static fn ($item): string => $item->getType(), $ownedChains[0]))
+            ->isIdenticalTo(['Computer', 'NetworkPort', 'NetworkName', 'IPAddress']);
+        $this->array(IPAddressModel::getUniqueItemByIPAddress($lookup, $entityId))
+            ->isEqualTo(['id' => $computer->getID(), 'itemtype' => 'Computer']);
+        $this->array(IPAddressModel::getUniqueItemByIPAddress($lookup, PHP_INT_MAX))->isEmpty();
+
+        $connection = $GLOBALS['DB']->getDoctrineConnection();
+        $oldWord = (int)$ownedAddress->getField('binary_3');
+        $external = Orm::create($GLOBALS['DB']);
+        try {
+            $retained = $external->find(IPAddressEntity::class, $addressId);
+            $this->object($retained)->isInstanceOf(IPAddressEntity::class);
+            $nextWord = $oldWord + 1;
+            $parsedNext = new IPAddressModel();
+            $this->boolean($parsedNext->setAddressFromBinary([0, 0, 65535, $nextWord]))->isTrue();
+            $nextLookup = $parsedNext->getTextual();
+            $this->integer($connection->update('glpi_ipaddresses', ['binary_3' => $nextWord], ['id' => $addressId]))->isIdenticalTo(1);
+            $oldIds = array_map(static fn (array $chain): int => (int)$chain[array_key_last($chain)]->getID(), IPAddressModel::getItemsByIPAddress($lookup));
+            $this->array($oldIds)->notContains($addressId);
+            $newIds = array_map(static fn (array $chain): int => (int)$chain[array_key_last($chain)]->getID(), IPAddressModel::getItemsByIPAddress($nextLookup));
+            $this->array($newIds)->contains($addressId);
+            $this->string($ownedChains[0][3]->getTextual())->isIdenticalTo($lookup);
+            $this->boolean($external->contains($retained))->isTrue();
+            $this->integer($retained->binary_3)->isIdenticalTo($oldWord);
+            $this->integer($connection->update('glpi_ipaddresses', ['binary_3' => $oldWord, 'is_deleted' => 1], ['id' => $addressId]))->isIdenticalTo(1);
+            $deletedIds = array_map(static fn (array $chain): int => (int)$chain[array_key_last($chain)]->getID(), IPAddressModel::getItemsByIPAddress($lookup));
+            $this->array($deletedIds)->contains($addressId);
+            $this->integer($connection->update('glpi_computers', ['is_deleted' => 1], ['id' => $computer->getID()]))->isIdenticalTo(1);
+            $this->array(IPAddressModel::getUniqueItemByIPAddress($lookup, $entityId))->isEmpty();
+            $this->integer($connection->update('glpi_computers', ['is_deleted' => 0, 'is_template' => 1], ['id' => $computer->getID()]))->isIdenticalTo(1);
+            $this->array(IPAddressModel::getUniqueItemByIPAddress($lookup, $entityId))->isEmpty();
+        } finally {
+            $connection->update('glpi_ipaddresses', ['binary_3' => $oldWord, 'is_deleted' => 0], ['id' => $addressId]);
+            $connection->update('glpi_computers', ['is_deleted' => 0, 'is_template' => 0], ['id' => $computer->getID()]);
+            $external->clear();
+        }
+        foreach (['', 'not an address', null, ['198.18.0.1']] as $invalid) {
+            $this->array(IPAddressModel::getItemsByIPAddress($invalid))->isEmpty();
         }
 
         $IPV4ShouldNotWork = [
@@ -243,6 +318,27 @@ class IPAddress extends DbTestCase
             unset($currentIP['mainitemtype']);
             //var_dump($currentIP);
             $this->array($currentIP)->isIdenticalTo($expected);
+            $matches = array_values(array_filter(
+                IPAddressModel::getItemsByIPAddress($name),
+                static fn (array $chain): bool => (int)$chain[array_key_last($chain)]->getID() === (int)$id
+            ));
+            $this->array($matches)->hasSize(1);
+            $this->array($matches[0])->hasSize(2);
+            $this->string($matches[0][0]->getType())->isIdenticalTo('NetworkName');
+            $this->integer((int)$matches[0][0]->getID())->isIdenticalTo((int)$networkName_id);
+            $this->string($matches[0][1]->getType())->isIdenticalTo('IPAddress');
+            $this->string($matches[0][1]->getTextual())->isIdenticalTo($expected['name']);
+        }
+
+        // Retain the historical IPv6 word0 omission; changing that match is a separate fix.
+        $connection = $GLOBALS['DB']->getDoctrineConnection();
+        $ipv6Id = (int)$id;
+        try {
+            $this->integer($connection->update('glpi_ipaddresses', ['binary_0' => $expected['binary_0'] + 1], ['id' => $ipv6Id]))->isIdenticalTo(1);
+            $identifiers = array_map(static fn (array $chain): int => (int)$chain[array_key_last($chain)]->getID(), IPAddressModel::getItemsByIPAddress($name));
+            $this->array($identifiers)->contains($ipv6Id);
+        } finally {
+            $connection->update('glpi_ipaddresses', ['binary_0' => $expected['binary_0']], ['id' => $ipv6Id]);
         }
 
         $IPV6ShouldNotWork = [

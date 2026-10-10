@@ -37,6 +37,10 @@
  * @since 0.84
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\IPAddressRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -974,20 +978,16 @@ class IPAddress extends CommonDBChild
             return [];
         }
 
-        $criteria = [
-           'SELECT' => 'gip.id',
-           'FROM'   => 'glpi_ipaddresses AS gip',
-           'WHERE'  => ['gip.version' => $address->version]
-        ];
-        $startIndex = (($address->version == 4) ? 3 : 1);
+        $version = $address->version;
         $binaryIP = $address->getBinary();
-        for ($i = $startIndex; $i < 4; ++$i) {
-            $criteria['WHERE']["gip.binary_$i"] = $binaryIP[$i];
-        }
-        $iterator = $DB->request($criteria);
+        $identifiers = Orm::read(
+            $DB,
+            static fn (EntityManager $em): array =>
+                (new IPAddressRepository($em))->identifiersForParsedAddress($version, $binaryIP)
+        );
         $addressesWithItems = [];
-        while ($result = $iterator->next()) {
-            if ($address->getFromDB($result['id'])) {
+        foreach ($identifiers as $identifier) {
+            if ($address->getFromDB($identifier)) {
                 $addressesWithItems[] = array_merge(
                     array_reverse($address->recursivelyGetItems()),
                     [clone $address]
