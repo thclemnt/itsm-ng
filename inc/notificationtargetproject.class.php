@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\DocumentRepository;
 use itsmng\Database\Repository\ProjectAssetRepository;
@@ -156,13 +157,9 @@ class NotificationTargetProject extends NotificationTarget
     {
         global $DB;
 
-        $em = Orm::create($DB);
-        try {
-            $members = (new ProjectRepository($em))
-                ->projectTeamRecipients((int)$this->obj->fields['id'], 'User');
-        } finally {
-            $em->clear();
-        }
+        $members = Orm::read($DB, fn (EntityManager $em): array =>
+            (new ProjectRepository($em))
+                ->projectTeamRecipients((int)$this->obj->fields['id'], 'User'), clearCustomManager: true);
         foreach ($members as $member) {
             $this->addToRecipientsList(['language' => $member['language'], 'users_id' => $member['id']]);
         }
@@ -180,8 +177,9 @@ class NotificationTargetProject extends NotificationTarget
     {
         global $DB;
 
-        $members = (new ProjectRepository(Orm::create($DB)))
-            ->projectTeamMemberIds((int)$this->obj->fields['id'], 'Group');
+        $members = Orm::read($DB, fn (EntityManager $em): array =>
+            (new ProjectRepository($em))
+                ->projectTeamMemberIds((int)$this->obj->fields['id'], 'Group'));
 
         foreach ($members as $member) {
             $this->addForGroup($manager, $member);
@@ -198,13 +196,9 @@ class NotificationTargetProject extends NotificationTarget
     {
         global $DB, $CFG_GLPI;
 
-        $em = Orm::create($DB);
-        try {
-            $members = (new ProjectRepository($em))
-                ->projectTeamRecipients((int)$this->obj->fields['id'], 'Contact');
-        } finally {
-            $em->clear();
-        }
+        $members = Orm::read($DB, fn (EntityManager $em): array =>
+            (new ProjectRepository($em))
+                ->projectTeamRecipients((int)$this->obj->fields['id'], 'Contact'), clearCustomManager: true);
         $contact = new Contact();
         foreach ($members as $member) {
             // Keep the concrete model's existing name formatting without reloading it.
@@ -225,13 +219,9 @@ class NotificationTargetProject extends NotificationTarget
     {
         global $DB, $CFG_GLPI;
 
-        $em = Orm::create($DB);
-        try {
-            $members = (new ProjectRepository($em))
-                ->projectTeamRecipients((int)$this->obj->fields['id'], 'Supplier');
-        } finally {
-            $em->clear();
-        }
+        $members = Orm::read($DB, fn (EntityManager $em): array =>
+            (new ProjectRepository($em))
+                ->projectTeamRecipients((int)$this->obj->fields['id'], 'Supplier'), clearCustomManager: true);
         $supplier = new Supplier();
         foreach ($members as $member) {
             // Keep the concrete model's existing name formatting without reloading it.

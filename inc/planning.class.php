@@ -35,6 +35,7 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use Doctrine\ORM\EntityManager;
 use Glpi\CalDAV\Backend\Calendar;
 use RRule\RRule;
 use Sabre\VObject\Component\VCalendar;
@@ -721,8 +722,8 @@ class Planning extends CommonGLPI
                     static fn ($key) => (int)explode('_', (string)$key)[1],
                     array_keys($planning['users'])
                 );
-                $names = $userIds ? (new UserRepository(Orm::create($DB)))
-                    ->friendlyNameData($userIds) : [];
+                $names = $userIds ? Orm::read($DB, static fn (EntityManager $manager): array =>
+                    (new UserRepository($manager))->friendlyNameData($userIds)) : [];
                 foreach (array_keys($planning['users']) as $planning_id_user) {
                     $child_exploded = explode('_', (string) $planning_id_user);
                     $user = new User();
@@ -743,8 +744,8 @@ class Planning extends CommonGLPI
                 $object = new $itemtype();
                 $users_id = (int) $exploded[1];
                 if ($itemtype === 'User') {
-                    $names = (new UserRepository(Orm::create($DB)))
-                        ->friendlyNameData([$users_id]);
+                    $names = Orm::read($DB, static fn (EntityManager $manager): array =>
+                        (new UserRepository($manager))->friendlyNameData([$users_id]));
                     $object->fields = $names[$users_id] ?? [];
                 } else {
                     $object->getFromDB($users_id);
@@ -1023,8 +1024,8 @@ class Planning extends CommonGLPI
                 // Re-read the credential for each rendered filter: an intervening
                 // callback may rotate it. Existing tokens need no full User record.
                 $loginId = Session::getLoginUserID(true);
-                $token = (new UserRepository(Orm::create($DB)))
-                    ->tokenValue((int)$loginId, 'personal_token');
+                $token = Orm::read($DB, static fn (EntityManager $manager): ?string =>
+                    (new UserRepository($manager))->tokenValue((int)$loginId, 'personal_token'));
                 if (empty($token)) {
                     // Keep issuance, public update hooks and persisted-token checks
                     // in the existing User lifecycle, including a missing account.
@@ -1215,8 +1216,8 @@ class Planning extends CommonGLPI
         global $DB;
         echo Group::getTypeName(1) . " : <br>";
 
-        $groups = (new PlanningRepository(Orm::create($DB)))
-            ->groupChoices((int)$_SESSION['glpiactive_entity']);
+        $groups = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new PlanningRepository($manager))->groupChoices((int)$_SESSION['glpiactive_entity']));
 
         echo "<select name='groups_id' id='dropdown_groups_id'>";
         echo "<option value='0'>-----</option>";
@@ -1335,8 +1336,8 @@ class Planning extends CommonGLPI
             }
         }
 
-        $groups = (new PlanningRepository(Orm::create($DB)))
-            ->groupChoices((int)$_SESSION['glpiactive_entity'], $memberships);
+        $groups = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new PlanningRepository($manager))->groupChoices((int)$_SESSION['glpiactive_entity'], $memberships));
 
         echo "<select name='groups_id' id='dropdown_groups_id'>";
         echo "<option value='0'>-----</option>";

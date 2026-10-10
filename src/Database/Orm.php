@@ -43,10 +43,13 @@ final class Orm
     }
 
     /** @internal Read fully materialized values; never return entities, repositories or lazy iterators. */
-    public static function read(DBAdapter $db, callable $operation): mixed
+    public static function read(DBAdapter $db, callable $operation, bool $clearCustomManager = false): mixed
     {
         $connection = $db->getDoctrineConnection();
         OwnershipUpdateUnit::assertResolvedWriter($db, $connection);
+        if ($clearCustomManager) {
+            return self::withConnection($connection, $operation);
+        }
         return self::withReadConnection($connection, static fn (?EntityManager $manager): mixed =>
             $operation($manager ?? self::forConnection($connection)));
     }
