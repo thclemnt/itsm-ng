@@ -5,11 +5,16 @@
 namespace itsmng\Database\Entity;
 
 use DateTimeInterface;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\SchemaOwner;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_oidc_mapping')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
+#[SchemaOwner]
 class OidcMapping
 {
     #[ORM\Id]

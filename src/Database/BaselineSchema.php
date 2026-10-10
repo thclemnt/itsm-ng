@@ -30,7 +30,6 @@ use itsmng\Database\Migration\V220\InventoryUniqueness;
 use itsmng\Database\Migration\V220\KanbanOwnership;
 use itsmng\Database\Migration\V220\NetworkPortAggregateOrigins;
 use itsmng\Database\Migration\V220\NotificationRecipients;
-use itsmng\Database\Migration\V220\OidcReferences;
 use itsmng\Database\Migration\V220\PlanningEventGuests;
 use itsmng\Database\Migration\V220\ServiceLevelCalendars;
 use itsmng\Database\Migration\V220\UnusedProjectTemplateReference;
@@ -81,7 +80,6 @@ final class BaselineSchema
                 ->setDefault(null);
         }
         DashboardOwnership::configureTable($schema->getTable('glpi_dashboards'), $platform);
-        OidcReferences::configureTable($schema->getTable('glpi_oidc_users'));
         $this->configureInheritedReferences($schema);
         EntityParents::configureTable($schema->getTable('glpi_entities'));
         NotificationRecipients::configureTable($schema->getTable('glpi_notificationtargets'));
