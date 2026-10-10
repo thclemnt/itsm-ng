@@ -56,11 +56,14 @@ use Item_Problem;
 use Item_Ticket;
 use Problem;
 use Session;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Ticket;
 use Toolbox;
 use itsmng\Database\Entity;
 use itsmng\Database\Entity\User;
 use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILAssetRepository;
+use itsmng\Database\Repository\TicketAssetRepository;
 use itsmng\Database\Repository\UserRepository;
 
 require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
@@ -530,6 +533,42 @@ class Impact extends \DbTestCase
         $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
 
         $connection = $GLOBALS['DB']->getDoctrineConnection();
+        $activeQueryPlans = null;
+        Orm::read($GLOBALS['DB'], function (EntityManager $manager) use ($computer, $objects, $graph, $nodeId, &$activeQueryPlans): void {
+            $this->boolean($manager->getConnection()->ownsApplicationEntityManager($manager))->isTrue();
+            $cache = $manager->getConfiguration()->getQueryCache();
+            $this->object($cache)->isInstanceOf(ArrayAdapter::class);
+            $cache->clear();
+            foreach ([
+                ['incidents', Entity\ItemTicket::class, Ticket::INCIDENT_TYPE],
+                ['requests', Entity\ItemTicket::class, Ticket::DEMAND_TYPE],
+                ['changes', Entity\ChangeItem::class, null],
+                ['problems', Entity\ItemProblem::class, null],
+            ] as [$bucket, $link, $type]) {
+                $object = $objects[$bucket];
+                $finished = array_merge($object->getSolvedStatusArray(), $object->getClosedStatusArray());
+                $read = $type === null
+                    ? fn (): array => (new ITILAssetRepository($manager))->activeForLink($link, Computer::class, (int)$computer->getID(), $finished)
+                    : fn (): array => (new TicketAssetRepository($manager))->active(Computer::class, (int)$computer->getID(), $finished, $type);
+                $rows = $read();
+                $this->array($rows)->isIdenticalTo($graph['nodes'][$nodeId]['ITILObjects'][$bucket]);
+                $byId = array_column($rows, null, 'id');
+                $this->array($byId[(int)$object->getID()])->isIdenticalTo([
+                    'id' => (int)$object->getID(), 'name' => $object->fields['name'], 'priority' => (int)$object->fields['priority'],
+                ]);
+                $original = ['is_deleted' => $object->fields['is_deleted'], 'status' => $object->fields['status']];
+                foreach ([['is_deleted' => 1], ['status' => $finished[0]]] as $hidden) {
+                    try {
+                        $manager->getConnection()->update($object::getTable(), $hidden, ['id' => $object->getID()]);
+                        $this->array(array_column($read(), 'id'))->notContains((int)$object->getID());
+                    } finally {
+                        $manager->getConnection()->update($object::getTable(), $original, ['id' => $object->getID()]);
+                    }
+                }
+                $this->array($read())->isIdenticalTo($graph['nodes'][$nodeId]['ITILObjects'][$bucket]);
+            }
+            $activeQueryPlans = count($cache->getValues());
+        });
         $connection->update('glpi_tickets', ['name' => 'Fresh graph incident'], ['id' => $objects['incidents']->getID()]);
         $fresh = ImpactModel::buildGraph($computer);
         $this->array(array_column($fresh['nodes'][$nodeId]['ITILObjects']['incidents'], 'name', 'id'))
@@ -648,6 +687,7 @@ class Impact extends \DbTestCase
             return $elem["flag"] == (\Impact::DIRECTION_FORWARD | \Impact::DIRECTION_BACKWARD);
         });
         $this->array($both)->hasSize(2);
+        $this->integer($activeQueryPlans)->isIdenticalTo(0, 'Canonical active lists execute without compiling DQL');
     }
 
     public function testClean()
