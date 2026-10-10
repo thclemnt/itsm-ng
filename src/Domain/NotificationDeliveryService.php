@@ -38,14 +38,14 @@ final class NotificationDeliveryService
     /** Compatibility projections for authorized public relation screens. */
     public function bindingsForNotification(int $notification): array
     {
-        $em = Orm::create($this->database);
-        return $this->bindingRows($em, (new NotificationRepository($em))->bindingsForNotification($notification));
+        return Orm::read($this->database, fn (EntityManager $em): array =>
+            $this->bindingRows($em, (new NotificationRepository($em))->bindingsForNotification($notification)));
     }
 
     public function bindingsForTemplate(int $template): array
     {
-        $em = Orm::create($this->database);
-        return $this->bindingRows($em, (new NotificationRepository($em))->bindingsForTemplate($template));
+        return Orm::read($this->database, fn (EntityManager $em): array =>
+            $this->bindingRows($em, (new NotificationRepository($em))->bindingsForTemplate($template)));
     }
 
     private function bindingRows(EntityManager $em, array $bindings): array

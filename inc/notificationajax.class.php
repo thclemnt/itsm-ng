@@ -131,13 +131,13 @@ class NotificationAjax implements NotificationInterface
                     method_exists($message->itemtype, 'getFormURL')
                 ) {
                     $item = new $message->itemtype();
-                    $url = $item->getFormURL(false) . "?id={$message->items_id}";
+                    $url = $item->getFormURL(false) . "?id={$message->itemsId}";
                 }
 
                 $return[] = [
                    'id'     => $message->id,
-                   'title'  => $message->name,
-                   'body'   => $message->body_text,
+                   'title'  => $message->title,
+                   'body'   => $message->body,
                    'url'    => $url
                 ];
             }

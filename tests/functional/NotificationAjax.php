@@ -33,14 +33,18 @@
 
 namespace tests\units;
 
+use CommonDBTM as LegacyCommonDBTM;
 use DateTime;
 use DateTimeImmutable;
 use DbTestCase;
+use Doctrine\ORM\EntityManager;
+use ReflectionProperty;
 use NotificationAjax as LegacyNotificationAjax;
 use Session;
 use itsmng\Database\Entity\QueuedNotification;
 use itsmng\Database\Orm;
 use itsmng\Domain\BrowserNotificationInbox;
+use itsmng\Domain\BrowserNotificationMessage;
 
 /* Test for inc/notificationajax.class.php .class.php */
 
@@ -112,6 +116,94 @@ class NotificationAjax extends DbTestCase
             $this->boolean($transition->acknowledgeBrowserMessage($recipient, $clock->modify('+1 day')))->isFalse();
             $this->variable($transition->sent_time)->isIdenticalTo($first);
         } finally {
+            $_SESSION = $savedSession;
+            $CFG_GLPI = $savedConfig;
+        }
+    }
+
+    public function testBrowserMessagesMaterializeBeforeRenderingAndReuseTheirOwnedManager(): void
+    {
+        global $DB, $CFG_GLPI;
+        $savedSession = $_SESSION;
+        $savedConfig = $CFG_GLPI;
+        $writer = null;
+        try {
+            $this->login();
+            $recipient = (int)Session::getLoginUserID();
+            $CFG_GLPI['notifications_ajax'] = true;
+            $inbox = new BrowserNotificationInbox($DB);
+            $rows = [];
+            foreach (['ajax', 'ajax', 'AJAX', 'ajax', 'ajax'] as $index => $mode) {
+                $rows[] = $this->createItem('QueuedNotification', [
+                    'mode' => $mode, 'recipient' => (string)($index === 3 ? $recipient + 1 : $recipient),
+                    'entities_id' => 0, 'itemtype' => 'NotificationAjax',
+                    'name' => 'Browser presentation ' . $index . ' ' . $this->getUniqueString(),
+                    'body_text' => 'Browser content ' . $index, 'sent_time' => null,
+                    'create_time' => '2010-01-01 00:00:00', 'send_time' => '2037-01-01 00:00:00',
+                ]);
+            }
+            $ids = array_map(static fn ($row): int => (int)$row->getID(), $rows);
+            $connection = $DB->getDoctrineConnection();
+            $this->boolean($DB->update('glpi_queuednotifications', ['recipient' => (string)$recipient . ' '], ['id' => $ids[4]]))->isTrue();
+            $this->boolean($DB->update('glpi_queuednotifications', ['name' => null, 'body_text' => null], ['id' => $ids[1]]))->isTrue();
+            $_SESSION['glpiactiveprofile']['queuednotification'] = 0;
+            $_SESSION['glpiactiveentities'] = [];
+            $select = static fn (array $messages): array => array_values(array_filter($messages,
+                static fn (BrowserNotificationMessage $message): bool => in_array($message->id, $ids, true)));
+            $snapshot = $select($inbox->pending($recipient));
+            $this->array(array_column($snapshot, 'id'))->isIdenticalTo([$ids[0], $ids[1]]);
+            foreach ($snapshot as $message) {
+                $this->object($message)->isInstanceOf(BrowserNotificationMessage::class);
+            }
+            $this->variable($snapshot[1]->title)->isNull();
+            $this->variable($snapshot[1]->body)->isNull();
+            $this->array($inbox->pending(0))->isEmpty();
+            $writer = Orm::create($DB);
+            $managed = $writer->find(QueuedNotification::class, $ids[0]);
+            $this->integer($connection->update('glpi_queuednotifications', ['name' => 'Current browser title', 'body_text' => 'Current browser body',
+                'itemtype' => BrowserNotificationPresentationItem::class],
+                ['id' => $ids[0]]))->isIdenticalTo(1);
+            $canonical = null;
+            Orm::withConnection($connection, static function (EntityManager $manager) use (&$canonical): void {
+                $canonical = $manager;
+            });
+            BrowserNotificationPresentationItem::$formUrl = function () use ($connection, $canonical): void {
+                Orm::withConnection($connection, function (EntityManager $manager) use ($canonical): void {
+                    $this->object($manager)->isIdenticalTo($canonical);
+                    $this->integer($manager->getUnitOfWork()->size())->isIdenticalTo(0);
+                });
+            };
+            $beforeCreations = (new ReflectionProperty(Orm::class, 'unitsOfWork'))->getValue();
+            for ($repeat = 0; $repeat < 2; ++$repeat) {
+                $current = $select($inbox->pending($recipient));
+                $this->string($current[0]->title)->isIdenticalTo('Current browser title');
+                $this->string($current[0]->body)->isIdenticalTo('Current browser body');
+                $rendered = array_column(LegacyNotificationAjax::getMyNotifications(), null, 'id');
+                $this->array($rendered[$ids[0]])->isIdenticalTo([
+                    'id' => $ids[0], 'title' => 'Current browser title', 'body' => 'Current browser body', 'url' => '/browser-fixture?id=0',
+                ]);
+            }
+            $this->string($snapshot[0]->title)->isIdenticalTo($rows[0]->fields['name']);
+            $this->boolean($writer->contains($managed))->isTrue();
+            $this->string($managed->name)->isIdenticalTo($rows[0]->fields['name']);
+            $this->boolean($inbox->acknowledge($ids[0], $recipient))->isTrue();
+            $this->boolean($inbox->acknowledge($ids[0], $recipient))->isFalse();
+            $this->array(array_column($select($inbox->pending($recipient)), 'id'))->isIdenticalTo([$ids[1]]);
+            $this->integer((new ReflectionProperty(Orm::class, 'unitsOfWork'))->getValue() - $beforeCreations)->isIdenticalTo(0,
+                'Completed browser presentation and acknowledgement scopes reuse the selected private manager');
+            $this->boolean($writer->contains($managed))->isTrue();
+            $this->boolean($managed->is_deleted)->isFalse();
+            // An enclosing operation owns its managed reference while nested acknowledgement writes independently.
+            Orm::withConnection($connection, function (EntityManager $parent) use ($inbox, $ids, $recipient): void {
+                $reference = $parent->getReference(QueuedNotification::class, $ids[1]);
+                $this->boolean($parent->contains($reference))->isTrue();
+                $this->boolean($inbox->acknowledge($ids[1], $recipient))->isTrue();
+                $this->boolean($parent->contains($reference))->isTrue();
+            });
+            $this->array($select($inbox->pending($recipient)))->isEmpty();
+        } finally {
+            $writer?->clear();
+            BrowserNotificationPresentationItem::$formUrl = null;
             $_SESSION = $savedSession;
             $CFG_GLPI = $savedConfig;
         }
@@ -215,5 +307,19 @@ class NotificationAjax extends DbTestCase
 
         //reset
         $CFG_GLPI['notifications_ajax'] = 0;
+    }
+}
+
+/** Real item URL dispatch runs after the inbox has materialized its authorized messages. */
+class BrowserNotificationPresentationItem extends LegacyCommonDBTM
+{
+    public static mixed $formUrl = null;
+
+    public static function getFormURL($full = true)
+    {
+        if (self::$formUrl !== null) {
+            (self::$formUrl)();
+        }
+        return '/browser-fixture';
     }
 }

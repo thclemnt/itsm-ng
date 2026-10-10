@@ -35,18 +35,118 @@ namespace tests\units;
 
 use CommonDBConnexity;
 use DbTestCase;
+use Doctrine\DBAL\Types\Types;
+use ReflectionProperty;
 use Entity as LegacyEntity;
 use Entity_RSSFeed;
 use Notification as LegacyNotification;
 use Notification_NotificationTemplate as LegacyNotification_NotificationTemplate;
 use itsmng\Database\Entity\Entity;
 use itsmng\Database\Entity\Notification;
+use itsmng\Database\Entity\NotificationNotificationTemplate;
+use itsmng\Database\Entity\NotificationTemplate;
+use itsmng\Domain\NotificationDeliveryService;
 use itsmng\Database\Orm;
 
 /* Test for inc/notification_notificationtemplate.class.php */
 
 class Notification_NotificationTemplate extends DbTestCase
 {
+    public function testBindingReadsReturnCurrentRowsAndRetainIndependentOwners(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_root_entity', false);
+        $manager = Orm::create($DB);
+        $connection = $manager->getConnection();
+        $depth = $connection->getTransactionNestingLevel();
+        try {
+            $parents = $templates = [];
+            foreach ([0, 1] as $index) {
+                $parent = new Notification();
+                $parent->entities = $manager->find(Entity::class, $_SESSION['glpiactive_entity']);
+                $parent->name = 'Binding owner ' . $index . ' ' . $this->getUniqueString();
+                $parent->itemtype = 'Ticket';
+                $parent->event = 'new';
+                $template = new NotificationTemplate();
+                $template->name = 'Binding template ' . $index . ' ' . $this->getUniqueString();
+                $template->itemtype = 'Ticket';
+                $manager->persist($parent);
+                $manager->persist($template);
+                $parents[] = $parent;
+                $templates[] = $template;
+            }
+            $bindings = [];
+            foreach ([[0, 0, 'mailing'], [0, 1, 'ajax'], [1, 0, 'mailing']] as [$parent, $template, $mode]) {
+                $binding = new NotificationNotificationTemplate();
+                $binding->notifications = $parents[$parent];
+                $binding->notificationtemplates = $templates[$template];
+                $binding->mode = $mode;
+                $manager->persist($binding);
+                $bindings[] = $binding;
+            }
+            $manager->flush();
+            $service = new NotificationDeliveryService($DB);
+            $snapshot = $service->bindingsForNotification($parents[0]->id);
+            $byNotification = array_column($snapshot, null, 'id');
+            $byTemplate = array_column($service->bindingsForTemplate($templates[0]->id), null, 'id');
+            $this->integer(count($byNotification))->isIdenticalTo(2);
+            $this->integer(count($byTemplate))->isIdenticalTo(2);
+            foreach ([$bindings[0], $bindings[1]] as $binding) {
+                $row = $byNotification[$binding->id];
+                $this->integer(count($row))->isIdenticalTo(4);
+                $this->integer($row['id'])->isIdenticalTo($binding->id);
+                $this->integer($row['notifications_id'])->isIdenticalTo($parents[0]->id);
+                $this->integer($row['notificationtemplates_id'])->isIdenticalTo($binding->notificationtemplates->id);
+                $this->string($row['mode'])->isIdenticalTo($binding->mode);
+            }
+            foreach ([$bindings[0], $bindings[2]] as $binding) {
+                $row = $byTemplate[$binding->id];
+                $this->integer($row['id'])->isIdenticalTo($binding->id);
+                $this->integer($row['notifications_id'])->isIdenticalTo($binding->notifications->id);
+                $this->integer($row['notificationtemplates_id'])->isIdenticalTo($templates[0]->id);
+                $this->string($row['mode'])->isIdenticalTo($binding->mode);
+            }
+            $this->array($service->bindingsForNotification(-1))->isEmpty();
+            $this->array($service->bindingsForTemplate(-1))->isEmpty();
+
+            // Native writers do not update an independently managed caller entity.
+            $this->integer($connection->update('glpi_notifications_notificationtemplates', ['mode' => 'mail-current'],
+                ['id' => $bindings[0]->id], ['mode' => Types::STRING, 'id' => Types::BIGINT]))->isIdenticalTo(1);
+            $creations = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $before = $creations->getValue();
+            for ($repeat = 0; $repeat < 2; ++$repeat) {
+                $currentNotification = array_column($service->bindingsForNotification($parents[0]->id), null, 'id');
+                $currentTemplate = array_column($service->bindingsForTemplate($templates[0]->id), null, 'id');
+                $this->string($currentNotification[$bindings[0]->id]['mode'])->isIdenticalTo('mail-current');
+                $this->string($currentTemplate[$bindings[0]->id]['mode'])->isIdenticalTo('mail-current');
+                $this->string($currentNotification[$bindings[1]->id]['mode'])->isIdenticalTo('ajax');
+                $this->array($service->bindingsForNotification(-1))->isEmpty();
+                $this->array($service->bindingsForTemplate(-1))->isEmpty();
+            }
+            $this->integer($creations->getValue())->isIdenticalTo($before);
+            $this->string($byNotification[$bindings[0]->id]['mode'])->isIdenticalTo('mailing');
+            $this->array($snapshot)->isIdenticalTo(array_values($byNotification));
+            $this->boolean($manager->contains($bindings[0]))->isTrue();
+            $this->string($bindings[0]->mode)->isIdenticalTo('mailing');
+            $this->boolean($manager->contains($parents[0]))->isTrue();
+
+            Orm::read($DB, function ($parentManager) use ($service, $bindings, $parents, $templates): void {
+                $reference = $parentManager->getReference(Notification::class, $parents[0]->id);
+                $this->boolean($parentManager->contains($reference))->isTrue();
+                $notificationRows = array_column($service->bindingsForNotification($parents[0]->id), null, 'id');
+                $templateRows = array_column($service->bindingsForTemplate($templates[0]->id), null, 'id');
+                $this->string($notificationRows[$bindings[0]->id]['mode'])->isIdenticalTo('mail-current');
+                $this->string($templateRows[$bindings[0]->id]['mode'])->isIdenticalTo('mail-current');
+                $this->boolean($parentManager->contains($reference))->isTrue();
+            });
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+            $this->boolean($manager->contains($bindings[0]))->isTrue();
+        } finally {
+            $manager->clear();
+        }
+    }
+
     public function testOptionalAttachmentSelection(): void
     {
         global $DB;

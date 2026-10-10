@@ -34,6 +34,9 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\DBAL\Types\Types;
+use NotificationTemplate as LegacyNotificationTemplate;
+use ReflectionProperty;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\Query;
@@ -42,6 +45,8 @@ use itsmng\Database\Entity\NotificationTemplate;
 use itsmng\Database\Entity\NotificationTemplateTranslation as NotificationTemplateTranslationEntity;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\NotificationTemplateRepository;
+use itsmng\Domain\NotificationTemplateContent;
+use itsmng\Domain\NotificationTemplateService;
 
 /* Test for inc/notificationtemplatetranslation.class.php */
 
@@ -146,6 +151,98 @@ class NotificationTemplateTranslation extends DbTestCase
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
         } finally {
             $em->clear();
+        }
+    }
+
+    public function testTemplateContentReadsMaterializeCurrentValuesAndReuseTheirManager(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $level = $connection->getTransactionNestingLevel();
+        $writer = Orm::create($DB);
+        try {
+            $template = new NotificationTemplate();
+            $template->name = 'Scoped content ' . $this->getUniqueString();
+            $template->itemtype = 'Ticket';
+            $writer->persist($template);
+            $translations = [];
+            foreach (['', 'fr_FR', 'fr_FR', 'FR_fr', 'ja_JP'] as $index => $language) {
+                $translation = new NotificationTemplateTranslationEntity();
+                $translation->notificationtemplates = $template;
+                $translation->language = $language;
+                $translation->subject = 'Subject ' . $index;
+                $translation->content_text = $index === 0 ? null : 'Text ' . $index;
+                $translation->content_html = $index === 0 ? null : '<p>HTML ' . $index . '</p>';
+                $translations[] = $translation;
+                $writer->persist($translation);
+            }
+            $writer->flush();
+            $service = new NotificationTemplateService($DB);
+            $all = $service->translations($template->id);
+            $this->array($all)->hasSize(5);
+            foreach ($all as $content) {
+                $this->object($content)->isInstanceOf(NotificationTemplateContent::class);
+            }
+            $expectedIds = array_map(static fn (NotificationTemplateTranslationEntity $translation): int => $translation->id, $translations);
+            $actualIds = array_column($all, 'id');
+            sort($expectedIds);
+            sort($actualIds);
+            $this->array($actualIds)->isIdenticalTo($expectedIds);
+            $fallback = $service->contentForLanguage($template->id, 'zz_ZZ');
+            $this->integer($fallback->id)->isIdenticalTo($translations[0]->id);
+            $this->variable($fallback->text)->isNull();
+            $this->variable($fallback->html)->isNull();
+            $this->integer($service->contentForLanguage($template->id, null)->id)->isIdenticalTo($translations[0]->id);
+            $preferred = $service->contentForLanguage($template->id, 'fr_FR');
+            // Native case-insensitive collations may also select the differently cased locale.
+            $this->boolean(in_array($preferred->language, ['fr_FR', 'FR_fr'], true))->isTrue();
+            $this->boolean(in_array($preferred->id, [$translations[1]->id, $translations[2]->id, $translations[3]->id], true))->isTrue();
+            $languages = $service->usedLanguages($template->id);
+            $expectedLanguages = ['' => '', 'fr_FR' => 'fr_FR', 'FR_fr' => 'FR_fr', 'ja_JP' => 'ja_JP'];
+            ksort($languages);
+            ksort($expectedLanguages);
+            $this->array($languages)->isIdenticalTo($expectedLanguages);
+            $this->variable($service->contentForLanguage(-1, 'fr_FR'))->isNull();
+            $this->array($service->translations(-1))->isEmpty();
+            $this->array($service->usedLanguages(-1))->isEmpty();
+            $legacy = new LegacyNotificationTemplate();
+            $this->boolean($legacy->getFromDB($template->id))->isTrue();
+            $this->array($legacy->getByLanguage('zz_ZZ'))->isIdenticalTo($fallback->legacyRow());
+            $managed = $translations[0];
+            $currentSubject = "Current O'Reilly \ body";
+            $this->integer($connection->update('glpi_notificationtemplatetranslations', [
+                'subject' => $currentSubject, 'content_text' => 'Current text', 'content_html' => null,
+            ], ['id' => $managed->id], [
+                'subject' => Types::STRING, 'content_text' => Types::TEXT, 'content_html' => Types::TEXT, 'id' => Types::BIGINT,
+            ]))->isIdenticalTo(1);
+            $creations = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $beforeCreations = $creations->getValue();
+            for ($repeat = 0; $repeat < 2; ++$repeat) {
+                $current = $service->contentForLanguage($template->id, 'zz_ZZ');
+                $this->string($current->subject)->isIdenticalTo($currentSubject);
+                $this->string($current->text)->isIdenticalTo('Current text');
+                $this->variable($current->html)->isNull();
+                $this->array($legacy->getByLanguage('zz_ZZ'))->isIdenticalTo($current->legacyRow());
+                $rows = array_column($service->translations($template->id), null, 'id');
+                $this->string($rows[$managed->id]->subject)->isIdenticalTo($currentSubject);
+                $currentLanguages = $service->usedLanguages($template->id);
+                ksort($currentLanguages);
+                $this->array($currentLanguages)->isIdenticalTo($expectedLanguages);
+            }
+            $this->integer($creations->getValue() - $beforeCreations)->isIdenticalTo(0,
+                'Template content, translations and locale choices share the completed canonical read manager');
+            $this->string($fallback->subject)->isIdenticalTo('Subject 0');
+            $this->string($managed->subject)->isIdenticalTo('Subject 0');
+            $this->boolean($writer->contains($managed))->isTrue();
+            Orm::withConnection($connection, function (EntityManager $parent) use ($service, $template, $managed): void {
+                $reference = $parent->getReference(NotificationTemplateTranslationEntity::class, $managed->id);
+                $this->boolean($parent->contains($reference))->isTrue();
+                $this->object($service->contentForLanguage($template->id, 'zz_ZZ'))->isInstanceOf(NotificationTemplateContent::class);
+                $this->boolean($parent->contains($reference))->isTrue();
+            });
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $writer->clear();
         }
     }
 

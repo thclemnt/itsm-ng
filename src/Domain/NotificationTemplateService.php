@@ -20,29 +20,28 @@ final class NotificationTemplateService
 
     public function contentForLanguage(int $template, ?string $language): ?NotificationTemplateContent
     {
-        $em = Orm::create($this->database);
-        $translation = (new NotificationTemplateRepository($em))->preferredTranslation($template, $language);
-        return $translation === null ? null : $this->content($em, $translation);
+        return Orm::read($this->database, function (EntityManager $manager) use ($template, $language): ?NotificationTemplateContent {
+            $translation = (new NotificationTemplateRepository($manager))->preferredTranslation($template, $language);
+            return $translation === null ? null : $this->content($manager, $translation);
+        });
     }
 
     /** @return list<NotificationTemplateContent> */
     public function translations(int $template): array
     {
-        $em = Orm::create($this->database);
-        return array_map(
-            fn (NotificationTemplateTranslation $translation): NotificationTemplateContent => $this->content($em, $translation),
-            (new NotificationTemplateRepository($em))->translations($template)
-        );
+        return Orm::read($this->database, fn (EntityManager $manager): array => array_map(
+            fn (NotificationTemplateTranslation $translation): NotificationTemplateContent => $this->content($manager, $translation),
+            (new NotificationTemplateRepository($manager))->translations($template)
+        ));
     }
 
     public function usedLanguages(int $template): array
     {
-        $em = Orm::create($this->database);
-        try {
-            return (new NotificationTemplateRepository($em))->usedLanguages($template);
-        } finally {
-            $em->clear();
-        }
+        return Orm::read(
+            $this->database,
+            static fn (EntityManager $manager): array => (new NotificationTemplateRepository($manager))->usedLanguages($template),
+            clearCustomManager: true
+        );
     }
 
     private function content(EntityManager $em, NotificationTemplateTranslation $translation): NotificationTemplateContent
