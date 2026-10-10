@@ -4,7 +4,6 @@
 
 namespace itsmng\Translation;
 
-use Laminas\I18n\Translator\TranslationCollector\PSR16CachingCollector;
 use Laminas\I18n\Translator\Translator as LaminasTranslator;
 use Laminas\I18n\Translator\TextDomain;
 use Laminas\I18n\Translator\TranslationCollector\TranslationCollectorInterface;
@@ -14,20 +13,26 @@ use Psr\SimpleCache\CacheInterface;
 final class Translator implements TranslationCollectorInterface
 {
     private FileCollector $files;
-    private TranslationCollectorInterface $collector;
     private array $messages = [];
     private LaminasTranslator $translator;
 
     public function __construct(string $locale, private readonly ?CacheInterface $cache = null)
     {
         $this->files = new FileCollector();
-        $this->collector = $cache === null ? $this->files : new PSR16CachingCollector($cache, $this->files, 'itsmng-i18n3');
         $this->translator = new LaminasTranslator($this, $locale);
     }
 
     public function collect(string $textDomain, string $locale): TextDomain
     {
-        return $this->messages[$textDomain][$locale] = $this->collector->collect($textDomain, $locale);
+        if (isset($this->messages[$textDomain][$locale])) {
+            return $this->messages[$textDomain][$locale];
+        }
+        $catalogue = $this->cachedCatalogue($textDomain, $locale);
+        if ($catalogue === null) {
+            $catalogue = $this->files->collect($textDomain, $locale);
+            $this->cache?->set($this->cacheKey($textDomain, $locale), $catalogue);
+        }
+        return $this->messages[$textDomain][$locale] = $catalogue;
     }
 
     public function addTranslationFile(string $type, string $filename, string $textDomain = 'default', ?string $locale = null): self
@@ -52,10 +57,26 @@ final class Translator implements TranslationCollectorInterface
         if (isset($this->messages[$domain][$locale]) || $this->files->hasFiles($domain, $locale)) {
             return true;
         }
-        // V2 retried unregistered domains instead of memoizing an empty catalogue.
-        // A real cached catalogue remains usable even before local registration.
-        return $this->collector instanceof PSR16CachingCollector
-            && $this->cache->has($this->collector->cacheKey($domain, $locale));
+        // A cached-only domain can load before local registration. Unknown
+        // misses stay uncollected so later plugin registration can still load.
+        $catalogue = $this->cachedCatalogue($domain, $locale);
+        if ($catalogue === null) {
+            return false;
+        }
+        $this->messages[$domain][$locale] = $catalogue;
+        return true;
+    }
+
+    private function cacheKey(string $domain, string $locale): string
+    {
+        return 'itsmng-i18n3-' . $domain . '-' . $locale;
+    }
+
+    private function cachedCatalogue(string $domain, string $locale): ?TextDomain
+    {
+        // A PSR cache may lose or decline to decode a value after has() succeeds.
+        $catalogue = $this->cache?->get($this->cacheKey($domain, $locale));
+        return $catalogue instanceof TextDomain ? $catalogue : null;
     }
 
     public function translate(string $message, string $textDomain = 'default', ?string $locale = null): string|array

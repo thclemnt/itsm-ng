@@ -331,6 +331,38 @@ class Session extends \DbTestCase
             $this->string(__('Context entries', $domain))->isIdenticalTo('Context first');
             $this->string($TRANSLATE->translate('Late message', $domain, ''))->isIdenticalTo('Late plugin translation');
 
+            // A backend can report physical presence while the value fetch is a miss.
+            $inconsistent = new class (new ArrayAdapter()) extends Psr16Cache {
+                public int $presenceChecks = 0;
+                public function has($key): bool
+                {
+                    ++$this->presenceChecks;
+                    return true;
+                }
+            };
+            $key = 'itsmng-i18n3-' . $domain . '-en_GB';
+            $this->boolean($inconsistent->has($key))->isTrue();
+            $this->variable($inconsistent->get($key))->isNull();
+            $checks = $inconsistent->presenceChecks;
+            $recover = new Translator('en_GB', $inconsistent);
+            $recover->addTranslationFile('phparray', $file, $domain, 'en_GB');
+            $this->string($recover->translatePlural('Entry', 'Entries', 2, $domain))->isIdenticalTo('Many entries');
+            $this->integer($inconsistent->presenceChecks)->isIdenticalTo($checks);
+            $this->object($inconsistent->get($key))->isInstanceOf(TextDomain::class);
+            foreach ([null, 'undecodable catalogue'] as $invalid) {
+                $inconsistent->set($key, $invalid);
+                $recover = new Translator('en_GB', $inconsistent);
+                $recover->addTranslationFile('phparray', $file, $domain, 'en_GB');
+                $this->string($recover->translate('Late message', $domain))->isIdenticalTo('Late plugin translation');
+                $this->object($inconsistent->get($key))->isInstanceOf(TextDomain::class);
+            }
+            $inconsistent->delete($key);
+            $late = new Translator('en_GB', $inconsistent);
+            $this->string($late->translate('Late message', $domain))->isIdenticalTo('Late message');
+            $this->variable($inconsistent->get($key))->isNull();
+            $late->addTranslationFile('phparray', $file, $domain, 'en_GB');
+            $this->string($late->translate('Late message', $domain))->isIdenticalTo('Late plugin translation');
+
             // Cached TextDomain objects retain their plural AST when serialized.
             $raw = new ArrayAdapter();
             $cache = new Psr16Cache($raw);

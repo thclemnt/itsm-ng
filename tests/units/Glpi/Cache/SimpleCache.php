@@ -47,6 +47,7 @@ use itsmng\Database\EntityRegistryCache;
 use itsmng\Database\MappingFingerprint;
 use itsmng\Database\SerializedMetadataCache;
 use org\bovigo\vfs\vfsStream;
+use org\bovigo\vfs\vfsStreamFile;
 use Psr\SimpleCache\InvalidArgumentException as CacheInvalidArgumentException;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Exception\InvalidArgumentException;
@@ -176,6 +177,33 @@ class SimpleCache extends \GLPITestCase
         } finally {
             $_SESSION = $previousSession;
         }
+    }
+
+    public function testFilesystemValuesUsePortablePhpSerialization(): void
+    {
+        vfsStream::setup('portable-codec');
+        $configuration = ['adapter' => 'filesystem', 'options' => [
+            'cache_dir' => vfsStream::url('portable-codec'), 'namespace' => 'portable', 'ttl' => 600,
+        ]];
+        $writer = new Psr16Cache(StorageFactory::create($configuration));
+        $value = ['portable' => true, 'label' => 'same bytes'];
+        $this->boolean($writer->set('catalogue', $value))->isTrue();
+        $files = [];
+        $read = static function ($node) use (&$read, &$files): void {
+            if ($node instanceof vfsStreamFile) {
+                $files[] = $node->getContent();
+                return;
+            }
+            foreach ($node->getChildren() as $child) {
+                $read($child);
+            }
+        };
+        $read(vfsStream::getRoot());
+        $this->array($files)->hasSize(1);
+        $payload = explode("\n", $files[0], 3)[2];
+        $this->string($payload)->isIdenticalTo(serialize($value));
+        $reader = new Psr16Cache(StorageFactory::create($configuration));
+        $this->array($reader->get('catalogue'))->isIdenticalTo($value);
     }
 
     public function testStorageFactoryPreservesPluginFormsAndPriority(): void

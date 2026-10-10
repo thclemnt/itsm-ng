@@ -11,6 +11,7 @@ use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Adapter\FilesystemAdapter;
 use Symfony\Component\Cache\Adapter\RedisAdapter;
 use Symfony\Component\Cache\Exception\InvalidArgumentException;
+use Symfony\Component\Cache\Marshaller\DefaultMarshaller;
 use Traversable;
 
 /** Build the configured backend; namespaces and footprints belong to the caller. */
@@ -35,8 +36,8 @@ final class StorageFactory
         }
         $adapter = strtolower($configuration['adapter'] ?? 'filesystem');
         $options = $configuration['options'] ?? [];
-        // Symfony marshals stored values itself. Accept the documented old PHP
-        // serializer declaration, but never silently discard other plugins.
+        // Persistent caches use the documented PHP serializer regardless of
+        // optional igbinary availability. Other plugins require migration.
         foreach ($configuration['plugins'] ?? [] as $key => $plugin) {
             $plugin = is_string($key) ? ['name' => $key, 'options' => $plugin]
                 : (is_string($plugin) ? ['name' => $plugin] : $plugin);
@@ -72,10 +73,10 @@ final class StorageFactory
             throw new InvalidArgumentException('Session cache container must implement ArrayAccess and Traversable.');
         }
         return match ($adapter) {
-            'filesystem' => new FilesystemAdapter($namespace, $ttl, $options['cache_dir'] ?? null),
+            'filesystem' => new FilesystemAdapter($namespace, $ttl, $options['cache_dir'] ?? null, new DefaultMarshaller(false)),
             'memory' => new ArrayAdapter($ttl, storeSerialized: ($configuration['plugins'] ?? []) !== []),
             'apcu' => new ApcuAdapter($namespace, $ttl),
-            'redis' => new RedisAdapter(self::redisConnection($options), $namespace, $ttl),
+            'redis' => new RedisAdapter(self::redisConnection($options), $namespace, $ttl, new DefaultMarshaller(false)),
             'session' => new SessionAdapter($namespace, $options['session_container'] ?? null, $ttl),
         };
     }
