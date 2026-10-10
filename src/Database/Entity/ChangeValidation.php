@@ -13,6 +13,7 @@ use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\SchemaIndex;
 use itsmng\Database\Mapping\SchemaOwner;
 use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\ValidationRequest;
 use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
@@ -30,7 +31,7 @@ use itsmng\Database\Mapping\UserReferenceAction;
 #[SchemaIndex('submission_date', ['submission_date'], postgresqlName: 'glpi_changevalidations_submission_date')]
 #[SchemaIndex('validation_date', ['validation_date'], postgresqlName: 'glpi_changevalidations_validation_date')]
 #[SchemaIndex('status', ['status'], postgresqlName: 'glpi_changevalidations_status')]
-class ChangeValidation
+class ChangeValidation implements ValidationRequest
 {
     #[ORM\ManyToOne(targetEntity: Change::class)]
     #[ORM\JoinColumn(name: 'changes_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', foreignKeyName: 'fk_changevalidations_changes_id', options: ['default' => '0'])]
@@ -81,4 +82,9 @@ class ChangeValidation
 
     #[ORM\Column(name: '`timeline_position`', type: 'smallint', nullable: false, options: ['default' => '0'])]
     public int $timeline_position = 0;
+
+    public static function subjectAssociation(): string
+    {
+        return 'changes';
+    }
 }

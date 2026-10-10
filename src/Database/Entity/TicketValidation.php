@@ -13,6 +13,7 @@ use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\SchemaIndex;
 use itsmng\Database\Mapping\SchemaOwner;
 use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\ValidationRequest;
 use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
@@ -29,7 +30,7 @@ use itsmng\Database\Mapping\UserReferenceAction;
 #[SchemaIndex('submission_date', ['submission_date'], postgresqlName: 'glpi_ticketvalidations_submission_date')]
 #[SchemaIndex('validation_date', ['validation_date'], postgresqlName: 'glpi_ticketvalidations_validation_date')]
 #[SchemaIndex('status', ['status'], postgresqlName: 'glpi_ticketvalidations_status')]
-class TicketValidation
+class TicketValidation implements ValidationRequest
 {
     #[ORM\ManyToOne(targetEntity: Ticket::class)]
     #[ORM\JoinColumn(name: 'tickets_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', foreignKeyName: 'fk_ticketvalidations_tickets_id', options: ['default' => '0'])]
@@ -76,4 +77,9 @@ class TicketValidation
 
     #[ORM\Column(name: '`timeline_position`', type: 'smallint', nullable: false, options: ['default' => '0'])]
     public int $timeline_position = 0;
+
+    public static function subjectAssociation(): string
+    {
+        return 'tickets';
+    }
 }
