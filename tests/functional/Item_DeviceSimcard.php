@@ -34,6 +34,9 @@
 namespace tests\units;
 
 use DbTestCase;
+use Computer;
+use DeviceSimcard;
+use Item_DeviceSimcard as SimcardLink;
 
 class Item_DeviceSimcard extends DbTestCase
 {
@@ -187,6 +190,56 @@ class Item_DeviceSimcard extends DbTestCase
               'id'                       => $obj->getID(),
         ];
         $this->boolean($obj->delete($in))->isTrue();
+    }
+
+    public function testProtectedPinUpdateRetainsOwningParentRetargetCloneAndPurge(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $session = $_SESSION;
+        $priorRights = $connection->fetchOne("SELECT rights FROM glpi_profilerights WHERE profiles_id=4 AND name='devicesimcard_pinpuk'");
+        try {
+            $connection->update('glpi_profilerights', ['rights' => READ | UPDATE], ['profiles_id' => 4, 'name' => 'devicesimcard_pinpuk']);
+            $this->login();
+            $this->setEntity(0, true);
+            $prefix = $this->getUniqueString();
+            $first = $this->createItem(Computer::class, ['name' => $prefix, 'entities_id' => 0]);
+            $second = $this->createItem(Computer::class, ['name' => $prefix . '-second', 'entities_id' => 0]);
+            $device = $this->createItem(DeviceSimcard::class, ['designation' => $prefix, 'entities_id' => 0]);
+            $row = $this->createItem(SimcardLink::class, ['devicesimcards_id' => $device->getID(), 'itemtype' => 'Computer',
+                'items_id' => $first->getID(), 'entities_id' => 0, 'pin' => '0123', 'pin2' => '1234', 'puk' => '2345', 'puk2' => '3456']);
+            $original = array_intersect_key($row->fields, array_fill_keys(['pin', 'pin2', 'puk', 'puk2'], true));
+            $this->array($original)->isIdenticalTo(['pin' => '0123', 'pin2' => '1234', 'puk' => '2345', 'puk2' => '3456']);
+            $connection->update('glpi_profilerights', ['rights' => READ], ['profiles_id' => 4, 'name' => 'devicesimcard_pinpuk']);
+            $this->login();
+            $this->setEntity(0, true);
+            $this->boolean($row->update(['id' => $row->getID(), 'items_id' => $second->getID(),
+                'pin' => '0000', 'pin2' => '0000', 'puk' => '0000', 'puk2' => '0000']))->isTrue();
+            $this->boolean($row->getFromDB($row->getID()))->isTrue();
+            $this->array(array_intersect_key($row->fields, $original))->isIdenticalTo($original);
+            $this->integer((int)$row->fields['computers_id'])->isIdenticalTo((int)$second->getID());
+            $this->variable($row->fields['opaque_parent_id'])->isNull();
+            $connection->update('glpi_profilerights', ['rights' => READ | UPDATE], ['profiles_id' => 4, 'name' => 'devicesimcard_pinpuk']);
+            $this->login();
+            $this->setEntity(0, true);
+            $cloned = (int)$second->clone(['name' => $prefix . '-clone']);
+            $this->integer($cloned)->isGreaterThan(0);
+            $children = $row->find(['itemtype' => 'Computer', 'items_id' => $cloned]);
+            $this->array($children)->hasSize(1);
+            $child = new SimcardLink();
+            $this->boolean($child->getFromDB(array_key_first($children)))->isTrue();
+            $this->array(array_intersect_key($child->fields, $original))->isIdenticalTo($original);
+            $this->integer((int)$child->fields['computers_id'])->isIdenticalTo($cloned);
+            $clone = new Computer();
+            $this->boolean($clone->getFromDB($cloned))->isTrue();
+            $this->boolean($clone->delete(['id' => $cloned], true))->isTrue();
+            $this->boolean($child->getFromDB($child->getID()))->isFalse();
+            $this->boolean($row->getFromDB($row->getID()))->isTrue();
+            $this->array(array_intersect_key($row->fields, $original))->isIdenticalTo($original);
+        } finally {
+            $connection->update('glpi_profilerights', ['rights' => $priorRights], ['profiles_id' => 4, 'name' => 'devicesimcard_pinpuk']);
+            $_SESSION = $session;
+        }
     }
 
 }

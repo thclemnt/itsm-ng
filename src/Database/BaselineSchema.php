@@ -85,7 +85,7 @@ final class BaselineSchema
                             continue;
                         }
                         if (in_array($policy['constraint'], array_column($this->referencePolicies[$entity->getTableName()] ?? [], 'constraint'), true)) {
-                            throw new LogicException('Duplicate inherited native CHECK ownership: ' . $entity->getTableName() . '.' . $policy['constraint']);
+                            throw new LogicException('Duplicate native reference CHECK ownership: ' . $entity->getTableName() . '.' . $policy['constraint']);
                         }
                         $this->referencePolicies[$entity->getTableName()][$property] = $policy;
                     }
@@ -132,7 +132,7 @@ final class BaselineSchema
                             // Other fallback contracts require their own named native policy.
                             continue;
                         }
-                        $discriminators = $integerDiscriminators = $integerTypes = [];
+                        $discriminators = $integerDiscriminators = $integerTypes = $stringSelections = [];
                         if ($key->fallbackProperty !== null) {
                             $fallback = $entity->getFieldMapping($key->fallbackProperty);
                             $integerTypes[$fallback->columnName] = $fallback->type;
@@ -142,6 +142,14 @@ final class BaselineSchema
                                 $binding = $binding->newInstance();
                                 if ($binding->legacyColumn === $field->columnName) {
                                     $discriminatorField = $entity->getFieldMapping($binding->discriminator);
+                                    foreach ($mapping->joinColumns as $join) {
+                                        if ($key->openStringFallback) {
+                                            $integerTypes[$join->name] = Type::lookupName($table->getColumn($join->name)->getType());
+                                        }
+                                    }
+                                    if ($key->openStringFallback) {
+                                        $stringSelections[$discriminatorField->columnName] = $binding->values;
+                                    }
                                     if (in_array($discriminatorField->type, [Types::SMALLINT, Types::INTEGER, Types::BIGINT], true)) {
                                         $integerDiscriminators[] = $entity->getColumnName($binding->discriminator);
                                         $integerTypes[$discriminatorField->columnName] = $discriminatorField->type;
@@ -159,7 +167,9 @@ final class BaselineSchema
                             'constraint' => $key->subjectConstraintName($entity),
                             'check' => $key->subjectCheckExpression($platform, $entity, $property),
                             'discriminators' => array_values(array_unique($discriminators)),
-                            ...($integerDiscriminators ? ['integer_discriminators' => array_values(array_unique($integerDiscriminators)), 'integer_types' => $integerTypes] : []),
+                            ...($integerDiscriminators ? ['integer_discriminators' => array_values(array_unique($integerDiscriminators))] : []),
+                            ...($integerTypes ? ['integer_types' => $integerTypes] : []),
+                            ...($key->openStringFallback ? ['string_selections' => $stringSelections, 'open_string_fallback' => true] : []),
                         ];
                     }
                 }

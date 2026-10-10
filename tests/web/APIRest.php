@@ -1217,7 +1217,8 @@ class APIRest extends APIBaseClass
                 $name = new OrmEntity\NetworkName();
                 $name->entities = $entity;
                 $name->itemtype = 'NetworkPort';
-                $name->items_id = $port->id;
+                $name->networkPort = $port;
+                $name->opaque_parent_id = null;
                 $name->name = ['Selected "name"', 'Later name', 'Empty address collection'][$index];
                 $em->persist($names[] = $name);
             }
@@ -1226,7 +1227,8 @@ class APIRest extends APIBaseClass
                 $address = new OrmEntity\IPAddress();
                 $address->entities = $entity;
                 $address->itemtype = 'NetworkName';
-                $address->items_id = $names[0]->id;
+                $address->networkName = $names[0];
+                $address->opaque_parent_id = null;
                 $address->name = $ip;
                 $address->version = 4;
                 $address->binary_2 = 65535;

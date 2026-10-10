@@ -42,7 +42,7 @@ class Entity
 
     #[ORM\ManyToOne(targetEntity: self::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_entities_entities_id', options: ['default' => 0])]
-    #[ReferencePolicy(ReferenceKind::RootParent)]
+    #[ReferencePolicy(ReferenceKind::RootParent, nativeConstraint: 'glpi_entities_parent_root')]
     #[ApplicationManaged]
     public ?self $parent = null;
 

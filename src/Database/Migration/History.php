@@ -22,7 +22,7 @@ use Throwable;
 final class History
 {
     /** Append subsequent ORM releases here, in dependency order. */
-    private const MIGRATIONS = [Version220::class, SensorSubjects::class, PhysicalReferenceIndexes::class];
+    private const MIGRATIONS = [Version220::class, SensorSubjects::class, PhysicalReferenceIndexes::class, NetworkNameParents::class, IPAddressParents::class, GraphicCardParents::class, ComponentParents::class];
 
     /** @var list<ReleaseMigration> */
     private array $migrations;

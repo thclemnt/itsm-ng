@@ -40,13 +40,17 @@ use Doctrine\ORM\Events;
 use HTMLTableMain;
 use InvalidArgumentException;
 use NetworkPort as LegacyNetworkPort;
+use NetworkName as LegacyNetworkName;
 use NetworkPortAggregate;
 use NetworkPortAlias;
 use NetworkPortEthernet;
 use NetworkPortInstantiation;
 use ReflectionProperty;
+use Plugin;
 use NetworkPort_Vlan;
 use itsmng\Database\Entity\NetworkPort as NetworkPortEntity;
+use itsmng\Database\Entity\NetworkName as NetworkNameEntity;
+use itsmng\Database\CloneInput;
 use itsmng\Database\Entity\NetworkPortAggregate as NetworkPortAggregateEntity;
 use itsmng\Database\Entity\Vlan as VlanEntity;
 use itsmng\Database\Orm;
@@ -186,7 +190,11 @@ class NetworkPort extends DbTestCase
             'fqdns_id'    => null,
             'is_deleted'  => 0,
             'is_dynamic'  => 0,
+            'networkports_id' => $new_id,
+            'opaque_parent_id' => null,
         ];
+        ksort($networkname);
+        ksort($expected);
         $this->array($networkname)->isIdenticalTo($expected);
 
         // 3 -> IPAddress
@@ -328,6 +336,149 @@ class NetworkPort extends DbTestCase
                     $this->variable($clonedInstantiation->getField($k))->isEqualTo($instantiation->getField($k));
             }
         }
+    }
+
+    public function testNetworkNameAdoptedParentLifecyclePreservesOpaqueAndFreeNames(): void
+    {
+        global $DB;
+        $this->login();
+        $computer = getItemByTypeName('Computer', '_test_pc01');
+        $port = new LegacyNetworkPort();
+        $portId = $port->add(['itemtype' => 'Computer', 'items_id' => $computer->getID(),
+            'entities_id' => $computer->fields['entities_id'], 'instantiation_type' => 'NetworkPortEthernet',
+            'name' => 'owned-name-port', 'NetworkName_name' => 'owned-port-name',
+            'NetworkName__ipaddresses' => ['-1' => '192.0.2.51'], '_create_children' => true]);
+        $this->integer((int)$portId)->isGreaterThan(0);
+        $connection = $DB->getDoctrineConnection();
+        $nameId = (int)$connection->fetchOne('SELECT id FROM glpi_networknames WHERE itemtype=? AND items_id=?', ['NetworkPort', $portId]);
+        $this->integer($nameId)->isGreaterThan(0);
+        $ipId = (int)$connection->fetchOne('SELECT id FROM glpi_ipaddresses WHERE itemtype=? AND items_id=?', ['NetworkName', $nameId]);
+        $this->integer($ipId)->isGreaterThan(0);
+        $inspect = static fn (int $id): array => $connection->fetchAssociative('SELECT itemtype, items_id, networkports_id, opaque_parent_id FROM glpi_networknames WHERE id=?', [$id]);
+        $row = $inspect($nameId);
+        $this->integer((int)$row['networkports_id'])->isIdenticalTo((int)$portId);
+        $this->variable($row['opaque_parent_id'])->isNull();
+        $this->boolean(LegacyNetworkName::unaffectAddressByID($nameId))->isTrue();
+        $row = $inspect($nameId);
+        $this->string($row['itemtype'])->isIdenticalTo('');
+        $this->integer((int)$row['items_id'])->isIdenticalTo(0);
+        $this->variable($row['networkports_id'])->isNull();
+        $this->integer((int)$row['opaque_parent_id'])->isIdenticalTo(0);
+        $this->integer((int)$connection->fetchOne('SELECT mainitems_id FROM glpi_ipaddresses WHERE id=?', [$ipId]))->isIdenticalTo(0);
+        $this->boolean(LegacyNetworkName::affectAddress($nameId, $portId, 'NetworkPort'))->isTrue();
+        $this->variable($inspect($nameId)['opaque_parent_id'])->isNull();
+        $this->integer((int)$connection->fetchOne('SELECT mainitems_id FROM glpi_ipaddresses WHERE id=?', [$ipId]))->isIdenticalTo((int)$computer->getID());
+        $name = new LegacyNetworkName();
+        $this->boolean($name->getFromDB($nameId))->isTrue();
+        $attachedClone = (int)$name->clone(['name' => 'attached-cloned-name']);
+        $this->integer($attachedClone)->isGreaterThan(0);
+        $this->integer((int)$inspect($attachedClone)['networkports_id'])->isIdenticalTo((int)$portId);
+        $this->variable($inspect($attachedClone)['opaque_parent_id'])->isNull();
+        $freeClone = $name->clone(['itemtype' => '', 'items_id' => 0, 'name' => 'free-cloned-name']);
+        $this->integer((int)$freeClone)->isGreaterThan(0);
+        $this->variable($inspect((int)$freeClone)['networkports_id'])->isNull();
+        $opaque = new LegacyNetworkName();
+        $opaqueId = $opaque->add(['itemtype' => NetworkNameOpaquePortFixture::class, 'items_id' => $portId,
+            'name' => 'custom-port-name', 'entities_id' => $computer->fields['entities_id']]);
+        $this->integer((int)$opaqueId)->isGreaterThan(0);
+        $row = $inspect((int)$opaqueId);
+        $this->variable($row['networkports_id'])->isNull();
+        $this->integer((int)$row['opaque_parent_id'])->isIdenticalTo((int)$portId);
+        $this->boolean($opaque->update(['id' => $opaqueId, 'name' => 'custom-renamed']))->isTrue();
+        $this->integer((int)$inspect((int)$opaqueId)['items_id'])->isIdenticalTo((int)$portId);
+        $zeroName = new LegacyNetworkName();
+        $zeroId = (int)$zeroName->add(['itemtype' => 'NetworkPort', 'items_id' => 0, 'name' => 'selected-zero',
+            'entities_id' => $computer->fields['entities_id']]);
+        $this->integer($zeroId)->isGreaterThan(0);
+        $this->boolean($zeroName->update(['id' => $zeroId, 'itemtype' => 'NetworkPort', 'items_id' => 0, 'name' => 'selected-zero-updated']))->isTrue();
+        $this->integer((int)$inspect($zeroId)['items_id'])->isIdenticalTo(0);
+        $this->variable($inspect($zeroId)['opaque_parent_id'])->isNull();
+        $this->boolean($port->delete(['id' => $portId], true))->isTrue();
+        $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_networknames WHERE id=?', [$nameId]))->isIdenticalTo(0);
+        $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_ipaddresses WHERE id=?', [$ipId]))->isIdenticalTo(0);
+        $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_networknames WHERE id=?', [$attachedClone]))->isIdenticalTo(0);
+        $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_networknames WHERE id=?', [$freeClone]))->isIdenticalTo(1);
+        $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_networknames WHERE id=?', [$opaqueId]))->isIdenticalTo(1);
+    }
+
+    public function testNetworkNameFinalPreparedOpaqueWriteRechecksActualParentRights(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $this->login();
+        $computer = getItemByTypeName('Computer', '_test_pc01');
+        $ports = [];
+        foreach (['first', 'denied'] as $label) {
+            $port = new LegacyNetworkPort();
+            $ports[] = (int)$port->add(['itemtype' => 'Computer', 'items_id' => $computer->getID(),
+                'entities_id' => $computer->fields['entities_id'], 'instantiation_type' => 'NetworkPortEthernet', 'name' => 'opaque-' . $label]);
+            $this->integer(end($ports))->isGreaterThan(0);
+        }
+        $name = new LegacyNetworkName();
+        $id = (int)$name->add(['itemtype' => NetworkNameOpaquePortFixture::class, 'items_id' => $ports[0],
+            'entities_id' => $computer->fields['entities_id'], 'name' => 'prepared-opaque']);
+        $this->integer($id)->isGreaterThan(0);
+        $probe = new NetworkNamePreparedOpaqueFixture();
+        $this->boolean($probe->getFromDB($id))->isTrue();
+        $probe->preparedOpaque = $ports[1];
+        $connection = $DB->getDoctrineConnection();
+        $before = $connection->fetchAssociative('SELECT * FROM glpi_networknames WHERE id=?', [$id]);
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $denials = 0;
+        try {
+            $plugins->setValue(null, [...$active, 'network_name_parent_fixture']);
+            $PLUGIN_HOOKS['item_can']['network_name_parent_fixture'][NetworkNameOpaquePortFixture::class] =
+                static function (NetworkNameOpaquePortFixture $parent) use ($ports, &$denials): void {
+                    if ((int)$parent->getID() === $ports[1]) {
+                        ++$denials;
+                        $parent->right = false;
+                    }
+                };
+            $this->boolean($probe->update(['id' => $id, 'name' => 'should-not-persist']))->isFalse();
+            $this->integer($denials)->isGreaterThan(0);
+            $this->array($connection->fetchAssociative('SELECT * FROM glpi_networknames WHERE id=?', [$id]))->isIdenticalTo($before);
+            $this->integer((int)$probe->fields['items_id'])->isIdenticalTo($ports[0]);
+        } finally {
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+        }
+        // The same final canonical write is admitted once the actual target is authorized.
+        $this->boolean($probe->update(['id' => $id, 'name' => 'accepted-opaque']))->isTrue();
+        $this->integer((int)$connection->fetchOne('SELECT items_id FROM glpi_networknames WHERE id=?', [$id]))->isIdenticalTo($ports[1]);
+        $this->variable($connection->fetchOne('SELECT networkports_id FROM glpi_networknames WHERE id=?', [$id]))->isNull();
+    }
+
+    public function testNetworkNameParentNormalizationAndCloneKeepAuthoritativeIdentity(): void
+    {
+        $record = new NetworkNameEntity();
+        $this->array($record->normalizeInput(['itemtype' => 'NetworkPort', 'items_id' => '12']))
+            ->isIdenticalTo(['itemtype' => 'NetworkPort', 'networkports_id' => 12, 'opaque_parent_id' => null]);
+        $zero = $record->normalizeInput(['itemtype' => 'NetworkPort', 'items_id' => 0]);
+        $this->array($zero)->isIdenticalTo(['itemtype' => 'NetworkPort', 'networkports_id' => null, 'opaque_parent_id' => null]);
+        $this->array($record->normalizeInput($zero + ['items_id' => 0]))->isIdenticalTo($zero);
+        foreach (['', 'networkport', NetworkNameOpaquePortFixture::class] as $kind) {
+            $normalized = $record->normalizeInput(['itemtype' => $kind, 'items_id' => -9]);
+            $this->variable($normalized['networkports_id'])->isNull();
+            $this->integer($normalized['opaque_parent_id'])->isIdenticalTo(-9);
+        }
+        foreach ([['itemtype' => 'NetworkPort', 'items_id' => -1], ['itemtype' => 'NetworkPort', 'items_id' => null],
+            ['itemtype' => 'NetworkPort', 'items_id' => 12, 'networkports_id' => 13],
+            ['itemtype' => 'NetworkPort', 'items_id' => 12, 'opaque_parent_id' => 12],
+            ['itemtype' => 'Computer', 'items_id' => 12, 'networkports_id' => 12]] as $invalid) {
+            $this->exception(static fn () => $record->normalizeInput($invalid))->isInstanceOf(InvalidArgumentException::class);
+        }
+        $source = ['itemtype' => 'NetworkPort', 'items_id' => 12, 'networkports_id' => 12, 'opaque_parent_id' => null];
+        $free = CloneInput::merge('glpi_networknames', $source, ['itemtype' => '', 'items_id' => 0]);
+        $this->integer($free['items_id'])->isIdenticalTo(0);
+        $this->variable($free['networkports_id'])->isNull();
+        $this->integer($free['opaque_parent_id'])->isIdenticalTo(0);
+        $custom = CloneInput::merge('glpi_networknames', $source, ['itemtype' => NetworkNameOpaquePortFixture::class, 'items_id' => -9]);
+        $this->integer($custom['items_id'])->isIdenticalTo(-9);
+        $this->variable($custom['networkports_id'])->isNull();
+        $back = CloneInput::merge('glpi_networknames', $custom, ['itemtype' => 'NetworkPort', 'items_id' => 0]);
+        $this->integer($back['items_id'])->isIdenticalTo(0);
+        $this->variable($back['opaque_parent_id'])->isNull();
     }
 
     public function testAliasCopiesMacFromOriginPort()
@@ -759,5 +910,34 @@ class NetworkPort extends DbTestCase
                 'vlans_id'        => $vlan_id,
             ]
         ))->isEqualTo(0);
+    }
+}
+
+/** A loadable custom parent uses the existing plugin-style item factory and real port rights. */
+class NetworkNameOpaquePortFixture extends LegacyNetworkPort
+{
+    public static function getTable($classname = null)
+    {
+        return LegacyNetworkPort::getTable();
+    }
+}
+
+/** Existing final prepared-write boundary supplies a canonical opaque identity. */
+class NetworkNamePreparedOpaqueFixture extends LegacyNetworkName
+{
+    public ?int $preparedOpaque = null;
+
+    public static function getTable($classname = null)
+    {
+        return LegacyNetworkName::getTable();
+    }
+
+    public function pre_updateInDB()
+    {
+        parent::pre_updateInDB();
+        if ($this->preparedOpaque !== null) {
+            $this->fields['opaque_parent_id'] = $this->preparedOpaque;
+            $this->updates[] = 'opaque_parent_id';
+        }
     }
 }

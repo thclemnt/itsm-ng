@@ -428,6 +428,10 @@ final class EntityRegistry
                     $discriminators[$table][$mapping->columnName]['empty_value'] = $key->emptyValue;
                     $discriminators[$table][$mapping->columnName]['fallback_column'] = $key->fallbackProperty === null
                         ? null : $record->getColumnName($key->fallbackProperty);
+                    if (isset($componentCounts[$table]) && $key->fallbackProperty !== null) {
+                        $fallback = $record->getFieldMapping($key->fallbackProperty);
+                        $componentCounts[$table]['fields'][$fallback->columnName] = [$fallback->columnName, isset($fallback->quoted)];
+                    }
                 }
             }
             foreach ($record->associationMappings as $property => $association) {

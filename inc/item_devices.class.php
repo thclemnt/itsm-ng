@@ -542,7 +542,7 @@ class Item_Devices extends CommonDBRelation
         global $CFG_GLPI;
 
         $reference = EntityRegistry::discriminatedReferences(static::getTable())['items_id'] ?? null;
-        if ($reference !== null) {
+        if ($reference !== null && !isset($reference['fallback_column'])) {
             return array_keys($reference['selections']);
         }
         $conf_param = str_replace('_', '', strtolower(static::class)) . '_types';
@@ -691,7 +691,9 @@ class Item_Devices extends CommonDBRelation
                 unset($data['id']);
                 $entity = EntityRegistry::tables()[$link_type::getTable()] ?? null;
                 if ($entity !== null && is_a($entity, LegacyInput::class, true) && method_exists($entity, 'withReference')) {
-                    $data = $entity::withReference($data, $itemtype, (int)$newid);
+                    $reference = EntityRegistry::discriminatedReferences($link_type::getTable())['items_id'] ?? null;
+                    $kind = isset($reference['fallback_column']) ? $data[$reference['discriminator']] : $itemtype;
+                    $data = $entity::withReference($data, $kind, (int)$newid);
                 } else {
                     $data['items_id'] = $newid;
                 }

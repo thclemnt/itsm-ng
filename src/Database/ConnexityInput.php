@@ -45,7 +45,11 @@ final class ConnexityInput
         foreach ($endpoints as $identity => $endpoint) {
             $discriminator = $endpoint['discriminator'];
             $columns = array_column($endpoint['selections'], 'column');
+            $fallback = $endpoint['fallback_column'] ?? null;
             $keys = [$discriminator, $identity, ...$columns];
+            if ($fallback !== null) {
+                $keys[] = $fallback;
+            }
             if (!array_intersect(array_keys($input), $keys)) {
                 continue;
             }
@@ -57,15 +61,18 @@ final class ConnexityInput
             if ($kind !== null && !is_string($kind) && !is_int($kind)) {
                 throw new InvalidArgumentException('Invalid endpoint discriminator.');
             }
-            $column = is_string($kind) || is_int($kind) ? ($endpoint['selections'][$kind]['column'] ?? null) : null;
+            $selection = is_string($kind) || is_int($kind) ? ($endpoint['selections'][$kind] ?? null) : null;
+            $column = $selection['column'] ?? $fallback;
             if (!array_key_exists($identity, $reference) && ($column === null || !array_key_exists($column, $reference))) {
                 $reference[$identity] = $column === null && array_key_exists('empty_value', $endpoint)
-                    ? $endpoint['empty_value'] : ($model->fields[$identity] ?? null);
+                    ? $endpoint['empty_value'] : ($model->fields[$identity] ?? $endpoint['empty_value'] ?? null);
             }
             $normalized = $record->normalizeInput($reference);
             // The normalizer removes generated fields before ORM persistence;
             // the public lifecycle still needs the resolved endpoint identity.
-            $normalized[$identity] = $column === null ? ($endpoint['empty_value'] ?? null) : $normalized[$column];
+            $normalized[$identity] = $selection !== null
+                ? ($normalized[$column] ?? $selection['empty_value'] ?? null)
+                : ($fallback === null ? ($endpoint['empty_value'] ?? null) : ($normalized[$fallback] ?? null));
             $input = array_replace($input, $normalized);
         }
         return $input;
@@ -83,6 +90,9 @@ final class ConnexityInput
         $columns = self::fields($model);
         foreach (self::endpoints($model) as $endpoint) {
             array_push($columns, ...array_column($endpoint['selections'], 'column'));
+            if (($endpoint['fallback_column'] ?? null) !== null) {
+                $columns[] = $endpoint['fallback_column'];
+            }
         }
         return array_values(array_unique($columns));
     }

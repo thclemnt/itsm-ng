@@ -6,6 +6,10 @@ namespace itsmng\Database\Entity;
 
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\DiscriminatedBy;
+use itsmng\Database\Mapping\DiscriminatorKey;
+use itsmng\Database\Mapping\LegacyInput;
+use itsmng\Database\Mapping\RequiredSubjectConstraint;
 use itsmng\Database\Mapping\ApplicationManaged;
 use itsmng\Database\Mapping\BooleanStorage;
 use itsmng\Database\Mapping\PlatformOptions;
@@ -18,6 +22,9 @@ use itsmng\Database\Mapping\SchemaOwner;
 #[ORM\Table(name: 'glpi_items_devicegenerics')]
 #[PlatformOptions(AbstractMySQLPlatform::class, ['engine' => 'InnoDB', 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'create_options' => []])]
 #[SchemaOwner]
+#[RequiredSubjectConstraint('parent_kind')]
+#[ORM\HasLifecycleCallbacks]
+#[SchemaIndex('glpi_items_devicegenerics_computer_owner', ['computers_id'])]
 #[SchemaIndex('IDX_75A6BF0EF104FBDD', ['states_id'])]
 #[SchemaIndex('IDX_75A6BF0E6F283895', ['locations_id'])]
 #[SchemaIndex('computers_id', ['items_id'], postgresqlName: 'glpi_items_devicegenerics_computers_id')]
@@ -29,8 +36,10 @@ use itsmng\Database\Mapping\SchemaOwner;
 #[SchemaIndex('serial', ['serial'], postgresqlName: 'glpi_items_devicegenerics_serial')]
 #[SchemaIndex('item', ['itemtype', 'items_id'], postgresqlName: 'glpi_items_devicegenerics_item')]
 #[SchemaIndex('otherserial', ['otherserial'], postgresqlName: 'glpi_items_devicegenerics_otherserial')]
-class ItemDeviceGeneric
+class ItemDeviceGeneric implements LegacyInput
 {
+    use OpenComponentParent;
+
     #[ORM\ManyToOne(targetEntity: DeviceGeneric::class)]
     #[ORM\JoinColumn(name: 'devicegenerics_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0], foreignKeyName: 'fk_items_devicegenerics_devicegenerics_id')]
     public ?DeviceGeneric $devicegenerics = null;
@@ -40,8 +49,19 @@ class ItemDeviceGeneric
     #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
-    #[ORM\Column(name: '`items_id`', type: 'bigint', nullable: false, options: ['default' => '0'])]
+    #[ORM\Column(name: '`items_id`', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS')]
+    #[DiscriminatorKey('opaque_parent_id', emptyValue: 0, exactDiscriminator: true, openStringFallback: true)]
     public int $items_id = 0;
+
+    #[ORM\ManyToOne(targetEntity: Computer::class)]
+    #[ORM\JoinColumn(name: 'computers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_items_devicegenerics_computers_id')]
+    #[DiscriminatedBy('itemtype', 'items_id', ['Computer'], emptyValue: 0)]
+    #[ApplicationManaged]
+    public ?Computer $computer = null;
+
+    /** Stock and other extensible parent kinds retain their exact legacy identity. */
+    #[ORM\Column(name: '`opaque_parent_id`', type: 'bigint', nullable: true, options: ['default' => 0])]
+    public ?int $opaque_parent_id = 0;
 
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 255, nullable: true)]
     public ?string $itemtype = null;

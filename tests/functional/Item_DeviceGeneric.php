@@ -34,6 +34,21 @@
 namespace tests\units;
 
 use Computer;
+use CommonDBTM;
+use DeviceGraphicCard;
+use DeviceNetworkCard;
+use Item_DeviceNetworkCard as NetworkCardLink;
+use NetworkEquipment;
+use NetworkPort as LegacyNetworkPort;
+use NetworkPortEthernet;
+use Doctrine\DBAL\Exception as DatabaseException;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use InvalidArgumentException;
+use Item_DeviceGraphicCard as GraphicCardLink;
+use Plugin as LegacyPlugin;
+use PluginGraphiccardOwnershipParent as GraphicCardCustomParent;
+use itsmng\Database\CloneInput;
+use itsmng\Database\Entity\ItemDeviceGraphicCard as GraphicCardEntity;
 use DbTestCase;
 use DeviceMemory;
 use Doctrine\Common\EventManager;
@@ -61,6 +76,7 @@ use Session;
 use tests\fixtures\ScalarReadProbe;
 
 require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
+require_once dirname(__DIR__) . '/fixtures/graphiccardownership.php';
 
 class Item_DeviceGeneric extends DbTestCase
 {
@@ -150,7 +166,8 @@ class Item_DeviceGeneric extends DbTestCase
             } finally {
                 $em->clear();
             }
-            $typedStock = isset(EntityRegistry::discriminatedReferences($link->getTable())['items_id']['empty_value']);
+            $reference = EntityRegistry::discriminatedReferences($link->getTable())['items_id'] ?? null;
+            $typedStock = isset($reference['empty_value']) && !isset($reference['fallback_column']);
             $this->boolean($link->getFromDB($assignedId))->isTrue();
             $this->variable($link->fields['itemtype'])->isIdenticalTo($typedStock ? null : '');
             $this->integer((int)$link->fields['items_id'])->isIdenticalTo(0);
@@ -634,6 +651,398 @@ class Item_DeviceGeneric extends DbTestCase
         } finally {
             $_POST = [];
             error_reporting($previous_error_reporting);
+        }
+    }
+    public function testGraphicCardOpenInputAndCloneSlots(): void
+    {
+        $record = new GraphicCardEntity();
+        $this->array($record->normalizeInput(['itemtype' => 'Computer', 'items_id' => 7]))
+            ->isIdenticalTo(['itemtype' => 'Computer', 'computers_id' => 7, 'opaque_parent_id' => null]);
+        $zero = $record->normalizeInput(['itemtype' => 'Computer', 'items_id' => 0]);
+        $this->array($zero)->isIdenticalTo(['itemtype' => 'Computer', 'computers_id' => null, 'opaque_parent_id' => null]);
+        $this->array($record->normalizeInput($zero + ['items_id' => 0]))->isIdenticalTo($zero);
+        foreach ([null, '', 'computer', 'PluginGraphiccardOwnershipParent'] as $kind) {
+            $values = $record->normalizeInput(['itemtype' => $kind, 'items_id' => -7]);
+            $this->array($values)->isIdenticalTo(['itemtype' => $kind, 'computers_id' => null, 'opaque_parent_id' => -7]);
+            $this->array($record->normalizeInput($values + ['items_id' => -7]))->isIdenticalTo($values);
+        }
+        foreach ([
+            ['itemtype' => 'Computer', 'items_id' => -1],
+            ['itemtype' => 'Computer', 'items_id' => null],
+            ['itemtype' => 'Computer', 'computers_id' => 7, 'opaque_parent_id' => 7],
+            ['itemtype' => null, 'computers_id' => 7, 'opaque_parent_id' => 0],
+            ['itemtype' => null, 'opaque_parent_id' => null],
+            ['itemtype' => '', 'items_id' => 0, 'opaque_parent_id' => 1],
+        ] as $invalid) {
+            $this->exception(static fn () => $record->normalizeInput($invalid))->isInstanceOf(InvalidArgumentException::class);
+        }
+        $source = ['itemtype' => 'Computer', 'items_id' => 7, 'computers_id' => 7, 'opaque_parent_id' => null];
+        $copy = CloneInput::merge(GraphicCardLink::getTable(), $source, ['itemtype' => null, 'items_id' => 0]);
+        $this->variable($copy['itemtype'])->isNull();
+        $this->variable($copy['computers_id'])->isNull();
+        $this->integer($copy['opaque_parent_id'])->isIdenticalTo(0);
+        $this->integer($copy['items_id'])->isIdenticalTo(0);
+    }
+
+    public function testGraphicCardOpenAffinityStockAliasCloneAndPurge(): void
+    {
+        global $DB, $CFG_GLPI, $GLPI_CACHE;
+        $configuration = $CFG_GLPI;
+        $session = $_SESSION;
+        $reporting = error_reporting();
+        $tablesProperty = new ReflectionProperty(CommonDBTM::class, 'tables_of');
+        $tables = $tablesProperty->getValue();
+        $hadAffinities = $GLPI_CACHE->has('item_device_affinities');
+        $affinities = $hadAffinities ? $GLPI_CACHE->get('item_device_affinities') : null;
+        error_reporting($reporting & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $prefix = $this->getUniqueString();
+            $asset = $this->createItem(Computer::class, ['name' => $prefix . '-asset', 'entities_id' => 0]);
+            $other = $this->createItem(Computer::class, ['name' => $prefix . '-other', 'entities_id' => 0]);
+            $device = $this->createItem(DeviceGraphicCard::class, ['designation' => $prefix, 'entities_id' => 0]);
+            $base = ['devicegraphiccards_id' => (int)$device->getID(), 'entities_id' => 0, 'memory' => 2048];
+            $attached = $this->createItem(GraphicCardLink::class, $base + ['itemtype' => 'Computer', 'items_id' => (int)$asset->getID()]);
+            $alias = $this->createItem(GraphicCardLink::class, $base + ['itemtype' => 'computer', 'items_id' => (int)$asset->getID()]);
+            $nullStock = $this->createItem(GraphicCardLink::class, $base + ['itemtype' => null, 'items_id' => 0]);
+            $blankStock = $this->createItem(GraphicCardLink::class, $base + ['itemtype' => '', 'items_id' => 0]);
+            $zero = $this->createItem(GraphicCardLink::class, $base + ['itemtype' => 'Computer', 'items_id' => 0]);
+            $this->boolean($zero->update(['id' => $zero->getID(), 'memory' => 4096]))->isTrue();
+            $connection = $DB->getDoctrineConnection();
+            $expected = $connection->getDatabasePlatform() instanceof AbstractMySQLPlatform ? 2 : 1;
+            $this->integer((int)$connection->fetchOne('SELECT computers_id FROM glpi_items_devicegraphiccards WHERE id=?', [$attached->getID()]))->isIdenticalTo((int)$asset->getID());
+            $this->variable($connection->fetchOne('SELECT computers_id FROM glpi_items_devicegraphiccards WHERE id=?', [$alias->getID()]))->isNull();
+            $this->integer((int)$connection->fetchOne('SELECT opaque_parent_id FROM glpi_items_devicegraphiccards WHERE id=?', [$alias->getID()]))->isIdenticalTo((int)$asset->getID());
+            $em = Orm::create($DB);
+            try {
+                $repository = new ComponentRepository($em);
+                $this->integer($repository->countForAsset([$attached->getTable()], 'Computer', (int)$asset->getID()))->isIdenticalTo($expected);
+                $this->integer((int)$repository->nativeCountQueryForAsset($attached->getTable(), 'Computer', (int)$asset->getID())->executeQuery()->fetchOne())->isIdenticalTo($expected);
+                $this->integer((int)ComponentRepository::projectedCountQueryForAsset($connection, $attached->getTable(), 'Computer', (int)$asset->getID(), EntityRegistry::componentCountMapping($attached->getTable()))->executeQuery()->fetchOne())->isIdenticalTo($expected);
+                $this->array(array_column($repository->stock($attached->getTable(), 'devicegraphiccards_id', (int)$device->getID()), 'id'))->isIdenticalTo([(int)$blankStock->getID()]);
+                $this->array(array_column($repository->forDevice($attached->getTable(), 'devicegraphiccards_id', (int)$device->getID(), null, null, null), 'id'))->isIdenticalTo([(int)$nullStock->getID()]);
+                $this->array($repository->assigned($attached->getTable(), 'devicegraphiccards_id', 'Computer', (int)$asset->getID(), []))->hasSize($expected);
+            } finally {
+                $em->clear();
+            }
+            $this->array($attached->getTableGroupRows($device, 'Computer'))->hasSize($expected);
+            // Real configured plugin extension, using its public forced-table route.
+            GraphicCardCustomParent::forceTable(Computer::getTable());
+            $CFG_GLPI['glpitablesitemtype'][GraphicCardCustomParent::class] = Computer::getTable();
+            $this->boolean(LegacyPlugin::registerClass(GraphicCardCustomParent::class, ['itemdevicegraphiccard_types' => true, 'itemdevices_types' => true]))->isTrue();
+            $this->array(GraphicCardLink::itemAffinity())->contains(GraphicCardCustomParent::class);
+            $GLPI_CACHE->delete('item_device_affinities');
+            $this->array(Item_Devices::getItemAffinities(GraphicCardCustomParent::class))->contains(GraphicCardLink::class);
+            $CFG_GLPI['itemdevicegraphiccard_types'] = ['*'];
+            $this->array(GraphicCardLink::getConcernedItems())->contains(GraphicCardCustomParent::class);
+            $parent = $this->createItem(GraphicCardCustomParent::class, ['name' => $prefix . '-plugin', 'entities_id' => 0]);
+            GraphicCardCustomParent::$loads = 0;
+            $opaque = $this->createItem(GraphicCardLink::class, $base + ['itemtype' => GraphicCardCustomParent::class, 'items_id' => (int)$parent->getID()]);
+            $this->integer(GraphicCardCustomParent::$loads)->isGreaterThan(0);
+            $this->array($opaque->getTableGroupRows($device, GraphicCardCustomParent::class))->hasSize(1);
+            $this->variable($connection->fetchOne('SELECT computers_id FROM glpi_items_devicegraphiccards WHERE id=?', [$opaque->getID()]))->isNull();
+            $this->boolean($opaque->update(['id' => $opaque->getID(), 'itemtype' => 'Computer', 'items_id' => $other->getID()]))->isTrue();
+            $this->boolean($opaque->update(['id' => $opaque->getID(), 'itemtype' => GraphicCardCustomParent::class, 'items_id' => $parent->getID()]))->isTrue();
+            $cloned = (int)$asset->clone(['name' => $prefix . '-clone']);
+            $this->integer($cloned)->isGreaterThan(0);
+            $this->array($attached->find(['itemtype' => 'Computer', 'items_id' => $cloned]))->hasSize($expected);
+            $this->integer((int)$connection->fetchOne("SELECT COUNT(*) FROM glpi_items_devicegraphiccards WHERE itemtype='computer' AND computers_id IS NULL AND opaque_parent_id=?", [$cloned]))->isIdenticalTo($expected - 1);
+            Item_Devices::cloneItem('Computer', $asset->getID(), $other->getID());
+            $this->integer((int)$connection->fetchOne("SELECT COUNT(*) FROM glpi_items_devicegraphiccards WHERE itemtype='computer' AND computers_id IS NULL AND opaque_parent_id=?", [$other->getID()]))->isIdenticalTo($expected - 1);
+            $this->boolean($asset->delete(['id' => $asset->getID(), 'keep_devices' => 1], true))->isTrue();
+            $this->boolean($attached->getFromDB($attached->getID()))->isTrue();
+            $this->string($attached->fields['itemtype'])->isIdenticalTo('');
+            $this->integer((int)$attached->fields['items_id'])->isIdenticalTo(0);
+            $this->variable($attached->fields['computers_id'])->isNull();
+            $this->integer((int)$attached->fields['opaque_parent_id'])->isIdenticalTo(0);
+            $clonedAsset = new Computer();
+            $this->boolean($clonedAsset->getFromDB($cloned))->isTrue();
+            $this->boolean($clonedAsset->delete(['id' => $cloned], true))->isTrue();
+            $this->array($attached->find(['itemtype' => 'Computer', 'items_id' => $cloned]))->isEmpty();
+            $this->boolean($opaque->getFromDB($opaque->getID()))->isTrue();
+            $this->variable($nullStock->fields['itemtype'])->isNull();
+        } finally {
+            $CFG_GLPI = $configuration;
+            $_SESSION = $session;
+            error_reporting($reporting);
+            $tablesProperty->setValue(null, $tables);
+            if ($hadAffinities) {
+                $GLPI_CACHE->set('item_device_affinities', $affinities);
+            } else {
+                $GLPI_CACHE->delete('item_device_affinities');
+            }
+        }
+    }
+
+    public function testGraphicCardNativeNullableKindRejectsInvalidOwner(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity(0, true);
+        $asset = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $device = $this->createItem(DeviceGraphicCard::class, ['designation' => $this->getUniqueString(), 'entities_id' => 0]);
+        $row = $this->createItem(GraphicCardLink::class, ['devicegraphiccards_id' => $device->getID(), 'itemtype' => null, 'items_id' => 0, 'entities_id' => 0]);
+        $connection = $DB->getDoctrineConnection();
+        $before = $connection->fetchAssociative('SELECT * FROM glpi_items_devicegraphiccards WHERE id=?', [$row->getID()]);
+        foreach ([
+            ['itemtype' => null, 'computers_id' => (int)$asset->getID(), 'opaque_parent_id' => null],
+            ['itemtype' => null, 'computers_id' => null, 'opaque_parent_id' => null],
+            ['itemtype' => 'Computer', 'computers_id' => 0, 'opaque_parent_id' => null],
+            ['itemtype' => 'Computer', 'computers_id' => (int)$asset->getID(), 'opaque_parent_id' => 0],
+            ['itemtype' => 'Computer', 'computers_id' => -1, 'opaque_parent_id' => null],
+            ['itemtype' => 'Computer', 'computers_id' => (int)$connection->fetchOne('SELECT MAX(id)+100 FROM glpi_computers'), 'opaque_parent_id' => null],
+        ] as $invalid) {
+            $connection->beginTransaction();
+            try {
+                $this->exception(static fn () => $connection->update('glpi_items_devicegraphiccards', $invalid, ['id' => $row->getID()]))->isInstanceOf(DatabaseException::class);
+            } finally {
+                $connection->rollBack();
+            }
+            $this->array($connection->fetchAssociative('SELECT * FROM glpi_items_devicegraphiccards WHERE id=?', [$row->getID()]))->isIdenticalTo($before);
+        }
+        $connection->beginTransaction();
+        try {
+            $this->exception(static fn () => $connection->insert('glpi_items_devicegraphiccards', ['devicegraphiccards_id' => (int)$device->getID(), 'itemtype' => null, 'computers_id' => (int)$asset->getID(), 'opaque_parent_id' => null, 'entities_id' => 0]))->isInstanceOf(DatabaseException::class);
+        } finally {
+            $connection->rollBack();
+        }
+        $connection->update('glpi_items_devicegraphiccards', ['opaque_parent_id' => -7], ['id' => $row->getID()]);
+        $this->integer((int)$connection->fetchOne('SELECT items_id FROM glpi_items_devicegraphiccards WHERE id=?', [$row->getID()]))->isIdenticalTo(-7);
+        $connection->update('glpi_items_devicegraphiccards', ['itemtype' => 'Computer', 'computers_id' => (int)$asset->getID(), 'opaque_parent_id' => null], ['id' => $row->getID()]);
+        $connection->beginTransaction();
+        try {
+            $this->exception(static fn () => $connection->delete('glpi_computers', ['id' => $asset->getID()]))->isInstanceOf(DatabaseException::class);
+        } finally {
+            $connection->rollBack();
+        }
+        $this->boolean($row->delete(['id' => $row->getID()], true))->isTrue();
+        $this->boolean($asset->delete(['id' => $asset->getID()], true))->isTrue();
+    }
+
+    public function testGraphicCardPreparedOwnerRetainsActualParentRights(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $this->login();
+        $this->setEntity(0, true);
+        $first = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $second = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $device = $this->createItem(DeviceGraphicCard::class, ['designation' => $this->getUniqueString(), 'entities_id' => 0]);
+        $row = $this->createItem(GraphicCardLink::class, ['devicegraphiccards_id' => $device->getID(), 'itemtype' => 'Computer', 'items_id' => $first->getID(), 'entities_id' => 0]);
+        $probe = new GraphicCardPreparedOwner();
+        $this->boolean($probe->getFromDB($row->getID()))->isTrue();
+        $probe->preparedComputer = (int)$second->getID();
+        $connection = $DB->getDoctrineConnection();
+        $before = $connection->fetchAssociative('SELECT * FROM glpi_items_devicegraphiccards WHERE id=?', [$row->getID()]);
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(LegacyPlugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $denials = 0;
+        try {
+            $plugins->setValue(null, [...$active, 'graphiccard_parent_fixture']);
+            $PLUGIN_HOOKS['item_can']['graphiccard_parent_fixture'][Computer::class] =
+                static function (Computer $parent) use ($second, &$denials): void {
+                    if ((int)$parent->getID() === (int)$second->getID()) {
+                        ++$denials;
+                        $parent->right = false;
+                    }
+                };
+            $this->boolean($probe->update(['id' => $row->getID(), 'memory' => 4096]))->isFalse();
+            $this->integer($denials)->isGreaterThan(0);
+            $this->array($connection->fetchAssociative('SELECT * FROM glpi_items_devicegraphiccards WHERE id=?', [$row->getID()]))->isIdenticalTo($before);
+            $this->integer((int)$probe->fields['items_id'])->isIdenticalTo((int)$first->getID());
+        } finally {
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+        }
+        $this->boolean($probe->update(['id' => $row->getID(), 'memory' => 4096]))->isTrue();
+        $this->integer((int)$connection->fetchOne('SELECT computers_id FROM glpi_items_devicegraphiccards WHERE id=?', [$row->getID()]))->isIdenticalTo((int)$second->getID());
+        $this->variable($connection->fetchOne('SELECT opaque_parent_id FROM glpi_items_devicegraphiccards WHERE id=?', [$row->getID()]))->isNull();
+    }
+    public function remainingOpenComponentFamilies(): array
+    {
+        return array_intersect_key($this->componentFamilies(), array_fill_keys([
+            'Item_DeviceNetworkCard', 'Item_DeviceGeneric', 'Item_DeviceSoundCard',
+            'Item_DeviceFirmware', 'Item_DeviceDrive', 'Item_DeviceControl',
+            'Item_DeviceCase', 'Item_DeviceSimcard', 'Item_DevicePci',
+        ], true));
+    }
+
+    /** @dataProvider remainingOpenComponentFamilies */
+    public function testRemainingComponentOpenParentIdentityAndLifecycle(string $linkType, string $deviceType, string $column): void
+    {
+        global $DB, $CFG_GLPI, $GLPI_CACHE;
+        $session = $_SESSION;
+        $configuration = $CFG_GLPI;
+        $tablesProperty = new ReflectionProperty(CommonDBTM::class, 'tables_of');
+        $tables = $tablesProperty->getValue();
+        $hadAffinities = $GLPI_CACHE->has('item_device_affinities');
+        $affinities = $hadAffinities ? $GLPI_CACHE->get('item_device_affinities') : null;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $prefix = $this->getUniqueString();
+            $asset = $this->createItem(Computer::class, ['name' => $prefix, 'entities_id' => 0]);
+            $other = $this->createItem(Computer::class, ['name' => $prefix . '-other', 'entities_id' => 0]);
+            $device = $this->createItem($deviceType, ['designation' => $prefix, 'entities_id' => 0]);
+            $base = [$column => $device->getID(), 'entities_id' => 0];
+            $link = $this->createItem($linkType, $base + ['itemtype' => 'Computer', 'items_id' => $asset->getID()]);
+            $duplicate = $this->createItem($linkType, $base + ['itemtype' => 'Computer', 'items_id' => $asset->getID()]);
+            $alias = $this->createItem($linkType, $base + ['itemtype' => 'computer', 'items_id' => $asset->getID()]);
+            $blank = $this->createItem($linkType, $base + ['itemtype' => '', 'items_id' => 0]);
+            $zero = $this->createItem($linkType, $base + ['itemtype' => 'Computer', 'items_id' => 0]);
+            $this->boolean($zero->update(['id' => $zero->getID(), 'serial' => 'free']))->isTrue();
+            $table = $link->getTable();
+            $entity = EntityRegistry::tables()[$table];
+            $record = new $entity();
+            $kindProperty = new ReflectionProperty($entity, 'itemtype');
+            $nullable = $kindProperty->getType()->allowsNull();
+            // Every ORM target agrees with the actual PHP owning-property type.
+            $ownerProperty = new ReflectionProperty($entity, 'computer');
+            $this->string($ownerProperty->getType()->getName())->isIdenticalTo(EntityRegistry::tables()[Computer::getTable()]);
+            $normalized = $record->normalizeInput(['itemtype' => 'Computer', 'items_id' => 0]);
+            $this->array($record->normalizeInput($normalized + ['items_id' => 0]))->isIdenticalTo($normalized);
+            $this->array($record->normalizeInput(['itemtype' => 'PluginOpaqueParent', 'items_id' => -9]))
+                ->isIdenticalTo(['itemtype' => 'PluginOpaqueParent', 'computers_id' => null, 'opaque_parent_id' => -9]);
+            foreach ([['itemtype' => 'Computer', 'items_id' => -1], ['itemtype' => 'Computer', 'items_id' => null],
+                ['itemtype' => 'Computer', 'computers_id' => $asset->getID(), 'opaque_parent_id' => 0],
+                ['itemtype' => null, 'computers_id' => $asset->getID(), 'opaque_parent_id' => 0]] as $invalid) {
+                $this->exception(static fn () => $record->normalizeInput($invalid))->isInstanceOf(InvalidArgumentException::class);
+            }
+            if ($nullable) {
+                $nullStock = $this->createItem($linkType, $base + ['itemtype' => null, 'items_id' => 0]);
+                $this->variable($nullStock->getField('itemtype'))->isNull();
+            } else {
+                $this->exception(static fn () => $record->normalizeInput(['itemtype' => null, 'items_id' => 0]))->isInstanceOf(InvalidArgumentException::class);
+            }
+            $connection = $DB->getDoctrineConnection();
+            $this->integer((int)$connection->fetchOne("SELECT computers_id FROM $table WHERE id=?", [$link->getID()]))->isIdenticalTo((int)$asset->getID());
+            $this->variable($connection->fetchOne("SELECT computers_id FROM $table WHERE id=?", [$alias->getID()]))->isNull();
+            $expected = $connection->getDatabasePlatform() instanceof AbstractMySQLPlatform ? 3 : 2;
+            $em = Orm::create($DB);
+            try {
+                $repository = new ComponentRepository($em);
+                $this->integer($repository->countForAsset([$table], 'Computer', (int)$asset->getID()))->isIdenticalTo($expected);
+                $this->integer((int)$repository->nativeCountQueryForAsset($table, 'Computer', (int)$asset->getID())->executeQuery()->fetchOne())->isIdenticalTo($expected);
+                $this->array(array_column($repository->stock($table, $column, (int)$device->getID()), 'id'))->isIdenticalTo([(int)$blank->getID()]);
+                if ($nullable) {
+                    $this->array(array_column($repository->forDevice($table, $column, (int)$device->getID(), null, null, null), 'id'))->isIdenticalTo([(int)$nullStock->getID()]);
+                }
+            } finally {
+                $em->clear();
+            }
+            foreach ([['computers_id' => -1], ['computers_id' => 0], ['opaque_parent_id' => 0], ['itemtype' => 'PluginOpaqueParent'],
+                ['itemtype' => null, 'computers_id' => $asset->getID(), 'opaque_parent_id' => null]] as $invalid) {
+                $this->exception(static fn () => $connection->transactional(static fn () => $connection->update($table, $invalid, ['id' => $link->getID()])))->isInstanceOf(DatabaseException::class);
+            }
+            // A positive orphan must fail the native FK rather than CHECK/type admission.
+            $orphan = (int)$connection->fetchOne('SELECT COALESCE(MAX(id),0)+1 FROM glpi_computers');
+            $this->exception(static fn () => $connection->transactional(static fn () => $connection->update($table, ['computers_id' => $orphan], ['id' => $link->getID()])))->isInstanceOf(DatabaseException::class);
+            $this->exception(static fn () => $connection->transactional(static fn () => $connection->delete(Computer::getTable(), ['id' => $asset->getID()])))->isInstanceOf(DatabaseException::class);
+            $this->boolean($link->update(['id' => $link->getID(), 'items_id' => $other->getID()]))->isTrue();
+            $this->integer((int)$connection->fetchOne("SELECT computers_id FROM $table WHERE id=?", [$link->getID()]))->isIdenticalTo((int)$other->getID());
+            $this->boolean($link->update(['id' => $link->getID(), 'itemtype' => 'Computer', 'items_id' => $asset->getID()]))->isTrue();
+            // Actual configured plugin routing is retained for all families; wildcard families keep *.
+            GraphicCardCustomParent::forceTable(Computer::getTable());
+            $CFG_GLPI['glpitablesitemtype'][GraphicCardCustomParent::class] = Computer::getTable();
+            $affinityKey = str_replace('_', '', strtolower($linkType)) . '_types';
+            if (!isset($CFG_GLPI[$affinityKey])) {
+                $CFG_GLPI[$affinityKey] = $CFG_GLPI['itemdevices_itemaffinity'];
+            }
+            $this->boolean(LegacyPlugin::registerClass(GraphicCardCustomParent::class, [$affinityKey => true, 'itemdevices_types' => true]))->isTrue();
+            $GLPI_CACHE->delete('item_device_affinities');
+            $this->array($linkType::getConcernedItems())->contains(GraphicCardCustomParent::class);
+            $custom = $this->createItem(GraphicCardCustomParent::class, ['name' => $prefix . '-custom', 'entities_id' => 0]);
+            $opaque = $this->createItem($linkType, $base + ['itemtype' => GraphicCardCustomParent::class, 'items_id' => $custom->getID()]);
+            $this->variable($connection->fetchOne("SELECT computers_id FROM $table WHERE id=?", [$opaque->getID()]))->isNull();
+            $this->array($opaque->getTableGroupRows($device, GraphicCardCustomParent::class))->hasSize(1);
+            if (in_array(NetworkEquipment::class, $linkType::itemAffinity(), true)) {
+                $network = $this->createItem(NetworkEquipment::class, ['name' => $prefix . '-network', 'entities_id' => 0]);
+                $networkLink = $this->createItem($linkType, $base + ['itemtype' => NetworkEquipment::class, 'items_id' => $network->getID()]);
+                $this->variable($connection->fetchOne("SELECT computers_id FROM $table WHERE id=?", [$networkLink->getID()]))->isNull();
+                $this->integer((int)$networkLink->fields['opaque_parent_id'])->isIdenticalTo((int)$network->getID());
+            }
+            $cloned = (int)$asset->clone(['name' => $prefix . '-clone']);
+            $this->integer($cloned)->isGreaterThan(0);
+            $this->array($link->find(['itemtype' => 'Computer', 'items_id' => $cloned]))->hasSize($expected);
+            $this->integer((int)$connection->fetchOne("SELECT COUNT(*) FROM $table WHERE itemtype='computer' AND computers_id IS NULL AND opaque_parent_id=?", [$cloned]))->isIdenticalTo($expected - 2);
+            $reporting = error_reporting();
+            try {
+                error_reporting($reporting & ~E_USER_DEPRECATED);
+                Item_Devices::cloneItem('Computer', $asset->getID(), $other->getID());
+            } finally {
+                error_reporting($reporting);
+            }
+            $this->integer((int)$connection->fetchOne("SELECT COUNT(*) FROM $table WHERE itemtype='computer' AND computers_id IS NULL AND opaque_parent_id=?", [$other->getID()]))->isIdenticalTo($expected - 2);
+            $this->boolean($asset->delete(['id' => $asset->getID(), 'keep_devices' => 1], true))->isTrue();
+            $this->boolean($link->getFromDB($link->getID()))->isTrue();
+            $this->string($link->fields['itemtype'])->isIdenticalTo('');
+            $this->integer((int)$link->fields['items_id'])->isIdenticalTo(0);
+            $clonedAsset = new Computer();
+            $this->boolean($clonedAsset->getFromDB($cloned))->isTrue();
+            $this->boolean($clonedAsset->delete(['id' => $cloned], true))->isTrue();
+            $this->array($link->find(['itemtype' => 'Computer', 'items_id' => $cloned]))->isEmpty();
+            $this->boolean($opaque->getFromDB($opaque->getID()))->isTrue();
+            $this->boolean($blank->delete(['id' => $blank->getID()], true))->isTrue();
+            $this->boolean($blank->getFromDB($blank->getID()))->isFalse();
+        } finally {
+            $CFG_GLPI = $configuration;
+            $_SESSION = $session;
+            $tablesProperty->setValue(null, $tables);
+            if ($hadAffinities) {
+                $GLPI_CACHE->set('item_device_affinities', $affinities);
+            } else {
+                $GLPI_CACHE->delete('item_device_affinities');
+            }
+        }
+    }
+
+    public function testNetworkCardIncomingPortOwnershipPurgeAndKeepDevices(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity(0, true);
+        $prefix = $this->getUniqueString();
+        $device = $this->createItem(DeviceNetworkCard::class, ['designation' => $prefix, 'entities_id' => 0]);
+        foreach ([false, true] as $keep) {
+            $asset = $this->createItem(Computer::class, ['name' => $prefix . (int)$keep, 'entities_id' => 0]);
+            $card = $this->createItem(NetworkCardLink::class, ['devicenetworkcards_id' => $device->getID(), 'itemtype' => 'Computer', 'items_id' => $asset->getID(), 'entities_id' => 0]);
+            $port = $this->createItem(LegacyNetworkPort::class, ['name' => $prefix, 'itemtype' => 'Computer', 'items_id' => $asset->getID(),
+                'entities_id' => 0, 'instantiation_type' => NetworkPortEthernet::class, 'logical_number' => 0,
+                'items_devicenetworkcards_id' => $card->getID(), 'mac' => '00:00:00:00:00:01']);
+            $instantiation = $port->getInstantiation();
+            $this->integer((int)$instantiation->fields['items_devicenetworkcards_id'])->isIdenticalTo((int)$card->getID());
+            $connection = $DB->getDoctrineConnection();
+            $this->exception(static fn () => $connection->transactional(static fn () => $connection->delete($card->getTable(), ['id' => $card->getID()])))->isInstanceOf(DatabaseException::class);
+            $this->boolean($asset->delete(['id' => $asset->getID(), 'keep_devices' => (int)$keep], true))->isTrue();
+            $this->boolean($port->getFromDB($port->getID()))->isFalse();
+            $this->boolean($instantiation->getFromDB($instantiation->getID()))->isFalse();
+            $this->boolean($card->getFromDB($card->getID()))->isIdenticalTo($keep);
+            if ($keep) {
+                $this->string($card->fields['itemtype'])->isIdenticalTo('');
+                $this->integer((int)$card->fields['items_id'])->isIdenticalTo(0);
+                $this->variable($card->fields['computers_id'])->isNull();
+            }
+        }
+    }
+
+}
+
+class GraphicCardPreparedOwner extends GraphicCardLink
+{
+    public ?int $preparedComputer = null;
+
+    public static function getTable($classname = null)
+    {
+        return GraphicCardLink::getTable();
+    }
+
+    public function pre_updateInDB()
+    {
+        parent::pre_updateInDB();
+        if ($this->preparedComputer !== null) {
+            $this->fields['computers_id'] = $this->preparedComputer;
+            $this->updates[] = 'computers_id';
         }
     }
 }

@@ -1,0 +1,143 @@
+{
+  "provider": "MariaDB",
+  "identity": {
+    "version": "10.11.18-MariaDB-0+deb12u1",
+    "sql_mode": "STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION",
+    "fk_enforced": "1",
+    "checks_enforced": "1"
+  },
+  "stages": {
+    "bigint-stored": {
+      "columns": [
+        "columns_0",
+        "columns_1",
+        "columns_2",
+        "columns_3",
+        "columns_4"
+      ],
+      "checks": [
+        "checks_0"
+      ]
+    },
+    "bigint-generated": {
+      "columns": [
+        "columns_0",
+        "columns_1",
+        "columns_2",
+        "columns_3",
+        "columns_5"
+      ],
+      "checks": [
+        "checks_0"
+      ]
+    },
+    "integer-stored": {
+      "columns": [
+        "columns_0",
+        "columns_1",
+        "columns_6",
+        "columns_7",
+        "columns_4"
+      ],
+      "checks": [
+        "checks_0"
+      ]
+    },
+    "integer-widened-stored": {
+      "columns": [
+        "columns_0",
+        "columns_1",
+        "columns_2",
+        "columns_3",
+        "columns_4"
+      ],
+      "checks": [
+        "checks_0"
+      ]
+    },
+    "integer-generated": {
+      "columns": [
+        "columns_0",
+        "columns_1",
+        "columns_2",
+        "columns_3",
+        "columns_5"
+      ],
+      "checks": [
+        "checks_0"
+      ]
+    }
+  },
+  "column_facts": {
+    "columns_0": {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "bigint(20)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "GENERATION_EXPRESSION": null
+    },
+    "columns_1": {
+      "COLUMN_NAME": "itemtype",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "''",
+      "EXTRA": "",
+      "GENERATION_EXPRESSION": null
+    },
+    "columns_2": {
+      "COLUMN_NAME": "networkports_id",
+      "COLUMN_TYPE": "bigint(20)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "NULL",
+      "EXTRA": "",
+      "GENERATION_EXPRESSION": null
+    },
+    "columns_3": {
+      "COLUMN_NAME": "opaque_parent_id",
+      "COLUMN_TYPE": "bigint(20)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "0",
+      "EXTRA": "",
+      "GENERATION_EXPRESSION": null
+    },
+    "columns_4": {
+      "COLUMN_NAME": "items_id",
+      "COLUMN_TYPE": "bigint(20)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0",
+      "EXTRA": "",
+      "GENERATION_EXPRESSION": null
+    },
+    "columns_5": {
+      "COLUMN_NAME": "items_id",
+      "COLUMN_TYPE": "bigint(20)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "NULL",
+      "EXTRA": "STORED GENERATED",
+      "GENERATION_EXPRESSION": "case when cast(`itemtype` as char charset binary) = 'NetworkPort' then coalesce(`networkports_id`,0) else `opaque_parent_id` end"
+    },
+    "columns_6": {
+      "COLUMN_NAME": "networkports_id",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "NULL",
+      "EXTRA": "",
+      "GENERATION_EXPRESSION": null
+    },
+    "columns_7": {
+      "COLUMN_NAME": "opaque_parent_id",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "0",
+      "EXTRA": "",
+      "GENERATION_EXPRESSION": null
+    }
+  },
+  "check_facts": {
+    "checks_0": {
+      "CONSTRAINT_NAME": "glpi_networknames_parent_kind",
+      "CHECK_CLAUSE": "cast(`itemtype` as char charset binary) = 'NetworkPort' and (`networkports_id` is null or `networkports_id` > 0) and `opaque_parent_id` is null or cast(`itemtype` as char charset binary) <> 'NetworkPort' and `networkports_id` is null and `opaque_parent_id` is not null"
+    }
+  }
+}

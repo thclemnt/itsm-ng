@@ -50,7 +50,7 @@ class SLM
 
     #[ORM\ManyToOne(targetEntity: Calendar::class)]
     #[ORM\JoinColumn(name: 'calendars_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_slms_calendars_id', options: ['default' => null])]
-    #[ReferencePolicy(ReferenceKind::EmptySelection)]
+    #[ReferencePolicy(ReferenceKind::EmptySelection, nativeConstraint: 'glpi_slms_calendar_selection', excludedByBooleanProperty: 'use_ticket_calendar')]
     public ?Calendar $calendars = null;
 
     #[ORM\Column(name: '`use_ticket_calendar`', type: 'boolean', nullable: false, options: ['default' => false])]

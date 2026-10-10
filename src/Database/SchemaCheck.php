@@ -99,7 +99,7 @@ final class SchemaCheck
             // failed ownership inspection cannot be mistaken for empty policy.
             $checkDiagnostics[] = 'Boolean domain enforcement unavailable: ' . $error->getMessage();
             if ($referencePolicies) {
-                $checkDiagnostics[] = 'Native inherited reference enforcement unavailable: ' . $error->getMessage();
+                $checkDiagnostics[] = 'Native reference enforcement unavailable: ' . $error->getMessage();
             }
             if ($subjectPolicies) {
                 $checkDiagnostics[] = 'Native subject enforcement unavailable: ' . $error->getMessage();

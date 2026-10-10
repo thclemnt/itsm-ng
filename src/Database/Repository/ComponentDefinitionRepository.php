@@ -27,6 +27,7 @@ final class ComponentDefinitionRepository
         return $column === $model::getDeviceForeignKey()
             && ($subject['discriminator'] ?? null) === $model::$itemtype_1
             && !empty($subject['selections'])
+            && !isset($subject['fallback_column'])
             && (EntityRegistry::relations()[$table][$column] ?? null) === $definitionTable;
     }
 

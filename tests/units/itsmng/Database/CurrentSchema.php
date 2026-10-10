@@ -126,6 +126,10 @@ use itsmng\Database\Type\ClockTimeType;
 use mock\Doctrine\DBAL\Connection;
 use tests\fixtures\DisconnectedSchemaConnection;
 use itsmng\Database\Entity\Entity as EntityRecord;
+use itsmng\Database\Entity\ItemDeviceGraphicCard;
+use itsmng\Database\Entity\SLM as SLMRecord;
+use itsmng\Database\Migration\V220\EntityParents;
+use itsmng\Database\Migration\V220\ServiceLevelCalendars;
 use itsmng\Database\Mapping\ReferencePolicy;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\NativeReferenceSchema;
@@ -557,7 +561,7 @@ class CurrentSchema extends test
             $manager = $this->manager($platform);
             $owner = new BaselineSchema($manager);
             $schema = $owner->build($platform);
-            $policies = $owner->referencePolicies();
+            $policies = array_map(static fn (array $fields): array => array_filter($fields, static fn (array $policy): bool => !isset($policy['kind'])), $owner->referencePolicies());
             $this->integer(count($policies['glpi_entities']))->isIdenticalTo(6);
             $snapshot = ['mysql' => !$platform instanceof PostgreSQLPlatform, 'ansi_quotes' => false, 'checks' => []];
             $metadata = $manager->getClassMetadata(EntityRecord::class);
@@ -630,6 +634,339 @@ class CurrentSchema extends test
                 $this->string($newPolicy['check'])->isIdenticalTo($policy['check']);
             }
             $this->array(NativeReferenceSchema::compare($policies, $snapshot))->isEmpty();
+        }
+    }
+
+    public function testRootAndCalendarChecksDeriveFromTheirOwningMetadata(): void
+    {
+        foreach ([new MySQLPlatform(), new MariaDBPlatform(), new PostgreSQLPlatform()] as $platform) {
+            $manager = $this->manager($platform);
+            $owner = new BaselineSchema($manager);
+            $schema = $owner->build($platform);
+            $all = $owner->referencePolicies();
+            $this->integer(count($all['glpi_entities']))->isIdenticalTo(7);
+            $this->integer(count($all['glpi_slms']))->isIdenticalTo(1);
+            foreach ([[EntityRecord::class, 'parent', EntityParents::checkSql()],
+                [SLMRecord::class, 'calendars', ServiceLevelCalendars::checkSql()]] as [$class, $property, $historical]) {
+                $metadata = $manager->getClassMetadata($class);
+                $table = $schema->getTable($metadata->getTableName());
+                $declaration = (new ReflectionProperty($class, $property))->getAttributes(ReferencePolicy::class)[0]->newInstance();
+                $policy = $declaration->nativeSelectionPolicy($metadata, new ReflectionProperty($class, $property), $table, $platform);
+                $this->array($policy)->isIdenticalTo($all[$table->getName()][$property]);
+                $historical = substr($historical, strpos($historical, ' CHECK (') + 8, -1);
+                $this->boolean(SubjectPolicyExpression::equivalent(
+                    $policy['check'],
+                    $historical,
+                    $platform instanceof PostgreSQLPlatform,
+                    integerTypes: $policy['integer_types'],
+                    integerPairs: $policy['integer_pairs'],
+                    booleanColumns: $policy['boolean_columns']
+                ))->isTrue();
+                // Names derive from actual metadata, including a renamed table/join/identifier/flag.
+                $metadata->table['name'] = 'renamed_owner';
+                $renamed = new Table('renamed_owner', array_map(static fn (Column $column): Column => clone $column, array_values($table->getColumns())));
+                $selected = $policy['selected_column'];
+                $renamed->renameColumn($selected, 'renamed_selection');
+                $metadata->associationMappings[$property]->joinColumns[0]->name = 'renamed_selection';
+                if ($class === EntityRecord::class) {
+                    $id = $metadata->getIdentifierFieldNames()[0];
+                    $oldId = trim($metadata->fieldMappings[$id]->columnName, '`"');
+                    $renamed->renameColumn($oldId, 'renamed_identity');
+                    $metadata->fieldMappings[$id]->columnName = 'renamed_identity';
+                    $metadata->associationMappings[$property]->joinColumns[0]->referencedColumnName = 'renamed_identity';
+                } else {
+                    $oldFlag = trim($metadata->fieldMappings['use_ticket_calendar']->columnName, '`"');
+                    $renamed->renameColumn($oldFlag, 'renamed_flag');
+                    $metadata->fieldMappings['use_ticket_calendar']->columnName = 'renamed_flag';
+                }
+                $changed = $declaration->nativeSelectionPolicy($metadata, new ReflectionProperty($class, $property), $renamed, $platform);
+                $this->string($changed['selected_column'])->isIdenticalTo('renamed_selection');
+                $this->string($changed['check'])->contains($class === EntityRecord::class ? 'renamed_identity' : 'renamed_flag');
+                $renamed->getColumn('renamed_selection')->setNotnull(true);
+                $this->exception(static fn () => $declaration->nativeSelectionPolicy(
+                    $metadata,
+                    new ReflectionProperty($class, $property),
+                    $renamed,
+                    $platform
+                ))->isInstanceOf(LogicException::class);
+            }
+        }
+        foreach ([static fn () => new ReferencePolicy(ReferenceKind::Audience, nativeConstraint: 'wrong_kind'),
+            static fn () => new ReferencePolicy(ReferenceKind::RootParent, excludedByBooleanProperty: 'flag'),
+            static fn () => new ReferencePolicy(ReferenceKind::EmptySelection, nativeConstraint: 'no_flag')] as $invalid) {
+            $this->exception($invalid)->isInstanceOf(InvalidArgumentException::class);
+        }
+    }
+
+    public function testNativeReferenceMetadataRejectsUnsupportedOwnedShapes(): void
+    {
+        foreach (['required_join', 'foreign_root', 'wrong_identifier', 'nullable_flag', 'wrong_flag_type', 'readonly_flag', 'missing_flag'] as $variant) {
+            $platform = new PostgreSQLPlatform();
+            $manager = $this->manager($platform);
+            $class = in_array($variant, ['required_join', 'foreign_root', 'wrong_identifier'], true) ? EntityRecord::class : SLMRecord::class;
+            $property = $class === EntityRecord::class ? 'parent' : 'calendars';
+            $metadata = $manager->getClassMetadata($class);
+            $table = (new SchemaTool($manager))->getSchemaFromMetadata($manager->getMetadataFactory()->getAllMetadata())->getTable($metadata->getTableName());
+            $declaration = (new ReflectionProperty($class, $property))->getAttributes(ReferencePolicy::class)[0]->newInstance();
+            if ($variant === 'required_join') {
+                $metadata->associationMappings[$property]->joinColumns[0]->nullable = false;
+            } elseif ($variant === 'foreign_root') {
+                $metadata->associationMappings[$property]->targetEntity = Calendar::class;
+            } elseif ($variant === 'wrong_identifier') {
+                $metadata->fieldMappings[$metadata->getIdentifierFieldNames()[0]]->type = Types::STRING;
+            } elseif ($variant === 'nullable_flag') {
+                $table->getColumn('use_ticket_calendar')->setNotnull(false);
+            } elseif ($variant === 'wrong_flag_type') {
+                $metadata->fieldMappings['use_ticket_calendar']->type = Types::INTEGER;
+            } elseif ($variant === 'readonly_flag') {
+                $metadata->fieldMappings['use_ticket_calendar']->notUpdatable = true;
+            } else {
+                $declaration = new ReferencePolicy(ReferenceKind::EmptySelection, nativeConstraint: 'declared_selection', excludedByBooleanProperty: 'missing');
+            }
+            $this->exception(static fn () => $declaration->nativeSelectionPolicy(
+                $metadata,
+                new ReflectionProperty($class, $property),
+                $table,
+                $platform
+            ))->isInstanceOf(LogicException::class);
+        }
+    }
+
+    public function testIntegerPairAndBooleanGrammarRequireExplicitOwnership(): void
+    {
+        $root = '(id = 0 AND parent IS NULL) OR (id > 0 AND parent IS NOT NULL AND parent >= 0 AND parent <> id)';
+        $types = ['id' => Types::BIGINT, 'parent' => Types::BIGINT];
+        $this->boolean(SubjectPolicyExpression::equivalent($root, $root, true, integerTypes: $types))->isFalse();
+        $this->boolean(SubjectPolicyExpression::equivalent(
+            $root,
+            str_replace('parent <> id', 'id <> parent', $root),
+            true,
+            integerTypes: $types,
+            integerPairs: [['parent', 'id']]
+        ))->isTrue();
+        foreach ([str_replace('parent <> id', 'parent <> other', $root),
+            str_replace('parent >= 0', 'parent > 0', $root), str_replace('id = 0', 'id >= 0', $root),
+            str_replace('parent <> id', 'parent = id', $root), $root . ' OR 1 = 1'] as $damaged) {
+            $this->boolean(SubjectPolicyExpression::equivalent(
+                $root,
+                $damaged,
+                true,
+                integerTypes: $types,
+                integerPairs: [['parent', 'id']]
+            ))->isFalse();
+        }
+        $calendar = 'selected IS NULL OR (selected > 0 AND NOT flag)';
+        $this->boolean(SubjectPolicyExpression::equivalent(
+            $calendar,
+            $calendar,
+            true,
+            integerTypes: ['selected' => Types::BIGINT]
+        ))->isFalse();
+        foreach ([true, false] as $postgres) {
+            foreach (['NOT flag', 'flag = FALSE', ...($postgres ? [] : ['flag = 0'])] as $falseForm) {
+                $this->boolean(SubjectPolicyExpression::equivalent(
+                    $calendar,
+                    str_replace('NOT flag', $falseForm, $calendar),
+                    $postgres,
+                    integerTypes: ['selected' => Types::BIGINT],
+                    booleanColumns: ['flag']
+                ))->isTrue();
+            }
+            foreach (['NOT other', 'flag = TRUE', 'flag IS NULL', 'NOT (selected > 0)', 'flag = 2',
+                'COALESCE(flag, FALSE) = FALSE'] as $damaged) {
+                $this->boolean(SubjectPolicyExpression::equivalent(
+                    $calendar,
+                    str_replace('NOT flag', $damaged, $calendar),
+                    $postgres,
+                    integerTypes: ['selected' => Types::BIGINT],
+                    booleanColumns: ['flag']
+                ))->isFalse();
+            }
+        }
+    }
+
+    public function testCapturedRootAndCalendarChecksBindActualPostgreSQLAndMariaFacts(): void
+    {
+        $facts = json_decode(file_get_contents(dirname(__DIR__, 3) . '/fixtures/native-root-slm.json'), true, 512, JSON_THROW_ON_ERROR);
+        foreach ($facts['postgres'] as $provider => $capture) {
+            $owner = new BaselineSchema($this->manager(new PostgreSQLPlatform()));
+            $owner->build(new PostgreSQLPlatform());
+            $all = $owner->referencePolicies();
+            $this->integer(count($capture['checks']))->isIdenticalTo(2);
+            foreach ($capture['checks'] as $row) {
+                $this->string($row['server_version_num'])->startWith($provider === 'pg14' ? '14' : '18');
+                $operators = [];
+                foreach ($capture['operator_catalog'] as $operation) {
+                    // These raw records are ROOT captures, not a handwritten OID allowlist.
+                    // Assert the same finite builtin signature filter used by NativeCheckCatalog.
+                    $this->string($operation['function_namespace'])->isIdenticalTo('pg_catalog');
+                    $this->string($operation['result_type'])->isIdenticalTo($row['selection_type_identity']['boolean']);
+                    $this->string($operation['function_result'])->isIdenticalTo($row['selection_type_identity']['boolean']);
+                    $this->boolean($operation['returns_set'])->isFalse();
+                    $this->string($operation['variadic_type'])->isIdenticalTo('0');
+                    $this->string($operation['volatility'])->isIdenticalTo('i');
+                    $this->string($operation['function_arguments'])->isIdenticalTo($operation['left_type'] . ' ' . $operation['right_type']);
+                    $operators[$operation['oid']] = array_intersect_key(
+                        $operation,
+                        array_flip(['name', 'left_type', 'right_type', 'function_oid'])
+                    );
+                }
+                // Adapt aliases to the current snapshot; the raw captured fixture is preserved.
+                $row['selection_operator_bindings'] = $operators;
+                $row['reference_text_coercion'] = $row['selection_type_identity'];
+                $table = $row['table_name'];
+                $property = $table === 'glpi_entities' ? 'parent' : 'calendars';
+                $policy = $all[$table][$property];
+                $selected = [$table => [$property => $policy]];
+                $snapshot = ['mysql' => false, 'ansi_quotes' => false, 'checks' => [$table => [$policy['constraint'] => $row]]];
+                $diagnostic = 'Changed, missing or unenforced native reference CHECK: ' . $table . '.' . $policy['constraint'];
+                $this->array(NativeReferenceSchema::compare($selected, $snapshot))->isEmpty();
+                foreach (['enforced' => false, 'validated' => false, 'clause' => $row['clause'] . ' OR 1 = 1',
+                    'selection_operator_bindings' => [], 'selection_column_identity' => []] as $fact => $value) {
+                    $damaged = $snapshot;
+                    $damaged['checks'][$table][$policy['constraint']][$fact] = $value;
+                    $this->array(NativeReferenceSchema::compare($selected, $damaged))->isIdenticalTo([$diagnostic]);
+                }
+                preg_match('/:opfuncid ([0-9]+)/', $row['native_nodes'], $function);
+                foreach ([':opfuncid ' . $function[1] => ':opfuncid 999', ':varno 1' => ':varno 2',
+                    ':vartypmod -1' => ':vartypmod 1', ':varcollid 0' => ':varcollid 100',
+                    ':opresulttype 16' => ':opresulttype 20', ':opretset false' => ':opretset true',
+                    ':opcollid 0' => ':opcollid 100', ':inputcollid 0' => ':inputcollid 100'] as $from => $to) {
+                    $damaged = $snapshot;
+                    $damaged['checks'][$table][$policy['constraint']]['native_nodes'] = str_replace($from, $to, $row['native_nodes']);
+                    $this->array(NativeReferenceSchema::compare($selected, $damaged))->isIdenticalTo([$diagnostic]);
+                }
+                $damaged = $snapshot;
+                $damaged['checks'][$table][$policy['constraint']]['selection_column_identity'][$policy['selected_column']]['not_null'] = true;
+                $this->array(NativeReferenceSchema::compare($selected, $damaged))->isIdenticalTo([$diagnostic]);
+                unset($damaged['checks'][$table][$policy['constraint']]);
+                $this->array(NativeReferenceSchema::compare($selected, $damaged))->isIdenticalTo([$diagnostic]);
+            }
+        }
+        $settings = $facts['maria'][0][0];
+        $this->string($settings['version'])->startWith('10.11.');
+        $this->string($settings['foreign_key_checks'])->isIdenticalTo('1');
+        $this->string($settings['check_constraint_checks'])->isIdenticalTo('1');
+        $this->integer(count($facts['maria'][3]))->isIdenticalTo(2);
+        $columns = [];
+        foreach ($facts['maria'][4] as $column) {
+            $columns[$column['TABLE_NAME']][$column['COLUMN_NAME']] = $column;
+        }
+        $owner = new BaselineSchema($this->manager(new MariaDBPlatform()));
+        $owner->build(new MariaDBPlatform());
+        $all = $owner->referencePolicies();
+        foreach ($facts['maria'][3] as $captured) {
+            $table = $captured['TABLE_NAME'];
+            $property = $table === 'glpi_entities' ? 'parent' : 'calendars';
+            $policy = $all[$table][$property];
+            foreach ($policy['column_nullable'] as $column => $nullable) {
+                $this->string($columns[$table][$column]['IS_NULLABLE'])->isIdenticalTo($nullable ? 'YES' : 'NO');
+                $this->string($columns[$table][$column]['EXTRA'])->isIdenticalTo('');
+            }
+            $snapshot = ['mysql' => true, 'ansi_quotes' => in_array('ANSI_QUOTES', explode(',', $settings['sql_mode']), true),
+                'checks' => [$table => [$captured['CONSTRAINT_NAME'] => ['clause' => $captured['CHECK_CLAUSE'], 'enforced' => 'YES']]]];
+            $selected = [$table => [$property => $policy]];
+            $this->array(NativeReferenceSchema::compare($selected, $snapshot))->isEmpty();
+            $diagnostic = 'Changed, missing or unenforced native reference CHECK: ' . $table . '.' . $policy['constraint'];
+            foreach ([$captured['CHECK_CLAUSE'] . ' OR 1 = 1',
+                $table === 'glpi_entities' ? str_replace(' <> `id`', ' = `id`', $captured['CHECK_CLAUSE'])
+                    : str_replace('`use_ticket_calendar` = 0', '`use_ticket_calendar` = 1', $captured['CHECK_CLAUSE'])] as $clause) {
+                $damaged = $snapshot;
+                $damaged['checks'][$table][$policy['constraint']]['clause'] = $clause;
+                $this->array(NativeReferenceSchema::compare($selected, $damaged))->isIdenticalTo([$diagnostic]);
+            }
+        }
+    }
+
+    /** Controlled facts exercise guard rejection; these are not native capture claims. */
+    public function testControlledIntegerReferenceNativeShapesRejectUnboundFacts(): void
+    {
+        $platform = new PostgreSQLPlatform();
+        $owner = new BaselineSchema($this->manager($platform));
+        $owner->build($platform);
+        $all = $owner->referencePolicies();
+        $var = static fn (int $attribute, int $type): string => '{VAR :varno 1 :varattno ' . $attribute . ' :vartype ' . $type
+            . ' :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn ' . $attribute . ' :location -1}';
+        $zero = '{CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location -1 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}';
+        $op = static fn (int $oid, string $left, string $right): string => '{OPEXPR :opno ' . $oid . ' :opfuncid ' . ($oid + 100)
+            . ' :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args (' . $left . ' ' . $right . ') :location -1}';
+        $null = static fn (string $arg, int $kind): string => '{NULLTEST :arg ' . $arg . ' :nulltesttype ' . $kind . ' :argisrow false :location -1}';
+        $junction = static fn (string $kind, array $args): string => '{BOOLEXPR :boolop ' . $kind . ' :args (' . implode(' ', $args) . ') :location -1}';
+        $operators = [];
+        foreach ([1001 => ['=', 20, 23], 1002 => ['>', 20, 23], 1003 => ['>=', 20, 23], 1004 => ['<>', 20, 20]] as $oid => [$name, $left, $right]) {
+            $operators[$oid] = ['name' => $name, 'left_type' => (string)$left, 'right_type' => (string)$right, 'function_oid' => (string)($oid + 100)];
+        }
+        foreach (['glpi_entities' => 'parent', 'glpi_slms' => 'calendars'] as $table => $property) {
+            $policy = $all[$table][$property];
+            $identity = [];
+            $attributes = [];
+            foreach ($policy['column_nullable'] as $column => $nullable) {
+                $attribute = count($attributes) + 1;
+                $type = in_array($column, $policy['boolean_columns'], true) ? 16 : 20;
+                $attributes[$column] = $var($attribute, $type);
+                $identity[$column] = ['attribute_number' => (string)$attribute, 'type_oid' => (string)$type,
+                    'type_modifier' => '-1', 'collation_oid' => '0', 'not_null' => !$nullable, 'generated' => ''];
+            }
+            $selected = $attributes[$policy['selected_column']];
+            if ($table === 'glpi_entities') {
+                $id = $attributes['id'];
+                $nodes = $junction('or', [$junction('and', [$op(1001, $id, $zero), $null($selected, 0)]),
+                    $junction('and', [$op(1002, $id, $zero), $null($selected, 1), $op(1003, $selected, $zero), $op(1004, $selected, $id)])]);
+            } else {
+                $nodes = $junction('or', [$null($selected, 0), $junction('and', [$op(1002, $selected, $zero),
+                    $junction('not', [$attributes['use_ticket_calendar']])])]);
+            }
+            $row = ['clause' => $policy['check'], 'enforced' => true, 'validated' => true,
+                'checked_columns' => array_keys($identity), 'selection_column_identity' => $identity,
+                'reference_text_coercion' => ['boolean' => '16', 'smallint' => '21', 'integer' => '23', 'bigint' => '20'],
+                'selection_operator_bindings' => $operators, 'native_nodes' => $nodes];
+            $snapshot = ['mysql' => false, 'ansi_quotes' => false, 'checks' => [$table => [$policy['constraint'] => $row]]];
+            $selectedPolicies = [$table => [$property => $policy]];
+            $diagnostic = 'Changed, missing or unenforced native reference CHECK: ' . $table . '.' . $policy['constraint'];
+            $this->array(NativeReferenceSchema::compare($selectedPolicies, $snapshot))->isEmpty();
+            $unsupported = $selectedPolicies;
+            $unsupported[$table][$property]['kind'] = ReferenceKind::Audience->value;
+            $this->array(NativeReferenceSchema::compare($unsupported, $snapshot))->isIdenticalTo([$diagnostic]);
+            $pg18 = $snapshot;
+            $pg18['checks'][$table][$policy['constraint']]['native_nodes'] = str_replace(
+                [':varcollid 0 :varlevelsup 0', ':varlevelsup 0 :varnosyn 1'],
+                [':varcollid 0 :varnullingrels (b) :varlevelsup 0', ':varlevelsup 0 :varreturningtype 0 :varnosyn 1'],
+                $nodes
+            );
+            $this->array(NativeReferenceSchema::compare($selectedPolicies, $pg18))->isEmpty();
+            foreach ([ ':varnullingrels (b)' => ':varnullingrels (b 1)', ':varreturningtype 0' => ':varreturningtype 1'] as $from => $to) {
+                $damaged = $pg18;
+                $damaged['checks'][$table][$policy['constraint']]['native_nodes'] = str_replace($from, $to, $pg18['checks'][$table][$policy['constraint']]['native_nodes']);
+                $this->array(NativeReferenceSchema::compare($selectedPolicies, $damaged))->isIdenticalTo([$diagnostic]);
+            }
+            foreach (['enforced' => false, 'validated' => false, 'clause' => $policy['check'] . ' OR 1 = 1',
+                'checked_columns' => ['wrong'], 'native_nodes' => '{FUNCEXPR :funcid 1}',
+                'selection_column_identity' => [], 'selection_operator_bindings' => []] as $fact => $value) {
+                $damaged = $snapshot;
+                $damaged['checks'][$table][$policy['constraint']][$fact] = $value;
+                $this->array(NativeReferenceSchema::compare($selectedPolicies, $damaged))->isIdenticalTo([$diagnostic]);
+            }
+            foreach ([':varno 1' => ':varno 2', ':vartypmod -1' => ':vartypmod 1', ':varcollid 0' => ':varcollid 100',
+                ':varlevelsup 0' => ':varlevelsup 1', ':opfuncid 1102' => ':opfuncid 999',
+                ':opresulttype 16' => ':opresulttype 20', ':opretset false' => ':opretset true',
+                ':inputcollid 0' => ':inputcollid 100', ':opcollid 0' => ':opcollid 100',
+                ':constisnull false' => ':constisnull true', ':argisrow false' => ':argisrow true',
+                ':constvalue 4 [ 0' => ':constvalue 4 [ 1'] as $from => $to) {
+                $damaged = $snapshot;
+                $damaged['checks'][$table][$policy['constraint']]['native_nodes'] = str_replace($from, $to, $nodes);
+                $this->array(NativeReferenceSchema::compare($selectedPolicies, $damaged))->isIdenticalTo([$diagnostic]);
+            }
+            foreach (['type_oid' => '23', 'type_modifier' => '1', 'collation_oid' => '100',
+                'not_null' => true, 'generated' => 's', 'attribute_number' => '99'] as $fact => $value) {
+                $damaged = $snapshot;
+                $damaged['checks'][$table][$policy['constraint']]['selection_column_identity'][$policy['selected_column']][$fact] = $value;
+                $this->array(NativeReferenceSchema::compare($selectedPolicies, $damaged))->isIdenticalTo([$diagnostic]);
+            }
+            $damaged = $snapshot;
+            $damaged['checks'][$table][$policy['constraint']]['selection_operator_bindings'][1002]['function_oid'] = '999';
+            $this->array(NativeReferenceSchema::compare($selectedPolicies, $damaged))->isIdenticalTo([$diagnostic]);
+            unset($damaged['checks'][$table][$policy['constraint']]);
+            $this->array(NativeReferenceSchema::compare($selectedPolicies, $damaged))->isIdenticalTo([$diagnostic]);
         }
     }
 
@@ -2202,6 +2539,388 @@ class CurrentSchema extends test
                 ->isInstanceOf(LogicException::class);
         }
     }
+
+    public function testNullableOpenSubjectUsesActualGraphicCardMetadataAndTotalNullBranches(): void
+    {
+        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+            $manager = $this->manager($platform);
+            $builder = new BaselineSchema($manager);
+            $schema = $builder->build($platform);
+            $metadata = $manager->getClassMetadata(ItemDeviceGraphicCard::class);
+            $key = (new ReflectionProperty(ItemDeviceGraphicCard::class, 'items_id'))->getAttributes(DiscriminatorKey::class)[0]->newInstance();
+            $table = $metadata->getTableName();
+            $policy = $builder->subjectPolicies()[$table]['items_id'];
+            $this->boolean($metadata->fieldMappings['itemtype']->nullable)->isTrue();
+            $this->integer($schema->getTable($table)->getColumn('itemtype')->getLength())->isIdenticalTo(255);
+            $this->boolean($schema->getTable($table)->getColumn('itemtype')->getNotnull())->isFalse();
+            $this->array($policy['string_selections'])->isIdenticalTo(['itemtype' => ['Computer']]);
+            $this->array($policy['integer_types'])->isIdenticalTo(['opaque_parent_id' => Types::BIGINT, 'computers_id' => Types::BIGINT]);
+            $kind = $platform->quoteIdentifier('itemtype');
+            $exact = $platform instanceof PostgreSQLPlatform ? $kind : 'CAST(' . $kind . ' AS BINARY)';
+            $owner = $platform->quoteIdentifier('computers_id');
+            $opaque = $platform->quoteIdentifier('opaque_parent_id');
+            $selected = $exact . " IN ('Computer') AND (" . $owner . ' IS NULL OR ' . $owner . ' > 0) AND ' . $opaque . ' IS NULL';
+            $unselected = $exact . " NOT IN ('Computer')";
+            $slots = $owner . ' IS NULL AND ' . $opaque . ' IS NOT NULL';
+            $expected = '(' . $kind . ' IS NOT NULL AND ' . $selected . ') OR ((' . $kind . ' IS NULL OR ' . $unselected . ') AND ' . $slots . ')';
+            $this->string($policy['check'])->isIdenticalTo($expected);
+            $this->string($policy['projection'])->isIdenticalTo("CASE WHEN $exact IN ('Computer') THEN COALESCE($owner, 0) ELSE $opaque END");
+            // Nullable metadata changes only total CHECK ownership, never projection routing.
+            $metadata->fieldMappings['itemtype']->nullable = false;
+            $nonnull = '(' . $selected . ') OR (' . $unselected . ' AND ' . $slots . ')';
+            $this->string($key->subjectCheckExpression($platform, $metadata, 'items_id'))->isIdenticalTo($nonnull);
+            $this->string($key->projectionExpression($platform, $metadata, 'items_id'))->isIdenticalTo($policy['projection']);
+            $metadata->fieldMappings['itemtype']->nullable = true;
+            $this->string($key->subjectCheckExpression($platform, $metadata, 'items_id'))->isIdenticalTo($expected);
+            $this->boolean(SubjectPolicyExpression::equivalent(
+                $expected,
+                $nonnull,
+                $platform instanceof PostgreSQLPlatform,
+                integerTypes: $policy['integer_types'],
+                stringSelections: $policy['string_selections']
+            ))->isFalse();
+            // The old rule admits UNKNOWN for (NULL kind, real typed owner, NULL opaque).
+            // The total rule must be installed even if all present rows happen to be valid.
+            $checks = [$table => [$policy['constraint'] => ['clause' => $nonnull, 'enforced' => true, 'validated' => true]]];
+            if (!$platform instanceof PostgreSQLPlatform) {
+                $this->array(NativeSubjectSchema::compare([$table => ['items_id' => $policy]], [], $checks, false, checksOnly: true))
+                    ->isIdenticalTo(['Changed, missing or unenforced native subject CHECK: ' . $table . '.' . $policy['constraint']]);
+            }
+            $metadata->associationMappings['computer']->joinColumns[0]->nullable = false;
+            $this->exception(static fn () => $key->subjectCheckExpression($platform, $metadata, 'items_id'))->isInstanceOf(LogicException::class);
+        }
+    }
+
+    /** Controlled nullable admission rows, not captured native GraphicCard facts. */
+    public function testNullableOpenSubjectUsesExistingFiniteNativeBounds(): void
+    {
+        $platform = new PostgreSQLPlatform();
+        $manager = $this->manager($platform);
+        $builder = new BaselineSchema($manager);
+        $builder->build($platform);
+        $metadata = $manager->getClassMetadata(ItemDeviceGraphicCard::class);
+        $key = (new ReflectionProperty(ItemDeviceGraphicCard::class, 'items_id'))->getAttributes(DiscriminatorKey::class)[0]->newInstance();
+        $table = $metadata->getTableName();
+        $policy = $builder->subjectPolicies()[$table]['items_id'];
+        $var = static fn (int $number, int $type, int $modifier, int $collation): string => '{VAR :varno 1 :varattno ' . $number
+            . ' :vartype ' . $type . ' :vartypmod ' . $modifier . ' :varcollid ' . $collation . ' :varlevelsup 0}';
+        $kind = $var(2, 1043, 259, 100);
+        $owner = $var(3, 20, -1, 0);
+        $opaque = $var(4, 20, -1, 0);
+        $text = static fn (string $var, int $format): string => '{RELABELTYPE :arg ' . $var . ' :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat ' . $format . ' :location -1}';
+        $literal = '{CONST :consttype 25 :consttypmod -1 :constcollid 100}';
+        $zero = '{CONST :consttype 23 :consttypmod -1 :constcollid 0}';
+        $op = static fn (int $number, int $function, int $collation, string $left, string $right): string => '{OPEXPR :opno ' . $number
+            . ' :opfuncid ' . $function . ' :opresulttype 16 :opretset false :opcollid 0 :inputcollid ' . $collation . ' :args (' . $left . ' ' . $right . ')}';
+        $null = static fn (string $arg, int $kind): string => '{NULLTEST :arg ' . $arg . ' :nulltesttype ' . $kind . ' :argisrow false :location -1}';
+        $junction = static fn (string $kind, array $args): string => '{BOOLEXPR :boolop ' . $kind . ' :args (' . implode(' ', $args) . ') :location -1}';
+        $selected = $op(98, 67, 100, $text($kind, 1), $literal);
+        $unselected = $op(531, 157, 100, $text($kind, 1), $literal);
+        $checkNodes = $junction('or', [$junction('and', [$null($kind, 1), $selected,
+            $junction('or', [$null($owner, 0), $op(419, 477, 0, $owner, $zero)]), $null($opaque, 0)]),
+            $junction('and', [$junction('or', [$null($kind, 0), $unselected]), $null($owner, 0), $null($opaque, 1)])]);
+        $projectionNodes = '{CASEEXPR :casetype 20 :casecollid 0 :args ({CASEWHEN :expr '
+            . $op(98, 67, 100, $text($kind, 2), $literal)
+            . ' :result {COALESCEEXPR :coalescetype 20 :coalescecollid 0 :args (' . $owner
+            . ' {CONST :consttype 20 :constcollid 0})}}) :defresult ' . $opaque . '}';
+        $columns = [$table => ['items_id' => ['generated' => 's', 'expression' => $policy['projection'], 'native_nodes' => $projectionNodes],
+            'itemtype' => ['attribute_number' => '2', 'type_oid' => '1043', 'type_modifier' => '259', 'collation_oid' => '100', 'deterministic' => true],
+            'computers_id' => ['attribute_number' => '3', 'type_oid' => '20', 'type_modifier' => '-1', 'collation_oid' => '0'],
+            'opaque_parent_id' => ['attribute_number' => '4', 'type_oid' => '20', 'type_modifier' => '-1', 'collation_oid' => '0']]];
+        $check = ['clause' => $policy['check'], 'enforced' => true, 'validated' => true, 'native_nodes' => $checkNodes,
+            'checked_columns' => ['itemtype', 'computers_id', 'opaque_parent_id'], 'reference_operator_oids' => ['98', '531', '419'],
+            'subject_operator_functions' => ['98' => '67', '531' => '157', '419' => '477'],
+            'reference_text_coercion' => ['boolean' => '16', 'binary' => true, 'varchar' => '1043', 'text' => '25', 'smallint' => '21', 'integer' => '23', 'bigint' => '20']];
+        $selectedPolicies = [$table => ['items_id' => $policy]];
+        $compare = static fn (array $rows, array $definition): array => NativeSubjectSchema::compare(
+            $selectedPolicies,
+            $rows,
+            [$table => [$policy['constraint'] => $definition]],
+            true
+        );
+        $this->array($compare($columns, $check))->isEmpty();
+        $metadata->fieldMappings['itemtype']->nullable = false;
+        $nonnull = $key->subjectCheckExpression($platform, $metadata, 'items_id');
+        $this->array($compare($columns, array_replace($check, ['clause' => $nonnull])))->isIdenticalTo([
+            'Changed, missing or unenforced native subject CHECK: ' . $table . '.' . $policy['constraint']]);
+        foreach (['enforced' => false, 'validated' => false, 'checked_columns' => ['itemtype', 'computers_id'],
+            'native_nodes' => str_replace(':varattno 2', ':varattno 999', $checkNodes)] as $fact => $value) {
+            $this->array($compare($columns, array_replace($check, [$fact => $value])))->contains(
+                'Changed, missing or unenforced native subject CHECK: ' . $table . '.' . $policy['constraint']
+            );
+        }
+        foreach ([':vartypmod 259' => ':vartypmod 104', ':inputcollid 100' => ':inputcollid 999',
+            ':opfuncid 67' => ':opfuncid 999', ':opretset false' => ':opretset true',
+            ':opcollid 0' => ':opcollid 100', 'OPEXPR' => 'FUNCEXPR'] as $from => $to) {
+            $this->array($compare($columns, array_replace($check, ['native_nodes' => str_replace($from, $to, $checkNodes)])))->contains(
+                'Changed, missing or unenforced native subject CHECK: ' . $table . '.' . $policy['constraint']
+            );
+        }
+        $changed = $columns;
+        $changed[$table]['itemtype']['deterministic'] = false;
+        $this->array($compare($changed, $check))->isIdenticalTo(['Expected deterministic subject discriminator: ' . $table . '.itemtype']);
+        $changed = $columns;
+        $changed[$table]['items_id']['generated'] = '';
+        $this->array($compare($changed, $check))->contains('Changed or missing native subject projection: ' . $table . '.items_id');
+        $this->array(NativeSubjectSchema::compare(
+            $selectedPolicies,
+            $changed,
+            [$table => [$policy['constraint'] => $check]],
+            true,
+            checksOnly: true
+        ))->isEmpty();
+    }
+
+    public function testOpenStringSubjectPolicyBindsOnlyDeclaredLiteralChoices(): void
+    {
+        $choices = ['itemtype' => ['NetworkPort']];
+        $types = ['networkports_id' => 'bigint', 'opaque_parent_id' => 'bigint'];
+        $this->boolean(SubjectPolicyExpression::equivalent(
+            "itemtype NOT IN ('NetworkPort')",
+            "itemtype <> 'NetworkPort'::text",
+            true,
+            integerTypes: $types,
+            stringSelections: $choices
+        ))->isTrue();
+        $this->boolean(SubjectPolicyExpression::equivalent(
+            "CAST(itemtype AS BINARY) NOT IN ('NetworkPort')",
+            "NOT (CAST(itemtype AS BINARY) IN ('NetworkPort'))",
+            false,
+            integerTypes: $types,
+            stringSelections: $choices
+        ))->isTrue();
+        foreach (["itemtype NOT IN ('Unknown')", "itemtype NOT IN ('NetworkPort')", 'NOT (networkports_id > 0)'] as $sql) {
+            $this->boolean(SubjectPolicyExpression::equivalent(
+                $sql,
+                $sql,
+                true,
+                integerTypes: $types
+            ))->isFalse();
+        }
+        $this->boolean(SubjectPolicyExpression::equivalent(
+            "CAST(other AS BINARY) NOT IN ('NetworkPort')",
+            "CAST(other AS BINARY) NOT IN ('NetworkPort')",
+            false,
+            integerTypes: $types,
+            stringSelections: $choices
+        ))->isFalse();
+    }
+
+    public function testOpenStringSubjectPolicyRequiresBoundBuiltinNodes(): void
+    {
+        $platform = new PostgreSQLPlatform();
+        $builder = new BaselineSchema($this->manager($platform));
+        $builder->build($platform);
+        $table = 'glpi_networknames';
+        $policy = $builder->subjectPolicies()[$table]['items_id'];
+        $this->array($policy['integer_types'])->isIdenticalTo([
+            'opaque_parent_id' => 'bigint', 'networkports_id' => 'bigint',
+        ]);
+        $this->array($policy['string_selections'])->isIdenticalTo(['itemtype' => ['NetworkPort']]);
+        // Deliberately controlled catalogue admission rows, not captured native facts.
+        $variable = static fn (int $number, string $type, string $collation, int $modifier = -1): string =>
+            '{VAR :varno 1 :varattno ' . $number . ' :vartype ' . $type
+            . ' :vartypmod ' . $modifier . ' :varcollid ' . $collation . ' :varlevelsup 0}';
+        $kind = $variable(2, '1043', '100', 104);
+        $owner = $variable(3, '20', '0');
+        $opaque = $variable(4, '20', '0');
+        $literal = '{CONST :consttype 25 :consttypmod -1 :constcollid 100}';
+        $selection = '{OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args (' . $kind . ' ' . $literal . ')}';
+        $checkNodes = '{BOOLEXPR :args (' . $selection . ' {NULLTEST :arg ' . $owner
+            . '} {NULLTEST :arg ' . $opaque . '})}';
+        $projectionNodes = '{CASEEXPR :casetype 20 :casecollid 0 :args ({CASEWHEN :expr ' . $selection
+            . ' :result {COALESCEEXPR :coalescetype 20 :coalescecollid 0 :args (' . $owner
+            . ' {CONST :consttype 20 :constcollid 0})}}) :defresult ' . $opaque . '}';
+        $columns = [$table => [
+            'items_id' => ['generated' => 's', 'expression' => $policy['projection'], 'native_nodes' => $projectionNodes],
+            'itemtype' => ['attribute_number' => '2', 'type_oid' => '1043', 'type_modifier' => '104', 'collation_oid' => '100', 'deterministic' => true],
+            'networkports_id' => ['attribute_number' => '3', 'type_oid' => '20', 'type_modifier' => '-1', 'collation_oid' => '0'],
+            'opaque_parent_id' => ['attribute_number' => '4', 'type_oid' => '20', 'type_modifier' => '-1', 'collation_oid' => '0'],
+        ]];
+        $check = ['clause' => $policy['check'], 'enforced' => true, 'validated' => true,
+            'native_nodes' => $checkNodes, 'checked_columns' => ['itemtype', 'networkports_id', 'opaque_parent_id'],
+            'reference_operator_oids' => ['98', '521'], 'subject_operator_functions' => ['98' => '67', '521' => '147'],
+            'reference_text_coercion' => ['boolean' => '16', 'binary' => true, 'varchar' => '1043', 'text' => '25',
+                'smallint' => '21', 'integer' => '23', 'bigint' => '20']];
+        $selected = [$table => ['items_id' => $policy]];
+        $compare = static fn (array $rows, array $definition): array => NativeSubjectSchema::compare(
+            $selected,
+            $rows,
+            [$table => [$policy['constraint'] => $definition]],
+            true
+        );
+        $this->array($compare($columns, $check))->isEmpty();
+        $stored = $columns;
+        $stored[$table]['items_id'] = ['generated' => '', 'expression' => null];
+        $this->array(NativeSubjectSchema::compare(
+            $selected,
+            $stored,
+            [$table => [$policy['constraint'] => $check]],
+            true,
+            checksOnly: true
+        ))->isEmpty();
+        $this->array($compare($stored, $check))->contains(
+            'Changed or missing native subject projection: ' . $table . '.items_id'
+        );
+        $invalidCheck = array_replace($check, ['native_nodes' => str_replace(':opno 98', ':opno 999999', $checkNodes)]);
+        $this->array(NativeSubjectSchema::compare(
+            $selected,
+            $stored,
+            [$table => [$policy['constraint'] => $invalidCheck]],
+            true,
+            checksOnly: true
+        ))->contains(
+            'Changed, missing or unenforced native subject CHECK: ' . $table . '.' . $policy['constraint']
+        );
+        foreach ([
+            ['native_nodes' => str_replace(':opno 98', ':opno 999999', $checkNodes)],
+            ['native_nodes' => str_replace('OPEXPR', 'FUNCEXPR', $checkNodes)],
+            ['native_nodes' => str_replace(':opfuncid 67', ':opfuncid 999999', $checkNodes)],
+            ['native_nodes' => str_replace(':vartype 20', ':vartype 23', $checkNodes)],
+            ['native_nodes' => str_replace(':vartypmod 104', ':vartypmod 204', $checkNodes)],
+            ['native_nodes' => str_replace(':inputcollid 100', ':inputcollid 999', $checkNodes)],
+            ['checked_columns' => ['itemtype', 'networkports_id']],
+            ['reference_operator_oids' => []],
+            ['reference_text_coercion' => ['binary' => false]],
+        ] as $override) {
+            $this->array($compare($columns, array_replace($check, $override)))->contains(
+                'Changed, missing or unenforced native subject CHECK: ' . $table . '.' . $policy['constraint']
+            );
+        }
+        foreach ([
+            str_replace('COALESCEEXPR', 'FUNCEXPR', $projectionNodes),
+            str_replace(':casetype 20', ':casetype 23', $projectionNodes),
+            str_replace(':coalescetype 20', ':coalescetype 23', $projectionNodes),
+            str_replace(':varattno 4', ':varattno 999', $projectionNodes),
+        ] as $nodes) {
+            $changed = $columns;
+            $changed[$table]['items_id']['native_nodes'] = $nodes;
+            $this->array($compare($changed, $check))->isIdenticalTo([
+                'Changed or missing native subject projection: ' . $table . '.items_id',
+            ]);
+        }
+    }
+
+    public function testOpenStringSubjectAcceptsActualPostgreSQLCreationAndWidthRewrite(): void
+    {
+        $facts = json_decode(file_get_contents(dirname(__DIR__, 3) . '/fixtures/native-networkname-pg.json'), true, 512, JSON_THROW_ON_ERROR);
+        $platform = new PostgreSQLPlatform();
+        $builder = new BaselineSchema($this->manager($platform));
+        $builder->build($platform);
+        $table = 'glpi_networknames';
+        $policy = $builder->subjectPolicies()[$table]['items_id'];
+        $selected = [$table => ['items_id' => $policy]];
+        $projectionError = 'Changed or missing native subject projection: ' . $table . '.items_id';
+        $checkError = 'Changed, missing or unenforced native subject CHECK: ' . $table . '.' . $policy['constraint'];
+        foreach ($facts['engines'] as $engine) {
+            $operators = $functions = [];
+            foreach ($engine['operators'] as $operator) {
+                if ($operator['function_namespace'] === 'pg_catalog') {
+                    $operators[] = $operator['oid'];
+                    $functions[$operator['oid']] = $operator['function_oid'];
+                }
+            }
+            foreach ($engine['stages'] as $stage => $snapshot) {
+                // Actual raw CHECK/projection nodes retain engine-specific VAR
+                // annotations, attribute positions and width-recompiled types.
+                $check = $engine['check_facts'][$snapshot['checks'][0]];
+                $check['reference_operator_oids'] = $operators;
+                $check['subject_operator_functions'] = $functions;
+                $check['reference_text_coercion'] = $engine['reference_text_coercion'];
+                $check['reference_text_coercion']['integer_to_bigint'] = $engine['integer_to_bigint_cast']['function_oid'];
+                $check['reference_text_coercion']['boolean'] = $engine['boolean'];
+                $columns = [$table => array_map(static fn (string $key): array => $engine['column_facts'][$key], $snapshot['columns'])];
+                $checks = [$table => [$policy['constraint'] => $check]];
+                $checkDifferences = NativeSubjectSchema::compare($selected, $columns, $checks, true, checksOnly: true);
+                $differences = NativeSubjectSchema::compare($selected, $columns, $checks, true);
+                if ($stage === 'integer-stored') {
+                    // Before widening, native integer owners do not satisfy the
+                    // final BIGINT domain declaration even with the same clause.
+                    $this->array($checkDifferences)->isIdenticalTo([$checkError]);
+                    $this->array($differences)->isIdenticalTo([$projectionError, $checkError]);
+                } else {
+                    $this->array($checkDifferences)->isEmpty();
+                    foreach ([
+                        preg_replace('/:relabelformat [12]/', ':relabelformat 0', $check['native_nodes']),
+                        str_replace(':opresulttype 16', ':opresulttype 20', $check['native_nodes']),
+                        str_replace(':opretset false', ':opretset true', $check['native_nodes']),
+                        str_replace(':opcollid 0', ':opcollid 999', $check['native_nodes']),
+                        str_replace(':resulttype 25', ':resulttype 23', $check['native_nodes']),
+                        str_replace(':resulttypmod -1', ':resulttypmod 100', $check['native_nodes']),
+                        str_replace(':resultcollid 100', ':resultcollid 999', $check['native_nodes']),
+                    ] as $invalid) {
+                        $damagedCheck = $checks;
+                        $damagedCheck[$table][$policy['constraint']]['native_nodes'] = $invalid;
+                        $this->array(NativeSubjectSchema::compare($selected, $columns, $damagedCheck, true, checksOnly: true))->isIdenticalTo([$checkError]);
+                    }
+
+                    $this->array($differences)->isIdenticalTo(str_ends_with($stage, '-generated') ? [] : [$projectionError]);
+                    if (str_ends_with($stage, '-generated')) {
+                        $nodes = $columns[$table]['items_id']['native_nodes'];
+                        foreach ([
+                            preg_replace('/\{FUNCEXPR :funcid [0-9]+/', '{FUNCEXPR :funcid 999999', $nodes),
+                            str_replace(':funcformat 2', ':funcformat 1', $nodes),
+                            str_replace(':opresulttype 16', ':opresulttype 20', $nodes),
+                            str_replace(':opretset false', ':opretset true', $nodes),
+                            str_replace(':opcollid 0', ':opcollid 999', $nodes),
+                            str_replace(':casecollid 0', ':casecollid 100', $nodes),
+                            str_replace(':coalescecollid 0', ':coalescecollid 100', $nodes),
+                            str_replace(':relabelformat 2', ':relabelformat 1', $nodes),
+                            str_replace(':funcretset false', ':funcretset true', $nodes),
+                            str_replace(':constvalue 4 [ 0 0 0 0', ':constvalue 4 [ 1 0 0 0', $nodes),
+                            preg_replace('/\{(?:CASEEXPR|CASE) /', '{CASE_UNKNOWN ', $nodes),
+                        ] as $invalid) {
+                            $damaged = $columns;
+                            $damaged[$table]['items_id']['native_nodes'] = $invalid;
+                            $this->array(NativeSubjectSchema::compare($selected, $damaged, $checks, true))->isIdenticalTo([$projectionError]);
+                        }
+                        $unbound = $checks;
+                        unset($unbound[$table][$policy['constraint']]['reference_text_coercion']['integer_to_bigint']);
+                        $this->array(NativeSubjectSchema::compare($selected, $columns, $unbound, true))->isIdenticalTo([$projectionError]);
+                    }
+                }
+            }
+        }
+    }
+
+
+    public function testOpenStringSubjectAcceptsActualMariaDBRendering(): void
+    {
+        $facts = json_decode(file_get_contents(dirname(__DIR__, 3) . '/fixtures/native-networkname-maria.json'), true, 512, JSON_THROW_ON_ERROR);
+        $platform = new MariaDBPlatform();
+        $builder = new BaselineSchema($this->manager($platform));
+        $builder->build($platform);
+        $table = 'glpi_networknames';
+        $policy = $builder->subjectPolicies()[$table]['items_id'];
+        $selected = [$table => ['items_id' => $policy]];
+        $projectionError = 'Changed or missing native subject projection: ' . $table . '.items_id';
+        $checkError = 'Changed, missing or unenforced native subject CHECK: ' . $table . '.' . $policy['constraint'];
+        foreach ($facts['stages'] as $stage => $snapshot) {
+            $columns = [];
+            foreach ($snapshot['columns'] as $key) {
+                $row = $facts['column_facts'][$key];
+                $columns[$table][$row['COLUMN_NAME']] = ['generated' => $row['EXTRA'], 'expression' => $row['GENERATION_EXPRESSION']];
+            }
+            $row = $facts['check_facts'][$snapshot['checks'][0]];
+            $checks = [$table => [$policy['constraint'] => ['clause' => $row['CHECK_CLAUSE'], 'enforced' => $facts['identity']['checks_enforced']]]];
+            // This comparator owns expression/enforcement semantics; the frozen
+            // migration separately validates the final BIGINT column shapes.
+            $this->array(NativeSubjectSchema::compare($selected, $columns, $checks, false, checksOnly: true))->isEmpty();
+            $this->array(NativeSubjectSchema::compare($selected, $columns, $checks, false))->isIdenticalTo(str_ends_with($stage, '-generated') ? [] : [$projectionError]);
+            $invalid = $checks;
+            $invalid[$table][$policy['constraint']]['clause'] = str_replace('cast(`itemtype` as char charset binary)', '`itemtype`', $row['CHECK_CLAUSE']);
+            $this->array(NativeSubjectSchema::compare($selected, $columns, $invalid, false, checksOnly: true))->isIdenticalTo([$checkError]);
+            $invalid = $checks;
+            $invalid[$table][$policy['constraint']]['enforced'] = false;
+            $this->array(NativeSubjectSchema::compare($selected, $columns, $invalid, false, checksOnly: true))->isIdenticalTo([$checkError]);
+            if (str_ends_with($stage, '-generated')) {
+                $invalid = $columns;
+                $invalid[$table]['items_id']['expression'] = str_replace('coalesce(`networkports_id`,0)', 'coalesce(`networkports_id`,1)', $columns[$table]['items_id']['expression']);
+                $this->array(NativeSubjectSchema::compare($selected, $invalid, $checks, false))->isIdenticalTo([$projectionError]);
+            }
+        }
+    }
+
 
 }
 

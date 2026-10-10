@@ -29,10 +29,10 @@ final class ComponentRepository
         foreach ($tables as $table) {
             $class = EntityRegistry::tables()[$table];
             $reference = EntityRegistry::discriminatedReferences($table)['items_id'] ?? null;
-            if ($reference !== null && !isset($reference['selections'][$type])) {
+            if ($reference !== null && !isset($reference['selections'][$type]) && !isset($reference['fallback_column'])) {
                 continue;
             }
-            $subject = $reference === null ? 'r.items_id' : 'IDENTITY(r.' . $class::referenceAssociation($type) . ')';
+            $subject = $this->subjectExpression($table, $type);
             $count += (int)$this->em->createQueryBuilder()
                 ->select('COUNT(r.id)')
                 ->from($class, 'r')
@@ -51,7 +51,7 @@ final class ComponentRepository
     {
         $class = EntityRegistry::tables()[$table];
         $reference = EntityRegistry::discriminatedReferences($table)['items_id'] ?? null;
-        if ($reference !== null && !isset($reference['selections'][$type])) {
+        if ($reference !== null && !isset($reference['selections'][$type]) && !isset($reference['fallback_column'])) {
             return null;
         }
         $metadata = $this->em->getClassMetadata($class);
@@ -62,6 +62,17 @@ final class ComponentRepository
         $from = static fn (): string => $quote->getTableName($metadata, $platform);
         if ($reference === null) {
             $subject = $column('items_id');
+        } elseif (isset($reference['fallback_column'])) {
+            $slots = [];
+            foreach (array_keys($reference['selections']) as $kind) {
+                $association = $metadata->associationMappings[$class::referenceAssociation($kind)];
+                if (!$association->isToOneOwningSide() || count($association->joinColumns) !== 1) {
+                    throw new LogicException('Component counts require a single owning subject reference.');
+                }
+                $slots[] = 'r.' . $quote->getJoinColumnName($association->joinColumns[0], $metadata, $platform);
+            }
+            $slots[] = $column($metadata->getFieldName($reference['fallback_column']));
+            $subject = 'COALESCE(' . implode(', ', array_unique($slots)) . ', 0)';
         } else {
             $association = $metadata->associationMappings[$class::referenceAssociation($type)];
             if (!$association->isToOneOwningSide() || count($association->joinColumns) !== 1) {
@@ -77,7 +88,7 @@ final class ComponentRepository
     {
         $class = EntityRegistry::tables()[$table];
         $reference = EntityRegistry::discriminatedReferences($table)['items_id'] ?? null;
-        if ($reference !== null && !isset($reference['selections'][$type])) {
+        if ($reference !== null && !isset($reference['selections'][$type]) && !isset($reference['fallback_column'])) {
             return null;
         }
         $platform = $connection->getDatabasePlatform();
@@ -86,6 +97,17 @@ final class ComponentRepository
         $from = static fn (): string => $identifier($mapping['table']);
         if ($reference === null) {
             $subject = $column('items_id');
+        } elseif (isset($reference['fallback_column'])) {
+            $slots = [];
+            foreach (array_keys($reference['selections']) as $kind) {
+                $join = $mapping['subjects'][$class::referenceAssociation($kind)] ?? null;
+                if ($join === null) {
+                    throw new LogicException('Open component counts require their owning subject projection.');
+                }
+                $slots[] = 'r.' . $identifier($join);
+            }
+            $slots[] = $column($reference['fallback_column']);
+            $subject = 'COALESCE(' . implode(', ', array_unique($slots)) . ', 0)';
         } else {
             $join = $mapping['subjects'][$class::referenceAssociation($type)] ?? null;
             if ($join === null) {
@@ -121,10 +143,17 @@ final class ComponentRepository
             return true;
         }
         $kind = $values[$reference['discriminator']] ?? null;
+        $selection = is_string($kind) ? ($reference['selections'][$kind] ?? null) : null;
+        if ($selection === null && isset($reference['fallback_column'])) {
+            return true;
+        }
         if ($kind === null && array_key_exists('empty_value', $reference)) {
             return true;
         }
-        $selection = is_string($kind) ? ($reference['selections'][$kind] ?? null) : null;
+        if ($selection !== null && isset($reference['fallback_column']) && ($values[$selection['column']] ?? null) === null
+            && ($selection['empty_value'] ?? null) === 0) {
+            return true;
+        }
         if ($selection === null || !isset($values[$selection['column']])) {
             return false;
         }
@@ -146,9 +175,9 @@ final class ComponentRepository
     {
         $class = EntityRegistry::tables()[$table];
         $reference = EntityRegistry::discriminatedReferences($table)['items_id'] ?? null;
-        if ($reference !== null && ($assetType === '' || $assetType === null) && isset($reference['empty_value'])) {
+        if ($reference !== null && !isset($reference['fallback_column']) && ($assetType === '' || $assetType === null) && isset($reference['empty_value'])) {
             $assetType = null;
-        } elseif ($reference !== null && !isset($reference['selections'][$assetType])) {
+        } elseif ($reference !== null && !isset($reference['selections'][$assetType]) && !isset($reference['fallback_column'])) {
             return [];
         }
         $query = $this->em->createQueryBuilder()
@@ -160,13 +189,13 @@ final class ComponentRepository
             if (!$entities) {
                 return [];
             }
-            if ($reference !== null) {
+            if ($reference !== null && !isset($reference['fallback_column']) && isset($reference['selections'][$assetType])) {
                 if (($reference['selections'][$assetType]['target'] ?? null) !== $assetTable) {
                     return [];
                 }
                 $query->innerJoin('r.' . $class::referenceAssociation($assetType), 'a');
             } else {
-                $query->innerJoin(EntityRegistry::tables()[$assetTable], 'a', 'WITH', 'a.id = r.items_id');
+                $query->innerJoin(EntityRegistry::tables()[$assetTable], 'a', 'WITH', 'a.id = ' . $this->subjectExpression($table, $assetType));
             }
             $query->andWhere('IDENTITY(a.entities) IN (:entities)')
                 ->setParameter('entities', $entities);
@@ -182,6 +211,20 @@ final class ComponentRepository
     {
         $class = EntityRegistry::tables()[$table];
         $reference = EntityRegistry::discriminatedReferences($table)['items_id'] ?? null;
+        if ($reference !== null && isset($reference['fallback_column'])) {
+            $metadata = $this->em->getClassMetadata($class);
+            $query = $this->em->createQueryBuilder()->update($class, 'r')
+                ->set('r.' . $metadata->getFieldName($reference['fallback_column']), ':stock')
+                ->setParameter('stock', 0, Types::BIGINT)
+                ->set('r.itemtype', ':empty')->setParameter('empty', '', Types::STRING)
+                ->where('r.itemtype = :type')->setParameter('type', $assetType, Types::STRING)
+                ->andWhere($this->subjectExpression($table, $assetType) . ' = :asset')
+                ->setParameter('asset', $asset, Types::BIGINT);
+            foreach (array_keys($reference['selections']) as $kind) {
+                $query->set('r.' . $class::referenceAssociation($kind), 'NULL');
+            }
+            return $query->getQuery()->execute();
+        }
         if ($reference !== null) {
             if (!isset($reference['empty_value'])) {
                 throw new LogicException('Returning components to stock requires an optional owning subject.');
@@ -223,7 +266,7 @@ final class ComponentRepository
         if ($reference !== null && !isset($reference['empty_value'])) {
             throw new LogicException('A required component subject has no stock state.');
         }
-        $kind = $reference !== null ? null : '';
+        $kind = $reference !== null && !isset($reference['fallback_column']) ? null : '';
         return (new RecordRepository($this->em))->matching($table, [$deviceColumn => $device, 'itemtype' => $kind], ['id']);
     }
 
@@ -231,10 +274,10 @@ final class ComponentRepository
     public function assigned(string $table, string $deviceColumn, string $kind, int $asset, array $excludedDevices): array
     {
         $reference = EntityRegistry::discriminatedReferences($table)['items_id'] ?? null;
-        if ($reference !== null && !isset($reference['selections'][$kind])) {
+        if ($reference !== null && !isset($reference['selections'][$kind]) && !isset($reference['fallback_column'])) {
             return [];
         }
-        $identity = $reference['selections'][$kind]['column'] ?? 'items_id';
+        $identity = isset($reference['fallback_column']) ? 'items_id' : ($reference['selections'][$kind]['column'] ?? 'items_id');
         $criteria = ['itemtype' => $kind, $identity => $asset];
         if ($excludedDevices) {
             $criteria['NOT'] = [$deviceColumn => $excludedDevices];
@@ -247,7 +290,7 @@ final class ComponentRepository
     {
         $class = EntityRegistry::tables()[$table];
         $reference = EntityRegistry::discriminatedReferences($table)['items_id'] ?? null;
-        $identity = $reference !== null && count($reference['selections']) === 1
+        $identity = $reference !== null && !isset($reference['fallback_column']) && count($reference['selections']) === 1
             ? 'IDENTITY(r.' . $class::referenceAssociation(array_key_first($reference['selections'])) . ')' : 'r.items_id';
         $query = $this->em->createQueryBuilder()
             ->select('r.itemtype AS kind', $identity . ' AS asset')
@@ -274,5 +317,29 @@ final class ComponentRepository
         }
         (new RecordWriter($this->em))->update($table, $binding, $values);
         return true;
+    }
+    /** The declared exclusive slots retain the public kind comparison language. */
+    private function subjectExpression(string $table, ?string $kind): string
+    {
+        $reference = EntityRegistry::discriminatedReferences($table)['items_id'] ?? null;
+        if ($reference === null) {
+            return 'r.items_id';
+        }
+        $class = EntityRegistry::tables()[$table];
+        if (isset($reference['fallback_column'])) {
+            $slots = [];
+            foreach (array_keys($reference['selections']) as $selection) {
+                $slots[] = 'IDENTITY(r.' . $class::referenceAssociation($selection) . ')';
+            }
+            $slots[] = 'r.' . $this->em->getClassMetadata($class)->getFieldName($reference['fallback_column']);
+            // The existing ordinary kind comparison may match case aliases.
+            // Slot exclusivity gives their exact stored identity without changing
+            // that comparison to a new binary predicate.
+            return 'COALESCE(' . implode(', ', array_unique($slots)) . ', 0)';
+        }
+        if ($kind !== null && isset($reference['selections'][$kind])) {
+            return 'IDENTITY(r.' . $class::referenceAssociation($kind) . ')';
+        }
+        throw new LogicException('The component kind has no owning or opaque identity.');
     }
 }

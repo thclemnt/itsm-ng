@@ -91,8 +91,11 @@ trait Clonable
                 // their owning subject columns belong to each concrete entity.
                 $entity = EntityRegistry::tables()[$relation_item::getTable()] ?? null;
                 if ($item_field === 'items_id' && $entity !== null && is_a($entity, LegacyInput::class, true) && method_exists($entity, 'withReference')) {
+                    $reference = EntityRegistry::discriminatedReferences($relation_item::getTable())['items_id'] ?? null;
+                    $kind = isset($reference['fallback_column'])
+                        ? $relation_item->fields[$reference['discriminator']] : $this->getType();
                     $relation_override = array_replace($relation_override, (new $entity())->normalizeInput(
-                        $entity::withReference($relation_override, $this->getType(), (int)$this->getID())
+                        $entity::withReference($relation_override, $kind, (int)$this->getID())
                     ));
                 }
                 $relation_item->clone($relation_override, $history);

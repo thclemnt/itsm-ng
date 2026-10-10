@@ -12,18 +12,18 @@ final class SubjectPolicyExpression
     private int $position = 0;
     private int $depth = 0;
 
-    private function __construct(private array $tokens, private bool $postgres, private array $integerDiscriminators, private array $integerTypes, private array $stringSelections)
+    private function __construct(private array $tokens, private bool $postgres, private array $integerDiscriminators, private array $integerTypes, private array $stringSelections, private array $integerPairs, private array $booleanColumns)
     {
     }
 
     /** $verifiedCheck must independently match an enforced, validated native CHECK. */
-    public static function equivalent(string $expected, string $actual, bool $postgres, bool $ansiQuotes = false, ?string $verifiedCheck = null, array $integerDiscriminators = [], array $integerTypes = [], array $stringSelections = []): bool
+    public static function equivalent(string $expected, string $actual, bool $postgres, bool $ansiQuotes = false, ?string $verifiedCheck = null, array $integerDiscriminators = [], array $integerTypes = [], array $stringSelections = [], array $integerPairs = [], array $booleanColumns = []): bool
     {
         try {
-            $left = self::parse($expected, $postgres, $ansiQuotes, integerDiscriminators: $integerDiscriminators, integerTypes: $integerTypes, stringSelections: $stringSelections);
-            $right = self::parse($actual, $postgres, $ansiQuotes, true, $integerDiscriminators, $integerTypes, $stringSelections);
+            $left = self::parse($expected, $postgres, $ansiQuotes, integerDiscriminators: $integerDiscriminators, integerTypes: $integerTypes, stringSelections: $stringSelections, integerPairs: $integerPairs, booleanColumns: $booleanColumns);
+            $right = self::parse($actual, $postgres, $ansiQuotes, true, $integerDiscriminators, $integerTypes, $stringSelections, $integerPairs, $booleanColumns);
             if ($verifiedCheck !== null) {
-                $check = self::parse($verifiedCheck, $postgres, $ansiQuotes, integerDiscriminators: $integerDiscriminators, integerTypes: $integerTypes, stringSelections: $stringSelections);
+                $check = self::parse($verifiedCheck, $postgres, $ansiQuotes, integerDiscriminators: $integerDiscriminators, integerTypes: $integerTypes, stringSelections: $stringSelections, integerPairs: $integerPairs, booleanColumns: $booleanColumns);
                 $left = self::guardedCoalesce($left, $check, $postgres);
                 $right = self::guardedCoalesce($right, $check, $postgres);
             }
@@ -33,7 +33,7 @@ final class SubjectPolicyExpression
         }
     }
 
-    private static function parse(string $sql, bool $postgres, bool $ansiQuotes, bool $nativeCatalog = false, array $integerDiscriminators = [], array $integerTypes = [], array $stringSelections = []): array
+    private static function parse(string $sql, bool $postgres, bool $ansiQuotes, bool $nativeCatalog = false, array $integerDiscriminators = [], array $integerTypes = [], array $stringSelections = [], array $integerPairs = [], array $booleanColumns = []): array
     {
         if (strlen($sql) > 262144) {
             throw new UnexpectedValueException();
@@ -75,7 +75,7 @@ final class SubjectPolicyExpression
                 throw new UnexpectedValueException();
             }
         }
-        $parser = new self($tokens, $postgres, $integerDiscriminators, $integerTypes, $stringSelections);
+        $parser = new self($tokens, $postgres, $integerDiscriminators, $integerTypes, $stringSelections, $integerPairs, $booleanColumns);
         $result = $parser->expression();
         if ($parser->position !== count($tokens)) {
             throw new UnexpectedValueException();
@@ -248,10 +248,14 @@ final class SubjectPolicyExpression
         // to a finite declared integer discriminator selection, never arbitrary SQL.
         if ($this->take('not')) {
             $selection = $this->value();
+            if ($this->isDeclaredBoolean($selection)) {
+                return ['=', $selection, ['integer', '0']];
+            }
             $choices = $selection[0] === 'or' ? $selection[1] : [$selection];
             $negative = [];
             foreach ($choices as $choice) {
-                if ($choice[0] !== '=' || !$this->isIntegerDiscriminator($choice[1]) || $choice[2][0] !== 'integer') {
+                if ($choice[0] !== '=' || !(($this->isIntegerDiscriminator($choice[1]) && $choice[2][0] === 'integer')
+                    || $this->isStringChoice($choice[1], $choice[2]))) {
                     throw new UnexpectedValueException();
                 }
                 $negative[] = ['<>', $choice[1], $choice[2]];
@@ -266,14 +270,14 @@ final class SubjectPolicyExpression
         }
         $not = $this->take('not');
         if ($this->take('in')) {
-            if ($not && !$this->isIntegerDiscriminator($left)) {
+            if ($not && !$this->isIntegerDiscriminator($left) && !$this->isStringSelection($left)) {
                 throw new UnexpectedValueException();
             }
             $this->expect('(');
             $choices = [];
             do {
                 $right = $this->value();
-                if ($not && $right[0] !== 'integer') {
+                if ($not && !(($this->isIntegerDiscriminator($left) && $right[0] === 'integer') || $this->isStringChoice($left, $right))) {
                     throw new UnexpectedValueException();
                 }
                 $choices[] = [$not ? '<>' : '=', $left, $right];
@@ -320,12 +324,46 @@ final class SubjectPolicyExpression
                 return $this->junction($operator === '=' ? 'or' : 'and', $choices);
             }
             $right = $this->value();
+            if ($operator === '=' && $this->isDeclaredBoolean($left)) {
+                if ($right[0] === 'identifier' && in_array($right[1], ['false', 'true'], true)) {
+                    $right = ['integer', $right[1] === 'false' ? '0' : '1'];
+                } elseif ($this->postgres || $right[0] !== 'integer' || !in_array($right[1], ['0', '1'], true)) {
+                    throw new UnexpectedValueException();
+                }
+                return ['=', $left, $right];
+            }
+            if ($operator === '<>' && $this->isDeclaredIntegerPair($left, $right)) {
+                $pair = [$left, $right];
+                usort($pair, static fn (array $a, array $b): int => strcmp($a[1], $b[1]));
+                return ['<>', ...$pair];
+            }
             if ($operator === '<>' && !(($this->isIntegerDiscriminator($left) && $right[0] === 'integer') || $this->isStringChoice($left, $right))) {
                 throw new UnexpectedValueException();
             }
             return [$operator, $left, $right];
         }
         return $left;
+    }
+
+    /** Only this policy's explicit nonnullable BOOL may use finite false forms. */
+    private function isDeclaredBoolean(array $value): bool
+    {
+        return $value[0] === 'identifier' && in_array($value[1], $this->booleanColumns, true);
+    }
+
+    /** Identifier inequality is authorized only for the owning root/parent pair. */
+    private function isDeclaredIntegerPair(array $left, array $right): bool
+    {
+        if ($left[0] !== 'identifier' || $right[0] !== 'identifier' || $left[1] === $right[1]) {
+            return false;
+        }
+        foreach ($this->integerPairs as $pair) {
+            if (count($pair) === 2 && in_array($left[1], $pair, true) && in_array($right[1], $pair, true)
+                && isset($this->integerTypes[$left[1]], $this->integerTypes[$right[1]])) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private function isIntegerDiscriminator(array $value): bool
@@ -336,13 +374,15 @@ final class SubjectPolicyExpression
     /** Only current property policy can authorize string-mode operators/array choices. */
     private function isStringSelection(array $value): bool
     {
-        return $value[0] === 'identifier' && isset($this->stringSelections[$value[1]]);
+        // MySQL exact discriminator comparison wraps only this declared field in BINARY.
+        $selected = $value[0] === 'binary' ? $value[1] : $value;
+        return $selected[0] === 'identifier' && isset($this->stringSelections[$selected[1]]);
     }
 
     private function isStringChoice(array $left, array $right): bool
     {
         return $this->isStringSelection($left) && $right[0] === 'string'
-            && in_array($right[1], $this->stringSelections[$left[1]], true);
+            && in_array($right[1], $this->stringSelections[($left[0] === 'binary' ? $left[1] : $left)[1]], true);
     }
 
     /** The varchar-array renderer is permitted only for declared mode literal choices. */

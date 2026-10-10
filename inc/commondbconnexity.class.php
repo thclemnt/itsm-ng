@@ -138,7 +138,7 @@ abstract class CommonDBConnexity extends CommonDBTM
         foreach (ConnexityInput::endpoints($this) as $identity => $endpoint) {
             $kind = array_key_exists($endpoint['discriminator'], $writes)
                 ? $writes[$endpoint['discriminator']] : $storedFields[$endpoint['discriminator']];
-            $column = is_string($kind) || is_int($kind) ? ($endpoint['selections'][$kind]['column'] ?? null) : null;
+            $column = is_string($kind) || is_int($kind) ? ($endpoint['selections'][$kind]['column'] ?? $endpoint['fallback_column'] ?? null) : null;
             if ($column !== null && array_key_exists($column, $writes)) {
                 // This projection cannot be written independently of its owner.
                 unset($writes[$identity]);

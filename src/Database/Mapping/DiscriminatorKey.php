@@ -18,7 +18,7 @@ use ReflectionProperty;
 #[Attribute(Attribute::TARGET_PROPERTY)]
 final readonly class DiscriminatorKey
 {
-    public function __construct(public ?string $fallbackProperty = null, public ?int $emptyValue = null, public bool $exactDiscriminator = false, public array $emptyRequiredNullProperties = [])
+    public function __construct(public ?string $fallbackProperty = null, public ?int $emptyValue = null, public bool $exactDiscriminator = false, public array $emptyRequiredNullProperties = [], public bool $openStringFallback = false)
     {
     }
 
@@ -92,6 +92,9 @@ final readonly class DiscriminatorKey
 
     public function subjectCheckExpression(AbstractPlatform $platform, ClassMetadata $metadata, string $property): string
     {
+        if ($this->openStringFallback) {
+            return $this->openStringCheckExpression($platform, $metadata, $property);
+        }
         if ($this->fallbackProperty !== null) {
             return $this->fallbackCheckExpression($platform, $metadata, $property);
         }
@@ -133,6 +136,85 @@ final readonly class DiscriminatorKey
         return $metadata->getTableName() . '_' . $suffix;
     }
 
+
+    /** An open parent discriminator constrains only its explicitly adopted owning branches. */
+    private function openStringBindings(ClassMetadata $metadata, string $property): array
+    {
+        if ($this->fallbackProperty === null || !in_array($this->emptyValue, [null, 0], true) || !$this->exactDiscriminator
+            || $this->emptyRequiredNullProperties || !$metadata->hasField($this->fallbackProperty)
+            || !$metadata->getFieldMapping($this->fallbackProperty)->nullable
+            || !in_array($metadata->getFieldMapping($this->fallbackProperty)->type, [Types::SMALLINT, Types::INTEGER, Types::BIGINT], true)) {
+            throw new LogicException('Open subject requires an exact discriminator and nullable opaque integer fallback.');
+        }
+        $bindings = $kinds = [];
+        $discriminator = null;
+        foreach ($metadata->associationMappings as $name => $association) {
+            foreach ((new ReflectionProperty($metadata->name, $name))->getAttributes(DiscriminatedBy::class) as $attribute) {
+                $binding = $attribute->newInstance();
+                if ($binding->legacyColumn !== $metadata->getColumnName($property)) {
+                    continue;
+                }
+                $field = $metadata->getFieldMapping($binding->discriminator);
+                if (!$association->isToOneOwningSide() || count($association->joinColumns) !== 1
+                    || !$association->joinColumns[0]->nullable || $binding->emptyValue !== 0 || $binding->minimumId !== 1
+                    || $field->type !== Types::STRING
+                    || ($discriminator !== null && $discriminator !== $binding->discriminator)) {
+                    throw new LogicException('Open subject requires nullable owning branches and one string discriminator.');
+                }
+                foreach ($binding->values as $kind) {
+                    if (!is_string($kind) || $kind === '' || isset($kinds[$kind])) {
+                        throw new LogicException('Open subject kinds must be disjoint nonempty strings.');
+                    }
+                    $kinds[$kind] = true;
+                }
+                $bindings[$name] = $binding;
+                $discriminator = $binding->discriminator;
+            }
+        }
+        if (count($bindings) !== 1 || count($kinds) !== 1) {
+            throw new LogicException('Open subject requires exactly one adopted owning branch and one string kind.');
+        }
+        return $bindings;
+    }
+
+    private function openStringCheckExpression(AbstractPlatform $platform, ClassMetadata $metadata, string $property): string
+    {
+        $bindings = $this->openStringBindings($metadata, $property);
+        $columns = [];
+        foreach ($bindings as $name => $binding) {
+            $columns[$name] = $platform->quoteIdentifier($metadata->associationMappings[$name]->joinColumns[0]->name);
+        }
+        $fallback = $platform->quoteIdentifier($metadata->getColumnName($this->fallbackProperty));
+        $branches = $kinds = [];
+        foreach ($bindings as $name => $binding) {
+            $discriminator = $this->discriminatorSql($platform, $metadata, $binding->discriminator);
+            $values = array_map($platform->quoteStringLiteral(...), $binding->values);
+            array_push($kinds, ...$values);
+            $branch = [$discriminator . ' IN (' . implode(', ', $values) . ')',
+                '(' . $columns[$name] . ' IS NULL OR ' . $columns[$name] . ' > 0)', $fallback . ' IS NULL'];
+            foreach ($columns as $other => $column) {
+                if ($name !== $other) {
+                    $branch[] = $column . ' IS NULL';
+                }
+            }
+            if ($metadata->getFieldMapping($binding->discriminator)->nullable) {
+                // SQL CHECK accepts UNKNOWN: the adopted branch must be false
+                // for NULL kinds, while the opaque branch owns those rows.
+                array_unshift($branch, $platform->quoteIdentifier($metadata->getColumnName($binding->discriminator)) . ' IS NOT NULL');
+            }
+            $branches[] = '(' . implode(' AND ', $branch) . ')';
+        }
+        $unknown = [$discriminator . ' NOT IN (' . implode(', ', $kinds) . ')'];
+        if ($metadata->getFieldMapping($binding->discriminator)->nullable) {
+            $unknown[0] = '(' . $platform->quoteIdentifier($metadata->getColumnName($binding->discriminator)) . ' IS NULL OR ' . $unknown[0] . ')';
+        }
+        foreach ($columns as $column) {
+            $unknown[] = $column . ' IS NULL';
+        }
+        $unknown[] = $fallback . ' IS NOT NULL';
+        $branches[] = '(' . implode(' AND ', $unknown) . ')';
+        return implode(' OR ', $branches);
+    }
 
     /** Required or optional selected associations and an opaque integer fallback derive from their branches. */
     private function fallbackCheckExpression(AbstractPlatform $platform, ClassMetadata $metadata, string $property): string
