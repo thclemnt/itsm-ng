@@ -270,7 +270,8 @@ class IPNetwork extends DbTestCase
 
         $other_network = $this->createItem(Network::class, [
             'name' => 'other-vlan-net-' . $this->getUniqueString(),
-            'entities_id' => 0, 'network' => "10.$suffix.41.0/24",
+            'entities_id' => 0,
+            'network' => sprintf(__('%1$s / %2$s'), "10.$suffix.41.0", '255.255.255.0'),
         ]);
         $other_relation = (int)$relation->assignVlan($other_network->getID(), $vlans_id);
         $this->integer($other_relation)->isGreaterThan(0);
