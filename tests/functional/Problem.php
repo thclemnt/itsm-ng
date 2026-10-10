@@ -251,7 +251,7 @@ class Problem extends DbTestCase
         $this->string($rendered[0][7])->contains(TicketModel::getFormURLWithID($ticket->getID()))->contains($ticket->getField('name'));
         $rendered = $this->renderLocalTableRows(static fn () => Problem_Ticket::showForTicket($ticket));
         $this->integer(count($rendered))->isIdenticalTo(1);
-        $this->string($rendered[0][7])->contains(ProblemModel::getFormURLWithID($problem->getID()))->contains($problem->getField('name'));
+        $this->string($rendered[0][8])->contains(ProblemModel::getFormURLWithID($problem->getID()))->contains($problem->getField('name'));
         $session = $_SESSION;
         try {
             $_SESSION['glpishowallentities'] = false;

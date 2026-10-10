@@ -457,7 +457,7 @@ class Change extends DbTestCase
         $this->string($rendered[0][7])->contains(TicketModel::getFormURLWithID($first->getID()))->contains($first->getField('name'));
         $rendered = $this->renderLocalTableRows(static fn () => Change_Ticket::showForTicket($first));
         $this->integer(count($rendered))->isIdenticalTo(2);
-        $this->string($rendered[0][7])->contains(ChangeModel::getFormURLWithID($change->getID()))->contains($change->getField('name'));
+        $this->string($rendered[0][8])->contains(ChangeModel::getFormURLWithID($change->getID()))->contains($change->getField('name'));
         $freshName = 'BBB fresh linked ticket ' . $this->getUniqueString();
         $connection->update('glpi_tickets', ['name' => $freshName, 'date_mod' => '2021-02-03 04:05:06', 'is_deleted' => true], ['id' => $first->getID()]);
         $fresh = $read();
@@ -574,7 +574,9 @@ class Change extends DbTestCase
         $session = $_SESSION;
         try {
             $_SESSION['glpiactiveprofile']['problem'] = 0;
-            $this->output(static fn () => Change_Problem::showForChange($first))->isEmpty();
+            $deniedRows = $this->renderLocalTableRows(static fn () => Change_Problem::showForChange($first));
+            $this->integer(count($deniedRows))->isIdenticalTo(2);
+            $this->string($deniedRows[1][7])->isIdenticalTo($problem->getName());
             $_SESSION = $session;
             $_SESSION['glpiactiveentities'] = [];
             $this->integer(count($read()))->isIdenticalTo(2, 'The endpoint projection does not add an entity prefilter');
