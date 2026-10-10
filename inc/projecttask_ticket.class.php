@@ -34,6 +34,7 @@
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ProjectRepository;
+use itsmng\Database\Repository\ProjectTaskRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -400,55 +401,13 @@ class ProjectTask_Ticket extends CommonDBRelation
         ];
         $values = [];
         if ($numrows) {
-            $iterator = $DB->request([
-               'SELECT'    => [
-                  'glpi_projecttasks.*',
-                  'glpi_projecttasktypes.name AS tname',
-                  'glpi_projectstates.name AS sname',
-                  'glpi_projectstates.color',
-                  'father.name AS fname',
-                  'father.id AS fID',
-                  'glpi_projects.name AS projectname',
-                  'glpi_projects.content AS projectcontent'
-               ],
-               'FROM'      => 'glpi_projecttasks',
-               'LEFT JOIN' => [
-                  'glpi_projecttasktypes' => [
-                     'ON' => [
-                        'glpi_projecttasktypes' => 'id',
-                        'glpi_projecttasks'     => 'projecttasktypes_id'
-                     ]
-                  ],
-                  'glpi_projectstates'    => [
-                     'ON' => [
-                        'glpi_projectstates' => 'id',
-                        'glpi_projecttasks'  => 'projectstates_id'
-                     ]
-                  ],
-                  'glpi_projecttasks AS father' => [
-                     'ON' => [
-                        'father'             => 'id',
-                        'glpi_projecttasks'  => 'projecttasks_id'
-                     ]
-                  ],
-                  'glpi_projecttasks_tickets'   => [
-                     'ON' => [
-                        'glpi_projecttasks_tickets'   => 'projecttasks_id',
-                        'glpi_projecttasks'           => 'id'
-                     ]
-                  ],
-                  'glpi_projects'               => [
-                     'ON' => [
-                        'glpi_projecttasks'  => 'projects_id',
-                        'glpi_projects'      => 'id'
-                     ]
-                  ]
-               ],
-               'WHERE'     => [
-                  'glpi_projecttasks_tickets.tickets_id' => $ID
-               ],
-            ]);
-            while ($data = $iterator->next()) {
+            $rows = Orm::readPrepared(
+                $DB,
+                static fn (): ?int => $ID === null || (is_string($ID) && strtolower($ID) === 'null') ? null : (int)$ID,
+                static fn (EntityManager $manager, ?int $ticket): array =>
+                    (new ProjectTaskRepository($manager))->ticketTabRows($ticket)
+            );
+            foreach ($rows as $data) {
                 $newValue = [];
                 $rand = mt_rand();
                 $link = "<a id='Project" . $data["projects_id"] . $rand . "' href='" .

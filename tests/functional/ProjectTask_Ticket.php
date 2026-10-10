@@ -34,6 +34,7 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\ORM\EntityManager;
 use Project as LegacyProject;
 use ProjectTask as LegacyProjectTask;
 use ProjectTask_Ticket as LegacyProjectTaskTicket;
@@ -41,9 +42,85 @@ use ReflectionProperty;
 use itsmng\Database\Entity\ProjectTask as ProjectTaskEntity;
 use itsmng\Database\Entity\Ticket as TicketEntity;
 use itsmng\Database\Orm;
+use itsmng\Database\Repository\ProjectTaskRepository;
 
 class ProjectTask_Ticket extends DbTestCase
 {
+    public function testTicketTabProjectionKeepsNullableFactsAndOwningLinks(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)$_SESSION['glpiactive_entity'];
+        $project = $this->createItem('Project', ['entities_id' => $entity, 'name' => 'Tab project ' . $this->getUniqueString(), 'content' => 'Project tooltip']);
+        $type = $this->createItem('ProjectTaskType', ['name' => 'Tab type ' . $this->getUniqueString()]);
+        $state = $this->createItem('ProjectState', ['name' => 'Tab state ' . $this->getUniqueString()]);
+        $father = $this->createItem('ProjectTask', ['entities_id' => $entity, 'name' => 'Father task ' . $this->getUniqueString(), 'projects_id' => $project->getID()]);
+        $first = $this->createItem('ProjectTask', ['entities_id' => $entity, 'name' => 'Linked task ' . $this->getUniqueString(), 'projects_id' => $project->getID(),
+            'projecttasks_id' => $father->getID(), 'projecttasktypes_id' => $type->getID(), 'projectstates_id' => $state->getID()]);
+        $last = $this->createItem('ProjectTask', ['entities_id' => $entity, 'name' => 'Nullable linked task ' . $this->getUniqueString(), 'projects_id' => $project->getID()]);
+        $ticket = $this->createItem('Ticket', ['entities_id' => $entity, 'name' => 'Task tab ticket ' . $this->getUniqueString(), 'content' => 'Tab owner']);
+        $other = $this->createItem('Ticket', ['entities_id' => $entity, 'name' => 'Other task tab ticket ' . $this->getUniqueString(), 'content' => 'Independent owner']);
+        $firstLink = $this->createItem('ProjectTask_Ticket', ['projecttasks_id' => $first->getID(), 'tickets_id' => $ticket->getID()]);
+        $lastLink = $this->createItem('ProjectTask_Ticket', ['projecttasks_id' => $last->getID(), 'tickets_id' => $ticket->getID()]);
+        $this->createItem('ProjectTask_Ticket', ['projecttasks_id' => $first->getID(), 'tickets_id' => $other->getID()]);
+        $connection = $DB->getDoctrineConnection();
+        $connection->update('glpi_projecttasks', ['content' => 'Task tooltip', 'percent_done' => 25, 'planned_duration' => 3600,
+            'plan_start_date' => '2030-02-03 04:05:06', 'plan_end_date' => '2030-02-03 05:05:06'], ['id' => $first->getID()]);
+        $connection->update('glpi_projecttasks', ['projects_id' => null, 'projecttasks_id' => null, 'projecttasktypes_id' => null,
+            'projectstates_id' => null, 'plan_start_date' => null, 'plan_end_date' => null], ['id' => $last->getID()]);
+        $read = static fn (?int $id): array => Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new ProjectTaskRepository($manager))->ticketTabRows($id));
+        $rows = $read((int)$ticket->getID());
+        $this->integer(count($rows))->isIdenticalTo(2);
+        $byId = array_column($rows, null, 'id');
+        $facts = $byId[$first->getID()];
+        $this->string($facts['tname'])->isIdenticalTo($type->getField('name'));
+        $this->string($facts['sname'])->isIdenticalTo($state->getField('name'));
+        $this->string($facts['projectname'])->isIdenticalTo($project->getField('name'));
+        $this->string($facts['projectcontent'])->isIdenticalTo('Project tooltip');
+        $this->string($facts['content'])->isIdenticalTo('Task tooltip');
+        $this->integer((int)$facts['projecttasks_id'])->isIdenticalTo((int)$father->getID());
+        $this->integer((int)$facts['percent_done'])->isIdenticalTo(25);
+        $this->integer((int)$facts['planned_duration'])->isIdenticalTo(3600);
+        $this->string($facts['plan_start_date'])->isIdenticalTo('2030-02-03 04:05:06');
+        $this->string($facts['plan_end_date'])->isIdenticalTo('2030-02-03 05:05:06');
+        foreach (['projects_id', 'projecttasks_id', 'tname', 'sname', 'projectname', 'projectcontent', 'plan_start_date', 'plan_end_date'] as $nullable) {
+            $this->variable($byId[$last->getID()][$nullable])->isNull();
+        }
+        $this->integer(count($read((int)$other->getID())))->isIdenticalTo(1);
+        $unlinked = array_map('intval', array_column($read(null), 'id'));
+        $this->array($unlinked)->contains((int)$father->getID())->notContains((int)$first->getID(), (int)$last->getID());
+        $this->array($read(0))->isEmpty();
+        $this->array($read(-1))->isEmpty();
+        $this->output(static fn () => LegacyProjectTaskTicket::showForTicket($ticket))
+            ->contains('/front/project.form.php?id=' . $project->getID())
+            ->contains('/front/projecttask.form.php?id=' . $first->getID())
+            ->contains('/front/projecttask.form.php?id=' . $father->getID());
+        $session = $_SESSION;
+        try {
+            $_SESSION['glpishowallentities'] = false;
+            $_SESSION['glpiactiveentities'] = [];
+            $this->integer(count($read((int)$ticket->getID())))->isIdenticalTo(2);
+            $this->output(static fn () => LegacyProjectTaskTicket::showForTicket($ticket))->isEmpty();
+        } finally {
+            $_SESSION = $session;
+        }
+        $connection->update('glpi_projects', ['name' => 'Fresh project name', 'is_deleted' => true], ['id' => $project->getID()]);
+        $connection->update('glpi_projecttasks', ['content' => 'Fresh task tooltip', 'plan_end_date' => null], ['id' => $first->getID()]);
+        $fresh = array_column($read((int)$ticket->getID()), null, 'id');
+        $this->string($fresh[$first->getID()]['projectname'])->isIdenticalTo('Fresh project name');
+        $this->string($fresh[$first->getID()]['content'])->isIdenticalTo('Fresh task tooltip');
+        $this->variable($fresh[$first->getID()]['plan_end_date'])->isNull();
+        $this->string($facts['plan_end_date'])->isIdenticalTo('2030-02-03 05:05:06');
+        $this->boolean($lastLink->delete(['id' => $lastLink->getID()], true))->isTrue();
+        $this->integer(count($read((int)$ticket->getID())))->isIdenticalTo(1);
+        $this->boolean($ticket->delete(['id' => $ticket->getID()], true))->isTrue();
+        $this->array($read((int)$ticket->getID()))->isEmpty();
+        $this->boolean($firstLink->getFromDB($firstLink->getID()))->isFalse();
+        $this->integer(count($read((int)$other->getID())))->isIdenticalTo(1);
+    }
+
     public function testLinkedTicketActionTimePreservesCurrentValuesAndLifecycle(): void
     {
         global $DB;

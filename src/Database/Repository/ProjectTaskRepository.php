@@ -24,6 +24,37 @@ final class ProjectTaskRepository
     {
     }
 
+    /** Fixed ticket-tab facts; display admission and effective-duration callbacks stay outside this read. */
+    public function ticketTabRows(?int $ticket): array
+    {
+        $query = $this->em->createQueryBuilder()->select(
+            'task.id',
+            'task.name',
+            'task.content',
+            'IDENTITY(task.projects) AS projects_id',
+            'IDENTITY(task.projecttasks) AS projecttasks_id',
+            'task.percent_done',
+            'task.planned_duration',
+            "TEMPORAL_TEXT(task.plan_start_date, 'datetime') AS plan_start_date",
+            "TEMPORAL_TEXT(task.plan_end_date, 'datetime') AS plan_end_date",
+            'dtype.name AS tname',
+            'state.name AS sname',
+            'project.name AS projectname',
+            'project.content AS projectcontent'
+        )->from(ProjectTask::class, 'task')
+            ->leftJoin('task.projecttasktypes', 'dtype')
+            ->leftJoin('task.projectstates', 'state')
+            ->leftJoin(ProjectTaskTicket::class, 'link', 'WITH', 'IDENTITY(link.projecttasks) = task.id')
+            ->leftJoin('task.projects', 'project');
+        if ($ticket === null) {
+            // The old LEFT JOIN predicate includes unlinked tasks for a NULL ticket criterion.
+            $query->where('link.tickets IS NULL');
+        } else {
+            $query->where('IDENTITY(link.tickets) = :ticket')->setParameter('ticket', $ticket, Types::BIGINT);
+        }
+        return $query->getQuery()->getScalarResult();
+    }
+
     /** Root discovery only; recursive task rendering retains its own model and access checks. */
     public function rootIdsForGantt(int $project): array
     {
