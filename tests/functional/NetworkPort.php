@@ -407,6 +407,7 @@ class NetworkPort extends DbTestCase
 
     public function testAggregateStoresPortList()
     {
+        global $DB;
         $this->login();
 
         $networkequipment = getItemByTypeName('NetworkEquipment', '_test_networkequipment_1');
@@ -414,18 +415,24 @@ class NetworkPort extends DbTestCase
 
         $port1 = (int)$networkport->add([
            'name'         => 'agg-if1',
+           'instantiation_type' => 'NetworkPortEthernet',
+           '_create_children' => true,
            'items_id'     => $networkequipment->getID(),
            'itemtype'     => 'NetworkEquipment',
            'entities_id'  => $networkequipment->fields['entities_id'],
         ]);
         $port2 = (int)$networkport->add([
            'name'         => 'agg-if2',
+           'instantiation_type' => 'NetworkPortWifi',
+           '_create_children' => true,
            'items_id'     => $networkequipment->getID(),
            'itemtype'     => 'NetworkEquipment',
            'entities_id'  => $networkequipment->fields['entities_id'],
         ]);
         $port3 = (int)$networkport->add([
            'name'         => 'agg-if3',
+           'instantiation_type' => 'NetworkPortEthernet',
+           '_create_children' => true,
            'items_id'     => $networkequipment->getID(),
            'itemtype'     => 'NetworkEquipment',
            'entities_id'  => $networkequipment->fields['entities_id'],
@@ -458,6 +465,45 @@ class NetworkPort extends DbTestCase
         ]))->isTrue();
         $this->array(importArrayFromDB($aggregate->fields['networkports_id_list']))
            ->isIdenticalTo([$port2, $port3]);
+
+        $this->boolean($networkport->getFromDB($agg_parent_port))->isTrue();
+        $this->boolean($aggregate->getFromDB($agg_parent_port))->isTrue();
+        $form = $aggregate->showInstantiationForm($networkport, [], [$networkequipment]);
+        $originInput = $form[$aggregate->getTypeName()]['inputs'][__('Origin port')];
+        $this->array($originInput['values'])->isIdenticalTo([$port2, $port3]);
+        $this->array($originInput['options'])->hasKey($port1)->hasKey($port2)->hasKey($port3);
+        $previousName = $originInput['options'][$port2];
+        $this->boolean($DB->update('glpi_networkports', ['name' => 'Current aggregate option'], ['id' => $port2]))->isTrue();
+        $this->boolean($DB->delete('glpi_networkportaggregateorigins', [
+            'networkportaggregates_id' => $aggregate->fields['id'], 'networkports_id' => $port2,
+        ]))->isTrue();
+        $this->boolean($aggregate->getFromDB($agg_parent_port))->isTrue();
+        $form = $aggregate->showInstantiationForm($networkport, [], [$networkequipment]);
+        $currentInput = $form[$aggregate->getTypeName()]['inputs'][__('Origin port')];
+        $this->array($currentInput['values'])->isIdenticalTo([$port3]);
+        $this->string($currentInput['options'][$port2])->contains('Current aggregate option');
+        $this->string($originInput['options'][$port2])->isIdenticalTo($previousName);
+
+        $foreign = Orm::create($DB);
+        try {
+            $sentinel = $foreign->getReference(NetworkPortEntity::class, $port3);
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $before = $factories->getValue();
+            $this->boolean($aggregate->getFromDB($agg_parent_port))->isTrue();
+            $this->array(importArrayFromDB($aggregate->fields['networkports_id_list']))->isIdenticalTo([$port3]);
+            $this->array($aggregate->showInstantiationForm($networkport, [], [$networkequipment]))->isIdenticalTo($form);
+            $this->boolean($DB->delete('glpi_networkportaggregateorigins', [
+                'networkportaggregates_id' => $aggregate->fields['id'],
+            ]))->isTrue();
+            $this->boolean($aggregate->getFromDB($agg_parent_port))->isTrue();
+            $this->array(importArrayFromDB($aggregate->fields['networkports_id_list']))->isEmpty();
+            $emptyForm = $aggregate->showInstantiationForm($networkport, [], [$networkequipment]);
+            $this->array($emptyForm[$aggregate->getTypeName()]['inputs'][__('Origin port')]['values'])->isEmpty();
+            $this->boolean($foreign->contains($sentinel))->isTrue();
+        } finally {
+            $foreign->clear();
+        }
+        $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
     }
 
     public function testAggregateOriginValidationUsesCurrentScalarReads(): void

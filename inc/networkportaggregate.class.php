@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\LegacyValues;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\NetworkPortAggregateRepository;
@@ -90,8 +91,12 @@ class NetworkPortAggregate extends NetworkPortInstantiation
 
     public function post_getFromDB()
     {
+        global $DB;
+
         parent::post_getFromDB();
-        $this->fields['networkports_id_list'] = json_encode($this->originsRepository()->originIds((int)$this->fields['id']), JSON_THROW_ON_ERROR);
+        $origins = Orm::read($DB, fn (EntityManager $manager): array =>
+            (new NetworkPortAggregateRepository($manager))->originIds((int)$this->fields['id']));
+        $this->fields['networkports_id_list'] = json_encode($origins, JSON_THROW_ON_ERROR);
     }
 
     private function saveOrigins(): void
@@ -161,6 +166,8 @@ class NetworkPortAggregate extends NetworkPortInstantiation
 
     public function showInstantiationForm(NetworkPort $netport, $options, $recursiveItems)
     {
+        global $DB;
+
         if (
             isset($this->fields['networkports_id_list'])
             && is_string($this->fields['networkports_id_list'])
@@ -173,7 +180,10 @@ class NetworkPortAggregate extends NetworkPortInstantiation
         $possible_ports = [];
         $netport_types = ['NetworkPortEthernet', 'NetworkPortWifi'];
         foreach ($netport_types as $netport_type) {
-            $iterator = new RowIterator($this->originsRepository()->availablePorts($lastItem->getType(), (int)$lastItem->getID(), $netport_type));
+            $rows = Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new NetworkPortAggregateRepository($manager))
+                    ->availablePorts($lastItem->getType(), (int)$lastItem->getID(), $netport_type));
+            $iterator = new RowIterator($rows);
 
             if (count($iterator)) {
                 $array_element_name = call_user_func(
