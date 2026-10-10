@@ -68,6 +68,7 @@ use Dropdown;
 use Entity as LegacyEntity;
 use Group;
 use Group_Ticket;
+use Html;
 use ITILFollowup;
 use ITILSolution;
 use LogicException;
@@ -849,6 +850,45 @@ class Ticket extends DbTestCase
             }
             $this->integer($loads->count)->isIdenticalTo(0);
             $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+
+            // The document head reads the same preference as a completed scalar.
+            $managedPreference = $manager->find(UserEntity::class, $id);
+            $this->object($managedPreference)->isInstanceOf(UserEntity::class);
+            $retainedFont = $managedPreference->access_font;
+            $_SESSION['glpiactiveprofile']['accessibility'] = READ;
+            $this->boolean($DB->update('glpi_users', ['access_font' => null], ['id' => $id]))->isTrue();
+            $this->output(static fn () => Html::accessibilityHeader())->isEmpty();
+            $headerFactories = $fontFactories->getValue();
+            foreach ([
+                ['OpenDyslexic', 'http://fonts.cdnfonts.com/css/opendyslexic'],
+                ['OpenDyslexicAlta', 'http://fonts.cdnfonts.com/css/opendyslexic?styles=29221'],
+                ['Tiresias Infofont', 'http://fonts.cdnfonts.com/css/tiresias-infofont'],
+                ['Custom font', null], ['', null], [null, null],
+            ] as [$font, $url]) {
+                $this->boolean($DB->update('glpi_users', ['access_font' => $font], ['id' => $id]))->isTrue();
+                foreach ([0, READ] as $right) {
+                    $_SESSION['glpiactiveprofile']['accessibility'] = $right;
+                    $this->output(static fn () => Html::accessibilityHeader())
+                        ->isIdenticalTo($right && $url !== null ? '<link href="' . $url . '" rel="stylesheet">' : '');
+                }
+            }
+            $this->boolean($manager->contains($managedPreference))->isTrue();
+            $this->variable($managedPreference->access_font)->isIdenticalTo($retainedFont);
+            $this->integer($fontFactories->getValue() - $headerFactories)->isIdenticalTo(0);
+            try {
+                Type::overrideType(Types::STRING, new class () extends StringType {
+                    public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return "'OpenDyslexicAlta'";
+                    }
+                });
+                $this->output(static fn () => Html::accessibilityHeader())->isIdenticalTo(
+                    '<link href="http://fonts.cdnfonts.com/css/opendyslexic?styles=29221" rel="stylesheet">'
+                );
+            } finally {
+                Type::overrideType(Types::STRING, $stringType);
+            }
+            $this->output(static fn () => Html::accessibilityHeader())->isEmpty();
             // The virtual callback remains a fresh-read boundary, even when it
             // changes the current account preference before rendering the filter.
             $custom = new class ($id) extends LegacyTicket {
@@ -900,6 +940,7 @@ class Ticket extends DbTestCase
             $this->array($reader->timelinePreferences($id))->isEmpty();
             $_SESSION['glpiID'] = $id;
             $_SESSION['glpiactiveprofile']['accessibility'] = READ;
+            $this->output(static fn () => Html::accessibilityHeader())->isEmpty();
             $this->output(fn () => $item->showTimelineHeader())->contains("<h2 style='font-family: ;'>")
                 ->contains("<h3 style='font-family: ;'>");
             $this->output(fn () => $item->showTimeline(744))

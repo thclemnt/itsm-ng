@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Cache\SimpleCache;
 use Glpi\Toolbox\URL;
 use ScssPhp\ScssPhp\Compiler;
@@ -1657,8 +1658,12 @@ JAVASCRIPT
     {
         global $DB;
         if (Session::haveRight("accessibility", READ)) {
-            $font = (new UserRepository(Orm::create($DB)))
-                ->accessibilityFont((int)Session::getLoginUserID());
+            $font = Orm::readPrepared(
+                $DB,
+                static fn (): int => (int)Session::getLoginUserID(),
+                static fn (EntityManager $manager, int $user): ?string =>
+                    (new UserRepository($manager))->accessibilityFont($user)
+            );
             switch ($font) {
                 case "OpenDyslexic":
                     echo '<link href="http://fonts.cdnfonts.com/css/opendyslexic" rel="stylesheet">';     // Use CDNFonts for webfont delivery
