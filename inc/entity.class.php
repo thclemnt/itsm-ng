@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Event;
 use itsmng\Database\EntityConfigurationReferences;
 use itsmng\Database\Orm;
@@ -2251,8 +2252,8 @@ class Entity extends CommonTreeDropdown
     {
         global $DB;
 
-        return (new EntityConfigurationRepository(Orm::create($DB)))
-            ->uniqueIdentifier($field, $value);
+        return Orm::read($DB, static fn (EntityManager $manager): int =>
+            (new EntityConfigurationRepository($manager))->uniqueIdentifier($field, $value));
     }
 
 
