@@ -175,6 +175,19 @@ class Computer extends DbTestCase
             $this->array($repository->activeComputerConnections('__missing_connection_type__', (int)$monitor->getID()))->isEmpty();
             $retainedLink = $em->find(ComputerItemRecord::class, (int)$links[0]->getID());
             $retainedLink->is_deleted = true;
+            $assertLinkOrder = function () use ($DB, $connection, $repository, $monitor, $linkIds, $level): void {
+                $this->object($DB->getDoctrineConnection())->isIdenticalTo($connection);
+                $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+                $originalRead = iterator_to_array($DB->request([
+                    'SELECT' => ['id', 'computers_id', 'is_dynamic'], 'FROM' => 'glpi_computers_items',
+                    'WHERE' => ['itemtype' => 'Monitor', 'items_id' => $monitor->getID(), 'is_deleted' => false],
+                ]));
+                $this->array(array_map('intval', array_column($originalRead, 'id')))->isIdenticalTo($linkIds);
+                $projectedRead = $repository->activeComputerConnections('Monitor', (int)$monitor->getID());
+                $this->array(array_map('intval', array_column($projectedRead, 'id')))->isIdenticalTo($linkIds);
+            };
+            // Rollback restores the original tuples before the ordered renderer/hook oracle.
+            $dynamicFrame = OwnedMutationFrame::begin($connection);
             try {
                 $this->boolean($DB->update('glpi_computers_items', ['is_dynamic' => true], ['id' => $links[0]->getID()]))->isTrue();
                 $freshLinks = $repository->activeComputerConnections('Monitor', (int)$monitor->getID());
@@ -183,8 +196,9 @@ class Computer extends DbTestCase
                 $this->boolean($em->contains($retainedLink))->isTrue();
                 $this->boolean($retainedLink->is_deleted)->isTrue();
             } finally {
-                $DB->update('glpi_computers_items', ['is_dynamic' => false], ['id' => $links[0]->getID()]);
+                $dynamicFrame->rollBack();
             }
+            $assertLinkOrder();
             $monitorId = (int)$monitor->getID();
             $firstLinkId = (int)$links[0]->getID();
             Orm::read($DB, function (EntityManager $outer) use ($monitorId, $firstLinkId): void {
@@ -439,6 +453,7 @@ class Computer extends DbTestCase
                 ]);
             }
             $this->string($rows[$linkIds[0]]['name'])->contains('&withtemplate=1');
+            $deletedFrame = OwnedMutationFrame::begin($connection);
             try {
                 $this->boolean($DB->update('glpi_computers_items', ['is_deleted' => true], ['id' => $linkIds[1]]))->isTrue();
                 $freshRows = $render();
@@ -447,8 +462,9 @@ class Computer extends DbTestCase
                 $this->boolean($em->contains($retainedLink))->isTrue();
                 $this->boolean($retainedLink->is_deleted)->isTrue();
             } finally {
-                $DB->update('glpi_computers_items', ['is_deleted' => false], ['id' => $linkIds[1]]);
+                $deletedFrame->rollBack();
             }
+            $assertLinkOrder();
             $_SESSION['glpiactiveprofile']['monitor'] = 0;
             ob_start();
             try {
