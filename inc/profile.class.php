@@ -612,9 +612,16 @@ class Profile extends CommonDBTM
         if (Profile::canCreate()) {
             return [];
         }
-        $ids = (new ProfileRepository(Orm::create($DB)))->manageableIds(
-            self::activeRights(),
-            Session::getCurrentInterface()
+        $ids = Orm::readPrepared(
+            $DB,
+            static function (): array {
+                $rights = self::activeRights();
+                // Keep manageableIds' weak string argument conversion outside the scope.
+                $interface = (static fn (string $value): string => $value)(Session::getCurrentInterface());
+                return [$rights, $interface];
+            },
+            static fn (EntityManager $manager, array $prepared): array =>
+                (new ProfileRepository($manager))->manageableIds($prepared[0], $prepared[1])
         );
         return ['glpi_profiles.id' => $ids ?: ['<', 0]];
     }

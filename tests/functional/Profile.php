@@ -42,6 +42,7 @@ use itsmng\Database\Repository\ProfileRightRepository;
 use Profile as LegacyProfile;
 use ProfileRight;
 use ReflectionProperty;
+use TypeError;
 
 /* Test for inc/profile.class.php */
 
@@ -205,6 +206,76 @@ class Profile extends DbTestCase
     /**
      * We try to login with tech profile and check if we can get a super-admin profile
      */
+    public function testAssignableProfileIdsStayCurrentAndKeepCallerOwnership(): void
+    {
+        global $DB, $GLPI_CACHE;
+        $session = $_SESSION;
+        $hadCache = $GLPI_CACHE->has('all_possible_rights');
+        $cached = $hadCache ? $GLPI_CACHE->get('all_possible_rights') : null;
+        $connection = $DB->getDoctrineConnection();
+        $external = null;
+        $right = false;
+        try {
+            $this->login('tech', 'tech');
+            $profile = getItemByTypeName('Profile', 'Technician');
+            $id = (int)$profile->getID();
+            $right = $connection->fetchOne('SELECT rights FROM glpi_profilerights WHERE profiles_id = ? AND name = ?', [$id, 'computer']);
+            $GLPI_CACHE->set('all_possible_rights', ['computer' => '']);
+            $_SESSION['glpiactiveprofile'] = ['interface' => 'central', 'profile' => 0, 'computer' => READ];
+            unset($_SESSION['glpicronuserrunning']);
+            $external = Orm::forConnection($connection);
+            $entity = $external->find(ProfileEntity::class, $id);
+            $connection->update('glpi_profilerights', ['rights' => 0], ['profiles_id' => $id, 'name' => 'computer']);
+            $this->array(LegacyProfile::getUnderActiveProfileRestrictCriteria()['glpi_profiles.id'])->contains($id);
+            $connection->update('glpi_profilerights', ['rights' => READ | CREATE], ['profiles_id' => $id, 'name' => 'computer']);
+            $this->array(LegacyProfile::getUnderActiveProfileRestrictCriteria()['glpi_profiles.id'])->notContains($id);
+            $_SESSION['glpiactiveprofile']['computer'] = READ | CREATE;
+            $this->array(LegacyProfile::getUnderActiveProfileRestrictCriteria()['glpi_profiles.id'])->contains($id);
+            $this->boolean($external->contains($entity))->isTrue();
+            Orm::withReadConnection($connection, function (?EntityManager $outer) use ($id): void {
+                $managed = $outer->find(ProfileEntity::class, $id);
+                $name = $managed->name . '-unflushed';
+                $managed->name = $name;
+                $this->array(LegacyProfile::getUnderActiveProfileRestrictCriteria()['glpi_profiles.id'])->contains($id);
+                $this->boolean($outer->contains($managed))->isTrue();
+                $this->string($managed->name)->isIdenticalTo($name);
+            });
+            $interface = new class () {
+                public int $conversions = 0;
+                public function __toString(): string
+                {
+                    ++$this->conversions;
+                    return 'central';
+                }
+            };
+            $_SESSION['glpiactiveprofile']['computer'] = READ;
+            $_SESSION['glpiactiveprofile']['interface'] = $interface;
+            // The uncoerced first getter drops computer; an empty right set admits this central profile.
+            // Coercing that getter early would compare READ against the stored READ | CREATE and exclude it.
+            $this->array(LegacyProfile::getUnderActiveProfileRestrictCriteria()['glpi_profiles.id'])->contains($id);
+            $this->integer($interface->conversions)->isIdenticalTo(1);
+            $_SESSION['glpiactiveprofile']['interface'] = false;
+            $this->array(LegacyProfile::getUnderActiveProfileRestrictCriteria())->isIdenticalTo(['glpi_profiles.id' => ['<', 0]]);
+            $_SESSION['glpiactiveprofile']['interface'] = [];
+            $this->exception(fn () => LegacyProfile::getUnderActiveProfileRestrictCriteria())->isInstanceOf(TypeError::class);
+            unset($_SESSION['glpiactiveprofile']);
+            $this->array(LegacyProfile::getUnderActiveProfileRestrictCriteria())->isIdenticalTo(['glpi_profiles.id' => ['<', 0]]);
+            $_SESSION['glpiactiveprofile'] = ['interface' => 'central', 'profile' => CREATE];
+            $this->array(LegacyProfile::getUnderActiveProfileRestrictCriteria())->isEmpty();
+        } finally {
+            if ($right !== false) {
+                $connection->update('glpi_profilerights', ['rights' => $right], ['profiles_id' => $id, 'name' => 'computer']);
+            }
+            $external?->clear();
+            $_SESSION = $session;
+            if ($hadCache) {
+                $GLPI_CACHE->set('all_possible_rights', $cached);
+            } else {
+                $GLPI_CACHE->delete('all_possible_rights');
+            }
+        }
+    }
+
     public function testGetUnderActiveProfileRestrictCriteria()
     {
         global $DB;
