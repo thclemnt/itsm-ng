@@ -27,6 +27,7 @@ use ReflectionProperty;
 use RuntimeException;
 use atoum\atoum\test;
 use itsmng\Database\EntityRegistry;
+use itsmng\Database\EntityConfigurationReferences;
 use itsmng\Database\Entity\Computer;
 use itsmng\Database\Entity\Config;
 use itsmng\Database\Entity\Entity;
@@ -423,6 +424,46 @@ class EntityRegistryCache extends test
                 }
                 $this->array(EntityRegistry::fieldTypes('glpi_entities'))->isIdenticalTo($types);
                 $this->array(EntityRegistry::fieldEnums('glpi_entities'))->isIdenticalTo($enums);
+                // An explicit SQL name must not turn the PHP policy property into a row key.
+                $changed = clone $entity;
+                $reference = EntityRegistry::references('glpi_entities')['calendars_id'];
+                $property = $reference->policy->modeProperty;
+                $changed->setAttributeOverride($property, array_replace(
+                    get_object_vars($changed->getFieldMapping($property)),
+                    ['columnName' => 'calendar_policy_code']
+                ));
+                $this->string($changed->getColumnName($property))->isNotIdenticalTo($property);
+                $manager->getMetadataFactory()->setMetadataFor(Entity::class, $changed);
+                $snapshot = $model->getValue();
+                $custom = $snapshot;
+                $custom['references']['glpi_entities']['calendars_id'] = new MappedReference(
+                    $reference->association,
+                    $reference->column,
+                    $reference->targetTable,
+                    $reference->policy,
+                    $reference->defaultMode,
+                    $changed->getColumnName($property),
+                    $reference->modeLength
+                );
+                $model->setValue(null, $custom);
+                try {
+                    $this->array(EntityConfigurationReferences::normalizeLegacy('glpi_entities', ['calendars_id' => -2]))
+                        ->isIdenticalTo(['calendars_id' => null, 'calendar_policy_code' => 'inherit']);
+                    $this->array(EntityConfigurationReferences::legacyRow(['calendars_id' => null, 'calendar_policy_code' => 'inherit']))
+                        ->isIdenticalTo(['calendars_id' => -2, 'calendar_policy_code' => 'inherit']);
+                    $this->array(EntityConfigurationReferences::legacyInput(['calendar_policy_code' => 'explicit'], ['calendars_id' => -2]))
+                        ->isIdenticalTo(['calendar_policy_code' => 'explicit', 'calendars_id' => 0]);
+                    $this->array(EntityConfigurationReferences::legacyChanges('glpi_entities', ['calendar_policy_code']))
+                        ->isIdenticalTo(['calendar_policy_code', 'calendars_id']);
+                    $selection = EntityConfigurationReferences::selection('calendars_id');
+                    $this->string($selection)->contains('r.' . $property)->notContains('r.calendar_policy_code');
+                    $this->string($manager->createQueryBuilder()->select('r.' . $property)->from(Entity::class, 'r')->getQuery()->getSQL())
+                        ->contains('calendar_policy_code');
+                } finally {
+                    $model->setValue(null, $snapshot);
+                    $manager->getMetadataFactory()->setMetadataFor(Entity::class, $entity);
+                }
+
                 ksort($expected);
                 $this->array($actual)->isIdenticalTo($expected);
                 $this->boolean($connection->isConnected())->isFalse();
