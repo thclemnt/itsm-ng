@@ -35,6 +35,7 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Features\PlanningEvent;
 use Glpi\CalDAV\Contracts\CalDAVCompatibleItemInterface;
 use Glpi\CalDAV\Traits\VobjectConverterTrait;
@@ -899,13 +900,25 @@ class Reminder extends CommonDBVisible implements
     public static function getGroupItemsAsVCalendars($groups_id)
     {
         global $DB;
-        return self::getItemsAsVCalendars((new SharedContentRepository(Orm::create($DB)))->calendarReminders(group: (int)$groups_id));
+        $rows = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$groups_id,
+            static fn (EntityManager $manager, int $owner): array =>
+                (new SharedContentRepository($manager))->calendarReminders(group: $owner)
+        );
+        return self::getItemsAsVCalendars($rows);
     }
 
     public static function getUserItemsAsVCalendars($users_id)
     {
         global $DB;
-        return self::getItemsAsVCalendars((new SharedContentRepository(Orm::create($DB)))->calendarReminders(user: (int)$users_id));
+        $rows = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$users_id,
+            static fn (EntityManager $manager, int $owner): array =>
+                (new SharedContentRepository($manager))->calendarReminders(user: $owner)
+        );
+        return self::getItemsAsVCalendars($rows);
     }
 
     /**
@@ -996,7 +1009,8 @@ class Reminder extends CommonDBVisible implements
         $count = 0;
 
         $before = (new DateTimeImmutable())->modify('-' . (int)$max_age . ' days');
-        $iterator = (new SharedContentRepository(Orm::create($DB)))->expiredReminders($before);
+        $iterator = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new SharedContentRepository($manager))->expiredReminders($before));
 
         foreach ($iterator as $data) {
             if ($reminder->delete($data)) {

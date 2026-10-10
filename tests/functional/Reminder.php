@@ -34,6 +34,10 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\ORM\EntityManager;
+use Planning;
+use Session;
+use itsmng\Database\Orm;
 use Doctrine\Common\EventManager;
 use Doctrine\ORM\Event\PostLoadEventArgs;
 use Entity_Reminder;
@@ -53,6 +57,93 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Reminder extends DbTestCase
 {
+    public function testCalendarRowsRemainFreshVisibleAndIndependentOfLiveOwners(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', false);
+            $user = (int)Session::getLoginUserID();
+            $group = $this->createItem(Group::class, ['name' => 'Calendar group ' . $this->getUniqueString(),
+                'entities_id' => (int)$_SESSION['glpiactive_entity']]);
+            $name = 'Calendar reminder ' . $this->getUniqueString();
+            $reminder = $this->createItem(ReminderModel::class, ['name' => $name, 'users_id' => $user,
+                'text' => 'Initial calendar text', 'state' => Planning::TODO, 'is_planned' => 1,
+                'plan' => ['begin' => '2030-01-01 12:00:00', 'end' => '2030-01-01 13:00:00']]);
+            $this->createItem(Group_Reminder::class, ['reminders_id' => $reminder->getID(), 'groups_id' => $group->getID(),
+                'entities_id' => (int)$_SESSION['glpiactive_entity'], 'is_recursive' => 0]);
+            $groupCalendars = static fn (): array => ReminderModel::getGroupItemsAsVCalendars($group->getID());
+            $userDescriptions = static function () use ($user, $name): array {
+                $descriptions = [];
+                foreach (ReminderModel::getUserItemsAsVCalendars($user) as $calendar) {
+                    $component = $calendar->getBaseComponent();
+                    if ((string)$component->SUMMARY === $name) {
+                        $descriptions[] = (string)$component->DESCRIPTION;
+                    }
+                }
+                return $descriptions;
+            };
+            $this->array($groupCalendars())->hasSize(1);
+            $this->string((string)$groupCalendars()[0]->getBaseComponent()->DESCRIPTION)->isIdenticalTo('Initial calendar text');
+            $this->array($userDescriptions())->isIdenticalTo(['Initial calendar text']);
+            $this->array(ReminderModel::getUserItemsAsVCalendars(0))->isEmpty();
+            $this->array(ReminderModel::getGroupItemsAsVCalendars(0))->isEmpty();
+            $connection = $DB->getDoctrineConnection();
+            $this->integer($connection->update('glpi_reminders', ['text' => 'Current calendar text'], ['id' => $reminder->getID()]))->isIdenticalTo(1);
+            $writer = Orm::create($DB);
+            $pending = $writer->find(Entity\Reminder::class, (int)$reminder->getID());
+            $pending->text = 'Pending independent reminder';
+            Orm::read($DB, function (EntityManager $owner) use ($reminder, $groupCalendars, $userDescriptions, $writer, $pending): void {
+                $outer = $owner->find(Entity\Reminder::class, (int)$reminder->getID());
+                $outer->text = 'Pending outer reminder';
+                $this->string((string)$groupCalendars()[0]->getBaseComponent()->DESCRIPTION)->isIdenticalTo('Current calendar text');
+                $this->array($userDescriptions())->isIdenticalTo(['Current calendar text']);
+                $this->boolean($owner->contains($outer))->isTrue();
+                $this->string($outer->text)->isIdenticalTo('Pending outer reminder');
+                $this->boolean($writer->contains($pending))->isTrue();
+                $this->string($pending->text)->isIdenticalTo('Pending independent reminder');
+                $this->string($owner->getConnection()->fetchOne('SELECT text FROM glpi_reminders WHERE id=?', [$reminder->getID()]))->isIdenticalTo('Current calendar text');
+            });
+            // Calendar selection must still pass through each model's visibility check.
+            $_SESSION['glpiID'] = 0;
+            $_SESSION['glpigroups'] = [];
+            $_SESSION['glpiactiveprofile']['reminder'] = 0;
+            $this->array($groupCalendars())->isEmpty();
+            $this->array($userDescriptions())->isEmpty();
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
+    public function testExpiredRowsAreMaterializedBeforePublicDeletion(): void
+    {
+        global $DB;
+        $this->login();
+        $user = (int)Session::getLoginUserID();
+        $explicit = $this->createItem(ReminderModel::class, ['name' => 'Explicit expired reminder', 'users_id' => $user,
+            'text' => 'Expired visibility window', 'end_view_date' => '2000-01-01 00:00:00']);
+        $planned = $this->createItem(ReminderModel::class, ['name' => 'Expired planned reminder', 'users_id' => $user,
+            'text' => 'Expired planning window', 'plan' => ['begin' => '1999-12-31 12:00:00', 'end' => '2000-01-01 00:00:00']]);
+        $kept = $this->createItem(ReminderModel::class, ['name' => 'Kept reminder', 'users_id' => $user,
+            'text' => 'Unplanned reminder remains', 'is_planned' => 0]);
+        $connection = $DB->getDoctrineConnection();
+        $this->integer($connection->update('glpi_reminders', [$connection->quoteIdentifier('end') => '2000-01-01 00:00:00'], ['id' => $kept->getID()]))->isIdenticalTo(1);
+        $level = $connection->getTransactionNestingLevel();
+        $writer = Orm::create($DB);
+        $pending = $writer->find(Entity\Reminder::class, (int)$kept->getID());
+        $pending->name = 'Pending kept reminder';
+        $this->integer(ReminderModel::cleanOld(0))->isIdenticalTo(0);
+        $this->integer(ReminderModel::cleanOld(1))->isGreaterThanOrEqualTo(2);
+        foreach ([$explicit, $planned] as $removed) {
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_reminders WHERE id=?', [$removed->getID()]))->isIdenticalTo(0);
+        }
+        $this->boolean($writer->contains($pending))->isTrue();
+        $this->string($pending->name)->isIdenticalTo('Pending kept reminder');
+        $this->string($connection->fetchOne('SELECT name FROM glpi_reminders WHERE id=?', [$kept->getID()]))->isIdenticalTo('Kept reminder');
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+    }
+
     public function testAudienceReloadKeepsRowsFreshAndCustomLifecycle(): void
     {
         global $DB;
