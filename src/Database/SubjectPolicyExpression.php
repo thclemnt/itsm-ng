@@ -357,7 +357,25 @@ final class SubjectPolicyExpression
         do {
             $literal = $this->tokens[$this->position] ?? null;
             $cast = $this->tokens[$this->position + 2] ?? null;
-            if (is_array($literal) && $literal[0] === 'string'
+            if ($literal === '(' && is_array($this->tokens[$this->position + 1] ?? null)
+                && $this->tokens[$this->position + 1][0] === 'string'
+                && ($this->tokens[$this->position + 2] ?? null) === '::'
+                && in_array($this->tokens[$this->position + 3] ?? null, ['character', 'varchar'], true)) {
+                // ALTER TYPE reparses the original binary array coercion as
+                // individually relabeled literals. Admit only this complete
+                // unnarrowed varchar literal -> text shape in ARRAY context.
+                $this->expect('(');
+                $right = $this->tokens[$this->position++];
+                $this->expect('::');
+                if ($this->take('character')) {
+                    $this->expect('varying');
+                } else {
+                    $this->expect('varchar');
+                }
+                $this->expect(')');
+                $this->expect('::');
+                $this->expect('text');
+            } elseif (is_array($literal) && $literal[0] === 'string'
                 && ($this->tokens[$this->position + 1] ?? null) === '::'
                 && in_array($cast, ['character', 'varchar'], true)) {
                 $right = $literal;

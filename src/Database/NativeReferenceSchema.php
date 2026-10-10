@@ -45,7 +45,7 @@ final class NativeReferenceSchema
             // This finite family has boolean junctions, literal choices, null tests,
             // variables and binary varchar-to-text relabels, never user functions.
             preg_match_all('/\{([A-Z][A-Z_0-9]*)\b/', $nodes, $tags);
-            if (!$tags[1] || array_diff($tags[1], ['BOOLEXPR', 'SCALARARRAYOPEXPR', 'OPEXPR', 'NULLTEST', 'VAR', 'CONST', 'ARRAYEXPR', 'RELABELTYPE', 'ARRAYCOERCEEXPR', 'CASETESTEXPR'])) {
+            if (!$tags[1] || array_diff($tags[1], ['BOOLEXPR', 'SCALARARRAYOPEXPR', 'OPEXPR', 'NULLTEST', 'VAR', 'CONST', 'ARRAYEXPR', 'ARRAY', 'RELABELTYPE', 'ARRAYCOERCEEXPR', 'CASETESTEXPR'])) {
                 return false;
             }
             if (!self::binaryModeArrayCoercions($nodes, $tags[1], $check['reference_text_coercion'] ?? null)) {
@@ -71,10 +71,16 @@ final class NativeReferenceSchema
     {
         $arrays = count(array_filter($tags, static fn (string $tag): bool => $tag === 'ARRAYCOERCEEXPR'));
         $elements = count(array_filter($tags, static fn (string $tag): bool => $tag === 'CASETESTEXPR'));
-        if ($arrays === 0) {
+        preg_match_all('/\{RELABELTYPE :arg \{CONST\b/', $nodes, $literalRelabels);
+        $literalCount = count($literalRelabels[0]);
+        if ($arrays === 0 && $literalCount === 0) {
             return $elements === 0;
         }
-        if ($arrays !== 1 || $elements !== 1) {
+        if (($arrays === 0 && $elements !== 0)
+            || ($arrays !== 0 && ($arrays !== 1 || $elements !== 1 || $literalCount !== 0))) {
+            return false;
+        }
+        if (count(array_filter($tags, static fn (string $tag): bool => in_array($tag, ['ARRAYEXPR', 'ARRAY'], true))) !== 1) {
             return false;
         }
         if (is_string($identity)) {
@@ -96,9 +102,24 @@ final class NativeReferenceSchema
         // coercion; the actual inherited collation is never replaced here.
         $constant = '\{CONST :consttype ' . $varchar . ' :consttypmod -1 :constcollid \k<coll> :constlen -1 '
             . ':constbyval false :constisnull false :location -?[0-9]+ :constvalue [1-9][0-9]* \[ (?:-?[0-9]+ )+\]\}';
-        $pattern = '\{ARRAYCOERCEEXPR :arg \{ARRAYEXPR :array_typeid ' . $varcharArray
+        if ($arrays === 0) {
+            // PostgreSQL reparses a CHECK after ALTER TYPE. Its equivalent
+            // text[] ARRAYEXPR retains each original varchar CONST under an
+            // explicit binary RELABELTYPE, rather than an ARRAYCOERCEEXPR.
+            $literal = '\{RELABELTYPE :arg ' . $constant . ' :resulttype ' . $text
+                . ' :resulttypmod -1 :resultcollid \k<coll> :relabelformat 1 :location -?[0-9]+\}';
+            $rewritten = '\{(?:ARRAYEXPR|ARRAY) :array_typeid ' . $textArray
+                . ' :array_collid (?<coll>[0-9]+) :element_typeid ' . $text
+                . ' :elements \((?:' . $literal . '\s*)+\) :multidims false(?: :list_start -?[0-9]+ :list_end -?[0-9]+)? :location -?[0-9]+\}';
+            if (preg_match_all('/' . $rewritten . '/', $nodes, $matches) !== 1) {
+                return false;
+            }
+            preg_match_all('/\{RELABELTYPE :arg \{CONST\b/', $matches[0][0], $matchedLiterals);
+            return count($matchedLiterals[0]) === $literalCount;
+        }
+        $pattern = '\{ARRAYCOERCEEXPR :arg \{(?:ARRAYEXPR|ARRAY) :array_typeid ' . $varcharArray
             . ' :array_collid (?<coll>[0-9]+) :element_typeid ' . $varchar . ' :elements \((?:' . $constant . '\s*)+\) '
-            . ':multidims false :location -?[0-9]+\} :elemexpr \{RELABELTYPE :arg \{CASETESTEXPR :typeId '
+            . ':multidims false(?: :list_start -?[0-9]+ :list_end -?[0-9]+)? :location -?[0-9]+\} :elemexpr \{RELABELTYPE :arg \{CASETESTEXPR :typeId '
             . $varchar . ' :typeMod -1 :collation 0\} :resulttype ' . $text . ' :resulttypmod -1 '
             . ':resultcollid \k<coll> :relabelformat 2 :location -?[0-9]+\} :resulttype ' . $textArray
             . ' :resulttypmod -1 :resultcollid \k<coll> :coerceformat 2 :location -?[0-9]+\}';

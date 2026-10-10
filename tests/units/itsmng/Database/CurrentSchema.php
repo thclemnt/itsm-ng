@@ -330,6 +330,125 @@ class CurrentSchema extends test
             ->contains('WITH ORDINALITY')->contains('pg_catalog.pg_operator')->contains('pg_catalog.pg_table_is_visible');
     }
 
+    public function testInheritedChecksAcceptCapturedPostgreSQLArraySerialization(): void
+    {
+        $facts = json_decode(file_get_contents(dirname(__DIR__, 3) . '/fixtures/native-reference-pg-width.json'), true, 512, JSON_THROW_ON_ERROR);
+        foreach (['pg14_policies', 'pg18_policies'] as $version) {
+            $this->integer(count($facts[$version]))->isIdenticalTo(6);
+            foreach ($facts[$version] as $entry) {
+                $policy = $entry['policy'];
+                $row = $entry['actual'];
+                $selected = ['glpi_entities' => ['captured' => $policy]];
+                $snapshot = ['mysql' => false, 'ansi_quotes' => false,
+                    'checks' => ['glpi_entities' => [$policy['constraint'] => $row]]];
+                $this->boolean(SubjectPolicyExpression::equivalent(
+                    $policy['check'],
+                    $row['clause'],
+                    true,
+                    integerTypes: $policy['integer_types'],
+                    stringSelections: $policy['string_selections']
+                ))->isTrue();
+                $this->array(NativeReferenceSchema::compare($selected, $snapshot))->isEmpty();
+                $diagnostic = 'Changed, missing or unenforced native inherited reference CHECK: glpi_entities.' . $policy['constraint'];
+                $positionedNodes = preg_replace('/ :list_start -?[0-9]+ :list_end -?[0-9]+/', '', $row['native_nodes']);
+                $positionedNodes = str_replace(':multidims false :location', ':multidims false :list_start -1 :list_end -1 :location', $positionedNodes);
+                foreach (['', ':list_start 0 :list_end 27', ':list_start -2 :list_end -3'] as $positions) {
+                    $rendered = $snapshot;
+                    $rendered['checks']['glpi_entities'][$policy['constraint']]['native_nodes'] =
+                        str_replace(' :list_start -1 :list_end -1', $positions === '' ? '' : ' ' . $positions, $positionedNodes);
+                    $this->array(NativeReferenceSchema::compare($selected, $rendered))->isEmpty();
+                }
+                foreach ([$row['native_nodes'] . ' {ARRAY}', $row['native_nodes'] . ' {ARRAYEXPR}',
+                    preg_replace('/\{(?:ARRAYEXPR|ARRAY) :array_typeid/', '{ARRAY_UNKNOWN :array_typeid', $row['native_nodes'])] as $nodes) {
+                    $damaged = $snapshot;
+                    $damaged['checks']['glpi_entities'][$policy['constraint']]['native_nodes'] = $nodes;
+                    $this->array(NativeReferenceSchema::compare($selected, $damaged))->isIdenticalTo([$diagnostic]);
+                }
+                foreach ([
+                    ':list_start -1', ':list_end -1',
+                    ':list_start nope :list_end -1', ':list_start -1 :list_end nope',
+                    ':list_end -1 :list_start -1', ':list_start -1 :list_start -1 :list_end -1',
+                ] as $positions) {
+                    $damaged = $snapshot;
+                    $damaged['checks']['glpi_entities'][$policy['constraint']]['native_nodes'] =
+                        str_replace(':list_start -1 :list_end -1', $positions, $positionedNodes);
+                    $this->array(NativeReferenceSchema::compare($selected, $damaged))->isIdenticalTo([$diagnostic]);
+                }
+            }
+        }
+    }
+
+    public function testInheritedChecksAcceptCapturedPostgreSQLWidthRewrite(): void
+    {
+        $facts = json_decode(file_get_contents(dirname(__DIR__, 3) . '/fixtures/native-reference-pg-width.json'), true, 512, JSON_THROW_ON_ERROR);
+        $this->integer(count($facts['six_policies']))->isIdenticalTo(6);
+        foreach ($facts['six_policies'] as $entry) {
+            $policy = $entry['policy'];
+            $row = $entry['actual'];
+            $selected = ['glpi_entities' => ['captured' => $policy]];
+            $snapshot = ['mysql' => false, 'ansi_quotes' => false,
+                'checks' => ['glpi_entities' => [$policy['constraint'] => $row]]];
+            $equivalent = static fn (string $clause, array $modes): bool => SubjectPolicyExpression::equivalent(
+                $policy['check'],
+                $clause,
+                true,
+                integerTypes: $policy['integer_types'],
+                stringSelections: $modes
+            );
+            $this->boolean($equivalent($row['clause'], $policy['string_selections']))->isTrue();
+            $this->boolean($equivalent($row['clause'], []))->isFalse();
+            $this->array(NativeReferenceSchema::compare($selected, $snapshot))->isEmpty();
+            $diagnostic = 'Changed, missing or unenforced native inherited reference CHECK: glpi_entities.' . $policy['constraint'];
+            $olderTag = $snapshot;
+            $olderTag['checks']['glpi_entities'][$policy['constraint']]['native_nodes'] =
+                str_replace('{ARRAYEXPR :array_typeid', '{ARRAY :array_typeid', $row['native_nodes']);
+            $this->array(NativeReferenceSchema::compare($selected, $olderTag))->isEmpty();
+            foreach ([true => ':list_start -1 :list_end -1', false => ':list_start -1'] as $admitted => $positions) {
+                $annotated = $snapshot;
+                $annotated['checks']['glpi_entities'][$policy['constraint']]['native_nodes'] =
+                    str_replace(':multidims false :location', ':multidims false ' . $positions . ' :location', $row['native_nodes']);
+                $this->array(NativeReferenceSchema::compare($selected, $annotated))
+                    ->isIdenticalTo($admitted ? [] : [$diagnostic]);
+            }
+            foreach ([
+                str_replace('::character varying', '::character varying(1)', $row['clause']),
+                str_replace('::character varying', '::integer', $row['clause']),
+                str_replace("('explicit'::character varying)::text", "lower('explicit'::character varying)::text", $row['clause']),
+                str_replace("('explicit'::character varying)::text", "('explicit'::character varying)::text COLLATE \"C\"", $row['clause']),
+                str_replace("('explicit'::character varying)::text", "('explicit'::character varying)", $row['clause']),
+                $row['clause'] . ' OR 1 = 1',
+            ] as $clause) {
+                $this->boolean($equivalent($clause, $policy['string_selections']))->isFalse();
+                $damaged = $snapshot;
+                $damaged['checks']['glpi_entities'][$policy['constraint']]['clause'] = $clause;
+                $this->array(NativeReferenceSchema::compare($selected, $damaged))->isIdenticalTo([$diagnostic]);
+            }
+            foreach ([
+                str_replace(':consttypmod -1', ':consttypmod 5', $row['native_nodes']),
+                str_replace(':resulttypmod -1', ':resulttypmod 5', $row['native_nodes']),
+                str_replace(':array_typeid 1009', ':array_typeid 999', $row['native_nodes']),
+                str_replace(':element_typeid 25', ':element_typeid 999', $row['native_nodes']),
+                str_replace(':constcollid 100', ':constcollid 999', $row['native_nodes']),
+                str_replace(':relabelformat 1', ':relabelformat 2', $row['native_nodes']),
+                str_replace(':opno 98', ':opno 999', $row['native_nodes']),
+                $row['native_nodes'] . ' {RELABELTYPE :arg {CONST}}',
+                $row['native_nodes'] . ' {FUNCEXPR :funcid 999}',
+                $row['native_nodes'] . ' {CASETESTEXPR :typeId 1043 :typeMod -1 :collation 0}',
+                $row['native_nodes'] . ' {ARRAYEXPR}',
+            ] as $nodes) {
+                $damaged = $snapshot;
+                $damaged['checks']['glpi_entities'][$policy['constraint']]['native_nodes'] = $nodes;
+                $this->array(NativeReferenceSchema::compare($selected, $damaged))->isIdenticalTo([$diagnostic]);
+            }
+            $identity = json_decode($row['reference_text_coercion'], true, 512, JSON_THROW_ON_ERROR);
+            foreach ([null, array_replace($identity, ['binary' => false]), array_replace($identity, ['varchar' => '999'])] as $changed) {
+                $damaged = $snapshot;
+                $damaged['checks']['glpi_entities'][$policy['constraint']]['reference_text_coercion'] = $changed;
+                $this->array(NativeReferenceSchema::compare($selected, $damaged))->isIdenticalTo([$diagnostic]);
+            }
+        }
+    }
+
     public function testInheritedChecksAcceptCapturedPostgreSQLVarcharArrayRendering(): void
     {
         $facts = json_decode(file_get_contents(dirname(__DIR__, 3) . '/fixtures/native-reference-pg.json'), true, 512, JSON_THROW_ON_ERROR);
