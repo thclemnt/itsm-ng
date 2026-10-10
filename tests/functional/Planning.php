@@ -140,11 +140,12 @@ class Planning extends \DbTestCase
                 $this->array($options([LegacyPlanning::class, 'showAddGroupForm']))->isIdenticalTo($single);
                 $this->array($options([LegacyPlanning::class, 'showAddGroupUsersForm']))->isIdenticalTo($all);
             }
-            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+            $createdManagers = $factories->getValue() - $beforeFactories;
         } finally {
             $_SESSION = $session;
             $manager?->clear();
         }
+        $this->integer($createdManagers)->isIdenticalTo(0);
     }
 
     public function testFilterExportsUseFreshSessionUserTokensAndLegacyIssuance(): void
@@ -213,7 +214,7 @@ class Planning extends \DbTestCase
             for ($repeat = 0; $repeat < 16; ++$repeat) {
                 $this->array($tokens($render()))->isIdenticalTo([$stored, $stored]);
             }
-            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+            $createdManagers = $factories->getValue() - $beforeFactories;
         } finally {
             while (ob_get_level() > $bufferLevel) {
                 ob_end_clean();
@@ -221,6 +222,7 @@ class Planning extends \DbTestCase
             $_SESSION = $session;
         }
         $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        $this->integer($createdManagers)->isIdenticalTo(0);
     }
 
     public function testTimelineNamesKeepResourceOrderAndDynamicWriteBoundaries(): void
@@ -322,7 +324,7 @@ class Planning extends \DbTestCase
                 $this->array(LegacyPlanning::getTimelineResources())->isIdenticalTo($warmResources);
             }
             $this->boolean($em->contains($managed))->isTrue();
-            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+            $createdManagers = $factories->getValue() - $beforeFactories;
         } finally {
             PlanningTimelineWriter::$write = null;
             $em->getEventManager()->removeEventListener([Events::postLoad], $listener);
@@ -331,6 +333,7 @@ class Planning extends \DbTestCase
             $CFG_GLPI['is_ids_visible'] = $idsVisible;
         }
         $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        $this->integer($createdManagers)->isIdenticalTo(0);
     }
 
     public function testCloneEvent()
