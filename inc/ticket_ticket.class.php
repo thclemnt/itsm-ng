@@ -31,7 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity\ITILSolution as ITILSolutionEntity;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\TicketRelationshipRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -415,26 +418,12 @@ class Ticket_Ticket extends CommonDBRelation
     {
         global $DB;
 
-        $result = $DB->request([
-           'COUNT'        => 'cpt',
-           'FROM'         => $this->getTable() . ' AS links',
-           'INNER JOIN'   => [
-              Ticket::getTable() . ' AS tickets' => [
-                 'ON' => [
-                    'links'     => 'tickets_id_1',
-                    'tickets'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              'links.link'         => self::SON_OF,
-              'links.tickets_id_2' => $pid,
-              'NOT'                => [
-                 'tickets.status'  => Ticket::getClosedStatusArray() + Ticket::getSolvedStatusArray()
-              ]
-           ]
-        ])->next();
-        return (int)$result['cpt'];
+        $database = $DB;
+        $parent = $pid === null || (is_string($pid) && strtolower($pid) === 'null') ? null : (int)$pid;
+        // Preserve the existing union: solved children still count until closed.
+        $excluded = Ticket::getClosedStatusArray() + Ticket::getSolvedStatusArray();
+        return Orm::read($database, static fn (EntityManager $manager): int =>
+            (new TicketRelationshipRepository($manager))->countOpenChildren($parent, $excluded));
     }
 
 

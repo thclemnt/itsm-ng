@@ -34,6 +34,10 @@
 namespace tests\units;
 
 use DbTestCase;
+use Ticket as LegacyTicket;
+use Ticket_Ticket as LegacyTicketLink;
+use itsmng\Database\Entity\Ticket as TicketEntity;
+use itsmng\Database\Orm;
 
 /* Test for inc/ticket_ticket.class.php */
 
@@ -159,37 +163,59 @@ class Ticket_Ticket extends DbTestCase
 
     public function testNumberOpen()
     {
+        global $DB;
         $this->login();
         $this->createTickets();
         $tone = $this->tone;
         $ttwo = $this->ttwo;
 
-        $link = new \Ticket_Ticket();
+        $link = new LegacyTicketLink();
         $this->integer(
             (int)$link->add([
               'tickets_id_1' => $tone->getID(),
               'tickets_id_2' => $ttwo->getID(),
-              'link'         => \Ticket_Ticket::LINK_TO
+              'link'         => LegacyTicketLink::LINK_TO
          ])
         )->isGreaterThan(0);
 
-        //not a SON_OF => no child
-        $this->integer($link->countOpenChildren($link->getID()))->isIdenticalTo(0);
-
-        $this->boolean(
-            $link->update([
-              'id'     => $link->getID(),
-              'link'   => \Ticket_Ticket::SON_OF
-         ])
-        )->isTrue();
-        $this->integer($link->countOpenChildren($ttwo->getID()))->isIdenticalTo(1);
-
-        $this->boolean(
-            $tone->update([
-              'id'     => $tone->getID(),
-              'status' => \Ticket::CLOSED
-         ])
-        )->isTrue();
+        // A simple link does not qualify as a directional child.
         $this->integer($link->countOpenChildren($ttwo->getID()))->isIdenticalTo(0);
+        $this->boolean($link->update([
+            'id' => $link->getID(), 'link' => LegacyTicketLink::SON_OF,
+        ]))->isTrue();
+        $this->integer($link->countOpenChildren($ttwo->getID()))->isIdenticalTo(1);
+        $this->integer($link->countOpenChildren($tone->getID()))->isIdenticalTo(0);
+        foreach ([null, 'nUlL', 0, -1] as $parent) {
+            $this->integer($link->countOpenChildren($parent))->isIdenticalTo(0);
+        }
+
+        $this->boolean($tone->update([
+            'id' => $tone->getID(), 'status' => LegacyTicket::CLOSED,
+        ]))->isTrue();
+        $this->integer($link->countOpenChildren($ttwo->getID()))->isIdenticalTo(0);
+
+        $savedSession = $_SESSION;
+        $writer = Orm::create($DB);
+        try {
+            $managed = $writer->find(TicketEntity::class, (int)$tone->getID());
+            $oldStatus = $managed->status;
+            $connection = $DB->getDoctrineConnection();
+            $this->integer($connection->update('glpi_tickets', ['status' => LegacyTicket::SOLVED], ['id' => $tone->getID()]))->isIdenticalTo(1);
+            // The historic status union excludes CLOSED only; SOLVED still warns.
+            $this->integer($link->countOpenChildren($ttwo->getID()))->isIdenticalTo(1);
+            $_SESSION['glpiactiveentities'] = [];
+            $this->integer($connection->update('glpi_tickets', ['is_deleted' => true], ['id' => $tone->getID()]))->isIdenticalTo(1);
+            $this->integer($link->countOpenChildren($ttwo->getID()))->isIdenticalTo(1);
+            $this->boolean($writer->contains($managed))->isTrue();
+            $this->integer($managed->status)->isIdenticalTo($oldStatus);
+            $this->boolean($managed->is_deleted)->isFalse();
+            $this->integer($connection->update('glpi_tickets', ['status' => LegacyTicket::CLOSED], ['id' => $tone->getID()]))->isIdenticalTo(1);
+            $this->integer($link->countOpenChildren($ttwo->getID()))->isIdenticalTo(0);
+            $this->boolean($writer->contains($managed))->isTrue();
+            $this->integer($managed->status)->isIdenticalTo($oldStatus);
+        } finally {
+            $writer->clear();
+            $_SESSION = $savedSession;
+        }
     }
 }
