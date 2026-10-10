@@ -33,7 +33,9 @@
 
 namespace tests\units;
 
+use Contact_Supplier as ContactSupplierModel;
 use DbTestCase;
+use Supplier as SupplierModel;
 use itsmng\Database\Entity\Contact as ContactEntity;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ContactRepository;
@@ -77,11 +79,83 @@ class Contact_Supplier extends DbTestCase
         $this->array($address)->hasKey('address')->hasKey('town')->hasKey('country');
         $this->string($address['address'])->isEqualTo('1 Test street');
 
+        $connection = $GLOBALS['DB']->getDoctrineConnection();
+        $this->integer(ContactSupplierModel::countForItem($contact))->isIdenticalTo(1);
+        $this->integer(ContactSupplierModel::countForItem($supplier))->isIdenticalTo(1);
+        $columns = array_keys($address);
+        sort($columns);
+        $this->array($columns)->isIdenticalTo(['address', 'country', 'name', 'postcode', 'state', 'town']);
+        $this->string($address['name'])->isIdenticalTo($supplier->fields['name']);
+        $this->output(static fn () => ContactSupplierModel::showForContact($contact))->contains('https://example.com');
+        $this->output(static fn () => ContactSupplierModel::showForSupplier($supplier))->contains($contact->fields['name']);
+
+        // Both company fields choose the first supplier by supplier ID, even with another link.
+        $second = $this->createItem(SupplierModel::class, [
+            'name' => 'second-supplier-' . $this->getUniqueString(), 'entities_id' => 0,
+            'website' => 'https://second.example.com', 'address' => 'Second street',
+        ]);
+        $secondLink = $this->createItem(ContactSupplierModel::class, [
+            'contacts_id' => $contact_id, 'suppliers_id' => $second->getID(),
+        ]);
+        $this->integer(ContactSupplierModel::countForItem($contact))->isIdenticalTo(2);
+        $this->string($contact->getWebsite())->isIdenticalTo('https://example.com');
+        $this->array($contact->getAddress())->isIdenticalTo($address);
+
+        // Entity scope applies to the opposite endpoint; cron retains its unrestricted count.
+        $otherEntity = $this->createItem('Entity', [
+            'name' => 'contact-scope-' . $this->getUniqueString(), 'entities_id' => 0,
+        ]);
+        $originalSession = $_SESSION;
+        $originalSelf = $_SERVER['PHP_SELF'] ?? null;
+        try {
+            unset($_SESSION['glpicronuserrunning']);
+            $_SESSION['glpishowallentities'] = false;
+            $_SESSION['glpiactiveentities'] = [0];
+            $this->integer($connection->update('glpi_suppliers', [
+                'entities_id' => (int)$otherEntity->getID(), 'is_recursive' => 0,
+            ], ['id' => $second->getID()]))->isIdenticalTo(1);
+            $this->integer(ContactSupplierModel::countForItem($contact))->isIdenticalTo(1);
+            $this->integer(ContactSupplierModel::countForItem($second))->isIdenticalTo(1);
+            $this->output(static fn () => ContactSupplierModel::showForContact($contact))->notContains('https://second.example.com');
+            $_SESSION['glpicronuserrunning'] = true;
+            $_SERVER['PHP_SELF'] = '/front/cron.php';
+            $this->integer(ContactSupplierModel::countForItem($contact))->isIdenticalTo(2);
+        } finally {
+            $connection->update('glpi_suppliers', ['entities_id' => 0], ['id' => $second->getID()]);
+            $_SESSION = $originalSession;
+            if ($originalSelf === null) {
+                unset($_SERVER['PHP_SELF']);
+            } else {
+                $_SERVER['PHP_SELF'] = $originalSelf;
+            }
+        }
+        $this->boolean($secondLink->delete(['id' => $secondLink->getID()], true))->isTrue();
+        $this->integer(ContactSupplierModel::countForItem($contact))->isIdenticalTo(1);
+
+        // Completed scalar values observe direct writes and preserve their earlier snapshots.
+        $this->integer($connection->update('glpi_suppliers', [
+            'website' => null, 'address' => 'Fresh supplier street',
+        ], ['id' => $supplier_id]))->isIdenticalTo(1);
+        $this->variable($contact->getWebsite())->isNull();
+        $freshAddress = $contact->getAddress();
+        $this->string($freshAddress['address'])->isIdenticalTo('Fresh supplier street');
+        $this->string($address['address'])->isIdenticalTo('1 Test street');
+        $this->integer($connection->update('glpi_suppliers', ['website' => 'https://fresh.example.com'], ['id' => $supplier_id]))->isIdenticalTo(1);
+        $this->string($contact->getWebsite())->isIdenticalTo('https://fresh.example.com');
+
         $manager = Orm::create($GLOBALS['DB']);
         try {
             $selected = $manager->find(ContactEntity::class, (int)$contact_id);
             $this->object($selected)->isInstanceOf(ContactEntity::class);
             $selected->phone = '0102030405';
+            $this->integer(ContactSupplierModel::countForItem($contact))->isIdenticalTo(1);
+            $this->integer(ContactSupplierModel::countForItem($supplier))->isIdenticalTo(1);
+            $this->string($contact->getWebsite())->isIdenticalTo('https://fresh.example.com');
+            $this->array($contact->getAddress())->isIdenticalTo($freshAddress);
+            $this->output(static fn () => ContactSupplierModel::showForSupplier($supplier))->contains($contact->fields['name']);
+            $this->output(static fn () => ContactSupplierModel::showForContact($contact))->contains('https://fresh.example.com');
+            $this->boolean($manager->contains($selected))->isTrue();
+            $this->string($selected->phone)->isIdenticalTo('0102030405');
             $rows = (new ContactRepository($manager))->related((int)$supplier_id, false, null);
             $this->array($rows)->hasSize(1);
             $this->integer((int)$rows[0]['id'])->isIdenticalTo((int)$contact_id);
@@ -102,5 +176,9 @@ class Contact_Supplier extends DbTestCase
                 'suppliers_id' => $supplier_id,
             ]
         ))->isEqualTo(0);
+        $this->integer(ContactSupplierModel::countForItem($contact))->isIdenticalTo(0);
+        $this->integer(ContactSupplierModel::countForItem($supplier))->isIdenticalTo(0);
+        $this->variable($contact->getAddress())->isNull();
+        $this->string($contact->getWebsite())->isIdenticalTo('');
     }
 }

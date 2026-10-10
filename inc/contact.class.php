@@ -35,6 +35,7 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use Doctrine\ORM\EntityManager;
 use Sabre\VObject;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ContactRepository;
@@ -104,8 +105,12 @@ class Contact extends CommonDBTM
     {
         global $DB;
 
-        $details = (new ContactRepository(Orm::create($DB)))
-            ->companyDetails((int)$this->getID());
+        $details = Orm::readPrepared(
+            $DB,
+            fn (): int => (int)$this->getID(),
+            static fn (EntityManager $em, int $contact): ?array =>
+                (new ContactRepository($em))->companyDetails($contact)
+        );
         if ($details !== null) {
             unset($details['website']);
         }
@@ -122,8 +127,12 @@ class Contact extends CommonDBTM
     {
         global $DB;
 
-        $details = (new ContactRepository(Orm::create($DB)))
-            ->companyDetails((int)$this->getID());
+        $details = Orm::readPrepared(
+            $DB,
+            fn (): int => (int)$this->getID(),
+            static fn (EntityManager $em, int $contact): ?array =>
+                (new ContactRepository($em))->companyDetails($contact)
+        );
         return $details === null ? '' : $details['website'];
     }
 

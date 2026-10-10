@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ContactRepository;
 
@@ -52,8 +53,12 @@ class Contact_Supplier extends CommonDBRelation
     private static function relatedItems(CommonDBTM $item): array
     {
         global $DB;
-        return (new ContactRepository(Orm::create($DB)))
-            ->related((int)$item->getID(), $item instanceof Contact, self::relatedScope($item));
+        return Orm::readPrepared(
+            $DB,
+            static fn (): array => [(int)$item->getID(), $item instanceof Contact, self::relatedScope($item)],
+            static fn (EntityManager $em, array $prepared): array =>
+                (new ContactRepository($em))->related($prepared[0], $prepared[1], $prepared[2])
+        );
     }
 
     private static function relatedScope(CommonDBTM $item): ?array
@@ -67,8 +72,12 @@ class Contact_Supplier extends CommonDBRelation
     public static function countForItem(CommonDBTM $item)
     {
         global $DB;
-        return (new ContactRepository(Orm::create($DB)))
-            ->countRelated((int)$item->getID(), $item instanceof Contact, self::relatedScope($item));
+        return Orm::readPrepared(
+            $DB,
+            static fn (): array => [(int)$item->getID(), $item instanceof Contact, self::relatedScope($item)],
+            static fn (EntityManager $em, array $prepared): int =>
+                (new ContactRepository($em))->countRelated($prepared[0], $prepared[1], $prepared[2])
+        );
     }
 
     public static function getTypeName($nb = 0)
