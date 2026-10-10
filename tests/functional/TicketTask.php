@@ -41,6 +41,7 @@ use Doctrine\ORM\Query;
 use Entity;
 use Html;
 use Planning;
+use ReflectionProperty;
 use Session;
 use TicketTask as LegacyTicketTask;
 use Toolbox;
@@ -194,10 +195,23 @@ class TicketTask extends DbTestCase
                 $this->integer($custom::$loads)->isIdenticalTo(2);
                 $this->string($customRows[0][2])->contains('Custom task reader');
             }
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $allocated = $factories->getValue();
+            for ($i = 0; $i < 16; ++$i) {
+                $currentTasks = $type::getTaskList('todo', false);
+                [, $currentRows] = $render();
+            }
+            $createdManagers = $factories->getValue() - $allocated;
+            $this->array(array_column($currentTasks, 'id'))->isIdenticalTo($ids([2, 1, 0, 7]));
+            $this->string($currentRows[0][1])->isIdenticalTo('Current parent title');
+            $this->boolean($writer->contains($parents[2]))->isTrue();
+            $this->boolean($writer->contains($tasks[2]))->isTrue();
+            $this->string($parents[2]->name)->isIdenticalTo('Parent 2');
         } finally {
             $writer?->clear();
             $_SESSION = $session;
         }
+        $this->integer($createdManagers)->isIdenticalTo(0);
     }
 
     /**
