@@ -36,6 +36,7 @@ namespace tests\units;
 use Auth;
 use Contact;
 use DbTestCase;
+use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
@@ -47,9 +48,14 @@ use Notification_NotificationTemplate;
 use Project;
 use ProjectTask;
 use ReflectionProperty;
+use RuntimeException;
+use mock\DBmysql as ConfigurationAdapter;
+use tests\fixtures\ScalarReadProbe;
 use itsmng\Database\Entity;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ProjectRepository;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class ProjectTeam extends DbTestCase
 {
@@ -263,6 +269,61 @@ class ProjectTeam extends DbTestCase
                 $target->target = [];
                 $target->addTeamGroups($mode);
                 $this->array(array_keys($target->target))->isIdenticalTo($expected);
+            }
+            $custom = new class ($connection) extends ScalarReadProbe {
+                private ?EventManager $events = null;
+
+                public function getEventManager(): EventManager
+                {
+                    return $this->events ??= new EventManager();
+                }
+            };
+            $clears = new class () {
+                public int $count = 0;
+                public ?RuntimeException $failure = null;
+
+                public function onClear(): void
+                {
+                    ++$this->count;
+                    if ($this->failure !== null) {
+                        throw $this->failure;
+                    }
+                }
+            };
+            $custom->getEventManager()->addEventListener([Events::onClear], $clears);
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new ConfigurationAdapter();
+            $routes = 0;
+            $this->calling($adapter)->getDoctrineConnection = static function () use ($custom, &$routes) {
+                ++$routes;
+                return $custom;
+            };
+            $original = $DB;
+            try {
+                $DB = $adapter;
+                $target->target = [];
+                $target->addTeamContacts();
+                $target->addTeamSuppliers();
+                $this->array($target->target)->hasSize(25)->hasKey('fresh@example.test')->hasKey('supplier@example.test');
+                $this->integer($clears->count)->isIdenticalTo(2);
+                $this->integer($routes)->isIdenticalTo(2);
+                $clears->failure = new RuntimeException('Recipient read cleanup failed');
+                foreach (['addTeamUsers', 'addTeamContacts', 'addTeamSuppliers'] as $method) {
+                    $target->target = [];
+                    $beforeClears = $clears->count;
+                    $beforeRoutes = $routes;
+                    $this->exception(fn () => $target->$method())
+                        ->isInstanceOf(RuntimeException::class)->hasMessage('Recipient read cleanup failed');
+                    $this->integer($clears->count - $beforeClears)->isIdenticalTo(1);
+                    $this->integer($routes - $beforeRoutes)->isIdenticalTo(1);
+                    $this->array($target->target)->isEmpty();
+                }
+                $this->array($custom->queries)->hasSize(5);
+                $this->boolean($em->contains($managed))->isTrue();
+                $this->string($managed->firstname)->isIdenticalTo('First');
+                $this->integer($loads->count)->isIdenticalTo($before);
+            } finally {
+                $DB = $original;
             }
             $this->object($em->getConnection())->isIdenticalTo($connection);
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
