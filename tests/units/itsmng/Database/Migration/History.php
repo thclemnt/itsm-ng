@@ -24,6 +24,13 @@ use itsmng\Database\Entity\Computer;
 use itsmng\Database\Entity\ItemDeviceSensor;
 use itsmng\Database\Installer;
 use itsmng\Database\Migration\History as Releases;
+use itsmng\Database\Migration\ComponentParents;
+use itsmng\Database\Migration\GraphicCardParents;
+use itsmng\Database\Migration\GraphicCardParents\Definition as GraphicCardDefinition;
+use itsmng\Database\Migration\IPAddressParents;
+use itsmng\Database\Migration\IPAddressParents\Definition as IPAddressDefinition;
+use itsmng\Database\Migration\NetworkNameParents;
+use itsmng\Database\Migration\NetworkNameParents\Definition as NetworkNameDefinition;
 use itsmng\Database\Migration\PhysicalReferenceIndexes;
 use itsmng\Database\Migration\ReleaseMigration;
 use itsmng\Database\Migration\SensorSubjects;
@@ -126,7 +133,10 @@ class History extends test
         $release = new SensorSubjects();
         $this->string($release->version())->isNotIdenticalTo(Version220::VERSION);
         $this->string($release->version())->isNotIdenticalTo($definition::PHASE);
-        $this->array(Releases::versions())->isIdenticalTo([Version220::VERSION, $release->version(), PhysicalReferenceIndexes::VERSION]);
+        $this->array(Releases::versions())->isIdenticalTo([
+            Version220::VERSION, $release->version(), PhysicalReferenceIndexes::VERSION,
+            NetworkNameParents::VERSION, IPAddressParents::VERSION, GraphicCardParents::VERSION, ComponentParents::VERSION,
+        ]);
         foreach ([new MySQLPlatform(), new PostgreSQLPlatform()] as $platform) {
             $table = new Table('glpi_items_devicesensors');
             $table->addColumn('itemtype', 'string');
@@ -252,19 +262,37 @@ class History extends test
     public function testExperimentalCheckpointsDoNotPublishAnOrmRelease(): void
     {
         $connection = new ReleaseJournalFixtureConnection();
-        $this->array(Releases::pendingVersions($connection))->isIdenticalTo(['2.2.0', SensorSubjects::VERSION, PhysicalReferenceIndexes::VERSION]);
-        $connection->states = array_fill_keys(Version220::PHASES, ['complete' => true]);
+        $versions = [
+            '2.2.0', SensorSubjects::VERSION, PhysicalReferenceIndexes::VERSION,
+            NetworkNameParents::VERSION, IPAddressParents::VERSION, GraphicCardParents::VERSION, ComponentParents::VERSION,
+        ];
+        $this->array(Releases::pendingVersions($connection))->isIdenticalTo($versions);
+        // Internal checkpoints share the existing ledger but cannot publish their releases.
+        $componentPhases = array_map(static fn (string $class): string => $class::PHASE, array_values(ComponentParents::DEFINITIONS));
+        $connection->states = array_fill_keys(
+            [
+                ...Version220::PHASES, Definition::PHASE, NetworkNameDefinition::PHASE,
+                IPAddressDefinition::PHASE, GraphicCardDefinition::PHASE, ...$componentPhases,
+            ],
+            ['complete' => true]
+        );
         $original = $connection->states;
-        $this->array(Releases::pendingVersions($connection))->isIdenticalTo(['2.2.0', SensorSubjects::VERSION, PhysicalReferenceIndexes::VERSION]);
+        $this->array(Releases::pendingVersions($connection))->isIdenticalTo($versions);
         $this->array($connection->states)->isIdenticalTo($original);
         $connection->states[Version220::VERSION] = ['complete' => true];
         $connection->states[SensorSubjects::VERSION] = ['complete' => true];
         $connection->states[PhysicalReferenceIndexes::VERSION] = ['complete' => true];
+        $this->array(Releases::pendingVersions($connection))->isIdenticalTo([
+            NetworkNameParents::VERSION, IPAddressParents::VERSION, GraphicCardParents::VERSION, ComponentParents::VERSION,
+        ]);
+        foreach ([NetworkNameParents::VERSION, IPAddressParents::VERSION, GraphicCardParents::VERSION, ComponentParents::VERSION] as $version) {
+            $connection->states[$version] = ['complete' => true];
+        }
         $this->array(Releases::pendingVersions($connection))->isEmpty();
         $connection->states[Baseline::PHASE] = ['complete' => false, 'origin' => 'installed', 'next' => 1];
         $this->array(Releases::pendingVersions($connection))->isIdenticalTo(['2.2.0']);
-        $this->integer($connection->catalogueReads)->isIdenticalTo(4);
-        $this->integer($connection->journalReads)->isIdenticalTo(4);
+        $this->integer($connection->catalogueReads)->isIdenticalTo(5);
+        $this->integer($connection->journalReads)->isIdenticalTo(5);
     }
 }
 

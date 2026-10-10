@@ -222,8 +222,12 @@ class Item_SoftwareVersion extends DbTestCase
             $this->integer(ItemSoftwareVersionModel::countForVersion($version, [$child]))->isIdenticalTo(2);
             $this->integer(ItemSoftwareVersionModel::countForVersion($version, []))->isIdenticalTo(0);
             $connection = $DB->getDoctrineConnection();
-            $this->integer($connection->update('glpi_items_softwareversions', ['is_deleted' => true],
-                ['id' => $links[2]->getID()], ['is_deleted' => Types::BOOLEAN]))->isIdenticalTo(1);
+            $this->integer($connection->update(
+                'glpi_items_softwareversions',
+                ['is_deleted' => true],
+                ['id' => $links[2]->getID()],
+                ['is_deleted' => Types::BOOLEAN]
+            ))->isIdenticalTo(1);
             $this->integer(ItemSoftwareVersionModel::countForVersion($version))->isIdenticalTo(2);
             $writer = Orm::create($DB);
             $pending = $writer->find(ItemSoftwareVersion::class, (int)$links[0]->getID());
@@ -237,11 +241,19 @@ class Item_SoftwareVersion extends DbTestCase
                 $this->boolean($writer->contains($pending))->isTrue();
                 $this->boolean($pending->is_deleted)->isTrue();
             });
-            $this->integer($connection->update('glpi_computers', ['is_template' => true],
-                ['id' => $computers[0]->getID()], ['is_template' => Types::BOOLEAN]))->isIdenticalTo(1);
+            $this->integer($connection->update(
+                'glpi_computers',
+                ['is_template' => true],
+                ['id' => $computers[0]->getID()],
+                ['is_template' => Types::BOOLEAN]
+            ))->isIdenticalTo(1);
             $this->integer(ItemSoftwareVersionModel::countForVersion($version))->isIdenticalTo(1);
-            $this->integer($connection->update('glpi_computers', ['is_template' => false, 'is_deleted' => true],
-                ['id' => $computers[0]->getID()], ['is_template' => Types::BOOLEAN, 'is_deleted' => Types::BOOLEAN]))->isIdenticalTo(1);
+            $this->integer($connection->update(
+                'glpi_computers',
+                ['is_template' => false, 'is_deleted' => true],
+                ['id' => $computers[0]->getID()],
+                ['is_template' => Types::BOOLEAN, 'is_deleted' => Types::BOOLEAN]
+            ))->isIdenticalTo(1);
             $this->integer(ItemSoftwareVersionModel::countForVersion($version))->isIdenticalTo(1);
             ComputerModel::forceTable('glpi_phones');
             $this->exception(static fn () => ItemSoftwareVersionModel::countForVersion($version))
@@ -288,8 +300,12 @@ class Item_SoftwareVersion extends DbTestCase
                     } else {
                         if ($this->calls === 3) {
                             // Computer's count must finish before Phone's first conversion.
-                            $this->connection->update('glpi_items_softwareversions', ['is_deleted' => true],
-                                ['id' => $this->link], ['is_deleted' => Types::BOOLEAN]);
+                            $this->connection->update(
+                                'glpi_items_softwareversions',
+                                ['is_deleted' => true],
+                                ['id' => $this->link],
+                                ['is_deleted' => Types::BOOLEAN]
+                            );
                         }
                         $_SESSION['glpiactiveentities'] = [$this->child];
                     }
@@ -320,8 +336,12 @@ class Item_SoftwareVersion extends DbTestCase
                 ]);
             }
             $connection = $DB->getDoctrineConnection();
-            $this->integer($connection->update('glpi_items_softwareversions', ['is_deleted' => true],
-                ['id' => $links[1]->getID()], ['is_deleted' => Types::BOOLEAN]))->isIdenticalTo(1);
+            $this->integer($connection->update(
+                'glpi_items_softwareversions',
+                ['is_deleted' => true],
+                ['id' => $links[1]->getID()],
+                ['is_deleted' => Types::BOOLEAN]
+            ))->isIdenticalTo(1);
             $this->integer(ItemSoftwareVersionModel::countForVersion($version))->isIdenticalTo(1);
             $observer = new class () {
                 public int $loads = 0;

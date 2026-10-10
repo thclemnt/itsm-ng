@@ -84,7 +84,9 @@ class ProjectTask_Ticket extends DbTestCase
             $ids = $read();
             $this->array(array_map('intval', $ids))->contains((int)$finished->getID())->notContains((int)$open->getID());
             if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
-                foreach ($ids as $id) { $this->integer($id); }
+                foreach ($ids as $id) {
+                    $this->integer($id);
+                }
             }
             $render = static fn () => LegacyProjectTaskTicket::showForTicket($ticket);
             $this->output($render)->contains($openProject->getField('name'))->contains($unconfiguredProject->getField('name'))->notContains($finishedProject->getField('name'));
@@ -126,13 +128,18 @@ class ProjectTask_Ticket extends DbTestCase
                 public int $loads = 0;
                 public function postLoad(PostLoadEventArgs $event): void
                 {
-                    if ($event->getObject() instanceof ProjectStateEntity) { ++$this->loads; }
+                    if ($event->getObject() instanceof ProjectStateEntity) {
+                        ++$this->loads;
+                    }
                 }
             };
             $events->addEventListener(['postLoad'], $listener);
             $probe = new class ($connection) extends ScalarReadProbe {
                 public EventManager $events;
-                public function getEventManager(): EventManager { return $this->events; }
+                public function getEventManager(): EventManager
+                {
+                    return $this->events;
+                }
             };
             $probe->events = $events;
             $this->mockGenerator()->orphanize('__construct');

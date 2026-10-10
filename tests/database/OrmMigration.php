@@ -269,6 +269,17 @@ class OrmMigration extends GLPITestCase
                 $this->array($afterIndexes[$table][$name])->isIdenticalTo($definition, 'Every pre-existing physical index is retained');
             }
         }
+        // Historical index-only proof above finishes at its genuine predecessor.
+        // Current schema convergence also requires every appended public release.
+        $parents = $this->seedForwardParentFixtures($connection, 100);
+        $history->upgrade($connection);
+        $this->assertForwardParentFixtures($connection, $parents, 100);
+        $this->array(History::pendingVersions($connection))->isEmpty();
+        $completedRows = $this->rowBags($connection);
+        $completedLedger = Ledger::states($connection);
+        $history->upgrade($connection, static fn () => throw new LogicException('Completed history DDL replayed'));
+        $this->array($this->rowBags($connection))->isIdenticalTo($completedRows);
+        $this->array(Ledger::states($connection))->isIdenticalTo($completedLedger);
         $this->array((new SchemaCheck())->differences($connection))->isEmpty();
         if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
             $name = 'glpi_items_devicesensors_computers_id_typed';
@@ -305,6 +316,7 @@ class OrmMigration extends GLPITestCase
         $connection->insert('glpi_certificates', ['id' => 100, 'name' => 'Imported certificate']);
         $connection->insert('glpi_certificates_items', ['id' => 101, 'certificates_id' => 100, 'itemtype' => 'Computer', 'items_id' => $legacyId]);
         $connection->insert('glpi_logs', ['id' => 2147483646, 'itemtype' => 'Computer', 'items_id' => $legacyId, 'user_name' => 'Original administrator', 'old_value' => $audit]);
+        $parents = $this->seedForwardParentFixtures($connection, $legacyId);
         $ciphertext = Toolbox::sodiumEncrypt('Original encrypted configuration');
         $connection->update('glpi_configs', ['value' => $ciphertext], ['context' => 'core', 'name' => 'smtp_passwd']);
         $key = (new Upgrade($DB))->expectedSecurityKeyPath();
@@ -345,6 +357,7 @@ class OrmMigration extends GLPITestCase
             $this->array((new SchemaCheck())->differences($connection))->isEmpty();
             $this->array(History::pendingVersions($connection))->isEmpty();
             $this->boolean(History::isInstalling($connection))->isFalse();
+            $this->assertForwardParentFixtures($connection, $parents, $legacyId);
             $link = $connection->fetchAssociative('SELECT id, certificates_id, computers_id, items_id FROM glpi_certificates_items WHERE id = 101');
             $this->array(array_map('intval', $link))->isIdenticalTo(['id' => 101, 'certificates_id' => 100, 'computers_id' => $legacyId, 'items_id' => $legacyId]);
             $this->variable($connection->fetchOne('SELECT computermodels_id FROM glpi_computers WHERE id = ?', [$legacyId]))->isNull();
@@ -1143,6 +1156,119 @@ class OrmMigration extends GLPITestCase
         });
         $this->array($calls->getArrayCopy())->isIdenticalTo(['publish']);
         $this->array(Ledger::states($connection))->isIdenticalTo($before);
+    }
+
+    /** Populated adopted and opaque branches for each appended parent release. */
+    private function seedForwardParentFixtures(Connection $connection, int $computer): array
+    {
+        $connection->insert(
+            'glpi_networkports',
+            [
+                'id' => 1100,
+                'name' => 'Forward port',
+                'itemtype' => 'Computer',
+                'items_id' => $computer,
+                'entities_id' => 0
+            ]
+        );
+        foreach ([[1100, 'NetworkPort', 1100], [1101, 'PluginOpaqueParent', -9]] as [$id, $kind, $parent]) {
+            $connection->insert(
+                'glpi_networknames',
+                [
+                    'id' => $id,
+                    'name' => 'Forward name ' . $id,
+                    'itemtype' => $kind,
+                    'items_id' => $parent,
+                    'entities_id' => 0
+                ]
+            );
+        }
+        foreach ([[1100, 'NetworkName', 1100], [1101, 'PluginOpaqueParent', -9]] as [$id, $kind, $parent]) {
+            $connection->insert(
+                'glpi_ipaddresses',
+                [
+                    'id' => $id,
+                    'name' => '198.51.100.' . ($id - 1099),
+                    'itemtype' => $kind,
+                    'items_id' => $parent,
+                    'entities_id' => 0,
+                    'version' => 4
+                ]
+            );
+        }
+        $connection->insert(
+            'glpi_devicegraphiccards',
+            [
+                'id' => 1100,
+                'designation' => 'Forward graphic card',
+                'entities_id' => 0
+            ]
+        );
+        $connection->insert(
+            'glpi_devicenetworkcards',
+            [
+                'id' => 1100,
+                'designation' => 'Forward network card',
+                'entities_id' => 0
+            ]
+        );
+        foreach ([[1100, 'Computer', $computer], [1101, 'PluginOpaqueParent', -9]] as [$id, $kind, $parent]) {
+            $connection->insert(
+                'glpi_items_devicegraphiccards',
+                [
+                    'id' => $id,
+                    'devicegraphiccards_id' => 1100,
+                    'itemtype' => $kind,
+                    'items_id' => $parent,
+                    'entities_id' => 0,
+                    'serial' => "Forward O'Reilly " . $id
+                ]
+            );
+            $connection->insert(
+                'glpi_items_devicenetworkcards',
+                [
+                    'id' => $id,
+                    'devicenetworkcards_id' => 1100,
+                    'itemtype' => $kind,
+                    'items_id' => $parent,
+                    'entities_id' => 0,
+                    'serial' => "Forward O'Reilly " . $id
+                ]
+            );
+        }
+        return $this->forwardParentRows($connection);
+    }
+
+    /** Select original payload columns: appended ownership columns are tested separately. */
+    private function forwardParentRows(Connection $connection): array
+    {
+        $rows = [];
+        foreach (['glpi_networknames' => 'name', 'glpi_ipaddresses' => 'name',
+            'glpi_items_devicegraphiccards' => 'serial', 'glpi_items_devicenetworkcards' => 'serial'] as $table => $payload) {
+            $selected = $connection->fetchAllAssociative("SELECT id,itemtype,items_id,$payload FROM $table WHERE id IN (1100,1101) ORDER BY id");
+            foreach ($selected as &$row) {
+                // Historical integer widening must preserve identity, independently of driver scalar representation.
+                $row['id'] = (int)$row['id'];
+                $row['items_id'] = (int)$row['items_id'];
+            }
+            unset($row);
+            $rows[$table] = $selected;
+        }
+        return $rows;
+    }
+
+    private function assertForwardParentFixtures(Connection $connection, array $source, int $computer): void
+    {
+        $this->array($this->forwardParentRows($connection))->isIdenticalTo($source);
+        foreach (['glpi_networknames' => ['networkports_id', 1100],
+            'glpi_ipaddresses' => ['networknames_id', 1100],
+            'glpi_items_devicegraphiccards' => ['computers_id', $computer],
+            'glpi_items_devicenetworkcards' => ['computers_id', $computer]] as $table => [$owner, $id]) {
+            $this->integer((int)$connection->fetchOne("SELECT $owner FROM $table WHERE id = 1100"))->isIdenticalTo($id);
+            $this->variable($connection->fetchOne("SELECT opaque_parent_id FROM $table WHERE id = 1100"))->isNull();
+            $this->variable($connection->fetchOne("SELECT $owner FROM $table WHERE id = 1101"))->isNull();
+            $this->integer((int)$connection->fetchOne("SELECT opaque_parent_id FROM $table WHERE id = 1101"))->isIdenticalTo(-9);
+        }
     }
 
     private function rowBags(Connection $connection): array

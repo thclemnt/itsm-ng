@@ -519,11 +519,22 @@ class EntityRegistryCache extends test
                             $this->string($quoteName($name))->isIdenticalTo($quote->getColumnName($property, $metadata, $platform));
                         }
                         $reference = EntityRegistry::discriminatedReferences($metadata->getTableName())['items_id'] ?? null;
-                        foreach (array_keys($reference['selections'] ?? []) as $kind) {
-                            $property = $metadata->name::referenceAssociation($kind);
-                            $join = $metadata->associationMappings[$property]->joinColumns[0];
+                        $expectedSubjects = [];
+                        foreach ($reference['selections'] ?? [] as $selection) {
+                            // Resolve the real owning declaration, including adopted parents
+                            // whose entities have no generic referenceAssociation helper.
+                            $owners = array_filter($metadata->associationMappings, static fn ($association): bool =>
+                                $association->isToOneOwningSide() && count($association->joinColumns) === 1
+                                && $association->joinColumns[0]->name === $selection['column']);
+                            $this->array($owners)->hasSize(1);
+                            $property = array_key_first($owners);
+                            $association = $owners[$property];
+                            $join = $association->joinColumns[0];
+                            $this->string($manager->getClassMetadata($association->targetEntity)->getTableName())->isIdenticalTo($selection['target']);
                             $this->string($quoteName($projection['subjects'][$property]))->isIdenticalTo($quote->getJoinColumnName($join, $metadata, $platform));
+                            $expectedSubjects[$property] = [$join->name, isset($join->quoted)];
                         }
+                        $this->array($projection['subjects'])->isIdenticalTo($expectedSubjects);
                     }
                     if (count($metadata->identifier) === 1 && $metadata->hasField($metadata->identifier[0])) {
                         $property = $metadata->identifier[0];

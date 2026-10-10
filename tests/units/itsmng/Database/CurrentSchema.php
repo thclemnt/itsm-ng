@@ -711,7 +711,12 @@ class CurrentSchema extends test
             if ($variant === 'required_join') {
                 $metadata->associationMappings[$property]->joinColumns[0]->nullable = false;
             } elseif ($variant === 'foreign_root') {
-                $metadata->associationMappings[$property]->targetEntity = Calendar::class;
+                $association = $metadata->associationMappings[$property];
+                $mapping = $association->toArray();
+                $mapping['targetEntity'] = Calendar::class;
+                // Doctrine association targets are readonly constructor arguments.
+                $metadata->associationMappings[$property] = $association::fromMappingArray($mapping);
+                $this->array($metadata->associationMappings[$property]->toArray())->isIdenticalTo($mapping);
             } elseif ($variant === 'wrong_identifier') {
                 $metadata->fieldMappings[$metadata->getIdentifierFieldNames()[0]]->type = Types::STRING;
             } elseif ($variant === 'nullable_flag') {

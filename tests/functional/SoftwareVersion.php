@@ -177,7 +177,8 @@ class SoftwareVersion extends DbTestCase
                 str_contains($query['sql'], 'glpi_softwareversions')
                 && in_array((int)$software->getID(), array_map('intval', $query['params']), true))))->isNotEmpty();
             $this->string($originalAdapter->getDoctrineConnection()->fetchOne(
-                'SELECT name FROM glpi_softwareversions WHERE id=?', [$version->getID()]
+                'SELECT name FROM glpi_softwareversions WHERE id=?',
+                [$version->getID()]
             ))->isIdenticalTo('Stored custom release');
         } finally {
             $DB = $originalAdapter;
