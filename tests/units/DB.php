@@ -43,6 +43,12 @@ use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
 use LogicException;
 use ReflectionProperty;
+use ReflectionMethod;
+use Throwable;
+use itsmng\Database\Entity\Vlan as VlanEntity;
+use itsmng\Database\MutationCleanupFailure;
+use itsmng\Database\Repository\NetworkPortVlanRepository;
+use itsmng\Domain\VlanMembershipService;
 use itsmng\Database\MySQLManagedConnection;
 use itsmng\Database\Orm;
 use mock\DBmysql as PreparedReadAdapter;
@@ -130,6 +136,118 @@ class DB extends \GLPITestCase
         } finally {
             $registry->override(Types::STRING, $original);
             $selected->close();
+            $other->close();
+        }
+    }
+
+    public function testVlanReadRetainsSelectedOwnershipAndBothCleanupFailures(): void
+    {
+        $parameters = ['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0'];
+        $other = DriverManager::getConnection($parameters);
+        $read = new ReflectionMethod(VlanMembershipService::class, 'read');
+        $repositoryManager = new ReflectionProperty(NetworkPortVlanRepository::class, 'em');
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new PreparedReadAdapter();
+        try {
+            foreach ([false, true] as $shared) {
+                $selected = DriverManager::getConnection($parameters + ($shared ? ['wrapperClass' => MySQLManagedConnection::class] : []));
+                $external = Orm::forConnection($selected);
+                $live = new VlanEntity();
+                $live->name = 'external pending VLAN';
+                $external->persist($live);
+                try {
+                    foreach ([[false, false, false], [true, false, false], [false, true, false], [true, true, false], [true, true, true]] as [$failOperation, $failCleanup, $sameFailure]) {
+                        $route = $selected;
+                        $this->calling($adapter)->getDoctrineConnection = static function () use (&$route) {
+                            return $route;
+                        };
+                        $primary = new LogicException('VLAN read primary');
+                        $cleanup = $sameFailure ? $primary : new LogicException('VLAN read cleanup');
+                        $clears = new class ($failCleanup, $cleanup) {
+                            public int $count = 0;
+                            public function __construct(private bool $fail, private Throwable $cleanup)
+                            {
+                            }
+                            public function onClear(): void
+                            {
+                                ++$this->count;
+                                if ($this->fail) {
+                                    throw $this->cleanup;
+                                }
+                            }
+                        };
+                        $caught = null;
+                        try {
+                            $result = $read->invoke(new VlanMembershipService($adapter), function (NetworkPortVlanRepository $repository) use (
+                                $repositoryManager,
+                                $selected,
+                                $shared,
+                                &$route,
+                                $other,
+                                $clears,
+                                $failOperation,
+                                $primary
+                            ): int {
+                                $manager = $repositoryManager->getValue($repository);
+                                $this->object($manager->getConnection())->isIdenticalTo($selected);
+                                if ($shared) {
+                                    $this->boolean($selected->ownsApplicationEntityManager($manager))->isTrue();
+                                }
+                                $manager->getEventManager()->addEventListener([Events::onClear], $clears);
+                                $route = $other;
+                                if ($failOperation) {
+                                    throw $primary;
+                                }
+                                return 37;
+                            });
+                            $this->integer($result)->isIdenticalTo(37);
+                        } catch (Throwable $error) {
+                            $caught = $error;
+                        }
+                        $this->integer($clears->count)->isIdenticalTo(1);
+                        if ($failOperation && $failCleanup) {
+                            $this->object($caught)->isInstanceOf(MutationCleanupFailure::class);
+                            $this->object($caught->primary)->isIdenticalTo($primary);
+                            $this->object($caught->cleanup)->isIdenticalTo($cleanup);
+                        } elseif ($failOperation || $failCleanup) {
+                            $this->object($caught)->isIdenticalTo($failOperation ? $primary : $cleanup);
+                        } else {
+                            $this->variable($caught)->isNull();
+                        }
+                        $this->boolean($external->contains($live))->isTrue();
+                        $this->string($live->name)->isIdenticalTo('external pending VLAN');
+                        $this->boolean($selected->isConnected())->isFalse();
+                        $this->boolean($other->isConnected())->isFalse();
+                    }
+                    if ($shared) {
+                        $route = $selected;
+                        $selected->withApplicationEntityManager(function (EntityManager $parent) use ($read, $adapter, $repositoryManager, $external, $live): void {
+                            $parentLive = new VlanEntity();
+                            $parent->persist($parentLive);
+                            $clears = new class () {
+                                public int $count = 0;
+                                public function onClear(): void
+                                {
+                                    ++$this->count;
+                                }
+                            };
+                            $this->integer($read->invoke(new VlanMembershipService($adapter), function (NetworkPortVlanRepository $repository) use ($repositoryManager, $parent, $clears): int {
+                                $nested = $repositoryManager->getValue($repository);
+                                $this->boolean($nested === $parent)->isFalse();
+                                $nested->getEventManager()->addEventListener([Events::onClear], $clears);
+                                return 41;
+                            }))->isIdenticalTo(41);
+                            $this->integer($clears->count)->isIdenticalTo(1);
+                            $this->boolean($parent->contains($parentLive))->isTrue();
+                            $this->boolean($external->contains($live))->isTrue();
+                        });
+                    }
+                } finally {
+                    $external->clear();
+                    $selected->close();
+                }
+            }
+        } finally {
             $other->close();
         }
     }

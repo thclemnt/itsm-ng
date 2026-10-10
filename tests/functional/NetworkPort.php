@@ -48,6 +48,7 @@ use ReflectionProperty;
 use NetworkPort_Vlan;
 use itsmng\Database\Entity\NetworkPort as NetworkPortEntity;
 use itsmng\Database\Entity\NetworkPortAggregate as NetworkPortAggregateEntity;
+use itsmng\Database\Entity\Vlan as VlanEntity;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\NetworkPortAggregateRepository;
 use itsmng\Database\Repository\NetworkPortVlanRepository;
@@ -672,6 +673,36 @@ class NetworkPort extends DbTestCase
             // These narrow reads type their projected values without loading
             // managed entities or relying on a previous identity-map observation.
             $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+
+            $live = $manager->find(VlanEntity::class, $vlanId);
+            $this->object($live)->isInstanceOf(VlanEntity::class);
+            $service = new VlanMembershipService($writer);
+            $this->array($service->membershipsForPort($portId))->isIdenticalTo([$expected]);
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $beforeReads = $factories->getValue();
+            $portRows = $service->forPort($portId);
+            $vlanRows = $service->forVlan($vlanId);
+            $this->integer((int)$portRows[0]['assocID'])->isIdenticalTo($id);
+            $this->integer((int)$portRows[0]['id'])->isIdenticalTo($vlanId);
+            $this->integer((int)$vlanRows[0]['assocID'])->isIdenticalTo($id);
+            $this->integer((int)$vlanRows[0]['id'])->isIdenticalTo($portId);
+            $this->array($service->membershipsForPort($portId))->isIdenticalTo([$expected]);
+            $this->integer($service->countForPort($portId))->isIdenticalTo(1);
+            $this->integer($service->countForVlan($vlanId))->isIdenticalTo(1);
+            $this->integer($connection->update('glpi_vlans', ['name' => 'fresh owned VLAN'], ['id' => $vlanId]))->isIdenticalTo(1);
+            $this->integer($connection->update('glpi_networkports', ['name' => 'fresh owned port'], ['id' => $portId]))->isIdenticalTo(1);
+            $this->integer($connection->update('glpi_networkports_vlans', ['tagged' => (int)!$tagged], ['id' => $id]))->isIdenticalTo(1);
+            $this->string($service->forPort($portId)[0]['name'])->isIdenticalTo('fresh owned VLAN');
+            $this->string($service->forVlan($vlanId)[0]['name'])->isIdenticalTo('fresh owned port');
+            $expected['tagged'] = !$tagged;
+            $this->array($service->membershipsForPort($portId))->isIdenticalTo([$expected]);
+            $this->integer($service->countForPort(PHP_INT_MAX))->isIdenticalTo(0);
+            $this->integer($service->countForVlan(PHP_INT_MAX))->isIdenticalTo(0);
+            $this->string($portRows[0]['name'])->isIdenticalTo($vlan->fields['name']);
+            $this->string($vlanRows[0]['name'])->isIdenticalTo($port->fields['name']);
+            $this->boolean($manager->contains($live))->isTrue();
+            $this->string($live->name)->isIdenticalTo($vlan->fields['name']);
+            $this->integer($factories->getValue() - $beforeReads)->isIdenticalTo(0);
             $this->variable($DB)->isIdenticalTo($writer);
             $this->variable($DB->getDoctrineConnection())->isIdenticalTo($connection);
             $scope->assertActive();

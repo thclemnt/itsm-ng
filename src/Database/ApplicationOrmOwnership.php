@@ -23,10 +23,18 @@ trait ApplicationOrmOwnership
     {
         if ($this->applicationEntityManagerActive) {
             $manager = Orm::forConnection($this);
+            $primary = null;
             try {
                 return $operation($manager);
+            } catch (Throwable $error) {
+                $primary = $error;
+                throw $error;
             } finally {
-                $manager->clear();
+                try {
+                    $manager->clear();
+                } catch (Throwable $cleanup) {
+                    throw $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
+                }
             }
         }
         if ($this->applicationTypes !== Type::getTypeRegistry()->getMap()) {
@@ -41,9 +49,11 @@ trait ApplicationOrmOwnership
         }
         $manager = $this->applicationEntityManager;
         $this->applicationEntityManagerActive = true;
+        $primary = null;
         try {
             return $operation($manager);
         } catch (Throwable $error) {
+            $primary = $error;
             $this->resetApplicationEntityManager();
             throw $error;
         } finally {
@@ -51,9 +61,9 @@ trait ApplicationOrmOwnership
                 // Legacy DBAL producers do not maintain an ORM identity map.
                 // Only this completed operation owns the state being detached.
                 $manager->clear();
-            } catch (Throwable $error) {
+            } catch (Throwable $cleanup) {
                 $this->resetApplicationEntityManager();
-                throw $error;
+                throw $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
             } finally {
                 $this->applicationEntityManagerActive = false;
                 if (!$manager->isOpen()) {

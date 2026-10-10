@@ -22,6 +22,8 @@ use Doctrine\ORM\Events;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Mapping\MappingException;
 use LogicException;
+use Throwable;
+use itsmng\Database\MutationCleanupFailure;
 use Psr\Log\AbstractLogger;
 use mock\Symfony\Component\Cache\Psr16Cache as MockCache;
 use ReflectionClass;
@@ -299,6 +301,96 @@ class EntityRegistryCache extends test
             $otherRoute->close();
         }
 
+    }
+
+    public function testApplicationCleanupRetainsActualFailuresAndNestedOwner(): void
+    {
+        $application = DriverManager::getConnection([
+            'driver' => 'pdo_mysql', 'serverVersion' => '8.4.0', 'wrapperClass' => MySQLManagedConnection::class,
+        ]);
+        try {
+            foreach ([false, true] as $nested) {
+                foreach ([[false, false, false], [true, false, false], [false, true, false], [true, true, false], [true, true, true]] as [$failOperation, $failCleanup, $sameFailure]) {
+                    $primary = new LogicException('Primary application failure');
+                    $cleanup = $sameFailure ? $primary : new LogicException('Application cleanup failure');
+                    $clears = new class ($failCleanup, $cleanup) {
+                        public int $count = 0;
+                        public function __construct(private bool $fail, private Throwable $failure)
+                        {
+                        }
+                        public function onClear(): void
+                        {
+                            ++$this->count;
+                            if ($this->fail) {
+                                throw $this->failure;
+                            }
+                        }
+                    };
+                    $failed = null;
+                    $parent = null;
+                    $caught = null;
+                    $result = null;
+                    $operation = static function () use ($application, $primary, $clears, $failOperation, &$failed): int {
+                        return Orm::withConnection($application, static function (EntityManager $manager) use ($primary, $clears, $failOperation, &$failed): int {
+                            $failed = $manager;
+                            $manager->getEventManager()->addEventListener(Events::onClear, $clears);
+                            if ($failOperation) {
+                                throw $primary;
+                            }
+                            return 37;
+                        });
+                    };
+                    if ($nested) {
+                        $result = Orm::withConnection($application, function (EntityManager $manager) use ($application, $operation, &$parent, &$caught): ?int {
+                            $parent = $manager;
+                            $sentinel = new Config();
+                            $manager->persist($sentinel);
+                            $value = null;
+                            try {
+                                $value = $operation();
+                            } catch (Throwable $error) {
+                                $caught = $error;
+                            }
+                            $this->boolean($application->ownsApplicationEntityManager($manager))->isTrue();
+                            $this->boolean($manager->contains($sentinel))->isTrue();
+                            return $value;
+                        });
+                    } else {
+                        try {
+                            $result = $operation();
+                        } catch (Throwable $error) {
+                            $caught = $error;
+                        }
+                    }
+                    if ($failOperation && $failCleanup) {
+                        $this->object($caught)->isInstanceOf(MutationCleanupFailure::class);
+                        $this->object($caught->primary)->isIdenticalTo($primary);
+                        $this->object($caught->cleanup)->isIdenticalTo($cleanup);
+                    } elseif ($failOperation || $failCleanup) {
+                        $this->object($caught)->isIdenticalTo($failOperation ? $primary : $cleanup);
+                    } else {
+                        $this->variable($caught)->isNull();
+                        $this->integer($result)->isIdenticalTo(37);
+                    }
+                    $this->integer($clears->count)->isIdenticalTo(1);
+                    Orm::withConnection($application, function (EntityManager $manager) use ($failed, $nested, $parent, $failOperation, $failCleanup): void {
+                        if ($nested) {
+                            $this->object($manager)->isNotIdenticalTo($failed);
+                            $this->object($manager)->isIdenticalTo($parent);
+                        } elseif ($failOperation || $failCleanup) {
+                            $this->object($manager)->isNotIdenticalTo($failed);
+                            $this->object($manager->getConfiguration()->getQueryCache())->isNotIdenticalTo($failed->getConfiguration()->getQueryCache());
+                        } else {
+                            $this->object($manager)->isIdenticalTo($failed);
+                        }
+                        $this->integer($manager->getUnitOfWork()->size())->isIdenticalTo(0);
+                    });
+                }
+            }
+            $this->boolean($application->isConnected())->isFalse();
+        } finally {
+            $application->close();
+        }
     }
 
     public function testPrivateQueryCacheReusesParsingWithFreshValuesAndLimits(): void

@@ -6,6 +6,7 @@ namespace itsmng\Domain;
 
 use DBAdapter;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\ORM\EntityManager;
 use Log;
 use NetworkPort_Vlan;
 use QueuedNotification;
@@ -105,21 +106,29 @@ final class VlanMembershipService
 
     private function read(callable $operation): mixed
     {
-        // Legacy writers do not synchronize Doctrine collections or identity maps.
-        // A repeated call retains the connection, not a previous managed read view.
-        $manager = Orm::create($this->database);
-        $primary = null;
-        try {
-            return $operation(new NetworkPortVlanRepository($manager));
-        } catch (Throwable $error) {
-            $primary = $error;
-            throw $error;
-        } finally {
-            try {
-                $manager->clear();
-            } catch (Throwable $cleanup) {
-                throw $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
+        // Select the same route as create(), before entering a value-only scope.
+        $connection = $this->database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($this->database, $connection);
+        return Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $operation): mixed {
+            // The supplied manager belongs to the enclosing application scope.
+            if ($manager !== null) {
+                return $operation(new NetworkPortVlanRepository($manager));
             }
-        }
+            // Custom connections retain their original independent owner and cleanup.
+            $manager = Orm::forConnection($connection);
+            $primary = null;
+            try {
+                return $operation(new NetworkPortVlanRepository($manager));
+            } catch (Throwable $error) {
+                $primary = $error;
+                throw $error;
+            } finally {
+                try {
+                    $manager->clear();
+                } catch (Throwable $cleanup) {
+                    throw $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
+                }
+            }
+        });
     }
 }
