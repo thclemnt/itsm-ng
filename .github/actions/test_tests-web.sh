@@ -57,12 +57,21 @@ for attempt in {1..50}; do
 done
 if [[ "$ready" != true ]] || ! kill -0 "$server" 2>/dev/null; then exit 1; fi
 
+test_files=(tests/web/APIRest.php tests/web/Telemetry.php)
+if php -r 'exit(extension_loaded("xmlrpc") ? 0 : 1);'; then
+  test_files+=(tests/web/APIXmlrpc.php)
+else
+  echo "::notice title=Optional XML-RPC tests not run::The native xmlrpc extension is absent; this job covers REST API and web telemetry only."
+fi
+
 vendor/bin/atoum \
   -p 'php -d memory_limit=512M' \
   --debug \
   --force-terminal \
   --use-dot-report \
   --bootstrap-file tests/bootstrap.php \
+  --fail-if-skipped-methods \
+  --fail-if-void-methods \
   --no-code-coverage \
   --max-children-number 1 \
-  -d tests/web
+  -f "${test_files[@]}"

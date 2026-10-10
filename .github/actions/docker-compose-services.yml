@@ -22,7 +22,7 @@ services:
   openldap:
     profiles: [ldap]
     container_name: "openldap"
-    image: "${OPENLDAP_IMAGE:-mirror.gcr.io/osixia/openldap:1.5.0}"
+    image: "${OPENLDAP_IMAGE:-osixia/openldap:1.5.0}"
     environment:
       LDAP_ORGANISATION: "GLPI"
       LDAP_DOMAIN: "glpi.org"
