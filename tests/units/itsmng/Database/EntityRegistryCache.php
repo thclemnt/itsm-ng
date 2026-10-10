@@ -12,6 +12,7 @@ use itsmng\Database\Entity\User;
 use Doctrine\ORM\Id\AssignedGenerator;
 use Doctrine\DBAL\Types\Type as DbalType;
 use Doctrine\DBAL\Types\StringType;
+use Doctrine\DBAL\Types\TypeRegistry;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
@@ -228,6 +229,39 @@ class EntityRegistryCache extends test
             } finally {
                 DbalType::getTypeRegistry()->override('string', $originalString);
             }
+            // Registry replacement with the same objects keeps the same admission facts.
+            $registry = DbalType::getTypeRegistry();
+            $registryProperty = new ReflectionProperty(DbalType::class, 'typeRegistry');
+            $privateManager = null;
+            Orm::withConnection($application, static function (EntityManager $manager) use (&$privateManager): void {
+                $privateManager = $manager;
+            });
+            try {
+                $replacement = new TypeRegistry($registry->getMap());
+                $registryProperty->setValue(null, $replacement);
+                Orm::withConnection($application, function (EntityManager $manager) use ($privateManager): void {
+                    $this->object($manager)->isIdenticalTo($privateManager);
+                });
+                $replacement->register('extension_admission_fixture', new StringType());
+                Orm::withConnection($application, function (EntityManager $manager) use (&$privateManager): void {
+                    $this->object($manager)->isNotIdenticalTo($privateManager);
+                    $this->object($manager->getConfiguration()->getQueryCache())->isInstanceOf(ArrayAdapter::class);
+                    $privateManager = $manager;
+                });
+                // Even an unused custom SQL type must reject the private admission.
+                $replacement->override('extension_admission_fixture', $converter);
+                Orm::withConnection($application, function (EntityManager $manager) use ($privateManager): void {
+                    $this->object($manager)->isNotIdenticalTo($privateManager);
+                    $this->variable($manager->getConfiguration()->getQueryCache())->isNull();
+                });
+            } finally {
+                $registryProperty->setValue(null, $registry);
+            }
+            $this->boolean(DbalType::getTypeRegistry()->has('extension_admission_fixture'))->isFalse();
+            Orm::withConnection($application, function (EntityManager $manager) use ($privateManager): void {
+                $this->object($manager)->isNotIdenticalTo($privateManager);
+                $this->object($manager->getConfiguration()->getQueryCache())->isInstanceOf(ArrayAdapter::class);
+            });
             $rejected = null;
             $this->exception(function () use ($application, &$rejected): void {
                 Orm::withConnection($application, static function (EntityManager $manager) use (&$rejected): void {
