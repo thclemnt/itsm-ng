@@ -168,6 +168,30 @@ class IPNetwork extends DbTestCase
                 'ipnetworks_id'  => $ipnetworks_id,
             ]
         ))->isEqualTo(1);
+
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $condition = [
+            'address' => "10.$suffix.30.20", 'netmask' => '255.255.255.255',
+            'fields' => ['id', 'name'], 'where' => ['id' => $ipnetworks_id],
+        ];
+        $initial = Network::searchNetworks('contains', $condition, 0, false);
+        $this->array(array_map('intval', array_column($initial, 'id')))->isIdenticalTo([$ipnetworks_id]);
+        $this->string($initial[0]['name'])->isIdenticalTo($ipnetwork->fields['name']);
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $before = $factories->getValue();
+        try {
+            $this->integer($connection->update('glpi_ipnetworks', ['name' => 'Current matching network'], ['id' => $ipnetworks_id]))
+                ->isIdenticalTo(1);
+            $current = Network::searchNetworks('contains', $condition, 0, false);
+            $this->array(array_map('intval', array_column($current, 'id')))->isIdenticalTo([$ipnetworks_id]);
+            $this->string($current[0]['name'])->isIdenticalTo('Current matching network');
+            $this->array(Network::searchNetworks('contains', $condition + ['exclude IDs' => [$ipnetworks_id]], 0, false))
+                ->isEmpty();
+        } finally {
+            $connection->update('glpi_ipnetworks', ['name' => $initial[0]['name']], ['id' => $ipnetworks_id]);
+        }
+        $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
     }
 
     public function testIpNetworkVlanAssignAndUnassign()

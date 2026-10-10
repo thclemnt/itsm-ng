@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
 * */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\IPNetworkRepository;
 
@@ -629,15 +630,18 @@ class IPNetwork extends CommonImplicitTreeDropdown
         if (!is_array($criteria)) {
             throw new InvalidArgumentException('Network filters must use structured field criteria.');
         }
-        return (new IPNetworkRepository(Orm::create($DB)))->matching(
-            $relation,
-            $address,
-            $mask,
-            (int)$version,
-            array_values(array_unique($entitiesID)),
-            array_values($fields),
-            (array)($condition['exclude IDs'] ?? []),
-            $criteria
+        return Orm::read(
+            $DB,
+            static fn (EntityManager $manager): array => (new IPNetworkRepository($manager))->matching(
+                $relation,
+                $address,
+                $mask,
+                (int)$version,
+                array_values(array_unique($entitiesID)),
+                array_values($fields),
+                (array)($condition['exclude IDs'] ?? []),
+                $criteria
+            )
         );
     }
 
