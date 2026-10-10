@@ -7,6 +7,7 @@ namespace itsmng\Domain;
 use CommonDBTM;
 use DBAdapter;
 use Doctrine\DBAL\Connection;
+use Doctrine\ORM\EntityManager;
 use InvalidArgumentException;
 use Item_SoftwareLicense;
 use Item_SoftwareVersion;
@@ -14,6 +15,7 @@ use itsmng\Database\ConnexityInput;
 use itsmng\Database\Entity\ItemSoftwareLicense;
 use itsmng\Database\LifecycleModelJournal;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\SoftwareAssignmentRepository;
 use itsmng\Database\Repository\SoftwareInstallationRepository;
 use itsmng\Database\Repository\SoftwareRepository;
@@ -24,12 +26,14 @@ use Toolbox;
 /** Installation ownership and allocation eligibility share their aggregate writer. */
 final class SoftwareAssignmentService
 {
+    private EntityManager $manager;
     private SoftwareAssignmentRepository $assignments;
     private SoftwareRepository $software;
 
     public function __construct(private DBAdapter $database)
     {
         $manager = Orm::create($database);
+        $this->manager = $manager;
         $this->assignments = new SoftwareAssignmentRepository($manager);
         $this->software = new SoftwareRepository($manager);
     }
@@ -63,7 +67,12 @@ final class SoftwareAssignmentService
     {
         SoftwareMutation::assertSupportedIsolation($this->database);
         $subjects = [[$kind, $id]];
-        $installations = new SoftwareInstallationRepository(Orm::create($this->database));
+        $connection = $this->database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($this->database, $connection);
+        // Completed scalar snapshots may use this aggregate's live owner; never clear or flush it.
+        $manager = $connection === $this->manager->getConnection() && Orm::prepareReadProjection($connection)
+            ? $this->manager : Orm::forConnection($connection);
+        $installations = new SoftwareInstallationRepository($manager);
         $versions = $installations->installationsForTransfer($kind, $id, []);
         $software = $this->assignments->softwareIdsForVersions(array_column($versions, 'softwareversions_id'));
         $licenses = $this->assignments->licensesForSubject($kind, $id, current: false);

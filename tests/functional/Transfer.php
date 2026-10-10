@@ -806,6 +806,60 @@ class Transfer extends DbTestCase
         });
     }
 
+    public function testTransferInstallationSnapshotsPreserveUnflushedAggregateState(): void
+    {
+        $this->login();
+        $this->withSoftwareOwnerQueryProbe(function ($database, $connection, $logger): void {
+            $fixture = Orm::create($database);
+            $root = $fixture->getReference(Entity::class, (int)getItemByTypeName('Entity', '_test_root_entity', true));
+            $software = new SoftwareEntity();
+            $software->entities = $root;
+            $software->name = 'Persisted transfer software';
+            $fixture->persist($software);
+            $unrelated = new SoftwareEntity();
+            $unrelated->entities = $root;
+            $unrelated->name = 'Persisted unrelated software';
+            $fixture->persist($unrelated);
+            $computer = new ComputerEntity();
+            $computer->entities = $root;
+            $fixture->persist($computer);
+            $version = new SoftwareVersionEntity();
+            $version->entities = $root;
+            $version->softwares = $software;
+            $version->name = 'Persisted transfer version';
+            $fixture->persist($version);
+            $installation = new ItemSoftwareVersion();
+            $installation->itemtype = 'Computer';
+            $installation->entities = $root;
+            $installation->computer = $computer;
+            $installation->softwareversions = $version;
+            $fixture->persist($installation);
+            $fixture->flush();
+            $before = $connection->fetchAllAssociative('SELECT id, softwareversions_id, computers_id FROM glpi_items_softwareversions WHERE computers_id=? ORDER BY id', [$computer->id]);
+
+            $service = new SoftwareAssignmentService($database);
+            // Pending unrelated software survives the selected owner's intentional refresh.
+            $owner = (new ReflectionProperty(SoftwareAssignmentService::class, 'manager'))->getValue($service);
+            $ownedSoftware = $owner->find(SoftwareEntity::class, $unrelated->id);
+            $ownedVersion = $owner->find(SoftwareVersionEntity::class, $version->id);
+            $ownedSoftware->name = 'Pending aggregate software';
+            $ownedVersion->name = 'Pending aggregate version';
+            $software->name = 'Pending independent fixture edit';
+            for ($iteration = 0; $iteration < 2; ++$iteration) {
+                $service->lockTransferSubject('Computer', $computer->id);
+                $this->boolean($owner->contains($ownedSoftware))->isTrue();
+                $this->boolean($owner->contains($ownedVersion))->isTrue();
+                $this->string($ownedSoftware->name)->isIdenticalTo('Pending aggregate software');
+                $this->string($ownedVersion->name)->isIdenticalTo('Pending aggregate version');
+                $this->boolean($fixture->contains($software))->isTrue();
+                $this->string($software->name)->isIdenticalTo('Pending independent fixture edit');
+                $this->string($connection->fetchOne('SELECT name FROM glpi_softwares WHERE id=?', [$unrelated->id]))->isIdenticalTo('Persisted unrelated software');
+                $this->string($connection->fetchOne('SELECT name FROM glpi_softwareversions WHERE id=?', [$version->id]))->isIdenticalTo('Persisted transfer version');
+                $this->array($connection->fetchAllAssociative('SELECT id, softwareversions_id, computers_id FROM glpi_items_softwareversions WHERE computers_id=? ORDER BY id', [$computer->id]))->isIdenticalTo($before);
+            }
+        });
+    }
+
     public function testManyInstalledVersionsUseBoundedOwnerReads(): void
     {
         $this->login();
