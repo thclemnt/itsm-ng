@@ -31,8 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
-use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\SharedContentRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -63,12 +64,11 @@ class Group_RSSFeed extends CommonDBRelation
     {
         global $DB;
 
-        $groups = [];
-        $rows = (new RecordRepository(Orm::create($DB)))
-            ->matching(self::getTable(), ['rssfeeds_id' => $rssfeeds_id], 'id');
-        foreach ($rows as $data) {
-            $groups[$data['groups_id']][] = $data;
-        }
-        return $groups;
+        return Orm::readPrepared(
+            $DB,
+            static fn (): array => [$rssfeeds_id, self::getTable()],
+            static fn (EntityManager $em, array $prepared): array =>
+                (new SharedContentRepository($em))->rssfeedGroups($prepared[0], $prepared[1])
+        );
     }
 }
