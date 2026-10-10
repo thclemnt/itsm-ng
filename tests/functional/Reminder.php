@@ -68,9 +68,13 @@ class Reminder extends DbTestCase
             $group = $this->createItem(Group::class, ['name' => 'Calendar group ' . $this->getUniqueString(),
                 'entities_id' => (int)$_SESSION['glpiactive_entity']]);
             $name = 'Calendar reminder ' . $this->getUniqueString();
-            $reminder = $this->createItem(ReminderModel::class, ['name' => $name, 'users_id' => $user,
-                'text' => 'Initial calendar text', 'state' => Planning::TODO, 'is_planned' => 1,
-                'plan' => ['begin' => '2030-01-01 12:00:00', 'end' => '2030-01-01 13:00:00']]);
+            $plan = ['begin' => '2030-01-01 12:00:00', 'end' => '2030-01-01 13:00:00'];
+            $input = ['name' => $name, 'users_id' => $user, 'text' => 'Initial calendar text',
+                'state' => Planning::TODO, 'is_planned' => 1, 'plan' => $plan];
+            $reminder = new ReminderModel();
+            $id = $reminder->add($input);
+            unset($input['plan']); // PlanningEvent consumes this control input into stored dates.
+            $this->checkInput($reminder, $id, $input + $plan);
             $this->createItem(Group_Reminder::class, ['reminders_id' => $reminder->getID(), 'groups_id' => $group->getID(),
                 'entities_id' => (int)$_SESSION['glpiactive_entity'], 'is_recursive' => 0]);
             $groupCalendars = static fn (): array => ReminderModel::getGroupItemsAsVCalendars($group->getID());
@@ -123,8 +127,13 @@ class Reminder extends DbTestCase
         $user = (int)Session::getLoginUserID();
         $explicit = $this->createItem(ReminderModel::class, ['name' => 'Explicit expired reminder', 'users_id' => $user,
             'text' => 'Expired visibility window', 'end_view_date' => '2000-01-01 00:00:00']);
-        $planned = $this->createItem(ReminderModel::class, ['name' => 'Expired planned reminder', 'users_id' => $user,
-            'text' => 'Expired planning window', 'plan' => ['begin' => '1999-12-31 12:00:00', 'end' => '2000-01-01 00:00:00']]);
+        $plan = ['begin' => '1999-12-31 12:00:00', 'end' => '2000-01-01 00:00:00'];
+        $input = ['name' => 'Expired planned reminder', 'users_id' => $user,
+            'text' => 'Expired planning window', 'plan' => $plan];
+        $planned = new ReminderModel();
+        $id = $planned->add($input);
+        unset($input['plan']);
+        $this->checkInput($planned, $id, $input + $plan + ['is_planned' => 1]);
         $kept = $this->createItem(ReminderModel::class, ['name' => 'Kept reminder', 'users_id' => $user,
             'text' => 'Unplanned reminder remains', 'is_planned' => 0]);
         $connection = $DB->getDoctrineConnection();
