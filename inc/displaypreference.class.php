@@ -34,7 +34,6 @@
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\LegacyValues;
 use itsmng\Database\Orm;
-use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\DisplayPreferenceRepository;
 
 if (!defined('GLPI_ROOT')) {
@@ -63,8 +62,15 @@ class DisplayPreference extends CommonDBTM
     public function prepareInputForAdd($input)
     {
         global $DB;
-        $input['rank'] = (new DisplayPreferenceRepository(Orm::create($DB)))
-            ->nextRank(LegacyValues::decode($input['itemtype']), (int)$input['users_id']);
+        $input['rank'] = Orm::readPrepared(
+            $DB,
+            static function () use ($input): array {
+                $arguments = static fn (string $type, int $owner): array => [$type, $owner];
+                return $arguments(LegacyValues::decode($input['itemtype']), (int)$input['users_id']);
+            },
+            static fn (EntityManager $manager, array $arguments): int =>
+                (new DisplayPreferenceRepository($manager))->nextRank(...$arguments)
+        );
         return $input;
     }
 
@@ -117,12 +123,15 @@ class DisplayPreference extends CommonDBTM
     public static function getForTypeUser($itemtype, $user_id)
     {
         global $DB;
-        $database = $DB;
-        $connection = $database->getDoctrineConnection();
-        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
-        return Orm::withReadConnection($connection, static fn (?EntityManager $manager): array =>
-            (new DisplayPreferenceRepository($manager ?? Orm::forConnection($connection)))
-                ->columns($itemtype, (int)$user_id));
+        return Orm::readPrepared(
+            $DB,
+            static function () use ($itemtype, $user_id): array {
+                $arguments = static fn (string $type, int $owner): array => [$type, $owner];
+                return $arguments($itemtype, (int)$user_id);
+            },
+            static fn (EntityManager $manager, array $arguments): array =>
+                (new DisplayPreferenceRepository($manager))->columns(...$arguments)
+        );
     }
 
 
@@ -150,6 +159,21 @@ class DisplayPreference extends CommonDBTM
             }
         }
         return $repository->activate($type, $owner, $fallback);
+    }
+
+    /** Complete rows before form rendering and plugin callbacks. */
+    private static function preferenceRows($itemtype, $owner): array
+    {
+        global $DB;
+        return Orm::readPrepared(
+            $DB,
+            static function () use ($itemtype, $owner): array {
+                $arguments = static fn (string $type, int $owner): array => [$type, $owner];
+                return $arguments($itemtype, (int)$owner);
+            },
+            static fn (EntityManager $manager, array $arguments): array =>
+                (new DisplayPreferenceRepository($manager))->rows(...$arguments)
+        );
     }
 
     public static function canConfigureOwner(int $owner): bool
@@ -202,8 +226,7 @@ class DisplayPreference extends CommonDBTM
         $IDuser = Session::getLoginUserID();
         $personal_write = Session::haveRight(self::$rightname, self::PERSONAL);
         // Defined items
-        $preferences = (new DisplayPreferenceRepository(Orm::create($DB)))
-            ->rows($itemtype, (int)$IDuser);
+        $preferences = self::preferenceRows($itemtype, $IDuser);
         $numrows = count($preferences);
 
         echo '<h2>' . __('Personal View') . '</h2>';
@@ -448,8 +471,7 @@ class DisplayPreference extends CommonDBTM
         $global_write = Session::haveRight(self::$rightname, self::GENERAL);
 
         // Defined items
-        $preferences = (new DisplayPreferenceRepository(Orm::create($DB)))
-            ->rows($itemtype, (int)$IDuser);
+        $preferences = self::preferenceRows($itemtype, $IDuser);
         $numrows = count($preferences);
 
         echo '<h2>' . __('Select default items to show') . '</h2>';
@@ -597,8 +619,12 @@ class DisplayPreference extends CommonDBTM
 
         $url = Toolbox::getItemTypeFormURL(__CLASS__);
 
-        $preferences = (new DisplayPreferenceRepository(Orm::create($DB)))
-            ->countsByType((int)$users_id);
+        $preferences = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$users_id,
+            static fn (EntityManager $manager, int $owner): array =>
+                (new DisplayPreferenceRepository($manager))->countsByType($owner)
+        );
 
         if (count($preferences) > 0) {
             $rand = mt_rand();

@@ -2433,13 +2433,41 @@ class Search extends DbTestCase
         $connection = $DB->getDoctrineConnection();
         $columns = DisplayPreference::getForTypeUser('Computer', $owner);
         $this->array($columns)->contains(49);
+        $independent = Orm::create($DB);
+        $pendingUser = $independent->find(OrmUser::class, $owner);
+        $pendingUser->firstname = 'Pending independent preference reader';
+        $searchOptions = LegacySearch::getCleanedOptions('Computer');
+        $personalRows = $this->renderLocalTableRows(static fn () => $displaypref->showFormPerso('/front/displaypreference.form.php', 'Computer'));
+        $this->array(array_column($personalRows, 'name'))->contains($searchOptions[49]['name']);
+        $globalRows = $this->renderLocalTableRows(static fn () => $displaypref->showFormGlobal('/front/displaypreference.form.php', 'Computer'));
+        $this->array(array_column($globalRows, 'name'))->contains($searchOptions[1]['name']);
+        $this->output(static fn () => DisplayPreference::showForUser($owner))
+            ->contains('<td>' . Computer::getTypeName(1) . "</td><td class='numeric'>" . count($columns) . '</td>');
+        $rank = (int)$displaypref->getField('rank');
+        $prepared = $displaypref->prepareInputForAdd($input);
+        $this->integer($prepared['rank'])->isIdenticalTo($rank + 1);
+        // Weak string conversion is public input preparation, before the active read scope.
+        $type = new class ($this, $DB) {
+            public function __construct(private $test, private $database)
+            {
+            }
+            public function __toString(): string
+            {
+                Orm::read($this->database, function (EntityManager $manager): void {
+                    $this->test->boolean($manager->getConnection()->ownsApplicationEntityManager($manager))->isTrue();
+                });
+                return 'Computer';
+            }
+        };
+        $this->array(DisplayPreference::getForTypeUser($type, $owner))->isIdenticalTo($columns);
+        $this->integer($displaypref->prepareInputForAdd(['itemtype' => $type, 'users_id' => $owner])['rank'])->isIdenticalTo($rank + 1);
         $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
         $beforeFactories = $factories->getValue();
         for ($repeat = 0; $repeat < 3; ++$repeat) {
             $this->array(DisplayPreference::getForTypeUser('Computer', $owner))->isIdenticalTo($columns);
         }
         $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
-        Orm::withReadConnection($connection, function (?EntityManager $outer) use ($connection, $owner, $columns, $factories): void {
+        Orm::withReadConnection($connection, function (?EntityManager $outer) use ($connection, $owner, $columns, $factories, $displaypref, $searchOptions, $independent, $pendingUser): void {
             $sentinel = $outer->find(OrmUser::class, $owner);
             $this->object($sentinel)->isInstanceOf(OrmUser::class);
             $beforeNested = $factories->getValue();
@@ -2447,12 +2475,23 @@ class Search extends DbTestCase
             $this->integer($factories->getValue() - $beforeNested)->isIdenticalTo(1);
             $this->boolean($connection->ownsApplicationEntityManager($outer))->isTrue();
             $this->boolean($outer->contains($sentinel))->isTrue();
+            $storedFirstname = $connection->fetchOne('SELECT firstname FROM glpi_users WHERE id=?', [$owner]);
+            $sentinel->firstname = 'Pending preference reader';
+            $rows = $this->renderLocalTableRows(static fn () => $displaypref->showFormPerso('/front/displaypreference.form.php', 'Computer'));
+            $this->array(array_column($rows, 'name'))->contains($searchOptions[49]['name']);
+            $this->boolean($outer->contains($sentinel))->isTrue();
+            $this->string($sentinel->firstname)->isIdenticalTo('Pending preference reader');
+            $this->boolean($independent->contains($pendingUser))->isTrue();
+            $this->string($pendingUser->firstname)->isIdenticalTo('Pending independent preference reader');
+            $this->variable($connection->fetchOne('SELECT firstname FROM glpi_users WHERE id=?', [$owner]))->isIdenticalTo($storedFirstname);
         });
         $preferenceId = (int)$displaypref->getID();
         try {
             $this->boolean($DB->update('glpi_displaypreferences', ['num' => 987654321], ['id' => $preferenceId]))->isTrue();
             $changed = array_map(static fn ($num) => $num === 49 ? 987654321 : $num, $columns);
             $this->array(DisplayPreference::getForTypeUser('Computer', $owner))->isIdenticalTo($changed);
+            $rows = $this->renderLocalTableRows(static fn () => $displaypref->showFormPerso('/front/displaypreference.form.php', 'Computer'));
+            $this->array(array_column($rows, 'name'))->notContains($searchOptions[49]['name']);
         } finally {
             $DB->update('glpi_displaypreferences', ['num' => 49], ['id' => $preferenceId]);
         }
