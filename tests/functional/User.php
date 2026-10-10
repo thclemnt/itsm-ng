@@ -2549,6 +2549,12 @@ class User extends DbTestCase
         $this->integer($uid)->isGreaterThan(0);
 
         $this->integer($user->getIdByField('phone', '+33123456789'))->isIdenticalTo($uid);
+        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeManagers = $managers->getValue();
+        for ($repeat = 0; $repeat < 16; ++$repeat) {
+            $this->integer($user->getIdByField('phone', '+33123456789'))->isIdenticalTo($uid);
+        }
+        $allocatedManagers = $managers->getValue() - $beforeManagers;
 
         $this->integer(
             $user->add([
@@ -2559,6 +2565,7 @@ class User extends DbTestCase
         $this->boolean($user->getIdByField('phone', '+33123456789'))->isFalse();
 
         $this->boolean($user->getIdByField('phone', 'donotexists'))->isFalse();
+        $this->integer($allocatedManagers)->isIdenticalTo(0);
     }
 
     public function testgetAdditionalMenuOptions()
