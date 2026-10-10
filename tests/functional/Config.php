@@ -46,6 +46,8 @@ use Doctrine\DBAL\Configuration;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Exception\DriverException;
+use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\DBAL\Logging\Middleware;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
@@ -92,6 +94,7 @@ use itsmng\Database\MappedReads;
 use itsmng\Database\MySQLConnection;
 use itsmng\Database\OidcRefreshReadOperation;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnedMutationFrame;
 use itsmng\Database\PostgresConnection;
 use itsmng\Database\ReadQueryOwner;
 use itsmng\Database\RecordCriteria;
@@ -99,6 +102,7 @@ use itsmng\Database\RecordReadOperation;
 use itsmng\Database\Repository\ConfigurationRepository;
 use itsmng\Database\Repository\OidcRepository;
 use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\RecordWriter;
 use itsmng\Database\SchemaCheck;
 use itsmng\Database\UnsupportedCriteria;
 use JsonException;
@@ -137,6 +141,66 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Config extends DbTestCase
 {
+    public function testOidcPersistenceKeepsSingletonsAndRejectsInvalidUserStates(): void
+    {
+        global $DB;
+        $this->login();
+        $connection = $DB->getDoctrineConnection();
+        $manager = Orm::forConnection($connection);
+        $repository = new OidcRepository($manager);
+        $writer = new RecordWriter($manager);
+        try {
+            // The ordinary outer test transaction restores these singleton rows.
+            foreach (['glpi_oidc_config', 'glpi_oidc_mapping'] as $table) {
+                $writer->delete($table, 0);
+            }
+            $manager->clear();
+            foreach ([false, true] as $enabled) {
+                $configuration = ['Provider' => "https://issuer.invalid/O'Reilly", 'ClientID' => 'native-client',
+                    'is_activate' => $enabled, 'is_forced' => !$enabled, 'sso_link_users' => $enabled];
+                $mapping = ['name' => $enabled ? 'preferred_username' : 'name', 'given_name' => '',
+                    'email' => null, 'date_mod' => $enabled ? '2002-03-04 05:06:07' : '2001-02-03 04:05:06'];
+                $repository->saveConfiguration(['id' => 991] + $configuration);
+                $repository->saveMapping(['id' => 992] + $mapping);
+                foreach (['is_activate', 'is_forced', 'sso_link_users'] as $flag) {
+                    $configuration[$flag] = (int)$configuration[$flag];
+                }
+                foreach ([[$repository->configuration(), ['id' => 0] + $configuration],
+                    [$repository->mapping(), ['id' => 0] + $mapping]] as [$actual, $expected]) {
+                    foreach ($expected as $field => $value) {
+                        $this->variable($actual[$field])->isIdenticalTo($value, $field);
+                    }
+                }
+            }
+            foreach (['glpi_oidc_config' => 991, 'glpi_oidc_mapping' => 992] as $table => $ignored) {
+                $this->variable((new RecordRepository($manager))->find($table, 'id', $ignored))->isNull();
+            }
+            $user = $this->createItem(User::class, ['name' => $this->getUniqueString()]);
+            $id = (int)$user->getID();
+            $state = $writer->insert('glpi_oidc_users', ['user_id' => $id, 'update' => false]);
+            $before = $connection->fetchAssociative('SELECT * FROM glpi_oidc_users WHERE id = ?', [$state]);
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_users WHERE id = ?', [-1]))->isIdenticalTo(0);
+            $pending = $connection->getDatabasePlatform()->quoteSingleIdentifier('update');
+            foreach ([[$id, UniqueConstraintViolationException::class], [-1, ForeignKeyConstraintViolationException::class]] as [$reference, $exception]) {
+                // Probe physical constraints without poisoning the ORM or the outer PG transaction.
+                $this->exception(static fn () => OwnedMutationFrame::run($connection, static fn () =>
+                    $connection->insert(
+                        'glpi_oidc_users',
+                        ['user_id' => $reference, $pending => true],
+                        ['user_id' => Types::BIGINT, $pending => Types::BOOLEAN]
+                    )))
+                    ->isInstanceOf($exception);
+                $this->array($connection->fetchAssociative('SELECT * FROM glpi_oidc_users WHERE id = ?', [$state]))->isIdenticalTo($before);
+                $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_oidc_users WHERE user_id IN (?, ?)', [$id, -1]))->isIdenticalTo(1);
+                $this->boolean($repository->needsRefresh($id))->isTrue();
+            }
+            $writer->update('glpi_oidc_users', $state, ['update' => true]);
+            $this->boolean($repository->needsRefresh($id))->isFalse();
+        } finally {
+            $manager->clear();
+        }
+    }
+
     public function testOidcRefreshReadUsesCurrentTypedStateWithoutLoadingUserGraph(): void
     {
         global $DB;
