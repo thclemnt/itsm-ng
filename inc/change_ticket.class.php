@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILTicketLinkRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -235,34 +239,15 @@ class Change_Ticket extends CommonDBRelation
         $canedit = $change->canEdit($ID);
         $rand    = mt_rand();
 
-        $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_changes_tickets.id AS linkid',
-              'glpi_tickets.*'
-           ],
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_changes_tickets',
-           'LEFT JOIN'       => [
-              'glpi_tickets' => [
-                 'ON' => [
-                    'glpi_changes_tickets'  => 'tickets_id',
-                    'glpi_tickets'          => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => [
-              'glpi_changes_tickets.changes_id'   => $ID
-           ],
-           'ORDERBY'          => [
-              'glpi_tickets.name'
-           ]
-        ]);
+        $identifier = $ID === null || (is_string($ID) && strtolower($ID) === 'null') ? null : (int)$ID;
+        $rows = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new ITILTicketLinkRepository($manager))->ticketsForChange($identifier));
 
         $tickets = [];
         $used    = [];
-        $numrows = count($iterator);
+        $numrows = count($rows);
 
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             $tickets[$data['id']] = $data;
             $used[$data['id']]    = $data['id'];
         }
@@ -522,34 +507,15 @@ class Change_Ticket extends CommonDBRelation
         $canedit = $ticket->canEdit($ID);
         $rand    = mt_rand();
 
-        $iterator = $DB->request([
-           'SELECT'          => [
-              'glpi_changes_tickets.id AS linkid',
-              'glpi_changes.*'
-           ],
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_changes_tickets',
-           'LEFT JOIN'       => [
-              'glpi_changes' => [
-                 'ON' => [
-                    'glpi_changes_tickets'  => 'changes_id',
-                    'glpi_changes'          => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => [
-              'glpi_changes_tickets.tickets_id'   => $ID
-           ],
-           'ORDERBY'          => [
-              'glpi_changes.name'
-           ]
-        ]);
+        $identifier = $ID === null || (is_string($ID) && strtolower($ID) === 'null') ? null : (int)$ID;
+        $rows = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new ITILTicketLinkRepository($manager))->changesForTicket($identifier));
 
         $changes = [];
         $used    = [];
-        $numrows = count($iterator);
+        $numrows = count($rows);
 
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             $changes[$data['id']] = $data;
             $used[$data['id']]    = $data['id'];
         }

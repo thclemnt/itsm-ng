@@ -34,6 +34,12 @@
 namespace tests\units;
 
 use DbTestCase;
+use DbUtils;
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILTicketLinkRepository;
+use Problem_Ticket;
+use ReflectionMethod;
 
 /* Test for inc/problem.class.php */
 
@@ -186,4 +192,61 @@ class Problem extends DbTestCase
         $this->array($input)->hasKey('_users_id_assign');
         $this->integer((int)$input['_users_id_assign'])->isEqualTo($users_id_assign);
     }
+
+    public function testLinkedTicketProjectionPreservesVisibility(): void
+    {
+        global $DB;
+        $this->login();
+        $problem = $this->createItem('Problem', ['name' => 'Linked problem ' . $this->getUniqueString(), 'content' => 'Endpoint projection']);
+        $ticket = $this->createItem('Ticket', ['name' => 'Linked problem ticket ' . $this->getUniqueString(), 'content' => 'Endpoint projection']);
+        $link = $this->createItem('Problem_Ticket', ['problems_id' => $problem->getID(), 'tickets_id' => $ticket->getID()]);
+        $this->boolean($problem->canViewItem())->isTrue();
+        $this->boolean($ticket->canViewItem())->isTrue();
+        $scope = (new DbUtils())->getEntityRestriction('glpi_tickets', '', '', 'auto');
+        $read = static fn (): array => Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new ITILTicketLinkRepository($manager))->ticketsForProblem((int)$problem->getID(), $scope));
+        $rows = $read();
+        $this->integer(count($rows))->isIdenticalTo(1);
+        $this->integer((int)$rows[0]['id'])->isIdenticalTo((int)$ticket->getID());
+        $this->integer((int)$rows[0]['linkid'])->isIdenticalTo((int)$link->getID());
+        $this->integer((int)$rows[0]['entity'])->isIdenticalTo((int)$ticket->getEntityID());
+        $reverseScope = (new DbUtils())->getEntityRestriction('glpi_problems', '', '', 'auto');
+        $reverse = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new ITILTicketLinkRepository($manager))->problemsForTicket((int)$ticket->getID(), $reverseScope));
+        $this->integer(count($reverse))->isIdenticalTo(1);
+        $this->integer((int)$reverse[0]['id'])->isIdenticalTo((int)$problem->getID());
+        $this->variable($reverse[0]['itilcategories_id'])->isNull();
+        $tickets = new ReflectionMethod(Problem_Ticket::class, 'getProblemTicketsData');
+        $problems = new ReflectionMethod(Problem_Ticket::class, 'getTicketProblemsData');
+        $this->integer(count($tickets->invoke(null, $problem->getID())))->isIdenticalTo(1);
+        $this->integer(count($problems->invoke(null, $ticket->getID())))->isIdenticalTo(1);
+        foreach ([null, 'nUlL', 0, -1] as $empty) {
+            $this->array($tickets->invoke(null, $empty))->isEmpty();
+            $this->array($problems->invoke(null, $empty))->isEmpty();
+        }
+        $this->output(static fn () => Problem_Ticket::showForProblem($problem))->contains('/front/ticket.form.php?id=' . $ticket->getID());
+        $this->output(static fn () => Problem_Ticket::showForTicket($ticket))->contains('/front/problem.form.php?id=' . $problem->getID());
+        $session = $_SESSION;
+        try {
+            $_SESSION['glpishowallentities'] = false;
+            $_SESSION['glpiactiveentities'] = [];
+            $this->array($tickets->invoke(null, $problem->getID()))->isEmpty();
+            $this->array($problems->invoke(null, $ticket->getID()))->isEmpty();
+            $this->output(static fn () => Problem_Ticket::showForProblem($problem))->isEmpty();
+            $_SESSION = $session;
+            $_SESSION['glpiactiveprofile']['problem'] = 0;
+            $this->array($problems->invoke(null, $ticket->getID()))->isEmpty('Per-target canViewItem remains outside the projection');
+        } finally {
+            $_SESSION = $session;
+        }
+        $DB->getDoctrineConnection()->update('glpi_tickets', ['is_deleted' => true, 'name' => 'Fresh linked problem ticket'], ['id' => $ticket->getID()]);
+        $visible = $tickets->invoke(null, $problem->getID());
+        $this->integer(count($visible))->isIdenticalTo(1);
+        $this->string($visible[$ticket->getID()]['name'])->isIdenticalTo('Fresh linked problem ticket');
+        $this->string($rows[0]['name'])->isIdenticalTo($ticket->fields['name']);
+        $this->boolean($link->delete(['id' => $link->getID()], true))->isTrue();
+        $this->array($tickets->invoke(null, $problem->getID()))->isEmpty();
+        $this->array($problems->invoke(null, $ticket->getID()))->isEmpty();
+    }
+
 }

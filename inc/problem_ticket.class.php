@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILTicketLinkRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -744,7 +748,7 @@ class Problem_Ticket extends CommonDBRelation
 
     /**
      * Returns problems data for given ticket.
-     * Returned data is usable by `Problem::showShort()` method.
+     * Returned scalars serve this class's ticket tab count and display.
      *
      * @param integer $tickets_id
      *
@@ -753,12 +757,16 @@ class Problem_Ticket extends CommonDBRelation
     private static function getTicketProblemsData($tickets_id)
     {
 
-        $ticket = new Ticket();
-        $ticket->fields['id'] = $tickets_id;
-        $iterator = self::getListForItem($ticket);
+        global $DB;
+
+        $scope = Session::isCron() ? null
+            : (new DbUtils())->getEntityRestriction('glpi_problems', '', '', 'auto');
+        $identifier = $tickets_id === null || (is_string($tickets_id) && strtolower($tickets_id) === 'null') ? null : (int)$tickets_id;
+        $rows = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new ITILTicketLinkRepository($manager))->problemsForTicket($identifier, $scope));
 
         $problems = [];
-        foreach ($iterator as $data) {
+        foreach ($rows as $data) {
             $problem = new Problem();
             $problem->getFromDB($data['id']);
             if ($problem->canViewItem()) {
@@ -771,7 +779,7 @@ class Problem_Ticket extends CommonDBRelation
 
     /**
      * Returns tickets data for given problem.
-     * Returned data is usable by `Ticket::showShort()` method.
+     * Returned scalars serve this class's problem tab count and display.
      *
      * @param integer $problems_id
      *
@@ -780,12 +788,16 @@ class Problem_Ticket extends CommonDBRelation
     private static function getProblemTicketsData($problems_id)
     {
 
-        $problem = new Problem();
-        $problem->fields['id'] = $problems_id;
-        $iterator = self::getListForItem($problem);
+        global $DB;
+
+        $scope = Session::isCron() ? null
+            : (new DbUtils())->getEntityRestriction('glpi_tickets', '', '', 'auto');
+        $identifier = $problems_id === null || (is_string($problems_id) && strtolower($problems_id) === 'null') ? null : (int)$problems_id;
+        $rows = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new ITILTicketLinkRepository($manager))->ticketsForProblem($identifier, $scope));
 
         $tickets = [];
-        foreach ($iterator as $data) {
+        foreach ($rows as $data) {
             $ticket = new Ticket();
             $ticket->getFromDB($data['id']);
             if ($ticket->canViewItem()) {

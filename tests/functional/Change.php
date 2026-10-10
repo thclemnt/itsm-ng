@@ -33,7 +33,11 @@
 
 namespace tests\units;
 
+use Change_Ticket;
 use DbTestCase;
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILTicketLinkRepository;
 
 /* Test for inc/change.class.php */
 
@@ -404,4 +408,64 @@ class Change extends DbTestCase
             ]))
         )->isEqualTo(1);
     }
+
+    public function testLinkedTicketEndpointProjection(): void
+    {
+        global $DB;
+        $this->login();
+        $change = $this->createItem('Change', ['name' => 'Linked change ' . $this->getUniqueString(), 'content' => 'Endpoint projection']);
+        $otherChange = $this->createItem('Change', ['name' => 'Other change ' . $this->getUniqueString(), 'content' => 'Other endpoint']);
+        $first = $this->createItem('Ticket', ['name' => 'AAA linked ticket ' . $this->getUniqueString(), 'content' => 'First endpoint']);
+        $last = $this->createItem('Ticket', ['name' => 'ZZZ linked ticket ' . $this->getUniqueString(), 'content' => 'Last endpoint']);
+        $firstLink = $this->createItem('Change_Ticket', ['changes_id' => $change->getID(), 'tickets_id' => $first->getID()]);
+        $lastLink = $this->createItem('Change_Ticket', ['changes_id' => $change->getID(), 'tickets_id' => $last->getID()]);
+        $this->createItem('Change_Ticket', ['changes_id' => $otherChange->getID(), 'tickets_id' => $first->getID()]);
+        $connection = $DB->getDoctrineConnection();
+        $connection->update('glpi_tickets', ['date_mod' => null, 'closedate' => null, 'solvedate' => null,
+            'begin_waiting_date' => null, 'time_to_resolve' => null], ['id' => $first->getID()]);
+        $read = static fn (): array => Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new ITILTicketLinkRepository($manager))->ticketsForChange((int)$change->getID()));
+        $rows = $read();
+        $this->array(array_map('intval', array_column($rows, 'id')))->isIdenticalTo([(int)$first->getID(), (int)$last->getID()]);
+        $this->array(array_map('intval', array_column($rows, 'linkid')))->isIdenticalTo([(int)$firstLink->getID(), (int)$lastLink->getID()]);
+        $this->variable($rows[0]['date_mod'])->isNull();
+        $this->variable($rows[0]['closedate'])->isNull();
+        $this->variable($rows[0]['solvedate'])->isNull();
+        $this->variable($rows[0]['begin_waiting_date'])->isNull();
+        $this->variable($rows[0]['time_to_resolve'])->isNull();
+        $this->variable($rows[0]['itilcategories_id'])->isNull();
+        $this->integer((int)$rows[0]['entities_id'])->isIdenticalTo((int)$first->getEntityID());
+        $reverse = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new ITILTicketLinkRepository($manager))->changesForTicket((int)$first->getID()));
+        $this->integer(count($reverse))->isIdenticalTo(2);
+        $this->integer((int)$reverse[0]['id'])->isIdenticalTo((int)$change->getID());
+        $this->integer((int)$reverse[1]['id'])->isIdenticalTo((int)$otherChange->getID());
+        $this->array(array_map('intval', array_column($reverse, 'linkid')))->contains((int)$firstLink->getID());
+        foreach ([null, 0, -1] as $empty) {
+            $this->array(Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new ITILTicketLinkRepository($manager))->ticketsForChange($empty)))->isEmpty();
+        }
+        $this->output(static fn () => Change_Ticket::showForChange($change))->contains('/front/ticket.form.php?id=' . $first->getID());
+        $this->output(static fn () => Change_Ticket::showForTicket($first))->contains('/front/change.form.php?id=' . $change->getID());
+        $freshName = 'BBB fresh linked ticket ' . $this->getUniqueString();
+        $connection->update('glpi_tickets', ['name' => $freshName, 'date_mod' => '2021-02-03 04:05:06', 'is_deleted' => true], ['id' => $first->getID()]);
+        $fresh = $read();
+        $this->string($fresh[0]['name'])->isIdenticalTo($freshName);
+        $this->string($fresh[0]['date_mod'])->isIdenticalTo('2021-02-03 04:05:06');
+        $this->variable($rows[0]['date_mod'])->isNull();
+        $this->integer(count($fresh))->isIdenticalTo(2, 'Change links do not filter soft-deleted targets');
+        $session = $_SESSION;
+        try {
+            $_SESSION['glpishowallentities'] = false;
+            $_SESSION['glpiactiveentities'] = [];
+            $this->integer(count($read()))->isIdenticalTo(2, 'Change projection has no entity prefilter');
+            $this->output(static fn () => Change_Ticket::showForChange($change))->isEmpty();
+        } finally {
+            $_SESSION = $session;
+        }
+        $this->boolean($lastLink->delete(['id' => $lastLink->getID()], true))->isTrue();
+        $this->integer(count($read()))->isIdenticalTo(1);
+        $this->integer((int)$read()[0]['linkid'])->isIdenticalTo((int)$firstLink->getID());
+    }
+
 }
