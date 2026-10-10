@@ -195,6 +195,10 @@ SQL;
             $probe->tableScans = [];
             $this->boolean($probe->tableExists('glpi_configs'))->isTrue();
             $this->array($probe->tableScans)->isEmpty('The targeted bootstrap result remains positively cached');
+            $this->boolean($probe->tableExists('glpi_users'))->isTrue();
+            $this->boolean($probe->tableExists('glpi_entities'))->isTrue();
+            $partialCacheScans = $probe->tableScans;
+            $probe->tableScans = [];
 
             $probe->clearSchemaCache();
             $this->boolean($probe->tableExists('glpi_configs', false))->isTrue();
@@ -212,12 +216,19 @@ SQL;
             $this->boolean($probe->tableExists('glpi_configs'))->isTrue();
             $this->array($probe->tableScans)->isEmpty();
 
-            $table = 'glpi_timezone_probe_' . bin2hex(random_bytes(4));
+            $table = 'timezone_probe_' . bin2hex(random_bytes(4));
             $native = $probe->getDoctrineConnection();
             $quoted = $native->quoteIdentifier($table);
             $this->boolean($probe->tableExists($table, false))->isFalse();
+            $this->boolean($probe->tableExists($table))->isFalse();
             $native->executeStatement('CREATE TABLE ' . $quoted . ' (id INTEGER NOT NULL)');
             $created = true;
+            $this->boolean($probe->tableExists($table))->isTrue();
+            $probe->clearSchemaCache();
+            $emptyCacheTableExists = $probe->tableExists($table);
+            $probe->clearSchemaCache();
+            $this->boolean($probe->tableExists('glpi_configs', false))->isTrue();
+            $this->boolean($probe->tableExists($table))->isTrue();
             $this->boolean($probe->tableExists($table, false))->isTrue();
             $native->executeStatement('DROP TABLE ' . $quoted);
             $created = false;
@@ -232,6 +243,8 @@ SQL;
             $this->boolean($probe->tableExists('glpi_configs'))->isTrue();
             $this->boolean($probe->tableExists('glpi_configs'))->isTrue();
             $this->array($probe->tableScans)->isIdenticalTo(['glpi_configs', 'glpi_configs']);
+            $this->boolean($emptyCacheTableExists)->isTrue();
+            $this->array($partialCacheScans)->isIdenticalTo(['glpi\\_%']);
         } finally {
             if ($created) {
                 $native->executeStatement('DROP TABLE ' . $quoted);

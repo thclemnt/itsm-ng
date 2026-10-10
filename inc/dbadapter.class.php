@@ -126,6 +126,9 @@ abstract class DBAdapter
      */
     protected $table_cache = [];
 
+    /** A forced point lookup does not populate the complete table list. */
+    private bool $table_cache_loaded = false;
+
     /**
      * Cached list of fields.
      *
@@ -586,9 +589,10 @@ abstract class DBAdapter
             return true;
         }
 
-        // Retrieve all tables if cache is empty but enabled, in order to fill cache
-        // with all known tables
-        $retrieve_all = $usecache && !$this->cache_disabled && empty($this->table_cache);
+        // Populate the table list once even when forced point reads have
+        // already cached a few positive results. Other names stay targeted.
+        $retrieve_all = $usecache && !$this->cache_disabled && !$this->table_cache_loaded
+            && str_starts_with($tablename, 'glpi_');
 
         $result = $this->listTables($retrieve_all ? 'glpi\_%' : $tablename);
         $found_tables = [];
@@ -598,6 +602,9 @@ abstract class DBAdapter
 
         if (!$this->cache_disabled) {
             $this->table_cache = array_unique(array_merge($this->table_cache, $found_tables));
+            if ($retrieve_all && $found_tables !== []) {
+                $this->table_cache_loaded = true;
+            }
         }
 
         if (in_array($tablename, $found_tables)) {
@@ -1003,6 +1010,7 @@ abstract class DBAdapter
     public function clearSchemaCache()
     {
         $this->table_cache = [];
+        $this->table_cache_loaded = false;
         $this->field_cache = [];
     }
 
