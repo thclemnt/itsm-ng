@@ -46,6 +46,7 @@ use NotificationTargetProjectTask;
 use Notification_NotificationTemplate;
 use Project;
 use ProjectTask;
+use ReflectionProperty;
 use itsmng\Database\Entity;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ProjectRepository;
@@ -106,7 +107,7 @@ class ProjectTeam extends DbTestCase
                 $em->persist($row);
             };
             $users = [];
-            for ($i = 0; $i < 3; ++$i) {
+            for ($i = 0; $i < 4; ++$i) {
                 $user = new Entity\User();
                 $user->entities = $root;
                 $user->name = 'recipient-' . $this->getUniqueString();
@@ -119,7 +120,7 @@ class ProjectTeam extends DbTestCase
                 $email->email = 'user' . $i . '@example.test';
                 $email->is_default = true;
                 $em->persist($email);
-                if ($i < 2) {
+                if ($i !== 2) {
                     $grant = new Entity\ProfileUser();
                     $grant->users = $user;
                     $grant->profiles = $em->getReference(Entity\Profile::class, 4);
@@ -127,7 +128,9 @@ class ProjectTeam extends DbTestCase
                     $em->persist($grant);
                 }
                 $users[] = $user;
-                $link($user, 'User', $parent);
+                if ($i < 3) {
+                    $link($user, 'User', $parent);
+                }
             }
             $contact = new Entity\Contact();
             $contact->entities = $root;
@@ -160,6 +163,25 @@ class ProjectTeam extends DbTestCase
             $supplier->email = 'supplier@example.test';
             $em->persist($supplier);
             $link($supplier, 'Supplier', $parent);
+            $group = new Entity\Group();
+            $group->entities = $root;
+            $group->name = 'Recipient group ' . $this->getUniqueString();
+            $otherGroup = new Entity\Group();
+            $otherGroup->entities = $root;
+            $otherGroup->name = 'Other recipient group ' . $this->getUniqueString();
+            $em->persist($group);
+            $em->persist($otherGroup);
+            $link($group, 'Group', $parent);
+            $link($otherGroup, 'Group', $other);
+            $memberships = [];
+            foreach ([0, 1, 3] as $index) {
+                $membership = new Entity\GroupMembership();
+                $membership->users = $users[$index];
+                $membership->groups = $index === 3 ? $otherGroup : $group;
+                $membership->is_manager = $index === 0;
+                $em->persist($membership);
+                $memberships[$index] = $membership;
+            }
             // Same member on another parent must not add a duplicate selection.
             $link($contact, 'Contact', $other);
             $em->flush();
@@ -217,12 +239,47 @@ class ProjectTeam extends DbTestCase
             $target->addTeamContacts();
             $this->array($target->target)->hasSize(24)->hasKey('fresh@example.test')->notHasKey('contact0@example.test');
             $this->string($target->target['fresh@example.test']['username'])->contains('Fresh');
+            $this->boolean($em->contains($managed))->isTrue();
+            $this->string($managed->firstname)->isIdenticalTo('First');
+            $this->integer($loads->count)->isIdenticalTo($before);
             $connection->update('glpi_users', ['is_active' => false], ['id' => $userId], ['is_active' => Types::BOOLEAN]);
             $target->target = [];
             $target->addTeamUsers();
             $this->array($target->target)->isEmpty();
+            foreach ([0, 1] as $index) {
+                $connection->update('glpi_users', ['is_active' => true], ['id' => $users[$index]->id], ['is_active' => Types::BOOLEAN]);
+            }
+            // The eligible user on the other parent's group must never be selected.
+            foreach ([0 => ['user0@example.test', 'user1@example.test'], 1 => ['user0@example.test'], 2 => ['user1@example.test']] as $mode => $expected) {
+                $target->target = [];
+                $target->addTeamGroups($mode);
+                $emails = array_keys($target->target);
+                sort($emails);
+                $this->array($emails)->isIdenticalTo($expected);
+            }
+            $connection->update('glpi_groups_users', ['is_manager' => true], ['id' => $memberships[1]->id], ['is_manager' => Types::BOOLEAN]);
+            $connection->delete('glpi_groups_users', ['id' => $memberships[0]->id]);
+            foreach ([0 => ['user1@example.test'], 1 => ['user1@example.test'], 2 => []] as $mode => $expected) {
+                $target->target = [];
+                $target->addTeamGroups($mode);
+                $this->array(array_keys($target->target))->isIdenticalTo($expected);
+            }
             $this->object($em->getConnection())->isIdenticalTo($connection);
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+
+            // Populated anonymous recipients exercise these reads without unrelated user-admission managers.
+            $target->target = [];
+            $target->addTeamContacts();
+            $target->addTeamSuppliers();
+            $this->array($target->target)->hasSize(25)->hasKey('fresh@example.test')->hasKey('supplier@example.test');
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $beforeFactories = $factories->getValue();
+            for ($repeat = 0; $repeat < 8; ++$repeat) {
+                $target->target = [];
+                $target->addTeamContacts();
+                $target->addTeamSuppliers();
+            }
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
         } finally {
             $em->clear();
         }

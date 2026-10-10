@@ -43,6 +43,7 @@ use Entity;
 use Glpi\CalDAV\Backend\Calendar;
 use Group;
 use Planning as LegacyPlanning;
+use ReflectionProperty;
 use Session;
 use User;
 use itsmng\Database\Entity\Group as GroupEntity;
@@ -131,6 +132,15 @@ class Planning extends \DbTestCase
                 $this->array($options([LegacyPlanning::class, 'showAddGroupForm']))
                     ->isIdenticalTo([$empty, ['id' => (int)$groups[0]->getID(), 'name' => (string)$name]]);
             }
+            $single = $options([LegacyPlanning::class, 'showAddGroupForm']);
+            $all = $options([LegacyPlanning::class, 'showAddGroupUsersForm']);
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $beforeFactories = $factories->getValue();
+            for ($repeat = 0; $repeat < 16; ++$repeat) {
+                $this->array($options([LegacyPlanning::class, 'showAddGroupForm']))->isIdenticalTo($single);
+                $this->array($options([LegacyPlanning::class, 'showAddGroupUsersForm']))->isIdenticalTo($all);
+            }
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
         } finally {
             $_SESSION = $session;
             $manager?->clear();
@@ -196,6 +206,14 @@ class Planning extends \DbTestCase
             $this->array($tokens($render()))->isIdenticalTo(['', '']);
             $this->variable($repository->tokenValue(PHP_INT_MAX, 'personal_token'))->isNull();
             $this->string($repository->tokenValue((int)$actor->getID(), 'personal_token'))->isIdenticalTo($actorToken);
+            $_SESSION['glpiID'] = $id;
+            $this->array($tokens($render()))->isIdenticalTo([$stored, $stored]);
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $beforeFactories = $factories->getValue();
+            for ($repeat = 0; $repeat < 16; ++$repeat) {
+                $this->array($tokens($render()))->isIdenticalTo([$stored, $stored]);
+            }
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
         } finally {
             while (ob_get_level() > $bufferLevel) {
                 ob_end_clean();
@@ -297,6 +315,14 @@ class Planning extends \DbTestCase
                 $this->integer($_SESSION['glpiis_ids_visible'])->isIdenticalTo(1);
                 $this->integer($CFG_GLPI['is_ids_visible'])->isIdenticalTo(1);
             }
+            $warmResources = LegacyPlanning::getTimelineResources();
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $beforeFactories = $factories->getValue();
+            for ($repeat = 0; $repeat < 16; ++$repeat) {
+                $this->array(LegacyPlanning::getTimelineResources())->isIdenticalTo($warmResources);
+            }
+            $this->boolean($em->contains($managed))->isTrue();
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
         } finally {
             PlanningTimelineWriter::$write = null;
             $em->getEventManager()->removeEventListener([Events::postLoad], $listener);
