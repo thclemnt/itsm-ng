@@ -162,6 +162,21 @@ jobs:
         run: composer test:function -- --fail-if-skipped-methods 2>&1 | tee "$RUNNER_TEMP/functional.log"
       - name: Verify the core schema after application tests
         run: php bin/console db:check --config-dir="$GLPI_CONFIG_DIR" --no-interaction 2>&1 | tee "$RUNNER_TEMP/schema-check.log"
+      - name: Inspect failed MySQL schema constraints
+        if: failure() && matrix.database.id == 'mysql-8.4'
+        run: |
+          docker exec -i "${{ job.services.database.id }}" "${{ matrix.database.client }}" -uroot -ptest --batch itsm_test_application <<'SQL' 2>&1 | tee "$RUNNER_TEMP/native-constraints.log"
+          SELECT VERSION() AS server_version, @@SESSION.sql_mode AS session_sql_mode;
+          SHOW CREATE TABLE glpi_slms;
+          SELECT tc.CONSTRAINT_NAME, tc.ENFORCED, cc.CHECK_CLAUSE
+          FROM information_schema.TABLE_CONSTRAINTS AS tc
+          JOIN information_schema.CHECK_CONSTRAINTS AS cc
+            ON cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+            AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+          WHERE tc.CONSTRAINT_SCHEMA = DATABASE()
+            AND tc.TABLE_NAME = 'glpi_slms'
+            AND tc.CONSTRAINT_TYPE = 'CHECK';
+          SQL
       - name: Retain test diagnostics
         if: always()
         uses: actions/upload-artifact@v7
@@ -173,5 +188,6 @@ jobs:
             ${{ runner.temp }}/units.log
             ${{ runner.temp }}/functional.log
             ${{ runner.temp }}/schema-check.log
+            ${{ runner.temp }}/native-constraints.log
             tests/files/_log/
           if-no-files-found: ignore
