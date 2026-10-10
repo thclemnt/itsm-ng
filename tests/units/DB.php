@@ -45,7 +45,7 @@ use LogicException;
 use ReflectionProperty;
 use itsmng\Database\MySQLManagedConnection;
 use itsmng\Database\Orm;
-use mock\DBAdapter as PreparedReadAdapter;
+use mock\DBmysql as PreparedReadAdapter;
 use InvalidArgumentException;
 use itsmng\Database\PostgresParameters;
 
