@@ -71,6 +71,7 @@ use User;
 use itsmng\Database\BooleanValue;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\Orm;
+use itsmng\Database\Repository\ApiCollectionRepository;
 use itsmng\Database\Repository\NetworkNameRepository;
 use itsmng\Database\Repository\SoftwareInstallationRepository;
 use itsmng\Database\Repository\TicketCollectionRepository;
@@ -1245,6 +1246,9 @@ abstract class API extends CommonGLPI
             $already_linked_table = [];
             $join = Search::addDefaultJoin($itemtype, $table, $already_linked_table);
             $where = Search::addDefaultWhere($itemtype);
+            $hasDefaultRestriction = $join !== '' || trim((string)$where) !== '';
+            $mappedCriteria = [];
+            $mappedParent = null;
             if ($where == '') {
                 $where = "1=1 ";
             }
@@ -1256,9 +1260,11 @@ abstract class API extends CommonGLPI
                     } catch (InvalidArgumentException $error) {
                         return $this->returnError($error->getMessage());
                     }
+                    $mappedCriteria['is_deleted'] = $deleted;
                     $deleted = $DB->getDoctrineConnection()->getDatabasePlatform()->convertBooleansToDatabaseValue($deleted);
                     $deleted = $DB->quoteValue($deleted);
                 }
+                $mappedCriteria['is_deleted'] ??= (int)$params['is_deleted'];
                 $where .= "AND " . $DB->quoteName("$table.is_deleted") . " = " . $deleted;
             }
 
@@ -1272,14 +1278,17 @@ abstract class API extends CommonGLPI
 
                 // filter with parents fields
                 if (isset($item->fields[$fk_parent])) {
+                    $mappedParent = ['direction' => 'child', 'foreignKey' => $fk_parent];
                     $where .= " AND " . $DB->quoteName("$table.$fk_parent") . " = " . (int)$this->parameters['parent_id'];
                 } elseif (
                     isset($item->fields['itemtype'])
                         && isset($item->fields['items_id'])
                 ) {
+                    $mappedParent = ['direction' => 'child-kind', 'kind' => $this->parameters['parent_itemtype']];
                     $where .= " AND " . $DB->quoteName("$table.itemtype") . " = " . $DB->quoteValue($this->parameters['parent_itemtype']) . "
                            AND " . $DB->quoteName("$table.items_id") . " = " . (int)$this->parameters['parent_id'];
                 } elseif (isset($parent_item->fields[$fk_child])) {
+                    $mappedParent = ['direction' => 'parent', 'foreignKey' => $fk_child];
                     $parentTable = getTableForItemType($this->parameters['parent_itemtype']);
                     $join .= " LEFT JOIN " . $DB->quoteName($parentTable) . " ON " . $DB->quoteName("$parentTable.$fk_child") . " = " . $DB->quoteName("$table.id");
                     $where .= " AND " . $DB->quoteName("$parentTable.id") . " = " . (int)$this->parameters['parent_id'];
@@ -1287,9 +1296,13 @@ abstract class API extends CommonGLPI
                     isset($parent_item->fields['itemtype'])
                         && isset($parent_item->fields['items_id'])
                 ) {
+                    $mappedParent = ['direction' => 'parent-kind', 'kind' => $itemtype];
                     $parentTable = getTableForItemType($this->parameters['parent_itemtype']);
                     $join .= " LEFT JOIN " . $DB->quoteName($parentTable) . " ON " . $DB->quoteName("itemtype") . "=" . $DB->quoteValue($itemtype) . " AND " . $DB->quoteName("$parentTable.items_id") . " = " . $DB->quoteName("$table.id");
                     $where .= " AND " . $DB->quoteName("$parentTable.id") . " = " . (int)$this->parameters['parent_id'];
+                }
+                if ($mappedParent !== null) {
+                    $mappedParent += ['table' => $parentTable ?? '', 'id' => (int)$this->parameters['parent_id']];
                 }
             }
 
@@ -1307,6 +1320,7 @@ abstract class API extends CommonGLPI
                     if ($DB->fieldExists($table, 'comment')) {
                         $params['searchText']['comment'] = $search_value;
                     }
+                    unset($params['searchText']['all']);
                 }
 
                 // make text search
@@ -1323,20 +1337,26 @@ abstract class API extends CommonGLPI
                 }
             }
 
-            // filter with entity
-            if ($item->getType() == 'Entity') {
+            // Keep overridable scope decisions at their original boundary. They
+            // may construct parent models and dispatch item_empty callbacks.
+            $ownsScope = false;
+            $scopeEntities = null;
+            $scopeTable = null;
+            $recursive = false;
+            $isEntity = $item->getType() == 'Entity';
+            if ($isEntity) {
                 $where .= " AND (" . getEntitiesRestrictRequest("", $itemtype::getTable()) . ")";
             } elseif (
                 $item->isEntityAssign()
                 // some CommonDBChild classes may not have entities_id fields and isEntityAssign still return true (like ITILTemplateMandatoryField)
-                && array_key_exists('entities_id', $item->fields)
+                && ($ownsScope = array_key_exists('entities_id', $item->fields))
             ) {
                 $where .= " AND (" . getEntitiesRestrictRequest(
                     "",
-                    $itemtype::getTable(),
+                    ($scopeTable = $itemtype::getTable()),
                     '',
-                    $_SESSION['glpiactiveentities'],
-                    $item->maybeRecursive(),
+                    ($scopeEntities = $_SESSION['glpiactiveentities']),
+                    ($recursive = $item->maybeRecursive()),
                     true
                 );
 
@@ -1347,32 +1367,75 @@ abstract class API extends CommonGLPI
                 $where .= ")";
             }
 
-            // build query
-            $query = "SELECT DISTINCT " . $DB->quoteName("$table.id") . ",  " . $DB->quoteName("$table.*") . "
-                    FROM " . $DB->quoteName($table) . "
-                    $join
-                    WHERE $where
-                    ORDER BY " . $DB->quoteName($params['sort']) . " " . $params['order'];
-            $query = $DB->getDoctrineConnection()->getDatabasePlatform()->modifyLimitQuery(
-                $query,
-                (int)$params['list_limit'],
-                (int)$params['start']
-            );
-            $result = $DB->query($query);
-            if ($result === false) {
-                return $this->returnError(__('Unable to retrieve the requested items.'), 500, "ERROR_SQL", false);
+            $page = null;
+            // Use the route's actual physical columns and captured scope, not
+            // configuration/cache key presence or the public model's class name.
+            // Registered plugin types retain their existing execution contract.
+            if (!$hasDefaultRestriction && !$isEntity
+                && !isPluginItemType($itemtype)
+                && isset(EntityRegistry::tables()[$table])
+                && (!$ownsScope || $table === $scopeTable)
+                && (!$ownsScope || (!$recursive
+                    && is_array($scopeEntities)
+                    && array_filter($scopeEntities, static fn ($id) =>
+                        !is_int($id) && !(is_string($id) && ctype_digit($id))) === []))
+            ) {
+                $scope = $ownsScope ? getEntitiesRestrictCriteria(
+                    $scopeTable,
+                    '',
+                    $scopeEntities,
+                    $recursive,
+                    true
+                ) : [];
+                if ($ownsScope && $item instanceof SavedSearch) {
+                    $scope = ['OR' => [$scope, ['is_private' => true]]];
+                }
+                $em = Orm::create($DB);
+                try {
+                    $page = (new ApiCollectionRepository($em))->page(
+                        $table,
+                        $params,
+                        $scope,
+                        $mappedCriteria,
+                        $mappedParent
+                    );
+                } catch (\Doctrine\DBAL\Exception $error) {
+                    return $this->returnError(__('Unable to retrieve the requested items.'), 500, "ERROR_SQL", false);
+                } finally {
+                    $em->clear();
+                }
             }
-            while ($data = $DB->fetchAssoc($result)) {
-                $found[] = $data;
-            }
+            if ($page !== null) {
+                $found = $page['rows'];
+                $totalcount = $page['total'];
+            } else {
+                // build query
+                $query = "SELECT DISTINCT " . $DB->quoteName("$table.id") . ",  " . $DB->quoteName("$table.*") . "
+                        FROM " . $DB->quoteName($table) . "
+                        $join
+                        WHERE $where
+                        ORDER BY " . $DB->quoteName($params['sort']) . " " . $params['order'];
+                $query = $DB->getDoctrineConnection()->getDatabasePlatform()->modifyLimitQuery(
+                    $query,
+                    (int)$params['list_limit'],
+                    (int)$params['start']
+                );
+                $result = $DB->query($query);
+                if ($result === false) {
+                    return $this->returnError(__('Unable to retrieve the requested items.'), 500, "ERROR_SQL", false);
+                }
+                while ($data = $DB->fetchAssoc($result)) {
+                    $found[] = $data;
+                }
 
-            // get result full row counts
-            $count_query = "SELECT COUNT(*) FROM {$DB->quoteName($table)} $join WHERE $where";
-            $count_result = $DB->query($count_query);
-            if ($count_result === false) {
-                return $this->returnError(__('Unable to retrieve the requested items.'), 500, "ERROR_SQL", false);
+                // get result full row counts
+                $count_query = "SELECT COUNT(*) FROM {$DB->quoteName($table)} $join WHERE $where";
+                $count_result = $DB->query($count_query);
+                if ($count_result === false) {
+                    return $this->returnError(__('Unable to retrieve the requested items.'), 500, "ERROR_SQL", false);
+                }
+                $totalcount = $DB->fetchRow($count_result)[0];
             }
-            $totalcount = $DB->fetchRow($count_result)[0];
 
         }
 

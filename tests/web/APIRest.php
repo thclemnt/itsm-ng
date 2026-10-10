@@ -1050,6 +1050,138 @@ class APIRest extends APIBaseClass
 
     /**
      * @tags api
+     * @covers API::getItems
+     */
+    public function testMappedManufacturerCollectionFiltersAndParent()
+    {
+        $prefix = '_api_collection_' . bin2hex(random_bytes(8));
+        $headers = ['Session-Token' => $this->session_token];
+        $ids = [];
+        try {
+            foreach (["alpha 'quoted'", 'beta', 'gamma'] as $suffix) {
+                $created = $this->query('createItems', [
+                    'itemtype' => 'Manufacturer', 'verb' => 'POST', 'headers' => $headers,
+                    'json' => ['input' => ['name' => $prefix . $suffix, 'comment' => $prefix]],
+                ], 201);
+                $ids[] = (int)$created['id'];
+                $this->integer(end($ids))->isGreaterThan(0);
+            }
+            $params = [
+                'itemtype' => 'Manufacturer', 'headers' => $headers,
+                'query' => ['searchText' => ['name' => '^' . $prefix],
+                    'sort' => 'name', 'order' => 'DESC', 'range' => '1-1',
+                    'only_id' => true, 'get_hateoas' => false],
+            ];
+            $page = $this->query('getItems', $params, 206);
+            $this->string($page['headers']['Content-Range'][0])->isIdenticalTo('1-1/3');
+            unset($page['headers']);
+            $this->array($page)->isIdenticalTo([['id' => $ids[1]]]);
+
+            // The all filter keeps the endpoint's name AND comment semantics.
+            $params['query']['searchText'] = ['all' => '^' . $prefix];
+            $params['query']['range'] = '0-99';
+            $all = $this->query('getItems', $params);
+            $this->string($all['headers']['Content-Range'][0])->isIdenticalTo('0-2/3');
+            unset($all['headers']);
+            $this->array(array_column($all, 'id'))->isIdenticalTo(array_reverse($ids));
+
+            $params['query']['searchText'] = ['all' => '^' . $prefix . 'beta$'];
+            $conjunction = $this->query('getItems', $params);
+            unset($conjunction['headers']);
+            $this->array($conjunction)->isEmpty();
+
+            $params['query']['searchText'] = ['name' => '^' . $prefix . "alpha 'quoted'$", 'id' => '^' . $ids[0] . '$'];
+            $params['query']['only_id'] = false;
+            $one = $this->query('getItems', $params);
+            $this->string($one['headers']['Content-Range'][0])->isIdenticalTo('0-0/1');
+            unset($one['headers']);
+            $this->array($one)->hasSize(1);
+            $this->string($one[0]['name'])->isIdenticalTo($prefix . "alpha 'quoted'");
+            $this->string($one[0]['comment'])->isIdenticalTo($prefix);
+
+            // A mapped reverse owning relationship filters through the authorized
+            // identified parent without inflating collection count or page rows.
+            $computer = $this->createComputer();
+            $this->query('updateItems', [
+                'itemtype' => 'Computer', 'id' => $computer->getID(), 'verb' => 'PUT', 'headers' => $headers,
+                'json' => ['input' => ['id' => $computer->getID(), 'manufacturers_id' => $ids[0], 'comment' => $computer->fields['name']]],
+            ]);
+            // Computer's recursive scope retains the legacy collection query.
+            // The same declared all-search contract must work on that path too.
+            $fallback = $this->query('getItems', [
+                'itemtype' => 'Computer', 'headers' => $headers,
+                'query' => ['searchText' => ['all' => '^' . $computer->fields['name'] . '$'],
+                    'only_id' => true, 'get_hateoas' => false, 'range' => '0-99'],
+            ]);
+            $this->string($fallback['headers']['Content-Range'][0])->isIdenticalTo('0-0/1');
+            unset($fallback['headers']);
+            $this->array($fallback)->isIdenticalTo([['id' => (int)$computer->getID()]]);
+
+            $params['parent_itemtype'] = 'Computer';
+            $params['parent_id'] = $computer->getID();
+            $params['query']['searchText'] = ['name' => '^' . $prefix];
+            $params['query']['only_id'] = true;
+            $related = $this->query('getItems', $params);
+            $this->string($related['headers']['Content-Range'][0])->isIdenticalTo('0-0/1');
+            unset($related['headers']);
+            $this->array($related)->isIdenticalTo([['id' => $ids[0]]]);
+        } finally {
+            // Remove the owned computer's reference before purging these dropdowns.
+            if (isset($computer)) {
+                $this->query('updateItems', [
+                    'itemtype' => 'Computer', 'id' => $computer->getID(), 'verb' => 'PUT', 'headers' => $headers,
+                    'json' => ['input' => ['id' => $computer->getID(), 'manufacturers_id' => 0]],
+                ]);
+            }
+            foreach ($ids as $id) {
+                $this->query('deleteItems', [
+                    'itemtype' => 'Manufacturer', 'id' => $id, 'verb' => 'DELETE', 'headers' => $headers,
+                    'query' => ['force_purge' => true],
+                ]);
+            }
+        }
+    }
+
+    /**
+     * @tags api
+     * @covers API::getItems
+     */
+    public function testMappedNetpointCollectionOwningParentAndNullFilter()
+    {
+        $name = '_api_netpoint_' . bin2hex(random_bytes(8));
+        $headers = ['Session-Token' => $this->session_token];
+        $created = $this->query('createItems', [
+            'itemtype' => 'Netpoint', 'verb' => 'POST', 'headers' => $headers,
+            'json' => ['input' => ['name' => $name, 'entities_id' => 0, 'locations_id' => 0]],
+        ], 201);
+        $id = (int)$created['id'];
+        $this->integer($id)->isGreaterThan(0);
+        try {
+            $params = [
+                'itemtype' => 'Netpoint', 'parent_itemtype' => 'Entity', 'parent_id' => 0,
+                'headers' => $headers,
+                'query' => ['searchText' => ['name' => '^' . $name . '$', 'locations_id' => 'NULL'],
+                    'only_id' => true, 'get_hateoas' => false, 'range' => '0-0'],
+            ];
+            $found = $this->query('getItems', $params);
+            $this->string($found['headers']['Content-Range'][0])->isIdenticalTo('0-0/1');
+            unset($found['headers']);
+            $this->array($found)->isIdenticalTo([['id' => $id]]);
+
+            $params['parent_id'] = getItemByTypeName('Entity', '_test_root_entity', true);
+            $empty = $this->query('getItems', $params);
+            unset($empty['headers']);
+            $this->array($empty)->isEmpty();
+        } finally {
+            $this->query('deleteItems', [
+                'itemtype' => 'Netpoint', 'id' => $id, 'verb' => 'DELETE', 'headers' => $headers,
+                'query' => ['force_purge' => true],
+            ]);
+        }
+    }
+
+    /**
+     * @tags api
      * @covers API::getItem
      */
     public function testNetworkPortAddressExpansion()
