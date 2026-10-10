@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\CalendarRepository;
 use itsmng\Database\Repository\TicketRecurrentRepository;
@@ -364,8 +365,8 @@ class TicketRecurrent extends CommonDropdown
     protected function recurrenceSchedule(int $calendar): CalendarSchedule
     {
         global $DB;
-        return (new CalendarRepository(Orm::create($DB)))
-            ->schedule($calendar);
+        return Orm::read($DB, static fn (EntityManager $em): CalendarSchedule =>
+            (new CalendarRepository($em))->schedule($calendar));
     }
 
     /**

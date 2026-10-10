@@ -40,6 +40,7 @@ use DbTestCase;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Query;
 use Holiday;
+use ReflectionProperty;
 use TicketRecurrent as LegacyTicketRecurrent;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\CalendarRepository;
@@ -658,6 +659,24 @@ class TicketRecurrent extends DbTestCase
             $calendarId
         ))->isIdenticalTo('NULL');
         $this->integer($recurrent->calendarEntityManager->queryCount)->isIdenticalTo(10);
+
+        // Exercise the application accessor as well as the instrumented repository.
+        $recurrent->calendarEntityManager = null;
+        $this->string($calculate())->isIdenticalTo('NULL');
+        $this->boolean($holiday->update([
+            'id' => $holidayId, 'begin_date' => '2026-10-06',
+            'end_date' => '2026-10-06', 'is_perpetual' => 0,
+        ]))->isTrue();
+        $this->string($calculate())->isIdenticalTo('2026-10-13 08:00:00');
+        $this->boolean($segment->update(['id' => $segmentId, 'begin' => '11:00:00']))->isTrue();
+        $this->string($calculate())->isIdenticalTo('2026-10-13 09:00:00');
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $allocated = $factories->getValue();
+        for ($i = 0; $i < 16; ++$i) {
+            $value = $calculate();
+        }
+        $this->string($value)->isIdenticalTo('2026-10-13 09:00:00');
+        $this->integer($factories->getValue() - $allocated)->isIdenticalTo(0);
     }
 
     /**
