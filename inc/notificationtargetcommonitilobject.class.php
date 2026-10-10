@@ -34,6 +34,7 @@
 use itsmng\Database\ITILDocumentAccess;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\DocumentRepository;
+use itsmng\Database\Repository\NotificationRecipientRepository;
 use itsmng\Database\Repository\UserRepository;
 use itsmng\Database\RowIterator;
 
@@ -164,12 +165,14 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
         $userlinktable = getTableForItemType($this->obj->userlinkclass);
         $fkfield       = $this->obj->getForeignKeyField();
 
-        $iterator = new RowIterator($this->recipientRepository()->linkedUsers(
-            $userlinktable,
-            $fkfield,
-            (int)$this->obj->fields['id'],
-            (int)$type,
-            $this->getProfileJoinCriteria()
+        $iterator = new RowIterator($this->readRecipients(
+            fn (NotificationRecipientRepository $recipients): array => $recipients->linkedUsers(
+                $userlinktable,
+                $fkfield,
+                (int)$this->obj->fields['id'],
+                (int)$type,
+                $this->getProfileJoinCriteria()
+            )
         ));
         while ($data = $iterator->next()) {
             //Add the user email and language in the notified users list
@@ -204,11 +207,13 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
         }
 
         // Anonymous user
-        $iterator = new RowIterator($this->recipientRepository()->anonymousUsers(
-            $userlinktable,
-            $fkfield,
-            (int)$this->obj->fields['id'],
-            (int)$type
+        $iterator = new RowIterator($this->readRecipients(
+            fn (NotificationRecipientRepository $recipients): array => $recipients->anonymousUsers(
+                $userlinktable,
+                $fkfield,
+                (int)$this->obj->fields['id'],
+                (int)$type
+            )
         ));
         while ($data = $iterator->next()) {
             if ($this->isMailMode()) {
@@ -234,11 +239,13 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
     public function addLinkedGroupByType($type)
     {
 
-        foreach ($this->recipientRepository()->linkedGroups(
-            getTableForItemType($this->obj->grouplinkclass),
-            $this->obj->getForeignKeyField(),
-            (int)$this->obj->fields['id'],
-            (int)$type
+        foreach ($this->readRecipients(
+            fn (NotificationRecipientRepository $recipients): array => $recipients->linkedGroups(
+                getTableForItemType($this->obj->grouplinkclass),
+                $this->obj->getForeignKeyField(),
+                (int)$this->obj->fields['id'],
+                (int)$type
+            )
         ) as $group) {
             $this->addForGroup(0, $group);
         }
@@ -258,11 +265,13 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
     public function addLinkedGroupWithoutSupervisorByType($type)
     {
 
-        foreach ($this->recipientRepository()->linkedGroups(
-            getTableForItemType($this->obj->grouplinkclass),
-            $this->obj->getForeignKeyField(),
-            (int)$this->obj->fields['id'],
-            (int)$type
+        foreach ($this->readRecipients(
+            fn (NotificationRecipientRepository $recipients): array => $recipients->linkedGroups(
+                getTableForItemType($this->obj->grouplinkclass),
+                $this->obj->getForeignKeyField(),
+                (int)$this->obj->fields['id'],
+                (int)$type
+            )
         ) as $group) {
             $this->addForGroup(2, $group);
         }
@@ -279,11 +288,13 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
     public function addLinkedGroupSupervisorByType($type)
     {
 
-        foreach ($this->recipientRepository()->linkedGroups(
-            getTableForItemType($this->obj->grouplinkclass),
-            $this->obj->getForeignKeyField(),
-            (int)$this->obj->fields['id'],
-            (int)$type
+        foreach ($this->readRecipients(
+            fn (NotificationRecipientRepository $recipients): array => $recipients->linkedGroups(
+                getTableForItemType($this->obj->grouplinkclass),
+                $this->obj->getForeignKeyField(),
+                (int)$this->obj->fields['id'],
+                (int)$type
+            )
         ) as $group) {
             $this->addForGroup(1, $group);
         }
@@ -374,10 +385,12 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
             $supplierlinktable = getTableForItemType($this->obj->supplierlinkclass);
             $fkfield           = $this->obj->getForeignKeyField();
 
-            $iterator = new RowIterator($this->recipientRepository()->suppliers(
-                $supplierlinktable,
-                $fkfield,
-                (int)$this->obj->getID()
+            $iterator = new RowIterator($this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): array => $recipients->suppliers(
+                    $supplierlinktable,
+                    $fkfield,
+                    (int)$this->obj->getID()
+                )
             ));
             while ($data = $iterator->next()) {
                 $this->addToRecipientsList($data);
@@ -397,11 +410,13 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
     {
 
         if (isset($options['validation_id'])) {
-            foreach ($this->recipientRepository()->recordUsers(
-                getTableForItemType($this->obj->getType() . 'Validation'),
-                'users_id_validate',
-                (int)$options['validation_id'],
-                $this->getProfileJoinCriteria()
+            foreach ($this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): array => $recipients->recordUsers(
+                    getTableForItemType($this->obj->getType() . 'Validation'),
+                    'users_id_validate',
+                    (int)$options['validation_id'],
+                    $this->getProfileJoinCriteria()
+                )
             ) as $data) {
                 $this->addToRecipientsList($data);
             }
@@ -419,11 +434,13 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
     {
 
         if (isset($options['validation_id'])) {
-            foreach ($this->recipientRepository()->recordUsers(
-                getTableForItemType($this->obj->getType() . 'Validation'),
-                'users_id',
-                (int)$options['validation_id'],
-                $this->getProfileJoinCriteria()
+            foreach ($this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): array => $recipients->recordUsers(
+                    getTableForItemType($this->obj->getType() . 'Validation'),
+                    'users_id',
+                    (int)$options['validation_id'],
+                    $this->getProfileJoinCriteria()
+                )
             ) as $data) {
                 $this->addToRecipientsList($data);
             }
@@ -442,11 +459,13 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
     {
 
         if (isset($options['followup_id'])) {
-            foreach ($this->recipientRepository()->recordUsers(
-                ITILFollowup::getTable(),
-                'users_id',
-                (int)$options['followup_id'],
-                $this->getProfileJoinCriteria()
+            foreach ($this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): array => $recipients->recordUsers(
+                    ITILFollowup::getTable(),
+                    'users_id',
+                    (int)$options['followup_id'],
+                    $this->getProfileJoinCriteria()
+                )
             ) as $data) {
                 $this->addToRecipientsList($data);
             }
@@ -465,13 +484,20 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
     {
 
         if (isset($options['task_users_id'])) {
-            $users = $this->recipientRepository()->users([(int)$options['task_users_id']], $this->getProfileJoinCriteria());
+            $users = $this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): array => $recipients->users(
+                    [(int)$options['task_users_id']],
+                    $this->getProfileJoinCriteria()
+                )
+            );
         } elseif (isset($options['task_id'])) {
-            $users = $this->recipientRepository()->recordUsers(
-                getTableForItemType($this->obj->getType() . 'Task'),
-                'users_id',
-                (int)$options['task_id'],
-                $this->getProfileJoinCriteria()
+            $users = $this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): array => $recipients->recordUsers(
+                    getTableForItemType($this->obj->getType() . 'Task'),
+                    'users_id',
+                    (int)$options['task_id'],
+                    $this->getProfileJoinCriteria()
+                )
             );
         } else {
             return;
@@ -493,13 +519,20 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
     {
 
         if (isset($options['task_users_id_tech'])) {
-            $users = $this->recipientRepository()->users([(int)$options['task_users_id_tech']], $this->getProfileJoinCriteria());
+            $users = $this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): array => $recipients->users(
+                    [(int)$options['task_users_id_tech']],
+                    $this->getProfileJoinCriteria()
+                )
+            );
         } elseif (isset($options['task_id'])) {
-            $users = $this->recipientRepository()->recordUsers(
-                getTableForItemType($this->obj->getType() . 'Task'),
-                'users_id_tech',
-                (int)$options['task_id'],
-                $this->getProfileJoinCriteria()
+            $users = $this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): array => $recipients->recordUsers(
+                    getTableForItemType($this->obj->getType() . 'Task'),
+                    'users_id_tech',
+                    (int)$options['task_id'],
+                    $this->getProfileJoinCriteria()
+                )
             );
         } else {
             return;
@@ -525,9 +558,11 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
         if (isset($options['task_groups_id_tech'])) {
             $this->addForGroup(0, $options['task_groups_id_tech']);
         } elseif (isset($options['task_id'])) {
-            foreach ($this->recipientRepository()->taskGroups(
-                getTableForItemType($this->obj->getType() . 'Task'),
-                (int)$options['task_id']
+            foreach ($this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): array => $recipients->taskGroups(
+                    getTableForItemType($this->obj->getType() . 'Task'),
+                    (int)$options['task_id']
+                )
             ) as $group) {
                 $this->addForGroup(0, $group);
             }
@@ -538,7 +573,9 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
     public function addAdditionnalInfosForTarget()
     {
 
-        foreach ($this->recipientRepository()->privateProfiles() as $profile) {
+        foreach ($this->readRecipients(
+            fn (NotificationRecipientRepository $recipients): array => $recipients->privateProfiles()
+        ) as $profile) {
             $this->private_profiles[$profile] = $profile;
         }
     }
@@ -547,10 +584,12 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
     public function addAdditionnalUserInfo(array $data)
     {
 
-        $private = isset($data['users_id']) && $this->recipientRepository()->canSeePrivate(
-            (int)$data['users_id'],
-            $this->private_profiles,
-            getEntitiesRestrictCriteria('glpi_profiles_users', 'entities_id', $this->getEntity(), true)
+        $private = isset($data['users_id']) && $this->readRecipients(
+            fn (NotificationRecipientRepository $recipients): bool => $recipients->canSeePrivate(
+                (int)$data['users_id'],
+                $this->private_profiles,
+                getEntitiesRestrictCriteria('glpi_profiles_users', 'entities_id', $this->getEntity(), true)
+            )
         );
         return ['show_private' => (int)$private];
     }

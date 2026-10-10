@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\MappedReads;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\NotificationRecipientRepository;
@@ -540,7 +541,11 @@ class NotificationTarget extends CommonDBChild
             $username = $data['name'];
         }
         if (isset($data['users_id']) && ($data['users_id'] > 0)) {
-            $user = $this->recipientRepository()->admissionData((int)Toolbox::cleanInteger($data['users_id']));
+            $user = $this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): ?array => $recipients->admissionData(
+                    (int)Toolbox::cleanInteger($data['users_id'])
+                )
+            );
             if (
                 $user === null
                 || ($user['is_deleted'] == 1)
@@ -701,7 +706,11 @@ class NotificationTarget extends CommonDBChild
         if ($id === null || strlen($id) === 0) {
             return;
         }
-        $user = $this->recipientRepository()->guestLanguage((int)Toolbox::cleanInteger($id));
+        $user = $this->readRecipients(
+            fn (NotificationRecipientRepository $recipients): ?array => $recipients->guestLanguage(
+                (int)Toolbox::cleanInteger($id)
+            )
+        );
         if ($user !== null) {
             $this->addToRecipientsList($user);
         }
@@ -802,10 +811,12 @@ class NotificationTarget extends CommonDBChild
     {
         global $DB;
 
-        $iterator = new RowIterator($this->recipientRepository()->groupUsers(
-            (int)$group_id,
-            (int)$manager,
-            $this->getProfileJoinCriteria()
+        $iterator = new RowIterator($this->readRecipients(
+            fn (NotificationRecipientRepository $recipients): array => $recipients->groupUsers(
+                (int)$group_id,
+                (int)$manager,
+                $this->getProfileJoinCriteria()
+            )
         ));
         while ($data = $iterator->next()) {
             $this->addToRecipientsList($data);
@@ -841,10 +852,12 @@ class NotificationTarget extends CommonDBChild
         ];
     }
 
-    protected function recipientRepository(): NotificationRecipientRepository
+    /** Materialize recipient data before delivery callbacks can change the next read. */
+    protected function readRecipients(callable $read): mixed
     {
         global $DB;
-        return new NotificationRecipientRepository(Orm::create($DB));
+        return Orm::read($DB, static fn (EntityManager $manager): mixed =>
+            $read(new NotificationRecipientRepository($manager)));
     }
 
 
@@ -1038,7 +1051,12 @@ class NotificationTarget extends CommonDBChild
         }
 
         if (!empty($id)) {
-            $iterator = new RowIterator($this->recipientRepository()->users($id, $this->getProfileJoinCriteria()));
+            $iterator = new RowIterator($this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): array => $recipients->users(
+                    $id,
+                    $this->getProfileJoinCriteria()
+                )
+            ));
 
             while ($data = $iterator->next()) {
                 //Add the user email and language in the notified users list
@@ -1098,9 +1116,11 @@ class NotificationTarget extends CommonDBChild
     {
         global $DB;
 
-        $iterator = new RowIterator($this->recipientRepository()->profileUsers(
-            (int)$profiles_id,
-            $this->getProfileJoinCriteria()
+        $iterator = new RowIterator($this->readRecipients(
+            fn (NotificationRecipientRepository $recipients): array => $recipients->profileUsers(
+                (int)$profiles_id,
+                $this->getProfileJoinCriteria()
+            )
         ));
         while ($data = $iterator->next()) {
             $this->addToRecipientsList($data);
@@ -1461,10 +1481,11 @@ class NotificationTarget extends CommonDBChild
     {
         global $DB;
 
-        return (new NotificationRecipientRepository(Orm::create($DB)))->countForGroup(
-            (int)$group->getID(),
-            getEntitiesRestrictCriteria(Notification::getTable(), '', '', true)
-        );
+        return Orm::read($DB, static fn (EntityManager $manager): int =>
+            (new NotificationRecipientRepository($manager))->countForGroup(
+                (int)$group->getID(),
+                getEntitiesRestrictCriteria(Notification::getTable(), '', '', true)
+            ));
     }
 
 
@@ -1485,10 +1506,11 @@ class NotificationTarget extends CommonDBChild
             return false;
         }
 
-        $iterator = new RowIterator((new NotificationRecipientRepository(Orm::create($DB)))->notificationsForGroup(
-            (int)$group->getID(),
-            getEntitiesRestrictCriteria(Notification::getTable(), '', '', true)
-        ));
+        $iterator = new RowIterator(Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new NotificationRecipientRepository($manager))->notificationsForGroup(
+                (int)$group->getID(),
+                getEntitiesRestrictCriteria(Notification::getTable(), '', '', true)
+            )));
 
         echo "<table class='tab_cadre_fixe' aria-label='notification Method'>";
 

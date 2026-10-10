@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\NotificationRecipientRepository;
 
@@ -608,7 +609,8 @@ class NotificationTargetTicket extends NotificationTargetCommonITILObject
         global $DB,$CFG_GLPI;
 
         if ($CFG_GLPI['notifications_mailing']) {
-            return (new NotificationRecipientRepository(Orm::create($DB)))->hasAuthorMailing();
+            return Orm::read($DB, static fn (EntityManager $manager): bool =>
+                (new NotificationRecipientRepository($manager))->hasAuthorMailing());
         }
         return false;
     }

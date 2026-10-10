@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Repository\NotificationRecipientRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -121,7 +123,11 @@ class NotificationTargetPlanningRecall extends NotificationTarget
             }
 
             if ($field !== '' && $item->fields[$field] !== null && strlen($item->fields[$field]) > 0) {
-                $user = $this->recipientRepository()->guestLanguage((int)Toolbox::cleanInteger($item->fields[$field]));
+                $user = $this->readRecipients(
+                    fn (NotificationRecipientRepository $recipients): ?array => $recipients->guestLanguage(
+                        (int)Toolbox::cleanInteger($item->fields[$field])
+                    )
+                );
                 if ($user !== null) {
                     $this->addToRecipientsList($user);
                 }
@@ -144,7 +150,11 @@ class NotificationTargetPlanningRecall extends NotificationTarget
                     if ($users_id === null || strlen($users_id) == 0) {
                         continue;
                     }
-                    $guest = $this->recipientRepository()->guestLanguage((int)Toolbox::cleanInteger($users_id));
+                    $guest = $this->readRecipients(
+                        fn (NotificationRecipientRepository $recipients): ?array => $recipients->guestLanguage(
+                            (int)Toolbox::cleanInteger($users_id)
+                        )
+                    );
                     if ($guest !== null) {
                         $this->addToRecipientsList($guest);
                     }
