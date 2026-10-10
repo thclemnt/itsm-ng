@@ -22,6 +22,7 @@ use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Mapping\MappingException;
 use LogicException;
 use Psr\Log\AbstractLogger;
+use mock\Symfony\Component\Cache\Psr16Cache as MockCache;
 use ReflectionClass;
 use ReflectionProperty;
 use RuntimeException;
@@ -686,17 +687,9 @@ class EntityRegistryCache extends test
 
     public function testCacheFailuresUseAuthoritativeMapping(): void
     {
-        $cache = new class (new ArrayAdapter()) extends Psr16Cache {
-            public function get($key, $default = null): mixed
-            {
-                throw new RuntimeException('Cache unavailable');
-            }
-
-            public function setMultiple($values, $ttl = null): bool
-            {
-                throw new RuntimeException('Cache unavailable');
-            }
-        };
+        $cache = new MockCache(new ArrayAdapter());
+        $this->calling($cache)->get = static fn () => throw new RuntimeException('Cache unavailable');
+        $this->calling($cache)->setMultiple = static fn () => throw new RuntimeException('Cache unavailable');
         $builds = 0;
         $build = static function () use (&$builds): array {
             return ['generation' => [++$builds]];
@@ -744,16 +737,9 @@ class EntityRegistryCache extends test
         $this->boolean($cache->save($cache->getItem('null')->set(null)))->isTrue();
         $this->boolean($cache->getItem('null')->isHit())->isTrue();
         $this->variable($cache->getItem('null')->get())->isNull();
-        $throwing = new class (new ArrayAdapter()) extends Psr16Cache {
-            public function getMultiple($keys, $default = null): iterable
-            {
-                throw new RuntimeException('Cache unavailable');
-            }
-            public function setMultiple($values, $ttl = null): bool
-            {
-                throw new RuntimeException('Cache unavailable');
-            }
-        };
+        $throwing = new MockCache(new ArrayAdapter());
+        $this->calling($throwing)->getMultiple = static fn () => throw new RuntimeException('Cache unavailable');
+        $this->calling($throwing)->setMultiple = static fn () => throw new RuntimeException('Cache unavailable');
         $unavailable = new SerializedMetadataCache($throwing, 'metadata');
         $logger = new class () extends AbstractLogger {
             public array $levels = [];
@@ -845,31 +831,22 @@ class EntityRegistryCache extends test
             $model->setValue(null, null);
             $this->string(serialize($snapshot()))->isIdenticalTo($cold);
 
-            $unavailable = new class (new ArrayAdapter()) extends Psr16Cache {
-                public int $gets = 0;
-                public bool $throws = false;
-
-                public function get($key, $default = null): mixed
-                {
-                    ++$this->gets;
-                    return null;
-                }
-
-                public function setMultiple($values, $ttl = null): bool
-                {
-                    if ($this->throws) {
-                        throw new RuntimeException('Cache unavailable');
-                    }
-                    return false;
-                }
+            $unavailable = new MockCache(new ArrayAdapter());
+            $gets = 0;
+            $throws = false;
+            $this->calling($unavailable)->get = static function () use (&$gets): mixed {
+                ++$gets;
+                return null;
+            };
+            $this->calling($unavailable)->setMultiple = static function () use (&$throws): bool {
+                return $throws ? throw new RuntimeException('Cache unavailable') : false;
             };
             $GLOBALS['GLPI_CACHE'] = $unavailable;
             foreach ([false, true] as $throws) {
-                $unavailable->throws = $throws;
-                $unavailable->gets = 0;
+                $gets = 0;
                 $model->setValue(null, null);
                 $this->string(serialize($snapshot()))->isIdenticalTo($cold);
-                $this->integer($unavailable->gets)->isIdenticalTo(1, 'All views remain local after a failed cache population');
+                $this->integer($gets)->isIdenticalTo(1, 'All views remain local after a failed cache population');
             }
         } finally {
             $GLOBALS['GLPI_CACHE'] = $previous;
