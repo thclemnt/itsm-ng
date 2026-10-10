@@ -531,7 +531,8 @@ class User extends CommonDBTM
     ): array {
         global $DB;
 
-        return (new UserSelectionRepository(Orm::create($DB)))->byEmail($email, $condition);
+        return Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new UserSelectionRepository($manager))->byEmail($email, $condition));
     }
 
     /**
@@ -675,10 +676,8 @@ class User extends CommonDBTM
         $input = $authentication['input'];
 
         // Check if user does not exists
-        if ((new UserRepository(Orm::create($DB)))->exists(
-            ['name' => $input['name']] + $authentication['identity'],
-            true
-        )) {
+        if (Orm::read($DB, static fn (EntityManager $manager): bool =>
+            (new UserRepository($manager))->exists(['name' => $input['name']] + $authentication['identity'], true))) {
             Session::addMessageAfterRedirect(
                 __('Unable to add. The user already exists.'),
                 false,
@@ -1440,7 +1439,8 @@ class User extends CommonDBTM
                     $this->input["_groups"] = array_unique($this->input["_groups"]);
 
                     // Delete not available groups like to LDAP
-                    $memberships = (new UserRepository(Orm::create($DB)))->memberships((int)$this->fields['id']);
+                    $memberships = Orm::read($DB, fn (EntityManager $manager): array =>
+                        (new UserRepository($manager))->memberships((int)$this->fields['id']));
 
                     $groupuser = new Group_User();
                     foreach ($memberships as $data) {
@@ -1668,7 +1668,8 @@ class User extends CommonDBTM
                     $this->input["_emails"] = $unique_emails;
 
                     // Delete not available groups like to LDAP
-                    $emails = (new UserRepository(Orm::create($DB)))->emails((int)$this->fields['id']);
+                    $emails = Orm::read($DB, fn (EntityManager $manager): array =>
+                        (new UserRepository($manager))->emails((int)$this->fields['id']));
 
                     $useremail = new UserEmail();
                     foreach ($emails as $data) {
@@ -1841,7 +1842,9 @@ class User extends CommonDBTM
                 && is_array($result[$ldap_method["group_member_field"]])
                 && (count($result[$ldap_method["group_member_field"]]) > 0)
             ) {
-                foreach ((new LdapRepository(Orm::create($DB)))->groupsForDns($result[$ldap_method["group_member_field"]]) as $groupId) {
+                $groups = Orm::read($DB, static fn (EntityManager $manager): array =>
+                    (new LdapRepository($manager))->groupsForDns($result[$ldap_method["group_member_field"]]));
+                foreach ($groups as $groupId) {
                     $this->fields["_groups"][] = $groupId;
                 }
             }
@@ -2446,8 +2449,8 @@ class User extends CommonDBTM
             $timezones = $DB->getTimezones();
         }
 
-        $emails = (new UserRepository(Orm::create($DB)))
-            ->emails((int)$ID);
+        $emails = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new UserRepository($manager))->emails((int)$ID));
         $emailsValues = [];
         $defaultEmailTitle = __('Default email');
         foreach ($emails as $email) {
@@ -2861,9 +2864,10 @@ class User extends CommonDBTM
                           || (($this->fields["authtype"] == Auth::NOT_YET_AUTHENTIFIED)
                               && !empty($this->fields["password"])));
 
-            $repository = new UserRepository(Orm::create($DB));
-            $User_profile = $repository->profiles((int)$ID);
-            $emails = $repository->emails((int)$ID);
+            [$User_profile, $emails] = Orm::read($DB, static function (EntityManager $manager) use ($ID): array {
+                $repository = new UserRepository($manager);
+                return [$repository->profiles((int)$ID), $repository->emails((int)$ID)];
+            });
             $emailsValues = [];
             $defaultEmailTitle = __('Default email');
             foreach ($emails as $email) {
@@ -3067,9 +3071,10 @@ class User extends CommonDBTM
 
         if (($key = array_search('name', $this->updates)) !== false) {
             /// Check if user does not exists
-            if ((new UserRepository(Orm::create($DB)))->exists([
-                'name' => $this->input['name'], 'id' => ['<>', $this->input['id']],
-            ], true)) {
+            if (Orm::read($DB, fn (EntityManager $manager): bool =>
+                (new UserRepository($manager))->exists([
+                    'name' => $this->input['name'], 'id' => ['<>', $this->input['id']],
+                ], true))) {
                 //To display a message
                 $this->fields['name'] = $this->oldvalues['name'];
                 unset($this->updates[$key]);
@@ -3785,10 +3790,11 @@ class User extends CommonDBTM
     {
         global $DB;
 
-        return (new UserSelectionRepository(Orm::create($DB)))->delegatedGroups(
-            (int)Session::getLoginUserID(),
-            getEntitiesRestrictCriteria('glpi_groups', '', $entities_id, 1)
-        );
+        return Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new UserSelectionRepository($manager))->delegatedGroups(
+                (int)Session::getLoginUserID(),
+                getEntitiesRestrictCriteria('glpi_groups', '', $entities_id, 1)
+            ));
     }
 
 
@@ -4597,8 +4603,8 @@ class User extends CommonDBTM
     {
         global $DB, $CFG_GLPI;
 
-        $id = (new UserRepository(Orm::create($DB)))
-            ->preferredByEmail(stripslashes($email));
+        $id = Orm::read($DB, static fn (EntityManager $manager): ?int =>
+            (new UserRepository($manager))->preferredByEmail(stripslashes($email)));
         if ($id !== null) {
             return $id;
         } else {
@@ -4726,8 +4732,8 @@ class User extends CommonDBTM
     {
         global $DB;
 
-        return (new UserRepository(Orm::create($DB)))
-            ->uniqueId((string)$field, $escape ? addslashes($value) : $value, true) ?? false;
+        return Orm::read($DB, static fn (EntityManager $manager): ?int =>
+            (new UserRepository($manager))->uniqueId((string)$field, $escape ? addslashes($value) : $value, true)) ?? false;
     }
 
 
@@ -5065,7 +5071,8 @@ class User extends CommonDBTM
 
 
         // Try to find one currently active account using the database clock.
-        $ids = (new UserSelectionRepository(Orm::create($DB)))->byEmail($email, [], activeOnly: true);
+        $ids = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new UserSelectionRepository($manager))->byEmail($email, [], activeOnly: true));
         if (count($ids) !== 1 || !$this->getFromDB($ids[0])) {
             $count = count($ids);
             trigger_error(
@@ -5197,11 +5204,13 @@ class User extends CommonDBTM
     {
         global $DB;
 
-        $repository = new UserRepository(Orm::create($DB));
-        do {
-            $key = Toolbox::getRandomString(40);
-        } while ($repository->exists([$field => $key]));
-        return $key;
+        return Orm::read($DB, static function (EntityManager $manager) use ($field): string {
+            $repository = new UserRepository($manager);
+            do {
+                $key = Toolbox::getRandomString(40);
+            } while ($repository->exists([$field => $key]));
+            return $key;
+        });
     }
 
 
@@ -5282,15 +5291,16 @@ class User extends CommonDBTM
         // User preparation can remove protected fields, and public hooks may
         // alter persistence. Verify the stored value on the supplied writer;
         // a mutable model field is not evidence of an accepted credential.
-        $repository = new UserRepository(Orm::create($DB));
-        if ($cookieIssuedAt !== null) {
+        $accepted = Orm::read($DB, function (EntityManager $manager) use ($cookieIssuedAt, $hash, $field): bool {
+            $repository = new UserRepository($manager);
             // The real cookie consumer also requires its timestamp. Preserve
             // accepted hook mutations/history, but issue no raw credential if
             // either persisted part differs from the requested outcome.
-            if (!$repository->cookieCredential((int)$this->getID())?->matchesRequested($hash, $cookieIssuedAt)) {
-                return false;
-            }
-        } elseif ($repository->tokenValue((int)$this->getID(), $field) !== $hash) {
+            return $cookieIssuedAt !== null
+                ? ($repository->cookieCredential((int)$this->getID())?->matchesRequested($hash, $cookieIssuedAt) ?? false)
+                : $repository->tokenValue((int)$this->getID(), $field) === $hash;
+        });
+        if (!$accepted) {
             return false;
         }
 
@@ -5313,7 +5323,9 @@ class User extends CommonDBTM
                            'post-only' => 'postonly'];
         $default_password_set = [];
 
-        foreach ((new UserRepository(Orm::create($DB)))->defaultPasswordCandidates(array_keys($passwords)) as $data) {
+        $candidates = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new UserRepository($manager))->defaultPasswordCandidates(array_keys($passwords)));
+        foreach ($candidates as $data) {
             if (Auth::checkPassword($passwords[strtolower((string) $data['name'])], $data['password'])) {
                 $default_password_set[] = $data['name'];
             }
@@ -5579,9 +5591,13 @@ class User extends CommonDBTM
         // Notify users about expiration of their password.
         $to_notify_count = 0;
         if (-1 !== $notice_time) {
-            $repository = new UserPasswordRepository(Orm::create($DB));
-            $to_notify_count = $repository->noticeCount($expiration_delay - $notice_time);
-            $notifications = $repository->notices($expiration_delay - $notice_time, $notification_limit);
+            [$to_notify_count, $notifications] = Orm::read($DB, static function (EntityManager $manager) use ($expiration_delay, $notice_time, $notification_limit): array {
+                $repository = new UserPasswordRepository($manager);
+                return [
+                    $repository->noticeCount($expiration_delay - $notice_time),
+                    $repository->notices($expiration_delay - $notice_time, $notification_limit),
+                ];
+            });
 
             foreach ($notifications as $notification_data) {
                 $user_id  = $notification_data['user_id'];
@@ -5792,7 +5808,8 @@ class User extends CommonDBTM
 
         // Find users which match the given token and asked for a password reset
         // less than one day ago
-        $id = (new UserPasswordRepository(Orm::create($DB)))->forgottenTokenUser($token);
+        $id = Orm::read($DB, static fn (EntityManager $manager): ?int =>
+            (new UserPasswordRepository($manager))->forgottenTokenUser($token));
         if ($id === null) {
             return null;
         }
