@@ -53,6 +53,7 @@ use User;
 use itsmng\Database\Entity\User as UserEntity;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\GroupMembershipRepository;
+use itsmng\Database\UnsupportedCriteria;
 
 require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
@@ -266,6 +267,20 @@ class Group_User extends DbTestCase
                 $assertGroupLink($tree['rows'][$index]['parent'], $owner);
             }
             $this->string($tree['rows'][1]['manager'])->contains(__('Manager'));
+            $members = $ids = [];
+            LegacyGroup_User::getDataForGroup($group, $members, $ids);
+            $this->array(array_map('intval', array_column($members, 'id')))->isIdenticalTo([(int)$users[0]->getID()]);
+            $this->array(array_map('intval', $ids))->isIdenticalTo([(int)$users[0]->getID()]);
+            $members = $ids = [];
+            LegacyGroup_User::getDataForGroup($group, $members, $ids, '', 1);
+            $this->array($members)->hasSize(2);
+            $this->array(array_map('intval', array_column($members, 'id')))
+                ->contains((int)$users[0]->getID())->contains((int)$users[1]->getID());
+            $this->array(array_map('intval', $ids))->isIdenticalTo([(int)$users[0]->getID()]);
+            $members = $ids = [];
+            LegacyGroup_User::getDataForGroup($group, $members, $ids, 'is_manager', 1);
+            $this->array(array_map('intval', array_column($members, 'id')))->isIdenticalTo([(int)$users[1]->getID()]);
+            $this->array(array_map('intval', $ids))->isIdenticalTo([(int)$users[0]->getID()]);
             $page = LegacyGroup_User::getPaginatedMembersForGroup($group, 'is_manager', 1, 0, 1);
             $this->integer($page['total'])->isIdenticalTo(1);
             $this->array($page['rows'])->hasSize(1);
@@ -345,9 +360,51 @@ class Group_User extends DbTestCase
         }
     }
 
+    public function testMembershipReadsFollowTheCurrentAdapter(): void
+    {
+        global $DB;
+        $original = $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $group = $this->createItem(Group::class, ['name' => $this->getUniqueString(), 'comment' => 'First route']);
+            $uid = (int)getItemByTypeName(User::class, 'tech', true);
+            $this->createItem(LegacyGroup_User::class, ['groups_id' => $group->getID(), 'users_id' => $uid]);
+            $connection = $original->getDoctrineConnection();
+            $probes = $adapters = [];
+            $this->mockGenerator()->orphanize('__construct');
+            for ($route = 0; $route < 2; ++$route) {
+                $probe = new ScalarReadProbe($connection);
+                $adapter = new GroupRouteAdapter();
+                $this->calling($adapter)->getDoctrineConnection = $probe;
+                $this->calling($adapter)->getProvider = $original->getProvider();
+                $probes[] = $probe;
+                $adapters[] = $adapter;
+            }
+            $criteria = ['glpi_groups.id' => (int)$group->getID()];
+            $DB = $adapters[0];
+            $first = LegacyGroup_User::getUserGroups($uid, $criteria);
+            $this->array($first)->hasSize(1);
+            $this->string($first[0]['comment'])->isIdenticalTo('First route');
+            $this->array($probes[0]->queries)->hasSize(1);
+            $this->array($probes[1]->queries)->isEmpty();
+            $this->integer($connection->update('glpi_groups', ['comment' => 'Second route'], ['id' => $group->getID()]))->isIdenticalTo(1);
+            $DB = $adapters[1];
+            $second = LegacyGroup_User::getUserGroups($uid, $criteria);
+            $this->array($second)->hasSize(1);
+            $this->string($second[0]['comment'])->isIdenticalTo('Second route');
+            $this->array($probes[0]->queries)->hasSize(1);
+            $this->array($probes[1]->queries)->hasSize(1);
+        } finally {
+            $DB = $original;
+            $_SESSION = $session;
+        }
+    }
+
     public function testGetGroupUsers()
     {
-        $group = new \Group();
+        global $DB;
+        $group = new Group();
         $gid = (int)$group->add([
            'name' => 'Test group'
         ]);
@@ -372,25 +429,48 @@ class Group_User extends DbTestCase
          ])
         );
 
-        $group_users = \Group_User::getGroupUsers($gid);
+        $group_users = LegacyGroup_User::getGroupUsers($gid);
         $this->array($group_users)->hasSize(2);
 
-        $group_users = \Group_User::getGroupUsers($gid, ['is_manager' => 1]);
+        $group_users = LegacyGroup_User::getGroupUsers($gid, ['is_manager' => 1]);
         $this->array($group_users)->hasSize(1);
         $this->integer((int)$group_users[0]['id'])->isIdenticalTo($uid2);
+
+        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeManagers = $managers->getValue();
+        for ($repeat = 0; $repeat < 16; ++$repeat) {
+            $this->array(LegacyGroup_User::getGroupUsers($gid, ['is_manager' => 1]))->isIdenticalTo($group_users);
+        }
+        $groupReaderAllocations = $managers->getValue() - $beforeManagers;
+
+        $this->boolean($DB->update('glpi_users', ['firstname' => 'Current group reader'], ['id' => $uid2]))->isTrue();
+        $fresh = LegacyGroup_User::getGroupUsers($gid, ['is_manager' => 1]);
+        $this->array($fresh)->hasSize(1);
+        $this->string($fresh[0]['firstname'])->isIdenticalTo('Current group reader');
+        $this->boolean($DB->update('glpi_groups_users', ['is_manager' => 0], ['groups_id' => $gid, 'users_id' => $uid2]))->isTrue();
+        $this->array(LegacyGroup_User::getGroupUsers($gid, ['is_manager' => 1]))->isEmpty();
+        $this->array(array_map('intval', array_column(
+            LegacyGroup_User::getGroupUsers($gid, ['glpi_groups_users.groups_id' => PHP_INT_MAX]),
+            'id'
+        )))->isIdenticalTo([$uid1, $uid2]);
+        $this->exception(static fn () => LegacyGroup_User::getGroupUsers($gid, ['glpi_profiles_users.entities_id' => 0]))
+            ->isInstanceOf(UnsupportedCriteria::class);
+        $this->array(LegacyGroup_User::getGroupUsers($gid, ['is_manager' => 0]))->hasSize(2);
 
         //cleanup
         $this->boolean($group->delete(['id' => $gid], true))->isTrue();
 
-        $group_users = \Group_User::getGroupUsers($gid);
+        $group_users = LegacyGroup_User::getGroupUsers($gid);
         $this->array($group_users)->hasSize(0);
+        $this->integer($groupReaderAllocations)->isIdenticalTo(0);
     }
 
     public function testGetUserGroups()
     {
+        global $DB;
         $uid = (int)getItemByTypeName('User', 'normal', true);
 
-        $group = new \Group();
+        $group = new Group();
         $gid1 = (int)$group->add([
            'name' => 'Test group'
         ]);
@@ -417,18 +497,40 @@ class Group_User extends DbTestCase
          ])
         );
 
-        $group_users = \Group_User::getUserGroups($uid);
+        $group_users = LegacyGroup_User::getUserGroups($uid);
         $this->array($group_users)->hasSize(2);
 
-        $group_users = \Group_User::getUserGroups($uid, ['glpi_groups_users.is_manager' => 1]);
+        $group_users = LegacyGroup_User::getUserGroups($uid, ['glpi_groups_users.is_manager' => 1]);
         $this->array($group_users)->hasSize(1);
         $this->integer((int)$group_users[0]['id'])->isIdenticalTo($gid2);
+
+        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeManagers = $managers->getValue();
+        for ($repeat = 0; $repeat < 16; ++$repeat) {
+            $this->array(LegacyGroup_User::getUserGroups($uid, ['glpi_groups_users.is_manager' => 1]))->isIdenticalTo($group_users);
+        }
+        $userReaderAllocations = $managers->getValue() - $beforeManagers;
+
+        $this->boolean($DB->update('glpi_groups', ['name' => 'Current group reader'], ['id' => $gid2]))->isTrue();
+        $fresh = LegacyGroup_User::getUserGroups($uid, ['glpi_groups_users.is_manager' => 1]);
+        $this->array($fresh)->hasSize(1);
+        $this->string($fresh[0]['name'])->isIdenticalTo('Current group reader');
+        $this->boolean($DB->update('glpi_groups_users', ['is_manager' => 0], ['groups_id' => $gid2, 'users_id' => $uid]))->isTrue();
+        $this->array(LegacyGroup_User::getUserGroups($uid, ['glpi_groups_users.is_manager' => 1]))->isEmpty();
+        $this->array(array_map('intval', array_column(
+            LegacyGroup_User::getUserGroups($uid, ['glpi_groups_users.users_id' => PHP_INT_MAX]),
+            'id'
+        )))->isIdenticalTo([$gid2, $gid1]);
+        $this->exception(static fn () => LegacyGroup_User::getUserGroups($uid, ['glpi_profiles_users.entities_id' => 0]))
+            ->isInstanceOf(UnsupportedCriteria::class);
+        $this->array(LegacyGroup_User::getUserGroups($uid, ['glpi_groups_users.is_manager' => 0]))->hasSize(2);
 
         //cleanup
         $this->boolean($group_user->deleteByCriteria(['users_id' => $uid]))->isTrue();
 
-        $group_users = \Group_User::getUserGroups($uid);
+        $group_users = LegacyGroup_User::getUserGroups($uid);
         $this->array($group_users)->hasSize(0);
+        $this->integer($userReaderAllocations)->isIdenticalTo(0);
     }
 
     public function testgetListForItemParams()
