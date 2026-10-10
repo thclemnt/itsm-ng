@@ -53,8 +53,14 @@ final class NativeReferenceSchema
                 return false;
             }
         }
-        return SubjectPolicyExpression::equivalent($policy['check'], $check['clause'], $postgres, $snapshot['ansi_quotes'],
-            integerTypes: $policy['integer_types'], stringSelections: $policy['string_selections']);
+        return SubjectPolicyExpression::equivalent(
+            $policy['check'],
+            $check['clause'],
+            $postgres,
+            $snapshot['ansi_quotes'],
+            integerTypes: $policy['integer_types'],
+            stringSelections: $policy['string_selections']
+        );
     }
 
     private static function nativeList(mixed $value): ?array

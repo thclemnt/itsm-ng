@@ -125,7 +125,6 @@ use itsmng\Database\SubjectPolicyExpression;
 use itsmng\Database\Type\ClockTimeType;
 use mock\Doctrine\DBAL\Connection;
 use tests\fixtures\DisconnectedSchemaConnection;
-
 use itsmng\Database\Entity\Entity as EntityRecord;
 use itsmng\Database\Mapping\ReferencePolicy;
 use itsmng\Database\Mapping\ReferenceKind;
@@ -345,8 +344,13 @@ class CurrentSchema extends test
                 $this->array(array_keys($policy['string_selections']))->isIdenticalTo([$policy['mode_column']]);
                 $historical = EntityConfigurationReferences::checkSql($policy['selected_column']);
                 $historical = substr($historical, strpos($historical, ' CHECK (') + 8, -1);
-                $this->boolean(SubjectPolicyExpression::equivalent($policy['check'], $historical, !$snapshot['mysql'],
-                    integerTypes: $policy['integer_types'], stringSelections: $policy['string_selections']))->isTrue();
+                $this->boolean(SubjectPolicyExpression::equivalent(
+                    $policy['check'],
+                    $historical,
+                    !$snapshot['mysql'],
+                    integerTypes: $policy['integer_types'],
+                    stringSelections: $policy['string_selections']
+                ))->isTrue();
                 $row = ['clause' => $historical, 'enforced' => true, 'validated' => true,
                     'checked_columns' => json_encode([$policy['mode_column'], $policy['selected_column']]),
                     'native_nodes' => '{BOOLEXPR {OPEXPR :opno 10 {VAR} {CONST}} {NULLTEST {VAR}}}',
@@ -389,10 +393,18 @@ class CurrentSchema extends test
                     }
                 }
                 $declaration = (new ReflectionProperty(EntityRecord::class, $property))->getAttributes(ReferencePolicy::class)[0]->newInstance();
-                $changed = new ReferencePolicy(ReferenceKind::Inherited, $declaration->modeProperty, $declaration->emptyZero,
-                    nativeConstraint: 'changed_native_name');
-                $newPolicy = $changed->nativeSelectionPolicy($metadata, new ReflectionProperty(EntityRecord::class, $property),
-                    $schema->getTable('glpi_entities'), $platform);
+                $changed = new ReferencePolicy(
+                    ReferenceKind::Inherited,
+                    $declaration->modeProperty,
+                    $declaration->emptyZero,
+                    nativeConstraint: 'changed_native_name'
+                );
+                $newPolicy = $changed->nativeSelectionPolicy(
+                    $metadata,
+                    new ReflectionProperty(EntityRecord::class, $property),
+                    $schema->getTable('glpi_entities'),
+                    $platform
+                );
                 $this->string($newPolicy['constraint'])->isIdenticalTo('changed_native_name');
                 $this->string($newPolicy['check'])->isIdenticalTo($policy['check']);
             }
@@ -435,8 +447,12 @@ class CurrentSchema extends test
             } else {
                 $metadata->fieldMappings['calendar_mode']->options['default'] = 'arbitrary';
             }
-            $this->exception(static fn () => $attribute->nativeSelectionPolicy($metadata,
-                new ReflectionProperty(EntityRecord::class, 'calendar'), $table, $platform))->isInstanceOf(LogicException::class);
+            $this->exception(static fn () => $attribute->nativeSelectionPolicy(
+                $metadata,
+                new ReflectionProperty(EntityRecord::class, 'calendar'),
+                $table,
+                $platform
+            ))->isInstanceOf(LogicException::class);
         }
     }
 
