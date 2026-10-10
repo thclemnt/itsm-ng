@@ -58,6 +58,7 @@ use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Adapter\TraceableAdapter;
 use mock\DBmysql as HistoryAdapter;
 use DbTestCase;
+use DBConnection;
 use Doctrine\DBAL\ParameterType;
 use Dropdown;
 use itsmng\Database\Orm;
@@ -74,6 +75,43 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Log extends DbTestCase
 {
+    public function testReplicationMaximumKeepsEmptyDisconnectedAndSuppliedRoute(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $this->integer($connection->getTransactionNestingLevel())->isGreaterThan(0);
+        // DbTestCase rolls back this transaction; do not truncate or commit the log.
+        $connection->executeStatement('DELETE FROM glpi_logs');
+        $this->variable(DBConnection::getHistoryMaxDate($DB))->isNull();
+        $connection->insert('glpi_logs', ['itemtype' => 'Replication probe', 'date_mod' => '2030-01-01 12:00:00']);
+        $expected = $connection->fetchOne('SELECT ' . $DB->expressions()->epoch('MAX(date_mod)') . ' FROM glpi_logs');
+        $this->variable(DBConnection::getHistoryMaxDate($DB))->isEqualTo($expected);
+        $connection->update('glpi_logs', ['date_mod' => '2030-01-02 12:00:00'], ['itemtype' => 'Replication probe']);
+        $later = $connection->fetchOne('SELECT ' . $DB->expressions()->epoch('MAX(date_mod)') . ' FROM glpi_logs');
+        $this->variable(DBConnection::getHistoryMaxDate($DB))->isEqualTo($later);
+        $this->boolean((float)$later > (float)$expected)->isTrue();
+        $probe = new ScalarReadProbe($connection);
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new HistoryAdapter();
+        $getters = 0;
+        $this->calling($adapter)->getDoctrineConnection = static function () use ($probe, &$getters): Connection {
+            ++$getters;
+            return $probe;
+        };
+        $adapter->connected = false;
+        $this->variable(DBConnection::getHistoryMaxDate($adapter))->isIdenticalTo(0);
+        $this->integer($getters)->isIdenticalTo(0);
+        $adapter->connected = true;
+        $this->variable(DBConnection::getHistoryMaxDate($adapter))->isEqualTo($later);
+        $this->integer($getters)->isIdenticalTo(1);
+        $this->array($probe->queries)->hasSize(1);
+        // A route supplied explicitly remains authoritative even with slave semantics.
+        $adapter->slave = true;
+        $this->variable(DBConnection::getHistoryMaxDate($adapter))->isEqualTo($later);
+        $this->integer($getters)->isIdenticalTo(2);
+        $this->array($probe->queries)->hasSize(2);
+    }
+
     public function testNullableUserAssignmentKeepsLegacyAuditLabels(): void
     {
         global $DB;

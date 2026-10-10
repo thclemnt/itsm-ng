@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
 * */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\NetworkNameRepository;
 use itsmng\Reporting\Criteria;
@@ -398,7 +399,12 @@ class NetworkAlias extends FQDNLabel
             $order = "alias";
         }
 
-        $number = (new NetworkNameRepository(Orm::create($DB)))->countAliasesForDomain((int)$item->getID(), Criteria::entities());
+        $number = Orm::readPrepared(
+            $DB,
+            static fn (): array => [(int)$item->getID(), Criteria::entities()],
+            static fn (EntityManager $manager, array $arguments): int =>
+                (new NetworkNameRepository($manager))->countAliasesForDomain(...$arguments),
+        );
 
         echo "<br><div class='center'>";
 
@@ -428,8 +434,12 @@ class NetworkAlias extends FQDNLabel
                 )
             );
 
-            $rows = (new NetworkNameRepository(Orm::create($DB)))
-                ->aliasesForDomain((int)$item->getID(), $order, (int)$_SESSION['glpilist_limit'], (int)$start, Criteria::entities());
+            $rows = Orm::readPrepared(
+                $DB,
+                static fn (): array => [(int)$item->getID(), $order, (int)$_SESSION['glpilist_limit'], (int)$start, Criteria::entities()],
+                static fn (EntityManager $manager, array $arguments): array =>
+                    (new NetworkNameRepository($manager))->aliasesForDomain(...$arguments),
+            );
             foreach ($rows as $data) {
                 Session::addToNavigateListItems($alias->getType(), $data["alias_id"]);
                 if ($address->getFromDB($data["address_id"])) {

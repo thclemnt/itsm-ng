@@ -3,6 +3,7 @@
 namespace tests\units;
 
 use DbTestCase;
+use Entity;
 use FQDN;
 use IPAddress;
 use IPAddress_IPNetwork;
@@ -89,6 +90,39 @@ class IPNetwork extends DbTestCase
             $connection->update('glpi_networknames', ['is_deleted' => 0], ['id' => $networknames_id]);
         }
         $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+
+        // The FQDN tab has its own count/page reads and must see current aliases.
+        $session = $_SESSION;
+        $request = $_GET;
+        $aliasName = $alias->fields['name'];
+        $entityId = (int)$alias->fields['entities_id'];
+        $outside = $this->createItem(Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => $entityId]);
+        try {
+            $_SESSION['glpiactiveentities'] = [$entityId];
+            $_SESSION['glpishowallentities'] = false;
+            $_SESSION['glpilist_limit'] = 1;
+            $_GET['start'] = 0;
+            $_GET['order'] = 'alias';
+            $this->output(static fn () => NetworkAlias::showForFQDN($fqdn, 0))->contains($aliasName);
+            $connection->update('glpi_networkaliases', ['name' => 'fresh-alias', 'comment' => 'fresh-comment'], ['id' => $alias_id]);
+            $this->output(static fn () => NetworkAlias::showForFQDN($fqdn, 0))
+                ->contains('fresh-alias')->contains('fresh-comment');
+            $_GET['start'] = 1;
+            $this->output(static fn () => NetworkAlias::showForFQDN($fqdn, 0))->notContains('fresh-alias');
+            $_GET['start'] = 0;
+            foreach (['glpi_networkaliases' => $alias_id, 'glpi_networknames' => $networknames_id] as $table => $id) {
+                $connection->update($table, ['entities_id' => $outside->getID()], ['id' => $id]);
+                $this->output(static fn () => NetworkAlias::showForFQDN($fqdn, 0))
+                    ->contains('No item found')->notContains('fresh-alias');
+                $connection->update($table, ['entities_id' => $entityId], ['id' => $id]);
+                $this->output(static fn () => NetworkAlias::showForFQDN($fqdn, 0))->contains('fresh-alias');
+            }
+        } finally {
+            $_SESSION = $session;
+            $_GET = $request;
+            $connection->update('glpi_networkaliases', ['name' => $aliasName, 'comment' => $alias->fields['comment'], 'entities_id' => $entityId], ['id' => $alias_id]);
+            $connection->update('glpi_networknames', ['entities_id' => $entityId], ['id' => $networknames_id]);
+        }
     }
 
     public function testFqdnAndFqdnLabelValidation()

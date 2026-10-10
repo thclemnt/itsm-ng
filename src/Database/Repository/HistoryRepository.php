@@ -23,6 +23,13 @@ final class HistoryRepository
     {
     }
 
+    /** Replication lag observes the supplied database's clock, including an empty log. */
+    public function maxDateEpoch(): mixed
+    {
+        return $this->em->createQueryBuilder()->select('EPOCH_SECONDS(MAX(l.date_mod))')
+            ->from(Log::class, 'l')->getQuery()->getSingleScalarResult();
+    }
+
     public function append(array $values): int
     {
         return (new RecordWriter($this->em))->insert('glpi_logs', $values);

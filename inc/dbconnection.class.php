@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\HistoryRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -361,10 +365,8 @@ class DBConnection extends CommonDBTM
     {
 
         if ($DBconnection->connected) {
-            $result = $DBconnection->query('SELECT ' . $DBconnection->expressions()->epoch('MAX(' . $DBconnection->quoteName('date_mod') . ')') . ' AS max_date FROM ' . $DBconnection->quoteName('glpi_logs'));
-            if ($DBconnection->numrows($result) > 0) {
-                return $DBconnection->result($result, 0, "max_date");
-            }
+            return Orm::read($DBconnection, static fn (EntityManager $manager): mixed =>
+                (new HistoryRepository($manager))->maxDateEpoch());
         }
         return 0;
     }

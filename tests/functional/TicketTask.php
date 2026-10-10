@@ -48,6 +48,8 @@ use Toolbox;
 use itsmng\Database\Entity\Entity as EntityRecord;
 use itsmng\Database\Entity\Group;
 use itsmng\Database\Entity\User;
+use itsmng\Database\Entity\Ticket as TicketRecord;
+use itsmng\Database\Entity\TicketTask as TicketTaskRecord;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ITILTaskRepository;
 
@@ -55,6 +57,80 @@ use itsmng\Database\Repository\ITILTaskRepository;
 
 class TicketTask extends DbTestCase
 {
+    public function testPlanningAndCalendarReadsKeepFreshRowsAndIndependentWriter(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $writer = null;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $writer = Orm::create($DB);
+            $entity = $writer->getReference(EntityRecord::class, (int)$_SESSION['glpiactive_entity']);
+            $group = new Group();
+            $group->name = $this->getUniqueString();
+            $group->entities = $entity;
+            $writer->persist($group);
+            $parent = new TicketRecord();
+            $parent->name = $this->getUniqueString();
+            $parent->entities = $entity;
+            $parent->status = CommonITILObject::INCOMING;
+            $parent->priority = 3;
+            $parent->date_mod = new DateTime('2030-01-01 12:00:00');
+            $writer->persist($parent);
+            $task = new TicketTaskRecord();
+            $task->tickets = $parent;
+            $task->groups_tech = $group;
+            $task->uuid = $this->getUniqueString();
+            $task->content = 'Before write';
+            $task->begin = new DateTime('2030-01-01 12:00:00');
+            $task->end = new DateTime('2030-01-01 13:00:00');
+            $task->state = Planning::TODO;
+            $writer->persist($task);
+            $writer->flush();
+            $options = ['begin' => '2030-01-01 00:00:00', 'end' => '2030-01-02 00:00:00', 'who' => 0, 'whogroup' => $group->id];
+            $events = static fn (): array => array_values(LegacyTicketTask::populatePlanning($options));
+            $calendars = static fn (): array => LegacyTicketTask::getGroupItemsAsVCalendars($group->id);
+            $this->array($events())->hasSize(1);
+            $this->array($calendars())->hasSize(1);
+            $connection = $DB->getDoctrineConnection();
+            $connection->withApplicationEntityManager(function (EntityManager $outer) use ($group, $events, $calendars): void {
+                $sentinel = $outer->find(Group::class, $group->id);
+                $this->array($events())->hasSize(1);
+                $this->array($calendars())->hasSize(1);
+                $this->boolean($outer->contains($sentinel))->isTrue();
+            });
+            $connection->update('glpi_tickettasks', ['content' => 'After write', 'begin' => '2030-01-01 12:30:00'], ['id' => $task->id]);
+            $fresh = $events();
+            $this->string($fresh[0]['content'])->isIdenticalTo('After write');
+            $this->string($fresh[0]['begin'])->isIdenticalTo('2030-01-01 12:30:00');
+            $this->string((string)$calendars()[0]->getBaseComponent()->DESCRIPTION)->isIdenticalTo('After write');
+            $this->boolean($writer->contains($task))->isTrue();
+            // These completed read scopes must not detach or flush a caller's live writer.
+            $savedName = $parent->name;
+            $parent->name = 'Pending writer';
+            $events();
+            $calendars();
+            $this->string((string)$connection->fetchOne('SELECT name FROM glpi_tickets WHERE id = ?', [$parent->id]))
+                ->isIdenticalTo($savedName);
+            $writer->flush();
+            $this->string((string)$connection->fetchOne('SELECT name FROM glpi_tickets WHERE id = ?', [$parent->id]))
+                ->isIdenticalTo('Pending writer');
+            $connection->update('glpi_tickets', ['is_deleted' => 1], ['id' => $parent->id]);
+            $this->array($events())->isEmpty();
+            $this->array($calendars())->isEmpty();
+            $connection->update('glpi_tickets', ['is_deleted' => 0], ['id' => $parent->id]);
+            $this->array($events())->hasSize(1);
+            $this->array($calendars())->hasSize(1);
+            $_SESSION['glpiactiveentities'] = [];
+            $this->array($events())->isEmpty();
+            $this->array($calendars())->isEmpty();
+        } finally {
+            $_SESSION = $session;
+            $writer?->clear();
+        }
+    }
+
     public function centralDisplayProvider(): array
     {
         return [['TicketTask', 'Ticket', 'tickets', 'Ticket'], ['ProblemTask', 'Problem', 'problems', 'ProblemTask']];

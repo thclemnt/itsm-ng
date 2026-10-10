@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ProjectRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -118,24 +122,12 @@ class ProjectTask_Ticket extends CommonDBRelation
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT'       => new QueryExpression('SUM(glpi_tickets.actiontime) AS duration'),
-           'FROM'         => self::getTable(),
-           'INNER JOIN'   => [
-              'glpi_tickets' => [
-                 'FKEY'   => [
-                    self::getTable()  => 'tickets_id',
-                    'glpi_tickets'    => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => ['projecttasks_id' => $projecttasks_id]
-        ]);
-
-        if ($row = $iterator->next()) {
-            return $row['duration'];
-        }
-        return 0;
+        return Orm::read(
+            $DB,
+            static fn (EntityManager $manager): ?int => (new ProjectRepository($manager))
+                ->linkedTicketActionTime((int)$projecttasks_id),
+            clearCustomManager: true
+        );
     }
 
 

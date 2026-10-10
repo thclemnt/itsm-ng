@@ -155,6 +155,19 @@ final class ProjectRepository
         return array_map('intval', array_column($rows, 'ticket_id'));
     }
 
+    /** One action-time contribution per task/ticket link; no links retain the legacy NULL sum. */
+    public function linkedTicketActionTime(int $task): ?int
+    {
+        $duration = $this->em->createQueryBuilder()
+            ->select('SUM(ticket.actiontime)')
+            ->from(ProjectTaskTicket::class, 'link')
+            ->innerJoin('link.tickets', 'ticket')
+            ->where('IDENTITY(link.projecttasks) = :task')
+            ->setParameter('task', $task, Types::BIGINT)
+            ->getQuery()->getSingleScalarResult();
+        return $duration === null ? null : (int)$duration;
+    }
+
     public function taskDuration(int $task): int
     {
         $own = $this->em->createQueryBuilder()
@@ -181,17 +194,15 @@ final class ProjectRepository
 
     private function ticketDuration(?int $id, bool $project): int
     {
+        if (!$project) {
+            return (int)$this->linkedTicketActionTime((int)$id);
+        }
         $query = $this->em->createQueryBuilder()
             ->select('SUM(ticket.actiontime)')
             ->from(ProjectTaskTicket::class, 'l')
             ->innerJoin('l.projecttasks', 't')
             ->innerJoin('l.tickets', 'ticket');
-        if ($project) {
-            $this->forProject($query, $id);
-        } else {
-            $query->where('t.id = :id')
-                ->setParameter('id', $id);
-        }
+        $this->forProject($query, $id);
         return (int)$query->getQuery()
             ->getSingleScalarResult();
     }

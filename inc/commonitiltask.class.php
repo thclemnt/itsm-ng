@@ -1084,16 +1084,21 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
             $whogroup = $_SESSION['glpigroups'] ?? ($who > 0 ? array_column(Group_User::getUserGroups($who), 'id') : []);
         }
         $groups = array_values(array_filter(array_map('intval', (array)$whogroup), static fn (int $id): bool => $id > 0));
-        $rows = (new ITILTaskRepository(Orm::create($DB)))->planningTasks(
-            $itemtype,
-            new DateTimeImmutable($begin),
-            new DateTimeImmutable($end),
-            isset($options['not_planned']),
-            (int)$who,
-            $groups,
-            getEntitiesRestrictCriteria('glpi_profiles_users', '', $_SESSION['glpiactive_entity'], true),
-            (bool)$options['display_done_events'],
-            array_merge($parentitem->getSolvedStatusArray(), $parentitem->getClosedStatusArray()),
+        $rows = Orm::readPrepared(
+            $DB,
+            static fn (): array => [
+                $itemtype,
+                new DateTimeImmutable($begin),
+                new DateTimeImmutable($end),
+                isset($options['not_planned']),
+                (int)$who,
+                $groups,
+                getEntitiesRestrictCriteria('glpi_profiles_users', '', $_SESSION['glpiactive_entity'], true),
+                (bool)$options['display_done_events'],
+                array_merge($parentitem->getSolvedStatusArray(), $parentitem->getClosedStatusArray()),
+            ],
+            static fn (EntityManager $manager, array $arguments): array =>
+                (new ITILTaskRepository($manager))->planningTasks(...$arguments),
         );
         // Group arrays must produce a stable scalar event key.
         $whogroup = implode(',', $groups);
@@ -2063,7 +2068,12 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
             return;
         }
 
-        $tasks = (new ITILTaskRepository(Orm::create($DB)))->calendarTasks(static::getType(), $criteria);
+        $tasks = Orm::readPrepared(
+            $DB,
+            static fn (): string => static::getType(),
+            static fn (EntityManager $manager, string $type): array =>
+                (new ITILTaskRepository($manager))->calendarTasks($type, $criteria),
+        );
 
         $vcalendars = [];
         foreach ($tasks as $task) {
