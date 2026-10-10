@@ -25,6 +25,18 @@ final class EntityConfigurationRepository
     {
     }
 
+    /** This entity's notification administrator; parent settings are not inherited. */
+    public function administratorContact(?int $entity): ?array
+    {
+        return $this->em->createQueryBuilder()
+            ->select('e.admin_email', 'e.admin_email_name')
+            ->from(Entity::class, 'e')
+            ->where('e.id = :entity')
+            ->setParameter('entity', $entity, Types::BIGINT)
+            ->getQuery()
+            ->getOneOrNullResult();
+    }
+
     public function nextIdentifier(): int
     {
         return 1 + (int)$this->em->createQueryBuilder()

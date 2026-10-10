@@ -34,11 +34,94 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Events;
+use itsmng\Database\Entity\Entity as EntityRecord;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\EntityConfigurationRepository;
+use mock\DBmysql;
+use NotificationEventMailing as LegacyMailing;
 
 /* Test for inc/notificationeventajax.class.php */
 
 class NotificationEventMailing extends DbTestCase
 {
+    public function testEntityAdministratorProjectionKeepsExactScopeAndCurrentValues(): void
+    {
+        global $DB, $CFG_GLPI;
+        $this->login();
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
+        $manager = Orm::create($database);
+        $owned = $manager->find(EntityRecord::class, 0);
+        $owned->name = 'Pending root administrator';
+        $before = $manager->getUnitOfWork()->getIdentityMap();
+        $loads = new class () {
+            public int $count = 0;
+            public function postLoad(): void
+            {
+                ++$this->count;
+            }
+        };
+        $manager->getEventManager()->addEventListener([Events::postLoad], $loads);
+        $settings = new EntityConfigurationRepository($manager);
+        $this->mockGenerator->orphanize('__construct');
+        $routed = new DBmysql();
+        $reads = 0;
+        $this->calling($routed)->getDoctrineConnection = static function () use ($connection, &$reads) {
+            ++$reads;
+            return $connection;
+        };
+        try {
+            $this->boolean($database->update('glpi_entities', [
+                'admin_email' => 'root-admin@localhost', 'admin_email_name' => null,
+            ], ['id' => 0]))->isTrue();
+            $this->boolean($database->update('glpi_entities', [
+                'admin_email' => null, 'admin_email_name' => 'Child administrator',
+            ], ['id' => $child]))->isTrue();
+            $DB = $routed;
+            $this->array(LegacyMailing::getEntityAdminsData(0))->isIdenticalTo([[
+                'language' => $CFG_GLPI['language'], 'email' => 'root-admin@localhost', 'name' => '',
+            ]]);
+            $this->integer($reads)->isGreaterThan(0);
+            // A child with no address does not inherit the valid root address.
+            $this->boolean(LegacyMailing::getEntityAdminsData($child))->isFalse();
+            foreach ([null, 'NULL', 'null', PHP_INT_MAX, -1] as $missing) {
+                $this->boolean(LegacyMailing::getEntityAdminsData($missing))->isFalse();
+            }
+            $this->array($settings->administratorContact(0))->isIdenticalTo([
+                'admin_email' => 'root-admin@localhost', 'admin_email_name' => null,
+            ]);
+            $this->boolean($database->update('glpi_entities', [
+                'admin_email' => 'new-root@localhost', 'admin_email_name' => 'Current root',
+            ], ['id' => 0]))->isTrue();
+            $this->array($settings->administratorContact(0))->isIdenticalTo([
+                'admin_email' => 'new-root@localhost', 'admin_email_name' => 'Current root',
+            ]);
+            Orm::read($database, function (EntityManager $outer) use ($CFG_GLPI): void {
+                $nested = $outer->find(EntityRecord::class, 0);
+                $nested->name = 'Pending nested administrator';
+                $identity = $outer->getUnitOfWork()->getIdentityMap();
+                $this->array(LegacyMailing::getEntityAdminsData(0))->isIdenticalTo([[
+                    'language' => $CFG_GLPI['language'], 'email' => 'new-root@localhost', 'name' => 'Current root',
+                ]]);
+                $this->boolean($outer->contains($nested))->isTrue();
+                $this->string($nested->name)->isIdenticalTo('Pending nested administrator');
+                $this->array($outer->getUnitOfWork()->getIdentityMap())->isIdenticalTo($identity);
+            });
+            $this->boolean($database->update('glpi_entities', ['admin_email' => 'invalid-address'], ['id' => 0]))->isTrue();
+            $this->boolean(LegacyMailing::getEntityAdminsData(0))->isFalse();
+            $this->integer($loads->count)->isIdenticalTo(0);
+            $this->boolean($manager->contains($owned))->isTrue();
+            $this->string($owned->name)->isIdenticalTo('Pending root administrator');
+            $this->array($manager->getUnitOfWork()->getIdentityMap())->isIdenticalTo($before);
+        } finally {
+            $DB = $database;
+            $manager->clear();
+        }
+    }
+
     public function testGetTargetField()
     {
         $data = [];
