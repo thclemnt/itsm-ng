@@ -9,6 +9,7 @@ use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\DBAL\Schema\Table;
+use Doctrine\DBAL\Types\Types;
 use LogicException;
 use ReflectionClass;
 use ReflectionProperty;
@@ -91,6 +92,9 @@ final readonly class DiscriminatorKey
 
     public function subjectCheckExpression(AbstractPlatform $platform, ClassMetadata $metadata, string $property): string
     {
+        if ($this->fallbackProperty !== null) {
+            return $this->fallbackCheckExpression($platform, $metadata, $property);
+        }
         $bindings = $this->subjectBindings($metadata, $property);
         $columns = [];
         foreach ($bindings as $name => $binding) {
@@ -127,6 +131,68 @@ final readonly class DiscriminatorKey
         $attributes = (new ReflectionClass($metadata->name))->getAttributes(RequiredSubjectConstraint::class);
         $suffix = $attributes ? $attributes[0]->newInstance()->suffix : 'typed_item_kind';
         return $metadata->getTableName() . '_' . $suffix;
+    }
+
+
+    /** Optional selected servers and an opaque integer fallback derive from the owning branches. */
+    private function fallbackCheckExpression(AbstractPlatform $platform, ClassMetadata $metadata, string $property): string
+    {
+        if ($this->emptyValue !== null || $this->emptyRequiredNullProperties || $this->exactDiscriminator
+            || !$metadata->hasField($this->fallbackProperty)
+            || !$metadata->getFieldMapping($this->fallbackProperty)->nullable
+            || !in_array($metadata->getFieldMapping($this->fallbackProperty)->type, [Types::SMALLINT, Types::INTEGER, Types::BIGINT], true)) {
+            throw new LogicException('Fallback subject requires a nullable opaque integer field.');
+        }
+        $bindings = $columns = $kinds = [];
+        $discriminatorProperty = null;
+        foreach ($metadata->associationMappings as $name => $association) {
+            foreach ((new ReflectionProperty($metadata->name, $name))->getAttributes(DiscriminatedBy::class) as $attribute) {
+                $binding = $attribute->newInstance();
+                if ($binding->legacyColumn !== $metadata->getColumnName($property)) {
+                    continue;
+                }
+                $field = $metadata->getFieldMapping($binding->discriminator);
+                if (!$association->isToOneOwningSide() || count($association->joinColumns) !== 1
+                    || !$association->joinColumns[0]->nullable || $binding->emptyValue !== 0 || $binding->minimumId !== 1
+                    || $field->nullable || !in_array($field->type, [Types::SMALLINT, Types::INTEGER, Types::BIGINT], true)
+                    || ($discriminatorProperty !== null && $discriminatorProperty !== $binding->discriminator)) {
+                    throw new LogicException('Fallback subject requires optional owning server branches and one nonnull integer discriminator.');
+                }
+                foreach ($binding->values as $kind) {
+                    if (!is_int($kind) || $kind < 0 || isset($kinds[$kind])) {
+                        throw new LogicException('Fallback subject kinds must be disjoint nonnegative integers.');
+                    }
+                    $kinds[$kind] = $kind;
+                }
+                $discriminatorProperty = $binding->discriminator;
+                $bindings[$name] = $binding;
+                $columns[$name] = $platform->quoteIdentifier($association->joinColumns[0]->name);
+            }
+        }
+        if (!$bindings) {
+            throw new LogicException('Fallback subject requires declared owning server branches.');
+        }
+        $discriminator = $platform->quoteIdentifier($metadata->getColumnName($discriminatorProperty));
+        $fallback = $platform->quoteIdentifier($metadata->getColumnName($this->fallbackProperty));
+        $branches = [];
+        foreach ($bindings as $name => $binding) {
+            $branch = [$discriminator . ' IN (' . implode(', ', $binding->values) . ')',
+                '(' . $columns[$name] . ' IS NULL OR ' . $columns[$name] . ' > 0)'];
+            foreach ($columns as $other => $column) {
+                if ($other !== $name) {
+                    $branch[] = $column . ' IS NULL';
+                }
+            }
+            $branch[] = $fallback . ' IS NULL';
+            $branches[] = '(' . implode(' AND ', $branch) . ')';
+        }
+        $fallbackBranch = [$discriminator . ' NOT IN (' . implode(', ', $kinds) . ')'];
+        foreach ($columns as $column) {
+            $fallbackBranch[] = $column . ' IS NULL';
+        }
+        $fallbackBranch[] = $fallback . ' IS NOT NULL';
+        $branches[] = '(' . implode(' AND ', $fallbackBranch) . ')';
+        return implode(' OR ', $branches);
     }
 
     /** Exact kinds are a property policy; MySQL text collations may fold case or spaces. */

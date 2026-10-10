@@ -24,6 +24,7 @@ use itsmng\Database\Mapping\LegacyInput;
 use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\RequiredSubjectConstraint;
 use itsmng\Database\Type\FixedStringType;
 
 #[ORM\Entity]
@@ -52,6 +53,7 @@ use itsmng\Database\Type\FixedStringType;
 #[SchemaIndex('authldaps_id', ['authldaps_id'])]
 #[SchemaIndex('authmails_id', ['authmails_id'])]
 #[SchemaIndex('IDX_F7E175BF7F248429', ['default_requesttypes_id'])]
+#[RequiredSubjectConstraint('authentication_kind')]
 #[ORM\HasLifecycleCallbacks]
 class User implements LegacyInput
 {

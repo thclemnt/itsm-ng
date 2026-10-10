@@ -12,18 +12,18 @@ final class SubjectPolicyExpression
     private int $position = 0;
     private int $depth = 0;
 
-    private function __construct(private array $tokens, private bool $postgres)
+    private function __construct(private array $tokens, private bool $postgres, private array $integerDiscriminators, private array $integerTypes)
     {
     }
 
     /** $verifiedCheck must independently match an enforced, validated native CHECK. */
-    public static function equivalent(string $expected, string $actual, bool $postgres, bool $ansiQuotes = false, ?string $verifiedCheck = null): bool
+    public static function equivalent(string $expected, string $actual, bool $postgres, bool $ansiQuotes = false, ?string $verifiedCheck = null, array $integerDiscriminators = [], array $integerTypes = []): bool
     {
         try {
-            $left = self::parse($expected, $postgres, $ansiQuotes);
-            $right = self::parse($actual, $postgres, $ansiQuotes, true);
+            $left = self::parse($expected, $postgres, $ansiQuotes, integerDiscriminators: $integerDiscriminators, integerTypes: $integerTypes);
+            $right = self::parse($actual, $postgres, $ansiQuotes, true, $integerDiscriminators, $integerTypes);
             if ($verifiedCheck !== null) {
-                $check = self::parse($verifiedCheck, $postgres, $ansiQuotes);
+                $check = self::parse($verifiedCheck, $postgres, $ansiQuotes, integerDiscriminators: $integerDiscriminators, integerTypes: $integerTypes);
                 $left = self::guardedCoalesce($left, $check, $postgres);
                 $right = self::guardedCoalesce($right, $check, $postgres);
             }
@@ -33,7 +33,7 @@ final class SubjectPolicyExpression
         }
     }
 
-    private static function parse(string $sql, bool $postgres, bool $ansiQuotes, bool $nativeCatalog = false): array
+    private static function parse(string $sql, bool $postgres, bool $ansiQuotes, bool $nativeCatalog = false, array $integerDiscriminators = [], array $integerTypes = []): array
     {
         if (strlen($sql) > 262144) {
             throw new UnexpectedValueException();
@@ -56,7 +56,7 @@ final class SubjectPolicyExpression
                 }
                 $match = ["'" . $literal . "'"];
                 $offset += 2; // The two catalog-only backslashes.
-            } elseif (!preg_match('/\G(?:\'(?:[^\'\\\\]|\'\')*\'|`(?:[^`]|``)+`|"(?:[^"]|"")+"|[a-zA-Z_][a-zA-Z_0-9]*|[0-9]+|::|>=|[=(),])/A', $sql, $match, 0, $offset)) {
+            } elseif (!preg_match('/\G(?:\'(?:[^\'\\\\]|\'\')*\'|`(?:[^`]|``)+`|"(?:[^"]|"")+"|[a-zA-Z_][a-zA-Z_0-9]*|[0-9]+|::|>=|<>|[=>(),\[\]])/A', $sql, $match, 0, $offset)) {
                 throw new UnexpectedValueException();
             }
             $token = $match[0];
@@ -75,7 +75,7 @@ final class SubjectPolicyExpression
                 throw new UnexpectedValueException();
             }
         }
-        $parser = new self($tokens, $postgres);
+        $parser = new self($tokens, $postgres, $integerDiscriminators, $integerTypes);
         $result = $parser->expression();
         if ($parser->position !== count($tokens)) {
             throw new UnexpectedValueException();
@@ -244,27 +244,81 @@ final class SubjectPolicyExpression
 
     private function comparison(): array
     {
+        // MySQL may deparse numeric NOT IN as NOT (IN). Negation remains limited
+        // to a finite declared integer discriminator selection, never arbitrary SQL.
+        if ($this->take('not')) {
+            $selection = $this->value();
+            $choices = $selection[0] === 'or' ? $selection[1] : [$selection];
+            $negative = [];
+            foreach ($choices as $choice) {
+                if ($choice[0] !== '=' || !$this->isIntegerDiscriminator($choice[1]) || $choice[2][0] !== 'integer') {
+                    throw new UnexpectedValueException();
+                }
+                $negative[] = ['<>', $choice[1], $choice[2]];
+            }
+            return $this->junction('and', $negative);
+        }
         $left = $this->value();
         if ($this->take('is')) {
             $not = $this->take('not');
             $this->expect('null');
             return [$not ? 'not_null' : 'null', $left[0] === 'binary' ? $left[1] : $left];
         }
+        $not = $this->take('not');
         if ($this->take('in')) {
+            if ($not && !$this->isIntegerDiscriminator($left)) {
+                throw new UnexpectedValueException();
+            }
             $this->expect('(');
             $choices = [];
             do {
-                $choices[] = ['=', $left, $this->value()];
+                $right = $this->value();
+                if ($not && $right[0] !== 'integer') {
+                    throw new UnexpectedValueException();
+                }
+                $choices[] = [$not ? '<>' : '=', $left, $right];
             } while ($this->take(','));
             $this->expect(')');
-            return $this->junction('or', $choices);
+            return $this->junction($not ? 'and' : 'or', $choices);
         }
-        foreach (['=', '>='] as $operator) {
-            if ($this->take($operator)) {
-                return [$operator, $left, $this->value()];
+        if ($not) {
+            throw new UnexpectedValueException();
+        }
+        foreach (['=', '>=', '>', '<>'] as $operator) {
+            if (!$this->take($operator)) {
+                continue;
             }
+            if (($operator === '=' && $this->take('any')) || ($operator === '<>' && $this->take('all'))) {
+                if (!$this->postgres || !$this->isIntegerDiscriminator($left)) {
+                    throw new UnexpectedValueException();
+                }
+                $this->expect('(');
+                $this->expect('array');
+                $this->expect('[');
+                $choices = [];
+                do {
+                    $right = $this->value();
+                    if ($right[0] !== 'integer' || count($choices) >= 256) {
+                        throw new UnexpectedValueException();
+                    }
+                    $choices[] = [$operator, $left, $right];
+                } while ($this->take(','));
+                $this->expect(']');
+                $this->expect(')');
+                return $this->junction($operator === '=' ? 'or' : 'and', $choices);
+            }
+            $right = $this->value();
+            if ($operator === '<>' && (!$this->isIntegerDiscriminator($left) || $right[0] !== 'integer')) {
+                throw new UnexpectedValueException();
+            }
+            return [$operator, $left, $right];
         }
         return $left;
+    }
+
+    private function isIntegerDiscriminator(array $value): bool
+    {
+        return $value[0] === 'identifier' && in_array($value[1], $this->integerDiscriminators, true);
     }
 
     private function value(): array
@@ -339,9 +393,13 @@ final class SubjectPolicyExpression
                 if (!in_array($value[0], ['identifier', 'string'], true)) {
                     throw new UnexpectedValueException();
                 }
-            } elseif ($this->take('bigint') || $this->take('integer')) {
+            } elseif (($cast = $this->take('bigint') ? 'bigint' : ($this->take('integer') ? 'integer' : null)) !== null) {
                 if (!in_array($value[0], ['literal_null', 'integer'], true)) {
-                    throw new UnexpectedValueException();
+                    $source = $value[0] === 'identifier' ? ($this->integerTypes[$value[1]] ?? null) : null;
+                    if (!in_array($source, ['smallint', 'integer', 'bigint'], true)
+                        || ($cast === 'integer' && $source === 'bigint')) {
+                        throw new UnexpectedValueException();
+                    }
                 }
             } else {
                 throw new UnexpectedValueException();

@@ -26,6 +26,9 @@ use Doctrine\Persistence\Mapping\ClassMetadata;
 use Doctrine\Persistence\Mapping\Driver\MappingDriver;
 use InvalidArgumentException;
 use LogicException;
+use itsmng\Database\Entity\User as UserEntity;
+use itsmng\Database\Mapping\DiscriminatorKey;
+use itsmng\Database\Migration\V220\UserAuthenticationSources;
 use RuntimeException;
 use atoum\atoum\test;
 use itsmng\Database\BaselineSchema;
@@ -110,6 +113,7 @@ use itsmng\Database\NativeSubjectSchema;
 use itsmng\Database\Orm as ApplicationOrm;
 use itsmng\Database\Type\ClockTimeType;
 use ReflectionClass;
+use ReflectionProperty;
 use itsmng\Database\PhysicalIndexSchema;
 use itsmng\Database\PluginImportMutation;
 use itsmng\Database\SubjectPolicyExpression;
@@ -1470,6 +1474,123 @@ class CurrentSchema extends test
         $this->exception(static fn () => $builder->build(new MariaDBPlatform()))
             ->isInstanceOf(InvalidArgumentException::class);
     }
+
+    public function testUserFallbackSubjectPolicyOwnsHistoricalAuthenticationSemantics(): void
+    {
+        $historical = UserAuthenticationSources::checkSql();
+        $historical = substr($historical, strpos($historical, ' CHECK (') + 8, -1);
+        foreach ([new MySQLPlatform(), new MariaDBPlatform(), new PostgreSQLPlatform()] as $platform) {
+            $builder = new BaselineSchema($this->manager($platform));
+            $builder->build($platform);
+            $policy = $builder->subjectPolicies()['glpi_users']['auths_id'];
+            $this->string($policy['constraint'])->isIdenticalTo('glpi_users_authentication_kind');
+            $this->array($policy['discriminators'])->isEmpty();
+            $this->array($policy['integer_discriminators'])->isIdenticalTo(['authtype']);
+            $this->string($policy['integer_types']['auth_source_code'])->isIdenticalTo('integer');
+            $postgres = $platform instanceof PostgreSQLPlatform;
+            $equivalent = static fn (string $expected, string $actual): bool => SubjectPolicyExpression::equivalent(
+                $expected,
+                $actual,
+                $postgres,
+                integerDiscriminators: $policy['integer_discriminators'],
+                integerTypes: $policy['integer_types']
+            );
+            $this->boolean($equivalent($policy['check'], $historical))->isTrue();
+            $projection = $policy['projection'];
+            if ($postgres) {
+                $projection = str_replace('ELSE "auth_source_code" END', 'ELSE ("auth_source_code")::bigint END', $projection);
+            }
+            $columns = ['glpi_users' => ['auths_id' => [
+                'generated' => $postgres ? 's' : 'STORED GENERATED', 'expression' => $projection,
+            ]]];
+            $checks = ['glpi_users' => ['glpi_users_authentication_kind' => [
+                'clause' => $historical, 'enforced' => true, 'validated' => true,
+            ]]];
+            $selected = ['glpi_users' => ['auths_id' => $policy]];
+            // Numeric authtype has no pg_collation row; no deterministic-text check applies.
+            $this->array(NativeSubjectSchema::compare($selected, $columns, $checks, $postgres))->isEmpty();
+            foreach ([
+                str_replace('authmails_id > 0', 'authmails_id > -1', $historical),
+                str_replace('auth_source_code IS NOT NULL', 'auth_source_code IS NULL', $historical),
+                str_replace('authldaps_id IS NULL', 'authldaps_id IS NOT NULL', $historical),
+                $historical . ' OR 1 = 1',
+            ] as $weakened) {
+                $changed = $checks;
+                $changed['glpi_users']['glpi_users_authentication_kind']['clause'] = $weakened;
+                $this->array(NativeSubjectSchema::compare($selected, $columns, $changed, $postgres))->isIdenticalTo([
+                    'Changed, missing or unenforced native subject CHECK: glpi_users.glpi_users_authentication_kind',
+                ]);
+            }
+            foreach (['enforced', 'validated'] as $flag) {
+                if ($flag === 'validated' && !$postgres) {
+                    continue;
+                }
+                $changed = $checks;
+                $changed['glpi_users']['glpi_users_authentication_kind'][$flag] = false;
+                $this->array(NativeSubjectSchema::compare($selected, $columns, $changed, $postgres))->isIdenticalTo([
+                    'Changed, missing or unenforced native subject CHECK: glpi_users.glpi_users_authentication_kind',
+                ]);
+            }
+            $this->array(NativeSubjectSchema::compare($selected, $columns, [], $postgres))->isIdenticalTo([
+                'Changed, missing or unenforced native subject CHECK: glpi_users.glpi_users_authentication_kind',
+            ]);
+            $columns['glpi_users']['auths_id']['expression'] = '0';
+            $this->array(NativeSubjectSchema::compare($selected, $columns, $checks, $postgres))->isIdenticalTo([
+                'Changed or missing native subject projection: glpi_users.auths_id',
+            ]);
+        }
+    }
+
+    public function testNumericAuthenticationCatalogGrammarFailsClosed(): void
+    {
+        $compare = static fn (string $expected, string $actual): bool => SubjectPolicyExpression::equivalent(
+            $expected,
+            $actual,
+            true,
+            integerDiscriminators: ['authtype'],
+            integerTypes: ['authtype' => 'integer', 'auth_source_code' => 'integer', 'authldaps_id' => 'bigint']
+        );
+        $this->boolean($compare('authtype IN (0, 3, 4)', 'authtype = ANY (ARRAY[0, 3, 4])'))->isTrue();
+        $this->boolean($compare('authtype NOT IN (0, 2, 3)', 'authtype <> ALL (ARRAY[0, 2, 3])'))->isTrue();
+        $this->boolean($compare('authtype NOT IN (0, 2, 3)', 'NOT (authtype IN (0, 2, 3))'))->isTrue();
+        $this->boolean($compare('auth_source_code', '(auth_source_code)::bigint'))->isTrue();
+        foreach ([
+            'authtype = ALL (ARRAY[0, 3, 4])',
+            'authtype <> ANY (ARRAY[0, 3, 4])',
+            'authtype = ANY (ARRAY[0, 3, 5])',
+            "authtype = ANY (ARRAY[0, 3, '4'])",
+            'authtype = ANY (ARRAY[0, 3, 4]) OR 1 = 1',
+            'authtype::smallint = ANY (ARRAY[0, 3, 4])',
+            'other_type = ANY (ARRAY[0, 3, 4])',
+            'authtype = ANY (SELECT 0)',
+            'NOT (authtype = 0 AND auth_source_code IS NOT NULL)',
+        ] as $changed) {
+            $this->boolean($compare('authtype IN (0, 3, 4)', $changed))->isFalse();
+        }
+        $this->boolean($compare('authldaps_id', 'authldaps_id::integer'))->isFalse();
+        $this->boolean(SubjectPolicyExpression::equivalent('authtype IN (0, 3, 4)', 'authtype = ANY (ARRAY[0, 3, 4])', true))->isFalse();
+    }
+
+    public function testFallbackPolicyRefusesUnsupportedMetadataContracts(): void
+    {
+        foreach (['fallback_type', 'nullable_kind', 'required_server'] as $variant) {
+            $platform = new MySQLPlatform();
+            $manager = $this->manager($platform);
+            $metadata = $manager->getClassMetadata(UserEntity::class);
+            if ($variant === 'fallback_type') {
+                $metadata->fieldMappings['auth_source_code']->type = Types::STRING;
+            } elseif ($variant === 'nullable_kind') {
+                $metadata->fieldMappings['authtype']->nullable = true;
+            } else {
+                $metadata->associationMappings['authldap']->joinColumns[0]->nullable = false;
+            }
+            $key = (new ReflectionProperty(UserEntity::class, 'auths_id'))
+                ->getAttributes(DiscriminatorKey::class)[0]->newInstance();
+            $this->exception(static fn () => $key->subjectCheckExpression($platform, $metadata, 'auths_id'))
+                ->isInstanceOf(LogicException::class);
+        }
+    }
+
 }
 
 #[ORM\Entity]

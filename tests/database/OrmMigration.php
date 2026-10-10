@@ -379,6 +379,7 @@ class OrmMigration extends GLPITestCase
     /** Nonterminal subjects still belong to current native policy after later releases complete. */
     private function assertCurrentSubjectNativeVerification(Connection $connection): void
     {
+        $this->assertCurrentUserAuthenticationNativeVerification($connection);
         $platform = $connection->getDatabasePlatform();
         $builder = new BaselineSchema();
         $schema = $builder->build($platform);
@@ -437,6 +438,47 @@ class OrmMigration extends GLPITestCase
             }
         }
         $this->array($inspect())->isEmpty();
+        $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
+    }
+
+
+    /** Fallback authentication still needs its installed native CHECK after release completion. */
+    private function assertCurrentUserAuthenticationNativeVerification(Connection $connection): void
+    {
+        $platform = $connection->getDatabasePlatform();
+        $builder = new BaselineSchema();
+        $builder->build($platform);
+        $policy = $builder->subjectPolicies()['glpi_users']['auths_id'];
+        $selected = ['glpi_users' => ['auths_id' => $policy]];
+        $inspect = static fn (): array => NativeSubjectSchema::differences($connection, $selected);
+        $this->array($inspect())->isEmpty('The actual installed CHECK and generated fallback projection match current property policy');
+        $quote = $platform->quoteIdentifier(...);
+        $drop = 'ALTER TABLE ' . $quote('glpi_users') . ' DROP '
+            . ($platform instanceof MySQLPlatform ? 'CHECK ' : 'CONSTRAINT ') . $quote($policy['constraint']);
+        $add = static fn (string $check): string => 'ALTER TABLE ' . $quote('glpi_users') . ' ADD CONSTRAINT '
+            . $quote($policy['constraint']) . ' CHECK (' . $check . ')'
+            . ($platform instanceof MySQLPlatform ? ' ENFORCED' : '');
+        $diagnostic = 'Changed, missing or unenforced native subject CHECK: glpi_users.' . $policy['constraint'];
+        $ledger = Ledger::states($connection);
+        $rows = $connection->fetchAllAssociative('SELECT * FROM ' . $quote('glpi_users') . ' ORDER BY id');
+        $constraintDropped = $weakenedInstalled = false;
+        try {
+            $connection->executeStatement($drop);
+            $constraintDropped = true;
+            $this->array($inspect())->isIdenticalTo([$diagnostic]);
+            $connection->executeStatement($add('1 = 1'));
+            $weakenedInstalled = true;
+            $this->array($inspect())->isIdenticalTo([$diagnostic]);
+        } finally {
+            if ($constraintDropped) {
+                if ($weakenedInstalled) {
+                    $connection->executeStatement($drop);
+                }
+                $connection->executeStatement($add($policy['check']));
+            }
+        }
+        $this->array($inspect())->isEmpty();
+        $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $quote('glpi_users') . ' ORDER BY id'))->isIdenticalTo($rows);
         $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
     }
 

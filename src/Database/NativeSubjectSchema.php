@@ -75,15 +75,17 @@ final class NativeSubjectSchema
         foreach ($policies as $table => $fields) {
             foreach ($fields as $column => $policy) {
                 $name = $policy['constraint'];
+                $integerDiscriminators = $policy['integer_discriminators'] ?? [];
+                $integerTypes = $policy['integer_types'] ?? [];
                 $check = $checks[$table][$name] ?? null;
                 $verifiedCheck = $check !== null && self::isTrue($check['enforced'] ?? null)
                     && (!$postgres || self::isTrue($check['validated'] ?? null))
-                    && SubjectPolicyExpression::equivalent($policy['check'], $check['clause'] ?? '', $postgres, $ansiQuotes);
+                    && SubjectPolicyExpression::equivalent($policy['check'], $check['clause'] ?? '', $postgres, $ansiQuotes, integerDiscriminators: $integerDiscriminators, integerTypes: $integerTypes);
                 $native = $columns[$table][$column] ?? null;
                 $stored = $postgres ? ($native['generated'] ?? null) === 's'
                     : preg_match('/(?:^|\s)STORED GENERATED(?:\s|$)/iD', $native['generated'] ?? '') === 1;
                 if (!$stored || !is_string($native['expression'] ?? null)
-                    || !SubjectPolicyExpression::equivalent($policy['projection'], $native['expression'], $postgres, $ansiQuotes, $verifiedCheck ? $policy['check'] : null)) {
+                    || !SubjectPolicyExpression::equivalent($policy['projection'], $native['expression'], $postgres, $ansiQuotes, $verifiedCheck ? $policy['check'] : null, $integerDiscriminators, $integerTypes)) {
                     $differences[] = 'Changed or missing native subject projection: ' . $table . '.' . $column;
                 }
                 if (!$verifiedCheck) {
