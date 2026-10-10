@@ -35,6 +35,9 @@ namespace tests\units;
 
 use CommonITILActor;
 use DbTestCase;
+use Supplier;
+use Supplier_Ticket as LegacySupplierTicket;
+use Ticket;
 
 class Supplier_Ticket extends DbTestCase
 {
@@ -42,7 +45,7 @@ class Supplier_Ticket extends DbTestCase
     {
         $this->login();
 
-        $supplier = new \Supplier();
+        $supplier = new Supplier();
         $supplier_id = $supplier->add([
            'name'        => 'supplier-ticket-' . $this->getUniqueString(),
            'entities_id' => 0,
@@ -50,14 +53,14 @@ class Supplier_Ticket extends DbTestCase
         ]);
         $this->integer((int)$supplier_id)->isGreaterThan(0);
 
-        $ticket = new \Ticket();
+        $ticket = new Ticket();
         $ticket_id = $ticket->add([
            'name'    => 'ticket-' . $this->getUniqueString(),
            'content' => 'content-' . $this->getUniqueString(),
         ]);
         $this->integer((int)$ticket_id)->isGreaterThan(0);
 
-        $relation = new \Supplier_Ticket();
+        $relation = new LegacySupplierTicket();
         $relation_id = $relation->add([
            'tickets_id'   => $ticket_id,
            'suppliers_id' => $supplier_id,
@@ -67,5 +70,33 @@ class Supplier_Ticket extends DbTestCase
 
         $this->boolean($relation->isSupplierEmail($ticket_id, $supplier->fields['email']))->isTrue();
         $this->boolean($relation->isSupplierEmail($ticket_id, 'no-match@example.com'))->isFalse();
+
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $session = $_SESSION;
+        try {
+            $_SESSION['glpiactiveentities'] = [];
+            // Mail collection checks the known ticket relation, not interactive entity grants.
+            $this->boolean($relation->isSupplierEmail($ticket_id, $supplier->fields['email']))->isTrue();
+            $connection->update('glpi_suppliers', ['email' => 'current@example.com', 'is_deleted' => 1], ['id' => $supplier_id]);
+            $this->boolean($relation->isSupplierEmail($ticket_id, $supplier->fields['email']))->isFalse();
+            $this->boolean($relation->isSupplierEmail($ticket_id, 'current@example.com'))->isTrue();
+            $this->boolean($relation->isSupplierEmail(PHP_INT_MAX, 'current@example.com'))->isFalse();
+            $connection->update('glpi_suppliers_tickets', ['alternative_email' => 'alternative@example.com', 'type' => CommonITILActor::REQUESTER], ['id' => $relation_id]);
+            $this->boolean($relation->isSupplierEmail($ticket_id, 'alternative@example.com'))->isFalse();
+            $this->boolean($relation->isSupplierEmail($ticket_id, 'current@example.com'))->isTrue();
+            $connection->update('glpi_suppliers', ['email' => null], ['id' => $supplier_id]);
+            $this->boolean($relation->isSupplierEmail($ticket_id, null))->isTrue();
+            $this->boolean($relation->isSupplierEmail((string)$ticket_id, 'null'))->isTrue();
+            $this->boolean($relation->isSupplierEmail($ticket_id, 'NuLl'))->isTrue();
+            // Preserve the established LEFT JOIN/IS NULL behavior for an unbound actor.
+            $connection->update('glpi_suppliers_tickets', ['suppliers_id' => null], ['id' => $relation_id]);
+            $this->boolean($relation->isSupplierEmail($ticket_id, null))->isTrue();
+            $this->boolean($relation->isSupplierEmail($ticket_id, 'alternative@example.com'))->isFalse();
+            $connection->delete('glpi_suppliers_tickets', ['id' => $relation_id]);
+            $this->boolean($relation->isSupplierEmail($ticket_id, null))->isFalse();
+        } finally {
+            $_SESSION = $session;
+        }
     }
 }

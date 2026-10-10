@@ -43,6 +43,9 @@ use Plugin;
 use ReflectionProperty;
 use Software;
 use SoftwareLicense;
+use Ticket as LegacyTicket;
+use TypeError;
+use itsmng\Database\Entity\Document as DocumentEntity;
 use itsmng\Database\Entity\Software as SoftwareEntity;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\SoftwareRepository;
@@ -159,6 +162,108 @@ class Document_Item extends DbTestCase
             $_SESSION = $session;
             $PLUGIN_HOOKS = $hooks;
             $plugins->setValue(null, $active);
+        }
+    }
+
+    public function testLinkedDocumentOptionsUseCurrentRowsAndReuseReadManager(): void
+    {
+        global $DB;
+        require_once GLPI_ROOT . '/src/twig/twig.utils.php';
+        $session = $_SESSION;
+        $writer = null;
+        $path = null;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $ticket = $this->createItem(LegacyTicket::class, ['name' => $this->getUniqueString(),
+                'content' => 'Linked document options', 'entities_id' => 0, '_disablenotif' => true]);
+            $other = $this->createItem(LegacyTicket::class, ['name' => $this->getUniqueString(),
+                'content' => 'Other document owner', 'entities_id' => 0, '_disablenotif' => true]);
+            $path = tempnam(GLPI_DOC_DIR . '/_tmp', 'linked-options-');
+            $this->string($path);
+            $this->integer(file_put_contents($path, 'option bytes'))->isIdenticalTo(12);
+            $relative = '_tmp/' . basename($path);
+            $documents = [];
+            foreach (['Before.txt', 'Second.txt'] as $filename) {
+                $document = $this->createItem(Document::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+                $this->boolean($DB->update(
+                    'glpi_documents',
+                    ['filename' => $filename, 'filepath' => $relative],
+                    ['id' => $document->getID()]
+                ))->isTrue();
+                $documents[] = $document;
+            }
+            $bindings = [];
+            foreach ([0, 1, 0] as $index => $document) {
+                $bindings[] = $this->createItem(
+                    LegacyDocument_Item::class,
+                    ['documents_id' => $documents[$document]->getID(), 'itemtype' => 'Ticket',
+                        'items_id' => $ticket->getID(), 'timeline_position' => $index]
+                );
+            }
+            $this->createItem(LegacyDocument_Item::class, ['documents_id' => $documents[0]->getID(),
+                'itemtype' => 'Ticket', 'items_id' => $other->getID()]);
+            $expected = static function (string $first) use ($bindings, $documents): array {
+                $options = [];
+                foreach ([0, 1, 0] as $index => $document) {
+                    $filename = $document === 0 ? $first : 'Second.txt';
+                    $options[(int)$bindings[$index]->getID()] = '<a href='
+                        . Document::getFormURLWithID($documents[$document]->getID()) . '>'
+                        . $filename . ' (12B)</a>';
+                }
+                return $options;
+            };
+            // Warm both the scalar binding read and subsequent model reads.
+            $this->array(getLinkedDocumentsForItem('Ticket', $ticket->getID()))->isIdenticalTo($expected('Before.txt'));
+            $this->array(getLinkedDocumentsForItem('UnsupportedFixtureKind', $ticket->getID()))->isEmpty();
+            $this->array(getLinkedDocumentsForItem('Ticket', -1))->isEmpty();
+            $writer = Orm::create($DB);
+            $managed = $writer->find(DocumentEntity::class, (int)$documents[0]->getID());
+            $this->string($managed->filename)->isIdenticalTo('Before.txt');
+            $this->boolean($DB->update(
+                'glpi_documents',
+                ['filename' => 'Current.txt'],
+                ['id' => $documents[0]->getID()]
+            ))->isTrue();
+            $creations = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $before = $creations->getValue();
+            for ($repeat = 0; $repeat < 2; ++$repeat) {
+                $this->array(getLinkedDocumentsForItem('Ticket', $ticket->getID()))->isIdenticalTo($expected('Current.txt'));
+            }
+            $canonical = null;
+            $connection = $DB->getDoctrineConnection();
+            Orm::withConnection($connection, static function (EntityManager $manager) use (&$canonical): void {
+                $canonical = $manager;
+            });
+            $kind = new class (function () use ($connection, $canonical): string {
+                // String conversion completes before the helper activates its read scope.
+                Orm::withConnection($connection, function (EntityManager $manager) use ($canonical): void {
+                    $this->object($manager)->isIdenticalTo($canonical);
+                });
+                return 'Ticket';
+            }) {
+                public function __construct(private mixed $convert)
+                {
+                }
+                public function __toString(): string
+                {
+                    return ($this->convert)();
+                }
+            };
+            $this->array(getLinkedDocumentsForItem($kind, $ticket->getID()))->isIdenticalTo($expected('Current.txt'));
+            $this->exception(static fn () => getLinkedDocumentsForItem([], $ticket->getID()))->isInstanceOf(TypeError::class);
+            $this->integer($creations->getValue() - $before)->isIdenticalTo(
+                0,
+                'Repeated attachment options share the selected canonical read manager'
+            );
+            $this->boolean($writer->contains($managed))->isTrue();
+            $this->string($managed->filename)->isIdenticalTo('Before.txt');
+        } finally {
+            $writer?->clear();
+            if (is_string($path) && is_file($path)) {
+                unlink($path);
+            }
+            $_SESSION = $session;
         }
     }
 

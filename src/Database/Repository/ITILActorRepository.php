@@ -10,6 +10,7 @@ use Doctrine\ORM\EntityManager;
 use InvalidArgumentException;
 use itsmng\Database\Entity\Group;
 use itsmng\Database\Entity\Supplier;
+use itsmng\Database\Entity\SupplierTicket;
 use itsmng\Database\Entity\User;
 use itsmng\Database\Entity\UserEmail;
 use itsmng\Database\EntityRegistry;
@@ -27,6 +28,20 @@ final class ITILActorRepository
 
     public function __construct(private EntityManager $em)
     {
+    }
+
+    /** Mail replies recognize the linked supplier's primary address, regardless of actor role. */
+    public function hasSupplierEmailForTicket(int $ticket, ?string $email): bool
+    {
+        $query = $this->em->createQueryBuilder()->select('r.id')->from(SupplierTicket::class, 'r')
+            ->leftJoin('r.actor', 'supplier')->where('IDENTITY(r.tickets) = :ticket')
+            ->setParameter('ticket', $ticket, Types::BIGINT);
+        if ($email === null || strtolower($email) === 'null') {
+            $query->andWhere('supplier.email IS NULL');
+        } else {
+            $query->andWhere('supplier.email = :email')->setParameter('email', $email, Types::STRING);
+        }
+        return $query->setMaxResults(1)->getQuery()->getOneOrNullResult() !== null;
     }
 
     public function groupName(int $id): ?string

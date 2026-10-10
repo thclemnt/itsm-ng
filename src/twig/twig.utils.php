@@ -1,5 +1,6 @@
 <?php
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\DropdownChoiceContext;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\DocumentRepository;
@@ -260,8 +261,15 @@ function getLinkedDocumentsForItem($itemType, $items_id)
 {
     global $DB;
 
-    $bindings = (new DocumentRepository(Orm::create($DB)))
-        ->bindingsForItem($itemType, (int)$items_id);
+    $bindings = Orm::readPrepared(
+        $DB,
+        static fn (): array => [
+            'id' => (int)$items_id,
+            'type' => (static fn (string $type): string => $type)($itemType),
+        ],
+        static fn (EntityManager $manager, array $selection): array =>
+            (new DocumentRepository($manager))->bindingsForItem($selection['type'], $selection['id'])
+    );
 
     $options = [];
     $document = new Document();
