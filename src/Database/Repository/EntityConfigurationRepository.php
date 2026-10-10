@@ -168,7 +168,7 @@ final class EntityConfigurationRepository
         $references = EntityConfigurationReferences::fields();
         foreach (array_unique($columns) as $column) {
             if (isset($references[$column])) {
-                $columns[] = $references[$column]->policy->modeProperty;
+                $columns[] = $references[$column]->modeColumn;
             }
         }
         // Unknown reference/value names retain the existing missing-field/default behavior.

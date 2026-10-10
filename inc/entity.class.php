@@ -240,7 +240,7 @@ class Entity extends CommonTreeDropdown
                         if (array_key_exists($field, $input)) {
                             $tmp[$field] = $input[$field];
                         }
-                        $mode = EntityConfigurationReferences::fields()[$field]->policy->modeProperty ?? null;
+                        $mode = EntityConfigurationReferences::fields()[$field]->modeColumn ?? null;
                         if ($mode !== null && array_key_exists($mode, $input)) {
                             $tmp[$mode] = $input[$mode];
                         }
@@ -252,7 +252,7 @@ class Entity extends CommonTreeDropdown
                         if (array_key_exists($field, $input)) {
                             $tmp[$field] = $input[$field];
                         }
-                        $mode = EntityConfigurationReferences::fields()[$field]->policy->modeProperty ?? null;
+                        $mode = EntityConfigurationReferences::fields()[$field]->modeColumn ?? null;
                         if ($mode !== null && array_key_exists($mode, $input)) {
                             $tmp[$mode] = $input[$mode];
                         }
@@ -515,7 +515,7 @@ class Entity extends CommonTreeDropdown
     {
         foreach (EntityConfigurationReferences::fields() as $column => $definition) {
             $this->fields[$column] = null;
-            $this->fields[$definition->policy->modeProperty] = $definition->defaultMode->value;
+            $this->fields[$definition->modeColumn] = $definition->defaultMode->value;
         }
         $this->fields = EntityConfigurationReferences::legacyRow($this->fields);
         parent::post_getEmpty();

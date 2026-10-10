@@ -26,7 +26,7 @@ final class EntityConfigurationReferences
             return $values;
         }
         foreach (self::fields() as $column => $definition) {
-            $modeColumn = $definition->policy->modeProperty;
+            $modeColumn = $definition->modeColumn;
             $hasValue = array_key_exists($column, $values);
             $hasMode = array_key_exists($modeColumn, $values);
             if (!$hasValue && !$hasMode) {
@@ -63,10 +63,10 @@ final class EntityConfigurationReferences
     public static function legacyRow(array $row): array
     {
         foreach (self::fields() as $column => $definition) {
-            if (!array_key_exists($column, $row) || !isset($row[$definition->policy->modeProperty])) {
+            if (!array_key_exists($column, $row) || !isset($row[$definition->modeColumn])) {
                 continue;
             }
-            $mode = $row[$definition->policy->modeProperty];
+            $mode = $row[$definition->modeColumn];
             $mode = $mode instanceof ReferenceMode ? $mode : ReferenceMode::from($mode);
             $row[$column] = match ($mode) {
                 ReferenceMode::Inherit => -2,
@@ -81,10 +81,10 @@ final class EntityConfigurationReferences
     public static function legacyInput(array $input, array $current = []): array
     {
         foreach (self::fields() as $column => $definition) {
-            if (!array_key_exists($definition->policy->modeProperty, $input)) {
+            if (!array_key_exists($definition->modeColumn, $input)) {
                 continue;
             }
-            $mode = $input[$definition->policy->modeProperty];
+            $mode = $input[$definition->modeColumn];
             $mode = $mode instanceof ReferenceMode ? $mode : ReferenceMode::from($mode);
             if (!array_key_exists($column, $input) && $mode === ReferenceMode::Explicit) {
                 if (!$definition->policy->emptyZero && (!isset($current[$column]) || (int)$current[$column] < 0)) {
@@ -100,7 +100,7 @@ final class EntityConfigurationReferences
     {
         if ($table === 'glpi_entities') {
             foreach (self::fields() as $column => $definition) {
-                if (in_array($definition->policy->modeProperty, $columns, true)) {
+                if (in_array($definition->modeColumn, $columns, true)) {
                     $columns[] = $column;
                 }
             }
