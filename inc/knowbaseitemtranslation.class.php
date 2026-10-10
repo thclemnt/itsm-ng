@@ -32,6 +32,7 @@
  */
 
 use Glpi\Event;
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\KnowledgeBaseRepository;
 
@@ -397,8 +398,12 @@ class KnowbaseItemTranslation extends CommonDBChild
     {
         global $DB;
 
-        return (new KnowledgeBaseRepository(Orm::create($DB)))
-            ->translationCount((int)$item->getID());
+        return Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$item->getID(),
+            static fn (EntityManager $manager, int $id): int =>
+                (new KnowledgeBaseRepository($manager))->translationCount($id)
+        );
     }
 
 
@@ -413,8 +418,12 @@ class KnowbaseItemTranslation extends CommonDBChild
     {
         global $DB;
 
-        return (new KnowledgeBaseRepository(Orm::create($DB)))
-            ->translatedLanguages((int)$item->getID());
+        return Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$item->getID(),
+            static fn (EntityManager $manager, int $id): array =>
+                (new KnowledgeBaseRepository($manager))->translatedLanguages($id)
+        );
     }
 
     public function pre_updateInDB()

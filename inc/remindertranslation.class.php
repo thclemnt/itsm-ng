@@ -32,6 +32,7 @@
  */
 
 use Glpi\Event;
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\SharedContentRepository;
@@ -341,8 +342,12 @@ class ReminderTranslation extends CommonDBChild
     {
 
         global $DB;
-        return (new RecordRepository(Orm::create($DB)))
-            ->countMatching('glpi_remindertranslations', ['reminders_id' => (int)$item->getID()]);
+        return Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$item->getID(),
+            static fn (EntityManager $manager, int $id): int =>
+                (new RecordRepository($manager))->countMatching('glpi_remindertranslations', ['reminders_id' => $id])
+        );
     }
 
 
@@ -357,6 +362,11 @@ class ReminderTranslation extends CommonDBChild
     {
         global $DB;
 
-        return (new SharedContentRepository(Orm::create($DB)))->translatedLanguages((int)$item->getID());
+        return Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$item->getID(),
+            static fn (EntityManager $manager, int $id): array =>
+                (new SharedContentRepository($manager))->translatedLanguages($id)
+        );
     }
 }
