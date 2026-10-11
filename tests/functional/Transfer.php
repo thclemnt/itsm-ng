@@ -181,14 +181,30 @@ class Transfer extends DbTestCase
                     $dirty->name = 'Pending computer outside transfer';
                     $level = $connection->getTransactionNestingLevel();
                     $transfer = new LegacyTransfer();
-                    $result = $transfer->moveItems(['Computer' => [$computer->getID()]], $target, [
-                        'keep_dc_printer' => 1, 'keep_networklink' => $keep, 'clean_dc_printer' => 0,
-                    ]);
+                    $failure = null;
+                    $result = null;
+                    try {
+                        $result = $transfer->moveItems(['Computer' => [$computer->getID()]], $target, [
+                            'keep_dc_printer' => 1, 'keep_networklink' => $keep, 'clean_dc_printer' => 0,
+                        ]);
+                    } catch (RuntimeException $error) {
+                        if (!$refuse
+                            || $error->getFile() !== realpath(__DIR__ . '/../../inc/toolbox.class.php')
+                            || !str_contains($error->getMessage(), 'Transfer::runTransfer()')
+                            || !str_contains($error->getMessage(), 'Copied network port instantiation was not created')) {
+                            throw $error;
+                        }
+                        $failure = $error;
+                    }
                     $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
                     $this->boolean($manager->contains($dirty))->isTrue();
                     $this->string($dirty->name)->isIdenticalTo('Pending computer outside transfer');
                     if ($refuse) {
-                        $this->boolean($result)->isFalse();
+                        $this->object($failure)->isInstanceOf(RuntimeException::class);
+                        $this->string($failure->getFile())->isIdenticalTo(realpath(__DIR__ . '/../../inc/toolbox.class.php'));
+                        $this->string($failure->getMessage())->contains('Transfer::runTransfer()')
+                            ->contains('Copied network port instantiation was not created');
+                        $this->variable($result)->isNull();
                         $this->array($events)->isIdenticalTo(['child-prepare', 'parent-add']);
                         foreach ($tables as $table) {
                             $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id'))->isIdenticalTo($before[$table]);
@@ -415,13 +431,30 @@ class Transfer extends DbTestCase
                     }
                     $level = $connection->getTransactionNestingLevel();
                     $transfer = new LegacyTransfer();
-                    $result = $transfer->moveItems(['Computer' => [$computer->getID()]], $target, ['keep_networklink' => 2]);
+                    $failure = null;
+                    $result = null;
+                    $diagnostic = $refuse ? 'Refused owned outlet copy'
+                            : ($childFailure === 'refusal' ? 'Transfer refused: NetworkPortEthernet update' : 'Refused persisted outlet child update');
+                    try {
+                        $result = $transfer->moveItems(['Computer' => [$computer->getID()]], $target, ['keep_networklink' => 2]);
+                    } catch (RuntimeException $error) {
+                        if ((!$refuse && $childFailure === null)
+                            || $error->getFile() !== realpath(__DIR__ . '/../../inc/toolbox.class.php')
+                            || !str_contains($error->getMessage(), 'Transfer::runTransfer()')
+                            || !str_contains($error->getMessage(), $diagnostic)) {
+                            throw $error;
+                        }
+                        $failure = $error;
+                    }
                     $this->array($observed)->isNotEmpty();
                     $this->variable($observed['name'])->isIdenticalTo($name);
                     $this->string($observed['comment'])->isIdenticalTo('Copied outlet comment');
                     $this->integer((int)$observed['entities_id'])->isIdenticalTo($target);
                     if ($refuse || $childFailure !== null) {
-                        $this->boolean($result)->isFalse();
+                        $this->object($failure)->isInstanceOf(RuntimeException::class);
+                        $this->string($failure->getFile())->isIdenticalTo(realpath(__DIR__ . '/../../inc/toolbox.class.php'));
+                        $this->string($failure->getMessage())->contains('Transfer::runTransfer()')->contains($diagnostic);
+                        $this->variable($result)->isNull();
                         if ($childFailure !== null) {
                             $this->integer($childCalls)->isIdenticalTo(1);
                             $this->integer($childDestination)->isGreaterThan(0)->isNotIdenticalTo($outletID);

@@ -3285,7 +3285,7 @@ class Transfer extends CommonDBTM
                             $data['netpoints_id']
                                               = $this->checkedTransferResult($this->transferDropdownNetpoint($data['netpoints_id']));
                             $this->checkpointTransferModel($np);
-                            unset($np->fields);
+                            $np->fields = [];
                             $portID = $this->addForTransfer($np, Toolbox::addslashes_deep($data));
                             $this->requireCopiedPortInstantiation($np, $portID);
                         }
@@ -3303,7 +3303,7 @@ class Transfer extends CommonDBTM
                             $data['netpoints_id']
                                               = $this->checkedTransferResult($this->transferDropdownNetpoint($data['netpoints_id']));
                             $this->checkpointTransferModel($np);
-                            unset($np->fields);
+                            $np->fields = [];
                             $portID = $this->addForTransfer($np, Toolbox::addslashes_deep($data));
                             $this->requireCopiedPortInstantiation($np, $portID);
                         }
