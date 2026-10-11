@@ -43,11 +43,195 @@ use Profile as LegacyProfile;
 use ProfileRight;
 use ReflectionProperty;
 use TypeError;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Types\Types;
+use itsmng\Database\Entity\Entity as ScopeEntity;
+use itsmng\Database\Entity\ProfileUser as ProfileGrant;
+use itsmng\Database\Entity\User as UserRecord;
+use mock\DBmysql as PermissionRouteAdapter;
+use Session;
+use stdClass;
+use tests\fixtures\ScalarReadProbe;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/profile.class.php */
 
 class Profile extends DbTestCase
 {
+    public function testUserPermissionAndDefaultReadsStayCurrentAndPreserveDirtyOwners(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $connection = $DB->getDoctrineConnection();
+        $defaults = $connection->fetchFirstColumn('SELECT id FROM glpi_profiles WHERE is_default = ?', [true], [Types::BOOLEAN]);
+        try {
+            $this->login();
+            $owner = Orm::create($DB);
+            $userId = (int)Session::getLoginUserID();
+            $scopeId = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $childId = (int)getItemByTypeName('Entity', '_test_child_1', true);
+            $profile = new ProfileEntity();
+            $profile->name = $this->getUniqueString();
+            $other = new ProfileEntity();
+            $other->name = $this->getUniqueString();
+            $right = new ProfileRightEntity();
+            $right->profiles = $profile;
+            $right->name = 'permission-' . $this->getUniqueString();
+            $right->rights = READ;
+            $grant = new ProfileGrant();
+            $grant->profiles = $profile;
+            $grant->users = $owner->find(UserRecord::class, $userId);
+            $grant->entities = $owner->find(ScopeEntity::class, $scopeId);
+            $grant->is_recursive = false;
+            foreach ([$profile, $other, $right, $grant] as $record) {
+                $owner->persist($record);
+            }
+            $owner->flush();
+            $this->boolean(LegacyProfile::haveUserRight($userId, $right->name, READ, $scopeId))->isTrue();
+            $this->boolean(LegacyProfile::haveUserRight($userId, $right->name, READ | CREATE, $scopeId))->isTrue();
+            $this->boolean(LegacyProfile::haveUserRight($userId, $right->name, 0, $scopeId))->isFalse();
+            $this->boolean(LegacyProfile::haveUserRight($userId, $right->name, READ, $childId))->isFalse();
+            $this->integer($connection->update('glpi_profiles_users', ['is_recursive' => true], ['id' => $grant->id], ['is_recursive' => Types::BOOLEAN]))->isIdenticalTo(1);
+            $this->boolean(LegacyProfile::haveUserRight($userId, $right->name, READ, $childId))->isTrue();
+            $this->boolean(LegacyProfile::haveUserRight($userId, $right->name, READ, 0))->isFalse();
+            $this->boolean(LegacyProfile::haveUserRight($userId, $right->name, READ, []))->isFalse();
+            $this->boolean(LegacyProfile::haveUserRight(0, $right->name, READ, $scopeId))->isFalse();
+
+            $connection->executeStatement('UPDATE glpi_profiles SET is_default = ?', [false], [Types::BOOLEAN]);
+            $this->integer(LegacyProfile::getDefault())->isIdenticalTo(0);
+            $this->integer($connection->update('glpi_profiles', ['is_default' => true], ['id' => $profile->id], ['is_default' => Types::BOOLEAN]))->isIdenticalTo(1);
+            $this->integer(LegacyProfile::getDefault())->isIdenticalTo($profile->id);
+            $owner->refresh($profile);
+            $profile->is_default = false;
+            $right->rights = DELETE;
+            $this->integer($connection->update('glpi_profilerights', ['rights' => 0], ['id' => $right->id]))->isIdenticalTo(1);
+            $this->boolean(LegacyProfile::haveUserRight($userId, $right->name, READ, $scopeId))->isFalse();
+            $this->boolean(LegacyProfile::haveUserRight($userId, $right->name, DELETE, $scopeId))->isFalse();
+            $this->integer(LegacyProfile::getDefault())->isIdenticalTo($profile->id);
+            $this->integer($connection->update('glpi_profiles', ['is_default' => false], ['id' => $profile->id], ['is_default' => Types::BOOLEAN]))->isIdenticalTo(1);
+            $this->integer($connection->update('glpi_profiles', ['is_default' => true], ['id' => $other->id], ['is_default' => Types::BOOLEAN]))->isIdenticalTo(1);
+            $this->integer(LegacyProfile::getDefault())->isIdenticalTo($other->id);
+            $level = $connection->getTransactionNestingLevel();
+            Orm::read($DB, function ($nestedOwner) use ($profile, $other, $right, $userId, $childId): void {
+                $nested = $nestedOwner->find(ProfileRightEntity::class, $right->id);
+                $nested->rights = READ;
+                $nestedProfile = $nestedOwner->find(ProfileEntity::class, $profile->id);
+                $nestedProfile->is_default = true;
+                $this->boolean(LegacyProfile::haveUserRight($userId, $right->name, READ, $childId))->isFalse();
+                $this->integer(LegacyProfile::getDefault())->isIdenticalTo($other->id);
+                $this->boolean($nestedOwner->contains($nested))->isTrue();
+                $this->integer($nested->rights)->isIdenticalTo(READ);
+                $this->boolean($nestedOwner->contains($nestedProfile))->isTrue();
+                $this->boolean($nestedProfile->is_default)->isTrue();
+            });
+            $this->boolean($owner->contains($right))->isTrue();
+            $this->integer($right->rights)->isIdenticalTo(DELETE);
+            $this->boolean($owner->contains($profile))->isTrue();
+            $this->boolean($profile->is_default)->isFalse();
+            $this->integer((int)$connection->fetchOne('SELECT rights FROM glpi_profilerights WHERE id = ?', [$right->id]))->isIdenticalTo(0);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $connection->executeStatement('UPDATE glpi_profiles SET is_default = ?', [false], [Types::BOOLEAN]);
+            foreach ($defaults as $id) {
+                $connection->update('glpi_profiles', ['is_default' => true], ['id' => $id], ['is_default' => Types::BOOLEAN]);
+            }
+            $_SESSION = $session;
+        }
+    }
+
+    public function testPermissionPreparationKeepsCustomRouteAndScopeBeforeNameConversion(): void
+    {
+        global $DB;
+        $original = $DB;
+        $session = $_SESSION;
+        try {
+            $this->login('tech', 'tech');
+            $connection = $DB->getDoctrineConnection();
+            $userId = (int)Session::getLoginUserID();
+            $expectedDefault = LegacyProfile::getDefault();
+            $expected = LegacyProfile::haveUserRight($userId, 'ticket', CREATE, 0);
+            $this->boolean($expected)->isTrue();
+            $observer = new class () {
+                public array $trace = [];
+                public int $clears = 0;
+
+                public function onClear(): void
+                {
+                    ++$this->clears;
+                }
+            };
+            $selected = new class ($connection) extends ScalarReadProbe {
+                public EventManager $events;
+                public object $observer;
+
+                public function getEventManager(): EventManager
+                {
+                    $this->observer->trace[] = 'constructed';
+                    return $this->events;
+                }
+            };
+            $selected->events = new EventManager();
+            $selected->events->addEventListener(['onClear'], $observer);
+            $selected->observer = $observer;
+            $other = new ScalarReadProbe($connection);
+            $route = $selected;
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new PermissionRouteAdapter();
+            $this->calling($adapter)->getDoctrineConnection = static function () use (&$route, $observer): Connection {
+                $observer->trace[] = 'resolved';
+                return $route;
+            };
+            $DB = $adapter;
+            $this->integer(LegacyProfile::getDefault())->isIdenticalTo($expectedDefault);
+            $this->integer($observer->clears)->isIdenticalTo(0);
+            $observer->trace = [];
+            $name = new class ($this, $connection, $observer, $other, $route) {
+                public function __construct(
+                    private object $test,
+                    private Connection $connection,
+                    private object $observer,
+                    private Connection $other,
+                    private Connection &$route
+                ) {
+                }
+
+                public function __toString(): string
+                {
+                    $this->test->boolean($this->connection->isApplicationEntityManagerActive())->isFalse();
+                    $this->observer->trace[] = 'converted';
+                    $this->route = $this->other;
+                    return 'ticket';
+                }
+            };
+            $this->boolean(LegacyProfile::haveUserRight($userId, $name, CREATE, 0))->isIdenticalTo($expected);
+            $this->array(array_slice($observer->trace, 0, 2))->isIdenticalTo(['resolved', 'constructed']);
+            $conversion = array_search('converted', $observer->trace, true);
+            $scopeResolution = array_search('resolved', array_slice($observer->trace, 2), true);
+            $this->variable($scopeResolution)->isNotIdenticalTo(false);
+            $this->integer($conversion)->isGreaterThan($scopeResolution + 2);
+            $this->string(end($observer->trace))->isIdenticalTo('converted');
+            $permissionQueries = array_filter(
+                $selected->queries,
+                static fn (array $query): bool => str_contains($query['sql'], 'glpi_profilerights'),
+            );
+            $this->array($permissionQueries)->hasSize(1);
+            $this->array($other->queries)->isEmpty();
+            $route = $selected;
+            $clears = $observer->clears;
+            $this->exception(static fn () => LegacyProfile::haveUserRight($userId, new stdClass(), CREATE, []))
+                ->isInstanceOf(TypeError::class);
+            $this->integer($observer->clears)->isIdenticalTo($clears);
+            $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+            $this->boolean(LegacyProfile::haveUserRight($userId, 'ticket', CREATE, []))->isFalse();
+            $this->integer(LegacyProfile::getDefault())->isIdenticalTo($expectedDefault);
+        } finally {
+            $DB = $original;
+            $_SESSION = $session;
+        }
+    }
+
     public function testPermissionReadsReuseScopeAndObserveWrites()
     {
         global $DB, $GLPI_CACHE;

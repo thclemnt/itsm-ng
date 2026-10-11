@@ -3436,7 +3436,8 @@ class Profile extends CommonDBTM
     public static function getDefault()
     {
         global $DB;
-        return (new ProfileRepository(Orm::create($DB)))->defaultId();
+        return Orm::read($DB, static fn (EntityManager $manager): int =>
+            (new ProfileRepository($manager))->defaultId());
     }
 
 
@@ -3589,11 +3590,20 @@ class Profile extends CommonDBTM
     public static function haveUserRight($user_id, $rightname, $rightvalue, $entity_id)
     {
         global $DB;
-        return (new ProfileRightRepository(Orm::create($DB)))->userHas(
-            (int)$user_id,
-            $rightname,
-            (int)$rightvalue,
-            getEntitiesRestrictCriteria('glpi_profiles_users', '', $entity_id, true)
+        return Orm::readPrepared(
+            $DB,
+            static function () use ($user_id, $rightname, $rightvalue, $entity_id): array {
+                $arguments = static fn (int $user, string $name, int $mask, array $scope): array =>
+                    [$user, $name, $mask, $scope];
+                return $arguments(
+                    (int)$user_id,
+                    $rightname,
+                    (int)$rightvalue,
+                    getEntitiesRestrictCriteria('glpi_profiles_users', '', $entity_id, true)
+                );
+            },
+            static fn (EntityManager $manager, array $arguments): bool =>
+                (new ProfileRightRepository($manager))->userHas(...$arguments)
         );
     }
 
