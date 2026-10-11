@@ -1543,6 +1543,11 @@ class CommonDBTM extends CommonGLPI
         }
 
         if ($this->input && is_array($this->input)) {
+            // Prepared callbacks must not hide an invalid mapped flag through filtering.
+            $this->input = $this->normalizeLifecycleInput($this->input);
+            if ($this->input === false) {
+                return false;
+            }
             //Check values to inject
             $this->filterValues(!isCommandLine());
         }
@@ -2058,6 +2063,12 @@ class CommonDBTM extends CommonGLPI
                 $this->input = $this->prepareInputForUpdate($this->input);
             }
 
+            if ($this->input && is_array($this->input)) {
+                $this->input = $this->normalizeLifecycleInput($this->input);
+                if ($this->input === false) {
+                    return false;
+                }
+            }
             if (isset($this->input['update'])) {
                 $this->input['_update'] = $this->input['update'];
                 unset($this->input['update']);

@@ -244,6 +244,65 @@ class CommonDBTM extends DbTestCase
         }
     }
 
+    public function testLatePreparedFlagUpdateRejectsBeforeFiltering(): void
+    {
+        global $DB;
+        $this->login();
+        $connection = $DB->getDoctrineConnection();
+        $api = $this->createItem(APIClient::class, ['name' => $this->getUniqueString(), 'is_active' => 0]);
+        $prepared = new class extends APIClient {
+            public mixed $preparedFlag = 2;
+            public int $filterCalls = 0;
+
+            public static function getType()
+            {
+                return APIClient::getType();
+            }
+
+            public static function getTable($classname = null)
+            {
+                return APIClient::getTable();
+            }
+
+            public function prepareInputForUpdate($input)
+            {
+                $input = parent::prepareInputForUpdate($input);
+                $input['is_active'] = $this->preparedFlag;
+                return $input;
+            }
+
+            public function filterValues($display = true)
+            {
+                ++$this->filterCalls;
+                return parent::filterValues($display);
+            }
+        };
+        $before = $connection->fetchAssociative('SELECT * FROM glpi_apiclients WHERE id = ?', [$api->getID()]);
+        $owner = Orm::create($DB);
+        try {
+            $record = $owner->find(EntityRegistry::tables()['glpi_apiclients'], $api->getID());
+            $record->name = 'Pending late-flag observer';
+            foreach ([2, -1, null] as $invalid) {
+                $prepared->preparedFlag = $invalid;
+                $this->boolean($prepared->update(['id' => $api->getID(), 'is_active' => 0, 'name' => 'Rejected preparation']))->isFalse();
+                $this->integer($prepared->filterCalls)->isIdenticalTo(0);
+                $this->hasSessionMessages(ERROR, ['Invalid boolean value: glpi_apiclients.is_active. Expected zero or one; received ' . get_debug_type($invalid) . '.']);
+                $this->array($connection->fetchAssociative('SELECT * FROM glpi_apiclients WHERE id = ?', [$api->getID()]))->isIdenticalTo($before);
+            }
+            foreach (['1', '0'] as $valid) {
+                $prepared->preparedFlag = $valid;
+                $this->boolean($prepared->update(['id' => $api->getID(), 'is_active' => 0]))->isTrue();
+                $this->boolean($api->getFromDB($api->getID()))->isTrue();
+                $this->integer($api->fields['is_active'])->isIdenticalTo((int)$valid);
+            }
+            $this->integer($prepared->filterCalls)->isIdenticalTo(2);
+            $this->boolean($owner->contains($record))->isTrue();
+            $this->string($record->name)->isIdenticalTo('Pending late-flag observer');
+        } finally {
+            $owner->clear();
+        }
+    }
+
     public function testSpecialStatusConfirmationUsesOrdinalsAndFreshAdministrationRows(): void
     {
         global $DB;
