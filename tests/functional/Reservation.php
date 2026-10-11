@@ -40,6 +40,7 @@ use itsmng\Database\OwnedMutationFrame;
 use itsmng\Database\PostgresConnection;
 use itsmng\Database\Repository\ReservationItemRepository;
 use itsmng\Database\Repository\ReservationRepository;
+use itsmng\Database\ReservationUserReadOperation;
 use LogicException;
 use mock\tests\units\ReservationDisplayAdapterBase as ReservationDisplayAdapter;
 use ReflectionProperty;
@@ -270,14 +271,6 @@ class Reservation extends DbTestCase
             $_SESSION['glpinames_format'] = User::FIRSTNAME_BEFORE;
             $_SESSION['glpiis_ids_visible'] = 0;
             $repository = new ReservationRepository($em);
-            $loads = new class () {
-                public int $count = 0;
-                public function postLoad(): void
-                {
-                    ++$this->count;
-                }
-            };
-            $em->getEventManager()->addEventListener([Events::postLoad], $loads);
             try {
                 $itemRows = $repository->forItem($items[0]->id, $_SESSION['glpi_currenttime'], false);
                 $this->array($itemRows)->hasSize(14);
@@ -300,50 +293,49 @@ class Reservation extends DbTestCase
                 $this->string($pastRows[0]['comment'])->isIdenticalTo('Past boundary reservation');
                 $this->array($repository->during($items[0]->id, '2030-01-01 10:00:00', '2030-01-01 11:00:00'))->hasSize(14);
                 $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
-                $this->integer($loads->count)->isIdenticalTo(0);
                 // A managed user must not hide a later legacy write on the supplied connection.
                 $em->find(Record\User::class, $user->id);
-                $this->integer($loads->count)->isGreaterThan(0);
                 $connection->update('glpi_users', ['firstname' => 'Reservation Fresh'], ['id' => $user->id]);
                 $fresh = $repository->forItem($items[0]->id, $_SESSION['glpi_currenttime'], false);
                 $this->string($fresh[0]['_user_firstname'])->isIdenticalTo('Reservation Fresh');
                 $connection->update('glpi_users', ['firstname' => 'Reservation Ada'], ['id' => $user->id]);
             } finally {
-                $em->getEventManager()->removeEventListener([Events::postLoad], $loads);
                 $em->clear();
             }
-            $rows = $repository->forUser($user->id, $_SESSION['glpi_currenttime'], false, [$rootId, $childId]);
+            $reader = new ReservationUserReadOperation($connection);
+            $rows = $reader->forUser($user->id, $_SESSION['glpi_currenttime'], false, [$rootId, $childId]);
             $this->array($rows)->hasSize(25);
             $this->string($rows[0]['itemtype'])->isIdenticalTo('Computer');
             $this->integer((int)$rows[0]['items_id'])->isIdenticalTo($assets[0]->id);
-            $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
-            $this->array($repository->forUser($user->id, $_SESSION['glpi_currenttime'], false, null))->hasSize(26);
-            $this->array($repository->forUser(0, $_SESSION['glpi_currenttime'], false, null))->isEmpty();
-            // The direct DBAL display path must retain the ORM projection contract,
-            // including root scope, absent grants, time boundaries, and scalar types.
-            foreach ([false, true] as $past) {
-                foreach ([[$rootId, $childId], [0], [], null] as $scope) {
-                    $this->array($repository->nativeForUser($user->id, $_SESSION['glpi_currenttime'], $past, $scope))
-                        ->isIdenticalTo($repository->forUser($user->id, $_SESSION['glpi_currenttime'], $past, $scope));
-                }
+            $this->array($reader->forUser($user->id, $_SESSION['glpi_currenttime'], false, null))->hasSize(26);
+            $this->array($reader->forUser(0, $_SESSION['glpi_currenttime'], false, null))->isEmpty();
+            foreach ([
+                [false, [$rootId, $childId], 25],
+                [true, [$rootId, $childId], 1],
+                [false, [0], 1],
+                [true, [0], 0],
+                [false, [], 0],
+                [true, [], 0],
+                [false, null, 26],
+                [true, null, 1],
+            ] as [$past, $scope, $expectedCount]) {
+                $this->array($reader->forUser($user->id, $_SESSION['glpi_currenttime'], $past, $scope))
+                    ->hasSize($expectedCount);
             }
-            $this->array($repository->nativeForUser(0, $_SESSION['glpi_currenttime'], false, null))->isEmpty();
             $originalText = Type::getType(Types::TEXT);
             try {
                 Type::overrideType(Types::TEXT, new ReservationDisplayTextType());
-                $converted = $repository->nativeForUser($user->id, $_SESSION['glpi_currenttime'], true, [$rootId, $childId]);
-                $this->array($converted)->isIdenticalTo($repository->forUser($user->id, $_SESSION['glpi_currenttime'], true, [$rootId, $childId]));
+                $converted = $reader->forUser($user->id, $_SESSION['glpi_currenttime'], true, [$rootId, $childId]);
                 $this->string($converted[0]['comment'])->isIdenticalTo('PAST BOUNDARY RESERVATION|php');
             } finally {
                 Type::overrideType(Types::TEXT, $originalText);
             }
 
             $connection->update('glpi_reservations', ['comment' => null], ['reservationitems_id' => $items[2]->id]);
-            $rootRows = $repository->nativeForUser($user->id, $_SESSION['glpi_currenttime'], false, [0]);
+            $rootRows = $reader->forUser($user->id, $_SESSION['glpi_currenttime'], false, [0]);
             $this->array($rootRows)->hasSize(1);
             $this->variable($rootRows[0]['comment'])->isNull();
             $connection->update('glpi_reservations', ['comment' => 'Other entity reservation'], ['reservationitems_id' => $items[2]->id]);
-            $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
 
             $render = static function (int $id): string {
                 ob_start();

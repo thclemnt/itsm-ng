@@ -16,70 +16,11 @@ use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity\Alert;
 use itsmng\Database\Entity\Reservation;
 use itsmng\Database\RecordCriteria;
-use LogicException;
 
 final class ReservationRepository
 {
     public function __construct(private EntityManager $em)
     {
-    }
-
-    public function forUser(int $user, string $now, bool $past, ?array $entities): array
-    {
-        $query = $this->em->createQueryBuilder()
-            ->select('r.begin, r.end, IDENTITY(r.users) AS users_id, r.comment, i.id AS reservationitems_id, i.itemtype, i.items_id, IDENTITY(i.entities) AS entities_id')
-            ->from(Reservation::class, 'r')
-            ->join('r.reservationitems', 'i')
-            ->where('IDENTITY(r.users) = :user')
-            ->setParameter('user', $user, Types::INTEGER)
-            ->andWhere('r.end ' . ($past ? '<=' : '>') . ' :now')
-            ->setParameter('now', new DateTime($now), Types::DATETIMETZ_MUTABLE)
-            ->orderBy('r.begin', $past ? 'DESC' : 'ASC')
-            ->addOrderBy('r.id', 'ASC');
-        if ($entities !== null) {
-            $query->andWhere('IDENTITY(i.entities) IN (:entities)')
-                ->setParameter('entities', $entities ?: [-1]);
-        }
-        $rows = $query->getQuery()
-            ->getArrayResult();
-        foreach ($rows as &$row) {
-            foreach (['begin', 'end'] as $field) {
-                $row[$field] = $row[$field]?->format('Y-m-d H:i:s');
-            }
-        }
-        return $rows;
-    }
-
-    /** Private display projection; retain the same live connection and two time partitions. */
-    public function nativeForUser(int $user, string $now, bool $past, ?array $entities): array
-    {
-        $connection = $this->em->getConnection();
-        $platform = $connection->getDatabasePlatform();
-        $quote = $this->em->getConfiguration()->getQuoteStrategy();
-        $reservation = $this->em->getClassMetadata(Reservation::class);
-        $item = $this->em->getClassMetadata($reservation->associationMappings['reservationitems']->targetEntity);
-        $metadata = ['r' => $reservation, 'i' => $item];
-        $reference = static function (string $alias, string $property) use ($metadata, $quote, $platform): string {
-            $record = $metadata[$alias];
-            $mapping = $record->associationMappings[$property];
-            if (!$mapping->isToOneOwningSide() || count($mapping->joinColumns) !== 1) {
-                throw new LogicException('Reservation display requires single owning references');
-            }
-            return $alias . '.' . $quote->getJoinColumnName($mapping->joinColumns[0], $record, $platform);
-        };
-        return self::userRows(
-            $connection,
-            $platform,
-            $user,
-            $now,
-            $past,
-            $entities,
-            static fn (string $alias, string $property): string => $alias . '.' . $quote->getColumnName($property, $metadata[$alias], $platform),
-            $reference,
-            static fn (string $alias): string => $quote->getTableName($metadata[$alias], $platform),
-            static fn (): string => $quote->getReferencedJoinColumnName($reservation->associationMappings['reservationitems']->joinColumns[0], $item, $platform),
-            static fn (string $alias, string $property): string => $metadata[$alias]->getTypeOfField($property),
-        );
     }
 
     /** @internal Private core display compiler; the mapping is derived from authoritative metadata. */

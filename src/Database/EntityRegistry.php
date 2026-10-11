@@ -62,9 +62,10 @@ final class EntityRegistry
     }
 
     /** Sparse physical fields for the fixed reservation/user display projection. */
-    public static function reservationUserMapping(): ?array
+    public static function reservationUserMapping(): array
     {
-        return self::model('reservation_user');
+        return self::model('reservation_user')
+            ?? throw new LogicException('Missing canonical reservation-user mapping');
     }
 
     /** Fixed historical link fields, derived from the owning followup metadata. */
