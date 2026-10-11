@@ -1734,7 +1734,13 @@ class OrmMigration extends GLPITestCase
             $this->integer($release->verifications)->isIdenticalTo(1);
             $this->boolean(Ledger::state($connection, $release->version())['complete'])->isTrue();
             $this->array(Ledger::state($connection, InitialOwners::PHASE))->isIdenticalTo($receipt);
-            $this->array($this->rowBags($connection))->isIdenticalTo($rows);
+            // Successful publication adds exactly this receipt; every other stored row stays unchanged.
+            $completedRows = $rows;
+            $completedRows[Ledger::TABLE][] = serialize([
+                'version' => $release->version(), 'state' => json_encode(['complete' => true], JSON_THROW_ON_ERROR),
+            ]);
+            sort($completedRows[Ledger::TABLE], SORT_STRING);
+            $this->array($this->rowBags($connection))->isIdenticalTo($completedRows);
             $history->upgrade($connection, static fn () => throw new LogicException('Completed future owner replayed DDL'));
             $this->integer($release->attempts)->isIdenticalTo(2);
             $this->integer($release->verifications)->isIdenticalTo(2);
