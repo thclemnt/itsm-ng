@@ -5,7 +5,9 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\BooleanStorage;
 use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\SchemaIndex;
 use itsmng\Database\Mapping\SchemaOwner;
@@ -27,8 +29,9 @@ class SpecialStatus
     #[ORM\Column(name: '`weight`', type: 'integer', nullable: false, options: ['default' => '1'])]
     public int $weight = 1;
 
-    #[ORM\Column(name: '`is_active`', type: 'smallint', nullable: false, options: ['default' => '1'])]
-    public int $is_active = 1;
+    #[ORM\Column(name: '`is_active`', type: Types::BOOLEAN, nullable: false, options: ['default' => true])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
+    public bool $is_active = true;
 
     #[ORM\Column(name: '`color`', type: 'string', length: 255, nullable: true)]
     public ?string $color = null;

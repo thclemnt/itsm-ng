@@ -6,8 +6,10 @@ namespace itsmng\Database\Entity;
 
 use DateTimeInterface;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\BooleanStorage;
 use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
@@ -61,8 +63,9 @@ class PlanningExternalEventTemplate
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?PlanningEventCategory $planningeventcategories = null;
 
-    #[ORM\Column(name: '`background`', type: 'smallint', nullable: false, options: ['default' => '0'])]
-    public int $background = 0;
+    #[ORM\Column(name: '`background`', type: Types::BOOLEAN, nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
+    public bool $background = false;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
     #[NativeTimestamp]

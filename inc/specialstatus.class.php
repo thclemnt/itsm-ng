@@ -32,6 +32,9 @@
  */
 
 use Glpi\Event;
+use itsmng\Database\BooleanValue;
+use itsmng\Database\MappedStorage;
+use itsmng\Database\OwnershipUpdateUnit;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -100,52 +103,70 @@ class SpecialStatus extends CommonTreeDropdown
         $criteria = "SELECT * FROM glpi_specialstatuses";
         $iterators = $DB->request($criteria);
         $checksum = 0;
+        $validFlags = true;
         echo Html::script("js/specialstatus.js");
 
         if (isset($_POST["update"])) {
-            $before = Ticket::getAllStatusArray(false, true);
-            while ($update = $iterators->next()) {
-                $checksum = $checksum + $_POST["is_active_" . $update["id"]];
-                $DB->update(
-                    "glpi_specialstatuses",
-                    ['weight' => $_POST["weight_" . $update["id"]]],
-                    ['id' => $update["id"]]
-                );
-                $DB->update(
-                    "glpi_specialstatuses",
-                    ['is_active' => $_POST["is_active_" . $update["id"]]],
-                    ['id' => $update["id"]]
-                );
-                if (isset($_POST["color_" . $update["id"]])) {
-                    $DB->update(
-                        "glpi_specialstatuses",
-                        ['color' => $_POST["color_" . $update["id"]]],
-                        ['id' => $update["id"]]
-                    );
+            $rows = iterator_to_array($iterators, false);
+            $flags = [];
+            try {
+                // Validate the COMPLETE submitted batch before any row write,
+                // status remapping, success feedback or subsequent action.
+                foreach ($rows as $row) {
+                    $flags[$row['id']] = BooleanValue::normalizeLegacyInput(
+                        'glpi_specialstatuses',
+                        ['is_active' => $_POST['is_active_' . $row['id']] ?? null]
+                    )['is_active'];
                 }
-                Session::addMessageAfterRedirect(
-                    sprintf(__("Status has been updated!")),
-                    true,
-                    INFO
+            } catch (InvalidArgumentException $error) {
+                Session::addMessageAfterRedirect($error->getMessage(), false, ERROR);
+                $validFlags = false;
+            }
+            if ($validFlags) {
+                $database = $DB;
+                OwnershipUpdateUnit::assertTransactionalStorage($database, 'glpi_specialstatuses');
+                OwnershipUpdateUnit::assertTransactionalStorage($database, 'glpi_tickets');
+                OwnershipUpdateUnit::run(
+                    $database,
+                    $this,
+                    $this->fields,
+                    function () use ($database, $rows, $flags, &$checksum): bool {
+                        $before = Ticket::getAllStatusArray(false, true);
+                        $writer = new MappedStorage($database);
+                        foreach ($rows as $row) {
+                            $checksum += $flags[$row['id']];
+                            $values = [
+                                'weight' => $_POST['weight_' . $row['id']],
+                                'is_active' => $flags[$row['id']],
+                            ];
+                            if (isset($_POST['color_' . $row['id']])) {
+                                $values['color'] = $_POST['color_' . $row['id']];
+                            }
+                            $writer->update('glpi_specialstatuses', (int)$row['id'], $values);
+                            Session::addMessageAfterRedirect(
+                                sprintf(__("Status has been updated!")),
+                                true,
+                                INFO
+                            );
+                        }
+                        if ($checksum == 0) {
+                            $writer->update('glpi_specialstatuses', 1, ['is_active' => 1]);
+                        }
+                        $after = Ticket::getAllStatusArray(false, true);
+                        self::keepStatusSet($before, $after);
+                        return true;
+                    },
+                    guardWriter: true
                 );
             }
-            if ($checksum == 0) {
-                $DB->update(
-                    "glpi_specialstatuses",
-                    ['is_active' => 1],
-                    ['id' => 1]
-                );
-            }
-            $after = Ticket::getAllStatusArray(false, true);
-            self::keepStatusSet($before, $after);
         }
-        if (isset($_POST["delete"])) {
+        if (isset($_POST["delete"]) && $validFlags) {
             $before = Ticket::getAllStatusArray(false, true);
             self::deleteStatus($_POST["delete"]);
             $after = Ticket::getAllStatusArray(false, true);
             self::keepStatusSet($before, $after);
         }
-        if (isset($_POST["force"])) {
+        if (isset($_POST["force"]) && $validFlags) {
             $DB->delete(
                 "glpi_specialstatuses",
                 ['id' => $_SESSION['id']]
@@ -246,21 +267,48 @@ class SpecialStatus extends CommonTreeDropdown
         global $DB;
 
         if (isset($_POST["update"])) {
-            $before = Ticket::getAllStatusArray(false, true);
-            $status_db = [
-               'name'   => $_POST["name"],
-               'weight'   => $_POST["weight"],
-               'is_active'  => $_POST["is_active"],
-               'color'  => $_POST["color"]
-            ];
-            $DB->updateOrInsert("glpi_specialstatuses", $status_db, ['id'   => 0]);
-            Session::addMessageAfterRedirect(
-                sprintf(__("Status has been added!")),
-                true,
-                INFO
-            );
-            $after = Ticket::getAllStatusArray(false, true);
-            self::keepStatusSet($before, $after);
+            try {
+                $active = BooleanValue::normalizeLegacyInput(
+                    'glpi_specialstatuses',
+                    ['is_active' => $_POST['is_active'] ?? null]
+                )['is_active'];
+            } catch (InvalidArgumentException $error) {
+                Session::addMessageAfterRedirect($error->getMessage(), false, ERROR);
+                $active = null;
+            }
+            if ($active !== null) {
+                $database = $DB;
+                OwnershipUpdateUnit::assertTransactionalStorage($database, 'glpi_specialstatuses');
+                OwnershipUpdateUnit::assertTransactionalStorage($database, 'glpi_tickets');
+                OwnershipUpdateUnit::run(
+                    $database,
+                    $this,
+                    $this->fields,
+                    function () use ($database, $active): bool {
+                        $before = Ticket::getAllStatusArray(false, true);
+                        // This public command creates a status. ID0 is an existing
+                        // historical row, never the target of a subsequent creation.
+                        (new MappedStorage($database))->insert(
+                            'glpi_specialstatuses',
+                            [
+                                'name' => $_POST['name'],
+                                'weight' => $_POST['weight'],
+                                'is_active' => $active,
+                                'color' => $_POST['color'],
+                            ]
+                        );
+                        Session::addMessageAfterRedirect(
+                            sprintf(__("Status has been added!")),
+                            true,
+                            INFO
+                        );
+                        $after = Ticket::getAllStatusArray(false, true);
+                        self::keepStatusSet($before, $after);
+                        return true;
+                    },
+                    guardWriter: true
+                );
+            }
         }
         echo "<form aria-label='Status' method='post' action='./specialstatus.form.php' method='post'>";
         echo "<table style='width:40%' class='tab_cadre' cellpadding='5' aria-label='New / Special Status'>";

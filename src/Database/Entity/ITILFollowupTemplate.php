@@ -6,8 +6,10 @@ namespace itsmng\Database\Entity;
 
 use DateTimeInterface;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\BooleanStorage;
 use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
@@ -45,8 +47,9 @@ class ITILFollowupTemplate
     #[ReferencePolicy(ReferenceKind::RootEntity)]
     public ?Entity $entities = null;
 
-    #[ORM\Column(name: '`is_recursive`', type: 'smallint', nullable: false, options: ['default' => '0'])]
-    public int $is_recursive = 0;
+    #[ORM\Column(name: '`is_recursive`', type: Types::BOOLEAN, nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
+    public bool $is_recursive = false;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
     public ?string $name = null;
@@ -59,8 +62,9 @@ class ITILFollowupTemplate
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?RequestType $requesttypes = null;
 
-    #[ORM\Column(name: '`is_private`', type: 'smallint', nullable: false, options: ['default' => '0'])]
-    public int $is_private = 0;
+    #[ORM\Column(name: '`is_private`', type: Types::BOOLEAN, nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
+    public bool $is_private = false;
 
     #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
     public ?string $comment = null;

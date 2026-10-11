@@ -54,14 +54,17 @@ class RequestType
     #[BooleanStorage(mysqlType: Types::SMALLINT)]
     public bool $is_mailfollowup_default = false;
 
-    #[ORM\Column(name: '`is_active`', type: 'smallint', nullable: false, options: ['default' => '1'])]
-    public int $is_active = 1;
+    #[ORM\Column(name: '`is_active`', type: Types::BOOLEAN, nullable: false, options: ['default' => true])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
+    public bool $is_active = true;
 
-    #[ORM\Column(name: '`is_ticketheader`', type: 'smallint', nullable: false, options: ['default' => '1'])]
-    public int $is_ticketheader = 1;
+    #[ORM\Column(name: '`is_ticketheader`', type: Types::BOOLEAN, nullable: false, options: ['default' => true])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
+    public bool $is_ticketheader = true;
 
-    #[ORM\Column(name: '`is_itilfollowup`', type: 'smallint', nullable: false, options: ['default' => '1'])]
-    public int $is_itilfollowup = 1;
+    #[ORM\Column(name: '`is_itilfollowup`', type: Types::BOOLEAN, nullable: false, options: ['default' => true])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
+    public bool $is_itilfollowup = true;
 
     #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
     public ?string $comment = null;

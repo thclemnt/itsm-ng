@@ -43,11 +43,13 @@ class Line
     #[ReferencePolicy(ReferenceKind::RootEntity)]
     public ?Entity $entities = null;
 
-    #[ORM\Column(name: '`is_recursive`', type: 'smallint', nullable: false, options: ['default' => '0'])]
-    public int $is_recursive = 0;
+    #[ORM\Column(name: '`is_recursive`', type: Types::BOOLEAN, nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
+    public bool $is_recursive = false;
 
-    #[ORM\Column(name: '`is_deleted`', type: 'smallint', nullable: false, options: ['default' => '0'])]
-    public int $is_deleted = 0;
+    #[ORM\Column(name: '`is_deleted`', type: Types::BOOLEAN, nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
+    public bool $is_deleted = false;
 
     #[ORM\Column(name: '`caller_num`', type: 'string', length: 255, nullable: false, options: ['default' => ''])]
     public string $caller_num = '';

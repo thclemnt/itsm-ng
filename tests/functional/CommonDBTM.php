@@ -33,6 +33,16 @@
 
 namespace tests\units;
 
+use InvalidArgumentException;
+use ITILFollowupTemplate;
+use Line;
+use LineOperator;
+use PlanningExternalEvent;
+use PlanningExternalEventTemplate;
+use RequestType;
+use SpecialStatus;
+use itsmng\Database\Repository\ITILClassificationRepository;
+use itsmng\Database\MappedReads;
 use APIClient;
 use Appliance as ApplianceModel;
 use Calendar;
@@ -128,6 +138,204 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class CommonDBTM extends DbTestCase
 {
+    public function testNonnullableFlagLifecycleUsesDeclaredZeroOneDomains(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $this->login();
+        $this->setEntity('_test_root_entity', false);
+        $connection = $DB->getDoctrineConnection();
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $activePlugins = $plugins->getValue();
+        $cases = [
+            APIClient::class => ['is_active' => 0, 'is_recursive' => 0],
+            RequestType::class => ['is_active' => 1, 'is_ticketheader' => 1, 'is_itilfollowup' => 1],
+            PlanningExternalEventTemplate::class => ['background' => 0],
+            LineOperator::class => ['is_recursive' => 0],
+            Line::class => ['is_recursive' => 0, 'is_deleted' => 0],
+            PlanningExternalEvent::class => ['is_recursive' => 1, 'background' => 0],
+            ITILFollowupTemplate::class => ['is_recursive' => 0, 'is_private' => 0],
+        ];
+        try {
+            $plugins->setValue(null, [...$activePlugins, 'nonnullable_flag_fixture']);
+            foreach ($cases as $type => $defaults) {
+                $model = new $type();
+                $input = ['name' => 'Flag lifecycle ' . $this->getUniqueString(), 'entities_id' => (int)$_SESSION['glpiactive_entity']];
+                if ($type === PlanningExternalEvent::class || $type === PlanningExternalEventTemplate::class) {
+                    $input['plan'] = ['begin' => '2030-01-01 10:00:00', 'end' => '2030-01-01 11:00:00'];
+                }
+                $id = (int)$model->add($input);
+                $this->integer($id)->isGreaterThan(0);
+                $this->boolean($model->getFromDB($id))->isTrue();
+                foreach ($defaults as $field => $default) {
+                    $this->integer($model->fields[$field])->isIdenticalTo($default);
+                    foreach ([0, 1] as $value) {
+                        $this->boolean($model->update(['id' => $id, $field => (string)$value]))->isTrue();
+                        $this->boolean($model->getFromDB($id))->isTrue();
+                        $this->integer($model->fields[$field])->isIdenticalTo($value);
+                    }
+                    $table = $model->getTable();
+                    $before = $connection->fetchAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table) . ' WHERE id = ?', [$id]);
+                    foreach ([2, -1, null] as $invalid) {
+                        $this->boolean($model->update(['id' => $id, $field => $invalid, 'name' => 'Must not be stored']))->isFalse();
+                        $this->hasSessionMessages(ERROR, ['Invalid boolean value: ' . $table . '.' . $field . '. Expected zero or one; received ' . get_debug_type($invalid) . '.']);
+                        $this->array($connection->fetchAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table) . ' WHERE id = ?', [$id]))->isIdenticalTo($before);
+                    }
+
+                    $owner = Orm::create($DB);
+                    $class = EntityRegistry::tables()[$table];
+                    $record = $owner->find($class, $id);
+                    $record->name = 'Unflushed flag owner';
+                    $this->exception(static fn () => (new RecordWriter($owner))->update($table, $id, [$field => 2, 'name' => 'Rejected writer']))
+                        ->isInstanceOf(InvalidArgumentException::class);
+                    $this->boolean($owner->contains($record))->isTrue();
+                    $this->string($record->name)->isIdenticalTo('Unflushed flag owner');
+                    $this->array($connection->fetchAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table) . ' WHERE id = ?', [$id]))->isIdenticalTo($before);
+                    $owner->clear();
+                }
+                // A public input hook cannot replace a valid flag with an invalid value.
+                $field = array_key_first($defaults);
+                $PLUGIN_HOOKS['pre_item_update']['nonnullable_flag_fixture'][$type] = static function ($item) use ($field): void {
+                    $item->input[$field] = 2;
+                };
+                $before = $connection->fetchAssociative('SELECT * FROM ' . $connection->quoteIdentifier($model->getTable()) . ' WHERE id = ?', [$id]);
+                $this->boolean($model->update(['id' => $id, $field => 0, 'name' => 'Rejected callback']))->isFalse();
+                $this->array($connection->fetchAssociative('SELECT * FROM ' . $connection->quoteIdentifier($model->getTable()) . ' WHERE id = ?', [$id]))->isIdenticalTo($before);
+                $this->hasSessionMessages(ERROR, ['Invalid boolean value: ' . $model->getTable() . '.' . $field . '. Expected zero or one; received int.']);
+                $PLUGIN_HOOKS = $hooks;
+                $PLUGIN_HOOKS['post_prepareadd']['nonnullable_flag_fixture'][$type] = static function ($item) use ($field): void {
+                    $item->input[$field] = 2;
+                };
+                $count = (int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $connection->quoteIdentifier($model->getTable()));
+                $this->boolean((new $type())->add($input))->isFalse();
+                $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $connection->quoteIdentifier($model->getTable())))->isIdenticalTo($count);
+                $this->hasSessionMessages(ERROR, ['Invalid boolean value: ' . $model->getTable() . '.' . $field . '. Expected zero or one; received int.']);
+                $PLUGIN_HOOKS = $hooks;
+                if (array_key_exists('is_recursive', $defaults)) {
+                    $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
+                    $scope = getEntitiesRestrictCriteria($model->getTable(), '', $child, true);
+                    foreach ([0, 1] as $recursive) {
+                        $this->boolean($model->update(['id' => $id, 'is_recursive' => $recursive]))->isTrue();
+                        $visible = MappedReads::matching($DB, $model->getTable(), ['id' => $id] + $scope);
+                        $this->array(array_map('intval', array_column($visible, 'id')))->isIdenticalTo($recursive ? [$id] : []);
+                    }
+                }
+                if ($type === Line::class) {
+                    $this->boolean($model->restore(['id' => $id]))->isTrue();
+                    $this->boolean($model->delete(['id' => $id]))->isTrue();
+                    $this->boolean($model->getFromDB($id))->isTrue();
+                    $this->integer($model->fields['is_deleted'])->isIdenticalTo(1);
+                    $this->boolean($model->restore(['id' => $id]))->isTrue();
+                    $this->boolean($model->getFromDB($id))->isTrue();
+                    $this->integer($model->fields['is_deleted'])->isIdenticalTo(0);
+                }
+            }
+            $request = new RequestType();
+            $requestId = (int)$request->add(['name' => $this->getUniqueString(), 'is_helpdesk_default' => 1, 'is_active' => 1]);
+            $this->integer($requestId)->isGreaterThan(0);
+            $this->integer(Orm::read($DB, static fn ($em): int => (new ITILClassificationRepository($em))->defaultRequestType('helpdesk')))->isIdenticalTo($requestId);
+            $this->boolean($request->update(['id' => $requestId, 'is_active' => 0]))->isTrue();
+            $this->integer(Orm::read($DB, static fn ($em): int => (new ITILClassificationRepository($em))->defaultRequestType('helpdesk')))->isIdenticalTo(0);
+        } finally {
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $activePlugins);
+        }
+    }
+
+    public function testSpecialStatusBatchAndCreationKeepOwnedFlagState(): void
+    {
+        global $DB;
+        $this->login();
+        $connection = $DB->getDoctrineConnection();
+        $session = $_SESSION;
+        $post = $_POST;
+        $snapshot = static fn (): array => $connection->fetchAllAssociative('SELECT * FROM glpi_specialstatuses ORDER BY id');
+        try {
+            $_SESSION['glpiactiveprofile']['status_ticket'] = READ | UPDATE | CREATE | PURGE;
+            $legacy = $connection->fetchAssociative('SELECT * FROM glpi_specialstatuses WHERE id = 0');
+            if ($legacy === false) {
+                $legacyId = (new MappedStorage($DB))->insert('glpi_specialstatuses', ['name' => 'Retained legacy status', 'weight' => 1, 'is_active' => 1, 'color' => 'Default']);
+                $connection->update('glpi_specialstatuses', ['id' => 0], ['id' => $legacyId]);
+                $legacy = $connection->fetchAssociative('SELECT * FROM glpi_specialstatuses WHERE id = 0');
+            }
+            $this->array($legacy);
+            $status = new SpecialStatus();
+            $created = [];
+            foreach ([1, 0] as $active) {
+                $name = 'Created status ' . $this->getUniqueString();
+                $_POST = ['update' => 1, 'name' => $name, 'weight' => 1, 'is_active' => (string)$active, 'color' => 'Default'];
+                ob_start();
+                try {
+                    $status->addStatus();
+                    $this->string(ob_get_contents())->contains("aria-label='New / Special Status'");
+                } finally {
+                    ob_end_clean();
+                }
+                $id = (int)$connection->fetchOne('SELECT id FROM glpi_specialstatuses WHERE name = ?', [$name]);
+                $this->integer($id)->isGreaterThan(0);
+                $created[] = $id;
+                $this->array($connection->fetchAssociative('SELECT * FROM glpi_specialstatuses WHERE id = 0'))->isIdenticalTo($legacy);
+            }
+            $this->boolean($created[0] !== $created[1])->isTrue();
+            unset($_SESSION['MESSAGE_AFTER_REDIRECT'][INFO]);
+            $before = $snapshot();
+            foreach ([2, -1, null] as $invalid) {
+                $_POST['is_active'] = $invalid;
+                ob_start();
+                try {
+                    $status->addStatus();
+                    $this->string(ob_get_contents())->contains("aria-label='New / Special Status'");
+                } finally {
+                    ob_end_clean();
+                }
+                $this->array($snapshot())->isIdenticalTo($before);
+                $this->hasSessionMessages(ERROR, ['Invalid boolean value: glpi_specialstatuses.is_active. Expected zero or one; received ' . get_debug_type($invalid) . '.']);
+            }
+            $_POST = ['update' => 1];
+            foreach ($before as $row) {
+                $_POST['is_active_' . $row['id']] = '0';
+                $_POST['weight_' . $row['id']] = (int)$row['weight'] + 1;
+                $_POST['color_' . $row['id']] = '#123456';
+            }
+            // A later bad row must prevent earlier valid weight/color writes.
+            $_POST['is_active_' . $created[1]] = 2;
+            $_POST['delete'] = $created[0];
+            $_POST['force'] = 1;
+            $_SESSION['id'] = $created[0];
+            $ticketRows = $connection->fetchAllAssociative('SELECT id, status FROM glpi_tickets ORDER BY id');
+            $beforeSession = $_SESSION;
+            ob_start();
+            try {
+                $status->statusForm();
+                $this->string(ob_get_contents())->contains("aria-label='Special Status'");
+            } finally {
+                ob_end_clean();
+            }
+            $this->array($snapshot())->isIdenticalTo($before);
+            $this->array($connection->fetchAllAssociative('SELECT id, status FROM glpi_tickets ORDER BY id'))->isIdenticalTo($ticketRows);
+            $this->hasSessionMessages(ERROR, ['Invalid boolean value: glpi_specialstatuses.is_active. Expected zero or one; received int.']);
+            $this->array($_SESSION)->isIdenticalTo($beforeSession);
+            $_POST['is_active_' . $created[1]] = '0';
+            unset($_POST['delete'], $_POST['force']);
+            ob_start();
+            try {
+                $status->statusForm();
+                $this->string(ob_get_contents())->contains("aria-label='Special Status'");
+            } finally {
+                ob_end_clean();
+            }
+            $this->boolean($DB->request('glpi_specialstatuses', ['id' => 1, 'is_active' => 1])->count() === 1)->isTrue();
+            foreach ($snapshot() as $row) {
+                $previous = array_values(array_filter($before, static fn ($old): bool => $old['id'] == $row['id']))[0];
+                $this->integer((int)$row['weight'])->isIdenticalTo((int)$previous['weight'] + 1);
+                $this->string($row['color'])->isIdenticalTo('#123456');
+            }
+        } finally {
+            $_POST = $post;
+            $_SESSION = $session;
+        }
+    }
+
     public function testCompletedPurgeKeepsAuditIsolationAndDirtyOwners(): void
     {
         global $DB;

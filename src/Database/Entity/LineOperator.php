@@ -56,8 +56,9 @@ class LineOperator implements LegacyInput
     #[ReferencePolicy(ReferenceKind::RootEntity)]
     public ?Entity $entities = null;
 
-    #[ORM\Column(name: '`is_recursive`', type: 'smallint', nullable: false, options: ['default' => '0'])]
-    public int $is_recursive = 0;
+    #[ORM\Column(name: '`is_recursive`', type: Types::BOOLEAN, nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
+    public bool $is_recursive = false;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
     #[NativeTimestamp]

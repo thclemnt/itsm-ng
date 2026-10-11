@@ -6,8 +6,10 @@ namespace itsmng\Database\Entity;
 
 use DateTimeInterface;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\BooleanStorage;
 use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
@@ -33,8 +35,9 @@ class APIClient
     #[ReferencePolicy(ReferenceKind::RootEntity)]
     public ?Entity $entities = null;
 
-    #[ORM\Column(name: '`is_recursive`', type: 'smallint', nullable: false, options: ['default' => '0'])]
-    public int $is_recursive = 0;
+    #[ORM\Column(name: '`is_recursive`', type: Types::BOOLEAN, nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
+    public bool $is_recursive = false;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
     public ?string $name = null;
@@ -43,8 +46,9 @@ class APIClient
     #[NativeTimestamp]
     public ?DateTimeInterface $date_mod = null;
 
-    #[ORM\Column(name: '`is_active`', type: 'smallint', nullable: false, options: ['default' => '0'])]
-    public int $is_active = 0;
+    #[ORM\Column(name: '`is_active`', type: Types::BOOLEAN, nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
+    public bool $is_active = false;
 
     #[ORM\Column(name: '`ipv4_range_start`', type: 'bigint', nullable: true)]
     public ?string $ipv4_range_start = null;

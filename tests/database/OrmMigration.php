@@ -4,6 +4,7 @@
 
 namespace tests\integration;
 
+use itsmng\Database\Migration\NonnullableFlags;
 use ArrayObject;
 use DBAdapter;
 use DBConnection;
@@ -114,6 +115,110 @@ class OrmMigration extends GLPITestCase
         }
     }
 
+    /** Populate genuine old smallints before the existing public History replay. */
+    private function seedAndInterruptNonnullableFlags(Connection $connection): array
+    {
+        $tables = [
+            'glpi_apiclients' => ['is_active' => 0, 'is_recursive' => 0],
+            'glpi_specialstatuses' => ['is_active' => 1],
+            'glpi_requesttypes' => ['is_active' => 1, 'is_ticketheader' => 1, 'is_itilfollowup' => 1],
+            'glpi_planningexternaleventtemplates' => ['background' => 0],
+            'glpi_lineoperators' => ['is_recursive' => 0],
+            'glpi_lines' => ['is_recursive' => 0, 'is_deleted' => 0],
+            'glpi_planningexternalevents' => ['is_recursive' => 1, 'background' => 0],
+            'glpi_itilfollowuptemplates' => ['is_recursive' => 0, 'is_private' => 0],
+        ];
+        foreach ($tables as $table => $fields) {
+            foreach ([0, 1] as $value) {
+                $row = ['id' => 8100 + $value, 'name' => 'Retained flag ' . $value] + array_fill_keys(array_keys($fields), $value);
+                if ($table === 'glpi_apiclients') {
+                    $row += ['app_token' => 'Retained token ' . $value, 'dolog_method' => 2];
+                }
+                $connection->insert($table, $row);
+            }
+        }
+        $before = $this->rowBags($connection);
+        $ledger = Ledger::states($connection);
+        $catalog = BooleanDomainSchema::catalog($connection);
+        $indexes = PhysicalIndexSchema::catalog($connection, array_keys($tables));
+        $migration = new NonnullableFlags();
+        $this->integer(count($migration->plan($connection)['sql']))->isIdenticalTo(8);
+        // Invalid data in the LAST table refuses before even the first table's DDL.
+        $connection->update('glpi_itilfollowuptemplates', ['is_private' => 2], ['id' => 8101]);
+        $invalidRows = $this->rowBags($connection);
+        $this->exception(static fn () => $migration->apply($connection))->isInstanceOf(RuntimeException::class);
+        $this->array($this->rowBags($connection))->isIdenticalTo($invalidRows);
+        $this->array(BooleanDomainSchema::catalog($connection))->isIdenticalTo($catalog);
+        $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
+        $connection->update('glpi_itilfollowuptemplates', ['is_private' => 1], ['id' => 8101]);
+        $connection->executeStatement('ALTER TABLE glpi_apiclients ALTER COLUMN is_active SET DEFAULT 2');
+        $this->exception(static fn () => $migration->plan($connection))->isInstanceOf(RuntimeException::class);
+        $connection->executeStatement('ALTER TABLE glpi_apiclients ALTER COLUMN is_active SET DEFAULT ' . $catalog['columns']['glpi_apiclients']['is_active']['column_default']);
+        $mysql = $connection->getDatabasePlatform() instanceof AbstractMySQLPlatform;
+        $connection->executeStatement($mysql
+            ? 'ALTER TABLE glpi_apiclients MODIFY COLUMN is_active SMALLINT NULL DEFAULT 0'
+            : 'ALTER TABLE glpi_apiclients ALTER COLUMN is_active DROP NOT NULL');
+        $connection->update('glpi_apiclients', ['is_active' => null], ['id' => 8100]);
+        $nullRows = $this->rowBags($connection);
+        $nullCatalog = BooleanDomainSchema::catalog($connection);
+        $this->exception(static fn () => $migration->apply($connection))->isInstanceOf(RuntimeException::class);
+        $this->array($this->rowBags($connection))->isIdenticalTo($nullRows);
+        $this->array(BooleanDomainSchema::catalog($connection))->isIdenticalTo($nullCatalog);
+        $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
+        $connection->update('glpi_apiclients', ['is_active' => 0], ['id' => 8100]);
+        $connection->executeStatement($mysql
+            ? 'ALTER TABLE glpi_apiclients MODIFY COLUMN is_active SMALLINT NOT NULL DEFAULT 0'
+            : 'ALTER TABLE glpi_apiclients ALTER COLUMN is_active SET NOT NULL');
+        $this->array($this->rowBags($connection))->isIdenticalTo($before);
+        $this->exception(static fn () => $migration->apply(
+            $connection,
+            static fn () => throw new RuntimeException('Interrupted nonnullable flag DDL')
+        ))->isInstanceOf(RuntimeException::class)->hasMessage('Interrupted nonnullable flag DDL');
+        $this->integer(count($migration->plan($connection)['sql']))->isIdenticalTo($mysql ? 7 : 8);
+        $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
+        $this->array(PhysicalIndexSchema::catalog($connection, array_keys($tables)))->isIdenticalTo($indexes);
+        return ['tables' => $tables, 'rows' => $before, 'indexes' => $indexes];
+    }
+
+    private function assertNonnullableFlags(Connection $connection, array $before): void
+    {
+        $migration = new NonnullableFlags();
+        $migration->verify($connection);
+        $this->array($migration->plan($connection)['sql'])->isEmpty();
+        // Normalize only the fourteen legitimately converted native values;
+        // retain every other row/column/token/ordinal and multiplicity exactly.
+        foreach ($before['tables'] as $table => $fields) {
+            $rows = $connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table));
+            foreach ($rows as &$row) {
+                foreach ($fields as $field => $default) {
+                    if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
+                        $row[$field] = in_array($row[$field], [true, 1, '1', 't'], true) ? 1 : 0;
+                    }
+                }
+            }
+            unset($row);
+            $bag = array_map(serialize(...), $rows);
+            sort($bag, SORT_STRING);
+            $this->array($bag)->isIdenticalTo($before['rows'][$table]);
+            $nativeRows = $connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table) . ' ORDER BY id');
+            $ledger = Ledger::states($connection);
+            $depth = $connection->getTransactionNestingLevel();
+            foreach ($fields as $field => $default) {
+                foreach ([2, null] as $invalid) {
+                    $this->exception(static fn () => $connection->transactional(static fn () =>
+                        $connection->update($table, [$field => $invalid], ['id' => 8100])))
+                        ->isInstanceOf(DbalException::class);
+                    $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table) . ' ORDER BY id'))->isIdenticalTo($nativeRows);
+                    $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
+                    $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+                }
+            }
+        }
+        $this->array(PhysicalIndexSchema::catalog($connection, array_keys($before['tables'])))->isIdenticalTo($before['indexes']);
+        $migration->apply($connection, static fn () => throw new LogicException('Completed flag DDL replayed'));
+        $this->boolean(Ledger::state($connection, NonnullableFlags::VERSION)['complete'])->isTrue();
+    }
+
     public function testPublicInstallationPublishesConvergedHistory(): void
     {
         global $DB;
@@ -145,7 +250,7 @@ class OrmMigration extends GLPITestCase
         $this->array(History::pendingVersions($connection))->isEmpty();
         $this->boolean(History::isInstalling($connection))->isFalse();
         $this->boolean(Ledger::state($connection, Baseline::PHASE)['installation_complete'])->isTrue();
-        $this->array(History::versions())->isIdenticalTo(['2.2.0', SensorSubjects::VERSION, PhysicalReferenceIndexes::VERSION, NetworkNameParents::VERSION, IPAddressParents::VERSION, GraphicCardParents::VERSION, ComponentParents::VERSION, ComponentParentExpansions::VERSION]);
+        $this->array(History::versions())->isIdenticalTo(['2.2.0', SensorSubjects::VERSION, PhysicalReferenceIndexes::VERSION, NetworkNameParents::VERSION, IPAddressParents::VERSION, GraphicCardParents::VERSION, ComponentParents::VERSION, ComponentParentExpansions::VERSION, NonnullableFlags::VERSION]);
         $this->string($connection->fetchOne('SELECT value FROM glpi_configs WHERE context = ? AND name = ?', ['core', 'itsmdbversion']))->isIdenticalTo(ITSM_SCHEMA_VERSION);
         // Readiness must bootstrap its own adapter in a fresh process, without
         // relying on this test runner's already-loaded database functions.
@@ -276,8 +381,10 @@ class OrmMigration extends GLPITestCase
         // Historical index-only proof above finishes at its genuine predecessor.
         // Current schema convergence also requires every appended public release.
         $parents = $this->seedForwardParentFixtures($connection, 100);
+        $flags = $this->seedAndInterruptNonnullableFlags($connection);
         $history->upgrade($connection);
         $this->assertForwardParentFixtures($connection, $parents, 100);
+        $this->assertNonnullableFlags($connection, $flags);
         $this->array(History::pendingVersions($connection))->isEmpty();
         $completedRows = $this->rowBags($connection);
         $completedLedger = Ledger::states($connection);

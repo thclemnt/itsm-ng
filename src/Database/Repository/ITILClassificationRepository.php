@@ -41,7 +41,7 @@ final class ITILClassificationRepository
         }
         $result = $this->em->createQueryBuilder()->select('r.id')->from(RequestType::class, 'r')
             ->where('r.is_' . $source . '_default = :default AND r.is_active = :active')
-            ->setParameter('default', true, Types::BOOLEAN)->setParameter('active', 1, Types::SMALLINT)
+            ->setParameter('default', true, Types::BOOLEAN)->setParameter('active', true, Types::BOOLEAN)
             ->orderBy('r.id')->setMaxResults(1)->getQuery()->getScalarResult();
         return (int)($result[0]['id'] ?? 0);
     }
