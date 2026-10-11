@@ -705,12 +705,8 @@ class DropdownTranslation extends CommonDBChild
     public static function getTranslationByName($itemtype, $field, $value)
     {
         $item = new $itemtype();
-        if (isset(EntityRegistry::tables()[$item->getTable()])) {
-            $id = self::repository()->dropdownId($item->getTable(), $field, $value);
-        } else {
-            $matches = $item->find([$field => Toolbox::addslashes_deep($value)], ['id ASC'], 1);
-            $id = $matches ? array_key_first($matches) : null;
-        }
+        $matches = $item->find([$field => Toolbox::addslashes_deep($value)], ['id ASC'], 1);
+        $id = $matches ? array_key_first($matches) : null;
         if ($id !== null) {
             return self::getTranslatedValue(
                 $id,

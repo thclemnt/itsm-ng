@@ -43,22 +43,6 @@ final class DropdownTranslationRepository
         return (new RecordRepository($this->em))->identifiers($table, 'id', [$parentColumn => $parent], ['id ASC']);
     }
 
-    /** Literal names, including NULL and backslashes, are data rather than legacy SQL values. */
-    public function dropdownId(string $table, string $field, string $value): ?int
-    {
-        $class = EntityRegistry::tables()[$table];
-        $query = $this->em->createQueryBuilder()
-            ->select('r.id')
-            ->from($class, 'r');
-        $compiler = new RecordCriteria($query, $this->em->getClassMetadata($class), false);
-        $ids = $query->where($compiler->where([$field => $value]))
-            ->orderBy('r.id')
-            ->setMaxResults(1)
-            ->getQuery()
-            ->getSingleColumnResult();
-        return $ids ? (int)$ids[0] : null;
-    }
-
     /** Explicit scalar label; admission and callback isolation belong to the private owner. */
     public function nativeLabel(string $table, int $id, array $columns): ?array
     {

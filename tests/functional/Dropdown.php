@@ -50,6 +50,7 @@ use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Internal\Hydration\AbstractHydrator;
 use Doctrine\ORM\Query;
 use Dropdown as LegacyDropdown;
+use DropdownTranslation as LegacyDropdownTranslation;
 use Entity;
 use Generator;
 use LogicException;
@@ -81,6 +82,53 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Dropdown extends DbTestCase
 {
+    public function testTranslationByNameUsesModelCriteriaAndFirstIdentifier(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $connection = $DB->getDoctrineConnection();
+            $language = substr($this->getUniqueString(), 0, 10);
+            $_SESSION['glpilanguage'] = $language;
+            $_SESSION['glpi_dropdowntranslations'][Budget::class]['name'] = 'name';
+            $value = "Quoted O'Reilly\\" . $this->getUniqueString();
+            $ids = [];
+            foreach ([null, 'NULL', $value, $value] as $name) {
+                $budget = $this->createItem(Budget::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+                $ids[] = $id = (int)$budget->getID();
+                $connection->update('glpi_budgets', ['name' => $name], ['id' => $id]);
+            }
+            $nullId = (int)$connection->fetchOne('SELECT id FROM glpi_budgets WHERE name IS NULL ORDER BY id LIMIT 1');
+            foreach ([
+                $nullId => 'Null criterion translation',
+                $ids[1] => 'Literal NULL translation',
+                $ids[2] => 'First exact name translation',
+                $ids[3] => 'Later exact name translation',
+            ] as $id => $translation) {
+                $connection->insert(
+                    'glpi_dropdowntranslations',
+                    [
+                        'itemtype' => Budget::class,
+                        'items_id' => $id,
+                        'field' => 'name',
+                        'language' => $language,
+                        'value' => $translation,
+                    ]
+                );
+            }
+            foreach (['NULL', 'null'] as $sentinel) {
+                $this->string(LegacyDropdownTranslation::getTranslationByName(Budget::class, 'name', $sentinel))
+                    ->isIdenticalTo('Null criterion translation');
+            }
+            $this->string(LegacyDropdownTranslation::getTranslationByName(Budget::class, 'name', $value))
+                ->isIdenticalTo('First exact name translation');
+            $missing = $this->getUniqueString();
+            $this->string(LegacyDropdownTranslation::getTranslationByName(Budget::class, 'name', $missing))->isIdenticalTo($missing);
+        } finally {
+            $_SESSION = $session;
+        }
+    }
     public function testOwnedEntityRestrictionsReadFreshRowsWithinOneOperation(): void
     {
         global $DB;
