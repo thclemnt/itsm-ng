@@ -216,7 +216,6 @@ class Config extends DbTestCase
     {
         global $DB;
         $original = $DB;
-        $table = APIClientModel::getTable();
         $this->login();
         $model = new APIClientModel();
         $id = $model->add(['name' => 'route_' . $this->getUniqueString(), 'entities_id' => 0,
@@ -291,31 +290,7 @@ class Config extends DbTestCase
             $DB = $adapter;
             $this->string(array_column($model->allowedForAddress('', '2001:db8::8'), 'app_token', 'id')[$id])->isIdenticalTo($token);
             $this->array($observer->managers)->hasSize(3);
-            APIClientModel::forceTable('opaque_api_client_route');
-            $criteria = null;
-            $this->calling($adapter)->request = static function ($query) use (&$criteria) {
-                $criteria = $query;
-                return new class () {
-                    private bool $done = false;
-
-                    public function next(): array|false
-                    {
-                        if ($this->done) {
-                            return false;
-                        }
-                        $this->done = true;
-                        return ['id' => 991, 'app_token' => 'opaque-route'];
-                    }
-                };
-            };
-            $DB = $adapter;
-            $before = $routes;
-            $this->array($model->allowedForAddress(0, '0.0.0.0'))->isIdenticalTo([991 => ['id' => 991, 'app_token' => 'opaque-route']]);
-            $this->integer($routes)->isIdenticalTo($before);
-            $this->string($criteria['FROM'])->isIdenticalTo('opaque_api_client_route');
-            $this->array($criteria['WHERE'])->isIdenticalTo(['is_active' => 1, 'OR' => [['ipv6' => null], ['ipv6' => '0.0.0.0']]]);
         } finally {
-            APIClientModel::forceTable($table);
             $DB = $original;
         }
     }

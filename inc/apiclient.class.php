@@ -59,19 +59,7 @@ class APIClient extends CommonDBTM
     {
         global $DB;
 
-        $where = $ipv4 ? ['OR' => [
-            'ipv4_range_start' => null,
-            ['ipv4_range_start' => ['<=', $ipv4], 'ipv4_range_end' => ['>=', $ipv4]],
-        ]] : ['OR' => [['ipv6' => null], ['ipv6' => $address]]];
-        if (static::class !== self::class) {
-            return $this->find(['is_active' => 1] + $where);
-        }
-        $database = $DB;
-        // Core admission is a pure cached getter; forced tables keep the public find route.
-        if ($this->getTable() !== 'glpi_apiclients') {
-            return $this->find(['is_active' => 1] + $where);
-        }
-        return Orm::read($database, static fn (EntityManager $manager): array =>
+        return Orm::read($DB, static fn (EntityManager $manager): array =>
             (new APIClientRepository($manager))->allowedTokens($ipv4, $address), clearCustomManager: true);
     }
 
