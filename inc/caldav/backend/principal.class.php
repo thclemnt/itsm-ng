@@ -38,11 +38,22 @@ if (!defined('GLPI_ROOT')) {
 }
 
 use CommonDBTM;
+use DBAdapter;
+use DbUtils;
+use Doctrine\ORM\EntityManager;
 use Glpi\CalDAV\Node\Property;
 use Glpi\CalDAV\Traits\CalDAVPrincipalsTrait;
 use Glpi\CalDAV\Traits\CalDAVUriUtilTrait;
 use Group;
 use Group_User;
+use itsmng\Database\Entity\Group as MappedGroup;
+use itsmng\Database\Entity\GroupMembership;
+use itsmng\Database\Entity\User as MappedUser;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\EntityRestriction;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\PrincipalGroupRepository;
 use QuerySubQuery;
 use Sabre\DAV\Exception\NotImplemented;
 use Sabre\DAV\PropPatch;
@@ -138,41 +149,43 @@ class Principal extends AbstractBackend
 
         $members_uris = [];
 
-        $groups_iterator = $DB->request(
-            [
-              'FROM'  => Group::getTable(),
-              'WHERE' => [
-                 'is_task'   => 1,
-                 'groups_id' => $group_id,
-              ] + getEntitiesRestrictCriteria(
-                  Group::getTable(),
-                  'entities_id',
-                  $_SESSION['glpiactiveentities'],
-                  true
-              ),
-            ]
-        );
+        $groups_database = $DB;
+        $groups_query = [
+            'FROM' => Group::getTable(),
+            'WHERE' => [
+                'is_task' => 1,
+                'groups_id' => $group_id,
+            ] + ($scope = (new DbUtils())->getEntityRestriction(
+                Group::getTable(),
+                'entities_id',
+                $_SESSION['glpiactiveentities'],
+                true
+            ))->wrappedCriteria(),
+        ];
+        $groups_iterator = $this->projectGroupRelations($groups_database, $groups_query, $scope, $group_id)
+            ?? $groups_database->request($groups_query);
         foreach ($groups_iterator as $group_fields) {
             $members_uris[] = $this->getGroupPrincipalUri($group_fields['id']);
         }
 
-        $users_iterator = $DB->request(
-            [
-              'SELECT'     => [User::getTableField('name')],
-              'FROM'       => User::getTable(),
-              'INNER JOIN' => [
-                 Group_User::getTable() => [
+        $users_database = $DB;
+        $users_query = [
+            'SELECT' => [User::getTableField('name')],
+            'FROM' => User::getTable(),
+            'INNER JOIN' => [
+                Group_User::getTable() => [
                     'ON' => [
-                       User::getTable()       => 'id',
-                       Group_User::getTable() => 'users_id',
+                        User::getTable() => 'id',
+                        Group_User::getTable() => 'users_id',
                     ],
-                 ],
-              ],
-              'WHERE'     => [
-                 Group_User::getTableField('groups_id') => $group_id,
-              ]
-            ]
-        );
+                ],
+            ],
+            'WHERE' => [
+                Group_User::getTableField('groups_id') => $group_id,
+            ],
+        ];
+        $users_iterator = $this->projectGroupMembers($users_database, $users_query, $group_id)
+            ?? $users_database->request($users_query);
         foreach ($users_iterator as $user_fields) {
             $members_uris[] = $this->getUserPrincipalUri($user_fields['name']);
         }
@@ -191,21 +204,21 @@ class Principal extends AbstractBackend
            'INNER JOIN' => [],
            'WHERE'      => [
               'is_task' => 1,
-           ] + getEntitiesRestrictCriteria(
+           ] + ($scope = (new DbUtils())->getEntityRestriction(
                Group::getTable(),
                'entities_id',
                $_SESSION['glpiactiveentities'],
                true
-           ),
+           ))->wrappedCriteria(),
         ];
 
         $principal_itemtype = $this->getPrincipalItemtypeFromUri($path);
         switch ($principal_itemtype) {
             case Group::class:
-                $groups_query['WHERE']['groups_id'] = $this->getGroupIdFromPrincipalUri($path);
+                $groups_query['WHERE']['groups_id'] = $selection = $this->getGroupIdFromPrincipalUri($path);
                 break;
             case User::class:
-                $groups_query['INNER JOIN'][Group_User::getTable()] = [
+                $groups_query['INNER JOIN'][$membership_table = Group_User::getTable()] = [
                    'ON' => [
                       Group::getTable()       => 'id',
                       Group_User::getTable()  => 'groups_id',
@@ -214,8 +227,8 @@ class Principal extends AbstractBackend
                             Group_User::getTableField('users_id') => new QuerySubQuery(
                                 [
                                   'SELECT' => 'id',
-                                  'FROM'   => User::getTable(),
-                                  'WHERE'  => ['name' => $this->getUsernameFromPrincipalUri($path)],
+                                  'FROM'   => $user_table = User::getTable(),
+                                  'WHERE'  => ['name' => $selection = $this->getUsernameFromPrincipalUri($path)],
                                 ]
                             ),
                          ],
@@ -228,13 +241,89 @@ class Principal extends AbstractBackend
                 break;
         }
 
-        $groups_iterator = $DB->request($groups_query);
+        $groups_database = $DB;
+        $groups_iterator = $this->projectGroupRelations(
+            $groups_database,
+            $groups_query,
+            $scope,
+            $selection,
+            $user_table ?? null,
+            $membership_table ?? null,
+        ) ?? $groups_database->request($groups_query);
 
         $groups_uris = [];
         foreach ($groups_iterator as $group_fields) {
             $groups_uris[] = $this->getGroupPrincipalUri($group_fields['id']);
         }
         return $groups_uris;
+    }
+
+    /** Only fixed, property-owned routes enter the completed domain projection. */
+    private function projectGroupRelations(
+        DBAdapter $database,
+        array $query,
+        EntityRestriction $scope,
+        mixed $selection,
+        ?string $userTable = null,
+        ?string $membershipTable = null,
+    ): ?array {
+        $tables = EntityRegistry::tables();
+        if (($tables[$query['FROM']] ?? null) !== MappedGroup::class
+            || $scope->table !== $query['FROM'] || !$scope->hasEntityMembership
+            || $scope->field !== 'entities_id'
+            || (isset($query['SELECT']) && $query['SELECT'] !== [$query['FROM'] . '.id'])) {
+            return null;
+        }
+        if ($userTable !== null) {
+            if (($tables[$userTable] ?? null) !== MappedUser::class
+                || ($tables[$membershipTable ?? ''] ?? null) !== GroupMembership::class
+                || ($query['INNER JOIN'][$membershipTable]['ON'][$query['FROM']] ?? null) !== 'id'
+                || ($query['INNER JOIN'][$membershipTable]['ON'][$membershipTable] ?? null) !== 'groups_id'
+                || (!is_string($selection) && $selection !== null)) {
+                return null;
+            }
+        } elseif (!$this->isPrincipalReference($selection)) {
+            return null;
+        }
+        $selection = $this->principalNullSelection($selection);
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        return Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $selection, $scope, $userTable): array {
+            $repository = new PrincipalGroupRepository($connection, $manager);
+            return $userTable === null ? $repository->taskChildIds($selection, $scope)
+                : $repository->taskMembershipIdsForUsername($selection, $scope);
+        });
+    }
+
+    private function projectGroupMembers(DBAdapter $database, array $query, mixed $group): ?array
+    {
+        $tables = EntityRegistry::tables();
+        $user = $query['FROM'];
+        $membership = array_key_first($query['INNER JOIN']);
+        if (($tables[$user] ?? null) !== MappedUser::class
+            || ($tables[$membership] ?? null) !== GroupMembership::class
+            || $query['SELECT'] !== [$user . '.name']
+            || $query['INNER JOIN'][$membership]['ON'] !== [$user => 'id', $membership => 'users_id']
+            || array_keys($query['WHERE']) !== [$membership . '.groups_id']
+            || !$this->isPrincipalReference($group)) {
+            return null;
+        }
+        $group = $this->principalNullSelection($group);
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        return Orm::withReadConnection($connection, static fn (?EntityManager $manager): array =>
+            (new PrincipalGroupRepository($connection, $manager))->directMemberNames($group));
+    }
+
+    private function isPrincipalReference(mixed $value): bool
+    {
+        return $value === null || is_int($value)
+            || (is_string($value) && (ctype_digit($value) || strtolower($value) === 'null'));
+    }
+
+    private function principalNullSelection(mixed $value): mixed
+    {
+        return is_string($value) && strtolower($value) === 'null' ? null : $value;
     }
 
     public function setGroupMemberSet($path, array $members)
