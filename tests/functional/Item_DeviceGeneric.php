@@ -332,7 +332,14 @@ class Item_DeviceGeneric extends DbTestCase
                 $subject = $reference === null ? 'r.items_id' : 'IDENTITY(r.' . $class::referenceAssociation('Computer') . ')';
                 if (isset($reference['fallback_column'])) {
                     $fallback = $manager->getClassMetadata($class)->getFieldName($reference['fallback_column']);
-                    $subject = 'COALESCE(' . $subject . ', r.' . $fallback . ', 0)';
+                    $subjects = [$subject];
+                    if (in_array($tables[$index], [FirmwareLink::getTable(), NetworkCardLink::getTable(), SimcardLink::getTable()], true)) {
+                        $subjects = [
+                            'IDENTITY(r.computer)', 'IDENTITY(r.networkEquipment)',
+                            'IDENTITY(r.peripheral)', 'IDENTITY(r.phone)', 'IDENTITY(r.printer)',
+                        ];
+                    }
+                    $subject = 'COALESCE(' . implode(', ', $subjects) . ', r.' . $fallback . ', 0)';
                 }
                 $this->string($query)->contains($subject . ' = :asset')->contains('r.itemtype = :kind')->contains('r.is_deleted = :deleted');
                 if ($reference !== null) {
@@ -1110,8 +1117,16 @@ class Item_DeviceGeneric extends DbTestCase
             $this->string($ownerProperty->getType()->getName())->isIdenticalTo(EntityRegistry::tables()[Computer::getTable()]);
             $normalized = $record->normalizeInput(['itemtype' => 'Computer', 'items_id' => 0]);
             $this->array($record->normalizeInput($normalized + ['items_id' => 0]))->isIdenticalTo($normalized);
+            $opaqueIdentity = ['itemtype' => 'PluginOpaqueParent', 'computers_id' => null];
+            if (in_array($linkType, [FirmwareLink::class, NetworkCardLink::class, SimcardLink::class], true)) {
+                $opaqueIdentity += [
+                    'networkequipments_id' => null, 'peripherals_id' => null,
+                    'phones_id' => null, 'printers_id' => null,
+                ];
+            }
+            $opaqueIdentity['opaque_parent_id'] = -9;
             $this->array($record->normalizeInput(['itemtype' => 'PluginOpaqueParent', 'items_id' => -9]))
-                ->isIdenticalTo(['itemtype' => 'PluginOpaqueParent', 'computers_id' => null, 'opaque_parent_id' => -9]);
+                ->isIdenticalTo($opaqueIdentity);
             foreach ([['itemtype' => 'Computer', 'items_id' => -1], ['itemtype' => 'Computer', 'items_id' => null],
                 ['itemtype' => 'Computer', 'computers_id' => $asset->getID(), 'opaque_parent_id' => 0],
                 ['itemtype' => null, 'computers_id' => $asset->getID(), 'opaque_parent_id' => 0]] as $invalid) {
