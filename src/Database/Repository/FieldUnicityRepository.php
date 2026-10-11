@@ -14,6 +14,7 @@ use Doctrine\ORM\QueryBuilder;
 use InvalidArgumentException;
 use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
+use itsmng\Database\EntityRestriction;
 use itsmng\Database\LegacyValues;
 use itsmng\Database\MappedRowProjection;
 use itsmng\Database\RecordCriteria;
@@ -121,21 +122,45 @@ final class FieldUnicityRepository
         return $query;
     }
 
-    /** A configured blacklist value is stored text, including the literal SQL sentinel spelling. */
-    public function blacklistedValue(string $itemtype, string $field, string $value, array $scope): ?bool
+    /** Compare one application scalar with the blacklist's declared text value. */
+    public function blacklistedValue(string $itemtype, string $field, mixed $value, EntityRestriction $scope): bool
     {
+        if ($value !== null && !is_scalar($value)) {
+            throw new InvalidArgumentException('Blacklist membership requires a scalar field value or NULL.');
+        }
+        if (!$scope->hasEntityMembership) {
+            throw new InvalidArgumentException('Blacklist membership requires an entity selection.');
+        }
         $metadata = $this->em->getClassMetadata(Entity\Fieldblacklist::class);
-        $property = $metadata->getFieldName('value');
-        if ($metadata->getTableName() !== 'glpi_fieldblacklists' || !$metadata->hasField($property) || $metadata->getColumnName($property) !== 'value') {
-            return null;
-        }
+        $types = EntityRegistry::fieldTypes($metadata->getTableName());
         $query = $this->em->createQueryBuilder()->select('COUNT(r.id)')->from($metadata->name, 'r');
-        $compiler = new RecordCriteria($query, $metadata);
-        if ($compiler->applyMatching(['itemtype' => $itemtype, 'field' => $field] + $scope, []) !== null) {
-            return null;
+        foreach (['itemtype' => $itemtype, 'field' => $field] as $column => $text) {
+            $property = $metadata->getFieldName($column);
+            $query->andWhere('r.' . $property . ' = :' . $column)
+                ->setParameter($column, LegacyValues::decodeString($text), $types[$column]);
         }
-        $query->andWhere('r.' . $property . ' = :blacklisted_value')
-            ->setParameter('blacklisted_value', LegacyValues::decodeString($value), EntityRegistry::fieldTypes($metadata->getTableName())['value']);
+        $property = $metadata->getFieldName('value');
+        if ($value === null) {
+            $query->andWhere('r.' . $property . ' IS NULL');
+        } else {
+            // Legacy quoteValue represents booleans as zero/one, not empty text.
+            $text = is_bool($value) ? (string) (int) $value : (string) $value;
+            $query->andWhere('r.' . $property . ' = :blacklisted_value')
+                ->setParameter('blacklisted_value', LegacyValues::decodeString($text), $types['value']);
+        }
+        if ($scope->entities !== null) {
+            $restriction = $scope->entities ? 'IDENTITY(r.entities) IN (:entities)' : '1 = 0';
+            if ($scope->entities) {
+                $query->setParameter('entities', $scope->entities, ArrayParameterType::INTEGER);
+            }
+            if ($scope->ancestors) {
+                $recursive = $metadata->getFieldName('is_recursive');
+                $restriction = '(' . $restriction . ' OR (r.' . $recursive . ' = :recursive AND IDENTITY(r.entities) IN (:ancestors)))';
+                $query->setParameter('recursive', true, Types::BOOLEAN)
+                    ->setParameter('ancestors', $scope->ancestors, ArrayParameterType::INTEGER);
+            }
+            $query->andWhere($restriction);
+        }
         return (int) $query->getQuery()->getSingleScalarResult() > 0;
     }
 

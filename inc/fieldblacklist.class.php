@@ -474,23 +474,8 @@ class Fieldblacklist extends CommonDropdown
         global $DB;
 
         $database = $DB;
-        $scope = getEntitiesRestrictCriteria('glpi_fieldblacklists', 'entities_id', $entities_id, true);
-        if (is_string($itemtype) && is_string($field) && is_string($value)) {
-            $blacklisted = Orm::read($database, static fn (EntityManager $manager) =>
-                (new FieldUnicityRepository($manager))->blacklistedValue($itemtype, $field, $value, $scope));
-            if ($blacklisted !== null) {
-                return $blacklisted;
-            }
-        }
-        $result = $database->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => 'glpi_fieldblacklists',
-           'WHERE'  => [
-              'itemtype'  => $itemtype,
-              'field'     => $field,
-              'value'     => $value
-           ] + $scope
-        ])->next();
-        return $result['cpt'] > 0;
+        $scope = (new DbUtils())->getEntityRestriction('glpi_fieldblacklists', 'entities_id', $entities_id, true);
+        return Orm::read($database, static fn (EntityManager $manager): bool =>
+            (new FieldUnicityRepository($manager))->blacklistedValue($itemtype, $field, $value, $scope));
     }
 }

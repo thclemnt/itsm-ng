@@ -3236,7 +3236,79 @@ class CommonDBTM extends DbTestCase
             $this->integer($accepted->add(['name' => 'NULL', 'entities_id' => $entity]))->isGreaterThan(0);
             $this->boolean($accepted->getFromDB($accepted->getID()))->isTrue();
             $this->string($accepted->fields['name'])->isIdenticalTo('NULL');
+            // Stored blacklist text compares with the real scalar field wire values.
+            foreach ([[true, '1'], [false, '0'], [73, '73'], [7.25, '7.25'], ['null', 'null'], ['Null', 'Null']] as [$value, $stored]) {
+                $this->boolean($blacklist->update(['id' => $blacklist->getID(), 'value' => $stored]))->isTrue();
+                $this->boolean(Fieldblacklist::isFieldBlacklisted(Computer::class, $entity, 'name', $value))->isTrue();
+                $this->boolean(Fieldblacklist::isFieldBlacklisted(Computer::class, $entity, 'name', null))->isFalse();
+                $this->boolean(Fieldblacklist::isFieldBlacklisted(Computer::class, $child->getID(), 'name', $value))->isFalse();
+            }
+            $blacklistedQuote = Toolbox::addslashes_deep("Blacklist ' and \\path");
+            $this->boolean($blacklist->update(['id' => $blacklist->getID(), 'value' => $blacklistedQuote]))->isTrue();
+            $this->boolean(Fieldblacklist::isFieldBlacklisted(Computer::class, $entity, 'name', $blacklistedQuote))->isTrue();
+            $dirtyBlacklistOwner = $manager->find(ComputerEntity::class, $id);
+            $dirtyBlacklistOwner->comment = 'unflushed blacklist independent owner';
+            try {
+                Orm::read(
+                    $DB,
+                    function (EntityManager $outer) use ($manager, $dirtyBlacklistOwner, $id, $entity, $blacklistedQuote): void {
+                        $enclosing = $outer->find(ComputerEntity::class, $id);
+                        $enclosing->comment = 'unflushed blacklist enclosing owner';
+                        $this->boolean(Fieldblacklist::isFieldBlacklisted(Computer::class, $entity, 'name', $blacklistedQuote))->isTrue();
+                        $this->boolean($manager->contains($dirtyBlacklistOwner))->isTrue();
+                        $this->string($dirtyBlacklistOwner->comment)->isIdenticalTo('unflushed blacklist independent owner');
+                        $this->boolean($outer->contains($enclosing))->isTrue();
+                        $this->string($enclosing->comment)->isIdenticalTo('unflushed blacklist enclosing owner');
+                    }
+                );
+                $this->boolean($literal->getFromDB($id))->isTrue();
+                $this->string($literal->fields['comment'])->isIdenticalTo('self update');
+            } finally {
+                $manager->clear();
+            }
+            $this->boolean($blacklist->update(['id' => $blacklist->getID(), 'is_recursive' => 1]))->isTrue();
+            $this->boolean(Fieldblacklist::isFieldBlacklisted(Computer::class, $child->getID(), 'name', $blacklistedQuote))->isTrue();
             $this->boolean($blacklist->delete(['id' => $blacklist->getID()], true))->isTrue();
+
+            // Numeric owning IDs reach the public uniqueness decision unchanged.
+            $state = $this->createItem(
+                'State',
+                [
+                    'name' => $this->getUniqueString(), 'entities_id' => $entity,
+                    'is_recursive' => 0, 'is_visible_computer' => 1,
+                ]
+            );
+            $referenceRule = new FieldUnicity();
+            $referenceRuleId = $referenceRule->add([
+                'name' => $this->getUniqueString(), 'itemtype' => Computer::class, 'entities_id' => $entity,
+                '_fields' => ['states_id'], 'is_active' => 1, 'is_recursive' => 0,
+                'action_refuse' => 1, 'action_notify' => 0,
+            ]);
+            $this->integer($referenceRuleId)->isGreaterThan(0);
+            $this->boolean($referenceRule->getFromDB($referenceRuleId))->isTrue();
+            $this->string($referenceRule->fields['fields'])->isIdenticalTo('states_id');
+            $firstState = new Computer();
+            $this->integer($firstState->add([
+                'name' => $this->getUniqueString(), 'entities_id' => $entity, 'states_id' => $state->getID(),
+            ]))->isGreaterThan(0);
+            $duplicateState = new Computer();
+            $this->boolean($duplicateState->add([
+                'name' => $this->getUniqueString(), 'entities_id' => $entity, 'states_id' => $state->getID(),
+            ]))->isFalse();
+            $referenceBlacklist = $this->createItem(
+                Fieldblacklist::class,
+                [
+                    'name' => $this->getUniqueString(), 'itemtype' => Computer::class, 'field' => 'states_id',
+                    'value' => (string) $state->getID(), 'entities_id' => $entity, 'is_recursive' => 0,
+                ]
+            );
+            $this->integer($duplicateState->add([
+                'name' => $this->getUniqueString(), 'entities_id' => $entity, 'states_id' => $state->getID(),
+            ]))->isGreaterThan(0);
+            $this->boolean($duplicateState->getFromDB($duplicateState->getID()))->isTrue();
+            $this->integer((int) $duplicateState->fields['states_id'])->isIdenticalTo((int) $state->getID());
+            $this->boolean($referenceBlacklist->delete(['id' => $referenceBlacklist->getID()], true))->isTrue();
+            $this->boolean($referenceRule->delete(['id' => $referenceRule->getID()], true))->isTrue();
 
             $quoted = Toolbox::addslashes_deep("Quoted ' and \\path");
             $first = new Computer();
