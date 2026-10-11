@@ -36,6 +36,12 @@ namespace tests\units;
 use Auth as ApplicationAuth;
 use AuthLDAP as ApplicationLdap;
 use DbTestCase;
+use DateTime;
+use stdClass;
+use itsmng\Database\Entity\UserEmail as EmailRecord;
+use itsmng\Database\Entity\Profile as ProfileRecord;
+use itsmng\Database\Entity\ProfileUser as ProfileGrant;
+use itsmng\Database\UnsupportedCriteria;
 use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\Event\PostLoadEventArgs;
@@ -62,6 +68,180 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Auth extends DbTestCase
 {
+    public function testAccountReadsStayCurrentAndKeepDirtyOwnersAndDirectoryEligibility(): void
+    {
+        global $DB, $CFG_GLPI;
+        $session = $_SESSION;
+        $expiration = $CFG_GLPI['password_expiration_delay'];
+        $lock = $CFG_GLPI['password_expiration_lock_delay'];
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $connection = $DB->getDoctrineConnection();
+            $owner = Orm::create($DB);
+            $scope = $owner->find(ScopeEntity::class, (int)getItemByTypeName('Entity', '_test_root_entity', true));
+            $local = new UserRecord();
+            $local->entities = $scope;
+            $local->name = 'account_read_' . $this->getUniqueString();
+            $local->authtype = ApplicationAuth::DB_GLPI;
+            $fixturePassword = 'Local fixture password';
+            $local->password = ApplicationAuth::getPasswordHash($fixturePassword);
+            $local->password_last_update = new DateTime();
+            $directory = new AuthLDAP();
+            $directory->name = 'Account directory ' . $this->getUniqueString();
+            $directory->is_active = true;
+            $external = new UserRecord();
+            $external->entities = $scope;
+            $external->name = 'directory_read_' . $this->getUniqueString();
+            $external->authtype = ApplicationAuth::LDAP;
+            $external->authldap = $directory;
+            $external->auth_source_code = null;
+            $external->password = '';
+            $external->user_dn = 'uid=fixture,dc=fixture,dc=invalid';
+            $email = new EmailRecord();
+            $email->users = $local;
+            $email->email = 'account-' . $this->getUniqueString() . '@fixture.invalid';
+            $grant = new ProfileGrant();
+            $grant->users = $external;
+            $grant->profiles = $owner->find(ProfileRecord::class, (int)$_SESSION['glpiactiveprofile']['id']);
+            $grant->entities = $scope;
+            $grant->is_recursive = false;
+            foreach ([$local, $directory, $external, $email, $grant] as $record) {
+                $owner->persist($record);
+            }
+            $owner->flush();
+            $CFG_GLPI['password_expiration_delay'] = -1;
+            $CFG_GLPI['password_expiration_lock_delay'] = -1;
+            $auth = new ApplicationAuth();
+            $this->integer($auth->userExists(['AND' => ['name' => $local->name, 'email' => $email->email]]))
+                ->isIdenticalTo(ApplicationAuth::USER_EXISTS_WITH_PWD);
+            $this->integer($auth->userExists(['name' => $external->name]))->isIdenticalTo(ApplicationAuth::USER_EXISTS_WITHOUT_PWD);
+            $this->string($auth->user_dn)->isIdenticalTo($external->user_dn);
+            $this->integer($auth->userExists(['name' => 'absent-' . $this->getUniqueString()]))
+                ->isIdenticalTo(ApplicationAuth::USER_DOESNT_EXIST);
+            $this->exception(static fn () => $auth->userExists(['name' => new stdClass()]))
+                ->isInstanceOf(UnsupportedCriteria::class);
+            $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+            $this->boolean((new ApplicationAuth())->connection_db($local->name, $fixturePassword))->isTrue();
+            $this->boolean((new ApplicationAuth())->connection_db($local->name, 'Wrong fixture password'))->isFalse();
+            $user = new ApplicationUser();
+            $this->boolean($user->getFromDB($external->id))->isTrue();
+            $this->output(static fn () => ApplicationAuth::showSynchronizationForm($user))->contains('force_ldap_resynch');
+            $connection->update('glpi_authldaps', ['is_active' => false], ['id' => $directory->id], ['is_active' => Types::BOOLEAN]);
+            $this->output(static fn () => ApplicationAuth::showSynchronizationForm($user))->notContains('force_ldap_resynch');
+            $user->fields['auths_id'] = 0;
+            $this->output(static fn () => ApplicationAuth::showSynchronizationForm($user))->notContains('force_ldap_resynch');
+            $user->fields['auths_id'] = null;
+            $this->output(static fn () => ApplicationAuth::showSynchronizationForm($user))->notContains('force_ldap_resynch');
+            $user->fields['auths_id'] = $directory->id;
+            $connection->update('glpi_useremails', ['email' => 'changed-' . $email->email], ['id' => $email->id]);
+            $this->integer($auth->userExists(['email' => $email->email]))->isIdenticalTo(ApplicationAuth::USER_DOESNT_EXIST);
+            $connection->update('glpi_users', ['password' => ApplicationAuth::getPasswordHash('Changed fixture password')], ['id' => $local->id]);
+            $this->boolean((new ApplicationAuth())->connection_db($local->name, $fixturePassword))->isFalse();
+            $local->name = 'Unflushed independent account';
+            $directory->is_active = true;
+            Orm::read($DB, function (EntityManager $outer) use ($local, $external, $directory, $owner, $user): void {
+                $owned = $outer->find(UserRecord::class, $external->id);
+                $owned->user_dn = 'Unflushed enclosing DN';
+                $probe = new ApplicationAuth();
+                $this->integer($probe->userExists(['id' => $external->id]))->isIdenticalTo(ApplicationAuth::USER_EXISTS_WITHOUT_PWD);
+                $this->string($probe->user_dn)->isIdenticalTo('uid=fixture,dc=fixture,dc=invalid');
+                $this->output(static fn () => ApplicationAuth::showSynchronizationForm($user))->notContains('force_ldap_resynch');
+                $this->boolean($outer->contains($owned))->isTrue();
+                $this->string($owned->user_dn)->isIdenticalTo('Unflushed enclosing DN');
+                $this->boolean($owner->contains($local))->isTrue();
+                $this->string($local->name)->isIdenticalTo('Unflushed independent account');
+                $this->boolean($owner->contains($directory))->isTrue();
+                $this->boolean($directory->is_active)->isTrue();
+            });
+        } finally {
+            $_SESSION = $session;
+            $CFG_GLPI['password_expiration_delay'] = $expiration;
+            $CFG_GLPI['password_expiration_lock_delay'] = $lock;
+        }
+    }
+
+    public function testAccountCredentialReadPinsCustomRouteBeforeLoginConversion(): void
+    {
+        global $DB, $CFG_GLPI;
+        $original = $DB;
+        $session = $_SESSION;
+        $expiration = $CFG_GLPI['password_expiration_delay'];
+        $lock = $CFG_GLPI['password_expiration_lock_delay'];
+        try {
+            $owner = Orm::create($DB);
+            $account = new UserRecord();
+            $account->entities = $owner->find(ScopeEntity::class, 0);
+            $account->name = 'custom_account_' . $this->getUniqueString();
+            $account->authtype = ApplicationAuth::DB_GLPI;
+            $account->password = ApplicationAuth::getPasswordHash('Custom fixture password');
+            $account->password_last_update = new DateTime();
+            $owner->persist($account);
+            $owner->flush();
+            $connection = $DB->getDoctrineConnection();
+            $observer = new class () {
+                public array $trace = [];
+                public int $clears = 0;
+                public function onClear(): void
+                {
+                    ++$this->clears;
+                }
+            };
+            $selected = new class ($connection) extends ScalarReadProbe {
+                public EventManager $events;
+                public object $observer;
+                public function getEventManager(): EventManager
+                {
+                    $this->observer->trace[] = 'constructed';
+                    return $this->events;
+                }
+            };
+            $selected->events = new EventManager();
+            $selected->events->addEventListener(['onClear'], $observer);
+            $selected->observer = $observer;
+            $other = new ScalarReadProbe($connection);
+            $route = $selected;
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new LocalLdapAdapterProbe();
+            $this->calling($adapter)->getDoctrineConnection = static function () use (&$route): Connection {
+                return $route;
+            };
+            $this->calling($adapter)->getProvider = $original->getProvider();
+            $DB = $adapter;
+            $name = new class ($this, $connection, $observer, $other, $route, $account->name) {
+                public function __construct(
+                    private object $test,
+                    private Connection $connection,
+                    private object $observer,
+                    private Connection $other,
+                    private Connection &$route,
+                    private string $name
+                ) {
+                }
+                public function __toString(): string
+                {
+                    $this->test->boolean($this->connection->isApplicationEntityManagerActive())->isFalse();
+                    $this->observer->trace[] = 'converted';
+                    $this->route = $this->other;
+                    return $this->name;
+                }
+            };
+            $CFG_GLPI['password_expiration_delay'] = -1;
+            $CFG_GLPI['password_expiration_lock_delay'] = -1;
+            // Wrong fixture password stops after the completed credential read, before live user hooks.
+            $this->boolean((new ApplicationAuth())->connection_db($name, 'Wrong custom fixture password'))->isFalse();
+            $this->array($observer->trace)->isIdenticalTo(['constructed', 'converted']);
+            $this->array($selected->queries)->hasSize(1);
+            $this->array($other->queries)->isEmpty();
+            $this->integer($observer->clears)->isIdenticalTo(0);
+        } finally {
+            $DB = $original;
+            $_SESSION = $session;
+            $CFG_GLPI['password_expiration_delay'] = $expiration;
+            $CFG_GLPI['password_expiration_lock_delay'] = $lock;
+        }
+    }
+
     protected function loginProvider()
     {
         return [

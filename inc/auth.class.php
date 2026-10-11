@@ -155,7 +155,12 @@ class Auth extends CommonGLPI
     {
         global $DB;
 
-        $row = (new UserRepository(Orm::create($DB)))->authenticationMatch($options);
+        $row = Orm::readPrepared(
+            $DB,
+            static fn (): array => $options,
+            static fn (EntityManager $manager, array $criteria): ?array =>
+                (new UserRepository($manager))->authenticationMatch($criteria)
+        );
         // Check if there is a row
         if ($row === null) {
             $this->addToError(__('Incorrect username or password'));
@@ -382,10 +387,11 @@ class Auth extends CommonGLPI
         $pass_expiration_delay = (int)$CFG_GLPI['password_expiration_delay'];
         $lock_delay            = (int)$CFG_GLPI['password_expiration_lock_delay'];
 
-        $row = (new UserPasswordRepository(Orm::create($DB)))->localCredentials(
-            LegacyValues::decodeString((string)$name),
-            $pass_expiration_delay,
-            $lock_delay
+        $row = Orm::readPrepared(
+            $DB,
+            static fn (): string => LegacyValues::decodeString((string)$name),
+            static fn (EntityManager $manager, string $login): ?array =>
+                (new UserPasswordRepository($manager))->localCredentials($login, $pass_expiration_delay, $lock_delay)
         );
 
         // Have we a result ?
@@ -1476,7 +1482,12 @@ class Auth extends CommonGLPI
                 case self::LDAP:
                     //Look it the auth server still exists !
                     // <- Bad idea : id not exists unable to change anything
-                    if ((new LdapRepository(Orm::create($DB)))->isActive((int)$user->getField('auths_id'))) {
+                    if (Orm::readPrepared(
+                        $DB,
+                        static fn (): int => (int)$user->getField('auths_id'),
+                        static fn (EntityManager $manager, int $directory): bool =>
+                            (new LdapRepository($manager))->isActive($directory)
+                    )) {
                         echo "<table class='tab_cadre' aria-label='Synchronisation'><tr class='tab_bg_2'><td>";
                         echo "<input type='hidden' name='id' value='" . $user->getID() . "'>";
                         echo "<input class=submit type='submit' name='force_ldap_resynch' value='" .
