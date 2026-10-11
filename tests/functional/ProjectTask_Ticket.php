@@ -37,6 +37,7 @@ use DbTestCase;
 use Doctrine\ORM\EntityManager;
 use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Event\PostLoadEventArgs;
 use ProjectState as LegacyProjectState;
 use Ticket as LegacyTicket;
@@ -99,25 +100,25 @@ class ProjectTask_Ticket extends DbTestCase
             });
             $this->boolean($writer->contains($live))->isTrue();
             $this->boolean($live->is_finished)->isFalse();
-            $this->integer($connection->update('glpi_projectstates', ['is_finished' => false], ['id' => $finished->getID()]))->isIdenticalTo(1);
+            $this->integer($connection->update('glpi_projectstates', ['is_finished' => false], ['id' => $finished->getID()], ['is_finished' => Types::BOOLEAN]))->isIdenticalTo(1);
             $this->array(array_map('intval', $read()))->notContains((int)$finished->getID());
             $this->array(array_map('intval', $ids))->contains((int)$finished->getID());
             $this->output($render)->contains($finishedProject->getField('name'))->contains($openProject->getField('name'));
-            $this->integer($connection->update('glpi_projectstates', ['is_finished' => true], ['id' => $finished->getID()]))->isIdenticalTo(1);
+            $this->integer($connection->update('glpi_projectstates', ['is_finished' => true], ['id' => $finished->getID()], ['is_finished' => Types::BOOLEAN]))->isIdenticalTo(1);
             // Exercise the real empty-state catalogue without leaving shared fixtures altered.
             $stateFlags = $connection->fetchAllAssociative('SELECT id, is_finished FROM glpi_projectstates ORDER BY id');
             $stateDepth = $connection->getTransactionNestingLevel();
             $finishedIds = $read();
             try {
                 foreach ($finishedIds as $id) {
-                    $connection->update('glpi_projectstates', ['is_finished' => false], ['id' => $id]);
+                    $connection->update('glpi_projectstates', ['is_finished' => false], ['id' => $id], ['is_finished' => Types::BOOLEAN]);
                 }
                 $this->array($read())->isEmpty();
                 $this->output($render)->contains($finishedProject->getField('name'))
                     ->contains($openProject->getField('name'))->contains($unconfiguredProject->getField('name'));
             } finally {
                 foreach ($finishedIds as $id) {
-                    $connection->update('glpi_projectstates', ['is_finished' => true], ['id' => $id]);
+                    $connection->update('glpi_projectstates', ['is_finished' => true], ['id' => $id], ['is_finished' => Types::BOOLEAN]);
                 }
             }
             $this->array($connection->fetchAllAssociative('SELECT id, is_finished FROM glpi_projectstates ORDER BY id'))

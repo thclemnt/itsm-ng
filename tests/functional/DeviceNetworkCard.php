@@ -167,14 +167,17 @@ class DeviceNetworkCard extends DbTestCase
             $adapter = new RegisteredOptionAdapterProbe();
             $this->calling($adapter)->getDoctrineConnection = $probe;
             $this->calling($adapter)->getProvider = $original->getProvider();
-            $identity = new class ((int)$parent->getID(), $original) implements Stringable {
+            $identity = new class ((int)$parent->getID(), $original, $listener) implements Stringable {
                 public int $calls = 0;
-                public function __construct(private int $id, private object $original)
+                public int $clearsBeforeProjection = -1;
+                public function __construct(private int $id, private object $original, private object $listener)
                 {
                 }
                 public function __toString(): string
                 {
                     ++$this->calls;
+                    // Earlier form dropdowns own separate managers and cleanup.
+                    $this->clearsBeforeProjection = $this->listener->clears;
                     $GLOBALS['DB'] = $this->original;
                     return (string)$this->id;
                 }
@@ -184,6 +187,7 @@ class DeviceNetworkCard extends DbTestCase
             $fields = array_values(array_filter($parent->getAdditionalFields(), static fn (array $field): bool => ($field['type'] ?? null) === 'multiSelect'));
             $this->string($fields[0]['values'][0]['_registeredID'])->isIdenticalTo('5678:ef01');
             $this->integer($identity->calls)->isIdenticalTo(1);
+            $this->integer($listener->clears)->isIdenticalTo($identity->clearsBeforeProjection);
             $this->object($DB)->isIdenticalTo($original);
             $this->array(array_values(array_filter($probe->queries, static fn (array $query): bool => isset($query['params']['parent']) && ($query['params']['kind'] ?? null) === DeviceNetworkCardModel::class)))->hasSize(1);
             foreach (['null', 'NULL', 'Null', 'nUlL'] as $sentinel) {
@@ -201,12 +205,13 @@ class DeviceNetworkCard extends DbTestCase
             $this->array($fields[0]['values'])->isEmpty();
             $query = end($probe->queries);
             $this->integer($query['params']['parent'])->isIdenticalTo(-1);
+            $clearsBeforeNullProjection = $listener->clears;
             $this->array(RegisteredIDModel::getFormOptions(DeviceNetworkCardModel::class, null))->isEmpty();
             $query = end($probe->queries);
             $this->string($query['sql'])->contains(' IS NULL');
             $this->array($query['params'])->notHasKey('parent');
             $this->integer($listener->loads)->isIdenticalTo(0);
-            $this->integer($listener->clears)->isIdenticalTo(0);
+            $this->integer($listener->clears)->isIdenticalTo($clearsBeforeNullProjection);
             $this->boolean($writer->contains($live))->isTrue();
             $this->string($live->name)->isIdenticalTo('Custom pending identifier');
         } finally {
