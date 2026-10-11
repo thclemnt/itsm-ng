@@ -5107,7 +5107,7 @@ class CommonDBTM extends CommonGLPI
 
                         case 'itemtype':
                             //Want to insert an itemtype, but the associated class doesn't exists
-                            if (!class_exists($value)) {
+                            if (!class_exists(is_string($value) ? DbUtils::decodeSanitizedItemtype($value) : $value)) {
                                 $unset = true;
                             }
 

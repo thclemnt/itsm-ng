@@ -34,11 +34,53 @@
 namespace tests\units;
 
 use Infocom as LegacyInfocom;
+use mock\Infocom as InfocomFilterProbe;
+use Stringable;
 
 /* Test for inc/infocom.class.php */
 
 class Infocom extends \GLPITestCase
 {
+    public function testSanitizedContainingKindValidationPreservesWireInput(): void
+    {
+        require_once __DIR__ . '/../fixtures/pluginbarfoo.php';
+        require_once __DIR__ . '/../fixtures/pluginbarsomething.php';
+        $this->mockGenerator()->orphanize('__construct');
+        $model = new InfocomFilterProbe();
+        $this->calling($model)->getSearchOptionByField = ['datatype' => 'itemtype', 'name' => 'Containing type'];
+        foreach (['GlpiPlugin\Bar\Foo', 'GlpiPlugin\Bar\Something'] as $kind) {
+            $wire = addslashes($kind);
+            $model->input = ['itemtype' => $wire];
+            $model->filterValues(false);
+            $this->array($model->input)->isIdenticalTo(['itemtype' => $wire]);
+        }
+        foreach (['GlpiPlugin\Bar\Missing', 'tests\units\Infocom'] as $kind) {
+            $model->input = ['itemtype' => addslashes($kind)];
+            $model->filterValues(false);
+            $this->array($model->input)->isEmpty();
+        }
+        $value = new class implements Stringable {
+            public array $conversions = [];
+
+            public function __toString(): string
+            {
+                $this->conversions[] = array_column(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS), 'function');
+                return 'Computer';
+            }
+        };
+        $model->input = ['itemtype' => $value];
+        $model->filterValues(false);
+        $this->array($model->input)->isIdenticalTo(['itemtype' => $value]);
+        $this->array(array_values(array_filter(
+            $value->conversions,
+            static fn (array $frames): bool => in_array('class_exists', $frames, true)
+        )))->isNotEmpty();
+        $this->array(array_values(array_filter(
+            $value->conversions,
+            static fn (array $frames): bool => in_array('decodeSanitizedItemtype', $frames, true)
+        )))->isEmpty('Non-string validation retains the original class_exists conversion boundary');
+    }
+
     public function testUnusableDegressiveInputsReturnNoScheduleBeforeDateParsing(): void
     {
         foreach ([

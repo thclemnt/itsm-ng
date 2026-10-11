@@ -338,6 +338,23 @@ class DbUtils extends DbTestCase
         }
     }
 
+    public function testSanitizedItemtypeDecodingIsPureAndNamespaceBounded(): void
+    {
+        require_once __DIR__ . '/../fixtures/pluginbarfoo.php';
+        require_once __DIR__ . '/../fixtures/pluginbarsomething.php';
+        foreach (['Glpi\Event', 'GlpiPlugin\Bar\Foo', 'GlpiPlugin\Bar\Something'] as $kind) {
+            $this->string(DbUtilsModel::decodeSanitizedItemtype(addslashes($kind)))->isIdenticalTo($kind);
+            $this->string(DbUtilsModel::decodeSanitizedItemtype($kind))->isIdenticalTo($kind);
+        }
+        foreach (['Event', 'Computer', 'Other\Kind', 'tests\units\Infocom', 'GlpiPluginMissing\Thing'] as $kind) {
+            $wire = addslashes($kind);
+            $this->string(DbUtilsModel::decodeSanitizedItemtype($wire))->isIdenticalTo($wire);
+        }
+        // The helper can return a mandatory-constructor class without instantiation;
+        // the existing factory still owns constructor/abstract/CommonGLPI admission.
+        $this->boolean(getItemForItemtype(addslashes('GlpiPlugin\Bar\Missing')))->isFalse();
+    }
+
     public function testGetItemForItemtypeSanitized()
     {
         require_once __DIR__ . '/../fixtures/pluginbarfoo.php';

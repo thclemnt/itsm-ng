@@ -85,6 +85,7 @@ use Fieldblacklist;
 use FieldUnicity;
 use ITILFollowup;
 use Infocom;
+use GlpiPlugin\Bar\Foo as SanitizedFinancialParent;
 use Item_Disk;
 use Log;
 use NetworkEquipment;
@@ -135,11 +136,52 @@ use mock\DBmysql;
 use tests\fixtures\ScalarReadProbe;
 
 require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
+require_once dirname(__DIR__) . '/fixtures/pluginbarfoo.php';
 
 /* Test for inc/commondbtm.class.php */
 
 class CommonDBTM extends DbTestCase
 {
+    public function testPublicSanitizedInfocomKindSurvivesValidationAndOneStorageDecode(): void
+    {
+        global $DB, $CFG_GLPI;
+        $configuration = $CFG_GLPI;
+        $session = $_SESSION;
+        $tables = new ReflectionProperty(LegacyCommonDBTM::class, 'tables_of');
+        $savedTables = $tables->getValue();
+        $right = SanitizedFinancialParent::$rightname;
+        try {
+            $this->login();
+            SanitizedFinancialParent::$rightname = 'computer';
+            SanitizedFinancialParent::forceTable(Computer::getTable());
+            $CFG_GLPI['glpitablesitemtype'][SanitizedFinancialParent::class] = Computer::getTable();
+            $parent = $this->createItem(SanitizedFinancialParent::class, ['name' => 'sanitized-financial-parent-' . $this->getUniqueString()]);
+            $kind = $parent->getType();
+            $wire = addslashes($kind);
+            $factory = getItemForItemtype($wire);
+            $this->object($factory)->isInstanceOf(SanitizedFinancialParent::class);
+            $this->boolean($factory->getFromDB($parent->getID()))->isTrue();
+            $input = ['itemtype' => $wire, 'items_id' => $parent->getID(), 'comment' => 'sanitized financial owner'];
+            $model = new Infocom();
+            $id = $model->add($input);
+            $this->integer((int)$id)->isGreaterThan(0);
+            $row = $DB->getDoctrineConnection()->fetchAssociative('SELECT itemtype,items_id,comment FROM glpi_infocoms WHERE id=?', [$id]);
+            $this->string($row['itemtype'])->isIdenticalTo($kind);
+            $this->integer((int)$row['items_id'])->isIdenticalTo((int)$parent->getID());
+            $this->string($row['comment'])->isIdenticalTo('sanitized financial owner');
+            $loaded = new Infocom();
+            $this->boolean($loaded->getFromDBforDevice($wire, $parent->getID()))->isTrue();
+            $this->integer((int)$loaded->getID())->isIdenticalTo((int)$id);
+            $this->boolean((new Infocom())->add($input))->isFalse();
+            $this->boolean((new Infocom())->add(['itemtype' => addslashes('GlpiPlugin\Bar\Missing'), 'items_id' => $parent->getID()]))->isFalse();
+        } finally {
+            SanitizedFinancialParent::$rightname = $right;
+            $tables->setValue(null, $savedTables);
+            $CFG_GLPI = $configuration;
+            $_SESSION = $session;
+        }
+    }
+
     public function testNonnullableFlagLifecycleUsesDeclaredZeroOneDomains(): void
     {
         global $DB, $PLUGIN_HOOKS;

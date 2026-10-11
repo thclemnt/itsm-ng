@@ -309,6 +309,25 @@ final class DbUtils
 
 
     /**
+     * Decode the factory's supported pre-escaped namespace form without constructing a model.
+     */
+    public static function decodeSanitizedItemtype(mixed $itemtype): mixed
+    {
+        // If itemtype starts with "Glpi\" or "GlpiPlugin\" followed by a "\",
+        // then it is a namespaced itemtype that has been "sanitized".
+        // Strip slashes to get its actual value.
+        $sanitized_namespaced_pattern = '/^'
+           . '(' . preg_quote(NS_GLPI, '/') . '|' . preg_quote(NS_PLUG, '/') . ')' // start with GLPI core or plugin namespace
+           . preg_quote('\\', '/') // followed by an additionnal \
+           . '/';
+        if (preg_match($sanitized_namespaced_pattern, $itemtype)) {
+            $itemtype = stripslashes($itemtype);
+        }
+
+        return $itemtype;
+    }
+
+    /**
      * Get new item objet for an itemtype
      *
      * @param string $itemtype itemtype
@@ -322,16 +341,7 @@ final class DbUtils
             $itemtype = 'Glpi\\Event';
         }
 
-        // If itemtype starts with "Glpi\" or "GlpiPlugin\" followed by a "\",
-        // then it is a namespaced itemtype that has been "sanitized".
-        // Strip slashes to get its actual value.
-        $sanitized_namespaced_pattern = '/^'
-           . '(' . preg_quote(NS_GLPI, '/') . '|' . preg_quote(NS_PLUG, '/') . ')' // start with GLPI core or plugin namespace
-           . preg_quote('\\', '/') // followed by an additionnal \
-           . '/';
-        if (preg_match($sanitized_namespaced_pattern, $itemtype)) {
-            $itemtype = stripslashes($itemtype);
-        }
+        $itemtype = self::decodeSanitizedItemtype($itemtype);
 
         if (!is_subclass_of($itemtype, CommonGLPI::class, true)) {
             // Only CommonGLPI sublasses are valid itemtypes
