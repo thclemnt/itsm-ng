@@ -250,7 +250,7 @@ class CommonDBTM extends DbTestCase
         $this->login();
         $connection = $DB->getDoctrineConnection();
         $api = $this->createItem(APIClient::class, ['name' => $this->getUniqueString(), 'is_active' => 0]);
-        $prepared = new class extends APIClient {
+        $prepared = new class () extends APIClient {
             public mixed $preparedFlag = 2;
             public int $filterCalls = 0;
 
@@ -381,8 +381,7 @@ class CommonDBTM extends DbTestCase
                     array $params = [],
                     array $types = [],
                     ?QueryCacheProfile $qcp = null
-                ): Result
-                {
+                ): Result {
                     if ($this->failure !== null) {
                         throw $this->failure;
                     }

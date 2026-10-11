@@ -539,8 +539,7 @@ final class SoftwareAssignmentService
         callable $operation,
         ?string $subjectKind = null,
         bool $subjectPrepared = false
-    ): mixed
-    {
+    ): mixed {
         if ($mode !== 'add' && (int)($checkpoint['fields']['id'] ?? 0) !== (int)$model->getID()) {
             return SoftwareMutation::run($this->database, $model, $checkpoint, static function () {
                 throw new SoftwareAssignmentCancelled('A software lifecycle hook changed the operation identity.');

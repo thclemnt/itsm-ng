@@ -265,7 +265,7 @@ class Oidc extends CommonDBTM
                         }
                     }
                 );
-                }
+            }
         );
     }
 
