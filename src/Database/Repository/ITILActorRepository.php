@@ -4,9 +4,11 @@
 
 namespace itsmng\Database\Repository;
 
+use CommonITILActor;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Mapping\ClassMetadata;
 use InvalidArgumentException;
 use itsmng\Database\Entity\Group;
 use itsmng\Database\Entity\Supplier;
@@ -15,6 +17,7 @@ use itsmng\Database\Entity\User;
 use itsmng\Database\Entity\UserEmail;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\ReferenceValues;
+use itsmng\Database\RecordCriteria;
 use LogicException;
 
 /** Actor relationship rows without hydrating the associated ITIL object or recipient. */
@@ -28,6 +31,61 @@ final class ITILActorRepository
 
     public function __construct(private EntityManager $em)
     {
+    }
+
+    /** Binding membership is complete before any public supplier lifecycle callback. */
+    public function suppliersForTransfer(CommonITILActor $link, string $parentType, mixed $parent): array
+    {
+        $table = $link::getTable();
+        $class = EntityRegistry::tables()[$table] ?? throw new LogicException('Unmapped supplier transfer relation');
+        $metadata = $this->em->getClassMetadata($class);
+        $expected = EntityRegistry::legacyTables()[$parentType] ?? throw new LogicException('Unmapped supplier transfer parent');
+        $relation = $this->parentRelation(get_class($link), $metadata);
+        $mapping = $metadata->associationMappings[$relation];
+        $declared = $mapping !== null && $mapping->isToOneOwningSide() && count($mapping->joinColumns) === 1
+            ? (EntityRegistry::relations()[$table][$mapping->joinColumns[0]->name] ?? null) : null;
+        $supplier = $metadata->associationMappings['actor'] ?? null;
+        $supplierTable = array_search(Supplier::class, EntityRegistry::tables(), true);
+        if ($metadata->getTableName() !== $table || $mapping === null || !$mapping->isToOneOwningSide()
+            || count($mapping->joinColumns) !== 1 || $declared !== $expected
+            || $mapping->targetEntity !== EntityRegistry::tables()[$expected]
+            || $supplier === null || !$supplier->isToOneOwningSide() || count($supplier->joinColumns) !== 1
+            || $supplier->targetEntity !== Supplier::class
+            || (EntityRegistry::relations()[$table][$supplier->joinColumns[0]->name] ?? null) !== $supplierTable) {
+            throw new LogicException('Incoherent supplier transfer relation');
+        }
+        $field = $mapping->joinColumns[0]->name;
+        $query = $this->em->createQueryBuilder()->select('r.id AS id, IDENTITY(r.actor) AS suppliers_id')->from($class, 'r');
+        $query->where((new RecordCriteria($query, $metadata))->where([$field => $parent]));
+        $rows = $query->getQuery()->getScalarResult();
+        $supplierMetadata = $this->em->getClassMetadata(Supplier::class);
+        foreach ($rows as &$row) {
+            $row['id'] = RecordRepository::legacyScalarValue($row['id'], $metadata->getTypeOfField('id'));
+            $row['suppliers_id'] = RecordRepository::legacyScalarValue($row['suppliers_id'], $supplierMetadata->getTypeOfField('id'));
+        }
+        return [$field, $rows];
+    }
+
+    /** Current destination equality uses human text, including literal NULL and empty names. */
+    public function destinationSupplier(int $entity, string $name): int|string|null
+    {
+        $metadata = $this->em->getClassMetadata(Supplier::class);
+        $table = array_search(Supplier::class, EntityRegistry::tables(), true);
+        $owner = $metadata->associationMappings['entities'] ?? null;
+        if ($owner === null || !$owner->isToOneOwningSide() || count($owner->joinColumns) !== 1) {
+            throw new LogicException('Incoherent destination supplier ownership');
+        }
+        $entityMetadata = $this->em->getClassMetadata($owner->targetEntity);
+        if ($metadata->getTableName() !== $table
+            || (EntityRegistry::relations()[$table][$owner->joinColumns[0]->name] ?? null) !== $entityMetadata->getTableName()) {
+            throw new LogicException('Incoherent destination supplier ownership');
+        }
+        $row = $this->em->createQueryBuilder()->select('s.id')->from(Supplier::class, 's')
+            ->where('IDENTITY(s.entities) = :entity')->andWhere('s.name = :name')
+            ->setParameter('entity', $entity, $entityMetadata->getTypeOfField('id'))
+            ->setParameter('name', $name, $metadata->getTypeOfField('name'))
+            ->setMaxResults(1)->getQuery()->getOneOrNullResult();
+        return $row === null ? null : RecordRepository::legacyScalarValue($row['id'], $metadata->getTypeOfField('id'));
     }
 
     /** Mail replies recognize the linked supplier's primary address, regardless of actor role. */
@@ -110,14 +168,8 @@ final class ITILActorRepository
         return $this->readRows($actorClass, $item, true);
     }
 
-    private function readRows(string $actorClass, int $item, bool $native): array
+    private function parentRelation(string $actorClass, ClassMetadata $metadata): string
     {
-        if (!self::supports($actorClass)) {
-            throw new InvalidArgumentException('Unsupported ITIL actor relation');
-        }
-        $record = EntityRegistry::tables()[$actorClass::getTable()]
-            ?? throw new LogicException('ITIL actor relation has no mapped entity');
-        $metadata = $this->em->getClassMetadata($record);
         $parents = [];
         foreach ($metadata->associationMappings as $property => $mapping) {
             if (!$mapping->isToOneOwningSide() || count($mapping->joinColumns) !== 1) {
@@ -130,7 +182,18 @@ final class ITILActorRepository
         if (count($parents) !== 1) {
             throw new LogicException('ITIL actor relation requires exactly one mapped parent reference');
         }
-        $parent = $parents[0];
+        return $parents[0];
+    }
+
+    private function readRows(string $actorClass, int $item, bool $native): array
+    {
+        if (!self::supports($actorClass)) {
+            throw new InvalidArgumentException('Unsupported ITIL actor relation');
+        }
+        $record = EntityRegistry::tables()[$actorClass::getTable()]
+            ?? throw new LogicException('ITIL actor relation has no mapped entity');
+        $metadata = $this->em->getClassMetadata($record);
+        $parent = $this->parentRelation($actorClass, $metadata);
         $connection = $this->em->getConnection();
         $platform = $connection->getDatabasePlatform();
         $quote = $this->em->getConfiguration()->getQuoteStrategy();

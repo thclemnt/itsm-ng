@@ -4,6 +4,7 @@
 
 namespace itsmng\Database\Repository;
 
+use CommonITILTask;
 use DateTimeImmutable;
 use DateTimeInterface;
 use Doctrine\DBAL\Types\Type;
@@ -12,8 +13,10 @@ use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\QueryBuilder;
 use InvalidArgumentException;
+use LogicException;
 use Planning;
 use itsmng\Database\Entity;
+use itsmng\Database\Entity\TaskCategory;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\Mapping\ITILStatisticsRelation;
 use itsmng\Database\Mapping\ITILStatisticsRole;
@@ -26,6 +29,41 @@ final class ITILTaskRepository
 {
     public function __construct(private EntityManager $em)
     {
+    }
+
+    /** Complete category identities without hydrating task writers or imposing an order. */
+    public function categoriesForTransfer(CommonITILTask $task, string $parentType, mixed $parent): array
+    {
+        $table = $task::getTable();
+        $class = EntityRegistry::tables()[$table] ?? throw new LogicException('Unmapped task transfer relation');
+        $metadata = $this->em->getClassMetadata($class);
+        $definition = $this->definitionForMetadata($metadata) ?? throw new LogicException('Missing task transfer parent');
+        [, $target, $relation] = $definition;
+        $mapping = $metadata->associationMappings[$relation];
+        if (!$mapping->isToOneOwningSide() || count($mapping->joinColumns) !== 1) {
+            throw new LogicException('Incoherent task transfer relation');
+        }
+        $field = $mapping->joinColumns[0]->name;
+        $expected = EntityRegistry::legacyTables()[$parentType] ?? throw new LogicException('Unmapped task transfer parent');
+        $category = $metadata->associationMappings['taskcategories'] ?? null;
+        $categoryTable = array_search(TaskCategory::class, EntityRegistry::tables(), true);
+        if ($metadata->getTableName() !== $table || !$mapping->isToOneOwningSide() || count($mapping->joinColumns) !== 1
+            || (EntityRegistry::relations()[$table][$field] ?? null) !== $expected
+            || $target !== EntityRegistry::tables()[$expected]
+            || $category === null || !$category->isToOneOwningSide() || count($category->joinColumns) !== 1
+            || $category->targetEntity !== TaskCategory::class
+            || (EntityRegistry::relations()[$table][$category->joinColumns[0]->name] ?? null) !== $categoryTable) {
+            throw new LogicException('Incoherent task transfer relation');
+        }
+        $query = $this->em->createQueryBuilder()->select('r.id AS id, IDENTITY(r.taskcategories) AS taskcategories_id')->from($class, 'r');
+        $query->where((new RecordCriteria($query, $metadata))->where([$field => $parent]));
+        $rows = $query->getQuery()->getScalarResult();
+        $categoryMetadata = $this->em->getClassMetadata(TaskCategory::class);
+        foreach ($rows as &$row) {
+            $row['id'] = RecordRepository::legacyScalarValue($row['id'], $metadata->getTypeOfField('id'));
+            $row['taskcategories_id'] = RecordRepository::legacyScalarValue($row['taskcategories_id'], $categoryMetadata->getTypeOfField('id'));
+        }
+        return [$field, $rows];
     }
 
     public function definition(string $type): array

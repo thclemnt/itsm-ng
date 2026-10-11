@@ -37,6 +37,8 @@ use itsmng\Database\MutationCleanupFailure;
 use itsmng\Database\Orm;
 use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\ComponentRepository;
+use itsmng\Database\Repository\ITILActorRepository;
+use itsmng\Database\Repository\ITILTaskRepository;
 use itsmng\Database\Repository\CartridgeTransferRepository;
 use itsmng\Database\Repository\ContactTransferRepository;
 use itsmng\Database\Repository\NetpointTransferRepository;
@@ -2365,64 +2367,55 @@ class Transfer extends CommonDBTM
 
         switch ($itemtype) {
             case 'Ticket':
-                $table = 'glpi_suppliers_tickets';
-                $field = 'tickets_id';
                 $link  = new Supplier_Ticket();
                 break;
 
             case 'Problem':
-                $table = 'glpi_problems_suppliers';
-                $field = 'problems_id';
                 $link  = new Problem_Supplier();
                 break;
 
             case 'Change':
-                $table = 'glpi_changes_suppliers';
-                $field = 'changes_id';
                 $link  = new Change_Supplier();
                 break;
         }
 
-        $iterator = $DB->request([
-           'FROM'   => $table,
-           'WHERE'  => [$field => $ID]
-        ]);
+        [$field, $rows] = Orm::read($DB, function ($manager) use ($link, $itemtype, $ID): array {
+            $this->transferCoordinator?->assertActive();
+            return (new ITILActorRepository($manager))->suppliersForTransfer($link, $itemtype, $ID);
+        });
+        $this->transferCoordinator?->assertActive();
 
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             $input = [];
 
             if ($data['suppliers_id'] > 0) {
                 $supplier = new Supplier();
 
                 if ($supplier->getFromDB($data['suppliers_id'])) {
-                    $newID = -1;
-                    $iterator = $DB->request([
-                       'SELECT' => 'id',
-                       'FROM'   => 'glpi_suppliers',
-                       'WHERE'  => [
-                          'entities_id'  => $this->to,
-                          'name'         => addslashes((string) $supplier->fields['name'])
-                       ]
-                    ]);
-
-                    if (count($iterator)) {
-                        $result = $iterator->next();
-                        $newID = $result['id'];
-                    }
-                    if ($newID < 0) {
+                    $this->transferCoordinator?->assertActive();
+                    $supplierID = Orm::readPrepared(
+                        $DB,
+                        fn (): array => [(int)$this->to, (string)$supplier->fields['name']],
+                        function ($manager, array $selection) {
+                            $this->transferCoordinator?->assertActive();
+                            return (new ITILActorRepository($manager))->destinationSupplier(...$selection);
+                        }
+                    );
+                    $this->transferCoordinator?->assertActive();
+                    if ($supplierID === null) {
                         // 1 - create new item
                         $this->checkpointTransferModel($supplier);
                         unset($supplier->fields['id']);
                         $input                 = $supplier->fields;
                         $input['entities_id']  = $this->to;
                         // Not set new entity Do by transferItem
-                        unset($supplier->fields);
-                        $newID                 = $this->addForTransfer($supplier, Toolbox::addslashes_deep($input));
+                        $supplier->fields = [];
+                        $supplierID            = $this->addForTransfer($supplier, Toolbox::addslashes_deep($input));
                     }
 
                     $input2['id']           = $data['id'];
                     $input2[$field]         = $ID;
-                    $input2['suppliers_id'] = $newID;
+                    $input2['suppliers_id'] = $supplierID;
                     $this->updateForTransfer($link, $input2);
                 }
 
@@ -2448,36 +2441,32 @@ class Transfer extends CommonDBTM
 
         switch ($itemtype) {
             case 'Ticket':
-                $table = 'glpi_tickettasks';
-                $field = 'tickets_id';
                 $task  = new TicketTask();
                 break;
 
             case 'Problem':
-                $table = 'glpi_problemtasks';
-                $field = 'problems_id';
                 $task  = new ProblemTask();
                 break;
 
             case 'Change':
-                $table = 'glpi_changetasks';
-                $field = 'changes_id';
-                $task  = new ProblemTask();
+                $task  = new ChangeTask();
                 break;
         }
 
-        $iterator = $DB->request([
-           'FROM'   => $table,
-           'WHERE'  => [$field => $ID]
-        ]);
+        [$field, $rows] = Orm::read($DB, function ($manager) use ($task, $itemtype, $ID): array {
+            $this->transferCoordinator?->assertActive();
+            return (new ITILTaskRepository($manager))->categoriesForTransfer($task, $itemtype, $ID);
+        });
+        $this->transferCoordinator?->assertActive();
 
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             $input = [];
 
             if ($data['taskcategories_id'] > 0) {
                 $categ = new TaskCategory();
 
                 if ($categ->getFromDB($data['taskcategories_id'])) {
+                    $this->transferCoordinator?->assertActive();
                     $inputcat['entities_id']  = $this->to;
                     $inputcat['completename'] = addslashes((string) $categ->fields['completename']);
                     $catid                    = $categ->findID($inputcat);

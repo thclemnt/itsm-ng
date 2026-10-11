@@ -39,6 +39,7 @@ use Cartridge as LegacyCartridge;
 use DateTime;
 use CommonDBChild;
 use CommonDBRelation;
+use CommonITILActor as ItilActorModel;
 use Computer;
 use Computer_Item as ComputerItemModel;
 use Printer as PrinterAsset;
@@ -66,6 +67,18 @@ use RuntimeException;
 use Software;
 use SoftwareVersion;
 use Supplier as SupplierModel;
+use LogicException;
+use itsmng\Database\Repository\ITILActorRepository;
+use Supplier_Ticket as SupplierTicketModel;
+use itsmng\Database\Entity\Change as ChangeRecord;
+use itsmng\Database\Entity\Problem as ProblemRecord;
+use itsmng\Database\Entity\ChangeTask as ChangeTaskRecord;
+use itsmng\Database\Entity\ProblemTask as ProblemTaskRecord;
+use itsmng\Database\Entity\TicketTask as TicketTaskRecord;
+use itsmng\Database\Entity\TaskCategory as TaskCategoryRecord;
+use itsmng\Database\Entity\SupplierTicket as SupplierTicketRecord;
+use itsmng\Database\Entity\ProblemSupplier as ProblemSupplierRecord;
+use itsmng\Database\Entity\ChangeSupplier as ChangeSupplierRecord;
 use Throwable;
 use Transfer as LegacyTransfer;
 use itsmng\Database\EntityRegistry;
@@ -106,6 +119,389 @@ require_once __DIR__ . '/../fixtures/ScalarReadProbe.php';
 
 class Transfer extends DbTestCase
 {
+    public function testItilTransferRetargetsEverySupplierAndTheActualTaskFamily(): void
+    {
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $this->withSoftwareOwnerQueryProbe(function ($database, $connection): void {
+            $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
+            foreach ([
+                ['Ticket', Ticket::class, SupplierTicketRecord::class, TicketTaskRecord::class, 'tickets'],
+                ['Problem', ProblemRecord::class, ProblemSupplierRecord::class, ProblemTaskRecord::class, 'problems'],
+                ['Change', ChangeRecord::class, ChangeSupplierRecord::class, ChangeTaskRecord::class, 'changes'],
+            ] as [$kind, $parentClass, $actorClass, $taskClass, $parentProperty]) {
+                $manager = Orm::create($database);
+                $parent = new $parentClass();
+                $parent->entities = $manager->getReference(Entity::class, $source);
+                $parent->name = 'Selected ' . $kind . ' ' . $this->getUniqueString();
+                $manager->persist($parent);
+                $suppliers = [];
+                $links = [];
+                $copyName = "Supplier O'Brien\\route " . $this->getUniqueString();
+                foreach ([$copyName, 'NULL', 'null', null] as $name) {
+                    $supplier = new Supplier();
+                    $supplier->entities = $manager->getReference(Entity::class, $source);
+                    $supplier->name = $name;
+                    $manager->persist($supplier);
+                    $suppliers[] = $supplier;
+                    $link = new $actorClass();
+                    $link->$parentProperty = $parent;
+                    $link->actor = $supplier;
+                    $link->type = $name === 'null' ? ItilActorModel::OBSERVER : ItilActorModel::ASSIGN;
+                    $link->alternative_email = 'retained@example.com';
+                    $manager->persist($link);
+                    $links[] = $link;
+                }
+                $destinations = [];
+                foreach (['NULL', 'null', '', null] as $name) {
+                    $destination = new Supplier();
+                    $destination->entities = $manager->getReference(Entity::class, $target);
+                    $destination->name = $name;
+                    $manager->persist($destination);
+                    $destinations[] = $destination;
+                }
+                $categories = [];
+                foreach (['Reused category ' . $this->getUniqueString(), "Imported O'Brien " . $this->getUniqueString()] as $name) {
+                    $category = new TaskCategoryRecord();
+                    $category->entities = $manager->getReference(Entity::class, $source);
+                    $category->name = $category->completename = $name;
+                    $category->level = 1;
+                    $manager->persist($category);
+                    $categories[] = $category;
+                }
+                $reused = new TaskCategoryRecord();
+                $reused->entities = $manager->getReference(Entity::class, $target);
+                $reused->name = $reused->completename = $categories[0]->name;
+                $reused->level = 1;
+                $manager->persist($reused);
+                $tasks = [];
+                foreach ([$categories[0], $categories[1], null] as $category) {
+                    $task = new $taskClass();
+                    $task->$parentProperty = $parent;
+                    $task->taskcategories = $category;
+                    $task->content = 'Retained task content';
+                    $task->is_private = $category === $categories[1];
+                    $manager->persist($task);
+                    $tasks[] = $task;
+                }
+                $otherProblem = null;
+                $otherTask = null;
+                if ($kind === 'Change') {
+                    $otherProblem = new ProblemRecord();
+                    $otherProblem->entities = $manager->getReference(Entity::class, $source);
+                    $otherProblem->name = 'Unrelated colliding problem';
+                    $manager->persist($otherProblem);
+                    $otherTask = new ProblemTaskRecord();
+                    $otherTask->problems = $otherProblem;
+                    $otherTask->taskcategories = $categories[0];
+                    $otherTask->content = 'Unrelated problem task must remain';
+                    $manager->persist($otherTask);
+                }
+                $manager->flush();
+                $taskTable = $manager->getClassMetadata($taskClass)->getTableName();
+                $actorTable = $manager->getClassMetadata($actorClass)->getTableName();
+                $parentField = $manager->getClassMetadata($actorClass)->associationMappings[$parentProperty]->joinColumns[0]->name;
+                $taskIDs = array_map(static fn ($task): int => $task->id, $tasks);
+                $otherRow = null;
+                if ($otherTask !== null) {
+                    // Legal table-local IDs deliberately collide; all owning references remain real.
+                    $collision = 100 + max(
+                        (int)$connection->fetchOne('SELECT MAX(id) FROM glpi_changetasks'),
+                        (int)$connection->fetchOne('SELECT MAX(id) FROM glpi_problemtasks')
+                    );
+                    $connection->update('glpi_changetasks', ['id' => $collision], ['id' => $taskIDs[0]]);
+                    $connection->update('glpi_problemtasks', ['id' => $collision], ['id' => $otherTask->id]);
+                    $taskIDs[0] = $collision;
+                    $otherRow = $connection->fetchAssociative('SELECT * FROM glpi_problemtasks WHERE id=?', [$collision]);
+                }
+                $bindingRows = [];
+                foreach ($links as $link) {
+                    $bindingRows[$link->id] = $connection->fetchAssociative('SELECT * FROM ' . $actorTable . ' WHERE id=?', [$link->id]);
+                }
+                $eligibleDestinations = [];
+                foreach (['NULL', 'null', ''] as $name) {
+                    $eligibleDestinations[$name] = array_map('intval', $connection->fetchFirstColumn(
+                        'SELECT id FROM glpi_suppliers WHERE entities_id=? AND name=?',
+                        [$target, $name]
+                    ));
+                    $this->array($eligibleDestinations[$name])->isNotEmpty();
+                }
+                $destinations[0]->comment = 'Unflushed independent supplier';
+                Orm::read($database, function (EntityManager $outer) use ($parent, $kind, $target, $destinations): void {
+                    $dirty = $outer->find(Supplier::class, $destinations[0]->id);
+                    $dirty->comment = 'Unflushed enclosing supplier';
+                    $this->boolean((new LegacyTransfer())->moveItems([$kind => [$parent->id]], $target, []))->isTrue();
+                    $this->boolean($outer->contains($dirty))->isTrue();
+                    $this->string($dirty->comment)->isIdenticalTo('Unflushed enclosing supplier');
+                });
+                foreach ($links as $index => $link) {
+                    $row = $connection->fetchAssociative('SELECT * FROM ' . $actorTable . ' WHERE id=?', [$link->id]);
+                    $supplierID = (int)$row['suppliers_id'];
+                    $this->integer($supplierID)->isGreaterThan(0)->isNotIdenticalTo($suppliers[$index]->id);
+                    $destination = $connection->fetchAssociative('SELECT * FROM glpi_suppliers WHERE id=?', [$supplierID]);
+                    $this->integer((int)$destination['entities_id'])->isIdenticalTo($target);
+                    if ($index === 0) {
+                        $this->string($destination['name'])->isIdenticalTo($copyName);
+                    } elseif ($index === 3) {
+                        $this->array($eligibleDestinations[''])->contains($supplierID);
+                        $this->string($destination['name'])->isIdenticalTo('');
+                    } else {
+                        $this->array($eligibleDestinations[$index === 1 ? 'NULL' : 'null'])->contains($supplierID);
+                        $this->string(strtolower($destination['name']))->isIdenticalTo('null');
+                        $this->integer($supplierID)->isNotIdenticalTo($destinations[3]->id);
+                    }
+                    $this->integer((int)$row['actor_key'])->isIdenticalTo($supplierID);
+                    unset($row['suppliers_id'], $row['actor_key'], $bindingRows[$link->id]['suppliers_id'], $bindingRows[$link->id]['actor_key']);
+                    $this->array($row)->isIdenticalTo($bindingRows[$link->id]);
+                    $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_suppliers WHERE id=?', [$suppliers[$index]->id]))->isIdenticalTo($source);
+                }
+                foreach ($taskIDs as $index => $id) {
+                    $row = $connection->fetchAssociative('SELECT * FROM ' . $taskTable . ' WHERE id=?', [$id]);
+                    $this->integer((int)$row[$parentField])->isIdenticalTo($parent->id);
+                    $this->string($row['content'])->isIdenticalTo('Retained task content');
+                    if ($index === 2) {
+                        $this->variable($row['taskcategories_id'])->isNull();
+                    } else {
+                        $category = $connection->fetchAssociative('SELECT * FROM glpi_taskcategories WHERE id=?', [$row['taskcategories_id']]);
+                        $this->integer((int)$category['entities_id'])->isIdenticalTo($target);
+                        $this->string($category['completename'])->isIdenticalTo($categories[$index]->completename);
+                        if ($index === 0) {
+                            $this->integer((int)$row['taskcategories_id'])->isIdenticalTo($reused->id);
+                        }
+                    }
+                }
+                if ($otherRow !== null) {
+                    $this->array($connection->fetchAssociative('SELECT * FROM glpi_problemtasks WHERE id=?', [$taskIDs[0]]))->isIdenticalTo($otherRow);
+                    $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_problems WHERE id=?', [$otherProblem->id]))->isIdenticalTo($source);
+                }
+                $this->boolean($manager->contains($destinations[0]))->isTrue();
+                $this->string($destinations[0]->comment)->isIdenticalTo('Unflushed independent supplier');
+                $this->variable($connection->fetchOne('SELECT comment FROM glpi_suppliers WHERE id=?', [$destinations[0]->id]))->isNull();
+                $manager->clear();
+            }
+        });
+    }
+
+    public function testItilSupplierTransferUsesFreshLookupsAndRollsBackLaterRefusals(): void
+    {
+        global $PLUGIN_HOOKS;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $savedHooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $savedPlugins = $plugins->getValue();
+        try {
+            $plugins->setValue(null, [...$savedPlugins, 'transfer_itil_fixture']);
+            $this->withSoftwareOwnerQueryProbe(function ($database, $connection) use ($savedHooks): void {
+                global $PLUGIN_HOOKS;
+                $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+                $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
+                $copyManager = Orm::create($database);
+                $copyTicket = new Ticket();
+                $copyTicket->entities = $copyManager->getReference(Entity::class, $source);
+                $copyTicket->name = 'Actual supplier copy hook';
+                $sourceSupplier = new Supplier();
+                $sourceSupplier->entities = $copyManager->getReference(Entity::class, $source);
+                $sourceSupplier->name = 'Copy hook supplier ' . $this->getUniqueString();
+                $copyLink = new SupplierTicketRecord();
+                $copyLink->tickets = $copyTicket;
+                $copyLink->actor = $sourceSupplier;
+                foreach ([$copyTicket, $sourceSupplier, $copyLink] as $record) {
+                    $copyManager->persist($record);
+                }
+                $copyManager->flush();
+                $copyHookCalls = 0;
+                $PLUGIN_HOOKS['pre_item_add']['transfer_itil_fixture'][SupplierModel::class] = function (SupplierModel $item) use ($target, &$copyHookCalls): void {
+                    ++$copyHookCalls;
+                    $this->boolean($item->isEntityAssign())->isTrue();
+                    $this->integer((int)$item->input['entities_id'])->isIdenticalTo($target);
+                };
+                $this->boolean((new LegacyTransfer())->moveItems(['Ticket' => [$copyTicket->id]], $target, []))->isTrue();
+                $this->integer($copyHookCalls)->isIdenticalTo(1);
+                $copiedSupplierID = (int)$connection->fetchOne('SELECT suppliers_id FROM glpi_suppliers_tickets WHERE id=?', [$copyLink->id]);
+                $this->integer($copiedSupplierID)->isGreaterThan(0)->isNotIdenticalTo($sourceSupplier->id);
+                $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_suppliers WHERE id=?', [$copiedSupplierID]))->isIdenticalTo($target);
+                $this->string($connection->fetchOne('SELECT name FROM glpi_suppliers WHERE id=?', [$copiedSupplierID]))->isIdenticalTo($sourceSupplier->name);
+                $copyManager->clear();
+                foreach ([false, true] as $refuse) {
+                    $PLUGIN_HOOKS = $savedHooks;
+                    $manager = Orm::create($database);
+                    $ticket = new Ticket();
+                    $ticket->entities = $manager->getReference(Entity::class, $source);
+                    $ticket->name = 'Per-link current lookup ' . $this->getUniqueString();
+                    $manager->persist($ticket);
+                    $suppliers = $destinations = $links = [];
+                    foreach ([0, 1] as $index) {
+                        $name = 'Per-link supplier ' . $this->getUniqueString();
+                        $supplier = new Supplier();
+                        $supplier->entities = $manager->getReference(Entity::class, $source);
+                        $supplier->name = $name;
+                        $manager->persist($supplier);
+                        $suppliers[] = $supplier;
+                        $destination = new Supplier();
+                        $destination->entities = $manager->getReference(Entity::class, $target);
+                        $destination->name = $name;
+                        $manager->persist($destination);
+                        $destinations[] = $destination;
+                        $link = new SupplierTicketRecord();
+                        $link->tickets = $ticket;
+                        $link->actor = $supplier;
+                        $manager->persist($link);
+                        $links[] = $link;
+                    }
+                    $manager->flush();
+                    $calls = 0;
+                    $PLUGIN_HOOKS['item_update']['transfer_itil_fixture'][SupplierTicketModel::class] = static function (SupplierTicketModel $item) use ($connection, $links, $suppliers, $destinations, &$calls): void {
+                        ++$calls;
+                        if ($calls === 1) {
+                            $other = (int)$item->getID() === $links[0]->id ? 1 : 0;
+                            $name = 'Current callback supplier ' . $links[$other]->id;
+                            $connection->update('glpi_suppliers', ['name' => $name], ['id' => $suppliers[$other]->id]);
+                            $connection->update('glpi_suppliers', ['name' => $name], ['id' => $destinations[$other]->id]);
+                        }
+                    };
+                    $PLUGIN_HOOKS['pre_item_update']['transfer_itil_fixture'][SupplierTicketModel::class] = static function (SupplierTicketModel $item) use ($refuse, &$calls): void {
+                        if ($refuse && $calls === 1) {
+                            $item->input = false;
+                        }
+                    };
+                    $tables = ['glpi_tickets', 'glpi_suppliers', 'glpi_suppliers_tickets', 'glpi_logs'];
+                    $before = [];
+                    foreach ($tables as $table) {
+                        $before[$table] = $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id');
+                    }
+                    $level = $connection->getTransactionNestingLevel();
+                    $transfer = new LegacyTransfer();
+                    $failure = null;
+                    try {
+                        $result = $transfer->moveItems(['Ticket' => [$ticket->id]], $target, []);
+                    } catch (RuntimeException $error) {
+                        if (!$refuse || $error->getFile() !== realpath(__DIR__ . '/../../inc/toolbox.class.php')
+                            || !str_contains($error->getMessage(), 'Transfer::runTransfer()')
+                            || !str_contains($error->getMessage(), 'Transfer refused: Supplier_Ticket update')) {
+                            throw $error;
+                        }
+                        $failure = $error;
+                    }
+                    if ($refuse) {
+                        $this->object($failure)->isInstanceOf(RuntimeException::class);
+                        $this->integer($calls)->isIdenticalTo(1);
+                        foreach ($tables as $table) {
+                            $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id'))->isIdenticalTo($before[$table]);
+                        }
+                        $this->array($transfer->already_transfer)->isEmpty();
+                    } else {
+                        $this->boolean($result)->isTrue();
+                        $this->integer($calls)->isIdenticalTo(2);
+                        foreach ($links as $index => $link) {
+                            $this->integer((int)$connection->fetchOne('SELECT suppliers_id FROM glpi_suppliers_tickets WHERE id=?', [$link->id]))->isIdenticalTo($destinations[$index]->id);
+                        }
+                        $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_tickets WHERE id=?', [$ticket->id]))->isIdenticalTo($target);
+                    }
+                    $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+                    $manager->clear();
+                }
+            });
+        } finally {
+            $PLUGIN_HOOKS = $savedHooks;
+            $plugins->setValue(null, $savedPlugins);
+        }
+    }
+
+    public function testItilTransferProjectionCapturesCustomRouteAndRejectsIncoherentMetadata(): void
+    {
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $this->withSoftwareOwnerQueryProbe(function ($database, $connection): void {
+            global $DB;
+            $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $manager = Orm::create($database);
+            $ticket = new Ticket();
+            $ticket->entities = $manager->getReference(Entity::class, $source);
+            $supplier = new Supplier();
+            $supplier->entities = $manager->getReference(Entity::class, $source);
+            $link = new SupplierTicketRecord();
+            $link->tickets = $ticket;
+            $link->actor = $supplier;
+            foreach ([$ticket, $supplier, $link] as $record) {
+                $manager->persist($record);
+            }
+            $manager->flush();
+            $listener = new class () {
+                public bool $malformed = false;
+                public int $clears = 0;
+
+                public function loadClassMetadata($event): void
+                {
+                    $metadata = $event->getClassMetadata();
+                    if ($this->malformed && $metadata->name === SupplierTicketRecord::class) {
+                        $metadata->setPrimaryTable(['name' => 'incoherent_transfer_fixture']);
+                    }
+                }
+
+                public function onClear(): void
+                {
+                    ++$this->clears;
+                }
+            };
+            $events = new EventManager();
+            $events->addEventListener(['loadClassMetadata', 'onClear'], $listener);
+            $selected = new class ($connection, $events, $database) extends ScalarReadProbe {
+                public int $constructions = 0;
+
+                public function __construct($connection, private EventManager $events, private $replacement)
+                {
+                    parent::__construct($connection);
+                }
+
+                public function getEventManager(): EventManager
+                {
+                    ++$this->constructions;
+                    $GLOBALS['DB'] = $this->replacement;
+                    return $this->events;
+                }
+            };
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new NetpointRouteAdapter();
+            $this->calling($adapter)->getDoctrineConnection = $selected;
+            $this->calling($adapter)->getProvider = $database->getProvider();
+            try {
+                $DB = $adapter;
+                [$field, $rows] = Orm::read($DB, static fn (EntityManager $owner): array =>
+                    (new ITILActorRepository($owner))->suppliersForTransfer(new SupplierTicketModel(), 'Ticket', [$ticket->id]));
+                $this->integer($selected->constructions)->isIdenticalTo(1);
+                $this->array($selected->queries)->isNotEmpty();
+                $this->string($field)->isIdenticalTo('tickets_id');
+                $this->array($rows)->isIdenticalTo([['id' => $link->id, 'suppliers_id' => $supplier->id]]);
+                $this->object($DB)->isIdenticalTo($database);
+                $listener->malformed = true;
+                $selected->queries = [];
+                $DB = $adapter;
+                $this->exception(static fn () => Orm::read($adapter, static fn (EntityManager $owner): array =>
+                    (new ITILActorRepository($owner))->suppliersForTransfer(new SupplierTicketModel(), 'Ticket', $ticket->id)))
+                    ->isInstanceOf(LogicException::class)->hasMessage('Incoherent supplier transfer relation');
+                $this->array($selected->queries)->isEmpty();
+                $this->integer($selected->constructions)->isIdenticalTo(2);
+                $this->integer($listener->clears)->isIdenticalTo(0);
+                $listener->malformed = false;
+                $originalTable = SupplierTicketModel::getTable();
+                try {
+                    SupplierTicketModel::forceTable($manager->getClassMetadata(ChangeSupplierRecord::class)->getTableName());
+                    $selected->queries = [];
+                    $this->exception(static fn () => Orm::read($adapter, static fn (EntityManager $owner): array =>
+                        (new ITILActorRepository($owner))->suppliersForTransfer(new SupplierTicketModel(), 'Ticket', $ticket->id)))
+                        ->isInstanceOf(LogicException::class)->hasMessage('ITIL actor relation requires exactly one mapped parent reference');
+                    $this->array($selected->queries)->isEmpty();
+                } finally {
+                    SupplierTicketModel::forceTable($originalTable);
+                }
+            } finally {
+                $DB = $database;
+            }
+        });
+    }
+
     public function testSharedPrinterTransferCopiesRequiredPortChildren(): void
     {
         global $PLUGIN_HOOKS;
