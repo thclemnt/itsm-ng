@@ -113,7 +113,7 @@ class NetworkPort extends DbTestCase
             ))->isIdenticalTo((int)$port->getID());
             $this->boolean($aggregate->getFromDB($port->getID()))->isTrue();
             $this->boolean($aggregate->update([
-                'id' => $port->getID(), 'networkports_id_list' => [$origin->getID()],
+                'networkports_id' => $port->getID(), 'networkports_id_list' => [$origin->getID()],
             ]))->isTrue();
             $aggregates[] = $aggregate;
         }
@@ -140,13 +140,13 @@ class NetworkPort extends DbTestCase
                 $this->string($pending->name)->isIdenticalTo('Enclosing pending aggregate name');
             });
             $this->boolean($first->update(['id' => $first->getID(), 'name' => 'Current aggregate display']))->isTrue();
-            $this->boolean($aggregates[1]->update(['id' => $second->getID(), 'networkports_id_list' => []]))->isTrue();
+            $this->boolean($aggregates[1]->update(['networkports_id' => $second->getID(), 'networkports_id_list' => []]))->isTrue();
             $this->string($tab->getTabNameForItem($origin))->contains("<sup class='tab_nb'>1</sup>");
             $current = $this->renderLocalTableRows(static fn () => LegacyNetworkPort::showForItem($origin));
             $this->array($current)->hasSize(1);
             $this->string(json_encode($current, JSON_THROW_ON_ERROR))->contains('Current aggregate display')->notContains($second->fields['name']);
             $this->string($rendered)->contains($firstName)->notContains('Current aggregate display');
-            $this->boolean($aggregates[0]->update(['id' => $first->getID(), 'networkports_id_list' => []]))->isTrue();
+            $this->boolean($aggregates[0]->update(['networkports_id' => $first->getID(), 'networkports_id_list' => []]))->isTrue();
             $this->string($tab->getTabNameForItem($origin))->isIdenticalTo('');
             $this->boolean($owner->contains($dirty))->isTrue();
             $this->string($dirty->name)->isIdenticalTo('Independent pending aggregate name');
@@ -957,8 +957,8 @@ class NetworkPort extends DbTestCase
             ->isIdenticalTo(array_diff_key($beforeDelete, ['is_deleted' => true, 'date_mod' => true]));
         $deletedOrigin = new LegacyNetworkPort();
         $this->boolean($deletedOrigin->getFromDB($ports[1]->getID()))->isTrue();
-        $this->boolean($deletedOrigin->fields['is_dynamic'])->isTrue();
-        $this->boolean($deletedOrigin->fields['is_deleted'])->isTrue();
+        $this->integer($deletedOrigin->fields['is_dynamic'])->isIdenticalTo(1);
+        $this->integer($deletedOrigin->fields['is_deleted'])->isIdenticalTo(1);
         $owner = Orm::create($database);
         try {
             $dirty = $owner->find(NetworkPortEntity::class, $ports[0]->getID());
