@@ -15,11 +15,8 @@ final class UserDisplayReadOperation
     public function timelinePreferences(int $user): array
     {
         try {
-            $metadata = $this->metadata('glpi_users');
+            $this->metadata('glpi_users');
             $repository = new UserRepository($this->manager);
-            if ($this->ownedMapping && $this->defaultIdentifiers($metadata) !== null && $metadata->isInheritanceTypeNone()) {
-                return $repository->nativeTimelinePreferences($user);
-            }
             return $repository->timelinePreferences($user);
         } catch (NoResultException) {
             return [];
@@ -28,11 +25,8 @@ final class UserDisplayReadOperation
 
     public function displayData(int $user): ?array
     {
-        $metadata = $this->metadata('glpi_users');
+        $this->metadata('glpi_users');
         $repository = new UserRepository($this->manager);
-        if ($this->ownedMapping && $this->defaultIdentifiers($metadata) !== null && $metadata->isInheritanceTypeNone()) {
-            return $repository->nativeDisplayData($user);
-        }
         return $repository->displayData($user);
     }
 }

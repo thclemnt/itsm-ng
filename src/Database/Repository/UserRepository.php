@@ -9,7 +9,7 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
-use Doctrine\ORM\Events;
+use Doctrine\ORM\NoResultException;
 use Doctrine\ORM\NonUniqueResultException;
 use Doctrine\ORM\Query;
 use Doctrine\ORM\QueryBuilder;
@@ -35,20 +35,10 @@ final class UserRepository
     {
     }
 
-    /** Current assignment labels, preserving duplicate-login order and hook-owned records. */
+    /** Current assignment labels, preserving duplicate-login order without loading accounts. */
     public function historyNamesByLogin(string $name): array
     {
-        $metadata = $this->em->getClassMetadata(EntityRegistry::tables()['glpi_users']);
-        if ($this->em->getUnitOfWork()->size() !== 0
-            || count($metadata->identifier) !== 1
-            || !$metadata->hasField($metadata->getSingleIdentifierFieldName())
-            || !isset($metadata->fieldNames['id'], $metadata->fieldNames['realname'], $metadata->fieldNames['firstname'])
-            || $metadata->hasLifecycleCallbacks(Events::postLoad)
-            || !empty($metadata->entityListeners[Events::postLoad])
-            || $this->em->getEventManager()->hasListeners(Events::postLoad)
-            || $this->em->getConfiguration()->getDefaultQueryHints()) {
-            return (new RecordRepository($this->em))->matching('glpi_users', ['name' => $name], 'id', legacyValues: false);
-        }
+        $metadata = $this->em->getClassMetadata(User::class);
         $fields = ['id', 'realname', 'firstname'];
         $query = $this->em->createQueryBuilder()->from($metadata->name, 'r');
         $criteria = new RecordCriteria($query, $metadata, legacyValues: false);
@@ -140,53 +130,45 @@ final class UserRepository
         return $row['display_options'] ?? null;
     }
 
-    /** Shortcuts remain independent of the permission to use a custom font. */
+    /** Complete typed scalar preferences, without loading accounts. */
     public function timelinePreferences(int $user): array
     {
-        return $this->em->createQueryBuilder()
-            ->select('u.access_font', 'u.access_shortcuts')
-            ->from(User::class, 'u')
-            ->where('u.id = :user')
-            ->setParameter('user', $user, Types::BIGINT)
-            ->getQuery()
-            ->getOneOrNullResult() ?? [];
-    }
-
-    /** Fixed scalar preferences; supplied-manager queries retain their ORM behavior. */
-    public function nativeTimelinePreferences(int $user): array
-    {
-        $metadata = $this->em->getClassMetadata(User::class);
-        $connection = $this->em->getConnection();
-        $platform = $connection->getDatabasePlatform();
-        $quote = $this->em->getConfiguration()->getQuoteStrategy();
-        $types = [];
-        $select = [];
-        foreach (['access_font', 'access_shortcuts'] as $field) {
-            $types[$field] = Type::getType($metadata->getTypeOfField($field));
-            $select[] = $types[$field]->convertToPHPValueSQL('u.' . $quote->getColumnName($field, $metadata, $platform), $platform) . ' AS ' . $field;
-        }
-        $userType = Type::getType(Types::BIGINT);
-        $rows = $connection->createQueryBuilder()
-            ->select(...$select)
-            ->from($quote->getTableName($metadata, $platform), 'u')
-            ->where(
-                'u.' . $quote->getColumnName('id', $metadata, $platform)
-                . ' = ' . $userType->convertToDatabaseValueSQL('?', $platform)
-            )
-            ->setParameter(0, $user, Types::BIGINT)
-            ->executeQuery()
-            ->fetchAllAssociative();
-        // Match getOneOrNullResult's conversion and multiplicity semantics.
-        foreach ($rows as &$row) {
-            foreach ($types as $field => $type) {
-                $row[$field] = $type->convertToPHPValue($row[$field], $platform);
+        try {
+            $metadata = $this->em->getClassMetadata(User::class);
+            $connection = $this->em->getConnection();
+            $platform = $connection->getDatabasePlatform();
+            $quote = $this->em->getConfiguration()->getQuoteStrategy();
+            $types = [];
+            $select = [];
+            foreach (['access_font', 'access_shortcuts'] as $field) {
+                $types[$field] = Type::getType($metadata->getTypeOfField($field));
+                $select[] = $types[$field]->convertToPHPValueSQL('u.' . $quote->getColumnName($field, $metadata, $platform), $platform) . ' AS ' . $field;
             }
+            $userType = Type::getType(Types::BIGINT);
+            $rows = $connection->createQueryBuilder()
+                ->select(...$select)
+                ->from($quote->getTableName($metadata, $platform), 'u')
+                ->where(
+                    'u.' . $quote->getColumnName('id', $metadata, $platform)
+                    . ' = ' . $userType->convertToDatabaseValueSQL('?', $platform)
+                )
+                ->setParameter(0, $user, Types::BIGINT)
+                ->executeQuery()
+                ->fetchAllAssociative();
+            // Match getOneOrNullResult's conversion and multiplicity semantics.
+            foreach ($rows as &$row) {
+                foreach ($types as $field => $type) {
+                    $row[$field] = $type->convertToPHPValue($row[$field], $platform);
+                }
+            }
+            unset($row);
+            if (count($rows) > 1) {
+                throw new NonUniqueResultException();
+            }
+            return $rows[0] ?? [];
+        } catch (NoResultException) {
+            return [];
         }
-        unset($row);
-        if (count($rows) > 1) {
-            throw new NonUniqueResultException();
-        }
-        return $rows[0] ?? [];
     }
 
     /** Nullable account overrides; the caller supplies the current configuration defaults. */
@@ -348,32 +330,17 @@ final class UserRepository
         // Historically an unrelated admitted parent added no further User filter.
     }
 
-    /** Display-only values, without hydrating unrelated account fields or associations. */
-    public function displayData(int $user): ?array
-    {
-        $rows = $this->em->createQueryBuilder()
-            ->select('u.id, u.name, u.realname, u.firstname, u.phone, u.mobile, u.picture')
-            ->addSelect(
-                'IDENTITY(u.locations) AS locations_id, IDENTITY(u.usertitles) AS usertitles_id, IDENTITY(u.usercategories) AS usercategories_id'
-            )
-            ->from(User::class, 'u')
-            ->where('u.id = :user')
-            ->setParameter('user', $user, Types::INTEGER)
-            ->getQuery()
-            ->getScalarResult();
-        return $rows[0] ?? null;
-    }
-
     /** Fixed scalar display projection on the private selected connection. */
-    public function nativeDisplayData(int $user): ?array
+    public function displayData(int $user): ?array
     {
         $metadata = $this->em->getClassMetadata(User::class);
         $connection = $this->em->getConnection();
         $platform = $connection->getDatabasePlatform();
         $quote = $this->em->getConfiguration()->getQuoteStrategy();
         $select = [];
+        $types = [];
         foreach (['id', 'name', 'realname', 'firstname', 'phone', 'mobile', 'picture'] as $field) {
-            $type = Type::getType($metadata->getTypeOfField($field));
+            $type = $types[$field] = Type::getType($metadata->getTypeOfField($field));
             $select[] = $type->convertToPHPValueSQL(
                 'u.' . $quote->getColumnName($field, $metadata, $platform),
                 $platform
@@ -394,7 +361,13 @@ final class UserRepository
             ->setParameter('user', $user, Types::INTEGER)
             ->executeQuery()
             ->fetchAssociative();
-        return $row === false ? null : $row;
+        if ($row === false) {
+            return null;
+        }
+        foreach ($types as $field => $type) {
+            $row[$field] = $type->convertToPHPValue($row[$field], $platform);
+        }
+        return $row;
     }
 
     /** Current name fields for an already selected audience, keyed by identity. */

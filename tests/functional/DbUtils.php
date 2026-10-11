@@ -33,21 +33,29 @@
 
 namespace tests\units;
 
+use DBAdapter;
 use DBmysqlIterator;
 use DbTestCase;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Result;
 use DbUtils as DbUtilsModel;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Types\BigIntType;
+use Doctrine\DBAL\Types\StringType;
 use Doctrine\DBAL\Types\TextType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Event\OnClearEventArgs;
 use Entity;
 use itsmng\Database\Entity\Computer;
 use itsmng\Database\Entity\Entity as EntityRecord;
 use itsmng\Database\Entity\Infocom;
 use itsmng\Database\Entity\Monitor;
 use itsmng\Database\Entity\Printer;
+use itsmng\Database\Entity\User as UserRecord;
 use itsmng\Database\EntityScopeReadOperation;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\AutoNameRepository;
@@ -55,14 +63,18 @@ use itsmng\Database\Repository\TreeRepository;
 use itsmng\Database\TreeReadOperation;
 use Location;
 use LogicException;
+use mock\DBmysql as DisplayAdapter;
 use ReflectionProperty;
 use Software;
 use Toolbox;
+use tests\fixtures\ScalarReadProbe;
 use User;
 use UserCategory;
 use UserTitle;
 
 use function autoName;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/dbutils.class.php */
 
@@ -124,6 +136,114 @@ class DbUtils extends DbTestCase
             $this->string($utils->getUserName($missing))->isEmpty();
             $this->string($utils->getUserName($missing, 1))->isEmpty();
             $this->array($utils->getUserName($missing, 2))->isEqualTo(['name' => '', 'comment' => '', 'link' => '']);
+        }
+    }
+
+    public function testUserDisplayKeepsTypedCapturedRouteAndDirtyOwners(): void
+    {
+        global $DB;
+        $original = $DB;
+        $session = $_SESSION;
+        $this->login();
+        $_SESSION['glpinames_format'] = User::FIRSTNAME_BEFORE;
+        $_SESSION['glpiis_ids_visible'] = 0;
+        $user = $this->createItem(
+            User::class,
+            [
+                'name' => 'typed-display-' . $this->getUniqueString(),
+                'firstname' => 'Ada', 'realname' => 'Lovelace',
+            ]
+        );
+        $id = (int)$user->getID();
+        $connection = $DB->getDoctrineConnection();
+        $level = $connection->getTransactionNestingLevel();
+        $owner = Orm::create($DB);
+        $dirty = $owner->find(UserRecord::class, $id);
+        $dirty->firstname = 'Independent dirty name';
+        $string = Type::getType(Types::STRING);
+        $failure = new LogicException('Refused typed display read');
+        $selected = new class ($connection, $original, $failure) extends ScalarReadProbe {
+            public int $constructors = 0;
+            public int $clears = 0;
+            public array $clearedManagers = [];
+            public bool $fail = false;
+            public function __construct(Connection $connection, private DBAdapter $original, private LogicException $failure)
+            {
+                parent::__construct($connection);
+            }
+            public function getEventManager(): EventManager
+            {
+                ++$this->constructors;
+                $GLOBALS['DB'] = $this->original;
+                $events = new EventManager();
+                $events->addEventListener(['onClear'], $this);
+                return $events;
+            }
+            public function onClear(OnClearEventArgs $event): void
+            {
+                ++$this->clears;
+                $this->clearedManagers[] = $event->getObjectManager();
+            }
+            public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
+            {
+                if ($this->fail) {
+                    throw $this->failure;
+                }
+                return parent::executeQuery($sql, $params, $types, $qcp);
+            }
+        };
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new DisplayAdapter();
+        $this->calling($adapter)->getDoctrineConnection = $selected;
+        try {
+            Type::overrideType(Types::STRING, new class () extends StringType {
+                public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                {
+                    return 'UPPER(' . $sqlExpr . ')';
+                }
+                public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
+                {
+                    return $value === null ? null : 'typed ' . $value;
+                }
+            });
+            $utils = new DbUtilsModel();
+            $DB = $adapter;
+            $this->string($utils->getUserName($id))->isIdenticalTo('typed ADA typed LOVELACE');
+            $this->integer($selected->constructors)->isIdenticalTo(1);
+            $this->array($selected->queries)->hasSize(1);
+            $this->boolean($DB === $original)->isTrue();
+            $selected->fail = true;
+            $DB = $adapter;
+            $this->exception(static fn () => $utils->getUserName($id))->isIdenticalTo($failure);
+            $selected->fail = false;
+            $DB = $original;
+            $this->integer($connection->update('glpi_users', ['firstname' => 'Grace'], ['id' => $id]))->isIdenticalTo(1);
+            Orm::read($DB, function (EntityManager $outer) use ($utils, $id): void {
+                $live = $outer->find(UserRecord::class, $id);
+                $live->firstname = 'Enclosing dirty name';
+                $this->string($utils->getUserName($id))->isIdenticalTo('typed GRACE typed LOVELACE');
+                $this->boolean($outer->contains($live))->isTrue();
+                $this->string($live->firstname)->isIdenticalTo('Enclosing dirty name');
+            });
+            $DB = $adapter;
+            $this->string($utils->getUserName($id))->isIdenticalTo('typed GRACE typed LOVELACE');
+            $this->integer($selected->clears)->isIdenticalTo(3);
+            $this->array($selected->clearedManagers)->hasSize(3);
+            foreach ($selected->clearedManagers as $reader) {
+                $this->boolean($reader->getConnection() === $selected)->isTrue();
+                $this->boolean($reader === $owner)->isFalse();
+            }
+            $this->boolean($selected->clearedManagers[0] === $selected->clearedManagers[1])->isFalse();
+            $this->boolean($selected->clearedManagers[1] === $selected->clearedManagers[2])->isFalse();
+            $this->boolean($selected->clearedManagers[0] === $selected->clearedManagers[2])->isFalse();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->string($dirty->firstname)->isIdenticalTo('Independent dirty name');
+        } finally {
+            $DB = $original;
+            $_SESSION = $session;
+            Type::overrideType(Types::STRING, $string);
+            $owner->clear();
         }
     }
 

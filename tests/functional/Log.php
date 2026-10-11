@@ -64,6 +64,7 @@ use itsmng\Database\Entity\Log as LogRecord;
 use itsmng\Database\Entity\User as UserRecord;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\HistoryRepository;
+use itsmng\Database\Repository\UserRepository;
 use Log as LegacyLog;
 use LogicException;
 use mock\DBmysql as HistoryAdapter;
@@ -817,6 +818,17 @@ class Log extends DbTestCase
             $connection->update('glpi_users', ['firstname' => null, 'realname' => null], ['id' => $duplicate->id]);
             $labels = LegacyLog::getHistoryData($computer, 0, 0, $edgeFilter, $options);
             $this->string($labels[0]['change'])->isIdenticalTo('Change ' . $missing . ' (7) to ' . $user->name . ' (9)');
+            Orm::read($DB, function (EntityManager $outer) use ($duplicate, $user, $computer, $edgeFilter, $options, $labels): void {
+                $dirty = $outer->find(UserRecord::class, $duplicate->id);
+                $dirty->firstname = 'Unflushed assignment label';
+                $matches = (new UserRepository($outer))->historyNamesByLogin($user->name);
+                $last = end($matches);
+                $this->variable($last['firstname'])->isNull();
+                $this->variable($last['realname'])->isNull();
+                $this->array(LegacyLog::getHistoryData($computer, 0, 0, $edgeFilter, $options))->isIdenticalTo($labels);
+                $this->boolean($outer->contains($dirty))->isTrue();
+                $this->string($dirty->firstname)->isIdenticalTo('Unflushed assignment label');
+            });
         } finally {
             $DB = $original;
             $_SESSION = $session;
