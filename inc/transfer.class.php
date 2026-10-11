@@ -1282,8 +1282,8 @@ class Transfer extends CommonDBTM
                     $this->checkedTransferResult($this->transferSoftwareLicensesAndVersions($ID));
                 }
 
-                // Connected item is transfered
-                if (in_array($itemtype, $CFG_GLPI["directconnect_types"])) {
+                // Moving an item disconnects source computers; a copy retains the original links.
+                if ($ID == $newID && in_array($itemtype, $CFG_GLPI["directconnect_types"])) {
                     $this->checkedTransferResult($this->manageConnectionComputer($itemtype, $ID));
                 }
 

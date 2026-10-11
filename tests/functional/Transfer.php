@@ -908,6 +908,12 @@ class Transfer extends DbTestCase
                     foreach ($tables as $table) {
                         $before[$table] = $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id');
                     }
+                    $remainingAttachment = $connection->fetchAssociative(
+                        'SELECT * FROM glpi_computers_items WHERE computers_id=? AND itemtype=?',
+                        [$remaining->getID(), 'Printer']
+                    );
+                    $this->array($remainingAttachment)->isNotEmpty();
+                    $this->integer((int)$remainingAttachment['printers_id'])->isIdenticalTo((int)$printer->getID());
                     $manager = Orm::create($database);
                     $dirty = $manager->find(ComputerEntity::class, $remaining->getID());
                     $dirty->name = 'Pending computer outside transfer';
@@ -960,6 +966,10 @@ class Transfer extends DbTestCase
                             'SELECT printers_id FROM glpi_computers_items WHERE computers_id=? AND itemtype=?',
                             [$remaining->getID(), 'Printer']
                         ))->isIdenticalTo((int)$printer->getID());
+                        $this->array($connection->fetchAssociative(
+                            'SELECT * FROM glpi_computers_items WHERE computers_id=? AND itemtype=?',
+                            [$remaining->getID(), 'Printer']
+                        ))->isIdenticalTo($remainingAttachment);
                         $copiedPrinter = new PrinterAsset();
                         $this->boolean($copiedPrinter->getFromDB($copyID))->isTrue();
                         $this->integer((int)$copiedPrinter->getEntityID())->isIdenticalTo($target);
