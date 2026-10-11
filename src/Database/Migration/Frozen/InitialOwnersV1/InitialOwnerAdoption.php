@@ -279,7 +279,7 @@ abstract class InitialOwnerAdoption
             . "i.indpred IS NULL AS unfiltered, ic.reltablespace::text AS tablespace, ic.reloptions, "
             . "pg_get_indexdef(i.indexrelid) AS definition, obj_description(i.indexrelid,'pg_class') AS comment, "
             . "EXISTS (SELECT 1 FROM unnest(i.indclass) x(opclass) JOIN pg_catalog.pg_opclass op ON op.oid=x.opclass WHERE NOT op.opcdefault) AS custom_opclass, "
-            . "EXISTS (SELECT 1 FROM unnest(i.indcollation::oid[]) WITH ORDINALITY x(collation, ord) JOIN unnest(i.indkey::smallint[]) WITH ORDINALITY y(attnum, ord) USING (ord) JOIN pg_catalog.pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=y.attnum WHERE x.collation<>a.attcollation) AS custom_collation, "
+            . "EXISTS (SELECT 1 FROM unnest(i.indcollation::oid[]) WITH ORDINALITY x(collation_oid, ord) JOIN unnest(i.indkey::smallint[]) WITH ORDINALITY y(attnum, ord) USING (ord) JOIN pg_catalog.pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=y.attnum WHERE x.collation_oid<>a.attcollation) AS custom_collation, "
             . "EXISTS (SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conindid=i.indexrelid) AS constrained "
             . "FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class ic ON ic.oid=i.indexrelid JOIN pg_catalog.pg_am am ON am.oid=ic.relam "
             . "WHERE i.indrelid=to_regclass(?) AND EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid=i.indrelid AND a.attname='items_id' AND a.attnum=ANY(i.indkey)) ORDER BY ic.relname",
@@ -648,7 +648,7 @@ abstract class InitialOwnerAdoption
             $rows = $connection->fetchAllAssociative(
                 "SELECT a.attname AS name, format_type(a.atttypid,a.atttypmod) AS type, a.attnotnull AS not_null, a.attidentity AS "
                 . "identity, a.attgenerated AS generated, pg_get_expr(d.adbin,d.adrelid) AS default_value, "
-                . "col_description(a.attrelid,a.attnum) AS comment, a.attcollation::text AS collation FROM pg_catalog.pg_attribute a "
+                . "col_description(a.attrelid,a.attnum) AS comment, a.attcollation::text AS \"collation\" FROM pg_catalog.pg_attribute a "
                 . "LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE a.attrelid=to_regclass(?) AND "
                 . "a.attnum>0 AND NOT a.attisdropped ORDER BY a.attname",
                 [static::TABLE]
