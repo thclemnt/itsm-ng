@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\LdapRepository;
+use itsmng\Database\Repository\MailAuthenticationRepository;
 use itsmng\Domain\Authentication\AuthenticationRuleMutations;
 
 if (!defined('GLPI_ROOT')) {
@@ -369,28 +373,22 @@ class RuleRight extends Rule
                Auth::DB_GLPI => __('Authentication on ITSM-NG database'),
             ];
 
-            $result = $DB->request([
-               'FROM'   => 'glpi_authldaps',
-               'COUNT'  => 'cpt',
-               'WHERE'  => [
-                  'is_active' => 1
-               ]
-            ])->next();
+            $activeCount = Orm::read(
+                $DB,
+                static fn (EntityManager $manager): int => (new LdapRepository($manager))->activeCount()
+            );
 
-            if ($result['cpt'] > 0) {
+            if ($activeCount > 0) {
                 $methods[Auth::LDAP]     = __('Authentication on a LDAP directory');
                 $methods[Auth::EXTERNAL] = __('External authentications');
             }
 
-            $result = $DB->request([
-               'FROM'   => 'glpi_authmails',
-               'COUNT'  => 'cpt',
-               'WHERE'  => [
-                  'is_active' => 1
-               ]
-            ])->next();
+            $activeCount = Orm::read(
+                $DB,
+                static fn (EntityManager $manager): int => (new MailAuthenticationRepository($manager))->activeCount()
+            );
 
-            if ($result['cpt'] > 0) {
+            if ($activeCount > 0) {
                 $methods[Auth::MAIL] = __('Authentication on mail server');
             }
             renderTwigTemplate('macros/input.twig', [

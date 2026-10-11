@@ -42,8 +42,14 @@ use itsmng\Database\Entity\AuthLDAP;
 use itsmng\Database\Entity\AuthMail;
 use itsmng\Database\Orm;
 use ReflectionProperty;
+use Rule as LegacyRule;
+use RuleRight as LegacyRuleRight;
+use mock\DBmysql as RuleTypeAdapterProbe;
+use tests\fixtures\ScalarReadProbe;
 use Toolbox;
 use User as ApplicationUser;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/auth.class.php */
 
@@ -198,6 +204,12 @@ class Auth extends DbTestCase
             $this->string($inactiveDropdown)->contains(__('Authentication on ITSM-NG database'))
                 ->notContains(__('Authentication on mail server'))
                 ->notContains(__('Authentication on a LDAP directory'));
+            $rule = new LegacyRuleRight();
+            $pattern = static fn () => $rule->displayCriteriaSelectPattern('rule_type', 'TYPE', LegacyRule::PATTERN_IS, ApplicationAuth::MAIL);
+            $this->output($pattern)->contains(__('Authentication on ITSM-NG database'))
+                ->notContains(__('Authentication on mail server'))
+                ->notContains(__('Authentication on a LDAP directory'))
+                ->notContains(__('External authentications'));
             $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
             $before = $factories->getValue();
             $this->array(ApplicationAuth::getLoginAuthMethods())->isIdenticalTo($expected);
@@ -222,6 +234,9 @@ class Auth extends DbTestCase
             $this->integer($auth->authtypes['mail'][$mail->id]['is_active'])->isIdenticalTo(1);
             $this->string(ApplicationAuth::dropdown($dropdownOptions))
                 ->contains(__('Authentication on mail server'));
+            $this->output($pattern)->contains(__('Authentication on mail server'))
+                ->notContains(__('Authentication on a LDAP directory'));
+
             // Exercise the User field-selection caller, which requests returned HTML.
             $this->string(ApplicationUser::getSpecificValueToSelect(
                 'authtype',
@@ -261,6 +276,10 @@ class Auth extends DbTestCase
                 $this->string(ApplicationAuth::dropdown($dropdownOptions))
                     ->contains(__('Authentication on a LDAP directory'))
                     ->contains(__('External authentications'));
+                $this->output($pattern)->contains(__('Authentication on a LDAP directory'))
+                    ->contains(__('External authentications'))
+                    ->contains(__('Authentication on mail server'));
+
 
                 $this->array(ApplicationAuth::getLoginAuthMethods())->isIdenticalTo($active);
                 $connection->update(
@@ -287,6 +306,47 @@ class Auth extends DbTestCase
             $this->string(ApplicationAuth::dropdown($dropdownOptions))->isIdenticalTo($inactiveDropdown);
             // All positive source-selection and freshness checks precede the genuine old-runtime failure.
             $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+            $this->output($pattern)->notContains(__('Authentication on mail server'))
+                ->notContains(__('Authentication on a LDAP directory'))
+                ->notContains(__('External authentications'));
+            $retained = $manager->find(AuthMail::class, $mail->id);
+            $retained->name = 'Independent pending rule source';
+            $database = $GLOBALS['DB'];
+            try {
+                $connection->update('glpi_authmails', ['is_active' => true], ['id' => $mail->id], ['is_active' => Types::BOOLEAN]);
+                Orm::read(
+                    $GLOBALS['DB'],
+                    function (EntityManager $outer) use ($mail, $pattern): void {
+                        $owned = $outer->find(AuthMail::class, $mail->id);
+                        $owned->name = 'Outer pending rule source';
+                        $this->output($pattern)->contains(__('Authentication on mail server'));
+                        $this->boolean($outer->contains($owned))->isTrue();
+                        $this->string($owned->name)->isIdenticalTo('Outer pending rule source');
+                    }
+                );
+                $probe = new ScalarReadProbe($connection);
+                $this->mockGenerator()->orphanize('__construct');
+                $adapter = new RuleTypeAdapterProbe();
+                $this->calling($adapter)->getDoctrineConnection = static function () use ($probe, $database) {
+                    $GLOBALS['DB'] = $database;
+                    return $probe;
+                };
+                $GLOBALS['DB'] = $adapter;
+                $this->output($pattern)->contains(__('Authentication on mail server'));
+                $this->array($probe->queries)->hasSize(1);
+                $this->string($probe->queries[0]['sql'])->contains('glpi_authldaps');
+                $this->object($GLOBALS['DB'])->isIdenticalTo($database);
+                $this->output(function () use ($rule): void {
+                    $this->boolean($rule->displayAdditionalRuleCondition(LegacyRule::PATTERN_IS, ['field' => 'other'], 'rule_type', ApplicationAuth::MAIL))->isFalse();
+                })->isEmpty();
+                $this->array($probe->queries)->hasSize(1);
+                $this->boolean($manager->contains($retained))->isTrue();
+                $this->string($retained->name)->isIdenticalTo('Independent pending rule source');
+            } finally {
+                $GLOBALS['DB'] = $database;
+                $connection->update('glpi_authmails', ['is_active' => false], ['id' => $mail->id], ['is_active' => Types::BOOLEAN]);
+            }
+
         } finally {
             $manager->clear();
         }
