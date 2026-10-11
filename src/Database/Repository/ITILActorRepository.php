@@ -159,13 +159,7 @@ final class ITILActorRepository
 
     public function rows(string $actorClass, int $item): array
     {
-        return $this->readRows($actorClass, $item, false);
-    }
-
-    /** Explicit private-owner scalar route; public/supplied-manager reads remain ordinary ORM. */
-    public function nativeRows(string $actorClass, int $item): array
-    {
-        return $this->readRows($actorClass, $item, true);
+        return $this->readRows($actorClass, $item);
     }
 
     private function parentRelation(string $actorClass, ClassMetadata $metadata): string
@@ -185,7 +179,7 @@ final class ITILActorRepository
         return $parents[0];
     }
 
-    private function readRows(string $actorClass, int $item, bool $native): array
+    private function readRows(string $actorClass, int $item): array
     {
         if (!self::supports($actorClass)) {
             throw new InvalidArgumentException('Unsupported ITIL actor relation');
@@ -197,41 +191,27 @@ final class ITILActorRepository
         $connection = $this->em->getConnection();
         $platform = $connection->getDatabasePlatform();
         $quote = $this->em->getConfiguration()->getQuoteStrategy();
-        $query = $native
-            ? $connection->createQueryBuilder()->from($quote->getTableName($metadata, $platform), 'a')
-            : $this->em->createQueryBuilder()->from($record, 'a');
-        $parentExpression = $native
-            ? 'a.' . $quote->getJoinColumnName($metadata->associationMappings[$parent]->joinColumns[0], $metadata, $platform)
-            : 'IDENTITY(a.' . $parent . ')';
-        $parameter = $native ? Type::getType(Types::BIGINT)->convertToDatabaseValueSQL(':item', $platform) : ':item';
+        $query = $connection->createQueryBuilder()->from($quote->getTableName($metadata, $platform), 'a');
+        $parentExpression = 'a.' . $quote->getJoinColumnName($metadata->associationMappings[$parent]->joinColumns[0], $metadata, $platform);
+        $parameter = Type::getType(Types::BIGINT)->convertToDatabaseValueSQL(':item', $platform);
         $query->where($parentExpression . ' = ' . $parameter)
             ->setParameter('item', $item, Types::BIGINT)
-            ->orderBy($native ? 'a.' . $quote->getColumnName('id', $metadata, $platform) : 'a.id');
+            ->orderBy('a.' . $quote->getColumnName('id', $metadata, $platform));
         $columns = [];
         // Keep the complete relationship-row contract, including generated compatibility keys.
         foreach ($metadata->fieldMappings as $property => $mapping) {
-            $expression = 'a.' . $property;
-            if ($native) {
-                $expression = 'a.' . $quote->getColumnName($property, $metadata, $platform);
-                $expression = Type::getType($mapping->type)->convertToPHPValueSQL($expression, $platform);
-            }
+            $expression = 'a.' . $quote->getColumnName($property, $metadata, $platform);
+            $expression = Type::getType($mapping->type)->convertToPHPValueSQL($expression, $platform);
             $query->addSelect($expression . ' AS value' . count($columns));
             $columns[] = [$mapping->columnName, $mapping->type];
         }
         foreach ($metadata->associationMappings as $property => $mapping) {
-            $expression = $native ? 'a.' . $quote->getJoinColumnName($mapping->joinColumns[0], $metadata, $platform)
-                : 'IDENTITY(a.' . $property . ')';
+            $expression = 'a.' . $quote->getJoinColumnName($mapping->joinColumns[0], $metadata, $platform);
             $query->addSelect($expression . ' AS value' . count($columns));
             $columns[] = [$mapping->joinColumns[0]->name, Types::BIGINT];
         }
         $rows = [];
-        if ($native) {
-            $resultRows = $query->executeQuery()
-                ->fetchAllAssociative();
-        } else {
-            $compiled = $query->getQuery();
-            $resultRows = $compiled->getScalarResult();
-        }
+        $resultRows = $query->executeQuery()->fetchAllAssociative();
         foreach ($resultRows as $values) {
             $row = [];
             foreach ($columns as $index => [$column, $type]) {

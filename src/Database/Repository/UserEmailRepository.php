@@ -8,6 +8,7 @@ use Doctrine\DBAL\LockMode;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\NoResultException;
 use itsmng\Database\Entity\User;
 use itsmng\Database\Entity\UserEmail;
 use LogicException;
@@ -32,60 +33,50 @@ final class UserEmailRepository
         return array_column($rows, 'email');
     }
 
+    /** Current preferred address; fixed typed scalar values never load the user graph. */
     public function preferred(int $user): ?array
     {
-        return $this->em->createQueryBuilder()
-            ->select('e.id, e.email')
-            ->from(UserEmail::class, 'e')
-            ->where('IDENTITY(e.users) = :user')
-            ->setParameter('user', $user, Types::INTEGER)
-            ->orderBy('e.is_default', 'DESC')
-            ->addOrderBy('e.id')
-            ->setMaxResults(1)
-            ->getQuery()
-            ->getOneOrNullResult();
-    }
-
-    /** Fixed private scalar projection; public supplied-manager reads remain ORM queries. */
-    public function nativePreferred(int $user): ?array
-    {
-        $metadata = $this->em->getClassMetadata(UserEmail::class);
-        $connection = $this->em->getConnection();
-        $platform = $connection->getDatabasePlatform();
-        $quote = $this->em->getConfiguration()->getQuoteStrategy();
-        $reference = $metadata->associationMappings['users'];
-        if (!$reference->isToOneOwningSide() || count($reference->joinColumns) !== 1) {
-            throw new LogicException('Preferred email requires a single owning user reference.');
-        }
-        $types = [];
-        $select = [];
-        foreach (['id', 'email'] as $field) {
-            $types[$field] = Type::getType($metadata->getTypeOfField($field));
-            $select[] = $types[$field]->convertToPHPValueSQL(
-                'e.' . $quote->getColumnName($field, $metadata, $platform),
-                $platform
-            ) . ' AS ' . $field;
-        }
-        $userType = Type::getType(Types::INTEGER);
-        $row = $connection->createQueryBuilder()
-            ->select(...$select)
-            ->from($quote->getTableName($metadata, $platform), 'e')
-            ->where('e.' . $quote->getJoinColumnName($reference->joinColumns[0], $metadata, $platform)
-                . ' = ' . $userType->convertToDatabaseValueSQL(':user', $platform))
-            ->setParameter('user', $user, Types::INTEGER)
-            ->orderBy('e.' . $quote->getColumnName('is_default', $metadata, $platform), 'DESC')
-            ->addOrderBy('e.' . $quote->getColumnName('id', $metadata, $platform), 'ASC')
-            ->setMaxResults(1)
-            ->executeQuery()
-            ->fetchAssociative();
-        if ($row === false) {
+        try {
+            $metadata = $this->em->getClassMetadata(UserEmail::class);
+            $connection = $this->em->getConnection();
+            $platform = $connection->getDatabasePlatform();
+            $quote = $this->em->getConfiguration()->getQuoteStrategy();
+            $reference = $metadata->associationMappings['users'];
+            if (!$reference->isToOneOwningSide() || count($reference->joinColumns) !== 1) {
+                throw new LogicException('Preferred email requires a single owning user reference.');
+            }
+            $types = [];
+            $select = [];
+            foreach (['id', 'email'] as $field) {
+                $types[$field] = Type::getType($metadata->getTypeOfField($field));
+                $select[] = $types[$field]->convertToPHPValueSQL(
+                    'e.' . $quote->getColumnName($field, $metadata, $platform),
+                    $platform
+                ) . ' AS ' . $field;
+            }
+            $userType = Type::getType(Types::INTEGER);
+            $row = $connection->createQueryBuilder()
+                ->select(...$select)
+                ->from($quote->getTableName($metadata, $platform), 'e')
+                ->where('e.' . $quote->getJoinColumnName($reference->joinColumns[0], $metadata, $platform)
+                    . ' = ' . $userType->convertToDatabaseValueSQL(':user', $platform))
+                ->setParameter('user', $user, Types::INTEGER)
+                ->orderBy('e.' . $quote->getColumnName('is_default', $metadata, $platform), 'DESC')
+                ->addOrderBy('e.' . $quote->getColumnName('id', $metadata, $platform), 'ASC')
+                ->setMaxResults(1)
+                ->executeQuery()
+                ->fetchAssociative();
+            if ($row === false) {
+                return null;
+            }
+            // ObjectHydrator applies PHP conversions to these scalar selections.
+            foreach ($types as $field => $type) {
+                $row[$field] = $type->convertToPHPValue($row[$field], $platform);
+            }
+            return $row;
+        } catch (NoResultException) {
             return null;
         }
-        // ObjectHydrator applies PHP conversions to these scalar selections.
-        foreach ($types as $field => $type) {
-            $row[$field] = $type->convertToPHPValue($row[$field], $platform);
-        }
-        return $row;
     }
 
     public function contains(int $user, string $email): bool

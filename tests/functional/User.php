@@ -454,6 +454,18 @@ class User extends DbTestCase
         $ordinary = new UserEmailRepository($manager);
         $expected = $ordinary->preferred($id);
         $this->string($expected['email'])->isIdenticalTo('first@example.test');
+        $pendingEmail = $manager->find(UserEmailRecord::class, (int)$expected['id']);
+        $pendingEmail->email = 'unflushed@example.test';
+        $this->array($ordinary->preferred($id))->isIdenticalTo($expected);
+        $this->boolean($manager->contains($pendingEmail))->isTrue();
+        $this->string($pendingEmail->email)->isIdenticalTo('unflushed@example.test');
+        Orm::read($DB, function (EntityManager $outer) use ($DB, $id, $expected): void {
+            $pending = $outer->find(UserEmailRecord::class, (int)$expected['id']);
+            $pending->email = 'nested-unflushed@example.test';
+            $this->string(UserEmail::getDefaultForUser($id))->isIdenticalTo($expected['email']);
+            $this->boolean($outer->contains($pending))->isTrue();
+            $this->string($pending->email)->isIdenticalTo('nested-unflushed@example.test');
+        });
         $expectedEmails = $ordinary->all($id);
         $this->string(UserEmail::getDefaultForUser($id))->isIdenticalTo($expected['email']);
         $this->array(UserEmail::getAllForUser($id))->isIdenticalTo($expectedEmails);
@@ -582,6 +594,13 @@ class User extends DbTestCase
         $connection->insert('glpi_profilerights', ['profiles_id' => $profileId, 'name' => $right, 'rights' => 5]);
         $manager = Orm::forConnection($connection);
         $grants = new ProfileUserRepository($manager);
+        $pendingGrant = $manager->getRepository(ProfileUser::class)->findOneBy([
+            'users' => $id, 'profiles' => $profileId,
+        ]);
+        $pendingGrant->is_recursive = true;
+        $this->boolean($manager->contains($pendingGrant))->isTrue();
+        $this->integer((int)$grants->scopes($id, $profileId)[0]['is_recursive'])->isIdenticalTo(0);
+        $this->boolean($pendingGrant->is_recursive)->isTrue();
         $users = new UserRepository($manager);
         $records = new RecordRepository($manager);
         $expectedProfiles = [];
@@ -633,8 +652,8 @@ class User extends DbTestCase
             $this->string($utils->getUserName($id))->isIdenticalTo($expectedName);
             $this->array($sortedIds(array_values(Profile_User::getUserProfiles($id))))->isIdenticalTo($baselineIds);
             $this->array($probe->queries)->hasSize(3);
-            $this->integer($probe->builders)->isIdenticalTo(3);
-            $this->array($probe->queries[2]['types'])->isIdenticalTo([Types::INTEGER]);
+            $this->integer($probe->builders)->isIdenticalTo(2);
+            $this->array(array_values($probe->queries[2]['types']))->isIdenticalTo([Types::INTEGER]);
             $probe->builders = 0;
             $probe->queries = [];
             // Notification's entity filter remains the ordinary mapped criteria path.

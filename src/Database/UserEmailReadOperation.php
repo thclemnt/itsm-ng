@@ -15,11 +15,8 @@ final class UserEmailReadOperation
     public function preferred(int $user): ?array
     {
         try {
-            $metadata = $this->metadata('glpi_useremails');
+            $this->metadata('glpi_useremails');
             $repository = new UserEmailRepository($this->manager);
-            if ($this->ownedMapping && $this->defaultIdentifiers($metadata) !== null && $metadata->isInheritanceTypeNone()) {
-                return $repository->nativePreferred($user);
-            }
             return $repository->preferred($user);
         } catch (NoResultException) {
             // Preserve getOneOrNullResult, including mapped conversion failures.

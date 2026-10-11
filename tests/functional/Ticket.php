@@ -1574,6 +1574,18 @@ class Ticket extends DbTestCase
         $this->array($rows)->isIdenticalTo($expected);
         $this->array($reader->getUnitOfWork()->getIdentityMap())->isEmpty();
         $this->array($repository->rows($legacy, -1))->isEmpty();
+        $pendingActor = $reader->find($relationClass, $assign->id);
+        $pendingActor->type = CommonITILActor::REQUESTER;
+        $this->array($repository->rows($legacy, $parent->id))->isIdenticalTo($expected);
+        $this->boolean($reader->contains($pendingActor))->isTrue();
+        $this->integer($pendingActor->type)->isIdenticalTo(CommonITILActor::REQUESTER);
+        Orm::read($DB, function (EntityManager $outer) use ($legacy, $relationClass, $assign, $parent, $expected): void {
+            $pending = $outer->find($relationClass, $assign->id);
+            $pending->type = CommonITILActor::REQUESTER;
+            $this->array((new ITILActorRepository($outer))->rows($legacy, $parent->id))->isIdenticalTo($expected);
+            $this->boolean($outer->contains($pending))->isTrue();
+            $this->integer($pending->type)->isIdenticalTo(CommonITILActor::REQUESTER);
+        });
         $grouped = [];
         foreach ($expected as $row) {
             $grouped[$row['type']][] = $row;

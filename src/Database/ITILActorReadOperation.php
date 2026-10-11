@@ -17,11 +17,9 @@ final class ITILActorReadOperation
         if (!ITILActorRepository::supports($actorClass)) {
             throw new InvalidArgumentException('Unsupported ITIL actor relation');
         }
-        $metadata = $this->metadata($actorClass::getTable());
+        $this->metadata($actorClass::getTable());
         $repository = new ITILActorRepository($this->manager);
-        $rows = $this->ownedMapping && $this->defaultIdentifiers($metadata) !== null && $metadata->isInheritanceTypeNone()
-            ? $repository->nativeRows($actorClass, $item)
-            : $repository->rows($actorClass, $item);
+        $rows = $repository->rows($actorClass, $item);
         $actors = [];
         foreach ($rows as $row) {
             $actors[$row['type']][] = $row;

@@ -18,11 +18,8 @@ final class OidcRefreshReadOperation
             return false;
         }
         try {
-            $metadata = $this->metadata('glpi_oidc_users');
+            $this->metadata('glpi_oidc_users');
             $repository = new OidcRepository($this->manager);
-            if ($this->ownedMapping && $this->defaultIdentifiers($metadata) !== null && $metadata->isInheritanceTypeNone()) {
-                return $repository->nativeNeedsRefresh($user);
-            }
             return $repository->needsRefresh($user);
         } catch (NoResultException) {
             // getOneOrNullResult treats this query/metadata/conversion exception as absence.

@@ -90,6 +90,7 @@ use itsmng\Database\ComponentCountReadOperation;
 use itsmng\Database\Entity\Computer as ComputerRecord;
 use itsmng\Database\Entity\Config as ConfigRecord;
 use itsmng\Database\Entity\Entity as EntityRecord;
+use itsmng\Database\Entity\OidcUser as OidcUserRecord;
 use itsmng\Database\Entity\User as UserRecord;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\MappedReads;
@@ -559,6 +560,11 @@ class Config extends DbTestCase
             $connection->insert('glpi_oidc_users', ['user_id' => $id, $pendingColumn => false], ['user_id' => 'bigint', $pendingColumn => 'boolean']);
             $this->boolean($reader->needsRefresh($id))->isTrue();
             $this->boolean($reader->needsRefresh($id))->isIdenticalTo($ordinary->needsRefresh($id));
+            $pendingState = $manager->getRepository(OidcUserRecord::class)->findOneBy(['users' => $id]);
+            $pendingState->update = true;
+            $this->boolean($ordinary->needsRefresh($id))->isTrue();
+            $this->boolean($manager->contains($pendingState))->isTrue();
+            $this->boolean($pendingState->update)->isTrue();
             $connection->update('glpi_oidc_users', [$pendingColumn => true], ['user_id' => $id], [$pendingColumn => 'boolean', 'user_id' => 'bigint']);
             $this->boolean($reader->needsRefresh($id))->isFalse();
             $this->boolean($reader->needsRefresh($id))->isIdenticalTo($ordinary->needsRefresh($id));
@@ -754,37 +760,6 @@ class Config extends DbTestCase
             $this->boolean($reader->needsRefresh($id))->isFalse();
             $this->boolean($ordinary->needsRefresh($id))->isFalse();
             Type::overrideType('boolean', $boolean);
-            $extension = new class ($connection) extends ScalarReadProbe {
-                private ?EventManager $events = null;
-                public function getEventManager(): EventManager
-                {
-                    return $this->events ??= new EventManager();
-                }
-            };
-            $local = new OidcRefreshReadOperation($extension);
-            $listener = new class () {
-                public int $loads = 0;
-                public bool $absent = false;
-                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
-                {
-                    ++$this->loads;
-                    if ($this->absent) {
-                        throw new NoResultException();
-                    }
-                }
-            };
-            $extension->getEventManager()->addEventListener([Events::loadClassMetadata], $listener);
-            $this->boolean($local->needsRefresh($id))->isTrue();
-            $this->integer($listener->loads)->isGreaterThan(0);
-            $this->integer($extension->builders)->isIdenticalTo(0);
-            $local->close();
-            $listener->absent = true;
-            $absent = new OidcRefreshReadOperation($extension);
-            $ordinaryManager = Orm::forConnection($extension);
-            $this->boolean($absent->needsRefresh($id))->isFalse();
-            $this->boolean((new OidcRepository($ordinaryManager))->needsRefresh($id))->isFalse();
-            $absent->close();
-            $ordinaryManager->clear();
             $connection->delete('glpi_oidc_users', ['user_id' => $id]);
             $this->boolean($reader->needsRefresh($id))->isFalse();
         } finally {
