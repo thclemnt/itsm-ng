@@ -41,7 +41,7 @@ use CommonDBChild;
 use CommonDBRelation;
 use Computer;
 use Computer_Item as ComputerItemModel;
-use Printer as PrinterModel;
+use Printer as PrinterAsset;
 use Contact as LegacyContact;
 use Contact_Supplier as ContactSupplierModel;
 use DBAdapter;
@@ -124,7 +124,7 @@ class Transfer extends DbTestCase
                     $PLUGIN_HOOKS = $savedHooks;
                     $computer = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => $source]);
                     $remaining = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => $source]);
-                    $printer = $this->createItem(PrinterModel::class, [
+                    $printer = $this->createItem(PrinterAsset::class, [
                         'name' => $this->getUniqueString(), 'entities_id' => $source, 'is_global' => 1, 'is_recursive' => 0,
                     ]);
                     foreach ([$computer, $remaining] as $owner) {
@@ -199,7 +199,7 @@ class Transfer extends DbTestCase
                         $this->array($events)->isIdenticalTo($typed ? ['child-prepare', 'child-add', 'parent-add'] : ['parent-add']);
                         $copyID = (int)$connection->fetchOne('SELECT items_id FROM glpi_computers_items WHERE computers_id=? AND itemtype=?', [$computer->getID(), 'Printer']);
                         $this->integer($copyID)->isGreaterThan(0)->isNotIdenticalTo((int)$printer->getID());
-                        $copiedPrinter = new PrinterModel();
+                        $copiedPrinter = new PrinterAsset();
                         $this->boolean($copiedPrinter->getFromDB($copyID))->isTrue();
                         $this->integer((int)$copiedPrinter->getEntityID())->isIdenticalTo($target);
                         $copies = $connection->fetchAllAssociative('SELECT * FROM glpi_networkports WHERE items_id=? AND itemtype=?', [$copyID, 'Printer']);
