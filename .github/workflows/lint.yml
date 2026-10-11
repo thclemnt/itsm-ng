@@ -35,6 +35,10 @@ jobs:
       - name: Run composer install
         run: composer install
 
+      - name: Check PHP syntax
+        shell: bash
+        run: git ls-files -z -- '*.php' | xargs -0 -r -n 1 php -l | sed '/^No syntax errors detected in /d'
+
       - name: Check PHP formatting
         run: vendor/bin/php-cs-fixer check . --diff
 
