@@ -120,6 +120,24 @@ final class CalendarRepository
             ->getResult();
     }
 
+    /** Completed display values; callers of closures() still own their live associations. */
+    public function closureDisplayRows(int $calendar): array
+    {
+        $rows = [];
+        foreach ($this->closures($calendar) as $link) {
+            $holiday = $link->holidays;
+            $rows[] = [
+                'id' => $link->id,
+                'holidays_id' => $holiday->id,
+                'name' => $holiday->name,
+                'begin_date' => $holiday->begin_date?->format('Y-m-d'),
+                'end_date' => $holiday->end_date?->format('Y-m-d'),
+                'is_perpetual' => $holiday->is_perpetual,
+            ];
+        }
+        return $rows;
+    }
+
     private function closureQuery(int $calendar): QueryBuilder
     {
         return $this->em->createQueryBuilder()

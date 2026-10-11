@@ -36,6 +36,9 @@ namespace tests\units;
 use Calendar_Holiday;
 use CalendarSegment as CalendarSegmentModel;
 use DateTimeImmutable;
+use Dropdown;
+use Html;
+use Toolbox;
 use Doctrine\Common\EventManager;
 use DbTestCase;
 use Doctrine\DBAL\Connection;
@@ -62,6 +65,175 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Calendar extends DbTestCase
 {
+    public function testClosureDisplayKeepsRightsValuesAndLiveOwners(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $owner = null;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $name = 'closure-display-' . $this->getUniqueString();
+            $holidayEntity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $calendar = $this->createItem('Calendar', ['name' => $name, 'entities_id' => 0]);
+            $holiday = $this->createItem('Holiday', ['name' => $name, 'entities_id' => $holidayEntity, 'is_recursive' => false, 'begin_date' => '2030-05-01', 'end_date' => '2030-05-02', 'is_perpetual' => false]);
+            $second = $this->createItem('Holiday', ['name' => $name, 'entities_id' => $holidayEntity, 'is_recursive' => false, 'begin_date' => '2030-06-01', 'end_date' => '2030-06-02', 'is_perpetual' => true]);
+            $firstLink = $this->createItem('Calendar_Holiday', ['calendars_id' => $calendar->getID(), 'holidays_id' => $holiday->getID()]);
+            $secondLink = $this->createItem('Calendar_Holiday', ['calendars_id' => $calendar->getID(), 'holidays_id' => $second->getID()]);
+            $connection = $DB->getDoctrineConnection();
+            $connection->update('glpi_holidays', ['begin_date' => null, 'end_date' => null], ['id' => $second->getID()]);
+            $this->setEntity(0, false);
+            $_SESSION['glpiactiveprofile']['calendar'] = READ;
+            $this->boolean($calendar->can($calendar->getID(), READ))->isTrue();
+            $this->boolean($holiday->can($holiday->getID(), READ))->isFalse();
+            $html = '';
+            $render = static function () use ($calendar, &$html): void {
+                ob_start();
+                try {
+                    Calendar_Holiday::showForCalendar($calendar);
+                    $html = ob_get_contents();
+                } finally {
+                    ob_end_clean();
+                }
+                echo $html;
+            };
+            $rows = $this->renderLocalTableRows($render);
+            $this->string($html)->contains(sprintf('item[Calendar_Holiday][%s]', $firstLink->getID()));
+            $this->string($html)->contains(sprintf('item[Calendar_Holiday][%s]', $secondLink->getID()));
+            $url = Toolbox::getItemTypeFormURL('Holiday');
+            $this->array($rows)->isIdenticalTo([
+                ['<a href="' . $url . '?id=' . $holiday->getID() . '">' . $name . '</a>', Html::convDate('2030-05-01'), Html::convDate('2030-05-02'), Dropdown::getYesNo(false)],
+                ['<a href="' . $url . '?id=' . $second->getID() . '">' . $name . '</a>', Html::convDate(null), Html::convDate(null), Dropdown::getYesNo(true)],
+            ]);
+            $owner = Orm::create($DB);
+            $liveLink = $owner->find(CalendarHolidayRecord::class, (int)$firstLink->getID());
+            $liveHoliday = $liveLink->holidays;
+            $liveHoliday->name = 'unflushed independent closure name';
+            $this->array($this->renderLocalTableRows($render))->isIdenticalTo($rows);
+            $this->boolean($owner->contains($liveLink))->isTrue();
+            $this->boolean($owner->contains($liveHoliday))->isTrue();
+            $this->string($liveHoliday->name)->isIdenticalTo('unflushed independent closure name');
+            Orm::read($DB, function (EntityManager $outer) use ($firstLink, $render, $rows): void {
+                $link = $outer->find(CalendarHolidayRecord::class, (int)$firstLink->getID());
+                $link->holidays->comment = 'unflushed enclosing closure comment';
+                $this->array($this->renderLocalTableRows($render))->isIdenticalTo($rows);
+                $this->boolean($outer->contains($link))->isTrue();
+                $this->boolean($outer->contains($link->holidays))->isTrue();
+                $this->string($link->holidays->comment)->isIdenticalTo('unflushed enclosing closure comment');
+            });
+            $connection->update('glpi_holidays', ['end_date' => '2030-05-03'], ['id' => $holiday->getID()]);
+            $fresh = $this->renderLocalTableRows($render);
+            $this->string($fresh[0][2])->isIdenticalTo(Html::convDate('2030-05-03'));
+            $connection->delete('glpi_calendars_holidays', ['id' => $secondLink->getID()]);
+            $this->array($this->renderLocalTableRows($render))->hasSize(1);
+            $_SESSION['glpiactiveprofile']['calendar'] = 0;
+            $this->boolean(Calendar_Holiday::showForCalendar($calendar))->isFalse();
+        } finally {
+            $owner?->clear();
+            $_SESSION = $session;
+        }
+    }
+
+    public function testClosureDisplayCompletesBeforeFormAndRetainsCustomOwner(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $original = $DB;
+        $listener = null;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $name = 'closure-custom-' . $this->getUniqueString();
+            $calendar = $this->createItem('Calendar', ['name' => $name, 'entities_id' => 0]);
+            $holiday = $this->createItem('Holiday', ['name' => $name, 'begin_date' => '2030-05-01', 'end_date' => '2030-05-02']);
+            $this->createItem('Calendar_Holiday', ['calendars_id' => $calendar->getID(), 'holidays_id' => $holiday->getID()]);
+            $connection = $DB->getDoctrineConnection();
+            $events = new EventManager();
+            $listener = new class () {
+                public int $clears = 0;
+                public ?EntityManager $manager = null;
+                public ?HolidayRecord $holiday = null;
+
+                public function postLoad(PostLoadEventArgs $event): void
+                {
+                    if ($event->getObject() instanceof HolidayRecord) {
+                        $this->manager = $event->getObjectManager();
+                        $this->holiday = $event->getObject();
+                        $this->holiday->name = 'custom postLoad closure name';
+                    }
+                }
+
+                public function onClear(): void
+                {
+                    ++$this->clears;
+                }
+            };
+            $events->addEventListener(['postLoad', 'onClear'], $listener);
+            $probe = new class ($connection) extends ScalarReadProbe {
+                public EventManager $events;
+
+                public function getEventManager(): EventManager
+                {
+                    return $this->events;
+                }
+            };
+            $probe->events = $events;
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new CalendarAdapterProbe();
+            $getters = 0;
+            $this->calling($adapter)->getDoctrineConnection = static function () use ($probe, $original, &$getters): Connection {
+                ++$getters;
+                $GLOBALS['DB'] = $original;
+                return $probe;
+            };
+            $this->calling($adapter)->getProvider = $original->getProvider();
+            $_SESSION['glpiactiveprofile']['calendar'] = READ;
+            $DB = $adapter;
+            $rows = $this->renderLocalTableRows(static fn () => Calendar_Holiday::showForCalendar($calendar));
+            $this->integer($getters)->isIdenticalTo(1);
+            $this->array($probe->queries)->hasSize(1);
+            $this->string($probe->queries[0]['sql'])->contains('glpi_calendars_holidays');
+            $this->string($rows[0][0])->contains('custom postLoad closure name');
+            $this->object($DB)->isIdenticalTo($original);
+            $this->integer($listener->clears)->isIdenticalTo(0);
+            $this->boolean($listener->manager->contains($listener->holiday))->isTrue();
+            $this->string($listener->holiday->name)->isIdenticalTo('custom postLoad closure name');
+
+            // The real editable form reads its Holiday choices after the closure snapshot.
+            $callbackWrites = 0;
+            $callbackHoliday = null;
+            $callbackManager = null;
+            $this->calling($adapter)->getDoctrineConnection = static function () use ($probe, $connection, $holiday, $listener, &$callbackWrites, &$callbackHoliday, &$callbackManager): Connection {
+                if ($probe->queries !== [] && $callbackWrites === 0) {
+                    ++$callbackWrites;
+                    $callbackHoliday = $listener->holiday;
+                    $callbackManager = $listener->manager;
+                    $callbackHoliday->name = 'changed retained during editable form';
+                    $connection->update('glpi_holidays', ['name' => 'changed during editable form'], ['id' => $holiday->getID()]);
+                }
+                return $probe;
+            };
+            $probe->queries = [];
+            $_SESSION['glpiactiveprofile']['calendar'] = READ | UPDATE;
+            $DB = $adapter;
+            $snapshot = $this->renderLocalTableRows(static fn () => Calendar_Holiday::showForCalendar($calendar));
+            $this->integer($callbackWrites)->isIdenticalTo(1);
+            $this->boolean($callbackManager->contains($callbackHoliday))->isTrue();
+            $this->string($callbackHoliday->name)->isIdenticalTo('changed retained during editable form');
+            $this->string($snapshot[0][0])->contains('custom postLoad closure name');
+            $this->string($connection->fetchOne('SELECT name FROM glpi_holidays WHERE id = ?', [$holiday->getID()]))
+                ->isIdenticalTo('changed during editable form');
+            $DB = $original;
+            $_SESSION['glpiactiveprofile']['calendar'] = READ;
+            $fresh = $this->renderLocalTableRows(static fn () => Calendar_Holiday::showForCalendar($calendar));
+            $this->string($fresh[0][0])->contains('changed during editable form');
+        } finally {
+            $DB = $original;
+            $listener?->manager?->clear();
+            $_SESSION = $session;
+        }
+    }
+
     public function testClosurePermissionsFollowTheCalendarOwnerAndDeclaredHolidayRole(): void
     {
         $savedSession = $_SESSION;

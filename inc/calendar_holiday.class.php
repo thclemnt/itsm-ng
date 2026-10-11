@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\CalendarRepository;
 use itsmng\Database\Repository\RecordRepository;
@@ -84,14 +85,18 @@ class Calendar_Holiday extends CommonDBRelation
 
         $rand    = mt_rand();
 
-        $links = (new CalendarRepository(Orm::create($DB)))
-            ->closures((int)$ID);
+        $links = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$ID,
+            static fn (EntityManager $manager, int $calendar): array =>
+                (new CalendarRepository($manager))->closureDisplayRows($calendar)
+        );
         $numrows = count($links);
         $holidays = [];
         $used     = [];
         foreach ($links as $link) {
-            $holidays[$link->holidays->id] = $link;
-            $used[$link->holidays->id] = $link->holidays->id;
+            $holidays[$link['holidays_id']] = $link;
+            $used[$link['holidays_id']] = $link['holidays_id'];
         }
 
         if ($canedit) {
@@ -150,14 +155,13 @@ class Calendar_Holiday extends CommonDBRelation
         $values = [];
         $massive_action = [];
         foreach ($holidays as $link) {
-            $holiday = $link->holidays;
             $values[] = [
-               '<a href="' . Toolbox::getItemTypeFormURL('Holiday') . "?id=" . $holiday->id . '">' . $holiday->name . '</a>',
-               Html::convDate($holiday->begin_date?->format('Y-m-d')),
-               Html::convDate($holiday->end_date?->format('Y-m-d')),
-               Dropdown::getYesNo($holiday->is_perpetual),
+               '<a href="' . Toolbox::getItemTypeFormURL('Holiday') . "?id=" . $link['holidays_id'] . '">' . $link['name'] . '</a>',
+               Html::convDate($link['begin_date']),
+               Html::convDate($link['end_date']),
+               Dropdown::getYesNo($link['is_perpetual']),
             ];
-            $massive_action[] = sprintf('item[%s][%s]', __CLASS__, $link->id);
+            $massive_action[] = sprintf('item[%s][%s]', __CLASS__, $link['id']);
         }
 
         renderTwigTemplate('table.twig', [
