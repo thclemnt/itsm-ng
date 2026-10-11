@@ -36,6 +36,7 @@ namespace tests\units;
 use Computer;
 use ComputerModel as LegacyComputerModel;
 use DbTestCase;
+use DOMDocument;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\Query;
@@ -95,13 +96,25 @@ class Item_Rack extends DbTestCase
             'orientation' => Rack::FRONT,
             'hpos' => Rack::POS_NONE,
         ]);
-        $sidePlacement = $this->createItem(LegacyPduRack::class, [
+        $freePdu = $this->createItem(
+            PDU::class,
+            [
+                'name' => '_form_selection_available_pdu',
+                'entities_id' => $entity,
+            ]
+        );
+        $sideInput = [
             'racks_id' => $rack->getID(),
             'pdus_id' => $sidePdu->getID(),
             'position' => 1,
             'side' => LegacyPduRack::SIDE_LEFT,
-        ]);
-        $render = function (bool $reserved = false) use ($rack, $sidePlacement): array {
+        ];
+        $sidePlacement = new LegacyPduRack();
+        $this->boolean($sidePlacement->can(-1, CREATE, $sideInput))->isTrue();
+        $sideID = $sidePlacement->add($sideInput);
+        $this->integer($sideID)->isGreaterThan(0);
+        $this->checkInput($sidePlacement, $sideID, $sideInput);
+        $render = function (bool $reserved = false) use ($rack, $sidePlacement, $rackPdu, $freePdu): array {
             $form = new LegacyItem_Rack();
             $form->getEmpty();
             ob_start();
@@ -125,16 +138,32 @@ class Item_Rack extends DbTestCase
             } finally {
                 ob_end_clean();
             }
-            preg_match_all('/var params = (\{[^\n]*\});/', $html, $matches);
+            preg_match_all('/const params = (\{[^\n]*\});/', $html, $matches);
             $pduUsed = null;
             foreach ($matches[1] as $json) {
                 $params = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
-                if (($params['itemtype'] ?? null) === PDU::class) {
-                    $pduUsed = $params['used'];
+                if (($params['data']['itemtype'] ?? null) === PDU::class) {
+                    $pduUsed = $params['data']['used'];
                     break;
                 }
             }
             $this->array($pduUsed)->contains((int)$sidePlacement->fields['pdus_id']);
+            $this->integer(preg_match('/<select\b(?=[^>]*\bname="pdus_id")[^>]*>.*?<\/select>/s', $html, $select))
+                ->isIdenticalTo(1);
+            $dom = new DOMDocument();
+            $this->boolean($dom->loadHTML('<html><body>' . $select[0] . '</body></html>'))->isTrue();
+            $choices = [];
+            foreach ($dom->getElementsByTagName('option') as $option) {
+                $choices[] = (int)$option->getAttribute('value');
+            }
+            $this->array($choices)->contains((int)$freePdu->getID());
+            foreach ($pduUsed as $id) {
+                $this->array($choices)->notContains((int)$id);
+            }
+            if (!in_array((int)$rackPdu->getID(), $pduUsed, true)) {
+                $this->array($choices)->contains((int)$rackPdu->getID());
+            }
+            $this->integer(preg_match('/<select\b(?=[^>]*\bname="racks_id")[^>]*>/s', $html))->isIdenticalTo(1);
             return [$used, $pduUsed];
         };
         [$used, $pduUsed] = $render();

@@ -239,7 +239,7 @@ class PDU_Rack extends CommonDBRelation
         echo "<tr class='tab_bg_1'>";
         echo "<td><label for='dropdown_pdus_id$rand'>" . PDU::getTypeName(1) . "</label></td>";
         echo "<td>";
-        PDU::dropdown([
+        echo PDU::dropdown([
            'value'       => $this->fields["pdus_id"],
            'rand'        => $rand,
            'used'        => $used,
@@ -263,7 +263,7 @@ class PDU_Rack extends CommonDBRelation
         echo "<tr class='tab_bg_1'>";
         echo "<td><label for='dropdown_racks_id$rand'>" . Rack::getTypeName(1) . "</label></td>";
         echo "<td>";
-        Rack::dropdown(['value' => $this->fields["racks_id"], 'rand' => $rand]);
+        echo Rack::dropdown(['value' => $this->fields["racks_id"], 'rand' => $rand]);
         echo "</td>";
         echo "<td><label for='dropdown_position$rand'>" . __('Position') . "</label></td>";
         echo "<td >";
