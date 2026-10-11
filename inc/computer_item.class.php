@@ -817,20 +817,9 @@ class Computer_Item extends CommonDBRelation
         $dynamic = [];
         // Capture the receiver before table/model callbacks, as request() did.
         $database = $DB;
-        $table = self::getTable();
         $itemtype = $item->getType();
-        if ($table === 'glpi_computers_items' && is_string($itemtype)
-            && (is_int($ID) || (is_string($ID) && ctype_digit($ID)))) {
-            $result = Orm::read($database, static fn (EntityManager $manager): array =>
-                (new AssetRepository($manager))->activeComputerConnections($itemtype, $ID));
-        } else {
-            // Forced tables and extension-supplied criteria values keep their original compiler.
-            $result = $database->request([
-                'SELECT' => ['id', 'computers_id', 'is_dynamic'],
-                'FROM' => $table,
-                'WHERE' => ['itemtype' => $itemtype, 'items_id' => $ID, 'is_deleted' => 0],
-            ]);
-        }
+        $result = Orm::read($database, static fn (EntityManager $manager): array =>
+            (new AssetRepository($manager))->activeComputerConnections($itemtype, $ID));
         foreach ($result as $data) {
             $compids[$data['id']] = $data['computers_id'];
             $dynamic[$data['id']] = $data['is_dynamic'];

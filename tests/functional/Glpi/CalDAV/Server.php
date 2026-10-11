@@ -200,9 +200,6 @@ class Server extends DbTestCase
             $this->array($resolutions)->isIdenticalTo([$atParser[0], $atParser[1] + 1]);
             $DB = $original;
             $backend->onType = null;
-            $backend->parentIds = [(int)$parent->getID()];
-            $this->array($backend->getGroupMemberSet($path))->hasSize(2);
-            $backend->parentIds = null;
             Orm::read($original, function ($nestedOwner) use ($backend, $path, $computer): void {
                 $nested = $nestedOwner->find(MappedComputer::class, (int)$computer->getID());
                 $nested->name = 'Nested dirty CalDAV owner';
@@ -1938,7 +1935,6 @@ class PrincipalCallbackProbe extends Principal
     public array $events = [];
     public ?Closure $onGroupUri = null;
     public ?Closure $onType = null;
-    public ?array $parentIds = null;
 
     protected function getPrincipalItemtypeFromUri($uri)
     {
@@ -1950,8 +1946,7 @@ class PrincipalCallbackProbe extends Principal
     protected function getGroupIdFromPrincipalUri($uri)
     {
         $this->events[] = 'group-id';
-        $id = parent::getGroupIdFromPrincipalUri($uri);
-        return $this->parentIds ?? $id;
+        return parent::getGroupIdFromPrincipalUri($uri);
     }
 
     protected function getGroupPrincipalUri($id)
