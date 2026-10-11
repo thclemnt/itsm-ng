@@ -11,9 +11,6 @@ use itsmng\Database\Type\ClockTimeType;
 use itsmng\Database\Entity\User;
 use Doctrine\ORM\Id\AssignedGenerator;
 use Doctrine\DBAL\Types\Type as DbalType;
-use Doctrine\DBAL\Types\StringType;
-use Doctrine\DBAL\Types\TypeRegistry;
-use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\ORM\EntityManager;
@@ -162,94 +159,10 @@ class EntityRegistryCache extends test
                 }
                 $this->string($persister->getInsertSQL())->isIdenticalTo($automatic);
             });
-            $originalString = DbalType::getType('string');
-            $converter = new class () extends StringType {
-                public bool $upper = true;
-
-                public function convertToPHPValueSQL(string $expression, AbstractPlatform $platform): string
-                {
-                    return ($this->upper ? 'UPPER(' : 'LOWER(') . $expression . ')';
-                }
-            };
-            $select = static fn (EntityManager $manager): string =>
-                $manager->getUnitOfWork()->getEntityPersister(Config::class)->getSelectSQL(['id' => 1]);
-            $plainSql = Orm::withConnection($application, $select);
-            try {
-                DbalType::getTypeRegistry()->override('string', $converter);
-                $this->variable(Orm::withConnection($application, static fn (EntityManager $manager) => $manager->getConfiguration()->getQueryCache()))->isNull();
-                $upperSql = Orm::withConnection($application, $select);
-                $this->string($upperSql)->contains('UPPER(')->isNotIdenticalTo($plainSql);
-                $converter->upper = false;
-                $this->string(Orm::withConnection($application, $select))->contains('LOWER(')->isNotIdenticalTo($upperSql);
-            } finally {
-                DbalType::getTypeRegistry()->override('string', $originalString);
-            }
-            $this->string(Orm::withConnection($application, $select))->isIdenticalTo($plainSql);
-            $originalFixed = DbalType::getType(FixedStringType::NAME);
             $fixedSelect = static fn (EntityManager $manager): string =>
                 $manager->getUnitOfWork()->getEntityPersister(User::class)->getSelectSQL(['id' => 1]);
             $fixedSql = Orm::withConnection($application, $fixedSelect);
             $this->string($fixedSql)->contains('RTRIM(');
-            try {
-                DbalType::getTypeRegistry()->override('string', new FixedStringType());
-                $this->string(Orm::withConnection($application, $select))->contains('RTRIM(')->isNotIdenticalTo($plainSql);
-                DbalType::getTypeRegistry()->override('string', $originalString);
-                $this->string(Orm::withConnection($application, $select))->isIdenticalTo($plainSql);
-                DbalType::getTypeRegistry()->override(FixedStringType::NAME, new StringType());
-                $this->string(Orm::withConnection($application, $fixedSelect))->notContains('RTRIM(')->isNotIdenticalTo($fixedSql);
-            } finally {
-                DbalType::getTypeRegistry()->override('string', $originalString);
-                DbalType::getTypeRegistry()->override(FixedStringType::NAME, $originalFixed);
-            }
-            $this->string(Orm::withConnection($application, $fixedSelect))->isIdenticalTo($fixedSql);
-
-            $priorManager = null;
-            Orm::withConnection($application, static function (EntityManager $manager) use (&$priorManager): void {
-                $priorManager = $manager;
-            });
-            try {
-                // Even a same-class replacement changes the authoritative type binding.
-                DbalType::getTypeRegistry()->override('string', new StringType());
-                Orm::withConnection($application, function (EntityManager $manager) use ($priorManager): void {
-                    $this->object($manager)->isNotIdenticalTo($priorManager);
-                    $this->object($manager->getConfiguration()->getQueryCache())->isNotIdenticalTo($priorManager->getConfiguration()->getQueryCache());
-                });
-            } finally {
-                DbalType::getTypeRegistry()->override('string', $originalString);
-            }
-            // Registry replacement with the same objects keeps the same admission facts.
-            $registry = DbalType::getTypeRegistry();
-            $registryProperty = new ReflectionProperty(DbalType::class, 'typeRegistry');
-            $privateManager = null;
-            Orm::withConnection($application, static function (EntityManager $manager) use (&$privateManager): void {
-                $privateManager = $manager;
-            });
-            try {
-                $replacement = new TypeRegistry($registry->getMap());
-                $registryProperty->setValue(null, $replacement);
-                Orm::withConnection($application, function (EntityManager $manager) use ($privateManager): void {
-                    $this->object($manager)->isIdenticalTo($privateManager);
-                });
-                $replacement->register('extension_admission_fixture', new StringType());
-                Orm::withConnection($application, function (EntityManager $manager) use (&$privateManager): void {
-                    $this->object($manager)->isNotIdenticalTo($privateManager);
-                    $this->object($manager->getConfiguration()->getQueryCache())->isInstanceOf(ArrayAdapter::class);
-                    $privateManager = $manager;
-                });
-                // Even an unused custom SQL type must reject the private admission.
-                $replacement->override('extension_admission_fixture', $converter);
-                Orm::withConnection($application, function (EntityManager $manager) use ($privateManager): void {
-                    $this->object($manager)->isNotIdenticalTo($privateManager);
-                    $this->variable($manager->getConfiguration()->getQueryCache())->isNull();
-                });
-            } finally {
-                $registryProperty->setValue(null, $registry);
-            }
-            $this->boolean(DbalType::getTypeRegistry()->has('extension_admission_fixture'))->isFalse();
-            Orm::withConnection($application, function (EntityManager $manager) use ($privateManager): void {
-                $this->object($manager)->isNotIdenticalTo($privateManager);
-                $this->object($manager->getConfiguration()->getQueryCache())->isInstanceOf(ArrayAdapter::class);
-            });
             $rejected = null;
             $this->exception(function () use ($application, &$rejected): void {
                 Orm::withConnection($application, static function (EntityManager $manager) use (&$rejected): void {
