@@ -36,6 +36,13 @@ namespace tests\units;
 use Auth as ApplicationAuth;
 use AuthLDAP as ApplicationLdap;
 use DbTestCase;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Connection;
+use Doctrine\ORM\Event\PostLoadEventArgs;
+use itsmng\Database\Entity\AuthLdapReplicate;
+use itsmng\Database\Entity\User as UserRecord;
+use itsmng\Database\Entity\Entity as ScopeEntity;
+use mock\DBmysql as LocalLdapAdapterProbe;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity\AuthLDAP;
@@ -80,6 +87,156 @@ class Auth extends DbTestCase
     public function testIsValidLogin($login, $isvalid)
     {
         $this->variable(ApplicationAuth::isValidLogin($login))->isIdenticalTo($isvalid);
+    }
+
+    public function testLocalDirectoryProjectionsAreCurrentAndKeepLiveOwners(): void
+    {
+        global $DB;
+        $this->login();
+        $connection = $DB->getDoctrineConnection();
+        $owner = Orm::create($DB);
+        $master = new AuthLDAP();
+        $master->name = 'Projection master ' . $this->getUniqueString();
+        $master->is_default = true;
+        $other = new AuthLDAP();
+        $other->name = 'Projection other ' . $this->getUniqueString();
+        $other->is_default = false;
+        $owner->persist($master);
+        $owner->persist($other);
+        $zeta = new AuthLdapReplicate();
+        $zeta->authldaps = $master;
+        $zeta->name = 'Zeta ' . $this->getUniqueString();
+        $zeta->host = null;
+        $zeta->port = 1636;
+        $alpha = new AuthLdapReplicate();
+        $alpha->authldaps = $master;
+        $alpha->name = 'Alpha ' . $this->getUniqueString();
+        $alpha->host = 'fixture.invalid';
+        $user = new UserRecord();
+        $user->name = 'Projection LDAP user ' . $this->getUniqueString();
+        $user->entities = $owner->find(ScopeEntity::class, 0);
+        $user->authtype = ApplicationAuth::LDAP;
+        $user->authldap = $master;
+        $user->sync_field = '';
+        foreach ([$zeta, $alpha, $user] as $record) {
+            $owner->persist($record);
+        }
+        $owner->flush();
+        $model = new ApplicationLdap();
+        $model->fields['id'] = (string)$master->id;
+        $expected = [
+            ['id' => $zeta->id, 'host' => null, 'port' => 1636],
+            ['id' => $alpha->id, 'host' => 'fixture.invalid', 'port' => 389],
+        ];
+        $this->array(ApplicationLdap::getAllReplicateForAMaster((string)$master->id))->isIdenticalTo($expected);
+        $this->array(ApplicationLdap::getAllReplicateForAMaster(0))->isEmpty();
+        $this->array(ApplicationLdap::getAllReplicateForAMaster(null))->isEmpty();
+        $keys = array_flip([$master->id, $other->id]);
+        $servers = array_intersect_key(ApplicationLdap::getLdapServers(), $keys);
+        $this->array(array_keys($servers))->isIdenticalTo([$master->id, $other->id]);
+        $this->variable($servers[$master->id]['host'])->isNull();
+        $this->boolean($model->isSyncFieldUsed())->isTrue();
+        $this->output(static fn () => $model->showFormReplicatesConfig())
+            ->matches('/' . preg_quote($alpha->name, '/') . '[\s\S]*' . preg_quote($zeta->name, '/') . '/');
+        $connection->update('glpi_authldapreplicates', ['host' => 'changed.invalid', 'port' => 1389], ['id' => $zeta->id]);
+        $connection->update('glpi_authldaps', ['name' => 'Current projection master'], ['id' => $master->id]);
+        $connection->update('glpi_users', ['sync_field' => null], ['id' => $user->id]);
+        $fresh = ApplicationLdap::getAllReplicateForAMaster($master->id);
+        $this->array($fresh[0])->isIdenticalTo(['id' => $zeta->id, 'host' => 'changed.invalid', 'port' => 1389]);
+        $this->array($expected[0])->isIdenticalTo(['id' => $zeta->id, 'host' => null, 'port' => 1636]);
+        $this->string(ApplicationLdap::getLdapServers()[$master->id]['name'])->isIdenticalTo('Current projection master');
+        $this->boolean($model->isSyncFieldUsed())->isFalse();
+        $master->name = 'Unflushed independent master';
+        $alpha->host = 'unflushed.invalid';
+        Orm::read($DB, function (EntityManager $outer) use ($master, $alpha, $owner, $model, $fresh): void {
+            $owned = $outer->find(AuthLDAP::class, $master->id);
+            $owned->name = 'Unflushed enclosing master';
+            $this->string(ApplicationLdap::getLdapServers()[$master->id]['name'])->isIdenticalTo('Current projection master');
+            $this->array(ApplicationLdap::getAllReplicateForAMaster($master->id))->isIdenticalTo($fresh);
+            $this->boolean($model->isSyncFieldUsed())->isFalse();
+            $this->boolean($outer->contains($owned))->isTrue();
+            $this->string($owned->name)->isIdenticalTo('Unflushed enclosing master');
+            $this->boolean($owner->contains($master))->isTrue();
+            $this->string($master->name)->isIdenticalTo('Unflushed independent master');
+            $this->boolean($owner->contains($alpha))->isTrue();
+            $this->string($alpha->host)->isIdenticalTo('unflushed.invalid');
+        });
+    }
+
+    public function testLocalDirectoryCustomProjectionPinsRouteBeforeModelCoercion(): void
+    {
+        global $DB;
+        $original = $DB;
+        try {
+            $owner = Orm::create($DB);
+            $master = new AuthLDAP();
+            $master->name = 'Custom local directory ' . $this->getUniqueString();
+            $replica = new AuthLdapReplicate();
+            $replica->authldaps = $master;
+            $replica->host = 'stored.invalid';
+            $owner->persist($master);
+            $owner->persist($replica);
+            $owner->flush();
+            $connection = $DB->getDoctrineConnection();
+            $observer = new class () {
+                public array $trace = [];
+                public int $clears = 0;
+                public function postLoad(PostLoadEventArgs $event): void
+                {
+                    if ($event->getObject() instanceof AuthLdapReplicate) {
+                        $event->getObject()->host = 'custom.invalid';
+                    }
+                }
+                public function onClear(): void
+                {
+                    ++$this->clears;
+                }
+            };
+            $selected = new class ($connection) extends ScalarReadProbe {
+                public EventManager $events;
+                public object $observer;
+                public function getEventManager(): EventManager
+                {
+                    $this->observer->trace[] = 'constructed';
+                    return $this->events;
+                }
+            };
+            $selected->observer = $observer;
+            $selected->events = new EventManager();
+            $selected->events->addEventListener(['postLoad', 'onClear'], $observer);
+            $other = new ScalarReadProbe($connection);
+            $route = $selected;
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new LocalLdapAdapterProbe();
+            $this->calling($adapter)->getDoctrineConnection = static function () use (&$route) {
+                return $route;
+            };
+            $this->calling($adapter)->getProvider = $original->getProvider();
+            $DB = $adapter;
+            $model = new class ($this, $master->id, $connection, $observer, $other, $route) extends ApplicationLdap {
+                public function __construct(private object $test, private int $id, private Connection $connection, private object $observer, private Connection $other, private Connection &$route)
+                {
+                }
+                public function getID()
+                {
+                    $this->test->boolean($this->connection->isApplicationEntityManagerActive())->isFalse();
+                    $this->observer->trace[] = 'id';
+                    $this->route = $this->other;
+                    return (string)$this->id;
+                }
+            };
+            $this->boolean($model->isSyncFieldUsed())->isFalse();
+            $this->array($observer->trace)->isIdenticalTo(['constructed', 'id']);
+            $this->array($other->queries)->isEmpty();
+            $this->array($selected->queries)->isNotEmpty();
+            $route = $selected;
+            $rows = ApplicationLdap::getAllReplicateForAMaster($master->id);
+            $this->array($rows)->isIdenticalTo([['id' => $replica->id, 'host' => 'custom.invalid', 'port' => 389]]);
+            $this->integer($observer->clears)->isIdenticalTo(0);
+            $this->string($connection->fetchOne('SELECT host FROM glpi_authldapreplicates WHERE id=?', [$replica->id]))->isIdenticalTo('stored.invalid');
+        } finally {
+            $DB = $original;
+        }
     }
 
     public function testLocalDirectorySelectionReadsStayCurrentAndKeepOwners(): void

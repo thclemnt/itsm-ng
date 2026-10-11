@@ -656,7 +656,12 @@ class AuthLDAP extends CommonDBTM
 
         AuthLdapReplicate::addNewReplicateForm($target, $ID);
 
-        $replicas = (new LdapRepository(Orm::create($DB)))->replicas((int)$ID, byName: true);
+        $replicas = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$ID,
+            static fn (EntityManager $manager, int $master): array =>
+                (new LdapRepository($manager))->replicas($master, byName: true)
+        );
 
         if (($nb = count($replicas)) > 0) {
             echo "<br>";
@@ -3120,7 +3125,11 @@ class AuthLDAP extends CommonDBTM
     public static function getLdapServers()
     {
         global $DB;
-        return array_column((new LdapRepository(Orm::create($DB)))->directories(), null, 'id');
+        return array_column(Orm::readPrepared(
+            $DB,
+            static fn (): null => null,
+            static fn (EntityManager $manager): array => (new LdapRepository($manager))->directories()
+        ), null, 'id');
     }
 
 
@@ -4236,7 +4245,11 @@ class AuthLDAP extends CommonDBTM
     {
         global $DB;
 
-        $replicas = (new LdapRepository(Orm::create($DB)))->replicas((int)$master_id);
+        $replicas = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$master_id,
+            static fn (EntityManager $manager, int $master): array => (new LdapRepository($manager))->replicas($master)
+        );
         return array_map(static fn (array $replica): array => [
             'id' => $replica['id'],
             'host' => $replica['host'],
@@ -4294,7 +4307,11 @@ class AuthLDAP extends CommonDBTM
     public function isSyncFieldUsed()
     {
         global $DB;
-        return (new LdapRepository(Orm::create($DB)))->usesSyncField((int)$this->getID());
+        return Orm::readPrepared(
+            $DB,
+            fn (): int => (int)$this->getID(),
+            static fn (EntityManager $manager, int $server): bool => (new LdapRepository($manager))->usesSyncField($server)
+        );
     }
 
     /**
