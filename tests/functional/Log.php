@@ -34,6 +34,11 @@
 namespace tests\units;
 
 use AuthLDAP;
+use Doctrine\DBAL\Statement;
+use itsmng\Database\Entity\Computer as ComputerRecord;
+use LogicException;
+use Doctrine\ORM\Event\PrePersistEventArgs;
+use Doctrine\ORM\Event\PostPersistEventArgs;
 use Computer;
 use Closure;
 use Doctrine\Common\EventManager;
@@ -75,6 +80,241 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Log extends DbTestCase
 {
+    public function testOwnedHistoryAppendPreservesActualUpdateAuditAndDirtyOwners(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $computer = $this->createComputer();
+            $connection = $DB->getDoctrineConnection();
+            $connection->update('glpi_computers', ['serial' => 'Before serial', 'otherserial' => 'Before inventory'], ['id' => $computer->getID()]);
+            $this->boolean($computer->getFromDB($computer->getID()))->isTrue();
+            $this->boolean($computer->update([
+                'id' => $computer->getID(), 'serial' => 'After serial', 'otherserial' => 'After inventory',
+            ]))->isTrue();
+            $rows = $connection->fetchAllAssociative(
+                'SELECT id, id_search_option, old_value, new_value, user_name, date_mod FROM glpi_logs WHERE itemtype=? AND items_id=? ORDER BY id',
+                [Computer::class, $computer->getID()]
+            );
+            $this->array($rows)->hasSize(2);
+            $this->array(array_map('intval', array_column($rows, 'id_search_option')))->isIdenticalTo([5, 6]);
+            $this->array(array_column($rows, 'old_value'))->isIdenticalTo(['Before serial', 'Before inventory']);
+            $this->array(array_column($rows, 'new_value'))->isIdenticalTo(['After serial', 'After inventory']);
+            $username = sprintf(__('%1$s (%2$s)'), getUserName(Session::getLoginUserID()), Session::getLoginUserID());
+            $this->array(array_column($rows, 'user_name'))->isIdenticalTo([$username, $username]);
+            $this->array(array_column($rows, 'date_mod'))->isIdenticalTo([$_SESSION['glpi_currenttime'], $_SESSION['glpi_currenttime']]);
+            $this->boolean((int)$rows[1]['id'] > (int)$rows[0]['id'])->isTrue();
+            $this->integer($_SESSION['glpi_maxhistory'])->isIdenticalTo((int)$rows[1]['id']);
+            $independent = Orm::create($DB);
+            $dirty = $independent->find(ComputerRecord::class, (int)$computer->getID());
+            $dirty->serial = 'Unflushed independent serial';
+            Orm::read($DB, function (EntityManager $outer) use ($computer, $connection, $independent, $dirty): void {
+                $owned = $outer->find(ComputerRecord::class, (int)$computer->getID());
+                $owned->serial = 'Unflushed enclosing serial';
+                $id = LegacyLog::history($computer->getID(), Computer::class, [5, 'After serial', 'Audit only']);
+                $this->integer($id)->isGreaterThan(0);
+                $this->integer($_SESSION['glpi_maxhistory'])->isIdenticalTo($id);
+                $this->boolean($outer->contains($owned))->isTrue();
+                $this->string($owned->serial)->isIdenticalTo('Unflushed enclosing serial');
+                $this->boolean($independent->contains($dirty))->isTrue();
+                $this->string($dirty->serial)->isIdenticalTo('Unflushed independent serial');
+                $this->string($connection->fetchOne('SELECT serial FROM glpi_computers WHERE id=?', [$computer->getID()]))
+                    ->isIdenticalTo('After serial');
+                $this->string($connection->fetchOne('SELECT new_value FROM glpi_logs WHERE id=?', [$id]))->isIdenticalTo('Audit only');
+            });
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
+    public function testHistoryAssignmentReentryAndFailureKeepCompletedOwnership(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $computer = $this->createComputer();
+            $connection = $DB->getDoctrineConnection();
+            $kind = new class ($this, $connection, (int)$computer->getID()) {
+                public int $nested = 0;
+                public function __construct(private object $test, private Connection $connection, private int $id)
+                {
+                }
+                public function __toString(): string
+                {
+                    $this->test->boolean($this->connection->isApplicationEntityManagerActive())->isTrue();
+                    $this->nested = LegacyLog::history($this->id, Computer::class, [6, 'Inner before', 'Inner after']);
+                    return Computer::class;
+                }
+            };
+            $id = LegacyLog::history($computer->getID(), $kind, [5, 'Outer before', 'Outer after']);
+            $this->integer($kind->nested)->isGreaterThan(0);
+            $this->integer($id)->isGreaterThan($kind->nested);
+            $this->integer($_SESSION['glpi_maxhistory'])->isIdenticalTo($id);
+            $rows = $connection->fetchAllAssociative(
+                'SELECT id, id_search_option, old_value, new_value FROM glpi_logs WHERE itemtype=? AND items_id=? ORDER BY id',
+                [Computer::class, $computer->getID()]
+            );
+            $this->array(array_map('intval', array_column($rows, 'id')))->isIdenticalTo([$kind->nested, $id]);
+            $this->array(array_map('intval', array_column($rows, 'id_search_option')))->isIdenticalTo([6, 5]);
+            $this->array(array_column($rows, 'old_value'))->isIdenticalTo(['Inner before', 'Outer before']);
+            $this->array(array_column($rows, 'new_value'))->isIdenticalTo(['Inner after', 'Outer after']);
+            $bad = new class () {
+                public function __toString(): string
+                {
+                    throw new LogicException('History assignment failure');
+                }
+            };
+            $this->exception(static fn () => LegacyLog::history($computer->getID(), $bad, [5, '', 'Rejected']))
+                ->isInstanceOf(LogicException::class)->hasMessage('History assignment failure');
+            $this->integer($_SESSION['glpi_maxhistory'])->isIdenticalTo($id);
+            $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_logs WHERE itemtype=? AND items_id=?', [Computer::class, $computer->getID()]))
+                ->isIdenticalTo(2);
+            $flushFailure = new LogicException('History post-insert flush failure');
+            $observer = new class ($flushFailure) {
+                public ?EntityManager $manager = null;
+                public ?int $insertedId = null;
+                public function __construct(private LogicException $failure)
+                {
+                }
+                public function postPersist(PostPersistEventArgs $event): void
+                {
+                    if ($event->getObject() instanceof LogRecord) {
+                        $this->manager = $event->getObjectManager();
+                        $this->insertedId = $event->getObject()->id;
+                        throw $this->failure;
+                    }
+                }
+            };
+            Orm::withOperation($connection, function (?EntityManager $manager) use ($observer): void {
+                $this->object($manager)->isInstanceOf(EntityManager::class);
+                $manager->getEventManager()->addEventListener(['postPersist'], $observer);
+            });
+            $depth = $connection->getTransactionNestingLevel();
+            $this->exception(static fn () => LegacyLog::history($computer->getID(), Computer::class, [5, '', 'Inserted then rejected']))
+                ->isIdenticalTo($flushFailure);
+            $this->integer($observer->insertedId)->isGreaterThan($id);
+            $this->boolean($observer->manager->isOpen())->isFalse();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+            $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+            $this->integer($_SESSION['glpi_maxhistory'])->isIdenticalTo($id);
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_logs WHERE id=?', [$observer->insertedId]))
+                ->isIdenticalTo(0);
+            $this->array(array_map('intval', $connection->fetchFirstColumn(
+                'SELECT id FROM glpi_logs WHERE itemtype=? AND items_id=? ORDER BY id',
+                [Computer::class, $computer->getID()]
+            )))->isIdenticalTo([$kind->nested, $id]);
+            $recovered = LegacyLog::history($computer->getID(), Computer::class, [5, '', 'Recovered']);
+            $this->integer($recovered)->isGreaterThan($id);
+            $this->integer($_SESSION['glpi_maxhistory'])->isIdenticalTo($recovered);
+            $this->string($connection->fetchOne('SELECT new_value FROM glpi_logs WHERE id=?', [$recovered]))->isIdenticalTo('Recovered');
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
+    public function testCustomHistoryAppendRetainsSelectedRouteAndNoClear(): void
+    {
+        global $DB;
+        $original = $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $computer = $this->createComputer();
+            $connection = $DB->getDoctrineConnection();
+            $observer = new class () {
+                public array $trace = [];
+                public int $clears = 0;
+                public function prePersist(PrePersistEventArgs $event): void
+                {
+                    if ($event->getObject() instanceof LogRecord) {
+                        $this->trace[] = 'persist';
+                        $event->getObject()->new_value = 'Custom lifecycle value';
+                    }
+                }
+                public function onClear(): void
+                {
+                    ++$this->clears;
+                }
+            };
+            // Delegate the owning flush/savepoint to the existing fixture connection.
+            $selected = new class ($connection) extends ScalarReadProbe {
+                public EventManager $events;
+                public object $observer;
+                public function getEventManager(): EventManager
+                {
+                    $this->observer->trace[] = 'constructed';
+                    return $this->events;
+                }
+                public function prepare(string $sql): Statement
+                {
+                    return $this->selected->prepare($sql);
+                }
+                public function lastInsertId(): int|string
+                {
+                    return $this->selected->lastInsertId();
+                }
+                public function beginTransaction(): void
+                {
+                    $this->selected->beginTransaction();
+                }
+                public function commit(): void
+                {
+                    $this->selected->commit();
+                }
+                public function rollBack(): void
+                {
+                    $this->selected->rollBack();
+                }
+                public function getTransactionNestingLevel(): int
+                {
+                    return $this->selected->getTransactionNestingLevel();
+                }
+                public function isTransactionActive(): bool
+                {
+                    return $this->selected->isTransactionActive();
+                }
+            };
+            $selected->observer = $observer;
+            $selected->events = new EventManager();
+            $selected->events->addEventListener(['prePersist', 'onClear'], $observer);
+            $other = new ScalarReadProbe($connection);
+            $route = $selected;
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new HistoryAdapter();
+            $this->calling($adapter)->getDoctrineConnection = static function () use (&$route): Connection {
+                return $route;
+            };
+            $this->calling($adapter)->getProvider = $original->getProvider();
+            $DB = $adapter;
+            $kind = new class ($observer, $other, $route) {
+                public function __construct(private object $observer, private Connection $other, private Connection &$route)
+                {
+                }
+                public function __toString(): string
+                {
+                    $this->observer->trace[] = 'converted';
+                    $this->route = $this->other;
+                    return Computer::class;
+                }
+            };
+            $level = $connection->getTransactionNestingLevel();
+            $id = LegacyLog::history($computer->getID(), $kind, [5, 'Custom before', 'Custom after']);
+            $this->array($observer->trace)->isIdenticalTo(['constructed', 'converted', 'persist']);
+            $this->integer($observer->clears)->isIdenticalTo(0);
+            $this->integer($_SESSION['glpi_maxhistory'])->isIdenticalTo($id);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+            $this->array($other->queries)->isEmpty();
+            $this->array($connection->fetchAssociative('SELECT old_value, new_value FROM glpi_logs WHERE id=?', [$id]))
+                ->isIdenticalTo(['old_value' => 'Custom before', 'new_value' => 'Custom lifecycle value']);
+        } finally {
+            $DB = $original;
+            $_SESSION = $session;
+        }
+    }
+
     public function testReplicationMaximumKeepsEmptyDisconnectedAndSuppliedRoute(): void
     {
         global $DB;

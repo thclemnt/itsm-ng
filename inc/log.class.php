@@ -284,7 +284,14 @@ class Log extends CommonDBTM
            'new_value'         => $new_value
         ];
         OwnershipUpdateUnit::assertWriter($DB);
-        return $_SESSION['glpi_maxhistory'] = (new HistoryRepository(Orm::create($DB)))->append($params);
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        return $_SESSION['glpi_maxhistory'] = Orm::withOperation(
+            $connection,
+            static fn (?EntityManager $manager): int =>
+                (new HistoryRepository($manager ?? Orm::forConnection($connection)))->append($params)
+        );
     }
 
 

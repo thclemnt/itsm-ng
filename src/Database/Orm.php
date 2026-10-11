@@ -111,13 +111,19 @@ final class Orm
         }
     }
 
-    /** @internal Custom readers retain their original constructor and clear callbacks. */
-    public static function withReadConnection(Connection $connection, callable $operation): mixed
+    /** @internal Completed value operations may write; custom callers construct their independent manager. */
+    public static function withOperation(Connection $connection, callable $operation): mixed
     {
         if (!self::canShareReadManager($connection)) {
             return $operation(null);
         }
         return $connection->withApplicationEntityManager($operation);
+    }
+
+    /** @internal Custom readers retain their original constructor and clear callbacks. */
+    public static function withReadConnection(Connection $connection, callable $operation): mixed
+    {
+        return self::withOperation($connection, $operation);
     }
 
     /** Canonical declarations cannot depend on externally mutable mapping callbacks. */
