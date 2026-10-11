@@ -39,6 +39,7 @@ use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\ComponentRepository;
 use itsmng\Database\Repository\CartridgeTransferRepository;
 use itsmng\Database\Repository\ContactTransferRepository;
+use itsmng\Database\Repository\NetpointTransferRepository;
 use itsmng\Database\Repository\SoftwareInstallationRepository;
 use itsmng\Database\Repository\SoftwareRepository;
 use itsmng\Database\Repository\TicketAssetRepository;
@@ -1450,21 +1451,16 @@ class Transfer extends CommonDBTM
                 $data  = Toolbox::addslashes_deep($netpoint->fields);
                 $locID = $this->checkedTransferResult($this->transferDropdownLocation($netpoint->fields['locations_id']));
 
-                // Search if the locations_id already exists in the destination entity
-                $iterator = $DB->request([
-                   'SELECT' => 'id',
-                   'FROM'   => 'glpi_netpoints',
-                   'WHERE'  => [
-                      'entities_id'  => $this->to,
-                      'name'         => Toolbox::addslashes_deep($netpoint->fields['name']),
-                      'locations_id' => $locID
-                   ]
-                ]);
+                // Resolve this completed destination lookup after the Location extension callback.
+                $database = $DB;
+                $entity = (int)$this->to;
+                $name = $netpoint->fields['name'];
+                $connection = $database->getDoctrineConnection();
+                OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+                $newID = (new NetpointTransferRepository($connection))->destinationIdentity($entity, $name, $locID);
 
-                if (count($iterator)) {
+                if ($newID !== null) {
                     // Found : -> use it
-                    $row = $iterator->next();
-                    $newID = $row['id'];
                     $this->checkedTransferResult($this->addToAlreadyTransfer('netpoints_id', $netpoints_id, $newID));
                     return $newID;
                 }

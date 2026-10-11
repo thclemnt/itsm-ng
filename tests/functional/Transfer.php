@@ -46,10 +46,16 @@ use DBAdapter;
 use DbTestCase;
 use Doctrine\DBAL\Configuration;
 use Doctrine\DBAL\Logging\Middleware;
+use Doctrine\Common\EventManager;
+use Doctrine\ORM\EntityManager;
 use Item_SoftwareVersion;
 use Link;
 use Link_Itemtype;
 use MassiveAction;
+use Location as LocationModel;
+use Netpoint as NetpointModel;
+use NetworkPort as NetworkPortModel;
+use NetworkPortEthernet as EthernetModel;
 use Plugin;
 use Psr\Log\AbstractLogger;
 use ReflectionProperty;
@@ -73,6 +79,7 @@ use itsmng\Database\Entity\Entity;
 use itsmng\Database\Entity\ItemSoftwareVersion;
 use itsmng\Database\Entity\ItemTicket;
 use itsmng\Database\Entity\Log;
+use itsmng\Database\Entity\Netpoint as NetpointRecord;
 use itsmng\Database\Entity\Software as SoftwareEntity;
 use itsmng\Database\Entity\SoftwareVersion as SoftwareVersionEntity;
 use itsmng\Database\Entity\Ticket;
@@ -86,12 +93,238 @@ use itsmng\Database\TransactionOwnershipMismatch;
 use itsmng\Domain\SoftwareAssignmentCancelled;
 use itsmng\Domain\SoftwareAssignmentService;
 
+use mock\DBmysql as NetpointRouteAdapter;
+use tests\fixtures\ScalarReadProbe;
+
 use function getItemTypeForTable;
+
+require_once __DIR__ . '/../fixtures/ScalarReadProbe.php';
 
 /* Test for inc/transfer.class.php */
 
 class Transfer extends DbTestCase
 {
+    public function testNetworkTransferReusesCurrentScopedOutletAndKeepsLiveOwners(): void
+    {
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $this->withSoftwareOwnerQueryProbe(function ($database, $connection): void {
+            $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
+            foreach ([['NULL', false], ['null', true], ["Outlet'\\north", false]] as [$name, $located]) {
+                $sourceLocation = $located
+                    ? $this->createItem(LocationModel::class, ['name' => $this->getUniqueString(), 'entities_id' => $source]) : null;
+                $targetLocation = $located
+                    ? $this->createItem(LocationModel::class, ['name' => $sourceLocation->getField('name'), 'entities_id' => $target]) : null;
+                $wrongLocation = $this->createItem(LocationModel::class, ['name' => $this->getUniqueString(), 'entities_id' => $target]);
+                $outlet = $this->createItem(NetpointModel::class, [
+                    'name' => addslashes($name), 'comment' => 'Retain source outlet', 'entities_id' => $source,
+                    'locations_id' => $sourceLocation?->getID() ?? 0,
+                ]);
+                $candidates = [];
+                foreach ([0, 1] as $unused) {
+                    $candidates[] = $this->createItem(NetpointModel::class, [
+                        'name' => $this->getUniqueString(), 'entities_id' => $target,
+                        'locations_id' => $targetLocation?->getID() ?? 0,
+                    ]);
+                }
+                $this->createItem(NetpointModel::class, [
+                    'name' => addslashes($name), 'entities_id' => $target, 'locations_id' => $wrongLocation->getID(),
+                ]);
+                $decoy = $this->createItem(NetpointModel::class, [
+                    'name' => $this->getUniqueString(), 'entities_id' => $target,
+                    'locations_id' => $targetLocation?->getID() ?? 0,
+                ]);
+                $connection->update('glpi_netpoints', ['name' => null], ['id' => $decoy->getID()]);
+                $computer = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => $source]);
+                $port = new NetworkPortModel();
+                $portInput = [
+                    'name' => $this->getUniqueString(), 'items_id' => $computer->getID(), 'itemtype' => 'Computer',
+                    'entities_id' => $source, 'instantiation_type' => 'NetworkPortEthernet',
+                ];
+                $portID = (int)$port->add($portInput + ['netpoints_id' => $outlet->getID(), '_create_children' => true]);
+                $this->checkInput($port, $portID, $portInput);
+                $ethernet = new EthernetModel();
+                $this->boolean($ethernet->getFromDBByCrit(['networkports_id' => $portID]))->isTrue();
+                $this->integer((int)$ethernet->getField('netpoints_id'))->isIdenticalTo((int)$outlet->getID());
+                $sourceRow = $connection->fetchAssociative('SELECT * FROM glpi_netpoints WHERE id=?', [$outlet->getID()]);
+                $sourceLocationRow = $sourceLocation === null ? null
+                    : $connection->fetchAssociative('SELECT * FROM glpi_locations WHERE id=?', [$sourceLocation->getID()]);
+                $owner = Orm::create($database);
+                $dirty = $owner->find(NetpointRecord::class, $candidates[0]->getID());
+                $dirty->name = 'Unflushed destination outlet';
+                foreach ($candidates as $candidate) {
+                    $connection->update('glpi_netpoints', ['name' => $name], ['id' => $candidate->getID()]);
+                }
+                $before = $connection->fetchOne('SELECT COUNT(*) FROM glpi_netpoints WHERE entities_id=?', [$target]);
+                $level = $connection->getTransactionNestingLevel();
+                $transfer = new LegacyTransfer();
+                Orm::read($database, function (EntityManager $outer) use ($transfer, $computer, $target, $candidates): void {
+                    $dirty = $outer->find(NetpointRecord::class, $candidates[1]->getID());
+                    $dirty->comment = 'Unflushed nested outlet';
+                    $this->boolean($transfer->moveItems(
+                        ['Computer' => [$computer->getID()]],
+                        $target,
+                        ['keep_networklink' => 2]
+                    ))->isTrue();
+                    $this->boolean($outer->contains($dirty))->isTrue();
+                    $this->string($dirty->comment)->isIdenticalTo('Unflushed nested outlet');
+                });
+                $destination = (int)$connection->fetchOne('SELECT netpoints_id FROM glpi_networkportethernets WHERE networkports_id=?', [$portID]);
+                $this->array(array_map(static fn ($candidate): int => (int)$candidate->getID(), $candidates))->contains($destination);
+                $this->integer((int)$transfer->already_transfer['netpoints_id'][$outlet->getID()])->isIdenticalTo($destination);
+                $this->variable($connection->fetchOne('SELECT COUNT(*) FROM glpi_netpoints WHERE entities_id=?', [$target]))->isIdenticalTo($before);
+                $this->array($connection->fetchAssociative('SELECT * FROM glpi_netpoints WHERE id=?', [$outlet->getID()]))->isIdenticalTo($sourceRow);
+                if ($sourceLocation !== null) {
+                    $this->array($connection->fetchAssociative('SELECT * FROM glpi_locations WHERE id=?', [$sourceLocation->getID()]))->isIdenticalTo($sourceLocationRow);
+                }
+                $this->variable($connection->fetchOne('SELECT locations_id FROM glpi_netpoints WHERE id=?', [$destination]))
+                    ->isEqualTo($targetLocation?->getID());
+                $this->boolean($owner->contains($dirty))->isTrue();
+                $this->string($dirty->name)->isIdenticalTo('Unflushed destination outlet');
+                $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+                $owner->clear();
+            }
+        });
+    }
+
+    public function testNetworkOutletCopyHooksRollbackAndSelectedCallbackRoute(): void
+    {
+        global $PLUGIN_HOOKS;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $savedHooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $savedPlugins = $plugins->getValue();
+        try {
+            $plugins->setValue(null, [...$savedPlugins, 'transfer_netpoint_fixture']);
+            $this->withSoftwareOwnerQueryProbe(function ($database, $connection) use ($savedHooks): void {
+                global $DB, $PLUGIN_HOOKS;
+                $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+                $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
+                foreach ([['NULL', false], ['null', false], [null, false], [$this->getUniqueString(), true]] as [$name, $refuse]) {
+                    $PLUGIN_HOOKS = $savedHooks;
+                    $location = $this->createItem(LocationModel::class, ['name' => $this->getUniqueString(), 'entities_id' => $source]);
+                    $outlet = new NetpointModel();
+                    $outletID = (int)$outlet->add([
+                        'name' => $name === null ? null : addslashes($name), 'comment' => 'Copied outlet comment',
+                        'entities_id' => $source, 'locations_id' => $location->getID(),
+                    ]);
+                    $this->integer($outletID)->isGreaterThan(0);
+                    $this->boolean($outlet->getFromDB($outletID))->isTrue();
+                    $this->variable($connection->fetchOne('SELECT name FROM glpi_netpoints WHERE id=?', [$outletID]))->isIdenticalTo($name);
+                    $computer = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => $source]);
+                    $port = new NetworkPortModel();
+                    $portID = (int)$port->add([
+                        'name' => $this->getUniqueString(), 'items_id' => $computer->getID(), 'itemtype' => 'Computer',
+                        'entities_id' => $source, 'instantiation_type' => 'NetworkPortEthernet',
+                        'netpoints_id' => $outletID, '_create_children' => true,
+                    ]);
+                    $this->integer($portID)->isGreaterThan(0);
+                    $this->boolean($port->getFromDB($portID))->isTrue();
+                    $ethernet = new EthernetModel();
+                    $this->boolean($ethernet->getFromDBByCrit(['networkports_id' => $portID]))->isTrue();
+                    $this->integer((int)$ethernet->getField('netpoints_id'))->isIdenticalTo($outletID);
+                    $observed = null;
+                    $PLUGIN_HOOKS['item_add']['transfer_netpoint_fixture'][NetpointModel::class] = static function (NetpointModel $item) use ($target, $refuse, &$observed): void {
+                        if ((int)$item->getField('entities_id') !== $target) {
+                            return;
+                        }
+                        $observed = $item->fields;
+                        if ($refuse) {
+                            throw new RuntimeException('Refused owned outlet copy');
+                        }
+                    };
+                    $tables = ['glpi_computers', 'glpi_networkports', 'glpi_networkportethernets', 'glpi_netpoints', 'glpi_locations'];
+                    $before = [];
+                    foreach ($tables as $table) {
+                        $before[$table] = $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id');
+                    }
+                    $level = $connection->getTransactionNestingLevel();
+                    $transfer = new LegacyTransfer();
+                    $result = $transfer->moveItems(['Computer' => [$computer->getID()]], $target, ['keep_networklink' => 2]);
+                    $this->array($observed)->isNotEmpty();
+                    $this->variable($observed['name'])->isIdenticalTo($name);
+                    $this->string($observed['comment'])->isIdenticalTo('Copied outlet comment');
+                    $this->integer((int)$observed['entities_id'])->isIdenticalTo($target);
+                    if ($refuse) {
+                        $this->boolean($result)->isFalse();
+                        foreach ($tables as $table) {
+                            $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id'))->isIdenticalTo($before[$table]);
+                        }
+                        $this->array($transfer->already_transfer)->isEmpty();
+                    } else {
+                        $this->boolean($result)->isTrue();
+                        $copy = (int)$connection->fetchOne('SELECT netpoints_id FROM glpi_networkportethernets WHERE networkports_id=?', [$portID]);
+                        $this->integer($copy)->isGreaterThan(0)->isNotIdenticalTo($outletID);
+                        $this->variable($connection->fetchOne('SELECT name FROM glpi_netpoints WHERE id=?', [$copy]))->isIdenticalTo($name);
+                        $this->string($connection->fetchOne('SELECT comment FROM glpi_netpoints WHERE id=?', [$copy]))->isIdenticalTo('Copied outlet comment');
+                        $newLocation = (int)$connection->fetchOne('SELECT locations_id FROM glpi_netpoints WHERE id=?', [$copy]);
+                        $this->integer($newLocation)->isGreaterThan(0)->isNotIdenticalTo((int)$location->getID());
+                        $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_locations WHERE id=?', [$newLocation]))->isIdenticalTo($target);
+                        $beforeCount = $connection->fetchOne('SELECT COUNT(*) FROM glpi_netpoints');
+                        $this->integer((int)$transfer->transferDropdownNetpoint($outletID))->isIdenticalTo($copy);
+                        $fresh = new LegacyTransfer();
+                        $fresh->to = $target;
+                        $this->integer((int)$fresh->transferDropdownNetpoint($outletID))->isIdenticalTo($copy);
+                        $this->integer((int)$fresh->already_transfer['netpoints_id'][$outletID])->isIdenticalTo($copy);
+                        $this->variable($connection->fetchOne('SELECT COUNT(*) FROM glpi_netpoints'))->isIdenticalTo($beforeCount);
+                        $this->integer((int)$transfer->already_transfer['netpoints_id'][$outletID])->isIdenticalTo($copy);
+                        $this->array($connection->fetchAssociative('SELECT * FROM glpi_netpoints WHERE id=?', [$outletID]))
+                            ->isIdenticalTo(array_values(array_filter($before['glpi_netpoints'], static fn (array $row): bool => (int)$row['id'] === $outletID))[0]);
+                    }
+                    $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+                }
+                $PLUGIN_HOOKS = $savedHooks;
+                $locationName = $this->getUniqueString();
+                $sourceLocation = $this->createItem(LocationModel::class, ['name' => $locationName, 'entities_id' => $source]);
+                $targetLocation = $this->createItem(LocationModel::class, ['name' => $locationName, 'entities_id' => $target]);
+                $outlet = $this->createItem(NetpointModel::class, [
+                    'name' => addslashes("Callback'\\route"), 'entities_id' => $source, 'locations_id' => $sourceLocation->getID(),
+                ]);
+                $destination = $this->createItem(NetpointModel::class, [
+                    'name' => $this->getUniqueString(), 'entities_id' => $target, 'locations_id' => $targetLocation->getID(),
+                ]);
+                $selected = new class ($connection) extends ScalarReadProbe {
+                    public function getEventManager(): EventManager
+                    {
+                        throw new RuntimeException('Fixed outlet lookup must not construct an EntityManager');
+                    }
+                };
+                $this->mockGenerator()->orphanize('__construct');
+                $adapter = new NetpointRouteAdapter();
+                $this->calling($adapter)->getDoctrineConnection = $selected;
+                $this->calling($adapter)->getProvider = $database->getProvider();
+                $transfer = new class () extends LegacyTransfer {
+                    public ?Closure $afterLocation = null;
+
+                    public function transferDropdownLocation($locID)
+                    {
+                        $id = parent::transferDropdownLocation($locID);
+                        ($this->afterLocation)();
+                        return $id;
+                    }
+                };
+                $transfer->to = $target;
+                $transfer->afterLocation = static function () use ($connection, $outlet, $destination, $adapter): void {
+                    $connection->update('glpi_netpoints', ['name' => $outlet->getField('name')], ['id' => $destination->getID()]);
+                    $GLOBALS['DB'] = $adapter;
+                };
+                try {
+                    // This public reuse helper has no coordinator; the test's actual outer frame owns cleanup.
+                    $this->integer((int)$transfer->transferDropdownNetpoint($outlet->getID()))->isIdenticalTo((int)$destination->getID());
+                    $this->integer((int)$transfer->already_transfer['netpoints_id'][$outlet->getID()])->isIdenticalTo((int)$destination->getID());
+                    $this->array($selected->queries)->isNotEmpty();
+                } finally {
+                    $DB = $database;
+                }
+            });
+        } finally {
+            $PLUGIN_HOOKS = $savedHooks;
+            $plugins->setValue(null, $savedPlugins);
+        }
+    }
+
     public function testTransfer()
     {
         $this->login();
