@@ -47,6 +47,8 @@ use NetworkPortEthernet;
 use NetworkPortInstantiation;
 use ReflectionProperty;
 use Plugin;
+use CommonDBConnexity;
+use RuntimeException;
 use NetworkPort_Vlan;
 use itsmng\Database\Entity\NetworkPort as NetworkPortEntity;
 use itsmng\Database\Entity\NetworkName as NetworkNameEntity;
@@ -220,8 +222,13 @@ class NetworkPort extends DbTestCase
             'is_dynamic'   => 0,
             'mainitems_id' => $computer1->getID(),
             'mainitemtype' => 'Computer',
+            'networknames_id' => $networknames_id,
+            'opaque_parent_id' => null,
         ];
-        $this->array($ipadress)->isIdenticalTo($expected);
+        $this->array($ipadress)->hasSize(count($expected));
+        foreach ($expected as $column => $value) {
+            $this->variable($ipadress[$column])->isIdenticalTo($value);
+        }
 
         // be sure added and have no logs
         $nb_log = (int)countElementsInTable('glpi_logs');
@@ -375,6 +382,15 @@ class NetworkPort extends DbTestCase
         $this->boolean($name->getFromDB($nameId))->isTrue();
         $attachedClone = (int)$name->clone(['name' => 'attached-cloned-name']);
         $this->integer($attachedClone)->isGreaterThan(0);
+        $this->string((string)$connection->fetchOne('SELECT name FROM glpi_networknames WHERE id=?', [$attachedClone]))->isIdenticalTo('attached-cloned-name-copy');
+        $anotherClone = (int)$name->clone(['name' => 'attached-cloned-name']);
+        $this->integer($anotherClone)->isGreaterThan(0);
+        $this->string((string)$connection->fetchOne('SELECT name FROM glpi_networknames WHERE id=?', [$anotherClone]))->isIdenticalTo('attached-cloned-name-copy-2');
+        foreach ([['', 1], [str_repeat('a', 63), 1], [str_repeat('a', 63), 2], [str_repeat('a', 58) . '-tail', 2]] as [$label, $copy]) {
+            $cloneLabel = $name->computeCloneName($label, $copy);
+            $this->boolean(LegacyNetworkName::checkFQDNLabel($cloneLabel))->isTrue();
+            $this->integer(strlen($cloneLabel))->isLessThanOrEqualTo(63);
+        }
         $this->integer((int)$inspect($attachedClone)['networkports_id'])->isIdenticalTo((int)$portId);
         $this->variable($inspect($attachedClone)['opaque_parent_id'])->isNull();
         $freeClone = $name->clone(['itemtype' => '', 'items_id' => 0, 'name' => 'free-cloned-name']);
@@ -439,6 +455,7 @@ class NetworkPort extends DbTestCase
                     }
                 };
             $this->boolean($probe->update(['id' => $id, 'name' => 'should-not-persist']))->isFalse();
+            $this->hasSessionMessages(ERROR, [__('Cannot update item: not enough right on the parent(s) item(s)')]);
             $this->integer($denials)->isGreaterThan(0);
             $this->array($connection->fetchAssociative('SELECT * FROM glpi_networknames WHERE id=?', [$id]))->isIdenticalTo($before);
             $this->integer((int)$probe->fields['items_id'])->isIdenticalTo($ports[0]);
@@ -450,6 +467,53 @@ class NetworkPort extends DbTestCase
         $this->boolean($probe->update(['id' => $id, 'name' => 'accepted-opaque']))->isTrue();
         $this->integer((int)$connection->fetchOne('SELECT items_id FROM glpi_networknames WHERE id=?', [$id]))->isIdenticalTo($ports[1]);
         $this->variable($connection->fetchOne('SELECT networkports_id FROM glpi_networknames WHERE id=?', [$id]))->isNull();
+    }
+
+    public function testActualParentHookRetainsViewAndUncheckedRolePolicies(): void
+    {
+        global $PLUGIN_HOOKS;
+        $this->login();
+        $computer = getItemByTypeName('Computer', '_test_pc01');
+        $this->setEntity((int)$computer->getEntityID(), true);
+        $port = $this->createItem(LegacyNetworkPort::class, ['itemtype' => 'Computer', 'items_id' => $computer->getID(),
+            'entities_id' => $computer->getEntityID(), 'instantiation_type' => 'NetworkPortEthernet', 'name' => 'hook-policy-port']);
+        $name = $this->createItem(LegacyNetworkName::class, ['itemtype' => 'NetworkPort', 'items_id' => $port->getID(),
+            'entities_id' => $computer->getEntityID(), 'name' => 'hook-policy-name']);
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $observed = [];
+        $deny = false;
+        $throw = false;
+        try {
+            $plugins->setValue(null, [...$active, 'parent_role_policy_fixture']);
+            $PLUGIN_HOOKS['item_can']['parent_role_policy_fixture'][LegacyNetworkPort::class] =
+                static function (LegacyNetworkPort $parent) use ($port, &$observed, &$deny, &$throw): void {
+                    if ((int)$parent->getID() !== (int)$port->getID()) {
+                        return;
+                    }
+                    $observed[] = $parent->right;
+                    if ($throw) {
+                        throw new RuntimeException('parent permission hook failed');
+                    }
+                    if ($deny) {
+                        $parent->right = false;
+                    }
+                };
+            $this->boolean($name->canConnexityItem('canUpdateItem', 'canUpdate', CommonDBConnexity::HAVE_VIEW_RIGHT_ON_ITEM, 'itemtype', 'items_id'))->isTrue();
+            $this->array($observed)->isIdenticalTo([READ]);
+            $deny = true;
+            $this->boolean($name->canConnexityItem('canUpdateItem', 'canUpdate', CommonDBConnexity::DONT_CHECK_ITEM_RIGHTS, 'itemtype', 'items_id'))->isTrue();
+            $this->array($observed)->isIdenticalTo([READ]);
+            $this->boolean($name->canConnexityItem('canUpdateItem', 'canUpdate', CommonDBConnexity::HAVE_VIEW_RIGHT_ON_ITEM, 'itemtype', 'items_id'))->isFalse();
+            $this->array($observed)->isIdenticalTo([READ, READ]);
+            $throw = true;
+            $this->exception(static fn () => $name->canConnexityItem('canUpdateItem', 'canUpdate', CommonDBConnexity::HAVE_VIEW_RIGHT_ON_ITEM, 'itemtype', 'items_id'))
+                ->isInstanceOf(RuntimeException::class)->hasMessage('parent permission hook failed');
+        } finally {
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+        }
     }
 
     public function testNullLegacyParentsRejectPayloadWritesWithoutFlushingLiveOwners(): void

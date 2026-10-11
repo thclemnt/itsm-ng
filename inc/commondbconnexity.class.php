@@ -551,6 +551,19 @@ abstract class CommonDBConnexity extends CommonDBTM
                 $methodNotItem = 'canView';
                 $methodItem    = 'canViewItem';
             }
+            $right = match ($methodNotItem) {
+                'canView' => READ,
+                'canUpdate' => UPDATE,
+                'canCreate' => CREATE,
+                'canDelete' => DELETE,
+                'canPurge' => PURGE,
+                default => null,
+            };
+            // The actual parent hook may restrict this role without adding
+            // CommonDBTM::can()'s private-item grants to the existing policy.
+            if ($right !== null && !$connexityItem->retainItemPermission($right)) {
+                return false;
+            }
             // here, we can check item's global rights
             if (preg_match('/^itemtype/', $itemtype)) {
                 if (!$connexityItem->$methodNotItem()) {

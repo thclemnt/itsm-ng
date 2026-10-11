@@ -61,10 +61,11 @@ class IPAddress extends DbTestCase
         $writer = null;
         try {
             $this->login();
-            $computer = $this->createItem(ComputerModel::class, ['name' => 'form-address-' . $this->getUniqueString()]);
+            $entity = (int)$_SESSION['glpiactive_entity'];
+            $computer = $this->createItem(ComputerModel::class, ['name' => 'form-address-' . $this->getUniqueString(), 'entities_id' => $entity]);
             $port = $this->createItem(NetworkPortModel::class, ['itemtype' => ComputerModel::class, 'items_id' => $computer->getID(), 'instantiation_type' => NetworkPortEthernetModel::class, 'name' => 'form-address-port']);
             $name = $this->createItem(NetworkNameModel::class, ['itemtype' => NetworkPortModel::class, 'items_id' => $port->getID(), 'name' => 'form-address-name']);
-            $other = $this->createItem(NetworkNameModel::class, ['name' => 'other-form-address']);
+            $other = $this->createItem(NetworkNameModel::class, ['name' => 'other-form-address', 'entities_id' => $entity]);
             $first = $this->createItem(IPAddressModel::class, ['itemtype' => NetworkNameModel::class, 'items_id' => $name->getID(), 'name' => '192.0.2.201']);
             $second = $this->createItem(IPAddressModel::class, ['itemtype' => NetworkNameModel::class, 'items_id' => $name->getID(), 'name' => '192.0.2.202']);
             $this->createItem(IPAddressModel::class, ['itemtype' => NetworkNameModel::class, 'items_id' => $other->getID(), 'name' => '192.0.2.204']);
@@ -517,7 +518,7 @@ class IPAddress extends DbTestCase
         $port = $this->createItem('NetworkPort', ['itemtype' => 'Computer', 'items_id' => $computer->getID(), 'entities_id' => $entity, 'instantiation_type' => 'NetworkPortEthernet', 'name' => 'ip-port-' . $this->getUniqueString()]);
         $first = $this->createItem(NetworkNameModel::class, ['itemtype' => 'NetworkPort', 'items_id' => $port->getID(), 'name' => 'ip-first-' . strtolower($this->getUniqueString())]);
         $second = $this->createItem(NetworkNameModel::class, ['entities_id' => $entity, 'name' => 'ip-second-' . strtolower($this->getUniqueString())]);
-        $network = $this->createItem(IPNetworkModel::class, ['name' => 'ip-link-' . $this->getUniqueString(), 'entities_id' => $entity, 'network' => '192.0.2.0/24', 'gateway' => '192.0.2.1']);
+        $network = $this->createItem(IPNetworkModel::class, ['name' => 'ip-link-' . $this->getUniqueString(), 'entities_id' => $entity, 'network' => '192.0.2.0 / 255.255.255.0', 'gateway' => '192.0.2.1']);
         $address = $this->createItem(IPAddressModel::class, ['itemtype' => 'NetworkName', 'items_id' => $first->getID(), 'name' => '192.0.2.61']);
         $id = (int)$address->getID();
         $this->integer((int)$DB->getDoctrineConnection()->fetchOne('SELECT COUNT(*) FROM glpi_ipaddresses_ipnetworks WHERE ipaddresses_id = ? AND ipnetworks_id = ?', [$id, $network->getID()]))->isIdenticalTo(1);
@@ -603,8 +604,9 @@ class IPAddress extends DbTestCase
     {
         global $DB, $PLUGIN_HOOKS;
         $this->login();
-        $first = $this->createItem(NetworkNameModel::class, ['name' => 'ip-allowed-' . strtolower($this->getUniqueString())]);
-        $second = $this->createItem(NetworkNameModel::class, ['name' => 'ip-denied-' . strtolower($this->getUniqueString())]);
+        $entity = (int)$_SESSION['glpiactive_entity'];
+        $first = $this->createItem(NetworkNameModel::class, ['name' => 'ip-allowed-' . strtolower($this->getUniqueString()), 'entities_id' => $entity]);
+        $second = $this->createItem(NetworkNameModel::class, ['name' => 'ip-denied-' . strtolower($this->getUniqueString()), 'entities_id' => $entity]);
         $address = $this->createItem(IPAddressModel::class, ['itemtype' => 'NetworkName', 'items_id' => $first->getID(), 'name' => '192.0.2.65']);
         $id = (int)$address->getID();
         $probe = new IPAddressPreparedNameOwner();
@@ -626,6 +628,7 @@ class IPAddress extends DbTestCase
                     }
                 };
             $this->boolean($probe->update(['id' => $id, 'name' => '192.0.2.66']))->isFalse();
+            $this->hasSessionMessages(ERROR, [__('Cannot update item: not enough right on the parent(s) item(s)')]);
             $this->integer($denials)->isGreaterThan(0);
             $this->array($connection->fetchAssociative('SELECT * FROM glpi_ipaddresses WHERE id=?', [$id]))->isIdenticalTo($before);
             $this->integer((int)$probe->fields['items_id'])->isIdenticalTo((int)$first->getID());

@@ -69,6 +69,14 @@ class NetworkName extends FQDNLabel
     public static $rightname                   = 'internet';
 
 
+    /** Cloned DNS labels retain the ordinary uniqueness loop without invalid punctuation. */
+    public function computeCloneName(string $current_name, int $copy_index): string
+    {
+        $suffix = $copy_index === 1 ? 'copy' : 'copy-' . $copy_index;
+        $prefix = rtrim(substr($current_name, 0, 62 - strlen($suffix)), '-');
+        return ($prefix === '' ? '' : $prefix . '-') . $suffix;
+    }
+
     public static function getTypeName($nb = 0)
     {
         return _n('Network name', 'Network names', $nb);
