@@ -1341,10 +1341,15 @@ class Transfer extends CommonDBTM
                     $input2 = $this->checkedTransferResult($this->transferHelpdeskAdditionalInformations($item->fields));
                     $input  = array_merge($input, $input2);
                     $this->checkedTransferResult($this->transferTaskCategory($itemtype, $ID, $newID));
-                    $this->checkedTransferResult($this->transferLinkedSuppliers($itemtype, $ID, $newID));
                 }
 
                 $this->updateForTransfer($item, $input);
+                if (in_array($itemtype, ['Ticket', 'Problem', 'Change'])) {
+                    // Retarget only after both public parents own the destination entity.
+                    $this->checkedTransferResult($this->transferLinkedSuppliers($itemtype, $ID, $newID));
+                    $item->loadActors();
+                    $this->transferCoordinator->assertActive();
+                }
                 $this->checkedTransferResult($this->addToAlreadyTransfer($itemtype, $ID, $newID));
 
                 // Do it after item transfer for entity checks

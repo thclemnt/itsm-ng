@@ -121,9 +121,9 @@ class Transfer extends DbTestCase
 {
     public function testItilTransferRetargetsEverySupplierAndTheActualTaskFamily(): void
     {
-        $this->login();
-        $this->setEntity('_test_root_entity', true);
         $this->withSoftwareOwnerQueryProbe(function ($database, $connection): void {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
             $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
             $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
             foreach ([
@@ -286,14 +286,14 @@ class Transfer extends DbTestCase
     public function testItilSupplierTransferUsesFreshLookupsAndRollsBackLaterRefusals(): void
     {
         global $PLUGIN_HOOKS;
-        $this->login();
-        $this->setEntity('_test_root_entity', true);
         $savedHooks = $PLUGIN_HOOKS;
         $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
         $savedPlugins = $plugins->getValue();
         try {
             $plugins->setValue(null, [...$savedPlugins, 'transfer_itil_fixture']);
             $this->withSoftwareOwnerQueryProbe(function ($database, $connection) use ($savedHooks): void {
+                $this->login();
+                $this->setEntity('_test_root_entity', true);
                 global $PLUGIN_HOOKS;
                 $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
                 $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
@@ -352,8 +352,40 @@ class Transfer extends DbTestCase
                     }
                     $manager->flush();
                     $calls = 0;
-                    $PLUGIN_HOOKS['item_update']['transfer_itil_fixture'][SupplierTicketModel::class] = static function (SupplierTicketModel $item) use ($connection, $links, $suppliers, $destinations, &$calls): void {
+                    $trace = [];
+                    $observedParent = null;
+                    $notifications = $GLOBALS['CFG_GLPI']['use_notifications'];
+                    $PLUGIN_HOOKS['item_update']['transfer_itil_fixture']['Ticket'] = function ($item) use ($connection, $ticket, $links, $suppliers, $target, &$trace, &$observedParent): void {
+                        if ((int)$item->getID() !== $ticket->id) {
+                            return;
+                        }
+                        $trace[] = 'parent';
+                        $observedParent = $item;
+                        $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_tickets WHERE id=?', [$ticket->id]))->isIdenticalTo($target);
+                        foreach ($links as $index => $link) {
+                            $this->integer((int)$connection->fetchOne('SELECT suppliers_id FROM glpi_suppliers_tickets WHERE id=?', [$link->id]))->isIdenticalTo($suppliers[$index]->id);
+                        }
+                        $this->integer($GLOBALS['CFG_GLPI']['use_notifications'])->isIdenticalTo(0);
+                    };
+                    $PLUGIN_HOOKS['item_transfer']['transfer_itil_fixture'] = function (array $event) use ($connection, $ticket, $links, $destinations, $target, &$trace, &$observedParent): void {
+                        if ($event['type'] !== 'Ticket' || (int)$event['id'] !== $ticket->id) {
+                            return;
+                        }
+                        $trace[] = 'terminal';
+                        $this->object($observedParent);
+                        $this->array(array_map('intval', array_column($observedParent->getSuppliers($links[0]->type), 'suppliers_id')))->contains($destinations[0]->id)->contains($destinations[1]->id)->hasSize(2);
+                        $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_tickets WHERE id=?', [$ticket->id]))->isIdenticalTo($target);
+                        foreach ($links as $link) {
+                            $this->integer((int)$connection->fetchOne(
+                                'SELECT supplier.entities_id FROM glpi_suppliers_tickets binding JOIN glpi_suppliers supplier ON supplier.id=binding.suppliers_id WHERE binding.id=?',
+                                [$link->id]
+                            ))->isIdenticalTo($target);
+                        }
+                        $this->integer($GLOBALS['CFG_GLPI']['use_notifications'])->isIdenticalTo(0);
+                    };
+                    $PLUGIN_HOOKS['item_update']['transfer_itil_fixture'][SupplierTicketModel::class] = static function (SupplierTicketModel $item) use ($connection, $links, $suppliers, $destinations, &$calls, &$trace): void {
                         ++$calls;
+                        $trace[] = 'link';
                         if ($calls === 1) {
                             $other = (int)$item->getID() === $links[0]->id ? 1 : 0;
                             $name = 'Current callback supplier ' . $links[$other]->id;
@@ -361,12 +393,20 @@ class Transfer extends DbTestCase
                             $connection->update('glpi_suppliers', ['name' => $name], ['id' => $destinations[$other]->id]);
                         }
                     };
-                    $PLUGIN_HOOKS['pre_item_update']['transfer_itil_fixture'][SupplierTicketModel::class] = static function (SupplierTicketModel $item) use ($refuse, &$calls): void {
+                    $PLUGIN_HOOKS['pre_item_update']['transfer_itil_fixture'][SupplierTicketModel::class] = function (SupplierTicketModel $item) use ($refuse, &$calls, $connection, $target): void {
+                        $this->integer((int)$connection->fetchOne(
+                            'SELECT entities_id FROM glpi_tickets WHERE id=?',
+                            [$item->input['tickets_id']]
+                        ))->isIdenticalTo($target);
+                        $this->integer((int)$connection->fetchOne(
+                            'SELECT entities_id FROM glpi_suppliers WHERE id=?',
+                            [$item->input['suppliers_id']]
+                        ))->isIdenticalTo($target);
                         if ($refuse && $calls === 1) {
                             $item->input = false;
                         }
                     };
-                    $tables = ['glpi_tickets', 'glpi_suppliers', 'glpi_suppliers_tickets', 'glpi_logs'];
+                    $tables = ['glpi_tickets', 'glpi_suppliers', 'glpi_suppliers_tickets', 'glpi_logs', 'glpi_queuednotifications'];
                     $before = [];
                     foreach ($tables as $table) {
                         $before[$table] = $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id');
@@ -387,6 +427,7 @@ class Transfer extends DbTestCase
                     if ($refuse) {
                         $this->object($failure)->isInstanceOf(RuntimeException::class);
                         $this->integer($calls)->isIdenticalTo(1);
+                        $this->array($trace)->isIdenticalTo(['parent', 'link']);
                         foreach ($tables as $table) {
                             $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id'))->isIdenticalTo($before[$table]);
                         }
@@ -394,11 +435,14 @@ class Transfer extends DbTestCase
                     } else {
                         $this->boolean($result)->isTrue();
                         $this->integer($calls)->isIdenticalTo(2);
+                        $this->array($trace)->isIdenticalTo(['parent', 'link', 'link', 'terminal']);
                         foreach ($links as $index => $link) {
                             $this->integer((int)$connection->fetchOne('SELECT suppliers_id FROM glpi_suppliers_tickets WHERE id=?', [$link->id]))->isIdenticalTo($destinations[$index]->id);
                         }
                         $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_tickets WHERE id=?', [$ticket->id]))->isIdenticalTo($target);
                     }
+                    $this->variable($GLOBALS['CFG_GLPI']['use_notifications'])->isIdenticalTo($notifications);
+                    $this->array($connection->fetchAllAssociative('SELECT * FROM glpi_queuednotifications ORDER BY id'))->isIdenticalTo($before['glpi_queuednotifications']);
                     $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
                     $manager->clear();
                 }
