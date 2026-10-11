@@ -281,10 +281,9 @@ class Transfer extends DbTestCase
                         $this->boolean($outer->contains($retained))->isTrue();
                         $this->string($retained->comment)->isIdenticalTo('Unflushed outer supplier');
                     });
-                    $manager->detach($supplier);
-                    if ($destination !== null) {
-                        $manager->detach($destination);
-                    }
+                    // End this fixture unit after its dirty-owner assertions; retained
+                    // Infocom/ContractSupplier rows must not reference detached suppliers.
+                    $manager->clear();
                 }
             });
         } finally {
