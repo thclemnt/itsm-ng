@@ -1,5 +1,6 @@
 <?php
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\MappedReads;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\PlacementRepository;
@@ -547,7 +548,8 @@ JAVASCRIPT;
             $text = $type::getTypeName(1);
         }
 
-        $selection = (new PlacementRepository(Orm::create($DB)))->rackSelection();
+        $selection = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new PlacementRepository($manager))->rackSelection());
         $used = $selection['used'];
         $used_reserved = $selection['reserved'];
         $initialUsed = ($options['is_reserved'] ?? $this->fields['is_reserved'] ?? false) ? $used_reserved : $used;

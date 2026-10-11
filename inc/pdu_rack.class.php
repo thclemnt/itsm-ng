@@ -1,5 +1,6 @@
 <?php
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\MappedReads;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\PlacementRepository;
@@ -222,7 +223,8 @@ class PDU_Rack extends CommonDBRelation
     {
         global $DB;
 
-        $used = (new PlacementRepository(Orm::create($DB)))->pduSelection();
+        $used = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new PlacementRepository($manager))->pduSelection());
 
         echo "<div class='center'>";
 

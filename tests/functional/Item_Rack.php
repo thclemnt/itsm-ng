@@ -40,8 +40,12 @@ use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\Query;
 use Item_Rack as LegacyItem_Rack;
+use PDU;
+use PDU_Rack as LegacyPduRack;
 use Rack;
 use itsmng\Database\Entity\ComputerModel;
+use itsmng\Database\Entity\ItemRack as RackPlacement;
+use itsmng\Database\Entity\PDURack as SidePduPlacement;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\PlacementRepository;
 
@@ -49,6 +53,134 @@ use itsmng\Database\Repository\PlacementRepository;
 
 class Item_Rack extends DbTestCase
 {
+    public function testPlacementFormsUseCurrentExclusionsAndPreserveDirtyOwners(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $rack = $this->createItem(Rack::class, [
+            'name' => '_form_selection_rack',
+            'entities_id' => $entity,
+            'number_units' => 20,
+            'max_weight' => 100,
+            'max_power' => 1000,
+        ]);
+        $computer = $this->createItem(Computer::class, [
+            'name' => '_form_selection_computer',
+            'entities_id' => $entity,
+        ]);
+        $rackPdu = $this->createItem(PDU::class, [
+            'name' => '_form_selection_racked_pdu',
+            'entities_id' => $entity,
+        ]);
+        $sidePdu = $this->createItem(PDU::class, [
+            'name' => '_form_selection_side_pdu',
+            'entities_id' => $entity,
+        ]);
+        $placement = $this->createItem(LegacyItem_Rack::class, [
+            'racks_id' => $rack->getID(),
+            'itemtype' => Computer::class,
+            'items_id' => $computer->getID(),
+            'position' => 1,
+            'orientation' => Rack::FRONT,
+            'hpos' => Rack::POS_NONE,
+            'is_reserved' => 1,
+        ]);
+        $pduPlacement = $this->createItem(LegacyItem_Rack::class, [
+            'racks_id' => $rack->getID(),
+            'itemtype' => PDU::class,
+            'items_id' => $rackPdu->getID(),
+            'position' => 5,
+            'orientation' => Rack::FRONT,
+            'hpos' => Rack::POS_NONE,
+        ]);
+        $sidePlacement = $this->createItem(LegacyPduRack::class, [
+            'racks_id' => $rack->getID(),
+            'pdus_id' => $sidePdu->getID(),
+            'position' => 1,
+            'side' => LegacyPduRack::SIDE_LEFT,
+        ]);
+        $render = function (bool $reserved = false) use ($rack, $sidePlacement): array {
+            $form = new LegacyItem_Rack();
+            $form->getEmpty();
+            ob_start();
+            try {
+                $form->showForm(0, [
+                    'racks_id' => $rack->getID(),
+                    'is_reserved' => $reserved,
+                ]);
+                $html = ob_get_contents();
+            } finally {
+                ob_end_clean();
+            }
+            $this->integer(preg_match('/<input\b(?=[^>]*\bid="used_input")[^>]*\bvalue="([^"]*)"/s', $html, $input))->isIdenticalTo(1);
+            $used = json_decode(html_entity_decode($input[1], ENT_QUOTES, 'UTF-8'), true, 512, JSON_THROW_ON_ERROR);
+            $sideForm = new LegacyPduRack();
+            $this->boolean($sideForm->getFromDB($sidePlacement->getID()))->isTrue();
+            ob_start();
+            try {
+                $sideForm->showForm($sidePlacement->getID());
+                $html = ob_get_contents();
+            } finally {
+                ob_end_clean();
+            }
+            preg_match_all('/var params = (\{[^\n]*\});/', $html, $matches);
+            $pduUsed = null;
+            foreach ($matches[1] as $json) {
+                $params = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+                if (($params['itemtype'] ?? null) === PDU::class) {
+                    $pduUsed = $params['used'];
+                    break;
+                }
+            }
+            $this->array($pduUsed)->contains((int)$sidePlacement->fields['pdus_id']);
+            return [$used, $pduUsed];
+        };
+        [$used, $pduUsed] = $render();
+        $this->array($used[Computer::class])->contains((int)$computer->getID());
+        $this->array($used[PDU::class])->contains((int)$rackPdu->getID())->contains((int)$sidePdu->getID());
+        $this->array($pduUsed)->contains((int)$rackPdu->getID());
+        $connection = $DB->getDoctrineConnection();
+        $level = $connection->getTransactionNestingLevel();
+        $independent = Orm::create($DB);
+        try {
+            $dirty = $independent->find(RackPlacement::class, (int)$placement->getID());
+            $dirty->is_reserved = false;
+            [$reserved] = $render(true);
+            $this->array($reserved[Computer::class])->contains((int)$computer->getID());
+            $this->boolean($independent->contains($dirty))->isTrue();
+            $this->boolean($dirty->is_reserved)->isFalse();
+            Orm::read($DB, function (EntityManager $outer) use ($placement, $sidePlacement, $computer, $rackPdu, $render): void {
+                $dirty = $outer->find(RackPlacement::class, (int)$placement->getID());
+                $dirty->is_reserved = false;
+                $side = $outer->find(SidePduPlacement::class, (int)$sidePlacement->getID());
+                $side->pdus = null;
+                [$reserved, $pduUsed] = $render(true);
+                $this->array($reserved[Computer::class])->contains((int)$computer->getID());
+                $this->array($pduUsed)->contains((int)$rackPdu->getID())->contains((int)$sidePlacement->fields['pdus_id']);
+                $this->boolean($outer->contains($dirty))->isTrue();
+                $this->boolean($outer->contains($side))->isTrue();
+                $this->boolean($dirty->is_reserved)->isFalse();
+                $this->variable($side->pdus)->isNull();
+            });
+            $this->boolean($placement->update([
+                'id' => $placement->getID(),
+                'is_reserved' => 0,
+            ]))->isTrue();
+            [$reserved] = $render(true);
+            $this->array($reserved[Computer::class] ?? [])->notContains((int)$computer->getID());
+            $this->boolean($pduPlacement->delete(['id' => $pduPlacement->getID()], true))->isTrue();
+            [$used, $pduUsed] = $render();
+            $this->array($used[PDU::class])->notContains((int)$rackPdu->getID())->contains((int)$sidePdu->getID());
+            $this->array($pduUsed)->notContains((int)$rackPdu->getID());
+            $this->boolean($independent->contains($dirty))->isTrue();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $independent->clear();
+        }
+    }
+
     public function testRackOccupancyBatchesMappedTypesWithoutHydration(): void
     {
         global $DB;
