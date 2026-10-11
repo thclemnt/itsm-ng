@@ -34,6 +34,9 @@
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity\ITILSolution as ITILSolutionEntity;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\RowIterator;
+use itsmng\Database\Repository\TicketLinkReadRepository;
 use itsmng\Database\Repository\TicketRelationshipRepository;
 
 if (!defined('GLPI_ROOT')) {
@@ -166,15 +169,26 @@ class Ticket_Ticket extends CommonDBRelation
             return false;
         }
 
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'OR'  => [
-                 'tickets_id_1' => $ID,
-                 'tickets_id_2' => $ID
-              ]
-           ]
-        ]);
+        $database = $DB;
+        $table = self::getTable();
+        if (
+            $table === 'glpi_tickets_tickets'
+            && (is_int($ID) || (is_string($ID) && ctype_digit($ID)))
+        ) {
+            $connection = $database->getDoctrineConnection();
+            OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+            $iterator = new RowIterator((new TicketLinkReadRepository($connection))->linkedIdentities($ID));
+        } else {
+            $iterator = $database->request([
+                'FROM' => $table,
+                'WHERE' => [
+                    'OR' => [
+                        'tickets_id_1' => $ID,
+                        'tickets_id_2' => $ID,
+                    ],
+                ],
+            ]);
+        }
         $tickets = [];
 
         while ($data = $iterator->next()) {
