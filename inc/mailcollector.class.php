@@ -36,6 +36,7 @@ if (!defined('GLPI_ROOT')) {
 }
 
 use Laminas\Mail\Storage\Exception\InvalidArgumentException as MailStorageInvalidArgumentException;
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\MailCollectorRepository;
 use itsmng\MailServer;
@@ -1690,7 +1691,10 @@ class MailCollector extends CommonDBTM
         global $DB;
 
         NotImportedEmail::deleteLog();
-        $collectors = (new MailCollectorRepository(Orm::create($DB)))->collectors(activeOnly: true);
+        $collectors = Orm::read(
+            $DB,
+            static fn (EntityManager $manager): array => (new MailCollectorRepository($manager))->collectors(activeOnly: true)
+        );
 
         $max = $task->fields['param'];
 
@@ -1755,7 +1759,11 @@ class MailCollector extends CommonDBTM
         }
         $cron_status   = 0;
 
-        $rows = (new MailCollectorRepository(Orm::create($DB)))->collectors(activeOnly: true, errorsOnly: true);
+        $rows = Orm::read(
+            $DB,
+            static fn (EntityManager $manager): array => (new MailCollectorRepository($manager))
+                ->collectors(activeOnly: true, errorsOnly: true)
+        );
         $items = array_column($rows, null, 'id');
 
         if (count($items)) {
@@ -1807,7 +1815,11 @@ class MailCollector extends CommonDBTM
         echo "<tr class='tab_bg_2'><th>Mails receivers</th></tr>\n";
         echo "<tr class='tab_bg_1'><td><pre>\n&nbsp;\n";
 
-        foreach ((new MailCollectorRepository(Orm::create($DB)))->collectors() as $mc) {
+        $collectors = Orm::read(
+            $DB,
+            static fn (EntityManager $manager): array => (new MailCollectorRepository($manager))->collectors()
+        );
+        foreach ($collectors as $mc) {
             $msg  = "Name: '" . $mc['name'] . "'";
             $msg .= " Active: " . ($mc['is_active'] ? "Yes" : "No");
             echo wordwrap($msg . "\n", $width, "\n\t\t");
@@ -1884,7 +1896,12 @@ class MailCollector extends CommonDBTM
     {
         global $DB;
 
-        return (new MailCollectorRepository(Orm::create($DB)))->countCollectors($active === true);
+        return Orm::readPrepared(
+            $DB,
+            static fn (): bool => $active === true,
+            static fn (EntityManager $manager, bool $activeOnly): int => (new MailCollectorRepository($manager))
+                ->countCollectors($activeOnly)
+        );
     }
 
     /**

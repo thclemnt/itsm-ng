@@ -34,6 +34,13 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
+use MailCollector;
+use itsmng\Database\Entity\MailCollector as MailCollectorRecord;
+use itsmng\Database\Orm;
+use tests\fixtures\ScalarReadProbe;
+use mock\DBmysql as CollectorReadRoute;
 use Group;
 use Group_User;
 use Rule;
@@ -41,8 +48,72 @@ use RuleAction;
 use RuleCriteria;
 use RuleMailCollectorCollection;
 
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
+
 class RuleMailCollector extends DbTestCase
 {
+    public function testLocalCollectorCountsAndRenderingRetainCompletedReadOwnership(): void
+    {
+        global $DB;
+        $this->login();
+        $database = $DB;
+        $connection = $DB->getDoctrineConnection();
+        $owner = null;
+        try {
+            $all = MailCollector::countCollectors();
+            $active = MailCollector::countActiveCollectors();
+            $collector = $this->createItem(MailCollector::class, [
+                'name' => $this->getUniqueString(), 'is_active' => true,
+            ]);
+            $owner = Orm::create($database);
+            $pending = $owner->find(MailCollectorRecord::class, $collector->getID());
+            $pending->name = 'Pending collector observer';
+            Orm::read($database, function (EntityManager $outer) use ($collector, $all, $active): void {
+                $live = $outer->find(MailCollectorRecord::class, $collector->getID());
+                $live->name = 'Pending enclosing collector observer';
+                $this->integer(MailCollector::countActiveCollectors())->isIdenticalTo($active + 1);
+                $this->integer(MailCollector::countCollectors(1))->isIdenticalTo($all + 1);
+                ob_start();
+                try {
+                    $collector->showSystemInformations(200);
+                    $this->string(ob_get_contents())->contains($collector->fields['name'])
+                        ->notContains('Pending enclosing collector observer');
+                } finally {
+                    ob_end_clean();
+                }
+                $this->boolean($outer->contains($live))->isTrue();
+                $this->string($live->name)->isIdenticalTo('Pending enclosing collector observer');
+            });
+            $fresh = $this->getUniqueString();
+            $connection->update(
+                'glpi_mailcollectors',
+                ['name' => $fresh, 'is_active' => false],
+                ['id' => $collector->getID()],
+                ['is_active' => Types::BOOLEAN]
+            );
+            $probe = new ScalarReadProbe($connection);
+            $this->mockGenerator->orphanize('__construct');
+            $route = new CollectorReadRoute();
+            $this->calling($route)->getDoctrineConnection = $probe;
+            $DB = $route;
+            $this->integer(MailCollector::countActiveCollectors())->isIdenticalTo($active);
+            $this->integer(MailCollector::countCollectors())->isIdenticalTo($all + 1);
+            ob_start();
+            try {
+                $collector->showSystemInformations(200);
+                $this->string(ob_get_contents())->contains($fresh)->notContains('Pending collector observer');
+            } finally {
+                ob_end_clean();
+            }
+            $this->array($probe->queries)->hasSize(3);
+            $this->boolean($owner->contains($pending))->isTrue();
+            $this->string($pending->name)->isIdenticalTo('Pending collector observer');
+        } finally {
+            $DB = $database;
+            $owner?->clear();
+        }
+    }
+
     public function testAssignEntityBasedOnGroup()
     {
         $entity_id      = getItemByTypeName('Entity', '_test_child_1', true);

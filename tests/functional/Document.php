@@ -34,12 +34,18 @@
 namespace tests\units;
 
 use DbTestCase;
+use Document as LegacyDocument;
+use itsmng\Database\Entity\Document as DocumentRecord;
+use tests\fixtures\ScalarReadProbe;
+use mock\DBmysql as DocumentReadRoute;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use ItsmngUploadHandler;
 use ReflectionMethod;
 use itsmng\Database\Entity\DocumentType as DocumentTypeRecord;
 use itsmng\Database\Orm;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/document.class.php */
 
@@ -778,12 +784,79 @@ class Document extends DbTestCase
 
         // launch Cron for closing tickets
         $mode = - \CronTask::MODE_EXTERNAL; // force
-        \CronTask::launch($mode, 5, 'cleanorphans');
+        global $DB;
+        $owner = Orm::create($DB);
+        try {
+            $pending = $owner->find(DocumentRecord::class, $did3);
+            $pending->name = 'Pending orphan observer';
+            Orm::read($DB, function (EntityManager $outer) use ($did3, $mode): void {
+                $live = $outer->find(DocumentRecord::class, $did3);
+                $live->name = 'Pending enclosing orphan observer';
+                \CronTask::launch($mode, 5, 'cleanorphans');
+                $this->boolean($outer->contains($live))->isTrue();
+                $this->string($live->name)->isIdenticalTo('Pending enclosing orphan observer');
+            });
+            $this->boolean($owner->contains($pending))->isTrue();
+            $this->string($pending->name)->isIdenticalTo('Pending orphan observer');
+        } finally {
+            $owner->clear();
+        }
 
         // check documents presence
         $this->boolean($doc->getFromDB($did1))->isFalse();
         $this->boolean($doc->getFromDB($did2))->isFalse();
         $this->boolean($doc->getFromDB($did3))->isTrue();
+    }
+
+    public function testContentLookupCompletesBeforePublicLoadAndRetainsOwners(): void
+    {
+        global $DB;
+        $this->login();
+        $database = $DB;
+        $connection = $DB->getDoctrineConnection();
+        $path = tempnam(sys_get_temp_dir(), 'itsm-content-');
+        $owner = null;
+        try {
+            file_put_contents($path, $this->getUniqueString());
+            $hash = sha1_file($path);
+            $document = $this->createItem(LegacyDocument::class, [
+                'name' => $this->getUniqueString(), 'entities_id' => 0, 'sha1sum' => $hash,
+            ]);
+            $owner = Orm::create($database);
+            $pending = $owner->find(DocumentRecord::class, $document->getID());
+            $pending->name = 'Pending content observer';
+            Orm::read($database, function (EntityManager $outer) use ($document, $path): void {
+                $live = $outer->find(DocumentRecord::class, $document->getID());
+                $live->name = 'Pending enclosing content observer';
+                $loaded = new LegacyDocument();
+                $this->boolean($loaded->getFromDBbyContent(0, $path))->isTrue();
+                $this->integer((int)$loaded->getID())->isIdenticalTo((int)$document->getID());
+                $this->string($loaded->fields['name'])->isIdenticalTo($document->fields['name']);
+                $this->boolean($outer->contains($live))->isTrue();
+                $this->string($live->name)->isIdenticalTo('Pending enclosing content observer');
+            });
+            $fresh = $this->getUniqueString();
+            $connection->update('glpi_documents', ['name' => $fresh], ['id' => $document->getID()]);
+            $probe = new ScalarReadProbe($connection);
+            $this->mockGenerator->orphanize('__construct');
+            $route = new DocumentReadRoute();
+            $this->calling($route)->getDoctrineConnection = $probe;
+            $DB = $route;
+            $loaded = new LegacyDocument();
+            $this->boolean($loaded->getFromDBbyContent('0', $path))->isTrue();
+            $this->string($loaded->fields['name'])->isIdenticalTo($fresh);
+            $this->array($probe->queries)->isNotEmpty();
+            $connection->update('glpi_documents', ['sha1sum' => null], ['id' => $document->getID()]);
+            $this->boolean($loaded->getFromDBbyContent(0, $path))->isFalse();
+            $this->boolean($owner->contains($pending))->isTrue();
+            $this->string($pending->name)->isIdenticalTo('Pending content observer');
+        } finally {
+            $DB = $database;
+            $owner?->clear();
+            if (is_string($path) && is_file($path)) {
+                unlink($path);
+            }
+        }
     }
 
     public function testUploadableExtensionPolicyFreshnessAndReadOwnership()
@@ -812,6 +885,9 @@ class Document extends DbTestCase
             }
             $writer->flush();
             $literal->ext = 'sol-pending-ext';
+            $this->string(LegacyDocument::isValidDoc('file.sol-upload-ext'))->isIdenticalTo('SOL-UPLOAD-EXT');
+            $this->string(LegacyDocument::isValidDoc('file.sol-regex-42'))->isIdenticalTo('SOL-REGEX-42');
+            $this->string(LegacyDocument::isValidDoc('file.sol-pending-ext'))->isIdenticalTo('');
 
             // Exercise the actual private consumer without attempting an HTTP upload.
             $policy = new ReflectionMethod(ItsmngUploadHandler::class, 'getValidExtPatterns');
@@ -830,6 +906,8 @@ class Document extends DbTestCase
             $this->string($literal->ext)->isIdenticalTo('sol-pending-ext');
 
             $connection->update('glpi_documenttypes', ['ext' => 'sol-fresh-ext'], ['id' => $literal->id]);
+            $this->string(LegacyDocument::isValidDoc('file.sol-fresh-ext'))->isIdenticalTo('SOL-FRESH-EXT');
+            $this->string(LegacyDocument::isValidDoc('file.sol-upload-ext'))->isIdenticalTo('');
             $fresh = $policy->invoke(null);
             $this->array($fresh)->contains('\\.sol\\-fresh\\-ext$')
                 ->notContains('\\.sol\\-upload\\-ext$');
@@ -839,6 +917,7 @@ class Document extends DbTestCase
             Orm::read($DB, function (EntityManager $outer) use ($policy, $literal): void {
                 $pending = $outer->find(DocumentTypeRecord::class, $literal->id);
                 $pending->ext = 'sol-outer-pending-ext';
+                $this->string(LegacyDocument::isValidDoc('file.sol-fresh-ext'))->isIdenticalTo('SOL-FRESH-EXT');
                 $nested = $policy->invoke(null);
                 $this->array($nested)->contains('\\.sol\\-fresh\\-ext$')
                     ->notContains('\\.sol\\-outer\\-pending\\-ext$');

@@ -32,6 +32,7 @@
  */
 
 use Glpi\Event;
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\ITILDocumentAccess;
 use itsmng\Database\KnowledgeBaseAccess;
 use itsmng\Database\MappedReads;
@@ -695,7 +696,12 @@ class Document extends CommonDBTM
             return false;
         }
 
-        $id = (new DocumentRepository(Orm::create($DB)))->contentId((int)$entity, $sum);
+        $id = Orm::readPrepared(
+            $DB,
+            static fn (): array => [(int)$entity, $sum],
+            static fn (EntityManager $manager, array $values): ?int => (new DocumentRepository($manager))
+                ->contentId($values[0], $values[1])
+        );
         return $id !== null && $this->getFromDB($id);
     }
 
@@ -1456,13 +1462,23 @@ class Document extends CommonDBTM
         $splitter = explode(".", $filename);
         $ext      = end($splitter);
 
-        $repository = new DocumentRepository(Orm::create($DB));
-        if ($repository->uploadableTypes($ext)) {
+        $reads = Orm::readSession($DB);
+        $types = $reads->readPrepared(
+            static fn (): string => $ext,
+            static fn (EntityManager $manager, string $pattern): array => (new DocumentRepository($manager))
+                ->uploadableTypes($pattern)
+        );
+        if ($types) {
             return Toolbox::strtoupper($ext);
         }
 
         // Not found: try the configured regular expressions.
-        foreach ($repository->uploadableTypes('/%/') as $data) {
+        $patterns = $reads->readPrepared(
+            static fn (): string => '/%/',
+            static fn (EntityManager $manager, string $pattern): array => (new DocumentRepository($manager))
+                ->uploadableTypes($pattern)
+        );
+        foreach ($patterns as $data) {
             if (
                 preg_match(
                     Toolbox::unclean_cross_side_scripting_deep($data['ext']) . "i",
@@ -1740,7 +1756,10 @@ class Document extends CommonDBTM
     {
         global $DB;
 
-        $ids = (new DocumentRepository(Orm::create($DB)))->orphanIds();
+        $ids = Orm::read(
+            $DB,
+            static fn (EntityManager $manager): array => (new DocumentRepository($manager))->orphanIds()
+        );
         $nb = 0;
         foreach ($ids as $id) {
             $doc = new Document();
