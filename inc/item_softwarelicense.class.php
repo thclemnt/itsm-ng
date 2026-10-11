@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\DropdownChoiceContext;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\Entity\ItemSoftwareLicense;
@@ -38,6 +39,7 @@ use itsmng\Database\LifecycleModelJournal;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\SoftwareInstallationRepository;
+use itsmng\Database\Repository\SoftwareRepository;
 use itsmng\Domain\SoftwareAssignmentCancelled;
 use itsmng\Domain\SoftwareAssignmentService;
 use itsmng\Domain\SoftwareLifecycleAdmission;
@@ -1237,13 +1239,13 @@ JAVASCRIPT;
     {
         global $DB;
 
-        $result = $DB->request([
-           'FROM'   => 'glpi_softwarelicenses',
-           'COUNT'  => 'cpt',
-           'WHERE'  => [
-              'softwares_id' => $softwares_id
-           ] + getEntitiesRestrictCriteria('glpi_softwarelicenses')
-        ])->next();
-        return $result['cpt'];
+        $database = $DB;
+        $scope = getEntitiesRestrictCriteria('glpi_softwarelicenses');
+        $software = $softwares_id === null || (is_string($softwares_id) && strtolower($softwares_id) === 'null')
+            ? null : (is_int($softwares_id) ? $softwares_id : (is_bool($softwares_id) ? (int)$softwares_id : (string)$softwares_id));
+        return Orm::read(
+            $database,
+            static fn (EntityManager $manager): int => (new SoftwareRepository($manager))->licenseCount($software, $scope)
+        );
     }
 }

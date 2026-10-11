@@ -34,6 +34,13 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\ORM\EntityManager;
+use Software as LegacySoftware;
+use SoftwareLicense as LegacySoftwareLicense;
+use itsmng\Database\Entity\SoftwareLicense as LicenseRecord;
+use mock\DBmysql as LicenseCountAdapterProbe;
+use Stringable;
+use tests\fixtures\ScalarReadProbe;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Item_SoftwareLicense as LegacyItem_SoftwareLicense;
 use itsmng\Database\CurrentReadUnavailable;
@@ -44,6 +51,8 @@ use itsmng\Database\Orm;
 use itsmng\Database\OwnedMutationFrame;
 use itsmng\Database\Repository\SoftwareAssignmentRepository;
 use itsmng\Domain\SoftwareAssignmentCancelled;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/item_softwarelicense.class.php */
 
@@ -255,6 +264,93 @@ class Item_SoftwareLicense extends DbTestCase
 
         $software = getItemByTypeName('Software', '_test_soft2');
         $this->integer((int)\Item_SoftwareLicense::countLicenses($software->getID()))->isIdenticalTo(0);
+    }
+
+    public function testLicenseCountKeepsScopesAndLiveOwners(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $original = $DB;
+        $writer = null;
+        try {
+            $this->login();
+            $root = getItemByTypeName('Entity', '_test_root_entity', true);
+            $child = $this->createItem('Entity', ['name' => 'count-child-' . $this->getUniqueString(), 'entities_id' => $root]);
+            $software = $this->createItem(LegacySoftware::class, ['name' => 'count-software-' . $this->getUniqueString(), 'entities_id' => 0, 'is_recursive' => 1]);
+            $rootLicense = $this->createItem(LegacySoftwareLicense::class, ['name' => 'count-root', 'entities_id' => 0, 'softwares_id' => $software->getID()]);
+            $local = $this->createItem(LegacySoftwareLicense::class, ['name' => 'count-local', 'entities_id' => $root, 'softwares_id' => $software->getID()]);
+            $descendant = $this->createItem(LegacySoftwareLicense::class, ['name' => 'count-descendant', 'entities_id' => $child->getID(), 'softwares_id' => $software->getID()]);
+            $writer = Orm::create($DB);
+            $live = $writer->find(LicenseRecord::class, (int)$local->getID());
+            $live->name = 'Independent pending license';
+            $_SESSION['glpishowallentities'] = false;
+            $_SESSION['glpiactiveentities'] = [$root];
+            $this->integer(LegacyItem_SoftwareLicense::countLicenses($software->getID()))->isIdenticalTo(1);
+            $this->boolean($local->update(['id' => $local->getID(), 'is_template' => 1, 'is_deleted' => 1]))->isTrue();
+            $this->integer(LegacyItem_SoftwareLicense::countLicenses((string)$software->getID()))->isIdenticalTo(1);
+            $_SESSION['glpiactiveentities'] = [$root, $child->getID()];
+            $this->integer(LegacyItem_SoftwareLicense::countLicenses($software->getID()))->isIdenticalTo(2);
+            $_SESSION['glpiactiveentities'] = [0];
+            $this->integer(LegacyItem_SoftwareLicense::countLicenses($software->getID()))->isIdenticalTo(1);
+            $_SESSION['glpiactiveentities'] = [];
+            $this->integer(LegacyItem_SoftwareLicense::countLicenses($software->getID()))->isIdenticalTo(0);
+            $_SESSION['glpishowallentities'] = true;
+            $this->integer(LegacyItem_SoftwareLicense::countLicenses($software->getID()))->isIdenticalTo(3);
+            $computer = $this->createItem('Computer', ['name' => 'count-assigned-' . $this->getUniqueString(), 'entities_id' => 0]);
+            $this->createItem(LegacyItem_SoftwareLicense::class, ['itemtype' => 'Computer', 'items_id' => $computer->getID(), 'softwarelicenses_id' => $rootLicense->getID()]);
+            $this->output(static fn () => LegacyItem_SoftwareLicense::showForLicense($rootLicense))->contains('move_license');
+            $_SESSION['glpishowallentities'] = false;
+            $_SESSION['glpiactiveentities'] = [0];
+            $this->output(static fn () => LegacyItem_SoftwareLicense::showForLicense($rootLicense))->notContains('move_license');
+            $_SESSION['glpishowallentities'] = true;
+            foreach ([null, 'Null', 'nUlL', -1] as $missing) {
+                $this->integer(LegacyItem_SoftwareLicense::countLicenses($missing))->isIdenticalTo(0);
+            }
+            $this->createItem(LegacySoftwareLicense::class, ['name' => 'count-current', 'entities_id' => $child->getID(), 'softwares_id' => $software->getID()]);
+            $this->integer(LegacyItem_SoftwareLicense::countLicenses($software->getID()))->isIdenticalTo(4);
+            Orm::read(
+                $DB,
+                function (EntityManager $outer) use ($software, $descendant, $child): void {
+                    $owned = $outer->find(LicenseRecord::class, (int)$descendant->getID());
+                    $owned->name = 'Outer pending license';
+                    $this->integer(LegacyItem_SoftwareLicense::countLicenses($software->getID()))->isIdenticalTo(4);
+                    $this->boolean($outer->contains($owned))->isTrue();
+                    $this->string($owned->name)->isIdenticalTo('Outer pending license');
+                }
+            );
+            $this->boolean($writer->contains($live))->isTrue();
+            $this->string($live->name)->isIdenticalTo('Independent pending license');
+            $_SESSION['glpishowallentities'] = false;
+            $_SESSION['glpiactiveentities'] = [$root];
+            $probe = new ScalarReadProbe($original->getDoctrineConnection());
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new LicenseCountAdapterProbe();
+            $this->calling($adapter)->getDoctrineConnection = $probe;
+            $identity = new class ((int)$software->getID(), $original, (int)$child->getID()) implements Stringable {
+                public int $calls = 0;
+                public function __construct(private int $id, private object $database, private int $child)
+                {
+                }
+                public function __toString(): string
+                {
+                    ++$this->calls;
+                    $GLOBALS['DB'] = $this->database;
+                    $_SESSION['glpiactiveentities'] = [$this->child];
+                    return (string)$this->id;
+                }
+            };
+            $DB = $adapter;
+            $this->integer(LegacyItem_SoftwareLicense::countLicenses($identity))->isIdenticalTo(1);
+            $this->integer($identity->calls)->isIdenticalTo(1);
+            $this->object($DB)->isIdenticalTo($original);
+            $this->array($probe->queries)->hasSize(1);
+            $this->boolean($writer->contains($live))->isTrue();
+            $this->string($live->name)->isIdenticalTo('Independent pending license');
+        } finally {
+            $DB = $original;
+            $writer?->clear();
+            $_SESSION = $session;
+        }
     }
 
     public function testGetSearchOptionsNew()

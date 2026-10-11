@@ -281,6 +281,25 @@ final class SoftwareRepository
         return $query->getQuery()->getScalarResult();
     }
 
+    /** Accessible license records, including templates and deleted records. */
+    public function licenseCount(int|string|null $software, array $entityScope): int
+    {
+        $query = $this->em->createQueryBuilder()
+            ->select('COUNT(r.id)')
+            ->from(SoftwareLicense::class, 'r');
+        if ($software === null) {
+            $query->where('IDENTITY(r.softwares) IS NULL');
+        } else {
+            $query->where('IDENTITY(r.softwares) = :software')
+                ->setParameter('software', $software, Types::BIGINT);
+        }
+        if ($entityScope) {
+            $criteria = new RecordCriteria($query, $this->em->getClassMetadata(SoftwareLicense::class));
+            $query->andWhere($criteria->where($entityScope));
+        }
+        return (int)$query->getQuery()->getSingleScalarResult();
+    }
+
     /** Unlimited licenses take precedence over the sum of finite quantities. */
     public function licenseQuantity(int $software, array $entityScope): int
     {
