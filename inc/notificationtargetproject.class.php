@@ -468,8 +468,12 @@ class NotificationTargetProject extends NotificationTarget
         }
 
         // Document
-        $documents = (new DocumentRepository(Orm::create($DB)))
-            ->documentsForItem('Project', (int)$item->fields['id']);
+        $documents = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$item->fields['id'],
+            static fn (EntityManager $manager, int $id): array =>
+                (new DocumentRepository($manager))->documentsForItem('Project', $id)
+        );
 
         $this->data["documents"] = [];
         foreach ($documents as $data) {
@@ -512,8 +516,12 @@ class NotificationTargetProject extends NotificationTarget
                        = count($this->data['documents']);
 
         // Items infos
-        $items = (new ProjectAssetRepository(Orm::create($DB)))
-            ->bindings((int)$item->getField('id'));
+        $items = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$item->getField('id'),
+            static fn (EntityManager $manager, int $id): array =>
+                (new ProjectAssetRepository($manager))->bindings($id)
+        );
 
         $this->data['items'] = [];
         if (count($items)) {

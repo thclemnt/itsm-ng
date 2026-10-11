@@ -34,6 +34,12 @@
 namespace tests\units;
 
 use Auth;
+use Closure;
+use Computer;
+use Document;
+use Document_Item;
+use Item_Project;
+use NotificationTargetProject;
 use DbTestCase;
 use Doctrine\ORM\Events;
 use Project as LegacyProject;
@@ -42,6 +48,8 @@ use ProjectTask;
 use ProjectTeam;
 use Session;
 use User;
+use itsmng\Database\Entity\Document as DocumentEntity;
+use itsmng\Database\Entity\ItemProject as ItemProjectEntity;
 use itsmng\Database\Entity\Project as ProjectEntity;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ProjectRepository;
@@ -49,6 +57,86 @@ use itsmng\Database\Repository\ProjectRepository;
 /* Test for inc/project.class.php */
 class Project extends DbTestCase
 {
+    public function testNotificationDocumentAndAssetSnapshotsRetainLiveOwners(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $entity = (int)Session::getActiveEntity();
+            $project = $this->createItem(LegacyProject::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+            $computer = $this->createItem(Computer::class, [
+                'name' => 'Before document formatting', 'serial' => 'Notification serial', 'entities_id' => $entity,
+            ]);
+            $binding = $this->createItem(Item_Project::class, [
+                'projects_id' => $project->getID(), 'itemtype' => Computer::class, 'items_id' => $computer->getID(),
+            ]);
+            $documents = [];
+            foreach (['Second alphabetically', 'First alphabetically'] as $name) {
+                $document = $this->createItem(Document::class, [
+                    'name' => $name, 'link' => 'https://example.invalid/project-document', 'entities_id' => $entity,
+                ]);
+                $this->createItem(Document_Item::class, [
+                    'documents_id' => $document->getID(), 'itemtype' => LegacyProject::class, 'items_id' => $project->getID(),
+                ]);
+                $documents[] = $document;
+            }
+            $connection = $DB->getDoctrineConnection();
+            $owner = Orm::create($DB);
+            $dirty = $owner->find(DocumentEntity::class, (int)$documents[0]->getID());
+            $dirty->name = 'Unflushed document name';
+            $managedBinding = $owner->find(ItemProjectEntity::class, (int)$binding->getID());
+            $target = new class ($entity, 'new', $project) extends NotificationTargetProject {
+                public ?Closure $onDocument = null;
+
+                public function formatURL($usertype, $redirect)
+                {
+                    if (str_starts_with($redirect, 'document_') && $this->onDocument !== null) {
+                        $callback = $this->onDocument;
+                        $this->onDocument = null;
+                        $callback();
+                    }
+                    return parent::formatURL($usertype, $redirect);
+                }
+            };
+            $target->onDocument = function () use ($connection, $computer, $documents): void {
+                $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+                $this->integer($connection->update('glpi_documents', ['name' => 'Written after document snapshot'], ['id' => $documents[0]->getID()]))->isIdenticalTo(1);
+                $this->integer($connection->update('glpi_computers', ['name' => 'Written before asset snapshot'], ['id' => $computer->getID()]))->isIdenticalTo(1);
+            };
+            $options = ['additionnaloption' => ['usertype' => NotificationTargetProject::GLPI_USER]];
+            $depth = $connection->getTransactionNestingLevel();
+            $data = $target->getForTemplate('new', $options);
+            $this->array(array_column($data['documents'], '##document.id##'))
+                ->isIdenticalTo(array_map(static fn ($document): int => (int)$document->getID(), $documents));
+            $this->array(array_column($data['documents'], '##document.name##'))
+                ->isIdenticalTo(['Second alphabetically', 'First alphabetically']);
+            $this->string($data['documents'][0]['##document.weblink##'])->isIdenticalTo('https://example.invalid/project-document');
+            $this->string($data['documents'][0]['##document.url##'])->contains('redirect=document_' . $documents[0]->getID());
+            $this->string($data['documents'][0]['##document.downloadurl##'])->contains('docid=' . $documents[0]->getID());
+            $this->integer($data['##project.numberofdocuments##'])->isIdenticalTo(2);
+            $this->array($data['items'])->hasSize(1);
+            $this->string($data['items'][0]['##item.name##'])->isIdenticalTo('Written before asset snapshot');
+            $this->string($data['items'][0]['##item.serial##'])->isIdenticalTo('Notification serial');
+            $this->integer($data['##project.numberofitems##'])->isIdenticalTo(1);
+            Orm::read($DB, function ($nested) use ($documents, $target, $options): void {
+                $retained = $nested->find(DocumentEntity::class, (int)$documents[0]->getID());
+                $retained->name = 'Nested unflushed document';
+                $current = $target->getForTemplate('new', $options);
+                $this->string($current['documents'][0]['##document.name##'])->isIdenticalTo('Written after document snapshot');
+                $this->boolean($nested->contains($retained))->isTrue();
+                $this->string($retained->name)->isIdenticalTo('Nested unflushed document');
+            });
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->string($dirty->name)->isIdenticalTo('Unflushed document name');
+            $this->boolean($owner->contains($managedBinding))->isTrue();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
     public function testChildIdentifiersPreserveRichRenderingAndCustomSelection(): void
     {
         global $DB;
