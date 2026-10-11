@@ -59,6 +59,8 @@ use DBmysql as LegacyDBmysql;
 use DbTestCase;
 use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\DBAL\Result;
 use Doctrine\DBAL\Query\QueryBuilder;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Types\BigIntType;
@@ -239,6 +241,135 @@ class CommonDBTM extends DbTestCase
         } finally {
             $PLUGIN_HOOKS = $hooks;
             $plugins->setValue(null, $activePlugins);
+        }
+    }
+
+    public function testSpecialStatusConfirmationUsesOrdinalsAndFreshAdministrationRows(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $database = $DB;
+        $connection = $DB->getDoctrineConnection();
+        $session = $_SESSION;
+        $post = $_POST;
+        $frame = OwnedMutationFrame::begin($connection);
+        $owner = null;
+        try {
+            $_SESSION['glpiactiveprofile']['status_ticket'] = READ | UPDATE | CREATE | PURGE;
+            $_POST = [];
+            $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $other = (int)getItemByTypeName('Entity', '_test_child_2', true);
+            $weight = (int)$connection->fetchOne('SELECT MAX(weight) FROM glpi_specialstatuses') + 10;
+            $id = (new MappedStorage($DB))->insert('glpi_specialstatuses', [
+                'name' => $this->getUniqueString(), 'weight' => $weight, 'is_active' => 1, 'color' => '#123456',
+            ]);
+            // A valid positive configuration ID deliberately differs from its weighted ordinal.
+            $statusID = $id + 1000000;
+            $connection->update('glpi_specialstatuses', ['id' => $statusID], ['id' => $id]);
+            $map = Ticket::getAllStatusArray(false, true);
+            $ordinal = (int)array_search($statusID, $map['id']);
+            $this->integer($ordinal)->isGreaterThan(0)->isNotIdenticalTo($statusID);
+            $tickets = [];
+            foreach ([$source, $other] as $entity) {
+                $ticket = $this->createItem(Ticket::class, [
+                    'name' => $this->getUniqueString(), 'content' => 'Special status usage', 'entities_id' => $entity,
+                ]);
+                $connection->update('glpi_tickets', ['status' => $ordinal], ['id' => $ticket->getID()]);
+                $tickets[] = $ticket;
+            }
+            $this->boolean($tickets[1]->delete(['id' => $tickets[1]->getID()]))->isTrue();
+            $computer = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => $source]);
+            $owner = Orm::create($DB);
+            $dirty = $owner->find(ComputerEntity::class, $computer->getID());
+            $dirty->name = 'Pending administration observer';
+            $before = $connection->fetchAllAssociative('SELECT id, status, is_deleted FROM glpi_tickets ORDER BY id');
+            Orm::read($DB, function (EntityManager $reader) use ($computer, $statusID): void {
+                $live = $reader->find(ComputerEntity::class, $computer->getID());
+                $live->name = 'Pending enclosing reader';
+                ob_start();
+                try {
+                    SpecialStatus::deleteStatus('000' . $statusID);
+                    $this->string(ob_get_contents())->contains('2 ' . __('Tickets are still using this status, are you sure to remove the status?'));
+                } finally {
+                    ob_end_clean();
+                }
+                $this->boolean($reader->contains($live))->isTrue();
+                $this->string($live->name)->isIdenticalTo('Pending enclosing reader');
+            });
+            $this->array($connection->fetchAllAssociative('SELECT id, status, is_deleted FROM glpi_tickets ORDER BY id'))->isIdenticalTo($before);
+            ob_start();
+            try {
+                SpecialStatus::deleteStatus('not-a-status');
+                $this->string(ob_get_contents())->contains(__('Are you sure to remove the status?'))
+                    ->notContains(__('Tickets are still using this status, are you sure to remove the status?'));
+            } finally {
+                ob_end_clean();
+            }
+            $freshName = 'Fresh status ' . $this->getUniqueString();
+            $probe = new class ($connection, $statusID, $freshName) extends ScalarReadProbe {
+                public ?RuntimeException $failure = null;
+                public function __construct(Connection $selected, private int $id, private string $name)
+                {
+                    parent::__construct($selected);
+                }
+                public function getEventManager(): EventManager
+                {
+                    throw new RuntimeException('Administration rows must not construct an ORM manager');
+                }
+                public function executeQuery(
+                    string $sql,
+                    array $params = [],
+                    array $types = [],
+                    ?QueryCacheProfile $qcp = null
+                ): Result
+                {
+                    if ($this->failure !== null) {
+                        throw $this->failure;
+                    }
+                    $result = parent::executeQuery($sql, $params, $types, $qcp);
+                    if (count($this->queries) === 1) {
+                        $this->selected->update('glpi_specialstatuses', ['name' => $this->name], ['id' => $this->id]);
+                    }
+                    return $result;
+                }
+            };
+            $this->mockGenerator->orphanize('__construct');
+            $routed = new DBmysql();
+            $this->calling($routed)->getDoctrineConnection = $probe;
+            $DB = $routed;
+            $status = new SpecialStatus();
+            ob_start();
+            try {
+                $status->statusForm();
+                $this->string(ob_get_contents())->contains($freshName)->contains('#123456');
+            } finally {
+                ob_end_clean();
+            }
+            $this->array($probe->queries)->hasSize(2);
+            $failure = new RuntimeException('Administration query failed');
+            $probe->failure = $failure;
+            $this->exception(static fn () => $status->statusForm())->isIdenticalTo($failure);
+            $DB = $database;
+            $_SESSION['id'] = $statusID;
+            $_POST = ['force' => 1];
+            ob_start();
+            try {
+                $status->statusForm();
+                $this->string(ob_get_contents())->notContains($freshName);
+            } finally {
+                ob_end_clean();
+            }
+            $this->variable($connection->fetchOne('SELECT id FROM glpi_specialstatuses WHERE id=?', [$statusID]))->isIdenticalTo(false);
+            $this->array($connection->fetchAllAssociative('SELECT id, status, is_deleted FROM glpi_tickets ORDER BY id'))->isIdenticalTo($before);
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->string($dirty->name)->isIdenticalTo('Pending administration observer');
+        } finally {
+            $DB = $database;
+            $owner?->clear();
+            $frame->rollBack();
+            $_SESSION = $session;
+            $_POST = $post;
         }
     }
 

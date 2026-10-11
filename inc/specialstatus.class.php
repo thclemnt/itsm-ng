@@ -35,6 +35,7 @@ use Glpi\Event;
 use itsmng\Database\BooleanValue;
 use itsmng\Database\MappedStorage;
 use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\SpecialStatusAdministrationRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -100,14 +101,12 @@ class SpecialStatus extends CommonTreeDropdown
         }
 
         global $DB, $CFG_GLPI;
-        $criteria = "SELECT * FROM glpi_specialstatuses";
-        $iterators = $DB->request($criteria);
+        $rows = (new SpecialStatusAdministrationRepository($DB->getDoctrineConnection()))->editableStatusRows();
         $checksum = 0;
         $validFlags = true;
         echo Html::script("js/specialstatus.js");
 
         if (isset($_POST["update"])) {
-            $rows = iterator_to_array($iterators, false);
             $flags = [];
             try {
                 // Validate the COMPLETE submitted batch before any row write,
@@ -191,8 +190,8 @@ class SpecialStatus extends CommonTreeDropdown
         echo "<td><b>" . __("Delete") . "</b></td>";
         echo "</tr>";
 
-        $iterators = $DB->request($criteria);
-        while ($data = $iterators->next()) {
+        $rows = (new SpecialStatusAdministrationRepository($DB->getDoctrineConnection()))->editableStatusRows();
+        foreach ($rows as $data) {
             echo "<tr class='tab_bg_1'>";
             echo "<td>" . $data["name"] . "</td>";
             echo "<td><input type='number' id='weight_" . $data["id"] . "' name='weight_" . $data["id"] . "' value='" . $data["weight"] . "' min='1'></td>";
@@ -230,18 +229,16 @@ class SpecialStatus extends CommonTreeDropdown
         $tab = Ticket::getAllStatusArray(false, true);
         global $DB, $CFG_GLPI;
 
-        $criteria = "SELECT * FROM glpi_tickets";
-        $iterators = $DB->request($criteria);
-
-        $iterators = $DB->request($criteria);
-        while ($data = $iterators->next()) {
-            if (isset($tab["id"][$data["status"]]) && $id == $tab["id"][$data["status"]]) {
-                $result[] = $tab["id"][$data["status"]];
+        $database = $DB;
+        $ordinals = [];
+        foreach ($tab['id'] ?? [] as $ordinal => $statusID) {
+            if ($id == $statusID) {
+                $ordinals[] = $ordinal;
             }
         }
+        $count = (new SpecialStatusAdministrationRepository($database->getDoctrineConnection()))->ticketUsageCount($ordinals);
         echo "<form aria-label='Status' method='post' action='./specialstatus.php' method='post'>";
-        if (isset($result)) {
-            $count = count($result);
+        if ($count > 0) {
 
             if ($count <= 1) {
                 echo "<b>" . "$count " . __('Ticket is still using this status, are you sure to remove the status?') . "</b>";
