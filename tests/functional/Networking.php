@@ -458,15 +458,9 @@ class IPNetwork extends DbTestCase
         $hooks = $PLUGIN_HOOKS;
         $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
         $active = $plugins->getValue();
-        $alternate = new class ($connection) extends RebuildRouteAdapter {
-            public function __construct(private Connection $connection)
-            {
-            }
-            public function getDoctrineConnection(): Connection
-            {
-                return $this->connection;
-            }
-        };
+        $this->mockGenerator()->orphanize('__construct');
+        $alternate = new RebuildRouteAdapter();
+        $this->calling($alternate)->getDoctrineConnection = $connection;
         try {
             $plugins->setValue(null, [...$active, 'network_rebuild_fixture']);
             foreach (['cancel', 'route'] as $mode) {
@@ -526,17 +520,13 @@ class IPNetwork extends DbTestCase
         $scope = $connection->captureManagedTransactionScope();
         $level = $connection->getTransactionNestingLevel();
         $source = $connection->fetchAllAssociative('SELECT * FROM glpi_ipnetworks ORDER BY id');
-        $routed = new class ($database, $connection) extends RebuildRouteAdapter {
-            public int $getters = 0;
-            public function __construct(private object $original, private Connection $connection)
-            {
-            }
-            public function getDoctrineConnection(): Connection
-            {
-                ++$this->getters;
-                $GLOBALS['DB'] = $this->original;
-                return $this->connection;
-            }
+        $getters = 0;
+        $this->mockGenerator()->orphanize('__construct');
+        $routed = new RebuildRouteAdapter();
+        $this->calling($routed)->getDoctrineConnection = static function () use ($database, $connection, &$getters): Connection {
+            ++$getters;
+            $GLOBALS['DB'] = $database;
+            return $connection;
         };
         try {
             $DB = $routed;
@@ -547,7 +537,7 @@ class IPNetwork extends DbTestCase
                 $failure = $error;
             }
             $this->object($failure)->isInstanceOf(TransactionOwnershipMismatch::class);
-            $this->integer($routed->getters)->isIdenticalTo(1);
+            $this->integer($getters)->isIdenticalTo(1);
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
             $this->array($connection->fetchAllAssociative('SELECT * FROM glpi_ipnetworks ORDER BY id'))->isIdenticalTo($source);
         } finally {
