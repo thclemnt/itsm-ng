@@ -65,7 +65,6 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use Doctrine\ORM\Event\OnClearEventArgs;
-use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\Mapping as Mapping;
 use Doctrine\ORM\Mapping\ClassMetadata;
@@ -1810,50 +1809,22 @@ class Config extends DbTestCase
                 $operation->close();
             }
             $this->boolean($supplied->contains($sentinel))->isTrue();
-            ConfigModel::setConfigurationValues($context, ['fallback' => 'hydrated']);
-            $fallbackId = (int)$connection->fetchOne('SELECT id FROM glpi_configs WHERE context = ? AND name = ?', [$context, 'fallback']);
-            $listener = new class () {
-                public array $managers = [];
-
-                public function postLoad(PostLoadEventArgs $event): void
-                {
-                    $this->managers[] = $event->getObjectManager();
-                }
-            };
-            $supplied->getEventManager()->addEventListener([Events::postLoad], $listener);
+            $sentinel->value = 'pending';
             $operation = new RecordReadOperation($connection, $supplied);
             try {
-                $this->string($operation->row('glpi_configs', 'id', $fallbackId)['value'])->isIdenticalTo('hydrated');
-                $this->boolean($supplied->contains($sentinel))->isTrue('A hydrated point read cannot clear its caller manager');
-                $this->array($listener->managers)->isIdenticalTo([$supplied]);
-                $supplied->detach($supplied->find(ConfigRecord::class, $fallbackId));
-                $this->string($operation->matching('glpi_configs', ['id' => $fallbackId], [], null, 0)[0]['value'])->isIdenticalTo('hydrated');
-                $this->boolean($supplied->contains($sentinel))->isTrue('A hydrated collection cannot clear unrelated caller entities');
-                $this->array($listener->managers)->isIdenticalTo([$supplied, $supplied]);
-                $sentinel->value = 'pending-with-listener';
+                $this->string($operation->row('glpi_configs', 'id', $id)['value'])->isIdenticalTo('current');
                 $this->string($operation->matching('glpi_configs', ['id' => $id], [], null, 0)[0]['value'])
-                    ->isIdenticalTo('pending-with-listener');
-                $this->boolean($supplied->contains($sentinel))->isTrue('Matching a caller entity must not detach its pending edit');
+                    ->isIdenticalTo('current');
+                $this->boolean($supplied->contains($sentinel))->isTrue();
+                $this->string($sentinel->value)->isIdenticalTo('pending');
             } finally {
                 $operation->close();
-                $supplied->getEventManager()->removeEventListener([Events::postLoad], $listener);
             }
             $this->boolean($supplied->contains($sentinel))->isTrue();
+            $this->string($sentinel->value)->isIdenticalTo('pending');
             $supplied->flush();
             $this->string($connection->fetchOne('SELECT value FROM glpi_configs WHERE id = ?', [$id]))
-                ->isIdenticalTo('pending-with-listener');
-            $sentinel->value = 'pending-without-listener';
-            $operation = new RecordReadOperation($connection, $supplied);
-            try {
-                $this->string($operation->matching('glpi_configs', ['id' => $id], [], null, 0)[0]['value'])
-                    ->isIdenticalTo('pending-without-listener');
-                $this->boolean($supplied->contains($sentinel))->isTrue();
-            } finally {
-                $operation->close();
-            }
-            $supplied->flush();
-            $this->string($connection->fetchOne('SELECT value FROM glpi_configs WHERE id = ?', [$id]))
-                ->isIdenticalTo('pending-without-listener');
+                ->isIdenticalTo('pending');
             $private = new RecordReadOperation($connection);
             try {
                 $this->exception(static fn () => $private->matchingResult('glpi_configs', $criteria, [], null, 0))
@@ -1913,7 +1884,7 @@ class Config extends DbTestCase
         $failed = null;
         try {
             ConfigModel::setConfigurationValues($context, ['probe' => 'current']);
-            foreach (['metadata', 'sql', 'postLoad', 'prepare'] as $phase) {
+            foreach (['metadata', 'sql', 'prepare'] as $phase) {
                 // Each phase begins with fresh metadata and query cache on the real owned route.
                 Orm::withConnection($connection, static function (EntityManager $manager): void {
                     $manager->close();
@@ -1924,7 +1895,7 @@ class Config extends DbTestCase
                 try {
                     Orm::withConnection($connection, static function (EntityManager $manager) use ($phase, $expected, $context, &$failed): void {
                         $failed = $manager;
-                        if ($phase === 'metadata' || $phase === 'postLoad') {
+                        if ($phase === 'metadata') {
                             $listener = new class ($expected) {
                                 public function __construct(private UnsupportedCriteria $error)
                                 {
@@ -1935,15 +1906,9 @@ class Config extends DbTestCase
                                         throw $this->error;
                                     }
                                 }
-                                public function postLoad(PostLoadEventArgs $event): void
-                                {
-                                    if ($event->getObject() instanceof ConfigRecord) {
-                                        throw $this->error;
-                                    }
-                                }
                             };
                             $manager->getEventManager()->addEventListener([
-                                $phase === 'metadata' ? Events::loadClassMetadata : Events::postLoad,
+                                Events::loadClassMetadata,
                             ], $listener);
                         } elseif ($phase === 'sql') {
                             // Install after ownership admission to exercise its actual error guard.
@@ -2228,155 +2193,6 @@ class Config extends DbTestCase
         } finally {
             Orm::withConnection($connection, static fn (EntityManager $manager) => $manager->close());
             $GLOBALS['GLPI_CACHE'] = $previous;
-            $connection->delete('glpi_configs', ['context' => $context]);
-        }
-    }
-
-    public function testPrivateRecordFallbackRearmsCleanupAndPreservesFailures(): void
-    {
-        global $DB;
-        $connection = $DB->getDoctrineConnection();
-        $context = 'fallback-cleanup-' . bin2hex(random_bytes(6));
-        ConfigModel::setConfigurationValues($context, ['probe' => 'before']);
-        $id = (int)$connection->fetchOne('SELECT id FROM glpi_configs WHERE context = ?', [$context]);
-        $events = new EventManager();
-        $probe = new class ($connection, $events) extends ScalarReadProbe {
-            public function __construct($selected, private EventManager $events)
-            {
-                parent::__construct($selected);
-            }
-
-            public function getEventManager(): EventManager
-            {
-                return $this->events;
-            }
-        };
-        $observer = new class () {
-            public array $loaded = [];
-            public array $cleared = [];
-            public ?Throwable $primary = null;
-            public ?Throwable $cleanup = null;
-
-            public function postLoad(PostLoadEventArgs $event): void
-            {
-                $this->loaded[] = $event->getObjectManager();
-                if ($this->primary !== null) {
-                    throw $this->primary;
-                }
-            }
-
-            public function onClear(OnClearEventArgs $event): void
-            {
-                $this->cleared[] = $event->getObjectManager();
-                if ($this->cleanup !== null) {
-                    throw $this->cleanup;
-                }
-            }
-        };
-        $events->addEventListener([Events::postLoad, Events::onClear], $observer);
-        $reader = new RecordReadOperation($probe);
-        try {
-            $this->string($reader->row('glpi_configs', 'id', $id)['value'])->isIdenticalTo('before');
-            $connection->update('glpi_configs', ['value' => 'after'], ['id' => $id]);
-            $this->string($reader->matching('glpi_configs', ['id' => $id], [], null, 0)[0]['value'])
-                ->isIdenticalTo('after');
-            $this->array($observer->loaded)->hasSize(2);
-            $this->object($observer->loaded[1])->isIdenticalTo($observer->loaded[0]);
-            $this->array($observer->cleared)->isIdenticalTo($observer->loaded);
-            // A later explicit scalar read still owns terminal cleanup, without postLoad.
-            $this->string($reader->scalarRow('glpi_configs', $id)['value'])->isIdenticalTo('after');
-            $this->array($observer->loaded)->hasSize(2);
-            $reader->close();
-            $reader->close();
-            unset($reader);
-            $this->array($observer->cleared)->hasSize(3);
-            $this->object($observer->cleared[2])->isIdenticalTo($observer->loaded[0]);
-
-            $primary = new RuntimeException('Actual fallback operation failure');
-            $cleanup = new RuntimeException('Actual fallback cleanup failure');
-            foreach ([
-                [$primary, null], [null, $cleanup],
-                [$primary, $cleanup], [$primary, $primary]
-            ] as [$operationError, $cleanupError]) {
-                $observer->primary = $operationError;
-                $observer->cleanup = $cleanupError;
-                $before = count($observer->cleared);
-                $reader = new RecordReadOperation($probe);
-                $failure = null;
-                try {
-                    $reader->row('glpi_configs', 'id', $id);
-                } catch (Throwable $error) {
-                    $failure = $error;
-                }
-                $this->integer(count($observer->cleared) - $before)->isIdenticalTo(1);
-                if ($operationError !== null && $cleanupError !== null) {
-                    $this->object($failure)->isInstanceOf(MutationCleanupFailure::class);
-                    $this->object($failure->primary)->isIdenticalTo($operationError);
-                    $this->object($failure->cleanup)->isIdenticalTo($cleanupError);
-                } else {
-                    $this->object($failure)->isIdenticalTo($operationError ?? $cleanupError);
-                }
-                $reader->close();
-                unset($reader);
-                $this->integer(count($observer->cleared) - $before)->isIdenticalTo(1);
-            }
-        } finally {
-            $observer->primary = null;
-            $observer->cleanup = null;
-            if (isset($reader)) {
-                $reader->close();
-            }
-            $events->removeEventListener([Events::postLoad, Events::onClear], $observer);
-            $connection->delete('glpi_configs', ['context' => $context]);
-        }
-    }
-
-    public function testPrivateRecordFallbackDetachesCachesBeforeCallbacks(): void
-    {
-        global $DB;
-        $previous = $GLOBALS['GLPI_CACHE'] ?? null;
-        $memory = new ConfigRecordPlanCache(storeSerialized: false);
-        $context = 'private-callback-' . bin2hex(random_bytes(6));
-        $connection = $DB->getDoctrineConnection();
-        EntityRegistry::tables();
-        $registry = new ReflectionProperty(EntityRegistry::class, 'model');
-        $original = $registry->getValue();
-        $public = Orm::configuration($connection->getDatabasePlatform());
-        ConfigRecordCallback::$publicDriver = $public->getMetadataDriverImpl();
-        ConfigRecordCallback::$observed = [];
-        try {
-            ConfigModel::setConfigurationValues($context, ['probe' => 'live']);
-            $id = (int)$connection->fetchOne('SELECT id FROM ' . $connection->quoteIdentifier('glpi_configs') . ' WHERE context = ? AND name = ?', [$context, 'probe']);
-            $GLOBALS['GLPI_CACHE'] = new Psr16Cache($memory);
-            Orm::withConnection($connection, static fn (EntityManager $manager) => $manager->close());
-            $model = $original;
-            $model['tables']['glpi_configs'] = ConfigRecordCallback::class;
-            $registry->setValue(null, $model);
-            $item = new ConfigModel();
-            $this->boolean($item->getFromDB($id))->isTrue();
-            $this->string($item->fields['value'])->isIdenticalTo('callback:live');
-            $this->array(ConfigRecordCallback::$observed)->isIdenticalTo([
-                'localConfiguration' => true, 'localFactory' => true,
-                'noPersistentQuery' => true, 'privateDriver' => true,
-            ]);
-            $this->integer($memory->planWrites)->isIdenticalTo(0);
-            $rows = MappedReads::matching($DB, 'glpi_configs', ['id' => $id]);
-            $this->string($rows[0]['value'])->isIdenticalTo('callback:live');
-            $this->array(ConfigRecordCallback::$observed)->isIdenticalTo([
-                'localConfiguration' => true, 'localFactory' => true,
-                'noPersistentQuery' => true, 'privateDriver' => true,
-            ]);
-            $this->integer($memory->planWrites)->isIdenticalTo(0);
-            $registry->setValue(null, $original);
-            $this->boolean($item->getFromDB($id))->isTrue();
-            $this->string($item->fields['value'])->isIdenticalTo('live');
-            $this->integer($memory->planWrites)->isIdenticalTo(1);
-            $this->object(Orm::configuration($connection->getDatabasePlatform())->getMetadataDriverImpl())->isNotIdenticalTo(ConfigRecordCallback::$publicDriver);
-        } finally {
-            $registry->setValue(null, $original);
-            $GLOBALS['GLPI_CACHE'] = $previous;
-            ConfigRecordCallback::$publicDriver = null;
-            ConfigRecordCallback::$observed = [];
             $connection->delete('glpi_configs', ['context' => $context]);
         }
     }
@@ -3156,46 +2972,5 @@ final class ConfigRecordPlanCache extends ArrayAdapter
             $this->planKeys[] = $item->getKey();
         }
         return parent::save($item);
-    }
-}
-
-#[Mapping\Entity]
-#[Mapping\Table(name: 'glpi_configs')]
-#[Mapping\HasLifecycleCallbacks]
-final class ConfigRecordCallback
-{
-    public static ?object $publicDriver = null;
-    public static array $observed = [];
-
-    #[Mapping\Id]
-    #[Mapping\Column(type: 'bigint')]
-    public ?int $id = null;
-    #[Mapping\Column(type: 'string', nullable: true)]
-    public ?string $context = null;
-    #[Mapping\Column(type: 'string', nullable: true)]
-    public ?string $name = null;
-    #[Mapping\Column(type: 'text', nullable: true)]
-    public ?string $value = null;
-
-    #[Mapping\PostLoad]
-    public function loaded(PostLoadEventArgs $event): void
-    {
-        $manager = $event->getObjectManager();
-        $configuration = $manager->getConfiguration();
-        $factoryCache = new ReflectionMethod($manager->getMetadataFactory(), 'getCache');
-        self::$observed = [
-            'localConfiguration' => $configuration->getMetadataCache() instanceof ArrayAdapter,
-            'localFactory' => $factoryCache->invoke($manager->getMetadataFactory()) === $configuration->getMetadataCache(),
-            'noPersistentQuery' => $configuration->getQueryCache() === null,
-            'privateDriver' => $configuration->getMetadataDriverImpl() !== self::$publicDriver,
-        ];
-        $manager->getEventManager()->addEventListener(Events::loadClassMetadata, new class () {
-            public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
-            {
-                $event->getClassMetadata()->setPrimaryTable(['name' => 'callback_wrong_table']);
-            }
-        });
-        $manager->getClassMetadata(ConfigRecord::class);
-        $this->value = 'callback:' . $this->value;
     }
 }

@@ -50,7 +50,6 @@ use Doctrine\DBAL\Types\Type as DbalType;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Event\OnClearEventArgs;
-use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\Event\PostPersistEventArgs;
 use Doctrine\ORM\Event\PrePersistEventArgs;
 use Doctrine\ORM\Mapping\ClassMetadata;
@@ -743,50 +742,18 @@ class Log extends DbTestCase
                 $registry->override(Types::STRING, $originalString);
             }
 
-            // Canonical scopes must still hydrate records when a postLoad listener owns their labels.
-            $labelListener = new class () {
-                public int $users = 0;
-                public function postLoad(PostLoadEventArgs $event): void
-                {
-                    if ($event->getObject() instanceof UserRecord) {
-                        ++$this->users;
-                        $event->getObject()->firstname = 'Loaded';
-                    }
-                }
-            };
-            Orm::withReadConnection($connection, static function (EntityManager $manager) use ($labelListener): void {
-                $manager->getEventManager()->addEventListener(['postLoad'], $labelListener);
-            });
-            try {
-                $loaded = LegacyLog::getHistoryData($computer, 0, 0, $filters, $options);
-                $this->string($loaded[1]['change'])->isIdenticalTo('Change Loaded History (1) to Loaded History (2)');
-                $this->string($loaded[2]['change'])->isIdenticalTo('Change Loaded History (1) to Loaded History (3)');
-                $this->integer($labelListener->users)->isIdenticalTo(4);
-            } finally {
-                Orm::withReadConnection($connection, static function (EntityManager $manager) use ($labelListener): void {
-                    $manager->getEventManager()->removeEventListener(['postLoad'], $labelListener);
-                });
-            }
-
             // Custom readers keep both eager managers and the second selected physical route.
             $events = new EventManager();
             $listener = new class () {
                 public int $clears = 0;
-                public int $users = 0;
 
                 public function onClear(): void
                 {
                     ++$this->clears;
                 }
 
-                public function postLoad(PostLoadEventArgs $event): void
-                {
-                    if ($event->getObject() instanceof UserRecord) {
-                        ++$this->users;
-                    }
-                }
             };
-            $events->addEventListener(['onClear', 'postLoad'], $listener);
+            $events->addEventListener(['onClear'], $listener);
             $historyConnection = new class ($connection) extends ScalarReadProbe {
                 public EventManager $events;
 
@@ -822,7 +789,6 @@ class Log extends DbTestCase
             $this->array($historyConnection->queries)->hasSize(1);
             $this->array($userConnection->queries)->hasSize(4);
             $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(2);
-            $this->integer($listener->users)->isIdenticalTo(1);
             $this->integer($listener->clears)->isIdenticalTo(0);
             $this->object($DB)->isIdenticalTo($original);
 

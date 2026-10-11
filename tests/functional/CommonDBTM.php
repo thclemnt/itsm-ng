@@ -70,7 +70,6 @@ use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Configuration;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
-use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\Id\AssignedGenerator;
 use Doctrine\ORM\Internal\Hydration\AbstractHydrator;
@@ -115,7 +114,6 @@ use itsmng\Database\MutationCleanupFailure;
 use itsmng\Database\MySQLConnection;
 use itsmng\Database\PostgresConnection;
 use itsmng\Database\Orm;
-use itsmng\Database\RecordReadOperation;
 use LogicException;
 use itsmng\Database\OwnedMutationFrame;
 use itsmng\Database\OwnershipUpdateUnit;
@@ -1275,52 +1273,22 @@ class CommonDBTM extends DbTestCase
             $this->string($records->find('glpi_computers', 'id', (int)$computer->getID())['name'])->isIdenticalTo('After legacy update');
             $this->string($managed->name)->isIdenticalTo('Before scalar read');
             $this->boolean($manager->contains($managed))->isTrue();
-            // Hydrated collections retain caller identity; refreshing it is the caller's decision.
+            // Complete row reads stay current without replacing the caller's managed object.
             $manager->hydrationModes = [];
             $this->string($records->matching('glpi_computers', ['id' => $computer->getID()])[0]['name'])
-                ->isIdenticalTo('Before scalar read');
-            $this->array($manager->hydrationModes)->isIdenticalTo([Query::HYDRATE_OBJECT]);
+                ->isIdenticalTo('After legacy update');
+            $this->array($manager->hydrationModes)->isIdenticalTo([Query::HYDRATE_ARRAY]);
             $this->boolean($manager->contains($managed))->isTrue();
             $this->string($records->matching('glpi_computers', ['id' => $computer->getID()])[0]['name'])
-                ->isIdenticalTo('Before scalar read');
+                ->isIdenticalTo('After legacy update');
             $manager->refresh($managed);
             $this->string($records->matching('glpi_computers', ['id' => $computer->getID()])[0]['name'])
                 ->isIdenticalTo('After legacy update');
 
-            $observed = Orm::create($DB);
-            try {
-                $loads = new class () {
-                    public int $count = 0;
-                    public function postLoad(PostLoadEventArgs $event): void
-                    {
-                        ++$this->count;
-                        if ($event->getObject() instanceof ComputerEntity) {
-                            $event->getObject()->name = 'Listener transformed row';
-                        }
-                    }
-                };
-                $observed->getEventManager()->addEventListener([Events::postLoad], $loads);
-                $transformed = (new RecordRepository($observed))
-                    ->find('glpi_computers', 'id', (int)$computer->getID());
-                $this->string($transformed['name'])->isIdenticalTo('Listener transformed row');
-                $this->integer($loads->count)->isGreaterThan(0);
-                $this->array($observed->getUnitOfWork()->getIdentityMap())->isNotEmpty();
-                $observed->clear();
-                $loads->count = 0;
-                $transformedRows = (new RecordRepository($observed))
-                    ->matching('glpi_computers', ['id' => $computer->getID()]);
-                $this->string($transformedRows[0]['name'])->isIdenticalTo('Listener transformed row');
-                $this->integer($loads->count)->isGreaterThan(0);
-                $observed->clear();
-                $loads->count = 0;
-                $operation = new RecordReadOperation($connection, $observed);
-                $transformed = $operation->row('glpi_computers', 'entities_id', (int)$entity->getID());
-                $this->string($transformed['name'])->isIdenticalTo('Listener transformed row');
-                $this->integer($loads->count)->isGreaterThan(0);
-
-            } finally {
-                $observed->clear();
-            }
+            $queryCount = count($manager->queries);
+            $this->exception(static fn () => $records->find('glpi_computers', 'missing_lookup_column', 1))
+                ->isInstanceOf(UnsupportedCriteria::class)->hasMessage('Unknown record lookup column: missing_lookup_column');
+            $this->integer(count($manager->queries))->isIdenticalTo($queryCount);
             // Unordered alternate-key lookup may choose either complete matching row.
             $peer = $this->createItem(Computer::class, ['name' => 'Alternate key peer', 'entities_id' => $entity->getID()]);
             $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_computers WHERE entities_id = ?', [$entity->getID()]))->isIdenticalTo(2);

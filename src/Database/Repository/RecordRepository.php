@@ -7,7 +7,6 @@ namespace itsmng\Database\Repository;
 use BackedEnum;
 use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManager;
-use Doctrine\ORM\Events;
 use Doctrine\ORM\Query;
 use InvalidArgumentException;
 use itsmng\Database\EntityRegistry;
@@ -41,26 +40,12 @@ final class RecordRepository
         if ($lockMode !== LockMode::NONE) {
             throw new InvalidArgumentException('Mapped model loads support ordinary or current write-lock reads.');
         }
-        if (count($metadata->identifier) === 1
-            && !$metadata->hasLifecycleCallbacks(Events::postLoad)
-            && empty($metadata->entityListeners[Events::postLoad])
-            && !$this->em->getEventManager()->hasListeners(Events::postLoad)) {
-            $identifier = $metadata->getSingleIdentifierFieldName();
-            if ($metadata->hasField($identifier) && $metadata->getColumnName($identifier) === $column) {
-                return $this->scalarRow($metadata->name, $id);
-            }
-        }
-        $field = $metadata->getFieldName($column);
-        foreach ($metadata->associationMappings as $associationField => $mapping) {
-            if (!$mapping->isToOneOwningSide()) {
-                continue;
-            }
-            if ($mapping->joinColumns[0]->name === $column) {
-                $field = $associationField;
-            }
-        }
-        $record = $this->em->getRepository($metadata->name)->findOneBy([$field => $id]);
-        return $record === null ? null : $this->toRow($record);
+        $identifier = $metadata->getSingleIdentifierFieldName();
+        return $this->scalarRow(
+            $metadata->name,
+            $id,
+            lookupColumn: $metadata->getColumnName($identifier) === $column ? null : $column
+        );
     }
 
     /** Complete legacy row without creating managed records or association proxies. */
@@ -74,9 +59,13 @@ final class RecordRepository
         $lookup = 'r.' . $identifier;
         $type = $metadata->getTypeOfField($identifier);
         if ($lookupColumn !== null) {
-            $field = $metadata->getFieldName($lookupColumn);
-            $lookup = 'r.' . $field;
-            $type = $metadata->getTypeOfField($field);
+            $field = $metadata->fieldNames[$lookupColumn] ?? null;
+            if ($field !== null) {
+                $lookup = 'r.' . $field;
+                $type = $metadata->getTypeOfField($field);
+            } else {
+                $lookup = null;
+            }
             foreach ($metadata->associationMappings as $property => $association) {
                 if ($association->isToOneOwningSide() && count($association->joinColumns) === 1
                     && $association->joinColumns[0]->name === $lookupColumn) {
@@ -91,6 +80,9 @@ final class RecordRepository
                     break;
                 }
             }
+        }
+        if ($lookup === null) {
+            throw new UnsupportedCriteria('Unknown record lookup column: ' . $lookupColumn);
         }
         $query = $this->em->createQueryBuilder()
             ->from($recordClass, 'r')
@@ -135,24 +127,12 @@ final class RecordRepository
         }
         $query->setFirstResult(max(0, $offset));
         $rows = [];
-        // An existing identity map or post-load dispatch retains ordinary ORM semantics.
-        if ($this->em->getUnitOfWork()->size() === 0
-            && count($metadata->identifier) === 1
-            && $metadata->hasField($metadata->getSingleIdentifierFieldName())
-            && !$metadata->hasLifecycleCallbacks(Events::postLoad)
-            && empty($metadata->entityListeners[Events::postLoad])
-            && !$this->em->getEventManager()->hasListeners(Events::postLoad)) {
-            $projection = new MappedRowProjection($this->em, $metadata, $defaultIdentifiers);
-            $projection->select($query);
-            $compiled = $query->getQuery();
-            $operation?->prepareQuery($compiled, $metadata);
-            foreach ($compiled->toIterable([], Query::HYDRATE_ARRAY) as $values) {
-                $rows[] = $projection->toRow($values);
-            }
-            return $rows;
-        }
-        foreach ($query->getQuery()->toIterable() as $record) {
-            $rows[] = $this->toRow($record);
+        $projection = new MappedRowProjection($this->em, $metadata, $defaultIdentifiers);
+        $projection->select($query);
+        $compiled = $query->getQuery();
+        $operation?->prepareQuery($compiled, $metadata);
+        foreach ($compiled->toIterable([], Query::HYDRATE_ARRAY) as $values) {
+            $rows[] = $projection->toRow($values);
         }
         return $rows;
     }
