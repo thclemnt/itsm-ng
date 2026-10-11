@@ -34,6 +34,17 @@
 namespace tests\units;
 
 use DbTestCase;
+use Document_Item as DocumentLink;
+use Reminder;
+use Session;
+use RuntimeException;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Result;
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\ORM\Events;
+use Doctrine\ORM\Event\OnClearEventArgs;
+use itsmng\Database\Entity\Reminder as ReminderRecord;
 use Document as LegacyDocument;
 use itsmng\Database\Entity\Document as DocumentRecord;
 use tests\fixtures\ScalarReadProbe;
@@ -51,6 +62,184 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Document extends DbTestCase
 {
+    public function testAttachmentAccessSeesCurrentGrantsWithoutClearingLiveOwners(): void
+    {
+        global $DB;
+        $this->login('itsm', 'itsm');
+        $document = $this->createItem(
+            LegacyDocument::class,
+            ['name' => $this->getUniqueString(), 'filename' => 'access.txt', 'users_id' => 2]
+        );
+        $this->login('post-only', 'postonly');
+        $viewer = Session::getLoginUserID();
+        $reminder = $this->createItem(
+            Reminder::class,
+            ['name' => $this->getUniqueString(), 'text' => 'Attachment reader', 'users_id' => $viewer]
+        );
+        $link = $this->createItem(
+            DocumentLink::class,
+            ['documents_id' => $document->getID(), 'items_id' => $reminder->getID(), 'itemtype' => Reminder::class]
+        );
+        $this->boolean($document->canViewFile())->isTrue();
+        $connection = $DB->getDoctrineConnection();
+        $owner = Orm::create($DB);
+        try {
+            $dirty = $owner->find(DocumentRecord::class, $document->getID());
+            $dirty->name = 'Pending independent attachment';
+            Orm::read(
+                $DB,
+                function (EntityManager $outer) use ($document, $reminder, $link, $viewer): void {
+                    $pending = $outer->find(ReminderRecord::class, $reminder->getID());
+                    $pending->name = 'Pending enclosing reminder';
+                    $this->boolean($link->delete(['id' => $link->getID()]))->isTrue();
+                    $this->boolean($document->canViewFile())->isFalse();
+                    $this->createItem(
+                        DocumentLink::class,
+                        ['documents_id' => $document->getID(), 'items_id' => $reminder->getID(), 'itemtype' => Reminder::class]
+                    );
+                    $this->boolean($document->canViewFile())->isTrue();
+                    $this->boolean($reminder->update(['id' => $reminder->getID(), 'users_id' => 2]))->isTrue();
+                    $this->boolean($document->canViewFile())->isFalse();
+                    $this->boolean($reminder->update(['id' => $reminder->getID(), 'users_id' => $viewer]))->isTrue();
+                    $this->boolean($document->canViewFile())->isTrue();
+                    $this->boolean($outer->contains($pending))->isTrue();
+                    $this->string($pending->name)->isIdenticalTo('Pending enclosing reminder');
+                }
+            );
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->string($dirty->name)->isIdenticalTo('Pending independent attachment');
+            $this->string($connection->fetchOne('SELECT name FROM glpi_documents WHERE id = ?', [$document->getID()]))
+                ->isIdenticalTo($document->fields['name']);
+            $this->string($connection->fetchOne('SELECT name FROM glpi_reminders WHERE id = ?', [$reminder->getID()]))
+                ->isIdenticalTo($reminder->fields['name']);
+        } finally {
+            $owner->clear();
+        }
+    }
+
+    public function testAttachmentAccessKeepsCustomConstructorPreparationAndFailureRoute(): void
+    {
+        global $DB;
+        $this->login('itsm', 'itsm');
+        $source = $this->createItem(
+            LegacyDocument::class,
+            ['name' => $this->getUniqueString(), 'filename' => 'selected-access.txt', 'users_id' => 2]
+        );
+        $this->login('post-only', 'postonly');
+        $reminder = $this->createItem(
+            Reminder::class,
+            ['name' => $this->getUniqueString(), 'text' => 'Selected attachment', 'users_id' => Session::getLoginUserID()]
+        );
+        $this->createItem(
+            DocumentLink::class,
+            ['documents_id' => $source->getID(), 'items_id' => $reminder->getID(), 'itemtype' => Reminder::class]
+        );
+        $trace = new class () {
+            public array $events = [];
+            public ?RuntimeException $prepareFailure = null;
+            public ?RuntimeException $queryFailure = null;
+            public int $clears = 0;
+
+            public function onClear(OnClearEventArgs $event): void
+            {
+                ++$this->clears;
+            }
+        };
+        $document = new class () extends LegacyDocument {
+            public object $trace;
+            public bool $armed = false;
+
+            public static function getType()
+            {
+                return LegacyDocument::class;
+            }
+
+            public static function getTable($classname = null)
+            {
+                return LegacyDocument::getTable();
+            }
+
+            public function getID()
+            {
+                if ($this->armed) {
+                    $this->trace->events[] = 'id';
+                    if ($this->trace->prepareFailure !== null) {
+                        throw $this->trace->prepareFailure;
+                    }
+                }
+                return parent::getID();
+            }
+        };
+        $document->trace = $trace;
+        $this->boolean($document->getFromDB($source->getID()))->isTrue();
+        $document->armed = true;
+        $original = $DB;
+        $connection = $original->getDoctrineConnection();
+        $events = new EventManager();
+        $events->addEventListener([Events::onClear], $trace);
+        $probe = new class ($connection, $events, $original, $trace) extends ScalarReadProbe {
+            public function __construct(
+                Connection $connection,
+                private EventManager $events,
+                private object $original,
+                private object $trace
+            ) {
+                parent::__construct($connection);
+            }
+
+            public function getEventManager(): EventManager
+            {
+                $this->trace->events[] = 'constructed';
+                $GLOBALS['DB'] = $this->original;
+                return $this->events;
+            }
+
+            public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
+            {
+                $this->trace->events[] = 'query';
+                if ($this->trace->queryFailure !== null) {
+                    throw $this->trace->queryFailure;
+                }
+                return parent::executeQuery($sql, $params, $types, $qcp);
+            }
+        };
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new DocumentReadRoute();
+        $selections = 0;
+        $this->calling($adapter)->getDoctrineConnection = static function () use ($probe, &$selections): Connection {
+            ++$selections;
+            return $probe;
+        };
+        $depth = $connection->getTransactionNestingLevel();
+        try {
+            $prepareFailure = new RuntimeException('Attachment ID preparation');
+            $trace->prepareFailure = $prepareFailure;
+            $DB = $adapter;
+            $this->exception(static fn () => $document->canViewFile())->isIdenticalTo($prepareFailure);
+            $this->array($trace->events)->isIdenticalTo(['constructed', 'id']);
+            $this->array($probe->queries)->isEmpty();
+            $trace->prepareFailure = null;
+            $trace->events = [];
+            $queryFailure = new RuntimeException('Selected attachment read');
+            $trace->queryFailure = $queryFailure;
+            $DB = $adapter;
+            $this->exception(static fn () => $document->canViewFile())->isIdenticalTo($queryFailure);
+            $this->array($trace->events)->isIdenticalTo(['constructed', 'id', 'query']);
+            $trace->queryFailure = null;
+            $trace->events = [];
+            $DB = $adapter;
+            $this->boolean($document->canViewFile())->isTrue();
+            $this->array($trace->events)->isIdenticalTo(['constructed', 'id', 'query']);
+            $this->array($probe->queries)->hasSize(1);
+            $this->string($probe->queries[0]['sql'])->contains('glpi_reminders');
+            $this->integer($selections)->isIdenticalTo(3);
+            $this->integer($trace->clears)->isIdenticalTo(0);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+        } finally {
+            $DB = $original;
+        }
+    }
+
     public function canApplyOnProvider()
     {
         return [

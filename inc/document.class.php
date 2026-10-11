@@ -801,8 +801,15 @@ class Document extends CommonDBTM
             return false;
         }
 
-        return (new SharedContentRepository(Orm::create($DB)))
-            ->reminderHasDocument((int)$this->getID(), SharedContentAccess::current(Session::haveRight(Reminder::$rightname, READ)));
+        return Orm::readPrepared(
+            $DB,
+            fn (): array => [
+                (int)$this->getID(),
+                SharedContentAccess::current(Session::haveRight(Reminder::$rightname, READ)),
+            ],
+            static fn (EntityManager $manager, array $values): bool =>
+                (new SharedContentRepository($manager))->reminderHasDocument($values[0], $values[1])
+        );
     }
 
     /**
@@ -829,8 +836,12 @@ class Document extends CommonDBTM
             return false;
         }
 
-        return (new KnowledgeBaseRepository(Orm::create($DB)))
-            ->hasDocument((int)$this->getID(), KnowledgeBaseAccess::current());
+        return Orm::readPrepared(
+            $DB,
+            fn (): array => [(int)$this->getID(), KnowledgeBaseAccess::current()],
+            static fn (EntityManager $manager, array $values): bool =>
+                (new KnowledgeBaseRepository($manager))->hasDocument($values[0], $values[1])
+        );
     }
 
     /**
@@ -858,8 +869,12 @@ class Document extends CommonDBTM
 
         $itil->getFromDB($items_id);
 
-        return (new DocumentRepository(Orm::create($DB)))
-            ->linkedToITIL((int)$this->getID(), $itemtype, (int)$items_id, ITILDocumentAccess::current($itemtype));
+        return Orm::readPrepared(
+            $DB,
+            fn (): array => [(int)$this->getID(), $itemtype, (int)$items_id, ITILDocumentAccess::current($itemtype)],
+            static fn (EntityManager $manager, array $values): bool =>
+                (new DocumentRepository($manager))->linkedToITIL($values[0], $values[1], $values[2], $values[3])
+        );
     }
 
     public static function rawSearchOptionsToAdd($itemtype = null)
