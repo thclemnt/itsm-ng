@@ -792,11 +792,24 @@ class Item_SoftwareVersion extends DbTestCase
             $calls = 0;
             $comments = [];
             $names = [];
+            $rights = [];
+            $subjects = [];
             $plugins->setValue(null, [...$active, 'effective_license_fixture']);
             $PLUGIN_HOOKS['item_can'] = ['effective_license_fixture' => [Software::class =>
-                static function (Software $item) use (&$calls, &$comments, &$names, $connection, $licenses, $versions): void {
+                static function (Software $item) use (
+                    &$calls,
+                    &$comments,
+                    &$names,
+                    &$rights,
+                    &$subjects,
+                    $connection,
+                    $licenses,
+                    $versions
+                ): void {
                     $comments[] = $item->fields['comment'];
                     $names[] = $item->fields['name'];
+                    $rights[] = $item->right;
+                    $subjects[] = $item;
                     if (++$calls === 1) {
                         // The next installed row must observe this write rather than an earlier batch.
                         $connection->update('glpi_softwarelicenses', [
@@ -807,9 +820,18 @@ class Item_SoftwareVersion extends DbTestCase
                     }
                 }]];
             $hooked = $render();
-            $this->integer($calls)->isIdenticalTo(2);
-            $this->array($comments)->isIdenticalTo(['Full permission fields', 'Full permission fields']);
-            $this->array($names)->isIdenticalTo([$software->fields['name'], 'Current callback name']);
+            // Each row checks its software link and the version's actual software parent.
+            $this->integer($calls)->isIdenticalTo(4);
+            $this->array($comments)->isIdenticalTo(array_fill(0, 4, 'Full permission fields'));
+            $this->array($names)->isIdenticalTo([
+                $software->fields['name'], 'Current callback name',
+                'Current callback name', 'Current callback name',
+            ]);
+            $this->array($rights)->isIdenticalTo([READ, READ, READ, READ]);
+            $this->array(array_map(static fn (Software $item): int => (int)$item->getID(), $subjects))
+                ->isIdenticalTo(array_fill(0, 4, (int)$software->getID()));
+            $this->object($subjects[0])->isNotIdenticalTo($subjects[1]);
+            $this->object($subjects[2])->isNotIdenticalTo($subjects[3]);
             $this->array(array_column($hooked['dataSource']['rows'], 3))->isIdenticalTo([
                 (string)$licenses[0]->getID(), '',
             ]);

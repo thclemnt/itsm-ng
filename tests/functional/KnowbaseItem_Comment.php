@@ -114,11 +114,11 @@ class KnowbaseItem_Comment extends DbTestCase
         $previousCount = $_SESSION['glpishow_count_on_tabs'];
         try {
             $_SESSION['glpishow_count_on_tabs'] = 1;
-            $this->string($tabs->getTabNameForItem($translation))->isIdenticalTo("Comments <sup class='tab_nb'>1</sup>");
+            $this->string($tabs->getTabNameForItem($translation))->isIdenticalTo(ApplicationComment::getTypeName(1) . " <sup class='tab_nb'>1</sup>");
             $this->output(static fn () => ApplicationComment::showForItem($translation))->contains('French comment');
             $connection->update('glpi_knowbaseitems_comments', ['comment' => 'Current root'], ['id' => $root->id]);
             $connection->update('glpi_knowbaseitems_comments', ['language' => null], ['id' => $translated->id]);
-            $this->string($tabs->getTabNameForItem($translation))->isIdenticalTo('Comments');
+            $this->string($tabs->getTabNameForItem($translation))->isIdenticalTo(ApplicationComment::getTypeName(0));
             $this->output(static fn () => ApplicationComment::showForItem($translation))->contains('No comments');
             $fresh = ApplicationComment::getCommentsForKbItem($article->id, null);
             $this->array(array_column($fresh, 'id'))->isIdenticalTo([$root->id, $translated->id]);
@@ -130,7 +130,7 @@ class KnowbaseItem_Comment extends DbTestCase
                 $owned = $outer->find(CommentRecord::class, $root->id);
                 $owned->comment = 'Unflushed enclosing root';
                 $this->array(ApplicationComment::getCommentsForKbItem($article->id, null))->isIdenticalTo($fresh);
-                $this->string($tabs->getTabNameForItem($translation))->isIdenticalTo('Comments');
+                $this->string($tabs->getTabNameForItem($translation))->isIdenticalTo(ApplicationComment::getTypeName(0));
                 $this->boolean($outer->contains($owned))->isTrue();
                 $this->string($owned->comment)->isIdenticalTo('Unflushed enclosing root');
                 $this->boolean($owner->contains($root))->isTrue();
