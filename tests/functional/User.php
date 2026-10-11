@@ -2629,6 +2629,7 @@ class User extends DbTestCase
             $duplicate = new UserRecord();
             $duplicate->entities = $manager->getReference(EntityRecord::class, $entity);
             $duplicate->name = 'NULL';
+            $duplicate->authtype = Auth::DB_GLPI;
             // Never flush the independently dirty account along with the new duplicate.
             $duplicateOwner = Orm::create($DB);
             $duplicate->entities = $duplicateOwner->getReference(EntityRecord::class, $entity);
@@ -2636,9 +2637,14 @@ class User extends DbTestCase
             $third = new UserRecord();
             $third->entities = $duplicateOwner->getReference(EntityRecord::class, $entity);
             $third->name = 'NULL';
+            $third->authtype = Auth::LDAP;
             $duplicateOwner->persist($third);
             $duplicateOwner->flush();
-            $this->variable(UserModel::getIdByName('NULL'))->isFalse();
+            $this->boolean($user->getFromDBbyNameAndAuth('NULL', Auth::DB_GLPI, 0))->isTrue();
+            $this->integer((int)$user->getID())->isIdenticalTo($duplicate->id);
+            $this->boolean($user->getFromDBbyNameAndAuth('NULL', Auth::LDAP, 0))->isTrue();
+            $this->integer((int)$user->getID())->isIdenticalTo($third->id);
+            $this->boolean(UserModel::getIdByName('NULL'))->isFalse();
             $this->when(static fn () => $user->getFromDBbyName('NULL'))->error()
                 ->withType(E_USER_WARNING)
                 ->withMessage('getFromDBByCrit expects to get one result, 3 found.')->exists();
