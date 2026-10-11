@@ -4,7 +4,6 @@
 
 namespace itsmng\Database;
 
-use Doctrine\ORM\NoResultException;
 use itsmng\Database\Repository\UserRepository;
 
 /** One fresh domain read owns its mapping and selected connection. */
@@ -14,13 +13,9 @@ final class UserDisplayReadOperation
 
     public function timelinePreferences(int $user): array
     {
-        try {
-            $this->metadata('glpi_users');
-            $repository = new UserRepository($this->manager);
-            return $repository->timelinePreferences($user);
-        } catch (NoResultException) {
-            return [];
-        }
+        $this->metadata('glpi_users');
+        $repository = new UserRepository($this->manager);
+        return $repository->timelinePreferences($user);
     }
 
     public function displayData(int $user): ?array

@@ -64,7 +64,6 @@ use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
-use Doctrine\ORM\NoResultException;
 use Doctrine\ORM\Query;
 use Document;
 use Document_Item;
@@ -1244,14 +1243,6 @@ class Ticket extends DbTestCase
                         ->contains("<h2 style='font-family: $convertedFont;'>")
                         ->contains("<h3 style='font-family: $convertedFont;'>");
                 }
-                Type::overrideType(Types::STRING, new class () extends StringType {
-                    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
-                    {
-                        throw new NoResultException();
-                    }
-                });
-                $this->array($repository->timelinePreferences($id))->isEmpty();
-                $this->array($reader->timelinePreferences($id))->isEmpty();
             } finally {
                 Type::overrideType(Types::STRING, $stringType);
             }

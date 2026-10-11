@@ -8,7 +8,6 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
-use Doctrine\ORM\NoResultException;
 use Entity as LegacyEntity;
 use itsmng\Database\Entity\Entity;
 use itsmng\Database\EntityConfigurationReferences;
@@ -94,43 +93,38 @@ final class EntityConfigurationRepository
         $types = EntityRegistry::fieldTypes('glpi_entities');
         $enums = EntityRegistry::fieldEnums('glpi_entities');
         return self::inheritConfiguration($reference, $entity, $valueField, $default, static function (int $entity) use ($connection, $platform, $columns, $types, $enums): ?array {
-            try {
-                // Resolve conversions for each fresh ancestor read, just as each ORM query does.
-                $query = $connection->createQueryBuilder()
-                    ->select($platform->quoteIdentifier('entities_id') . ' AS parent_id')
-                    ->from($platform->quoteIdentifier('glpi_entities'));
-                foreach ($columns as $index => $column) {
-                    $expression = $platform->quoteIdentifier($column);
-                    if (isset($types[$column])) {
-                        $expression = Type::getType($types[$column])->convertToPHPValueSQL($expression, $platform);
-                    }
-                    $query->addSelect($expression . ' AS setting' . $index);
+            // Resolve conversions for each fresh ancestor read, just as each ORM query does.
+            $query = $connection->createQueryBuilder()
+                ->select($platform->quoteIdentifier('entities_id') . ' AS parent_id')
+                ->from($platform->quoteIdentifier('glpi_entities'));
+            foreach ($columns as $index => $column) {
+                $expression = $platform->quoteIdentifier($column);
+                if (isset($types[$column])) {
+                    $expression = Type::getType($types[$column])->convertToPHPValueSQL($expression, $platform);
                 }
-                $query->where(
-                    $platform->quoteIdentifier('id') . ' = '
-                    . Type::getType(Types::INTEGER)->convertToDatabaseValueSQL(':entity', $platform)
-                )
-                    ->setParameter('entity', $entity, Types::INTEGER);
-                $result = $query->executeQuery()->fetchAssociative();
-                if ($result === false) {
-                    return null;
-                }
-                $parent = Type::getType(Types::STRING)->convertToPHPValue($result['parent_id'], $platform);
-                $row = [];
-                foreach ($columns as $index => $column) {
-                    // IDENTITY() is hydrated as an untyped string, without SQL conversion.
-                    $value = Type::getType($types[$column] ?? Types::STRING)->convertToPHPValue($result['setting' . $index], $platform);
-                    if ($value !== null && isset($enums[$column])) {
-                        $enum = $enums[$column];
-                        $integer = (new ReflectionEnum($enum))->getBackingType()->getName() === 'int';
-                        $convert = static fn ($entry) => $enum::from($integer ? (int)$entry : $entry);
-                        $value = is_array($value) ? array_map($convert, $value) : $convert($value);
-                    }
-                    $row[$column] = $value;
-                }
-            } catch (NoResultException) {
-                // getOneOrNullResult() treats this query/hydration outcome as no row.
+                $query->addSelect($expression . ' AS setting' . $index);
+            }
+            $query->where(
+                $platform->quoteIdentifier('id') . ' = '
+                . Type::getType(Types::INTEGER)->convertToDatabaseValueSQL(':entity', $platform)
+            )
+                ->setParameter('entity', $entity, Types::INTEGER);
+            $result = $query->executeQuery()->fetchAssociative();
+            if ($result === false) {
                 return null;
+            }
+            $parent = Type::getType(Types::STRING)->convertToPHPValue($result['parent_id'], $platform);
+            $row = [];
+            foreach ($columns as $index => $column) {
+                // IDENTITY() is hydrated as an untyped string, without SQL conversion.
+                $value = Type::getType($types[$column] ?? Types::STRING)->convertToPHPValue($result['setting' . $index], $platform);
+                if ($value !== null && isset($enums[$column])) {
+                    $enum = $enums[$column];
+                    $integer = (new ReflectionEnum($enum))->getBackingType()->getName() === 'int';
+                    $convert = static fn ($entry) => $enum::from($integer ? (int)$entry : $entry);
+                    $value = is_array($value) ? array_map($convert, $value) : $convert($value);
+                }
+                $row[$column] = $value;
             }
             foreach ($columns as $column) {
                 $row[$column] = RecordRepository::legacyScalarValue($row[$column], $types[$column] ?? Types::BIGINT);

@@ -8,7 +8,6 @@ use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\NonUniqueResultException;
-use Doctrine\ORM\NoResultException;
 use itsmng\Database\Entity\DropdownTranslation;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\RecordCriteria;
@@ -75,32 +74,28 @@ final class DropdownTranslationRepository
         }
         $types = [];
         $select = [];
-        try {
-            foreach ($fields as $alias => $field) {
-                $types[$alias] = Type::getType($metadata->getTypeOfField($field));
-                $select[] = $types[$alias]->convertToPHPValueSQL('r.' . $quote->getColumnName($field, $metadata, $platform), $platform)
-                . ' AS ' . $platform->quoteSingleIdentifier($alias);
-            }
-            $idType = Type::getType(Types::INTEGER);
-            $rows = $connection->createQueryBuilder()
-                ->select(...$select)
-                ->from($quote->getTableName($metadata, $platform), 'r')
-                ->where(
-                    'r.' . $quote->getColumnName('id', $metadata, $platform)
-                    . ' = ' . $idType->convertToDatabaseValueSQL('?', $platform)
-                )
-                ->setParameter(0, $id, Types::INTEGER)
-                ->executeQuery()
-                ->fetchAllAssociative();
-            foreach ($rows as &$row) {
-                foreach ($types as $alias => $fieldType) {
-                    $row[$alias] = $fieldType->convertToPHPValue($row[$alias], $platform);
-                }
-            }
-            unset($row);
-        } catch (NoResultException) {
-            return null;
+        foreach ($fields as $alias => $field) {
+            $types[$alias] = Type::getType($metadata->getTypeOfField($field));
+            $select[] = $types[$alias]->convertToPHPValueSQL('r.' . $quote->getColumnName($field, $metadata, $platform), $platform)
+            . ' AS ' . $platform->quoteSingleIdentifier($alias);
         }
+        $idType = Type::getType(Types::INTEGER);
+        $rows = $connection->createQueryBuilder()
+            ->select(...$select)
+            ->from($quote->getTableName($metadata, $platform), 'r')
+            ->where(
+                'r.' . $quote->getColumnName('id', $metadata, $platform)
+                . ' = ' . $idType->convertToDatabaseValueSQL('?', $platform)
+            )
+            ->setParameter(0, $id, Types::INTEGER)
+            ->executeQuery()
+            ->fetchAllAssociative();
+        foreach ($rows as &$row) {
+            foreach ($types as $alias => $fieldType) {
+                $row[$alias] = $fieldType->convertToPHPValue($row[$alias], $platform);
+            }
+        }
+        unset($row);
         if (count($rows) > 1) {
             throw new NonUniqueResultException();
         }

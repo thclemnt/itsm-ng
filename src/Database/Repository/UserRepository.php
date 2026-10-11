@@ -9,7 +9,6 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
-use Doctrine\ORM\NoResultException;
 use Doctrine\ORM\NonUniqueResultException;
 use Doctrine\ORM\Query;
 use Doctrine\ORM\QueryBuilder;
@@ -133,42 +132,38 @@ final class UserRepository
     /** Complete typed scalar preferences, without loading accounts. */
     public function timelinePreferences(int $user): array
     {
-        try {
-            $metadata = $this->em->getClassMetadata(User::class);
-            $connection = $this->em->getConnection();
-            $platform = $connection->getDatabasePlatform();
-            $quote = $this->em->getConfiguration()->getQuoteStrategy();
-            $types = [];
-            $select = [];
-            foreach (['access_font', 'access_shortcuts'] as $field) {
-                $types[$field] = Type::getType($metadata->getTypeOfField($field));
-                $select[] = $types[$field]->convertToPHPValueSQL('u.' . $quote->getColumnName($field, $metadata, $platform), $platform) . ' AS ' . $field;
-            }
-            $userType = Type::getType(Types::BIGINT);
-            $rows = $connection->createQueryBuilder()
-                ->select(...$select)
-                ->from($quote->getTableName($metadata, $platform), 'u')
-                ->where(
-                    'u.' . $quote->getColumnName('id', $metadata, $platform)
-                    . ' = ' . $userType->convertToDatabaseValueSQL('?', $platform)
-                )
-                ->setParameter(0, $user, Types::BIGINT)
-                ->executeQuery()
-                ->fetchAllAssociative();
-            // Match getOneOrNullResult's conversion and multiplicity semantics.
-            foreach ($rows as &$row) {
-                foreach ($types as $field => $type) {
-                    $row[$field] = $type->convertToPHPValue($row[$field], $platform);
-                }
-            }
-            unset($row);
-            if (count($rows) > 1) {
-                throw new NonUniqueResultException();
-            }
-            return $rows[0] ?? [];
-        } catch (NoResultException) {
-            return [];
+        $metadata = $this->em->getClassMetadata(User::class);
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $types = [];
+        $select = [];
+        foreach (['access_font', 'access_shortcuts'] as $field) {
+            $types[$field] = Type::getType($metadata->getTypeOfField($field));
+            $select[] = $types[$field]->convertToPHPValueSQL('u.' . $quote->getColumnName($field, $metadata, $platform), $platform) . ' AS ' . $field;
         }
+        $userType = Type::getType(Types::BIGINT);
+        $rows = $connection->createQueryBuilder()
+            ->select(...$select)
+            ->from($quote->getTableName($metadata, $platform), 'u')
+            ->where(
+                'u.' . $quote->getColumnName('id', $metadata, $platform)
+                . ' = ' . $userType->convertToDatabaseValueSQL('?', $platform)
+            )
+            ->setParameter(0, $user, Types::BIGINT)
+            ->executeQuery()
+            ->fetchAllAssociative();
+        // Apply declared conversions before checking scalar-row cardinality.
+        foreach ($rows as &$row) {
+            foreach ($types as $field => $type) {
+                $row[$field] = $type->convertToPHPValue($row[$field], $platform);
+            }
+        }
+        unset($row);
+        if (count($rows) > 1) {
+            throw new NonUniqueResultException();
+        }
+        return $rows[0] ?? [];
     }
 
     /** Nullable account overrides; the caller supplies the current configuration defaults. */

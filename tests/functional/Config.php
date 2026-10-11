@@ -68,7 +68,6 @@ use Doctrine\ORM\Event\OnClearEventArgs;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\Mapping as Mapping;
 use Doctrine\ORM\Mapping\ClassMetadata;
-use Doctrine\ORM\NoResultException;
 use Doctrine\ORM\Query;
 use Doctrine\ORM\Query\AST\DeleteStatement;
 use Doctrine\ORM\Query\AST\SelectStatement;
@@ -733,14 +732,6 @@ class Config extends DbTestCase
                 ->hasMessage('OIDC scalar PHP conversion remains observable');
             $this->exception(static fn () => $ordinary->needsRefresh($id))->isInstanceOf(LogicException::class)
                 ->hasMessage('OIDC scalar PHP conversion remains observable');
-            Type::overrideType('bigint', new class () extends BigIntType {
-                public function convertToPHPValue(mixed $value, AbstractPlatform $platform): int|string|null
-                {
-                    throw new NoResultException();
-                }
-            });
-            $this->boolean($reader->needsRefresh($id))->isFalse();
-            $this->boolean($ordinary->needsRefresh($id))->isFalse();
             Type::overrideType('bigint', $bigint);
             Type::overrideType('integer', new class () extends IntegerType {
                 public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string

@@ -46,7 +46,6 @@ use Doctrine\DBAL\Types\TextType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Events;
-use Doctrine\ORM\NoResultException;
 use Entity as LegacyEntity;
 use Profile_User;
 use ReflectionProperty;
@@ -627,8 +626,6 @@ class Entity extends DbTestCase
             $this->array($probe->ids)->isIdenticalTo([$child, $parent]);
             $registry->override(Types::TEXT, new EntityConfigurationTextType());
             $this->string($read('admin_email', $child, 'comment', 'fallback'))->isIdenticalTo('PARENT SETTING|php');
-            $registry->override(Types::TEXT, new EntityConfigurationNoResultType());
-            $this->string($read('admin_email', $child, 'comment', 'fallback'))->isIdenticalTo('fallback');
             $registry->override(Types::TEXT, new EntityConfigurationFailureType());
             $this->exception(static fn () => LegacyEntity::getUsedConfig('admin_email', $child, 'comment', 'fallback'))
                 ->isInstanceOf(RuntimeException::class)->hasMessage('Configuration conversion failed');
@@ -945,14 +942,6 @@ class EntityConfigurationInvalidModeType extends StringType
     public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
     {
         return $value === 'explicit' ? 'invalid-mode' : $value;
-    }
-}
-
-class EntityConfigurationNoResultType extends TextType
-{
-    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
-    {
-        throw new NoResultException();
     }
 }
 

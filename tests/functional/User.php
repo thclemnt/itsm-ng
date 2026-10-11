@@ -65,7 +65,6 @@ use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use Doctrine\ORM\Event\OnClearEventArgs;
 use Doctrine\ORM\Events;
-use Doctrine\ORM\NoResultException;
 use Glpi\Exception\ForgetPasswordException;
 use Group;
 use Group_User;
@@ -547,14 +546,6 @@ class User extends DbTestCase
             $this->variable($reader->preferred($id))->isNull();
             $this->variable($ordinary->preferred($id))->isNull();
             Type::overrideType('integer', $integer);
-            Type::overrideType('bigint', new class () extends BigIntType {
-                public function convertToPHPValue(mixed $value, AbstractPlatform $platform): int|string|null
-                {
-                    throw new NoResultException();
-                }
-            });
-            $this->variable($reader->preferred($id))->isNull();
-            $this->variable($ordinary->preferred($id))->isNull();
             Type::overrideType('bigint', new class () extends BigIntType {
                 public function convertToPHPValue(mixed $value, AbstractPlatform $platform): int|string|null
                 {
