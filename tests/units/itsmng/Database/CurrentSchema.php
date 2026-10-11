@@ -770,11 +770,17 @@ class CurrentSchema extends test
         foreach ([true, false] as $postgres) {
             // Literal TRUE remains the declared positive boolean value, not a column.
             $this->boolean(SubjectPolicyExpression::equivalent(
-                'flag = TRUE', 'flag = true', $postgres, booleanColumns: ['flag']
+                'flag = TRUE',
+                'flag = true',
+                $postgres,
+                booleanColumns: ['flag']
             ))->isTrue();
             foreach (['flag = `true`', 'flag = "true"', "flag = 'true'"] as $quotedTrue) {
                 $this->boolean(SubjectPolicyExpression::equivalent(
-                    'flag = TRUE', $quotedTrue, $postgres, booleanColumns: ['flag']
+                    'flag = TRUE',
+                    $quotedTrue,
+                    $postgres,
+                    booleanColumns: ['flag']
                 ))->isFalse();
             }
             foreach (['NOT flag', 'flag = FALSE', ...($postgres ? [] : ['flag = 0'])] as $falseForm) {
@@ -799,12 +805,20 @@ class CurrentSchema extends test
             }
         }
         $this->boolean(SubjectPolicyExpression::equivalent(
-            'flag = TRUE', 'flag = "true"', false, true, booleanColumns: ['flag']
+            'flag = TRUE',
+            'flag = "true"',
+            false,
+            true,
+            booleanColumns: ['flag']
         ))->isFalse();
         foreach (['flag = "false"', 'flag = "true"'] as $quoted) {
             $this->boolean(SubjectPolicyExpression::equivalent(
-                $calendar, str_replace('NOT flag', $quoted, $calendar), false, true,
-                integerTypes: ['selected' => Types::BIGINT], booleanColumns: ['flag']
+                $calendar,
+                str_replace('NOT flag', $quoted, $calendar),
+                false,
+                true,
+                integerTypes: ['selected' => Types::BIGINT],
+                booleanColumns: ['flag']
             ))->isFalse();
         }
     }

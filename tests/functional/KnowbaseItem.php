@@ -58,7 +58,6 @@ use itsmng\Database\Orm;
 use itsmng\Database\PostgresConnection;
 use itsmng\Database\Query\KnowledgeBaseFullText;
 use itsmng\Database\Repository\KnowledgeBaseRepository;
-
 use itsmng\Database\Entity\KnowbaseItemCategory as CategoryEntity;
 use Doctrine\Common\EventManager;
 use mock\DBmysql as CategoryAdapterProbe;
