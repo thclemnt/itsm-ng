@@ -149,6 +149,8 @@ class ProjectTask_Ticket extends DbTestCase
             $this->calling($adapter)->getProvider = $original->getProvider();
             $this->calling($adapter)->fieldExists = static fn ($table, $field, $usecache = true): bool =>
                 $original->fieldExists($table, $field, $usecache);
+            $this->calling($adapter)->request = static fn ($tableorsql, $criteria = '', $debug = false) =>
+                $original->request($tableorsql, $criteria, $debug);
             $depth = $connection->getTransactionNestingLevel();
             $DB = $adapter;
             $this->output($render)->contains($openProject->getField('name'))->contains($unconfiguredProject->getField('name'))->notContains($finishedProject->getField('name'));

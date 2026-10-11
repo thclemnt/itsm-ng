@@ -40,7 +40,7 @@ use LineOperator as LegacyLineOperator;
 use itsmng\Database\Entity\LineOperator as LineOperatorRecord;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordWriter;
-use mock\DBAdapter as LineOperatorAdapterProbe;
+use mock\DBmysql as LineOperatorAdapterProbe;
 use RuntimeException;
 use Stringable;
 use tests\fixtures\ScalarReadProbe;
@@ -233,6 +233,7 @@ class LineOperator extends DbTestCase
             $this->mockGenerator()->orphanize('__construct');
             $adapter = new LineOperatorAdapterProbe();
             $this->calling($adapter)->getDoctrineConnection = $probe;
+            $this->calling($adapter)->getProvider = $original->getProvider();
             $value = new class ($original, $code + 1) implements Stringable {
                 public int $calls = 0;
 
