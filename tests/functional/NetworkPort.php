@@ -84,15 +84,20 @@ class NetworkPort extends DbTestCase
         $this->login();
         $this->setEntity(0, true);
         $equipment = getItemByTypeName('NetworkEquipment', '_test_networkequipment_1');
+        $connection = $DB->getDoctrineConnection();
         $ports = [];
         foreach (['origin', 'first-aggregate', 'second-aggregate'] as $name) {
             $port = new LegacyNetworkPort();
+            $childInput = $name === 'origin'
+                ? ['type' => 'T', 'speed' => 1000]
+                : ['networkports_id_list' => []];
             $id = $port->add([
                 'name' => $this->getUniqueString() . '-' . $name,
                 'itemtype' => 'NetworkEquipment', 'items_id' => $equipment->getID(),
                 'entities_id' => $equipment->fields['entities_id'],
                 'instantiation_type' => $name === 'origin' ? 'NetworkPortEthernet' : 'NetworkPortAggregate',
                 '_create_children' => true,
+                ...$childInput,
             ]);
             $this->integer((int)$id)->isGreaterThan(0);
             $this->boolean($port->getFromDB($id))->isTrue();
@@ -102,6 +107,10 @@ class NetworkPort extends DbTestCase
         $aggregates = [];
         foreach ([$first, $second] as $port) {
             $aggregate = new NetworkPortAggregate();
+            $this->integer((int)$connection->fetchOne(
+                'SELECT networkports_id FROM glpi_networkportaggregates WHERE networkports_id=?',
+                [$port->getID()]
+            ))->isIdenticalTo((int)$port->getID());
             $this->boolean($aggregate->getFromDB($port->getID()))->isTrue();
             $this->boolean($aggregate->update([
                 'id' => $port->getID(), 'networkports_id_list' => [$origin->getID()],
@@ -919,7 +928,7 @@ class NetworkPort extends DbTestCase
             $ports[] = $this->createItem(LegacyNetworkPort::class, [
                 'items_id' => $computer->getID(), 'itemtype' => Computer::getType(),
                 'name' => 'Same origin name', 'logical_number' => $number, 'mac' => $mac,
-                'instantiation_type' => $kind, 'entities_id' => 0,
+                'instantiation_type' => $kind, 'entities_id' => 0, 'is_dynamic' => $number === 2,
             ]);
         }
         $decoy = $this->createItem(LegacyNetworkPort::class, [
@@ -936,8 +945,20 @@ class NetworkPort extends DbTestCase
         ]))->isGreaterThan(0);
         // This model's public index is networkports_id, distinct from its insert row ID.
         $this->boolean($alias->getFromDB($parent->getID()))->isTrue();
+        // A dynamic port is locked by delete; a manual port would be purged.
         // The existing query intentionally includes deleted origin ports on the same asset.
+        $beforeDelete = $connection->fetchAssociative('SELECT * FROM glpi_networkports WHERE id=?', [$ports[1]->getID()]);
         $this->boolean($ports[1]->delete(['id' => $ports[1]->getID()]))->isTrue();
+        $afterDelete = $connection->fetchAssociative('SELECT * FROM glpi_networkports WHERE id=?', [$ports[1]->getID()]);
+        $this->array($afterDelete)->isNotEmpty();
+        $this->integer((int)$afterDelete['id'])->isIdenticalTo((int)$ports[1]->getID());
+        $this->integer((int)$afterDelete['is_deleted'])->isIdenticalTo(1);
+        $this->array(array_diff_key($afterDelete, ['is_deleted' => true, 'date_mod' => true]))
+            ->isIdenticalTo(array_diff_key($beforeDelete, ['is_deleted' => true, 'date_mod' => true]));
+        $deletedOrigin = new LegacyNetworkPort();
+        $this->boolean($deletedOrigin->getFromDB($ports[1]->getID()))->isTrue();
+        $this->boolean($deletedOrigin->fields['is_dynamic'])->isTrue();
+        $this->boolean($deletedOrigin->fields['is_deleted'])->isTrue();
         $owner = Orm::create($database);
         try {
             $dirty = $owner->find(NetworkPortEntity::class, $ports[0]->getID());
