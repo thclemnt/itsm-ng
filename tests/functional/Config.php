@@ -639,7 +639,8 @@ class Config extends DbTestCase
                 $this->boolean($scopedRead($custom))->isTrue();
                 $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(1);
                 $this->array($custom->queries)->hasSize(1);
-                $this->integer($custom->builders)->isIdenticalTo(0);
+                $this->array($custom->queries[0]['params'])->isIdenticalTo(['user' => $id, 'pending' => false]);
+                $this->array($custom->queries[0]['types'])->isIdenticalTo(['user' => Types::INTEGER, 'pending' => Types::BOOLEAN]);
                 $this->integer($clears->count)->isIdenticalTo(1);
 
                 $this->mockGenerator()->orphanize('__construct');

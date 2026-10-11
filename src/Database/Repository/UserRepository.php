@@ -63,14 +63,7 @@ final class UserRepository
     /** Read the current account preference without loading an account graph. */
     public function accessibilityFont(int $user): ?string
     {
-        $row = $this->em->createQueryBuilder()
-            ->select('u.access_font')
-            ->from(User::class, 'u')
-            ->where('u.id = :user')
-            ->setParameter('user', $user, Types::BIGINT)
-            ->getQuery()
-            ->getOneOrNullResult();
-        return $row['access_font'] ?? null;
+        return $this->timelinePreferences($user)['access_font'] ?? null;
     }
 
     public function compactMode(?int $user): ?bool
