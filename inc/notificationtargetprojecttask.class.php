@@ -414,8 +414,12 @@ class NotificationTargetProjectTask extends NotificationTarget
         $this->data['##projecttask.numberoftickets##'] = count($this->data['tickets']);
 
         // Document
-        $documents = (new DocumentRepository(Orm::create($DB)))
-            ->documentsForItem('ProjectTask', (int)$item->fields['id']);
+        $documents = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$item->fields['id'],
+            static fn (EntityManager $manager, int $id): array =>
+                (new DocumentRepository($manager))->documentsForItem('ProjectTask', $id)
+        );
 
         $this->data["documents"] = [];
         foreach ($documents as $data) {

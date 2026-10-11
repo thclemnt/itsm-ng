@@ -34,6 +34,13 @@
 namespace tests\units;
 
 use Auth;
+use Closure;
+use CommonITILObject;
+use CommonITILTask;
+use Document;
+use Document_Item;
+use Session;
+use TicketTask;
 use CommonITILActor;
 use DbTestCase;
 use Doctrine\ORM\Event\PostLoadEventArgs;
@@ -56,6 +63,89 @@ use itsmng\Database\Repository\UserRepository;
 
 class NotificationTargetTicket extends DbTestCase
 {
+    public function testAttachmentSnapshotKeepsTimelinePrivacyDuplicatesAndCurrentReads(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $entity = (int)Session::getActiveEntity();
+            $ticket = $this->createItem(Ticket::class, [
+                'name' => $this->getUniqueString(), 'content' => 'Attachment template', 'entities_id' => $entity,
+            ]);
+            $other = $this->createItem(User::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity, 'authtype' => Auth::DB_GLPI]);
+            $task = $this->createItem(TicketTask::class, [
+                'tickets_id' => $ticket->getID(), 'content' => 'Private attachment owner', 'is_private' => 1,
+            ]);
+            $connection = $DB->getDoctrineConnection();
+            $connection->update('glpi_tickettasks', ['users_id' => $other->getID()], ['id' => $task->getID()]);
+            $documents = [];
+            foreach (['Second alphabetically', 'First alphabetically', 'Private task', 'Inline only'] as $name) {
+                $documents[] = $this->createItem(Document::class, ['name' => $name, 'entities_id' => $entity]);
+            }
+            foreach ([0, 1, 0] as $index => $document) {
+                $this->createItem(Document_Item::class, [
+                    'documents_id' => $documents[$document]->getID(), 'itemtype' => Ticket::class,
+                    'items_id' => $ticket->getID(), 'timeline_position' => $index + 1,
+                ]);
+            }
+            $this->createItem(Document_Item::class, [
+                'documents_id' => $documents[2]->getID(), 'itemtype' => TicketTask::class,
+                'items_id' => $task->getID(), 'timeline_position' => 1,
+            ]);
+            $this->createItem(Document_Item::class, [
+                'documents_id' => $documents[3]->getID(), 'itemtype' => Ticket::class,
+                'items_id' => $ticket->getID(), 'timeline_position' => CommonITILObject::NO_TIMELINE,
+            ]);
+            $_SESSION['glpiactiveprofile'][TicketTask::$rightname] = CommonITILTask::SEEPUBLIC;
+            $this->boolean(TicketTask::canView())->isTrue();
+            $this->boolean(Session::haveRight(TicketTask::$rightname, CommonITILTask::SEEPRIVATE))->isFalse();
+            $owner = Orm::create($DB);
+            $dirty = $owner->find(Entity\Document::class, (int)$documents[0]->getID());
+            $dirty->name = 'Independent unflushed document';
+            $target = new class ($entity, 'new', $ticket) extends LegacyNotificationTargetTicket {
+                public ?Closure $onDocument = null;
+
+                public function formatURL($usertype, $redirect)
+                {
+                    if (str_starts_with($redirect, 'document_') && $this->onDocument !== null) {
+                        $callback = $this->onDocument;
+                        $this->onDocument = null;
+                        $callback();
+                    }
+                    return parent::formatURL($usertype, $redirect);
+                }
+            };
+            $target->onDocument = function () use ($connection, $documents): void {
+                $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+                $this->integer($connection->update('glpi_documents', ['name' => 'Current template attachment'], ['id' => $documents[0]->getID()]))->isIdenticalTo(1);
+            };
+            $options = ['additionnaloption' => ['usertype' => NotificationTarget::GLPI_USER]];
+            $depth = $connection->getTransactionNestingLevel();
+            $data = $target->getForTemplate('new', $options);
+            $ids = [(int)$documents[0]->getID(), (int)$documents[1]->getID(), (int)$documents[0]->getID()];
+            $this->array(array_column($data['documents'], '##document.id##'))->isIdenticalTo($ids);
+            $this->array(array_column($data['documents'], '##document.name##'))->isIdenticalTo(['Second alphabetically', 'First alphabetically', 'Second alphabetically']);
+            $this->integer($data['##ticket.numberofdocuments##'])->isIdenticalTo(3);
+            $this->string($data['documents'][0]['##document.url##'])->contains('redirect=document_' . $ids[0]);
+            $this->string($data['documents'][0]['##document.downloadurl##'])->contains('docid=' . $ids[0])->contains('tickets_id=');
+            Orm::read($DB, function ($nested) use ($ids, $target, $options): void {
+                $retained = $nested->find(Entity\Document::class, $ids[0]);
+                $retained->name = 'Nested unflushed document';
+                $current = $target->getForTemplate('new', $options);
+                $this->array(array_column($current['documents'], '##document.name##'))->isIdenticalTo(['Current template attachment', 'First alphabetically', 'Current template attachment']);
+                $this->boolean($nested->contains($retained))->isTrue();
+                $this->string($retained->name)->isIdenticalTo('Nested unflushed document');
+            });
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->string($dirty->name)->isIdenticalTo('Independent unflushed document');
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
     public function testAnonymousRecipientProjectionKeepsPublicValidation(): void
     {
         global $DB, $CFG_GLPI;

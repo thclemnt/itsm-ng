@@ -34,6 +34,11 @@
 namespace tests\units;
 
 use Auth;
+use Closure;
+use Document;
+use Document_Item;
+use Doctrine\Common\EventManager;
+use NotificationTargetProjectTask;
 use DbTestCase;
 use Doctrine\ORM\Events;
 use Project;
@@ -42,13 +47,108 @@ use ProjectTaskTeam;
 use Session;
 use User;
 use itsmng\Database\Entity\ProjectTask as ProjectTaskEntity;
+use itsmng\Database\Entity\Document as DocumentEntity;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ProjectTaskRepository;
+use mock\DBmysql as AttachmentRouteAdapter;
+use tests\fixtures\ScalarReadProbe;
+
+require_once __DIR__ . '/../fixtures/ScalarReadProbe.php';
 
 /* Test for inc/projecttask.class.php */
 
 class ProjectTask extends DbTestCase
 {
+    public function testNotificationAttachmentsCompleteBeforeFormattingAndKeepLiveOwners(): void
+    {
+        global $DB;
+        $database = $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $entity = (int)Session::getActiveEntity();
+            $project = $this->createItem(Project::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+            $task = $this->createItem(LegacyProjectTask::class, [
+                'name' => $this->getUniqueString(), 'projects_id' => $project->getID(), 'entities_id' => $entity,
+            ]);
+            $documents = [];
+            foreach (['Second alphabetically', 'First alphabetically'] as $name) {
+                $document = $this->createItem(Document::class, [
+                    'name' => $name, 'link' => 'https://example.invalid/task-document', 'entities_id' => $entity,
+                ]);
+                $this->createItem(Document_Item::class, [
+                    'documents_id' => $document->getID(), 'itemtype' => LegacyProjectTask::class, 'items_id' => $task->getID(),
+                ]);
+                $documents[] = $document;
+            }
+            $connection = $DB->getDoctrineConnection();
+            $owner = Orm::create($DB);
+            $dirty = $owner->find(DocumentEntity::class, (int)$documents[1]->getID());
+            $dirty->name = 'Independent unflushed attachment';
+            $target = new class ($entity, 'new', $task) extends NotificationTargetProjectTask {
+                public ?Closure $onDocument = null;
+
+                public function formatURL($usertype, $redirect)
+                {
+                    if (str_starts_with($redirect, 'document_') && $this->onDocument !== null) {
+                        $callback = $this->onDocument;
+                        $this->onDocument = null;
+                        $callback();
+                    }
+                    return parent::formatURL($usertype, $redirect);
+                }
+            };
+            $target->onDocument = function () use ($connection, $documents): void {
+                $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+                $this->integer($connection->update('glpi_documents', ['name' => 'Written after attachment snapshot'], ['id' => $documents[1]->getID()]))->isIdenticalTo(1);
+            };
+            $options = ['additionnaloption' => ['usertype' => NotificationTargetProjectTask::GLPI_USER]];
+            $depth = $connection->getTransactionNestingLevel();
+            $data = $target->getForTemplate('new', $options);
+            $ids = array_map(static fn ($document): int => (int)$document->getID(), $documents);
+            $this->array(array_column($data['documents'], '##document.id##'))->isIdenticalTo($ids);
+            $this->array(array_column($data['documents'], '##document.name##'))->isIdenticalTo(['Second alphabetically', 'First alphabetically']);
+            $this->integer($data['##projecttask.numberofdocuments##'])->isIdenticalTo(2);
+            $this->string($data['documents'][1]['##document.url##'])->contains('redirect=document_' . $ids[1]);
+            $this->string($data['documents'][1]['##document.downloadurl##'])->contains('docid=' . $ids[1]);
+            $this->string($data['documents'][1]['##document.weblink##'])->isIdenticalTo('https://example.invalid/task-document');
+            Orm::read($DB, function ($nested) use ($ids, $target, $options): void {
+                $retained = $nested->find(DocumentEntity::class, $ids[1]);
+                $retained->name = 'Nested unflushed attachment';
+                $current = $target->getForTemplate('new', $options);
+                $this->string($current['documents'][1]['##document.name##'])->isIdenticalTo('Written after attachment snapshot');
+                $this->boolean($nested->contains($retained))->isTrue();
+                $this->string($retained->name)->isIdenticalTo('Nested unflushed attachment');
+            });
+            $selected = new class ($connection) extends ScalarReadProbe {
+                public int $constructions = 0;
+
+                public function getEventManager(): EventManager
+                {
+                    ++$this->constructions;
+                    return new EventManager();
+                }
+            };
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new AttachmentRouteAdapter();
+            $this->calling($adapter)->getDoctrineConnection = $selected;
+            $this->calling($adapter)->getProvider = $database->getProvider();
+            $DB = $adapter;
+            $custom = $target->getForTemplate('new', $options);
+            $this->array(array_column($custom['documents'], '##document.id##'))->isIdenticalTo($ids);
+            $this->string($custom['documents'][1]['##document.name##'])->isIdenticalTo('Written after attachment snapshot');
+            $this->integer($selected->constructions)->isGreaterThan(0);
+            $this->array(array_filter($selected->queries, static fn (array $query): bool => str_contains($query['sql'], 'glpi_documents_items')))->isNotEmpty();
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->string($dirty->name)->isIdenticalTo('Independent unflushed attachment');
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+        } finally {
+            $DB = $database;
+            $_SESSION = $session;
+        }
+    }
+
     public function testGanttRootProjectionKeepsRecursiveRenderingAndTeamAccess(): void
     {
         global $DB;

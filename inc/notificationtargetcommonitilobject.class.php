@@ -1258,11 +1258,21 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
                   = countElementsInTableForEntity($item->getTable(), $this->getEntity(), $restrict, false);
 
             // Document
-            $iterator = new RowIterator((new DocumentRepository(Orm::create($DB)))->notificationDocuments(
-                $item->getType(),
-                (int)$item->getID(),
-                ITILDocumentAccess::current($item->getType())
-            ));
+            $iterator = new RowIterator(
+                Orm::readPrepared(
+                    $DB,
+                    static function () use ($item): array {
+                        $identity = static fn (string $type, int $id, ITILDocumentAccess $access): array => [$type, $id, $access];
+                        return $identity(
+                            $item->getType(),
+                            (int)$item->getID(),
+                            ITILDocumentAccess::current($item->getType())
+                        );
+                    },
+                    static fn (EntityManager $manager, array $identity): array =>
+                        (new DocumentRepository($manager))->notificationDocuments(...$identity)
+                )
+            );
 
             $data["documents"] = [];
             $addtodownloadurl   = '';
