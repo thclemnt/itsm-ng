@@ -5,16 +5,11 @@
 namespace itsmng\Database\Repository;
 
 use CommonITILObject;
-use Doctrine\DBAL\Connection;
-use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
-use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\QueryBuilder;
 use InvalidArgumentException;
-use ReflectionMethod;
 use itsmng\Database\Entity;
-use itsmng\Database\Expressions;
 use itsmng\Database\ITILDocumentAccess;
 use itsmng\Database\RecordCriteria;
 
@@ -90,86 +85,6 @@ final class DocumentRepository
             ->andWhere('d.timeline_position > :inline')
             ->setParameter('inline', CommonITILObject::NO_TIMELINE, Types::INTEGER);
         return count($query->getQuery()->getScalarResult());
-    }
-
-    /** Only the private, canonical timeline read owner admits this fixed projection. */
-    public function nativeTimelineDocumentCount(string $type, int $item, ITILDocumentAccess $access): int
-    {
-        $connection = $this->em->getConnection();
-        foreach (['getDatabasePlatform', 'createQueryBuilder', 'quote'] as $method) {
-            if ((new ReflectionMethod($connection, $method))->getDeclaringClass()->getName() !== Connection::class) {
-                return $this->countTimelineDocuments($type, $item, $access);
-            }
-        }
-        $platform = $connection->getDatabasePlatform();
-        // Repeated predicates must retain the ORM's SQL callback order and multiplicity.
-        foreach ([Types::INTEGER, Types::BOOLEAN] as $name) {
-            if ((new ReflectionMethod(Type::getType($name), 'convertToDatabaseValueSQL'))->getDeclaringClass()->getName() !== Type::class) {
-                return $this->countTimelineDocuments($type, $item, $access);
-            }
-        }
-        $subjects = $this->itilSubjects($type, $access);
-        $quote = $this->em->getConfiguration()->getQuoteStrategy();
-        $document = $this->em->getClassMetadata(Entity\DocumentItem::class);
-        $column = static fn (ClassMetadata $metadata, string $field, string $alias): string =>
-            $alias . '.' . $quote->getColumnName($field, $metadata, $platform);
-        $identity = function (ClassMetadata $metadata, string $field, string $alias) use ($quote, $platform): string {
-            $association = $metadata->associationMappings[$field];
-            return $alias . '.' . $quote->getJoinColumnName(
-                $association->joinColumns[0],
-                $this->em->getClassMetadata($association->targetEntity),
-                $platform
-            );
-        };
-        // The ORM binds explicit integers/booleans through their live SQL converters;
-        // inferred string parameters and fixed discriminator literals stay strings.
-        $integer = Type::getType(Types::INTEGER);
-        $itemParameter = $integer->convertToDatabaseValueSQL(':item', $platform);
-        $inline = $integer->convertToDatabaseValueSQL(':inline', $platform);
-        $eventDate = (new Expressions($platform))->temporalText(
-            'COALESCE(' . $column($document, 'date', 'd') . ', ' . $column($document, 'date_creation', 'd') . ')',
-            'datetime'
-        );
-        $query = $connection->createQueryBuilder()
-            ->select($identity($document, 'documents', 'd') . ' AS document_id', $eventDate . ' AS event_date')
-            ->distinct()
-            ->from($quote->getTableName($document, $platform), 'd')
-            ->setParameter('type', $type)
-            ->setParameter('item', $item, Types::INTEGER)
-            ->setParameter('inline', CommonITILObject::NO_TIMELINE, Types::INTEGER);
-        $kind = $column($document, 'itemtype', 'd');
-        $subjectId = $column($document, 'items_id', 'd');
-        $conditions = ['(' . $kind . ' = :type AND ' . $subjectId . ' = ' . $itemParameter . ')'];
-        foreach ($subjects as [$subjectType, $class, $parent, $restricted, $alias]) {
-            $metadata = $this->em->getClassMetadata($class);
-            $discriminator = $connection->quote($subjectType);
-            if ($alias === 't') {
-                $discriminator = ':taskType';
-                $query->setParameter('taskType', $subjectType);
-            }
-            $predicate = $column($metadata, 'id', $alias) . ' = ' . $subjectId
-                . ' AND ' . $identity($metadata, $parent, $alias) . ' = ' . $itemParameter;
-            if ($restricted) {
-                $public = Type::getType(Types::BOOLEAN)->convertToDatabaseValueSQL(':public', $platform);
-                $viewer = $integer->convertToDatabaseValueSQL(':viewer', $platform);
-                $predicate .= ' AND (' . $column($metadata, 'is_private', $alias) . ' = ' . $public
-                    . ' OR ' . $identity($metadata, 'author', $alias) . ' = ' . $viewer . ')';
-                $query->setParameter('public', false, Types::BOOLEAN)
-                    ->setParameter('viewer', $access->user, Types::INTEGER);
-            }
-            $conditions[] = '(' . $kind . ' = ' . $discriminator . ' AND EXISTS (SELECT '
-                . $column($metadata, 'id', $alias) . ' FROM ' . $quote->getTableName($metadata, $platform)
-                . ' ' . $alias . ' WHERE ' . $predicate . '))';
-        }
-        $query->where('(' . implode(' OR ', $conditions) . ')')
-            ->andWhere($column($document, 'timeline_position', 'd') . ' > ' . $inline);
-        // Counting the distinct pair retains NULL calendar keys and repeated documents.
-        // COUNT(DISTINCT document_id) or a multi-column MySQL COUNT drops valid events.
-        return (int)$connection->executeQuery(
-            'SELECT COUNT(*) FROM (' . $query->getSQL() . ') document_events',
-            $query->getParameters(),
-            $query->getParameterTypes()
-        )->fetchOne();
     }
 
     /** Template attachments retain one row per visible timeline binding. */

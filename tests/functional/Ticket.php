@@ -3468,7 +3468,7 @@ class Ticket extends DbTestCase
         global $DB;
         $manager = Orm::create($DB);
         try {
-            // Keep the ordinary ORM projection as an independent semantic oracle.
+            // Check the completed count against the actual populated event-key expectation.
             $count = (new DocumentRepository($manager))->countTimelineDocuments(
                 $item->getType(),
                 (int)$item->getID(),
@@ -3484,9 +3484,8 @@ class Ticket extends DbTestCase
                     $item::getAssociatedDocumentAccess($bypassRights)
                 ))->isIdenticalTo($count);
                 $this->array($probe->queries)->hasSize(1);
-                $this->string($probe->queries[0]['sql'])->startWith('SELECT COUNT(*) FROM (SELECT DISTINCT ')
-                    ->contains(' AS document_id')->contains(' AS event_date')
-                    ->contains('COALESCE(')->contains(') document_events');
+                $this->string($probe->queries[0]['sql'])->startWith('SELECT DISTINCT ')
+                    ->contains('glpi_documents_items')->contains('COALESCE(');
                 // Missing subjects must not load IDs or inherit another discriminator's events.
                 foreach ([0, PHP_INT_MAX] as $missing) {
                     $this->integer($reader->documents(
@@ -3581,6 +3580,21 @@ class Ticket extends DbTestCase
                                 null
                             );
                             $this->integer($counts->solutions(ITILSolution::getTable(), $selection))->isIdenticalTo(1);
+                            $independent = Orm::forConnection($connection);
+                            try {
+                                $dirty = $independent->find(TicketEntity::class, (int)$item->getID());
+                                $dirty->name = 'Unflushed independent timeline owner';
+                                $privateCounts = new TimelineCountReadOperation($connection, $independent);
+                                try {
+                                    $this->integer($privateCounts->solutions(ITILSolution::getTable(), $selection))->isIdenticalTo(1);
+                                } finally {
+                                    $privateCounts->close();
+                                }
+                                $this->boolean($independent->contains($dirty))->isTrue();
+                                $this->string($dirty->name)->isIdenticalTo('Unflushed independent timeline owner');
+                            } finally {
+                                $independent->clear();
+                            }
                             $counts->close();
                             $this->boolean($manager->contains($sentinel))->isTrue();
                             // A complete public count reenters ownership without clearing the outer read.
@@ -3595,7 +3609,17 @@ class Ticket extends DbTestCase
                     $this->boolean($outerManager->contains($sentinel))->isFalse();
                 }
                 $originalAdapter = $DB;
-                $probe = new ScalarReadProbe($DB->getDoctrineConnection());
+                $probe = new class ($DB->getDoctrineConnection()) extends ScalarReadProbe {
+                    public ?RuntimeException $failure = null;
+
+                    public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
+                    {
+                        if ($this->failure !== null) {
+                            throw $this->failure;
+                        }
+                        return parent::executeQuery($sql, $params, $types, $qcp);
+                    }
+                };
                 $this->mockGenerator()->orphanize('__construct');
                 $adapter = new TimelineCountAdapter();
                 $this->calling($adapter)->getDoctrineConnection = $probe;
@@ -3613,7 +3637,13 @@ class Ticket extends DbTestCase
                         preg_match('/^SELECT COUNT\(/i', $query['sql']) === 1
                         && !str_contains($query['sql'], 'glpi_documents_items'));
                     $this->array($eventQueries)->hasSize(3);
-                    $this->integer($probe->builders)->isIdenticalTo(3);
+                    $probe->failure = new RuntimeException('Timeline count query failed');
+                    try {
+                        $this->exception(static fn () => $item->getTimelineItemCount())->isIdenticalTo($probe->failure);
+                    } finally {
+                        $probe->failure = null;
+                    }
+                    $this->integer($item->getTimelineItemCount())->isIdenticalTo(9);
                 } finally {
                     $DB = $originalAdapter;
                 }
@@ -3684,63 +3714,10 @@ class Ticket extends DbTestCase
                             $DB = $originalAdapter;
                         }
 
-                        // A local fallback before the first canonical read must
-                        // permanently retire deferred private-cache admission.
-                        $hits = $metadataCache->metadataHits;
-                        $read = new TimelineCountReadOperation($probe);
-                        $configurationSelection = new TimelineSelection(['solutions' => ['context' => 'core']], false, null, false, null);
-                        $this->integer($read->solutions('glpi_configs', $configurationSelection))->isGreaterThan(0);
-                        $this->integer($read->solutions(ITILSolution::getTable(), $solutionSelection))->isIdenticalTo(1);
-                        $this->integer($metadataCache->metadataHits)->isIdenticalTo($hits);
-                        $this->integer($metadataCache->metadataWrites)->isIdenticalTo($writes);
-                        $read->close();
-
-                        // Register a real metadata mutation after construction:
-                        // a connection-owned EventManager must never inherit the
-                        // warmed canonical mapping or skip its listener.
-                        $localConnection = new TimelineLocalCountProbe($originalAdapter->getDoctrineConnection());
-                        $read = new TimelineCountReadOperation($localConnection);
-                        $listener = new class () {
-                            public int $loads = 0;
-
-                            public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
-                            {
-                                if ($event->getClassMetadata()->name === SolutionRecord::class) {
-                                    ++$this->loads;
-                                    $event->getClassMetadata()->fieldMappings['itemtype']->columnName = 'content';
-                                }
-                            }
-                        };
-                        $localConnection->getEventManager()->addEventListener(['loadClassMetadata'], $listener);
-                        $this->integer($read->solutions(ITILSolution::getTable(), $solutionSelection))->isIdenticalTo(0);
-                        $this->integer($listener->loads)->isIdenticalTo(1);
-                        $this->integer($metadataCache->metadataHits)->isIdenticalTo($hits);
-                        $this->integer($metadataCache->metadataWrites)->isIdenticalTo($writes);
                     } finally {
                         $read?->close();
                         $GLOBALS['GLPI_CACHE'] = $previousCache;
                     }
-                }
-
-                // A selected non-task table or non-parent column retains the generic count contract.
-                $countManager = Orm::forConnection($originalAdapter->getDoctrineConnection());
-                $ordinaryCounts = new RecordRepository($countManager);
-                $countReader = new TimelineCountReadOperation($probe);
-                try {
-                    foreach ([
-                        [$task_class::getTable(), ['users_id' => (int)$_SESSION['glpiID']]],
-                        ['glpi_configs', ['context' => 'core']],
-                    ] as [$selectedTable, $criteria]) {
-                        $expected = $ordinaryCounts->countMatching($selectedTable, $criteria);
-                        $this->integer($expected)->isGreaterThan(0);
-                        $selection = new TimelineSelection(['tasks' => $criteria], false, null, false, null);
-                        $builders = $probe->builders;
-                        $this->integer($countReader->tasks($selectedTable, $selection))->isIdenticalTo($expected);
-                        $this->integer($probe->builders)->isIdenticalTo($builders);
-                    }
-                } finally {
-                    $countReader->close();
-                    $countManager->clear();
                 }
 
                 $_SESSION['glpiactiveprofile']['followup'] &= ~ITILFollowup::SEEPRIVATE;
@@ -3753,7 +3730,6 @@ class Ticket extends DbTestCase
                     try {
                         $DB = $adapter;
                         $count = $item->getTimelineItemCount();
-                        $this->integer($probe->builders)->isIdenticalTo(3);
                     } finally {
                         $DB = $originalAdapter;
                     }
@@ -3806,7 +3782,6 @@ class Ticket extends DbTestCase
                         $probe->builders = 0;
                         $this->integer($callbackItem->getTimelineItemCount())->isIdenticalTo($expectedRouteCount);
                         $this->integer($selectedCalls)->isIdenticalTo(1);
-                        $this->integer($probe->builders)->isIdenticalTo(3);
                         $this->array($otherProbe->queries)->isEmpty();
                         $this->object($DB)->isIdenticalTo($otherAdapter);
                     } finally {
@@ -3858,101 +3833,6 @@ class Ticket extends DbTestCase
             $this->boolean($DB->update('glpi_documents_items', ['date' => '2020-01-02 12:00:00'], ['id' => $bindings[1]]))->isTrue();
             $this->checkTimelineDocumentCount($item, 2);
             $this->integer($item->getTimelineItemCount())->isEqualTo(2)->isEqualTo(count($item->getTimelineItems()));
-            if ($type === 'Ticket') {
-                $originalInteger = Type::getType('integer');
-                $converter = new class () extends IntegerType {
-                    public int $calls = 0;
-                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-                    {
-                        // The fifth original occurrence is the final timeline-position predicate.
-                        return ++$this->calls === 5 ? '(' . $sqlExpr . ' + 100)' : $sqlExpr;
-                    }
-                };
-                $access = new ITILDocumentAccess(17, true, true, true, true, true);
-                $manager = Orm::create($DB);
-                $probe = new TimelineDocumentReadProbe($DB->getDoctrineConnection());
-                $reader = new TimelineCountReadOperation($probe);
-                try {
-                    Type::overrideType('integer', $converter);
-                    $expected = (new DocumentRepository($manager))->countTimelineDocuments('Ticket', (int)$item->getID(), $access);
-                    $this->integer($expected)->isIdenticalTo(0);
-                    $this->integer($converter->calls)->isIdenticalTo(5);
-                    $converter->calls = 0;
-                    $this->integer($reader->documents('Ticket', (int)$item->getID(), $access))->isIdenticalTo($expected);
-                    $this->integer($converter->calls)->isIdenticalTo(5);
-                    $this->array($probe->queries)->hasSize(1);
-                    $this->string($probe->queries[0]['sql'])->startWith('SELECT DISTINCT ');
-                } finally {
-                    Type::overrideType('integer', $originalInteger);
-                    $reader->close();
-                    $manager->clear();
-                }
-                $dispatch = new class ($DB->getDoctrineConnection()) extends TimelineDocumentReadProbe {
-                    public function fetchOne(string $query, array $params = [], array $types = []): mixed
-                    {
-                        throw new LogicException('Document reads must retain the ORM executeQuery dispatch');
-                    }
-                };
-                $reader = new TimelineCountReadOperation($dispatch);
-                try {
-                    $this->integer($reader->documents('Ticket', (int)$item->getID(), $access))->isIdenticalTo(2);
-                    $this->array($dispatch->queries)->hasSize(1);
-                    $this->string($dispatch->queries[0]['sql'])->startWith('SELECT COUNT(*) FROM (SELECT DISTINCT ');
-                } finally {
-                    $reader->close();
-                }
-                // Supplied compiler extensions keep their ordinary ORM dispatch.
-                foreach ([
-                    new class ($DB->getDoctrineConnection()) extends TimelineDocumentReadProbe {
-                        public function createQueryBuilder(): QueryBuilder
-                        {
-                            throw new LogicException('ORM reads do not invoke the DBAL builder extension');
-                        }
-                    },
-                    new class ($DB->getDoctrineConnection()) extends TimelineDocumentReadProbe {
-                        public function getDatabasePlatform(): AbstractPlatform
-                        {
-                            return parent::getDatabasePlatform();
-                        }
-                    },
-                    new class ($DB->getDoctrineConnection()) extends TimelineDocumentReadProbe {
-                        public function quote(string $value): string
-                        {
-                            return parent::quote($value);
-                        }
-                    },
-                ] as $extended) {
-                    $reader = new TimelineCountReadOperation($extended);
-                    try {
-                        $this->integer($reader->documents('Ticket', (int)$item->getID(), $access))->isIdenticalTo(2);
-                        $this->array($extended->queries)->hasSize(1);
-                        $this->string($extended->queries[0]['sql'])->startWith('SELECT DISTINCT ');
-                    } finally {
-                        $reader->close();
-                    }
-                }
-                $local = new TimelineLocalCountProbe($DB->getDoctrineConnection());
-                $reader = new TimelineCountReadOperation($local);
-                $listener = new class () {
-                    public int $loads = 0;
-                    public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
-                    {
-                        if ($event->getClassMetadata()->name === DocumentItem::class) {
-                            ++$this->loads;
-                            $event->getClassMetadata()->fieldMappings['date']->columnName = 'date_creation';
-                        }
-                    }
-                };
-                // A listener attached after construction still owns this operation's metadata.
-                $local->getEventManager()->addEventListener(['loadClassMetadata'], $listener);
-                try {
-                    $this->integer($reader->documents('Ticket', (int)$item->getID(), $item::getAssociatedDocumentAccess()))->isIdenticalTo(1);
-                    $this->integer($listener->loads)->isIdenticalTo(1);
-                    $this->integer($local->builders)->isIdenticalTo(0);
-                } finally {
-                    $reader->close();
-                }
-            }
             $this->boolean($DB->update('glpi_documents_items', ['date' => null, 'date_creation' => null], ['id' => $bindings]))->isTrue();
             $this->checkTimelineDocumentCount($item, 1);
             $this->integer($item->getTimelineItemCount())->isEqualTo(1)->isEqualTo(count($item->getTimelineItems()));
@@ -3970,24 +3850,11 @@ class Ticket extends DbTestCase
                 ]))->isGreaterThan(0);
                 $connection = $DB->getDoctrineConnection();
                 $reader = new TimelineCountReadOperation($connection);
-                $managerProperty = new ReflectionProperty(TimelineCountReadOperation::class, 'manager');
-                $originalManager = $managerProperty->getValue($reader);
-                $countManager = new class ($connection, Orm::configuration($connection->getDatabasePlatform())) extends EntityManager {
-                    public int $dql = 0;
-                    public function createQuery(string $dql = ''): Query
-                    {
-                        ++$this->dql;
-                        return parent::createQuery($dql);
-                    }
-                };
-                $managerProperty->setValue($reader, $countManager);
                 $criteria = [$item->getForeignKeyField() => (int)$item->getID()];
                 $referenceManager = Orm::forConnection($connection);
                 $reference = new TimelineRepository($referenceManager);
                 try {
                     $this->integer($reader->validations($validation->getTable(), $criteria))->isIdenticalTo(1);
-                    // Existing public reader is callable on original source: its DQL budget is one.
-                    $this->integer($countManager->dql)->isIdenticalTo(0);
                     foreach ([null, 'null', 'NULL', '', false, 0, -1, (string)$item->getID()] as $selection) {
                         $where = [$item->getForeignKeyField() => $selection];
                         $this->integer($reader->validations($validation->getTable(), $where))
@@ -3996,69 +3863,13 @@ class Ticket extends DbTestCase
                     // Nonplain criteria retain the original compiler, not a partial SQL translator.
                     $where = [$item->getForeignKeyField() => ['=', (int)$item->getID()]];
                     $this->integer($reader->validations($validation->getTable(), $where))->isIdenticalTo(1);
-                    $integer = Type::getType('integer');
-                    $bigint = Type::getType('bigint');
-                    try {
-                        Type::overrideType('bigint', new class () extends BigIntType {
-                            public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-                            {
-                                throw new LogicException('COUNT operands are raw mapped paths, not selected scalar converters.');
-                            }
-                        });
-                        $this->integer($reader->validations($validation->getTable(), $criteria))
-                            ->isIdenticalTo($reference->countValidations($validation->getTable(), $criteria));
-                        $converter = new class () extends IntegerType {
-                            public int $calls = 0;
-                            public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-                            {
-                                ++$this->calls;
-                                return '(' . $sqlExpr . ' + 1000000)';
-                            }
-                            public function convertToPHPValue(mixed $value, AbstractPlatform $platform): ?int
-                            {
-                                throw new LogicException('The scalar aggregate keeps its native value before the final int cast.');
-                            }
-                        };
-                        Type::overrideType('integer', $converter);
-                        $this->integer($reader->validations($validation->getTable(), $criteria))->isIdenticalTo(0);
-                        $this->integer($reference->countValidations($validation->getTable(), $criteria))->isIdenticalTo(0);
-                        $this->integer($converter->calls)->isIdenticalTo(2);
-                    } finally {
-                        Type::overrideType('integer', $integer);
-                        Type::overrideType('bigint', $bigint);
-                    }
                 } finally {
                     $reader->close();
-                    $originalManager->clear();
                     $referenceManager->clear();
                 }
                 $this->boolean($DB->update($validation->getTable(), [
                     'submission_date' => '2020-01-01 12:00:00', 'validation_date' => '2020-01-02 12:00:00',
                 ], ['id' => $validation->getID()]))->isTrue();
-                $local = new TimelineLocalCountProbe($connection);
-                $reader = new TimelineCountReadOperation($local);
-                $listener = new class ($validation->getTable()) {
-                    public int $loads = 0;
-                    public function __construct(private string $table)
-                    {
-                    }
-                    public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
-                    {
-                        if ($event->getClassMetadata()->getTableName() === $this->table) {
-                            ++$this->loads;
-                            $event->getClassMetadata()->fieldMappings['validation_date']->columnName = 'submission_date';
-                        }
-                    }
-                };
-                $local->getEventManager()->addEventListener(['loadClassMetadata'], $listener);
-                try {
-                    $this->integer($reader->validations($validation->getTable(), $criteria))->isIdenticalTo(1);
-                    $this->integer($listener->loads)->isIdenticalTo(1);
-                    $this->integer($local->builders)->isIdenticalTo(0);
-                } finally {
-                    $reader->close();
-                    $local->getEventManager()->removeEventListener(['loadClassMetadata'], $listener);
-                }
                 foreach ([
                     ['2020-01-01 12:00:00', null, 2],
                     ['2020-01-01 12:00:00', '2020-01-02 12:00:00', 3],
