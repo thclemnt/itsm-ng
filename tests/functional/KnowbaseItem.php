@@ -803,8 +803,9 @@ class KnowbaseItem extends DbTestCase
         $loaded = [];
         $current = 0;
         $expectedActive = false;
-        $this->calling($probe)->getFromDB = function ($id) use ($connection, $ids, $other, &$loaded, &$current, &$expectedActive): bool {
-            $this->boolean($connection->isApplicationEntityManagerActive())->isIdenticalTo($expectedActive);
+        $test = $this;
+        $this->calling($probe)->getFromDB = static function ($id) use ($test, $connection, $ids, $other, &$loaded, &$current, &$expectedActive): bool {
+            $test->boolean($connection->isApplicationEntityManagerActive())->isIdenticalTo($expectedActive);
             $current = (int)$id;
             $loaded[] = $current;
             if ($current === $ids[0]) {
@@ -885,16 +886,17 @@ class KnowbaseItem extends DbTestCase
             $this->calling($adapter)->getProvider = $original->getProvider();
             $DB = $adapter;
             $probe = new CategoryVisibilityProbe();
-            $this->calling($probe)->getFromDB = function ($id) use ($article, $connection, $observer, $selected, $other, &$route): bool {
-                $this->integer((int)$id)->isIdenticalTo((int)$article->getID());
-                $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
-                $this->array($selected->queries)->hasSize(1);
+            $test = $this;
+            $this->calling($probe)->getFromDB = static function ($id) use ($test, $article, $connection, $observer, $selected, $other, &$route): bool {
+                $test->integer((int)$id)->isIdenticalTo((int)$article->getID());
+                $test->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+                $test->array($selected->queries)->hasSize(1);
                 $observer->trace[] = 'loaded';
                 $route = $other;
                 return true;
             };
-            $this->calling($probe)->canViewItem = function () use ($connection, $observer): bool {
-                $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+            $this->calling($probe)->canViewItem = static function () use ($test, $connection, $observer): bool {
+                $test->boolean($connection->isApplicationEntityManagerActive())->isFalse();
                 $observer->trace[] = 'visible';
                 return true;
             };

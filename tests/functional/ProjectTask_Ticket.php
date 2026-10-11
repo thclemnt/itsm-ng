@@ -147,6 +147,8 @@ class ProjectTask_Ticket extends DbTestCase
             $adapter = new ProjectStateAdapterProbe();
             $this->calling($adapter)->getDoctrineConnection = $probe;
             $this->calling($adapter)->getProvider = $original->getProvider();
+            $this->calling($adapter)->fieldExists = static fn ($table, $field, $usecache = true): bool =>
+                $original->fieldExists($table, $field, $usecache);
             $depth = $connection->getTransactionNestingLevel();
             $DB = $adapter;
             $this->output($render)->contains($openProject->getField('name'))->contains($unconfiguredProject->getField('name'))->notContains($finishedProject->getField('name'));
