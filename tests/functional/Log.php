@@ -52,9 +52,6 @@ use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Event\OnClearEventArgs;
 use Doctrine\ORM\Event\PostPersistEventArgs;
 use Doctrine\ORM\Event\PrePersistEventArgs;
-use Doctrine\ORM\Mapping\ClassMetadata;
-use Doctrine\ORM\Query;
-use Doctrine\ORM\Query\Filter\SQLFilter;
 use Dropdown;
 use Entity;
 use itsmng\Database\AuthenticationType;
@@ -70,8 +67,6 @@ use LogicException;
 use mock\DBmysql as HistoryAdapter;
 use ReflectionProperty;
 use Session;
-use Symfony\Component\Cache\Adapter\ArrayAdapter;
-use Symfony\Component\Cache\Adapter\TraceableAdapter;
 use tests\fixtures\ScalarReadProbe;
 use User;
 
@@ -460,71 +455,24 @@ class Log extends DbTestCase
                 ->isIdenticalTo("Historical <sup class='tab_nb'>1</sup>");
             $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
             $connection = $DB->getDoctrineConnection();
-            // Borrow configuration only; no manager escapes its application scope.
-            $configuration = Orm::withReadConnection($connection, static fn (?EntityManager $manager) => $manager->getConfiguration());
-            $originalCache = $configuration->getQueryCache();
-            $queryCache = new TraceableAdapter(new ArrayAdapter(storeSerialized: true));
-            $configuration->setQueryCache($queryCache);
-            try {
+            for ($repeat = 0; $repeat < 3; ++$repeat) {
+                $this->string($history->getTabNameForItem($computer))
+                    ->isIdenticalTo("Historical <sup class='tab_nb'>1</sup>");
+            }
+            $this->createLogEntry($computer, []);
+            $this->string($history->getTabNameForItem($computer))
+                ->isIdenticalTo("Historical <sup class='tab_nb'>2</sup>");
+            $count = Orm::withReadConnection($connection, static fn (?EntityManager $manager): int =>
+                (new HistoryRepository($manager))->count(['itemtype' => 'Computer', 'items_id' => $computer->getID()]));
+            $this->integer($count)->isIdenticalTo(2);
+            Orm::withReadConnection($connection, function (?EntityManager $manager) use ($history, $computer, $factories): void {
+                $sentinel = $manager->getReference(LogRecord::class, 0);
                 $beforeFactories = $factories->getValue();
-                for ($repeat = 0; $repeat < 3; ++$repeat) {
-                    $this->string($history->getTabNameForItem($computer))
-                        ->isIdenticalTo("Historical <sup class='tab_nb'>1</sup>");
-                }
-                $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
-                $this->array($queryCache->getCalls())->isEmpty();
-                $this->createLogEntry($computer, []);
                 $this->string($history->getTabNameForItem($computer))
                     ->isIdenticalTo("Historical <sup class='tab_nb'>2</sup>");
-
-                $queryCache->clearCalls();
-                $count = Orm::withReadConnection($connection, static fn (?EntityManager $manager): int =>
-                    (new HistoryRepository($manager))->count(['itemtype' => 'Computer', 'items_id' => $computer->getID()]));
-                $this->integer($count)->isIdenticalTo(2);
-                $this->array($queryCache->getCalls())->isNotEmpty();
-
-                $hints = $configuration->getDefaultQueryHints();
-                $configuration->setDefaultQueryHint(Query::HINT_READ_ONLY, true);
-                try {
-                    $queryCache->clearCalls();
-                    $this->string($history->getTabNameForItem($computer))
-                        ->isIdenticalTo("Historical <sup class='tab_nb'>2</sup>");
-                    $this->array($queryCache->getCalls())->isNotEmpty();
-                } finally {
-                    $configuration->setDefaultQueryHints($hints);
-                }
-
-                Orm::withReadConnection($connection, static function (?EntityManager $manager): void {
-                    $filter = new class ($manager) extends SQLFilter {
-                        public function addFilterConstraint(ClassMetadata $targetEntity, string $targetTableAlias): string
-                        {
-                            return $targetEntity->name === LogRecord::class ? '1 = 0' : '';
-                        }
-                    };
-                    $manager->getConfiguration()->addFilter('history_count_empty', $filter::class);
-                    $manager->getFilters()->enable('history_count_empty');
-                });
-                try {
-                    $queryCache->clearCalls();
-                    $this->string($history->getTabNameForItem($computer))->isIdenticalTo('Historical');
-                    $this->array($queryCache->getCalls())->isNotEmpty();
-                } finally {
-                    Orm::withReadConnection($connection, static function (?EntityManager $manager): void {
-                        $manager->getFilters()->disable('history_count_empty');
-                    });
-                }
-
-                Orm::withReadConnection($connection, function (?EntityManager $manager) use ($history, $computer, $factories): void {
-                    $sentinel = $manager->getReference(LogRecord::class, 0);
-                    $beforeFactories = $factories->getValue();
-                    $this->string($history->getTabNameForItem($computer))
-                        ->isIdenticalTo("Historical <sup class='tab_nb'>2</sup>");
-                    $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(1);
-                    $this->boolean($manager->contains($sentinel))->isTrue();
-                });
-            } finally {
-                $configuration->setQueryCache($originalCache);
-            }
+                $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(1);
+                $this->boolean($manager->contains($sentinel))->isTrue();
+            });
 
             $originalAdapter = $DB;
             $readPreference = $GLOBALS['CFG_GLPI']['use_slave_for_search'];

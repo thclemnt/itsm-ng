@@ -60,25 +60,14 @@ final class TicketAssetRepository
 
     public function active(string $kind, int $asset, array $finished, int $type): array
     {
-        $projected = (new ITILAssetRepository($this->em))->projectActiveForItem(ItemTicket::class, 'tickets', $kind, $asset, $finished, $type);
-        if ($projected !== null) {
-            return $projected;
-        }
-        $query = $this->linked($kind, $asset);
-        if ($query === null) {
-            return [];
-        }
-        $query->select('t.id, t.name, t.priority')->andWhere('t.is_deleted = :no AND t.type = :type')
-            ->setParameter('no', false, Types::BOOLEAN)->setParameter('type', $type, Types::INTEGER);
-        if ($finished) {
-            $query->andWhere('t.status NOT IN (:finished)')->setParameter('finished', $finished);
-        }
-        $rows = $query->orderBy('t.id')->getQuery()->getScalarResult();
-        foreach ($rows as &$row) {
-            $row['id'] = (int)$row['id'];
-            $row['priority'] = (int)$row['priority'];
-        }
-        return $rows;
+        return (new ITILAssetRepository($this->em))->projectActiveForItem(
+            ItemTicket::class,
+            'tickets',
+            $kind,
+            $asset,
+            $finished,
+            $type
+        );
     }
 
     public function recentlyFinishedCount(string $kind, int $asset, array $finished, int $days, ?DateTimeImmutable $now = null): int

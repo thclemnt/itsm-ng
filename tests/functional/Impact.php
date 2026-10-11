@@ -552,6 +552,11 @@ class Impact extends \DbTestCase
                 $read = $type === null
                     ? fn (): array => (new ITILAssetRepository($manager))->activeForLink($link, Computer::class, (int)$computer->getID(), $finished)
                     : fn (): array => (new TicketAssetRepository($manager))->active(Computer::class, (int)$computer->getID(), $finished, $type);
+                $dirty = null;
+                if ($bucket === 'incidents') {
+                    $dirty = $manager->find(Entity\Ticket::class, (int)$object->getID());
+                    $dirty->name = 'Unflushed graph incident';
+                }
                 $rows = $read();
                 $this->array($rows)->isIdenticalTo($graph['nodes'][$nodeId]['ITILObjects'][$bucket]);
                 $byId = array_column($rows, null, 'id');
@@ -568,6 +573,10 @@ class Impact extends \DbTestCase
                     }
                 }
                 $this->array($read())->isIdenticalTo($graph['nodes'][$nodeId]['ITILObjects'][$bucket]);
+                if ($dirty !== null) {
+                    $this->boolean($manager->contains($dirty))->isTrue();
+                    $this->string($dirty->name)->isIdenticalTo('Unflushed graph incident');
+                }
             }
             $activeQueryPlans = count($cache->getValues());
         });

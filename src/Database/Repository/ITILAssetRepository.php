@@ -7,13 +7,10 @@ namespace itsmng\Database\Repository;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
-use Doctrine\ORM\Mapping\DefaultQuoteStrategy;
 use Doctrine\ORM\Query\ParameterTypeInferer;
 use InvalidArgumentException;
 use itsmng\Database\Mapping\ITILStatisticsRelation;
 use itsmng\Database\Mapping\ITILStatisticsRole;
-use itsmng\Database\MySQLManagedConnection;
-use itsmng\Database\PostgresConnection;
 use LogicException;
 use ReflectionProperty;
 
@@ -59,42 +56,14 @@ final class ITILAssetRepository
 
     private function linked(string $links, string $parent, string $kind, int $asset, array $finished): array
     {
-        $projected = $this->projectActiveForItem($links, $parent, $kind, $asset, $finished);
-        if ($projected !== null) {
-            return $projected;
-        }
-        try {
-            $association = $links::referenceAssociation($kind);
-        } catch (InvalidArgumentException) {
-            return [];
-        }
-        $query = $this->em->createQueryBuilder()->select('r.id, r.name, r.priority')->from($links, 'i')
-            ->join('i.' . $parent, 'r')->where('IDENTITY(i.' . $association . ') = :asset')
-            ->setParameter('asset', $asset, Types::BIGINT)->andWhere('r.is_deleted = :no')->setParameter('no', false, Types::BOOLEAN);
-        if ($finished) {
-            $query->andWhere('r.status NOT IN (:finished)')->setParameter('finished', $finished);
-        }
-        $rows = $query->orderBy('r.id')->getQuery()->getScalarResult();
-        foreach ($rows as &$row) {
-            $row['id'] = (int)$row['id'];
-            $row['priority'] = (int)$row['priority'];
-        }
-        return $rows;
+        return $this->projectActiveForItem($links, $parent, $kind, $asset, $finished);
     }
 
-    /** @internal Canonical scalar lists; null retains the supplied manager's DQL behavior. */
-    public function projectActiveForItem(string $links, string $parent, string $kind, int $asset, array $finished, ?int $ticketType = null): ?array
+    /** Completed active rows on the selected manager's connection and owning associations. */
+    public function projectActiveForItem(string $links, string $parent, string $kind, int $asset, array $finished, ?int $ticketType = null): array
     {
         $connection = $this->em->getConnection();
         $configuration = $this->em->getConfiguration();
-        if ((!$connection instanceof MySQLManagedConnection && !$connection instanceof PostgresConnection)
-            || !$connection->ownsApplicationEntityManager($this->em)
-            || $configuration->getDefaultQueryHints()
-            || $configuration->getQuoteStrategy()::class !== DefaultQuoteStrategy::class
-            || ($this->em->hasFilters() && $this->em->getFilters()->getEnabledFilters())
-            || array_filter($finished, static fn ($status): bool => !is_int($status) && !is_string($status))) {
-            return null;
-        }
         try {
             $association = $links::referenceAssociation($kind);
         } catch (InvalidArgumentException) {
@@ -106,14 +75,13 @@ final class ITILAssetRepository
         $link = $this->em->getClassMetadata($links);
         $owner = $link->getAssociationMapping($parent);
         $item = $link->getAssociationMapping($association);
-        if (!$link->isInheritanceTypeNone() || !$owner->isToOneOwningSide() || count($owner->joinColumns) !== 1
-            || !$item->isToOneOwningSide() || count($item->joinColumns) !== 1) {
-            return null;
+        if (
+            !$owner->isToOneOwningSide() || count($owner->joinColumns) !== 1
+            || !$item->isToOneOwningSide() || count($item->joinColumns) !== 1
+        ) {
+            throw new LogicException('ITIL asset rows require single-column owning parent and asset associations.');
         }
         $record = $this->em->getClassMetadata($owner->targetEntity);
-        if (!$record->isInheritanceTypeNone()) {
-            return null;
-        }
         $platform = $connection->getDatabasePlatform();
         $quote = $configuration->getQuoteStrategy();
         $column = static fn (string $field): string => 'r.' . $quote->getColumnName($field, $record, $platform);
