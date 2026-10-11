@@ -34,6 +34,7 @@
 namespace tests\units;
 
 use Change;
+use ChangeTask;
 use CommonITILActor;
 use CommonITILObject;
 use CommonITILTask;
@@ -44,6 +45,7 @@ use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Cache\QueryCacheProfile;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Driver;
+use Doctrine\DBAL\Exception as DatabaseException;
 use Doctrine\DBAL\Driver\Connection as DriverConnection;
 use Doctrine\DBAL\Driver\Middleware\AbstractDriverMiddleware;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
@@ -74,6 +76,9 @@ use ITILSolution;
 use LogicException;
 use Plugin;
 use Problem;
+use ProblemTask;
+use Project as LegacyProject;
+use ProjectTask as LegacyProjectTask;
 use ReflectionProperty;
 use RequestType;
 use Session;
@@ -101,6 +106,7 @@ use itsmng\Database\Orm;
 use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\DocumentRepository;
 use itsmng\Database\Repository\ITILActorRepository;
+use itsmng\Database\Repository\ITILTaskRepository;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\TicketCollectionRepository;
 use itsmng\Database\Repository\TicketVisibility;
@@ -115,6 +121,7 @@ use mock\DBmysql as TimelineCountAdapter;
 use Psr\Cache\CacheItemInterface;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Psr16Cache;
+use TicketTask;
 use TicketValidation;
 use User;
 use itsmng\Database\EntityRegistry;
@@ -128,6 +135,285 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Ticket extends DbTestCase
 {
+    public function testActivityCountsKeepPublicPrivacyAndCurrentCoreParents(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $writer = null;
+        try {
+            $this->login();
+            $entity = (int)$_SESSION['glpiactive_entity'];
+            foreach ([[LegacyTicket::class, TicketTask::class, 'tickets_id'],
+                [Change::class, ChangeTask::class, 'changes_id'],
+                [Problem::class, ProblemTask::class, 'problems_id']] as [$kind, $taskType, $field]) {
+                $parent = $this->createItem($kind, ['name' => 'activity-count-' . $this->getUniqueString(),
+                    'content' => 'Activity count fixture', 'entities_id' => $entity]);
+                $other = $this->createItem($kind, ['name' => 'other-activity-count-' . $this->getUniqueString(),
+                    'content' => 'Other activity count fixture', 'entities_id' => $entity]);
+                $followups = [];
+                $tasks = [];
+                foreach ([false, true] as $private) {
+                    $followups[] = $this->createItem(ITILFollowup::class, ['itemtype' => $kind,
+                        'items_id' => $parent->getID(), 'content' => 'Count actual own-author followup', 'is_private' => $private]);
+                    $input = [$field => $parent->getID(), 'content' => 'Count actual task', 'actiontime' => 60];
+                    if ($kind === LegacyTicket::class) {
+                        $input['is_private'] = $private;
+                    }
+                    $tasks[] = $this->createItem($taskType, $input);
+                }
+                $this->createItem(ITILFollowup::class, ['itemtype' => $kind, 'items_id' => $other->getID(),
+                    'content' => 'Other parent followup', 'is_private' => false]);
+                $this->createItem($taskType, [$field => $other->getID(), 'content' => 'Other parent task', 'actiontime' => 60]);
+                $this->integer((int)$parent->numberOfFollowups())->isIdenticalTo(2);
+                $this->integer($parent->numberOfTasks())->isIdenticalTo(2);
+                foreach ([false, 0, 1, null, 'true'] as $publicOnly) {
+                    $this->integer((int)$parent->numberOfFollowups($publicOnly))->isIdenticalTo(1);
+                    $this->integer($parent->numberOfTasks($publicOnly))->isIdenticalTo($kind === LegacyTicket::class ? 1 : 2);
+                }
+                $this->integer((int)$followups[1]->fields['users_id'])->isIdenticalTo((int)Session::getLoginUserID());
+                if ($DB->getDoctrineConnection()->getDatabasePlatform() instanceof PostgreSQLPlatform) {
+                    $this->integer($parent->numberOfFollowups())->isIdenticalTo(2);
+                }
+                if ($kind === LegacyTicket::class) {
+                    $writer = Orm::create($DB);
+                    $owned = $writer->find(TicketEntity::class, (int)$parent->getID());
+                    $owned->name = 'Unflushed independent count owner';
+                    $this->boolean($tasks[1]->delete(['id' => $tasks[1]->getID()], true))->isTrue();
+                    $this->integer($parent->numberOfTasks())->isIdenticalTo(1);
+                    Orm::read($DB, function (EntityManager $outer) use ($parent, $writer, $owned): void {
+                        $live = $outer->find(TicketEntity::class, (int)$parent->getID());
+                        $live->name = 'Unflushed outer count owner';
+                        $this->integer((int)$parent->numberOfFollowups(false))->isIdenticalTo(1);
+                        $this->integer($parent->numberOfTasks())->isIdenticalTo(1);
+                        $this->boolean($outer->contains($live))->isTrue();
+                        $this->string($live->name)->isIdenticalTo('Unflushed outer count owner');
+                        $this->boolean($writer->contains($owned))->isTrue();
+                        $this->string($owned->name)->isIdenticalTo('Unflushed independent count owner');
+                    });
+                    $this->boolean($followups[0]->delete(['id' => $followups[0]->getID()], true))->isTrue();
+                    $this->integer((int)$parent->numberOfFollowups(false))->isIdenticalTo(0);
+                    $this->integer((int)$parent->numberOfFollowups())->isIdenticalTo(1);
+                    $this->boolean($writer->contains($owned))->isTrue();
+                    $writer->clear();
+                    $writer = null;
+                }
+            }
+        } finally {
+            $writer?->clear();
+            $_SESSION = $session;
+        }
+    }
+
+    public function testPrivateActivityPreventsActualRequesterEditAndHelpdeskDeletion(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login('post-only', 'postonly');
+            $requester = (int)Session::getLoginUserID();
+            $ticket = $this->createItem(LegacyTicket::class, ['name' => 'requester-activity-' . $this->getUniqueString(),
+                'content' => 'Requester activity gate fixture', 'entities_id' => $_SESSION['glpiactive_entity'],
+                'users_id_recipient' => $requester,
+                '_users_id_requester' => $requester]);
+            $id = (int)$ticket->getID();
+            $this->string(Session::getCurrentInterface())->isIdenticalTo('helpdesk');
+            $this->boolean($ticket->getFromDB($id))->isTrue();
+            $this->boolean($ticket->canRequesterUpdateItem())->isTrue();
+            $this->boolean($ticket->canDeleteItem())->isTrue();
+            $this->login();
+            $followup = $this->createItem(ITILFollowup::class, ['itemtype' => LegacyTicket::class,
+                'items_id' => $id, 'content' => 'Private activity still blocks requester', 'is_private' => true]);
+            $task = $this->createItem(TicketTask::class, ['tickets_id' => $id,
+                'content' => 'Private task still blocks requester', 'is_private' => true, 'actiontime' => 60]);
+            // Isolate activity from the separate last-modification deletion condition.
+            $DB->getDoctrineConnection()->update(LegacyTicket::getTable(), ['date_mod' => $ticket->fields['date']], ['id' => $id]);
+            $this->login('post-only', 'postonly');
+            $this->boolean($ticket->getFromDB($id))->isTrue();
+            $this->integer((int)$ticket->numberOfFollowups(false))->isIdenticalTo(0);
+            $this->integer($ticket->numberOfTasks(false))->isIdenticalTo(0);
+            $this->variable($ticket->fields['date_mod'])->isIdenticalTo($ticket->fields['date']);
+            $this->boolean($ticket->canRequesterUpdateItem())->isFalse();
+            $this->boolean($ticket->canDeleteItem())->isFalse();
+            $this->login();
+            $this->boolean($followup->delete(['id' => $followup->getID()], true))->isTrue();
+            $DB->getDoctrineConnection()->update(LegacyTicket::getTable(), ['date_mod' => $ticket->fields['date']], ['id' => $id]);
+            $this->login('post-only', 'postonly');
+            $this->boolean($ticket->getFromDB($id))->isTrue();
+            $this->integer((int)$ticket->numberOfFollowups())->isIdenticalTo(0);
+            $this->integer($ticket->numberOfTasks())->isIdenticalTo(1);
+            $this->boolean($ticket->canRequesterUpdateItem())->isFalse();
+            $this->boolean($ticket->canDeleteItem())->isFalse();
+            $this->login();
+            $this->boolean($task->delete(['id' => $task->getID()], true))->isTrue();
+            $DB->getDoctrineConnection()->update(LegacyTicket::getTable(), ['date_mod' => $ticket->fields['date']], ['id' => $id]);
+            $this->login('post-only', 'postonly');
+            $this->boolean($ticket->getFromDB($id))->isTrue();
+            $this->boolean($ticket->canRequesterUpdateItem())->isTrue();
+            $this->boolean($ticket->canDeleteItem())->isTrue();
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
+    public function testActivityCountKeepsVirtualOrderAndSelectedCustomReceiver(): void
+    {
+        global $DB;
+        $database = $DB;
+        $this->login();
+        $ticket = $this->createItem(LegacyTicket::class, ['name' => 'count-route-' . $this->getUniqueString(),
+            'content' => 'Count route fixture', 'entities_id' => $_SESSION['glpiactive_entity']]);
+        $this->createItem(ITILFollowup::class, ['itemtype' => LegacyTicket::class, 'items_id' => $ticket->getID(),
+            'content' => 'Count route followup', 'is_private' => false]);
+        $this->createItem(TicketTask::class, ['tickets_id' => $ticket->getID(), 'content' => 'Count route task', 'actiontime' => 60]);
+        $probe = new class ($database->getDoctrineConnection()) extends TimelineLocalCountProbe {
+            public bool $reject = false;
+            public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
+            {
+                if ($this->reject) {
+                    throw new LogicException('Activity count query denied');
+                }
+                return parent::executeQuery($sql, $params, $types, $qcp);
+            }
+        };
+        $events = new class () {
+            public int $loads = 0;
+            public int $clears = 0;
+            public function postLoad(): void
+            {
+                ++$this->loads;
+            }
+            public function onClear(): void
+            {
+                ++$this->clears;
+            }
+        };
+        $probe->getEventManager()->addEventListener([Events::postLoad, Events::onClear], $events);
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new TimelineCountAdapter();
+        $this->calling($adapter)->getDoctrineConnection = $probe;
+        $this->calling($adapter)->getProvider = $database->getProvider();
+        $model = new class () extends LegacyTicket {
+            public static $observe;
+            public static string $foreign = 'tickets_id';
+            public static function getType()
+            {
+                (self::$observe)('type');
+                return LegacyTicket::class;
+            }
+            public static function getForeignKeyField()
+            {
+                (self::$observe)('foreign');
+                return self::$foreign;
+            }
+        };
+        $model->fields = $ticket->fields;
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $before = $factories->getValue();
+        $calls = [];
+        try {
+            $model::$observe = function (string $operation) use (&$calls, $database, $factories, $before): void {
+                global $DB;
+                $calls[] = $operation;
+                $this->integer($factories->getValue())->isIdenticalTo($before);
+                $DB = $database;
+            };
+            $DB = $adapter;
+            $this->integer((int)$model->numberOfFollowups(false))->isIdenticalTo(1);
+            $this->array($calls)->isIdenticalTo(['type']);
+            $this->array($probe->queries)->hasSize(1);
+            $this->string($probe->queries[0]['sql'])->contains('glpi_itilfollowups')->contains('COUNT(*)');
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(1);
+            $before = $factories->getValue();
+            $calls = [];
+            $model::$observe = function (string $operation) use (&$calls, $database, $adapter, $factories, $before): void {
+                global $DB;
+                $calls[] = $operation;
+                $this->integer($factories->getValue())->isIdenticalTo($before);
+                $DB = $operation === 'type' ? $adapter : $database;
+            };
+            $DB = $adapter;
+            $this->integer($model->numberOfTasks(false))->isIdenticalTo(1);
+            $this->array($calls)->isIdenticalTo(['type', 'type', 'foreign']);
+            $this->array($probe->queries)->hasSize(2);
+            $this->string($probe->queries[1]['sql'])->contains('glpi_tickettasks')->contains('COUNT(*)');
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(1);
+            $this->integer($events->loads)->isIdenticalTo(0);
+            $this->integer($events->clears)->isIdenticalTo(0);
+            $model::$observe = static function (): void {
+            };
+            $DB = $adapter;
+            $probe->reject = true;
+            $this->exception(static fn () => $model->numberOfFollowups())->isInstanceOf(LogicException::class);
+            $probe->reject = false;
+            $this->integer((int)$model->numberOfFollowups())->isIdenticalTo(1);
+            $this->integer($events->clears)->isIdenticalTo(0);
+        } finally {
+            $model::$observe = static function (): void {
+            };
+            $DB = $database;
+        }
+        $model::$foreign = 'sourceitems_id';
+        $this->integer($model->numberOfTasks())->isIdenticalTo(0);
+        $project = $this->createItem(LegacyProject::class, ['name' => 'non-itil-count-' . $this->getUniqueString(),
+            'entities_id' => $_SESSION['glpiactive_entity']]);
+        $this->createItem(LegacyProjectTask::class, ['name' => 'non-itil-count-task-' . $this->getUniqueString(),
+            'projects_id' => $project->getID(), 'entities_id' => $_SESSION['glpiactive_entity']]);
+        $projectId = (int)$project->getID();
+        $queries = count($probe->queries);
+        $this->variable(Orm::read($adapter, static fn (EntityManager $manager): ?int =>
+            (new ITILTaskRepository($manager))->parentActivityCount('glpi_projecttasks', 'projects_id', $projectId, false)))
+            ->isNull();
+        $this->integer(count($probe->queries))->isIdenticalTo($queries);
+        $nonTask = new class () extends LegacyTicket {
+            public static function getType()
+            {
+                return LegacyProject::class;
+            }
+            public static function getForeignKeyField()
+            {
+                return 'projects_id';
+            }
+        };
+        $nonTask->fields['id'] = $projectId;
+        $this->integer($nonTask->numberOfTasks(false))->isIdenticalTo(1);
+        $this->integer((int)$nonTask->numberOfFollowups())->isIdenticalTo(0);
+        $ticket->fields['id'] = ['=', (int)$model->fields['id']];
+        $this->integer((int)$ticket->numberOfFollowups())->isIdenticalTo(1);
+        $this->integer($ticket->numberOfTasks())->isIdenticalTo(1);
+        $ticket->fields['id'] = new class ((int)$model->fields['id']) {
+            public function __construct(private int $id)
+            {
+            }
+            public function __toString(): string
+            {
+                return (string)$this->id;
+            }
+        };
+        $this->integer((int)$ticket->numberOfFollowups())->isIdenticalTo(1);
+        $this->integer($ticket->numberOfTasks())->isIdenticalTo(1);
+        $connection = $database->getDoctrineConnection();
+        if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
+            // A Stringable value that returns NULL is a quoted value, not the literal NULL criterion.
+            $ticket->fields['id'] = new class () {
+                public function __toString(): string
+                {
+                    return 'NULL';
+                }
+            };
+            $connection->beginTransaction();
+            try {
+                $this->exception(static fn () => $ticket->numberOfFollowups())->isInstanceOf(DatabaseException::class);
+            } finally {
+                $connection->rollBack();
+            }
+        }
+        foreach ([null, 'NULL', 'Null', 0, '0', -1] as $identity) {
+            $ticket->fields['id'] = $identity;
+            $this->integer((int)$ticket->numberOfFollowups())->isIdenticalTo(0);
+            $this->integer($ticket->numberOfTasks())->isIdenticalTo(0);
+        }
+    }
+
     public function testMonthlyCountsRespectTicketCollectionVisibility(): void
     {
         global $DB;

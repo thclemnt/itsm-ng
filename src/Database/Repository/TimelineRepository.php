@@ -4,11 +4,13 @@
 
 namespace itsmng\Database\Repository;
 
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Query\QueryBuilder;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use itsmng\Database\Entity\ITILFollowup;
 use itsmng\Database\Expressions;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\ReferenceValues;
@@ -20,6 +22,43 @@ final class TimelineRepository
 {
     public function __construct(private EntityManager $em)
     {
+    }
+
+    /** Requester edit/delete gates count private activity too; public totals exclude every private author. */
+    public function subjectActivityCount(string $kind, int|string|null $item, bool $publicOnly): int|string|null
+    {
+        $metadata = $this->em->getClassMetadata(ITILFollowup::class);
+        if (
+            $metadata->getTableName() !== 'glpi_itilfollowups'
+            || $metadata->getColumnName('itemtype') !== 'itemtype'
+            || $metadata->getColumnName('items_id') !== 'items_id'
+            || ($publicOnly && $metadata->getColumnName('is_private') !== 'is_private')
+        ) {
+            return null;
+        }
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $query = $connection->createQueryBuilder()->select('COUNT(*)')
+            ->from($quote->getTableName($metadata, $platform), 'r')
+            ->where('r.' . $quote->getColumnName('itemtype', $metadata, $platform) . ' = '
+                . Type::getType($metadata->getTypeOfField('itemtype'))->convertToDatabaseValueSQL(':kind', $platform))
+            ->setParameter('kind', $kind, $metadata->getTypeOfField('itemtype'));
+        $column = 'r.' . $quote->getColumnName('items_id', $metadata, $platform);
+        if ($item === null || (is_string($item) && strtolower($item) === 'null')) {
+            $query->andWhere($column . ' IS NULL');
+        } else {
+            $query->andWhere($column . ' = '
+                . Type::getType($metadata->getTypeOfField('items_id'))->convertToDatabaseValueSQL(':parent', $platform))
+                ->setParameter('parent', $item, $metadata->getTypeOfField('items_id'));
+        }
+        if ($publicOnly) {
+            $query->andWhere('r.' . $quote->getColumnName('is_private', $metadata, $platform) . ' = '
+                . Type::getType($metadata->getTypeOfField('is_private'))->convertToDatabaseValueSQL(':private', $platform))
+                ->setParameter('private', false, $metadata->getTypeOfField('is_private'));
+        }
+        $count = $query->executeQuery()->fetchOne();
+        return $platform instanceof PostgreSQLPlatform ? (int)$count : $count;
     }
 
     /** The discriminator columns retain the original RecordCriteria scalar types. */

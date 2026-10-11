@@ -6,6 +6,7 @@ namespace itsmng\Database\Repository;
 
 use DateTimeImmutable;
 use DateTimeInterface;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Mapping\ClassMetadata;
@@ -13,6 +14,7 @@ use Doctrine\ORM\QueryBuilder;
 use InvalidArgumentException;
 use Planning;
 use itsmng\Database\Entity;
+use itsmng\Database\EntityRegistry;
 use itsmng\Database\Mapping\ITILStatisticsRelation;
 use itsmng\Database\Mapping\ITILStatisticsRole;
 use itsmng\Database\RecordCriteria;
@@ -50,6 +52,51 @@ final class ITILTaskRepository
             }
         }
         return null;
+    }
+
+    /** Fixed parent counts; an overridden legacy foreign key keeps its native adapter semantics. */
+    public function parentActivityCount(string $table, string $parentField, int|string|null $parent, bool $publicOnly): ?int
+    {
+        $class = EntityRegistry::tables()[$table] ?? null;
+        if ($class === null) {
+            return null;
+        }
+        $metadata = $this->em->getClassMetadata($class);
+        if ($metadata->getTableName() !== $table) {
+            return null;
+        }
+        $definition = $this->definitionForMetadata($metadata);
+        if ($definition === null) {
+            return null;
+        }
+        [, , $relation] = $definition;
+        $mapping = $metadata->associationMappings[$relation];
+        if (
+            $mapping->joinColumns[0]->name !== $parentField
+            || ($publicOnly && $metadata->getColumnName('is_private') !== 'is_private')
+        ) {
+            return null;
+        }
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $column = 'r.' . $quote->getJoinColumnName($mapping->joinColumns[0], $metadata, $platform);
+        $query = $connection->createQueryBuilder()->select('COUNT(*)')
+            ->from($quote->getTableName($metadata, $platform), 'r');
+        if ($parent === null || (is_string($parent) && strtolower($parent) === 'null')) {
+            $query->where($column . ' IS NULL');
+        } else {
+            $target = $this->em->getClassMetadata($mapping->targetEntity);
+            $type = $target->getTypeOfField($target->getSingleIdentifierFieldName());
+            $query->where($column . ' = ' . Type::getType($type)->convertToDatabaseValueSQL(':parent', $platform))
+                ->setParameter('parent', $parent, $type);
+        }
+        if ($publicOnly) {
+            $query->andWhere('r.' . $quote->getColumnName('is_private', $metadata, $platform) . ' = '
+                . Type::getType($metadata->getTypeOfField('is_private'))->convertToDatabaseValueSQL(':private', $platform))
+                ->setParameter('private', false, $metadata->getTypeOfField('is_private'));
+        }
+        return (int)$query->executeQuery()->fetchOne();
     }
 
     public function parentTasks(string $type, int $parent): array

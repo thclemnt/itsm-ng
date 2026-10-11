@@ -32,11 +32,14 @@
  */
 
 use Doctrine\ORM\EntityManager;
+use itsmng\Database\EntityRegistry;
 use itsmng\Database\ITILActorReadOperation;
 use itsmng\Database\ITILDocumentAccess;
 use itsmng\Database\Orm;
 use itsmng\Database\PromotionSourceReadOperation;
 use itsmng\Database\Repository\ITILActorRepository;
+use itsmng\Database\Repository\ITILTaskRepository;
+use itsmng\Database\Repository\TimelineRepository;
 use itsmng\Database\Repository\ITILStatisticsOptionsRepository;
 use itsmng\Database\Repository\UserRepository;
 use itsmng\Database\TimelineAuthorReader;
@@ -8691,13 +8694,31 @@ abstract class CommonITILObject extends CommonDBTM
             $RESTRICT['is_private'] = 0;
         }
 
-        // Set number of followups
-        $result = $DB->request([
+        $database = $DB;
+        $kind = $this->getType();
+        $item = $this->fields['id'];
+        $subjects = EntityRegistry::discriminatedReferences('glpi_itilfollowups')['items_id']['selections'] ?? [];
+        if (
+            is_string($kind) && isset($subjects[$kind])
+            && ($item === null || is_int($item)
+                || (is_string($item) && (strtolower($item) === 'null' || preg_match('/^-?[0-9]+$/D', $item))))
+        ) {
+            $count = Orm::read(
+                $database,
+                static fn (EntityManager $manager): int|string|null => (new TimelineRepository($manager))
+                    ->subjectActivityCount($kind, $item, $with_private !== true)
+            );
+            if ($count !== null) {
+                return $count;
+            }
+        }
+        // Dynamic parents and public operator criteria retain their adapter query.
+        $result = $database->request([
            'COUNT'  => 'cpt',
            'FROM'   => 'glpi_itilfollowups',
            'WHERE'  => [
-              'itemtype'  => $this->getType(),
-              'items_id'  => $this->fields['id']
+              'itemtype'  => $kind,
+              'items_id'  => $item
            ] + $RESTRICT
         ])->next();
 
@@ -8723,12 +8744,29 @@ abstract class CommonITILObject extends CommonDBTM
             $RESTRICT['is_private'] = 0;
         }
 
-        // Set number of tasks
-        $row = $DB->request([
+        $database = $DB;
+        $parentField = $this->getForeignKeyField();
+        $item = $this->fields['id'];
+        if (
+            isset(EntityRegistry::tables()[$table])
+            && ($item === null || is_int($item)
+                || (is_string($item) && (strtolower($item) === 'null' || preg_match('/^-?[0-9]+$/D', $item))))
+        ) {
+            $count = Orm::read(
+                $database,
+                static fn (EntityManager $manager): ?int => (new ITILTaskRepository($manager))
+                    ->parentActivityCount($table, $parentField, $item, $RESTRICT !== [])
+            );
+            if ($count !== null) {
+                return $count;
+            }
+        }
+        // Overridden foreign keys and public operator criteria retain their adapter query.
+        $row = $database->request([
            'COUNT'  => 'cpt',
            'FROM'   => $table,
            'WHERE'  => [
-              $this->getForeignKeyField()   => $this->fields['id']
+              $parentField => $item
            ] + $RESTRICT
         ])->next();
         return (int)$row['cpt'];
