@@ -21,11 +21,12 @@ final class NativeSubjectSchema
         $columns = $checks = [];
         $parameters = [array_keys($policies)];
         $types = [ArrayParameterType::STRING];
+        $checkTable = count($policies) === 1 ? array_key_first($policies) : null;
         if ($mysql) {
-            // One catalogue for all subject families; no per-table introspection
-            // and no retained receipt is treated as the current declaration.
+            // Scope a singleton operation to its table; shared snapshots and
+            // multi-table inspections retain their complete catalogue.
             try {
-                $checkSnapshot ??= NativeCheckCatalog::snapshot($connection);
+                $checkSnapshot ??= NativeCheckCatalog::snapshot($connection, $checkTable);
             } catch (RuntimeException $error) {
                 return ['Native subject enforcement unavailable: ' . $error->getMessage()];
             }
@@ -50,7 +51,7 @@ final class NativeSubjectSchema
                 $parameters,
                 $types
             );
-            $checkSnapshot ??= NativeCheckCatalog::snapshot($connection);
+            $checkSnapshot ??= NativeCheckCatalog::snapshot($connection, $checkTable);
             $checks = $checkSnapshot['checks'];
         }
         foreach ($rows as $column) {

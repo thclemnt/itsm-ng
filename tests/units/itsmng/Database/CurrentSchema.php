@@ -307,6 +307,114 @@ class CurrentSchema extends test
         $this->boolean(PhysicalIndexSchema::coversNativePrefix($policy, $changed))->isFalse('Additional function node');
     }
 
+    public function testSubjectCatalogScopeRetainsSelectedProofAndSharedSnapshots(): void
+    {
+        foreach ([new PostgreSQLPlatform(), new MariaDBPlatform(), new MySQLPlatform()] as $platform) {
+            $connection = new Connection([], (new DisconnectedSchemaConnection($platform))->getDriver());
+            $this->calling($connection)->getDatabasePlatform = $platform;
+            $this->calling($connection)->getServerVersion = $platform instanceof MariaDBPlatform ? '11.8.0-MariaDB' : '8.4.0';
+            $enabled = true;
+            $this->calling($connection)->fetchOne = static function (string $sql) use (&$enabled): string {
+                return str_contains($sql, 'check_constraint_checks') ? ($enabled ? '1' : '0') : 'STRICT_TRANS_TABLES';
+            };
+            $projection = 'CASE WHEN kind IN (1) THEN selected_id ELSE NULL END';
+            $clause = 'selected_id IS NULL OR selected_id > 0';
+            $policy = ['constraint' => 'fixture_selection', 'projection' => $projection,
+                'check' => $clause, 'discriminators' => [], 'integer_discriminators' => ['kind']];
+            $policies = ['fixture' => ['items_id' => $policy]];
+            $queries = [];
+            $enforced = 'YES';
+            $missing = false;
+            $this->calling($connection)->fetchAllAssociative = static function (
+                string $sql,
+                array $parameters = [],
+                array $types = []
+            ) use (&$queries, &$enforced, &$missing, $projection, $clause): array {
+                $queries[] = [$sql, $parameters, $types];
+                if (str_contains($sql, 'FROM information_schema.TABLE_CONSTRAINTS')) {
+                    $tables = $parameters ?: ['fixture', 'other'];
+                    return array_map(static fn (string $table): array => [
+                        'table_name' => $table, 'constraint_name' => $table . '_selection', 'enforced' => $enforced,
+                    ], $tables);
+                }
+                if (str_contains($sql, 'FROM information_schema.CHECK_CONSTRAINTS') && !str_contains($sql, 'cc.TABLE_NAME')) {
+                    $names = $parameters[0] ?? ['fixture_selection', 'other_selection'];
+                    return $missing ? [] : array_map(static fn (string $name): array => [
+                        'constraint_name' => $name, 'clause' => $clause,
+                    ], $names);
+                }
+                if (str_contains($sql, 'FROM pg_catalog.pg_constraint') || str_contains($sql, 'cc.TABLE_NAME')) {
+                    $tables = $parameters ?: ['fixture', 'other'];
+                    return $missing ? [] : array_map(static fn (string $table): array => [
+                        'table_name' => $table, 'constraint_name' => $table . '_selection',
+                        'clause' => $clause, 'enforced' => $enforced, 'validated' => true,
+                    ], $tables);
+                }
+                return array_map(static fn (string $table): array => [
+                    'table_name' => $table, 'column_name' => 'items_id',
+                    'generated' => str_contains($sql, 'pg_catalog') ? 's' : 'STORED GENERATED',
+                    'expression' => $projection,
+                ], $parameters[0]);
+            };
+            $catalogReads = static function () use (&$queries): array {
+                return array_values(array_filter(
+                    $queries,
+                    static fn (array $query): bool => str_contains($query[0], 'CONSTRAINTS') || str_contains($query[0], 'pg_catalog.pg_constraint')
+                ));
+            };
+            $this->array(NativeSubjectSchema::differences($connection, $policies))->isEmpty();
+            $reads = $catalogReads();
+            $this->array($reads[0][1])->isIdenticalTo(['fixture']);
+            if ($platform instanceof MySQLPlatform && !$platform instanceof MariaDBPlatform) {
+                $this->string($reads[0][0])->contains('AND TABLE_NAME = ?');
+                $this->array($reads[1][1])->isIdenticalTo([['fixture_selection']]);
+                $this->array($reads[1][2])->isIdenticalTo([ArrayParameterType::STRING]);
+            } else {
+                $this->string($reads[0][0])->contains($platform instanceof PostgreSQLPlatform ? 'AND t.relname = ?' : 'AND cc.TABLE_NAME = ?');
+            }
+            $queries = [];
+            $this->array(NativeSubjectSchema::differences($connection, $policies, checksOnly: true))->isEmpty();
+            $this->array($catalogReads()[0][1])->isIdenticalTo(['fixture']);
+            $queries = [];
+            $other = $policy;
+            $other['constraint'] = 'other_selection';
+            $this->array(NativeSubjectSchema::differences($connection, $policies + ['other' => ['items_id' => $other]]))->isEmpty();
+            foreach ($catalogReads() as $read) {
+                $this->array($read[1])->isEmpty('Multi-table inspection retains the unscoped catalogue');
+            }
+            $queries = [];
+            $snapshot = NativeCheckCatalog::snapshot($connection);
+            $this->array(array_keys($snapshot['checks']))->isIdenticalTo(['fixture', 'other']);
+            $queries = [];
+            $this->array(NativeSubjectSchema::differences($connection, $policies, $snapshot))->isEmpty();
+            $this->array($catalogReads())->isEmpty('Supplied shared snapshot is never recollected');
+            $enforced = 'NO';
+            $this->array(NativeSubjectSchema::differences($connection, $policies, checksOnly: true))->isIdenticalTo([
+                'Changed, missing or unenforced native subject CHECK: fixture.fixture_selection',
+            ]);
+            $enforced = 'YES';
+            $missing = true;
+            $diagnostics = NativeSubjectSchema::differences($connection, $policies, checksOnly: true);
+            if ($platform instanceof MySQLPlatform && !$platform instanceof MariaDBPlatform) {
+                $this->array($diagnostics)->isIdenticalTo([
+                    'Native subject enforcement unavailable: Native CHECK owner lacks a clause: fixture.fixture_selection',
+                ]);
+            } else {
+                $this->array($diagnostics)->isIdenticalTo([
+                    'Changed, missing or unenforced native subject CHECK: fixture.fixture_selection',
+                ]);
+            }
+            if ($platform instanceof MariaDBPlatform) {
+                $queries = [];
+                $enabled = false;
+                $diagnostics = NativeSubjectSchema::differences($connection, $policies);
+                $this->integer(count($diagnostics))->isIdenticalTo(1);
+                $this->string($diagnostics[0])->contains('MariaDB check_constraint_checks is disabled');
+                $this->array($queries)->isEmpty('Session enforcement is required before catalogue inspection');
+            }
+        }
+    }
+
     public function testCurrentCheckFamiliesShareOneNativeOwnershipSnapshot(): void
     {
         $platform = new PostgreSQLPlatform();
