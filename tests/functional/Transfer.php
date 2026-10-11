@@ -312,14 +312,14 @@ class Transfer extends DbTestCase
             $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
             $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
             $manager = Orm::create($database);
-            foreach (["Transfer O'Brien\\path", null, 'NuLl'] as $index => $name) {
+            foreach (["Transfer O'Brien\\path", null, 'NuLl', 'NULL', 'null'] as $index => $name) {
                 $type = new CartridgeItem();
                 $type->entities = $manager->getReference(Entity::class, $source);
                 $type->name = $name;
                 $manager->persist($type);
                 $destination = new CartridgeItem();
                 $destination->entities = $manager->getReference(Entity::class, $target);
-                $destination->name = $index === 1 ? '' : ($index === 2 ? null : $name);
+                $destination->name = $name === null ? '' : $name;
                 $destination->is_deleted = true;
                 $manager->persist($destination);
                 if ($index === 0) {
@@ -328,6 +328,10 @@ class Transfer extends DbTestCase
                     $duplicate->name = $name;
                     $manager->persist($duplicate);
                 }
+                $decoy = new CartridgeItem();
+                $decoy->entities = $manager->getReference(Entity::class, $target);
+                $decoy->name = null;
+                $manager->persist($decoy);
                 $printers = [];
                 foreach (['Selected cartridge printer', 'Other cartridge printer'] as $printerName) {
                     $printer = new PrinterEntity();
@@ -351,12 +355,10 @@ class Transfer extends DbTestCase
                 $connection->update('glpi_cartridgeitems', ['comment' => 'Current destination'], ['id' => $destination->id]);
                 $destination->comment = 'Unflushed independent comment';
                 $expectedModels = array_map('intval', $connection->fetchFirstColumn(
-                    $index === 2
-                        ? 'SELECT id FROM glpi_cartridgeitems WHERE entities_id=? AND name IS NULL'
-                        : 'SELECT id FROM glpi_cartridgeitems WHERE entities_id=? AND name=?',
-                    $index === 2 ? [$target] : [$target, $index === 1 ? '' : $name]
+                    'SELECT id FROM glpi_cartridgeitems WHERE entities_id=? AND name=?',
+                    [$target, (string)$name]
                 ));
-                $run = function ($outer) use ($printers, $cartridges, $destination, $type, $target, $source, $manager, $connection, $expectedModels): void {
+                $run = function ($outer) use ($printers, $cartridges, $destination, $decoy, $type, $target, $source, $manager, $connection, $expectedModels): void {
                     $retained = $outer->find(CartridgeItem::class, $destination->id);
                     $retained->comment = 'Unflushed outer comment';
                     $this->boolean((new LegacyTransfer())->moveItems(
@@ -366,6 +368,8 @@ class Transfer extends DbTestCase
                     ))->isTrue();
                     $selectedModel = (int)$connection->fetchOne('SELECT cartridgeitems_id FROM glpi_cartridges WHERE id=?', [$cartridges[0]->id]);
                     $this->boolean(in_array($selectedModel, $expectedModels, true))->isTrue();
+                    $this->integer($selectedModel)->isNotIdenticalTo($decoy->id);
+                    $this->variable($connection->fetchOne('SELECT name FROM glpi_cartridgeitems WHERE id=?', [$decoy->id]))->isNull();
                     foreach ([$cartridges[1], $cartridges[2]] as $remaining) {
                         $this->integer((int)$connection->fetchOne('SELECT cartridgeitems_id FROM glpi_cartridges WHERE id=?', [$remaining->id]))
                             ->isIdenticalTo($type->id);
@@ -423,8 +427,13 @@ class Transfer extends DbTestCase
                     $PLUGIN_HOOKS = $savedHooks;
                     $type = new CartridgeItem();
                     $type->entities = $manager->getReference(Entity::class, $source);
-                    $type->name = $refuse ? 'Rollback cartridge copy' : 'Fresh cartridge copy';
+                    $type->name = $refuse ? 'Rollback cartridge copy' : 'NULL';
+                    $type->comment = 'null';
                     $manager->persist($type);
+                    $decoy = new CartridgeItem();
+                    $decoy->entities = $manager->getReference(Entity::class, $target);
+                    $decoy->name = null;
+                    $manager->persist($decoy);
                     $model = new PrinterModel();
                     $model->name = $type->name;
                     $manager->persist($model);
@@ -474,6 +483,7 @@ class Transfer extends DbTestCase
                     }
                     $this->boolean($fired)->isTrue();
                     $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_cartridgeitems WHERE id=?', [$type->id]))->isIdenticalTo(1);
+                    $this->variable($connection->fetchOne('SELECT name FROM glpi_cartridgeitems WHERE id=?', [$decoy->id]))->isNull();
                     if ($refuse) {
                         if ($failure !== null) {
                             $this->object($failure)->isInstanceOf(RuntimeException::class);
@@ -488,7 +498,9 @@ class Transfer extends DbTestCase
                         $this->variable($failure)->isNull();
                         $this->boolean($result)->isTrue();
                         $copy = (int)$connection->fetchOne('SELECT cartridgeitems_id FROM glpi_cartridges WHERE id=?', [$selected->id]);
-                        $this->integer($copy)->isGreaterThan(0)->isNotIdenticalTo($type->id);
+                        $this->integer($copy)->isGreaterThan(0)->isNotIdenticalTo($type->id)->isNotIdenticalTo($decoy->id);
+                        $this->string($connection->fetchOne('SELECT name FROM glpi_cartridgeitems WHERE id=?', [$copy]))->isIdenticalTo('NULL');
+                        $this->string($connection->fetchOne('SELECT comment FROM glpi_cartridgeitems WHERE id=?', [$copy]))->isIdenticalTo('null');
                         $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_cartridgeitems WHERE id=?', [$copy]))->isIdenticalTo($target);
                         $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_cartridgeitems_printermodels WHERE cartridgeitems_id=? AND printermodels_id=?', [$copy, $model->id]))->isIdenticalTo(1);
                         $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_cartridges WHERE cartridgeitems_id=? AND printers_id IS NULL', [$type->id]))->isIdenticalTo(1);

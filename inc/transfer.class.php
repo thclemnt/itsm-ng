@@ -1551,7 +1551,6 @@ class Transfer extends CommonDBTM
                                 $database = $DB;
                                 $entity = (int)$this->to;
                                 $name = (string)$carttype->fields['name'];
-                                $name = strtolower($name) === 'null' ? null : $name;
                                 $connection = $database->getDoctrineConnection();
                                 OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
                                 $matchingModel = (new CartridgeTransferRepository($connection))->reusableTransferModel(
