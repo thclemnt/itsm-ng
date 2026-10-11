@@ -167,7 +167,6 @@ class Log extends DbTestCase
             $this->array(array_column($rows, 'old_value'))->isIdenticalTo(['Inner before', 'Outer before']);
             $this->array(array_column($rows, 'new_value'))->isIdenticalTo(['Inner after', 'Outer after']);
             $bad = new class () {
-
                 public function __toString(): string
                 {
                     throw new LogicException('History assignment failure');
@@ -312,7 +311,6 @@ class Log extends DbTestCase
             $this->calling($adapter)->getProvider = $original->getProvider();
             $DB = $adapter;
             $kind = new class ($observer, $other, $route) {
-
                 public function __construct(private object $observer, private Connection $other, private Connection &$route)
                 {
                 }

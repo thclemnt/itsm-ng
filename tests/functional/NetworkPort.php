@@ -585,16 +585,28 @@ class NetworkPort extends DbTestCase
                     if ($mutation === 'throw') {
                         $caught = false;
                         try {
-                            $name->canConnexityItem('canUpdateItem', 'canUpdate', CommonDBConnexity::HAVE_SAME_RIGHT_ON_ITEM,
-                                'itemtype', 'items_id', $parent);
+                            $name->canConnexityItem(
+                                'canUpdateItem',
+                                'canUpdate',
+                                CommonDBConnexity::HAVE_SAME_RIGHT_ON_ITEM,
+                                'itemtype',
+                                'items_id',
+                                $parent
+                            );
                         } catch (RuntimeException $error) {
                             $caught = true;
                             $this->string($error->getMessage())->isIdenticalTo('mutated parent hook failed');
                         }
                         $this->boolean($caught)->isTrue('The parent hook exception must propagate');
                     } else {
-                        $this->boolean($name->canConnexityItem('canUpdateItem', 'canUpdate', CommonDBConnexity::HAVE_SAME_RIGHT_ON_ITEM,
-                            'itemtype', 'items_id', $parent))->isFalse();
+                        $this->boolean($name->canConnexityItem(
+                            'canUpdateItem',
+                            'canUpdate',
+                            CommonDBConnexity::HAVE_SAME_RIGHT_ON_ITEM,
+                            'itemtype',
+                            'items_id',
+                            $parent
+                        ))->isFalse();
                     }
                     $this->array($parent->fields)->isIdenticalTo($before['fields']);
                     $this->boolean(array_key_exists('input', get_object_vars($parent)))->isIdenticalTo($hasInput);

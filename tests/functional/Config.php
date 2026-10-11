@@ -2057,7 +2057,6 @@ class Config extends DbTestCase
         $id = (int)$connection->fetchOne('SELECT id FROM glpi_configs WHERE context = ?', [$context]);
         $events = new EventManager();
         $probe = new class ($connection, $events) extends ScalarReadProbe {
-
             public function __construct($selected, private EventManager $events)
             {
                 parent::__construct($selected);

@@ -257,7 +257,6 @@ class LineOperator extends DbTestCase
             $this->integer((int)$connection->fetchOne('SELECT mnc FROM glpi_lineoperators WHERE id=?', [$id]))->isIdenticalTo(42);
             $failure = new RuntimeException('Code callback failure');
             $throwing = new class ($failure) implements Stringable {
-
                 public function __construct(private RuntimeException $failure)
                 {
                 }

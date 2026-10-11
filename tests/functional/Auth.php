@@ -211,7 +211,6 @@ class Auth extends DbTestCase
             $this->calling($adapter)->getProvider = $original->getProvider();
             $DB = $adapter;
             $name = new class ($this, $connection, $observer, $other, $route, $account->name) {
-
                 public function __construct(
                     private object $test,
                     private Connection $connection,

@@ -450,7 +450,6 @@ class Dropdown extends DbTestCase
         $id = (int)$budget->getID();
         $events = new EventManager();
         $probe = new class ($connection, $events) extends ScalarReadProbe {
-
             public function __construct($selected, private EventManager $events)
             {
                 parent::__construct($selected);
