@@ -40,7 +40,6 @@ use DbTestCase;
 use Doctrine\DBAL\Cache\QueryCacheProfile;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Query\QueryBuilder;
 use Doctrine\DBAL\Result;
 use Doctrine\DBAL\Types\BigIntType;
 use Doctrine\DBAL\Types\BooleanType;
@@ -140,7 +139,6 @@ class Appliance_Item extends DbTestCase
             $beforeCustom = $factories->getValue();
             $this->integer(ApplianceItemModel::countForItem($computer))->isIdenticalTo($expected);
             $this->array($probe->queries)->hasSize(1);
-            $this->integer($probe->builders)->isIdenticalTo(1);
             $this->integer($factories->getValue() - $beforeCustom)->isIdenticalTo(1);
             $this->integer(ApplianceItemModel::countForItem($computer))->isIdenticalTo($expected);
             $this->integer($factories->getValue() - $beforeCustom)->isIdenticalTo(2, 'Custom connections keep independent managers');
@@ -184,12 +182,11 @@ class Appliance_Item extends DbTestCase
             $_SESSION = $nonCronSession;
             $this->integer($factories->getValue() - $beforeCount)->isIdenticalTo(0, 'Scoped and cron counts reuse the warmed canonical manager');
             $probe->queries = [];
-            $probe->queryBuilders = [];
             $DB = $adapter;
             $this->integer(ApplianceItemModel::countForItem($scopedComputer))->isIdenticalTo(3);
-            $nativeCounts = array_filter($probe->queryBuilders, static fn ($query) =>
-                str_contains(str_replace(['`', '"'], '', $query->getSQL()), 'FROM glpi_appliances r'));
-            $this->array($nativeCounts)->hasSize(1);
+            $counts = array_filter($probe->queries, static fn (array $query): bool =>
+                str_contains($query['sql'], 'COUNT(') && str_contains($query['sql'], 'glpi_appliances'));
+            $this->array($counts)->hasSize(1);
             $DB = $originalAdapter;
 
             $scope = (new EntityScopeReadOperation())->restriction('glpi_appliances', '', '', 'auto');
@@ -199,7 +196,7 @@ class Appliance_Item extends DbTestCase
 
             $outerManager = null;
             $sentinel = null;
-            Orm::withReadConnection($connection, function (EntityManager $manager) use ($connection, $scopedComputer, $criteria, $scope, $factories, &$outerManager, &$sentinel): void {
+            Orm::withReadConnection($connection, function (EntityManager $manager) use ($connection, $scopedComputer, $criteria, $factories, &$outerManager, &$sentinel): void {
                 $outerManager = $manager;
                 $sentinel = $manager->find(ComputerEntity::class, (int)$scopedComputer->getID());
                 $this->object($sentinel)->isInstanceOf(ComputerEntity::class);
@@ -207,7 +204,7 @@ class Appliance_Item extends DbTestCase
                 try {
                     $selectedManager = new ReflectionProperty(ApplianceOwnerReadOperation::class, 'manager');
                     $this->object($selectedManager->getValue($ownedReader))->isIdenticalTo($manager);
-                    $this->integer($ownedReader->ownerCount('Computer', (int)$scopedComputer->getID(), $criteria, $scope))->isIdenticalTo(3);
+                    $this->integer($ownedReader->ownerCount('Computer', (int)$scopedComputer->getID(), $criteria))->isIdenticalTo(3);
                     $ownedReader->close();
                     $this->boolean($manager->contains($sentinel))->isTrue();
                     $beforeNested = $factories->getValue();
@@ -222,10 +219,10 @@ class Appliance_Item extends DbTestCase
             $scopedReader = new ApplianceOwnerReadOperation($probe);
             $boolean = Type::getType('boolean');
             try {
-                $this->integer($scopedReader->ownerCount('Computer', (int)$scopedComputer->getID(), $criteria, $scope))->isIdenticalTo(3);
+                $this->integer($scopedReader->ownerCount('Computer', (int)$scopedComputer->getID(), $criteria))->isIdenticalTo(3);
                 $connection->update('glpi_appliances', ['is_recursive' => false], ['id' => $recursiveAppliances[1]], ['is_recursive' => 'boolean', 'id' => 'bigint']);
-                $this->integer($scopedReader->ownerCount('Computer', (int)$scopedComputer->getID(), $criteria, $scope))->isIdenticalTo(2);
-                $this->integer($scopedReader->ownerCount('Computer', (int)$scopedComputer->getID(), $criteria, $scope))
+                $this->integer($scopedReader->ownerCount('Computer', (int)$scopedComputer->getID(), $criteria))->isIdenticalTo(2);
+                $this->integer($scopedReader->ownerCount('Computer', (int)$scopedComputer->getID(), $criteria))
                     ->isIdenticalTo($repository->ownerCount('Computer', (int)$scopedComputer->getID(), $criteria));
                 $connection->update('glpi_appliances', ['is_recursive' => true], ['id' => $recursiveAppliances[1]], ['is_recursive' => 'boolean', 'id' => 'bigint']);
                 Type::overrideType('boolean', new class () extends BooleanType {
@@ -234,7 +231,7 @@ class Appliance_Item extends DbTestCase
                         return 'CASE WHEN ' . $sqlExpr . ' = TRUE THEN FALSE ELSE TRUE END';
                     }
                 });
-                $this->integer($scopedReader->ownerCount('Computer', (int)$scopedComputer->getID(), $criteria, $scope))->isIdenticalTo(2);
+                $this->integer($scopedReader->ownerCount('Computer', (int)$scopedComputer->getID(), $criteria))->isIdenticalTo(2);
                 $this->integer($repository->ownerCount('Computer', (int)$scopedComputer->getID(), $criteria))->isIdenticalTo(2);
             } finally {
                 Type::overrideType('boolean', $boolean);
@@ -249,10 +246,10 @@ class Appliance_Item extends DbTestCase
             try {
                 foreach ($rootScopes as $rootScope) {
                     $probe->queries = [];
-                    $this->integer($typedReader->ownerCount('Computer', (int)$scopedComputer->getID(), $rootScope->wrappedCriteria(), $rootScope))->isIdenticalTo(1);
+                    $this->integer($typedReader->ownerCount('Computer', (int)$scopedComputer->getID(), $rootScope->wrappedCriteria()))->isIdenticalTo(1);
                     $this->array($probe->queries[0]['types'])->isIdenticalTo(['bigint', 'integer']);
                     $sql = str_replace(['`', '"'], '', $probe->queries[0]['sql']);
-                    $this->string($sql)->contains($rootScope->entityList ? 'r.entities_id IN (?)' : 'r.entities_id = ?');
+                    $this->string($sql)->contains($rootScope->entityList ? '.entities_id IN (?)' : '.entities_id = ?');
                 }
                 Type::overrideType('integer', new class ($parent) extends IntegerType {
                     public function __construct(private int $offset)
@@ -264,7 +261,7 @@ class Appliance_Item extends DbTestCase
                     }
                 });
                 foreach ($rootScopes as $rootScope) {
-                    $this->integer($typedReader->ownerCount('Computer', (int)$scopedComputer->getID(), $rootScope->wrappedCriteria(), $rootScope))->isIdenticalTo(2);
+                    $this->integer($typedReader->ownerCount('Computer', (int)$scopedComputer->getID(), $rootScope->wrappedCriteria()))->isIdenticalTo(2);
                     $this->integer($repository->ownerCount('Computer', (int)$scopedComputer->getID(), $rootScope->wrappedCriteria()))->isIdenticalTo(2);
                 }
             } finally {
@@ -296,13 +293,13 @@ class Appliance_Item extends DbTestCase
                 $_SESSION['glpiactiveentities'] = [];
             };
             $DB = $adapter;
-            $probe->queryBuilders = [];
+            $probe->queries = [];
             $this->integer(ApplianceItemModel::countForItem($callbackItem))->isIdenticalTo(3);
             $this->integer($factoriesAtId)->isIdenticalTo($factoriesAtType, 'Reader construction precedes both virtual arguments');
             $this->integer($factories->getValue())->isIdenticalTo($factoriesAtId, 'No manager is created after virtual getID');
             $this->object($DB)->isIdenticalTo($originalAdapter);
-            $this->array(array_filter($probe->queryBuilders, static fn ($query) =>
-                str_contains(str_replace(['`', '"'], '', $query->getSQL()), 'FROM glpi_appliances r')))->hasSize(1);
+            $this->array(array_filter($probe->queries, static fn (array $query): bool =>
+                str_contains($query['sql'], 'COUNT(') && str_contains($query['sql'], 'glpi_appliances')))->hasSize(1);
             $this->integer(ApplianceItemModel::countForItem($scopedComputer))->isIdenticalTo(0);
         } finally {
             $DB = $originalAdapter;
@@ -317,10 +314,8 @@ class Appliance_Item extends DbTestCase
                     $this->exception(static fn () => $reader->ownerCount('Computer', (int)$computer->getID(), $criteria))->isInstanceOf(RuntimeException::class);
                     continue;
                 }
-                $before = $probe->builders;
                 $this->integer($reader->ownerCount('Computer', (int)$computer->getID(), $criteria))
                     ->isIdenticalTo($repository->ownerCount('Computer', (int)$computer->getID(), $criteria));
-                $this->integer($probe->builders - $before)->isIdenticalTo($criteria === [] ? 1 : 0);
             }
             $this->integer($reader->ownerCount('Computer', 0, []))->isIdenticalTo(0);
             $this->integer($reader->ownerCount('UnknownApplianceAsset', (int)$computer->getID(), []))->isIdenticalTo(0);
@@ -359,9 +354,7 @@ class Appliance_Item extends DbTestCase
 /** Observe the selected transaction without a second socket. */
 class ApplianceOwnerCountProbe extends Connection
 {
-    public int $builders = 0;
     public array $queries = [];
-    public array $queryBuilders = [];
 
     public function __construct(private readonly Connection $selected)
     {
@@ -376,14 +369,6 @@ class ApplianceOwnerCountProbe extends Connection
     public function getDatabasePlatform(): AbstractPlatform
     {
         return $this->selected->getDatabasePlatform();
-    }
-
-    public function createQueryBuilder(): QueryBuilder
-    {
-        ++$this->builders;
-        $query = parent::createQueryBuilder();
-        $this->queryBuilders[] = $query;
-        return $query;
     }
 
     public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result

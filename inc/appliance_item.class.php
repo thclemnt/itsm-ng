@@ -574,9 +574,9 @@ class Appliance_Item extends CommonDBRelation
         $scope = Session::isCron() ? null : (new EntityScopeReadOperation())->restriction(Appliance::getTable(), '', '', 'auto');
         $criteria = $scope?->wrappedCriteria() ?? [];
         $connection = $DB->getDoctrineConnection();
-        return Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $item, $criteria, $scope): int {
+        return Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $item, $criteria): int {
             return (new ApplianceOwnerReadOperation($connection, $manager))
-                ->ownerCount($item->getType(), (int)$item->getID(), $criteria, $scope);
+                ->ownerCount($item->getType(), (int)$item->getID(), $criteria);
         });
     }
 

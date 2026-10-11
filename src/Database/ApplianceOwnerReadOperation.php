@@ -11,31 +11,8 @@ final class ApplianceOwnerReadOperation
 {
     use PrivateReadOwnership;
 
-    public function ownerCount(string $kind, int $asset, array $criteria, ?EntityRestriction $scope = null): int
+    public function ownerCount(string $kind, int $asset, array $criteria): int
     {
-        $repository = new ApplianceAssetRepository($this->manager);
-        if (!$this->ownedMapping) {
-            return $repository->ownerCount($kind, $asset, $criteria);
-        }
-        $entities = null;
-        $ancestors = [];
-        if ($scope !== null) {
-            if (!$scope->hasEntityMembership || $scope->table !== 'glpi_appliances' || $scope->field !== 'entities_id'
-                || $criteria !== $scope->wrappedCriteria()) {
-                return $repository->ownerCount($kind, $asset, $criteria);
-            }
-            $entities = $scope->entities;
-            $ancestors = $scope->ancestors;
-        } elseif ($criteria !== []) {
-            // Externally supplied legacy criteria retain their complete ORM semantics.
-            return $repository->ownerCount($kind, $asset, $criteria);
-        }
-        foreach (['glpi_appliances', 'glpi_appliances_items'] as $table) {
-            $metadata = $this->metadata($table);
-            if ($this->defaultIdentifiers($metadata) === null || !$metadata->isInheritanceTypeNone()) {
-                return $repository->ownerCount($kind, $asset, $criteria);
-            }
-        }
-        return $repository->nativeOwnerCount($kind, $asset, $entities, $ancestors, $scope?->entityList ?? true);
+        return (new ApplianceAssetRepository($this->manager))->ownerCount($kind, $asset, $criteria);
     }
 }

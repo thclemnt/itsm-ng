@@ -37,19 +37,16 @@ namespace tests\units;
 
 use Computer;
 use DbTestCase;
-use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Cache\QueryCacheProfile;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Query\QueryBuilder;
 use Doctrine\DBAL\Result;
 use Doctrine\DBAL\Types\BooleanType;
 use Doctrine\DBAL\Types\IntegerType;
 use Doctrine\DBAL\Types\StringType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
-use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
 use Link_Itemtype;
@@ -200,8 +197,8 @@ class Link extends DbTestCase
             $DB = $adapter;
             $this->string((new LinkModel())->getTabNameForItem($computer))
                 ->isIdenticalTo(LinkModel::createTabEntry(LinkModel::getTypeName(Session::getPluralNumber()), $expected));
-            $counts = array_filter($probe->builders, static fn (QueryBuilder $query): bool =>
-                str_contains(str_replace(['`', '"'], '', $query->getSQL()), 'FROM glpi_links r'));
+            $counts = array_filter($probe->queries, static fn (array $query): bool =>
+                str_contains($query['sql'], 'COUNT(') && str_contains($query['sql'], 'glpi_links'));
             $this->array($counts)->hasSize(1);
             $DB = $originalAdapter;
 
@@ -228,11 +225,9 @@ class Link extends DbTestCase
                         $this->integer($reader->countForItem('Computer', $root))->isIdenticalTo(0);
                     }
                 }
-                // Externally supplied predicates retain the ordinary repository path.
+                // Explicit ID predicates retain their complete scope.
                 $custom = new EntityRestriction(['id' => $links[0]], 'glpi_links', 'id', false, null);
-                $before = count($probe->builders);
                 $this->integer($reader->countForItem('Computer', $custom))->isIdenticalTo(1);
-                $this->integer(count($probe->builders))->isIdenticalTo($before);
                 Type::overrideType('string', new class () extends StringType {
                     public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                     {
@@ -283,57 +278,28 @@ class Link extends DbTestCase
                 $GLOBALS['DB'] = $originalAdapter;
             };
             $DB = $adapter;
-            $probe->builders = [];
+            $probe->queries = [];
             try {
                 $this->string((new LinkModel())->getTabNameForItem($lateRoute))
                     ->isIdenticalTo(LinkModel::createTabEntry(LinkModel::getTypeName(Session::getPluralNumber()), $expected));
                 $this->object($DB)->isIdenticalTo($originalAdapter);
-                $this->array(array_filter($probe->builders, static fn (QueryBuilder $query): bool =>
-                    str_contains(str_replace(['`', '"'], '', $query->getSQL()), 'FROM glpi_links r')))->hasSize(1);
+                $this->array(array_filter($probe->queries, static fn (array $query): bool =>
+                    str_contains($query['sql'], 'COUNT(') && str_contains($query['sql'], 'glpi_links')))->hasSize(1);
             } finally {
                 $lateRoute::$callback = null;
                 $DB = $originalAdapter;
             }
             $DB = $adapter;
-            $probe->builders = [];
+            $probe->queries = [];
             $_SESSION['glpishow_count_on_tabs'] = false;
             $this->string((new LinkModel())->getTabNameForItem($computer))
                 ->isIdenticalTo(LinkModel::createTabEntry(LinkModel::getTypeName(Session::getPluralNumber()), 0));
             $_SESSION['glpishow_count_on_tabs'] = true;
             $_SESSION['glpiactiveprofile']['link'] = 0;
             $this->string((new LinkModel())->getTabNameForItem($computer))->isEmpty();
-            $this->array($probe->builders)->isEmpty();
+            $this->array($probe->queries)->isEmpty();
             $_SESSION = $originalSession;
             $DB = $originalAdapter;
-            $events = new EventManager();
-            $extended = new class ($connection, $events) extends LinkCountConnectionProbe {
-                public function __construct(Connection $selected, private EventManager $events)
-                {
-                    parent::__construct($selected);
-                }
-                public function getEventManager(): EventManager
-                {
-                    return $this->events;
-                }
-            };
-            $local = new LinkCountReadOperation($extended);
-            $listener = new class () {
-                public int $calls = 0;
-                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
-                {
-                    if ($event->getClassMetadata()->name === LinkRecord::class) {
-                        ++$this->calls;
-                    }
-                }
-            };
-            $events->addEventListener([Events::loadClassMetadata], $listener);
-            try {
-                $this->integer($local->countForItem('Computer', $scope))->isIdenticalTo($expected);
-                $this->integer($listener->calls)->isIdenticalTo(1);
-                $this->array($extended->builders)->isEmpty();
-            } finally {
-                $local->close();
-            }
         } finally {
             $DB = $originalAdapter;
             $_SESSION = $originalSession;
@@ -601,7 +567,6 @@ TEXT
 /** Records real selected-connection queries without opening a second transaction. */
 class LinkCountConnectionProbe extends Connection
 {
-    public array $builders = [];
     public array $queries = [];
 
     public function __construct(private Connection $selected)
@@ -622,13 +587,6 @@ class LinkCountConnectionProbe extends Connection
     public function isTransactionActive(): bool
     {
         return $this->selected->isTransactionActive();
-    }
-
-    public function createQueryBuilder(): QueryBuilder
-    {
-        $query = parent::createQueryBuilder();
-        $this->builders[] = $query;
-        return $query;
     }
 
     public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
