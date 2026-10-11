@@ -654,7 +654,7 @@ class Calendar extends DbTestCase
             for ($repeat = 0; $repeat < 2; ++$repeat) {
                 $this->boolean($calendar->isHoliday('2019-07-12'))->isTrue();
             }
-            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(2);
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0, 'Type conversion retains the warmed canonical read manager');
             // :day occurs twice in this fixed DQL query, once for each boundary.
             $this->integer($converter->sqlCalls)->isIdenticalTo(4);
         } finally {

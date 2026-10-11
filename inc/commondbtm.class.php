@@ -5203,6 +5203,9 @@ class CommonDBTM extends CommonGLPI
             $table = getTableNameForForeignKeyField($field);
             if ($table != '') {
                 $searchOption = $this->getSearchOptionByField('field', 'name', $table);
+                if (!$searchOption) {
+                    $searchOption = $this->getSearchOptionByField('field', 'completename', $table);
+                }
             } else {
                 $searchOption = $this->getSearchOptionByField('field', $field);
             }

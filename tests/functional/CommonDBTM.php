@@ -114,6 +114,7 @@ use itsmng\Database\MutationCleanupFailure;
 use itsmng\Database\MySQLConnection;
 use itsmng\Database\PostgresConnection;
 use itsmng\Database\Orm;
+use itsmng\Database\UnsupportedCriteria;
 use LogicException;
 use itsmng\Database\OwnedMutationFrame;
 use itsmng\Database\OwnershipUpdateUnit;
