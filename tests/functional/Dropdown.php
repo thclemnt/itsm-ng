@@ -50,6 +50,7 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use Doctrine\ORM\Event\OnClearEventArgs;
 use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\Internal\Hydration\AbstractHydrator;
@@ -438,6 +439,61 @@ class Dropdown extends DbTestCase
             $oracle->clear();
             $this->object($manager->getConnection())->isIdenticalTo($connection);
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+        }
+    }
+
+    public function testPrivateDropdownFallbackClearsOnceAndKeepsRepeatedReadsFresh(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $budget = $this->createItem(Budget::class, ['name' => $this->getUniqueString()]);
+        $id = (int)$budget->getID();
+        $events = new EventManager();
+        $probe = new class ($connection, $events) extends ScalarReadProbe {
+            public function __construct($selected, private EventManager $events)
+            {
+                parent::__construct($selected);
+            }
+            public function getEventManager(): EventManager
+            {
+                return $this->events;
+            }
+        };
+        $observer = new class () {
+            public array $loaded = [];
+            public array $cleared = [];
+            public function postLoad(PostLoadEventArgs $event): void
+            {
+                $this->loaded[] = $event->getObjectManager();
+            }
+            public function onClear(OnClearEventArgs $event): void
+            {
+                $this->cleared[] = $event->getObjectManager();
+            }
+        };
+        $events->addEventListener([Events::postLoad, Events::onClear], $observer);
+        $reader = new DropdownReadOperation($probe);
+        try {
+            $this->string($reader->label('glpi_budgets', $id, 'Budget', 'en_GB', [])['name'])
+                ->isIdenticalTo($budget->getField('name'));
+            $this->array($observer->loaded)->hasSize(1);
+            $this->array($observer->cleared)->isIdenticalTo($observer->loaded);
+            $connection->update('glpi_budgets', ['name' => 'Current private dropdown'], ['id' => $id]);
+            $rows = $reader->choices('glpi_budgets', ['id' => $id], ['name'], [], 'Budget', 'en_GB', 0, 0);
+            $this->string($rows[0]['name'])->isIdenticalTo('Current private dropdown');
+            $this->array($observer->loaded)->hasSize(2);
+            $this->object($observer->loaded[1])->isIdenticalTo($observer->loaded[0]);
+            $this->array($observer->cleared)->isIdenticalTo($observer->loaded);
+            $reader->close();
+            $reader->close();
+            unset($reader);
+            $this->array($observer->cleared)->hasSize(2);
+            $this->array($probe->queries)->isNotEmpty();
+        } finally {
+            if (isset($reader)) {
+                $reader->close();
+            }
+            $events->removeEventListener([Events::postLoad, Events::onClear], $observer);
         }
     }
 

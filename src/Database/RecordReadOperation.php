@@ -5,6 +5,7 @@
 namespace itsmng\Database;
 
 use itsmng\Database\Repository\RecordRepository;
+use Throwable;
 
 /** Private fixed record queries; only current rows/counts leave this operation. */
 final class RecordReadOperation implements ReadQueryOwner
@@ -14,6 +15,7 @@ final class RecordReadOperation implements ReadQueryOwner
     /** Explicit scalar callers never dispatch entity postLoad, including extension mappings. */
     public function scalarRow(string $table, int $id): ?array
     {
+        $this->beginRead();
         $metadata = $this->metadata($table);
         return (new RecordRepository($this->manager))->scalarRow(
             $metadata->name,
@@ -25,6 +27,7 @@ final class RecordReadOperation implements ReadQueryOwner
 
     public function row(string $table, string $column, int $id): ?array
     {
+        $this->beginRead();
         $metadata = $this->metadata($table, $column);
         if ($this->scalar($metadata) && $metadata->getColumnName($metadata->identifier[0]) === $column) {
             return (new RecordRepository($this->manager))->scalarRow(
@@ -67,12 +70,14 @@ final class RecordReadOperation implements ReadQueryOwner
         // Entity callbacks must receive wholly local metadata, not private cached
         // metadata whose backend alone was detached after it had already loaded.
         $fallback = $this->fallbackManager();
+        $primary = null;
         try {
             return (new RecordRepository($fallback))->find($table, $column, $id);
+        } catch (Throwable $error) {
+            $primary = $error;
+            throw $error;
         } finally {
-            if (!$this->suppliedManager || $fallback !== $this->manager) {
-                $fallback->clear();
-            }
+            $this->clearFallback($fallback, $primary);
         }
     }
 
@@ -88,6 +93,7 @@ final class RecordReadOperation implements ReadQueryOwner
     /** @internal Only MappedReads carries a compiler rejection outside its already admitted shared scope. */
     public function matchingResult(string $table, array $criteria, array|string $order, ?int $limit, int $offset): array|UnsupportedCriteria
     {
+        $this->beginRead();
         $metadata = $this->metadata($table);
         if ($this->scalar($metadata)) {
             $result = (new RecordRepository($this->manager))->matchingResult(
@@ -107,17 +113,20 @@ final class RecordReadOperation implements ReadQueryOwner
             return $result;
         }
         $fallback = $this->fallbackManager();
+        $primary = null;
         try {
             return (new RecordRepository($fallback))->matching($table, $criteria, $order, $limit, $offset);
+        } catch (Throwable $error) {
+            $primary = $error;
+            throw $error;
         } finally {
-            if (!$this->suppliedManager || $fallback !== $this->manager) {
-                $fallback->clear();
-            }
+            $this->clearFallback($fallback, $primary);
         }
     }
 
     public function countMatching(string $table, array $criteria): int
     {
+        $this->beginRead();
         $this->metadata($table);
         return (new RecordRepository($this->manager))->countMatching($table, $criteria, true, $this);
     }

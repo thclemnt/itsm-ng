@@ -12,6 +12,7 @@ use Doctrine\ORM\Events;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Query;
 use LogicException;
+use Throwable;
 use Psr\SimpleCache\CacheInterface;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Adapter\ChainAdapter;
@@ -22,6 +23,7 @@ trait PrivateReadOwnership
 {
     private EntityManager $manager;
     private bool $suppliedManager = false;
+    private bool $cleanupRequired = true;
     private bool $sharedManager = false;
     private readonly Connection $connection;
     private ?SerializedMetadataCache $queryCache = null;
@@ -166,12 +168,40 @@ trait PrivateReadOwnership
         $query->setQueryCache($cache);
     }
 
+    /** A retained private reader starts a fresh cleanup obligation on every read. */
+    private function beginRead(): void
+    {
+        if (!$this->suppliedManager) {
+            $this->cleanupRequired = true;
+        }
+    }
+
+    /** Clean the actual fallback owner once, preserving both real failures. */
+    private function clearFallback(EntityManager $manager, ?Throwable $primary): void
+    {
+        if ($manager === $this->manager) {
+            if ($this->suppliedManager) {
+                return;
+            }
+            // Clear listeners may throw: terminal close must not retry this cleanup.
+            $this->cleanupRequired = false;
+        }
+        try {
+            $manager->clear();
+        } catch (Throwable $cleanup) {
+            throw $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
+        }
+    }
+
     public function close(): void
     {
         if (!$this->suppliedManager && isset($this->manager)) {
             $manager = $this->manager;
             unset($this->manager);
-            $manager->clear();
+            if ($this->cleanupRequired) {
+                $this->cleanupRequired = false;
+                $manager->clear();
+            }
         }
     }
 

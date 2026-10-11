@@ -63,6 +63,7 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use Doctrine\ORM\Event\OnClearEventArgs;
 use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\Mapping as Mapping;
@@ -91,6 +92,7 @@ use itsmng\Database\Entity\Entity as EntityRecord;
 use itsmng\Database\Entity\GroupMembership;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\MappedReads;
+use itsmng\Database\MutationCleanupFailure;
 use itsmng\Database\MySQLConnection;
 use itsmng\Database\OidcRefreshReadOperation;
 use itsmng\Database\Orm;
@@ -2042,6 +2044,99 @@ class Config extends DbTestCase
         } finally {
             Orm::withConnection($connection, static fn (EntityManager $manager) => $manager->close());
             $GLOBALS['GLPI_CACHE'] = $previous;
+            $connection->delete('glpi_configs', ['context' => $context]);
+        }
+    }
+
+    public function testPrivateRecordFallbackRearmsCleanupAndPreservesFailures(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $context = 'fallback-cleanup-' . bin2hex(random_bytes(6));
+        ConfigModel::setConfigurationValues($context, ['probe' => 'before']);
+        $id = (int)$connection->fetchOne('SELECT id FROM glpi_configs WHERE context = ?', [$context]);
+        $events = new EventManager();
+        $probe = new class ($connection, $events) extends ScalarReadProbe {
+            public function __construct($selected, private EventManager $events)
+            {
+                parent::__construct($selected);
+            }
+            public function getEventManager(): EventManager
+            {
+                return $this->events;
+            }
+        };
+        $observer = new class () {
+            public array $loaded = [];
+            public array $cleared = [];
+            public ?Throwable $primary = null;
+            public ?Throwable $cleanup = null;
+            public function postLoad(PostLoadEventArgs $event): void
+            {
+                $this->loaded[] = $event->getObjectManager();
+                if ($this->primary !== null) {
+                    throw $this->primary;
+                }
+            }
+            public function onClear(OnClearEventArgs $event): void
+            {
+                $this->cleared[] = $event->getObjectManager();
+                if ($this->cleanup !== null) {
+                    throw $this->cleanup;
+                }
+            }
+        };
+        $events->addEventListener([Events::postLoad, Events::onClear], $observer);
+        $reader = new RecordReadOperation($probe);
+        try {
+            $this->string($reader->row('glpi_configs', 'id', $id)['value'])->isIdenticalTo('before');
+            $connection->update('glpi_configs', ['value' => 'after'], ['id' => $id]);
+            $this->string($reader->matching('glpi_configs', ['id' => $id], [], null, 0)[0]['value'])
+                ->isIdenticalTo('after');
+            $this->array($observer->loaded)->hasSize(2);
+            $this->object($observer->loaded[1])->isIdenticalTo($observer->loaded[0]);
+            $this->array($observer->cleared)->isIdenticalTo($observer->loaded);
+            // A later explicit scalar read still owns terminal cleanup, without postLoad.
+            $this->string($reader->scalarRow('glpi_configs', $id)['value'])->isIdenticalTo('after');
+            $this->array($observer->loaded)->hasSize(2);
+            $reader->close();
+            $reader->close();
+            unset($reader);
+            $this->array($observer->cleared)->hasSize(3);
+            $this->object($observer->cleared[2])->isIdenticalTo($observer->loaded[0]);
+
+            $primary = new RuntimeException('Actual fallback operation failure');
+            $cleanup = new RuntimeException('Actual fallback cleanup failure');
+            foreach ([[$primary, null], [null, $cleanup], [$primary, $cleanup], [$primary, $primary]] as [$operationError, $cleanupError]) {
+                $observer->primary = $operationError;
+                $observer->cleanup = $cleanupError;
+                $before = count($observer->cleared);
+                $reader = new RecordReadOperation($probe);
+                $failure = null;
+                try {
+                    $reader->row('glpi_configs', 'id', $id);
+                } catch (Throwable $error) {
+                    $failure = $error;
+                }
+                $this->integer(count($observer->cleared) - $before)->isIdenticalTo(1);
+                if ($operationError !== null && $cleanupError !== null) {
+                    $this->object($failure)->isInstanceOf(MutationCleanupFailure::class);
+                    $this->object($failure->primary)->isIdenticalTo($operationError);
+                    $this->object($failure->cleanup)->isIdenticalTo($cleanupError);
+                } else {
+                    $this->object($failure)->isIdenticalTo($operationError ?? $cleanupError);
+                }
+                $reader->close();
+                unset($reader);
+                $this->integer(count($observer->cleared) - $before)->isIdenticalTo(1);
+            }
+        } finally {
+            $observer->primary = null;
+            $observer->cleanup = null;
+            if (isset($reader)) {
+                $reader->close();
+            }
+            $events->removeEventListener([Events::postLoad, Events::onClear], $observer);
             $connection->delete('glpi_configs', ['context' => $context]);
         }
     }
