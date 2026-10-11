@@ -68,9 +68,10 @@ final class EntityRegistry
     }
 
     /** Fixed historical link fields, derived from the owning followup metadata. */
-    public static function promotionSourceMapping(): ?array
+    public static function promotionSourceMapping(): array
     {
-        return self::model('promotion_source');
+        return self::model('promotion_source')
+            ?? throw new LogicException('Missing canonical promotion-source mapping');
     }
 
     /** Physical facts for fixed computer connection reads, without mutable metadata. */

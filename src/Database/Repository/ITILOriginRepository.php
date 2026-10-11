@@ -38,15 +38,6 @@ final class ITILOriginRepository
             ->setParameter('replacement', $replacement, Types::INTEGER)->getQuery()->execute();
     }
 
-    public function promotionSource(int $ticket): ?array
-    {
-        return $this->em->createQueryBuilder()->select('f.id', 'f.itemtype', 'IDENTITY(f.ticket) AS items_id')
-            ->from(Entity\ITILFollowup::class, 'f')
-            ->where('f.itemtype = :type AND IDENTITY(f.promotedTicket) = :ticket')
-            ->setParameter('type', 'Ticket')->setParameter('ticket', $ticket, Types::INTEGER)
-            ->orderBy('f.id')->setMaxResults(1)->getQuery()->getOneOrNullResult();
-    }
-
     /** @internal Fixed scalar compiler for the private core timeline owner. */
     public static function projectedPromotionSource(Connection $connection, array $mapping, int $ticket): ?array
     {

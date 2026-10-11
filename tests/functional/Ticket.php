@@ -1070,118 +1070,88 @@ class Ticket extends DbTestCase
             $this->integer($factories->getValue() - $display->lastRequesterFactories)->isIdenticalTo(0);
 
             $connection = $DB->getDoctrineConnection();
-            $manager = Orm::forConnection($connection);
-            $repository = new ITILOriginRepository($manager);
             $reader = new PromotionSourceReadOperation($connection);
+            $baseline = $reader->forTicket((int)$ticket->getID());
+            $this->integer((int)$baseline['id'])->isIdenticalTo(min($followups));
+            $this->integer((int)$baseline['items_id'])->isIdenticalTo((int)$ticket->getID());
+            $this->string($baseline['itemtype'])->isIdenticalTo('Ticket');
+            $this->variable($reader->forTicket(-1))->isNull();
+            $factoryProbe = new class ($connection) extends ScalarReadProbe {
+                public function createQueryBuilder(): QueryBuilder
+                {
+                    throw new LogicException('Connection builder factory must not be invoked');
+                }
+            };
+            $this->array(ITILOriginRepository::projectedPromotionSource(
+                $factoryProbe,
+                EntityRegistry::promotionSourceMapping(),
+                (int)$ticket->getID()
+            ))->isIdenticalTo($baseline);
+            $this->array($factoryProbe->queries)->hasSize(1);
+            $string = Type::getType(Types::STRING);
+            $integer = Type::getType(Types::INTEGER);
             try {
-                $baseline = $repository->promotionSource((int)$ticket->getID());
-                $this->integer((int)$baseline['id'])->isIdenticalTo(min($followups));
-                $this->integer((int)$baseline['items_id'])->isIdenticalTo((int)$ticket->getID());
-                $this->array($reader->forTicket((int)$ticket->getID()))->isIdenticalTo($baseline);
-                $this->variable($reader->forTicket(-1))->isNull();
-                $factoryProbe = new class ($connection) extends ScalarReadProbe {
-                    public function createQueryBuilder(): QueryBuilder
+                Type::overrideType(Types::STRING, new class () extends StringType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                     {
-                        throw new LogicException('Connection builder factory must not be invoked');
+                        throw new LogicException('An inferred discriminator is a driver string, not a mapped input type.');
+                    }
+                    public function convertToDatabaseValue(mixed $value, AbstractPlatform $platform): mixed
+                    {
+                        throw new LogicException('An inferred discriminator must bypass mapped input conversion.');
+                    }
+                    public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return 'LOWER(' . $sqlExpr . ')';
+                    }
+                    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
+                    {
+                        return $value === null ? null : $value . '|php';
+                    }
+                });
+                $converted = $reader->forTicket((int)$ticket->getID());
+                $this->string($converted['itemtype'])->isIdenticalTo('ticket|php');
+                $this->string($converted['items_id'])->isIdenticalTo($ticket->getID() . '|php');
+                Type::overrideType(Types::INTEGER, new class () extends IntegerType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return '(' . $sqlExpr . ' + 1000000)';
+                    }
+                });
+                $this->variable($reader->forTicket((int)$ticket->getID()))->isNull();
+                Type::overrideType(Types::INTEGER, $integer);
+                $replacement = new class () extends StringType {
+                    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
+                    {
+                        return $value === null ? null : $value . '|late';
                     }
                 };
-                $this->array(ITILOriginRepository::projectedPromotionSource(
-                    $factoryProbe,
-                    EntityRegistry::promotionSourceMapping(),
-                    (int)$ticket->getID()
-                ))->isIdenticalTo($baseline);
-                $this->array($factoryProbe->queries)->hasSize(1);
-                $string = Type::getType(Types::STRING);
-                $integer = Type::getType(Types::INTEGER);
-                try {
-                    Type::overrideType(Types::STRING, new class () extends StringType {
-                        public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-                        {
-                            throw new LogicException('An inferred discriminator is a driver string, not a mapped input type.');
-                        }
-                        public function convertToDatabaseValue(mixed $value, AbstractPlatform $platform): mixed
-                        {
-                            throw new LogicException('An inferred discriminator must bypass mapped input conversion.');
-                        }
-                        public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-                        {
-                            return 'LOWER(' . $sqlExpr . ')';
-                        }
-                        public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
-                        {
-                            return $value === null ? null : $value . '|php';
-                        }
-                    });
-                    $converted = $reader->forTicket((int)$ticket->getID());
-                    $this->array($converted)->isIdenticalTo($repository->promotionSource((int)$ticket->getID()));
-                    $this->string($converted['itemtype'])->isIdenticalTo('ticket|php');
-                    $this->string($converted['items_id'])->isIdenticalTo($ticket->getID() . '|php');
-                    Type::overrideType(Types::INTEGER, new class () extends IntegerType {
-                        public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-                        {
-                            return '(' . $sqlExpr . ' + 1000000)';
-                        }
-                    });
-                    $this->variable($reader->forTicket((int)$ticket->getID()))->isNull();
-                    $this->variable($repository->promotionSource((int)$ticket->getID()))->isNull();
-                    Type::overrideType(Types::INTEGER, $integer);
-                    $replacement = new class () extends StringType {
-                        public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
-                        {
-                            return $value === null ? null : $value . '|late';
-                        }
-                    };
-                    $swapping = static fn () => new class ($replacement) extends StringType {
-                        public function __construct(private StringType $replacement)
-                        {
-                        }
-                        public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-                        {
-                            Type::overrideType(Types::STRING, $this->replacement);
-                            return $sqlExpr;
-                        }
-                        public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
-                        {
-                            throw new LogicException('Hydration must resolve the replacement Type after SQL compilation.');
-                        }
-                    };
-                    Type::overrideType(Types::STRING, $swapping());
-                    $late = $reader->forTicket((int)$ticket->getID());
-                    Type::overrideType(Types::STRING, $swapping());
-                    $this->array($late)->isIdenticalTo($repository->promotionSource((int)$ticket->getID()));
-                    $this->string($late['itemtype'])->isIdenticalTo('Ticket|late');
-                    $this->string($late['items_id'])->isIdenticalTo($ticket->getID() . '|late');
-                } finally {
-                    Type::overrideType(Types::STRING, $string);
-                    Type::overrideType(Types::INTEGER, $integer);
-                }
-                $extended = new TimelineLocalCountProbe($connection);
-                $local = new PromotionSourceReadOperation($extended);
-                $listener = new class () {
-                    public int $loads = 0;
-                    public int $clears = 0;
-                    public function loadClassMetadata(): void
+                $swapping = static fn () => new class ($replacement) extends StringType {
+                    public function __construct(private StringType $replacement)
                     {
-                        ++$this->loads;
                     }
-                    public function onClear(): void
+                    public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                     {
-                        ++$this->clears;
+                        Type::overrideType(Types::STRING, $this->replacement);
+                        return $sqlExpr;
+                    }
+                    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
+                    {
+                        throw new LogicException('Hydration must resolve the replacement Type after SQL compilation.');
                     }
                 };
-                $events = $extended->getEventManager();
-                $events->addEventListener(['loadClassMetadata', 'onClear'], $listener);
-                try {
-                    $this->array($local->forTicket((int)$ticket->getID()))->isIdenticalTo($baseline);
-                    $this->integer($listener->loads)->isGreaterThan(0);
-                    unset($local);
-                    $this->integer($listener->clears)->isIdenticalTo(0);
-                } finally {
-                    $events->removeEventListener(['loadClassMetadata', 'onClear'], $listener);
-                }
+                Type::overrideType(Types::STRING, $swapping());
+                $late = $reader->forTicket((int)$ticket->getID());
+                $this->string($late['itemtype'])->isIdenticalTo('Ticket|late');
+                $this->string($late['items_id'])->isIdenticalTo($ticket->getID() . '|late');
             } finally {
-                $manager->clear();
+                Type::overrideType(Types::STRING, $string);
+                Type::overrideType(Types::INTEGER, $integer);
             }
+            $selected = new ScalarReadProbe($connection);
+            $local = new PromotionSourceReadOperation($selected);
+            $this->array($local->forTicket((int)$ticket->getID()))->isIdenticalTo($baseline);
+            $this->array($selected->queries)->hasSize(1);
 
         } finally {
             $DB = $database;
