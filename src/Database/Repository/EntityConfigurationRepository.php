@@ -13,7 +13,6 @@ use Entity as LegacyEntity;
 use itsmng\Database\Entity\Entity;
 use itsmng\Database\EntityConfigurationReferences;
 use itsmng\Database\EntityRegistry;
-use itsmng\Database\Orm;
 use itsmng\Database\RecordCriteria;
 use ReflectionEnum;
 use RuntimeException;
@@ -84,47 +83,13 @@ final class EntityConfigurationRepository
         return $values;
     }
 
-    public function usedConfiguration(string $reference, int $entity, string $valueField, mixed $default): mixed
-    {
-        if ($entity < 0) {
-            return $default;
-        }
-        $metadata = $this->em->getClassMetadata(Entity::class);
-        $query = $this->em->createQueryBuilder()
-            ->select('IDENTITY(r.parent) AS parent_id')
-            ->from(Entity::class, 'r')
-            ->where('r.id = :entity');
-        $compiler = new RecordCriteria($query, $metadata, false);
-        $columns = self::configurationColumns($reference, $valueField);
-        foreach ($columns as $index => $column) {
-            $query->addSelect($compiler->column($column) . ' AS setting' . $index);
-        }
-        return self::inheritConfiguration($reference, $entity, $valueField, $default, function (int $entity) use ($query, $columns, $metadata): ?array {
-            $result = $query->setParameter('entity', $entity, Types::INTEGER)
-                ->getQuery()
-                ->getOneOrNullResult();
-            if ($result === null) {
-                return null;
-            }
-            $row = [];
-            foreach ($columns as $index => $column) {
-                $mapping = $metadata->fieldMappings[$metadata->getFieldName($column)] ?? null;
-                $row[$column] = RecordRepository::legacyScalarValue($result['setting' . $index], $mapping?->type ?? Types::BIGINT);
-            }
-            return [$result['parent_id'], $row];
-        });
-    }
-
-    /** Canonical application route; supplied managers retain usedConfiguration(). */
+    /** Read inherited settings on the public caller's selected connection. */
     public static function readUsedConfiguration(Connection $connection, string $reference, int $entity, string $valueField, mixed $default): mixed
     {
         if ($entity < 0) {
             return $default;
         }
         $platform = $connection->getDatabasePlatform();
-        if (method_exists($connection, 'getEventManager')) {
-            return (new self(Orm::forConnection($connection)))->usedConfiguration($reference, $entity, $valueField, $default);
-        }
         $columns = self::configurationColumns($reference, $valueField);
         $types = EntityRegistry::fieldTypes('glpi_entities');
         $enums = EntityRegistry::fieldEnums('glpi_entities');
@@ -187,7 +152,7 @@ final class EntityConfigurationRepository
         return array_values(array_intersect(array_unique($columns), EntityRegistry::columnNames('glpi_entities')));
     }
 
-    /** One inheritance walk for both canonical DBAL and externally configured ORM readers. */
+    /** Follow the stored ancestor chain with the existing setting/default policy. */
     private static function inheritConfiguration(string $reference, int $entity, string $valueField, mixed $default, callable $read): mixed
     {
         $seen = [];

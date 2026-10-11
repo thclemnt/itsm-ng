@@ -34,9 +34,7 @@
 namespace tests\units;
 
 use Calendar;
-use Closure;
 use DbTestCase;
-use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Cache\QueryCacheProfile;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
@@ -47,7 +45,6 @@ use Doctrine\DBAL\Types\StringType;
 use Doctrine\DBAL\Types\TextType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
-use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\NoResultException;
 use Entity as LegacyEntity;
@@ -591,9 +588,7 @@ class Entity extends DbTestCase
             'admin_email' => '', 'comment' => null, 'max_closedate' => '2026-02-03 04:05:06',
             'calendars_id' => null, 'calendar_mode' => 'inherit',
         ], ['id' => $child]))->isTrue();
-        $em = Orm::create($DB);
-        $settings = new EntityConfigurationRepository($em);
-        $read = $this->configurationReader($settings);
+        $read = LegacyEntity::getUsedConfig(...);
         $this->string($read('admin_email', $child, 'comment', 'fallback'))
             ->isIdenticalTo('Parent setting');
         // A numeric default considers an empty string explicit; a string default inherits it.
@@ -603,15 +598,13 @@ class Entity extends DbTestCase
         $this->string($read('id', $child, 'max_closedate', -2))
             ->isIdenticalTo('2026-02-03 04:05:06');
         $this->string($read('id', $child, 'calendar_mode', -2))->isIdenticalTo('inherit');
-        $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
 
-        // Reusing the repository must see writes on its supplied connection, including NULL.
+        // The public reader must see writes on its selected connection, including NULL.
         $this->boolean($DB->update('glpi_entities', ['admin_email' => 'child@example.test'], ['id' => $child]))->isTrue();
         $this->variable($read('admin_email', $child, 'comment', 'fallback'))->isNull();
         $this->boolean($DB->update('glpi_entities', ['comment' => 'Changed setting'], ['id' => $child]))->isTrue();
         $this->string($read('admin_email', $child, 'comment', 'fallback'))
             ->isIdenticalTo('Changed setting');
-        $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
 
         $connection = $DB->getDoctrineConnection();
         $probe = new EntityConfigurationReadProbe($connection);
@@ -637,33 +630,9 @@ class Entity extends DbTestCase
             $registry->override(Types::TEXT, new EntityConfigurationNoResultType());
             $this->string($read('admin_email', $child, 'comment', 'fallback'))->isIdenticalTo('fallback');
             $registry->override(Types::TEXT, new EntityConfigurationFailureType());
-            $this->exception(static fn () => $settings->usedConfiguration('admin_email', $child, 'comment', 'fallback'))
-                ->isInstanceOf(RuntimeException::class)->hasMessage('Configuration conversion failed');
             $this->exception(static fn () => LegacyEntity::getUsedConfig('admin_email', $child, 'comment', 'fallback'))
                 ->isInstanceOf(RuntimeException::class)->hasMessage('Configuration conversion failed');
             $registry->override(Types::TEXT, new EntityConfigurationTextType());
-
-
-            // A supplied manager's local field edits are never replaced by canonical type facts.
-            $em->getClassMetadata(EntityRecord::class)->fieldMappings['comment']->type = 'string';
-            $this->string($settings->usedConfiguration('admin_email', $child, 'comment', 'fallback'))->isIdenticalTo('Parent setting');
-
-            $listenerConnection = new EntityConfigurationListenerProbe($connection);
-            $listener = new class () {
-                public int $loads = 0;
-                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
-                {
-                    if ($event->getClassMetadata()->name === EntityRecord::class) {
-                        ++$this->loads;
-                        $event->getClassMetadata()->fieldMappings['comment']->type = 'string';
-                    }
-                }
-            };
-            $listenerConnection->getEventManager()->addEventListener(Events::loadClassMetadata, $listener);
-            $this->calling($adapter)->getDoctrineConnection = $listenerConnection;
-            $this->string(LegacyEntity::getUsedConfig('admin_email', $child, 'comment', 'fallback'))->isIdenticalTo('Parent setting');
-            $this->integer($listener->loads)->isIdenticalTo(1);
-            $this->array($listenerConnection->ids)->isIdenticalTo([$child, $parent]);
 
             $this->calling($adapter)->getDoctrineConnection = new EntityConfigurationPlatformProbe($connection);
             $before = $counter->getValue();
@@ -691,9 +660,7 @@ class Entity extends DbTestCase
             'calendars_id' => null, 'calendar_mode' => 'inherit',
             'entities_id_software' => null, 'software_entity_mode' => 'unchanged',
         ], ['id' => $child]))->isTrue();
-        $em = Orm::create($DB);
-        $settings = new EntityConfigurationRepository($em);
-        $read = $this->configurationReader($settings);
+        $read = LegacyEntity::getUsedConfig(...);
         $this->integer($read('calendars_id', $child, 'calendars_id', -2))
             ->isIdenticalTo($calendarId);
         $this->integer($read('entities_id_software', $child, 'entities_id_software', -2))
@@ -715,15 +682,12 @@ class Entity extends DbTestCase
         $string = $registry->get(Types::STRING);
         try {
             $registry->override(Types::STRING, new EntityConfigurationInvalidModeType());
-            $this->exception(static fn () => $settings->usedConfiguration('id', $child, 'calendar_mode', -2))
-                ->isInstanceOf(ValueError::class);
             $this->exception(static fn () => LegacyEntity::getUsedConfig('id', $child, 'calendar_mode', -2))
                 ->isInstanceOf(ValueError::class);
         } finally {
             $registry->override(Types::STRING, $string);
         }
 
-        $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
     }
 
     public function testGetUsedConfigProjectionMissingAndCycles(): void
@@ -731,9 +695,7 @@ class Entity extends DbTestCase
         global $DB;
         $parent = (int)getItemByTypeName('Entity', '_test_root_entity', true);
         $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
-        $em = Orm::create($DB);
-        $settings = new EntityConfigurationRepository($em);
-        $read = $this->configurationReader($settings);
+        $read = LegacyEntity::getUsedConfig(...);
         foreach ([-1, PHP_INT_MAX, 0, $child] as $id) {
             $this->string($read('unknown_setting', $id, 'comment', 'fallback'))
                 ->isIdenticalTo('fallback');
@@ -750,21 +712,9 @@ class Entity extends DbTestCase
         try {
             $this->exception(static fn () => LegacyEntity::getUsedConfig('unknown_setting', $child, 'comment', 'fallback'))
                 ->isInstanceOf(RuntimeException::class)->hasMessage('Cyclic entity configuration inheritance');
-            $this->exception(static fn () => $read('unknown_setting', $child, 'comment', 'fallback'))
-                ->isInstanceOf(RuntimeException::class)->hasMessage('Cyclic entity configuration inheritance');
         } finally {
             $this->boolean($DB->update('glpi_entities', ['entities_id' => 0], ['id' => $parent]))->isTrue();
         }
-        $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
-    }
-
-    private function configurationReader(EntityConfigurationRepository $settings): Closure
-    {
-        return function (string $reference, int $entity, string $value, mixed $default) use ($settings): mixed {
-            $expected = $settings->usedConfiguration($reference, $entity, $value, $default);
-            $this->variable(LegacyEntity::getUsedConfig($reference, $entity, $value, $default))->isIdenticalTo($expected);
-            return $expected;
-        };
     }
 
     protected function customCssProvider()
@@ -957,16 +907,6 @@ class EntityConfigurationReadProbe extends Connection
     {
         $this->ids[] = (int)reset($params);
         return $this->selected->executeQuery($sql, $params, $types, $qcp);
-    }
-}
-
-class EntityConfigurationListenerProbe extends EntityConfigurationReadProbe
-{
-    private ?EventManager $events = null;
-
-    public function getEventManager(): EventManager
-    {
-        return $this->events ??= new EventManager();
     }
 }
 
