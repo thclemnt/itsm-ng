@@ -543,7 +543,11 @@ class Computer extends DbTestCase
                     'computers_id' => $computer->getID(), 'itemtype' => $kind, 'items_id' => $item->getID(),
                 ]);
                 // This is Transfer's actual mapped-writer ingress, not a second public add.
-                $this->boolean($DB->update(Computer_Item::getTable(), ['items_id' => $replacement->getID()], ['id' => $link->getID()]))->isTrue();
+                $this->array((new MappedStorage($DB))->update(
+                    Computer_Item::getTable(),
+                    (int)$link->getID(),
+                    ComputerItemRecord::withReference([], $kind, (int)$replacement->getID())
+                ))->contains('items_id');
                 $this->boolean($link->getFromDB($link->getID()))->isTrue();
                 $this->integer((int)$link->fields['computers_id'])->isIdenticalTo((int)$computer->getID());
                 $this->integer((int)$link->fields['items_id'])->isIdenticalTo((int)$replacement->getID());
@@ -836,14 +840,20 @@ class Computer extends DbTestCase
                 $this->array($actualTypes)->isIdenticalTo($record->distinctValues('glpi_computers_items', 'itemtype', ['computers_id' => $selection] + $extra, 'itemtype'));
                 $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
             }
-            $this->boolean($DB->insert('glpi_computers_items', ['computers_id' => $host, 'itemtype' => 'Monitor',
-                'items_id' => $monitor->getID(), 'is_deleted' => true, 'is_dynamic' => false]))->isTrue();
+            $replacement = $this->createItem(Monitor::class, [
+                'name' => $this->getUniqueString(), 'entities_id' => $entity, 'is_global' => true,
+            ]);
+            $replacementId = (int)$replacement->getID();
+            $this->boolean($DB->insert('glpi_computers_items', [
+                'computers_id' => $host, 'itemtype' => 'Monitor', 'monitors_id' => $monitor->getID(),
+                'opaque_parent_id' => null, 'is_deleted' => true, 'is_dynamic' => false,
+            ]))->isTrue();
             $duplicate = $DB->insertId();
             try {
                 $this->array($reader->linkedItems('Computer', $host))->isIdenticalTo($expectedLinks);
-                $this->boolean($DB->update('glpi_computers_items', ['items_id' => PHP_INT_MAX], ['id' => $duplicate]))->isTrue();
+                $this->boolean($DB->update('glpi_computers_items', ['monitors_id' => $replacementId], ['id' => $duplicate]))->isTrue();
                 $changedLinks = $expectedLinks;
-                $changedLinks['Monitor'][PHP_INT_MAX] = PHP_INT_MAX;
+                $changedLinks['Monitor'][$replacementId] = $replacementId;
                 $this->array($reader->linkedItems('Computer', $host))->isIdenticalTo($changedLinks);
                 $this->array($reader->linkedItems('Computer', $host)['Monitor'])->hasSize(2);
             } finally {
@@ -1349,6 +1359,13 @@ class Computer extends DbTestCase
                             $this->boolean($link->getFromDB($fields['id']))->isTrue();
                             $targets[] = (int)$link->getField('items_id');
                             $fields['items_id'] = $link->getField('items_id');
+                            $ownerColumn = match ($type) {
+                                Monitor::class => 'monitors_id',
+                                Peripheral::class => 'peripherals_id',
+                                Phone::class => 'phones_id',
+                                Printer::class => 'printers_id',
+                            };
+                            $fields[$ownerColumn] = $fields['items_id'];
                             $this->array($link->fields)->isIdenticalTo($fields);
                             $target = new $type();
                             $this->boolean($target->getFromDB($link->getField('items_id')))->isTrue();
@@ -1599,6 +1616,7 @@ class Computer extends DbTestCase
                         $this->boolean($link->getFromDB($fields['id']))->isTrue();
                         $targets[] = (int)$link->getField('items_id');
                         $fields['items_id'] = $link->getField('items_id');
+                        $fields['monitors_id'] = $fields['items_id'];
                         $this->array($link->fields)->isIdenticalTo($fields);
                         $target = new Monitor();
                         $this->boolean($target->getFromDB($link->getField('items_id')))->isTrue();

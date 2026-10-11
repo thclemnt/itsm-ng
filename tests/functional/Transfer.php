@@ -947,6 +947,19 @@ class Transfer extends DbTestCase
                         $this->array($events)->isIdenticalTo($typed ? ['child-prepare', 'child-add', 'parent-add'] : ['parent-add']);
                         $copyID = (int)$connection->fetchOne('SELECT items_id FROM glpi_computers_items WHERE computers_id=? AND itemtype=?', [$computer->getID(), 'Printer']);
                         $this->integer($copyID)->isGreaterThan(0)->isNotIdenticalTo((int)$printer->getID());
+                        $attachment = $connection->fetchAssociative(
+                            'SELECT * FROM glpi_computers_items WHERE computers_id=? AND itemtype=?',
+                            [$computer->getID(), 'Printer']
+                        );
+                        $this->integer((int)$attachment['printers_id'])->isIdenticalTo($copyID);
+                        $this->variable($attachment['opaque_parent_id'])->isNull();
+                        foreach (['monitors_id', 'peripherals_id', 'phones_id'] as $column) {
+                            $this->variable($attachment[$column])->isNull();
+                        }
+                        $this->integer((int)$connection->fetchOne(
+                            'SELECT printers_id FROM glpi_computers_items WHERE computers_id=? AND itemtype=?',
+                            [$remaining->getID(), 'Printer']
+                        ))->isIdenticalTo((int)$printer->getID());
                         $copiedPrinter = new PrinterAsset();
                         $this->boolean($copiedPrinter->getFromDB($copyID))->isTrue();
                         $this->integer((int)$copiedPrinter->getEntityID())->isIdenticalTo($target);

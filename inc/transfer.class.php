@@ -31,9 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Entity\ComputerItem as ComputerItemRecord;
 use itsmng\Database\Entity\NetworkPort as NetworkPortRecord;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\LifecycleModelJournal;
+use itsmng\Database\MappedStorage;
 use itsmng\Database\MutationCleanupFailure;
 use itsmng\Database\Orm;
 use itsmng\Database\OwnershipUpdateUnit;
@@ -2172,15 +2174,14 @@ class Transfer extends CommonDBTM
                         // Finish updated link if needed
                         if (($newID > 0)
                               && ($newID != $item_ID)) {
-                            TransferCancelled::requireWrite($DB->update(
-                                'glpi_computers_items',
-                                [
-                                  'items_id' => $newID
-                        ],
-                                [
-                                  'id' => $data['id']
-                        ]
-                            ), '$DB->update');
+                            $this->transferCoordinator?->assertActive();
+                            $changed = (new MappedStorage($DB))->update(
+                                Computer_Item::getTable(),
+                                (int)$data['id'],
+                                ComputerItemRecord::withReference([], $data['itemtype'], (int)$newID)
+                            );
+                            $this->transferCoordinator?->assertActive();
+                            TransferCancelled::requireWrite($changed !== [], 'Computer attachment retarget');
                         }
 
                     } else {
