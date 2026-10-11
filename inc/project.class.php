@@ -1462,16 +1462,11 @@ class Project extends CommonDBTM implements ExtraVisibilityCriteria
         $this->check($ID, READ);
         $rand = mt_rand();
 
-        if (get_class($this) === self::class) {
-            $em = Orm::create($DB);
-            try {
-                $children = (new ProjectRepository($em))->childIds((int)$ID);
-            } finally {
-                $em->clear();
-            }
-        } else {
-            // Extensions retain their selector and its returned order.
-            $children = array_column($this->find([$this->getForeignKeyField() => $ID, 'is_deleted' => 0]), 'id');
+        $em = Orm::create($DB);
+        try {
+            $children = (new ProjectRepository($em))->childIds((int)$ID);
+        } finally {
+            $em->clear();
         }
         $numrows = count($children);
 

@@ -1569,29 +1569,15 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
         global $DB;
 
         $todisplay = [];
-        if (static::class === self::class) {
-            $em = Orm::create($DB);
-            try {
-                $roots = (new ProjectTaskRepository($em))->rootIdsForGantt((int)$ID);
-            } finally {
-                $em->clear();
-            }
-            foreach ($roots as $id) {
-                $todisplay += static::getDataToDisplayOnGantt($id);
-            }
-            return $todisplay;
+        $em = Orm::create($DB);
+        try {
+            $roots = (new ProjectTaskRepository($em))->rootIdsForGantt((int)$ID);
+        } finally {
+            $em->clear();
         }
-
-        // Extensions retain their custom discovery and missing-record guard.
-
-        $task      = new self();
-        // Get all tasks without father
-        foreach ((new static())->find(['projects_id' => $ID, 'projecttasks_id' => 0], ['plan_start_date', 'real_start_date']) as $data) {
-            if ($task->getFromDB($data['id'])) {
-                $todisplay += static::getDataToDisplayOnGantt($data['id']);
-            }
+        foreach ($roots as $id) {
+            $todisplay += static::getDataToDisplayOnGantt($id);
         }
-
         return $todisplay;
     }
 

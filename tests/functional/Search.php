@@ -368,18 +368,6 @@ class Search extends DbTestCase
         $translated = Ticket::getStatusPresentationFromCatalogue($customStatus, $catalogue);
         $this->string($translated['label'])->isIdenticalTo('Translated catalogue label');
         $this->string($translated['icon'])->contains("title='Translated catalogue label'");
-        $subclass = new class () extends Ticket {
-            public static function getStatus($status)
-            {
-                return 'Subclass label';
-            }
-            public static function getStatusIcon($status)
-            {
-                return '<i>Subclass icon</i>';
-            }
-        };
-        $this->array($subclass::getStatusPresentationFromCatalogue($customStatus, $catalogue))
-            ->isIdenticalTo(['label' => 'Subclass label', 'icon' => '<i>Subclass icon</i>']);
     }
 
     public function testSearchTicketStatusCatalogueScope(): void

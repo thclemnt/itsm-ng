@@ -3558,11 +3558,6 @@ class Ticket extends CommonITILObject
     /** Present the current ordinal status view without rereading it for each cell. */
     public static function getStatusPresentationFromCatalogue($status, array $catalogue): array
     {
-        // The optimized path belongs to the concrete core formatter. New callers
-        // using a subclass retain its existing presentation overrides.
-        if (static::class !== self::class) {
-            return ['label' => static::getStatus($status), 'icon' => static::getStatusIcon($status)];
-        }
         $label = $catalogue['name_translate'][$status] ?? $status;
         $class = static::getStatusClassFromKey(static::getStatusKeyFromCatalogue($status, $catalogue));
         return [

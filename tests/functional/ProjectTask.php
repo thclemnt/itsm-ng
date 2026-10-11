@@ -252,16 +252,7 @@ class ProjectTask extends DbTestCase
             $this->string($byId[$later->getID()]['percent'])->isIdenticalTo('');
             $this->array(LegacyProjectTask::getDataToDisplayOnGantt(PHP_INT_MAX))->isEmpty();
             $this->array(LegacyProjectTask::getDataToDisplayOnGanttForProject(PHP_INT_MAX))->isEmpty();
-
-            // Extensions still own discovery/rendering; their nonexistent rows are
-            // checked by the original concrete-record guard before custom rendering.
-            ProjectTaskGanttOverride::$roots = [(int)$later->getID(), PHP_INT_MAX];
-            ProjectTaskGanttOverride::$calls = [];
-            $this->array(ProjectTaskGanttOverride::getDataToDisplayOnGanttForProject($project->getID()))
-                ->isIdenticalTo(['custom' => ['id' => (int)$later->getID()]]);
-            $this->array(ProjectTaskGanttOverride::$calls)->isIdenticalTo([(int)$later->getID()]);
         } finally {
-            ProjectTaskGanttOverride::$roots = ProjectTaskGanttOverride::$calls = [];
             $em->getEventManager()->removeEventListener([Events::postLoad], $listener);
             $em->clear();
             $_SESSION = $session;
@@ -419,23 +410,5 @@ class ProjectTask extends DbTestCase
          ]
         );
         $this->integer($ttask_id)->isGreaterThan(0);
-    }
-}
-
-
-class ProjectTaskGanttOverride extends LegacyProjectTask
-{
-    public static array $roots = [];
-    public static array $calls = [];
-
-    public function find($condition = [], $order = [], $limit = null)
-    {
-        return array_map(static fn (int $id): array => ['id' => $id], self::$roots);
-    }
-
-    public static function getDataToDisplayOnGantt($ID)
-    {
-        self::$calls[] = (int)$ID;
-        return ['custom' => ['id' => (int)$ID]];
     }
 }

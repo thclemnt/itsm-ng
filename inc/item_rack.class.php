@@ -447,15 +447,11 @@ JAVASCRIPT;
     {
         global $DB;
 
-        if (static::class === self::class) {
-            $manager = Orm::create($DB);
-            try {
-                $items = (new PlacementRepository($manager))->rackStatistics((int)$rack->getID());
-            } finally {
-                $manager->clear();
-            }
-        } else {
-            $items = MappedReads::matching($DB, self::getTable(), ['racks_id' => $rack->getID()]);
+        $manager = Orm::create($DB);
+        try {
+            $items = (new PlacementRepository($manager))->rackStatistics((int)$rack->getID());
+        } finally {
+            $manager->clear();
         }
 
         $weight = 0;
@@ -466,7 +462,7 @@ JAVASCRIPT;
         ];
 
         foreach ($items as $row) {
-            if (static::class === self::class && array_key_exists('dimensions', $row)) {
+            if (array_key_exists('dimensions', $row)) {
                 $modelFields = $row['dimensions'];
             } else {
                 // Unmapped extensions retain their own legacy model-loading behavior.

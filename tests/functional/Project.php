@@ -137,7 +137,7 @@ class Project extends DbTestCase
         }
     }
 
-    public function testChildIdentifiersPreserveRichRenderingAndCustomSelection(): void
+    public function testChildIdentifiersPreserveRichRendering(): void
     {
         global $DB;
         $this->login();
@@ -226,32 +226,6 @@ class Project extends DbTestCase
                 ->notContains($prefix . ' deleted')->notContains($prefix . ' other');
             $this->boolean(strpos($html, '<span class=\'b\'>' . $prefix . ' ' . ($ids[0] === (int)$children['team']->getID() ? 'team' : 'denied'))
                 < strpos($html, '<span class=\'b\'>' . $prefix . ' ' . ($ids[1] === (int)$children['team']->getID() ? 'team' : 'denied')))->isTrue();
-
-            $custom = new class () extends LegacyProject {
-                public array $selection = [];
-                public array $calls = [];
-                public static function getTable($classname = null)
-                {
-                    return LegacyProject::getTable();
-                }
-                public function find($condition = [], $order = [], $limit = null)
-                {
-                    $this->calls[] = [$condition, $order, $limit];
-                    return $this->selection;
-                }
-            };
-            $custom->fields = $parent->fields;
-            $custom->selection = [['id' => $children['other']->getID()], ['id' => $children['denied']->getID()]];
-            ob_start();
-            try {
-                $custom->showChildren();
-                $customHtml = ob_get_contents();
-            } finally {
-                ob_end_clean();
-            }
-            $this->array($custom->calls)->isIdenticalTo([[['projects_id' => $parent->getID(), 'is_deleted' => 0], [], null]]);
-            $this->string($customHtml)->contains($prefix . ' other')->contains($prefix . ' denied')->notContains($prefix . ' team');
-            $this->boolean(strpos($customHtml, $prefix . ' other') < strpos($customHtml, $prefix . ' denied'))->isTrue();
         } finally {
             $em->getEventManager()->removeEventListener([Events::postLoad], $listener);
             $em->clear();

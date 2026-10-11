@@ -45,7 +45,6 @@ use Doctrine\DBAL\Exception as DbalException;
 use Doctrine\DBAL\Result;
 use Doctrine\DBAL\Types\Types;
 use itsmng\Database\Entity\TicketTicket as TicketLinkEntity;
-use itsmng\Database\RowIterator;
 use mock\DBmysql as LinkRouteAdapter;
 use RuntimeException;
 use tests\fixtures\ScalarReadProbe;
@@ -134,12 +133,11 @@ class Ticket_Ticket extends DbTestCase
         }
     }
 
-    public function testLinkedTicketSnapshotPinsRouteAndRetainsNativeCriteria(): void
+    public function testLinkedTicketSnapshotPinsRouteAndPropagatesQueryFailure(): void
     {
         global $DB;
         $original = $DB;
         $session = $_SESSION;
-        $table = LegacyTicketLink::getTable();
         try {
             $this->login();
             $this->setEntity(0, true);
@@ -220,34 +218,8 @@ class Ticket_Ticket extends DbTestCase
             $this->integer($selected->events)->isIdenticalTo(0);
             $selected->failure = null;
             $DB = $original;
-            $operators = LegacyTicketLink::getLinkedTicketsTo(['=', $left->getID()]);
-            $this->array($operators)->hasKey($link->getID());
-            $this->variable($operators[$link->getID()]['tickets_id_1'])->isIdenticalTo($left->getID());
-            $stringable = new class () {
-                public int $calls = 0;
-
-                public function __toString(): string
-                {
-                    ++$this->calls;
-                    return (string)PHP_INT_MAX;
-                }
-            };
-            $this->array(LegacyTicketLink::getLinkedTicketsTo($stringable))->isEmpty();
-            $this->integer($stringable->calls)->isIdenticalTo(2);
-            $criteria = null;
-            $this->calling($adapter)->request = static function ($request) use (&$criteria): RowIterator {
-                $criteria = $request;
-                return new RowIterator([]);
-            };
-            LegacyTicketLink::forceTable('custom_ticket_links');
-            $resolutions = 0;
-            $DB = $adapter;
-            $this->array(LegacyTicketLink::getLinkedTicketsTo($left->getID()))->isEmpty();
-            $this->string($criteria['FROM'])->isIdenticalTo('custom_ticket_links');
-            $this->variable($criteria['WHERE']['OR']['tickets_id_1'])->isIdenticalTo($left->getID());
-            $this->integer($resolutions)->isIdenticalTo(0);
+            $this->array(LegacyTicketLink::getLinkedTicketsTo($left->getID()))->hasKey($link->getID());
         } finally {
-            LegacyTicketLink::forceTable($table);
             $DB = $original;
             $_SESSION = $session;
         }

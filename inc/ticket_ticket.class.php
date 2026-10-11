@@ -170,25 +170,9 @@ class Ticket_Ticket extends CommonDBRelation
         }
 
         $database = $DB;
-        $table = self::getTable();
-        if (
-            $table === 'glpi_tickets_tickets'
-            && (is_int($ID) || (is_string($ID) && ctype_digit($ID)))
-        ) {
-            $connection = $database->getDoctrineConnection();
-            OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
-            $iterator = new RowIterator((new TicketLinkReadRepository($connection))->linkedIdentities($ID));
-        } else {
-            $iterator = $database->request([
-                'FROM' => $table,
-                'WHERE' => [
-                    'OR' => [
-                        'tickets_id_1' => $ID,
-                        'tickets_id_2' => $ID,
-                    ],
-                ],
-            ]);
-        }
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        $iterator = new RowIterator((new TicketLinkReadRepository($connection))->linkedIdentities($ID));
         $tickets = [];
 
         while ($data = $iterator->next()) {
