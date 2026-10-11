@@ -59,7 +59,7 @@ class Infocom extends \GLPITestCase
             $model->filterValues(false);
             $this->array($model->input)->isEmpty();
         }
-        $value = new class implements Stringable {
+        $value = new class () implements Stringable {
             public array $conversions = [];
 
             public function __toString(): string
