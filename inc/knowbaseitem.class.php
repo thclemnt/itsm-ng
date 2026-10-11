@@ -32,6 +32,7 @@
  */
 
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\ORM\EntityManager;
 use Glpi\Event;
 use itsmng\Database\KnowledgeBaseAccess;
 use itsmng\Database\Orm;
