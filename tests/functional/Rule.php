@@ -38,11 +38,199 @@ use ReflectionClass;
 use RuleAction;
 use RuleCriteria;
 use RuleImportEntity;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Connection;
+use Entity as ApplicationEntity;
+use itsmng\Database\Entity\Rule as MappedRule;
+use itsmng\Database\Orm;
+use itsmng\Database\UnsupportedCriteria;
+use mock\DBmysql as RuleRouteAdapter;
+use Rule as ApplicationRule;
+use RuleRight;
+use RuleRightCollection;
+use RuleSoftwareCategory;
+use tests\fixtures\ScalarReadProbe;
+use stdClass;
+use TypeError;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/rule.class.php */
 
 class Rule extends DbTestCase
 {
+    public function testCompletedRuleReadsObserveCurrentRankActionsAndRetainDirtyOwners(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $category = new RuleSoftwareCategory();
+            $next = $category->getNextRanking();
+            $first = $this->createItem(RuleSoftwareCategory::class, [
+                'name' => $this->getUniqueString(), 'entities_id' => 0, 'ranking' => $next + 5,
+            ]);
+            $this->integer($category->getNextRanking())->isIdenticalTo($next + 6);
+            $clone = $first->clone(['name' => $this->getUniqueString()]);
+            $this->integer((int)$clone)->isGreaterThan(0);
+            $copy = new RuleSoftwareCategory();
+            $this->boolean($copy->getFromDB($clone))->isTrue();
+            $this->integer($copy->fields['ranking'])->isIdenticalTo($next + 6);
+            $this->integer($copy->fields['is_active'])->isIdenticalTo(0);
+            $this->integer($category->getNextRanking())->isIdenticalTo($next + 7);
+
+            $entity = new ApplicationEntity();
+            $entityId = (int)getItemByTypeName(ApplicationEntity::class, '_test_child_1', true);
+            $this->boolean($entity->getFromDB($entityId))->isTrue();
+            $this->boolean((new RuleRightCollection())->canList())->isTrue();
+            $_SESSION['glpishow_count_on_tabs'] = true;
+            $selection = new RuleRight();
+            preg_match("/<sup class='tab_nb'>([0-9]+)<\/sup>/", $selection->getTabNameForItem($entity), $before);
+            $initialCount = (int)($before[1] ?? 0);
+            $rule = $this->createItem(RuleRight::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $actions = [];
+            foreach (range(1, 2) as $unused) {
+                $actions[] = $this->createItem(RuleAction::class, [
+                    'rules_id' => $rule->getID(), 'action_type' => 'assign', 'field' => 'entities_id', 'value' => (string)$entityId,
+                ]);
+            }
+            $other = $this->createItem(RuleSoftwareCategory::class, [
+                'name' => $this->getUniqueString(), 'entities_id' => 0, 'ranking' => $next + 2,
+            ]);
+            $this->createItem(RuleAction::class, [
+                'rules_id' => $other->getID(), 'action_type' => 'assign', 'field' => 'entities_id', 'value' => (string)$entityId,
+            ]);
+            $criteria = ['field' => 'entities_id', 'value' => (string)$entityId];
+            $matches = $selection->getRulesForCriteria($criteria);
+            $this->array(array_map(static fn (ApplicationRule $match): int => (int)$match->getID(), $matches))
+                ->contains((int)$rule->getID());
+            $ownMatches = array_filter($matches, static fn (ApplicationRule $match): bool => (int)$match->getID() === (int)$rule->getID());
+            $this->array($ownMatches)->hasSize(1);
+            $loaded = reset($ownMatches);
+            $this->string($loaded->fields['name'])->isIdenticalTo($rule->fields['name']);
+            $this->array($loaded->actions)->hasSize(2);
+            $this->string($selection->getTabNameForItem($entity))->contains("<sup class='tab_nb'>" . ($initialCount + 2) . '</sup>');
+            $connection = $DB->getDoctrineConnection();
+            $this->integer($connection->update('glpi_ruleactions', ['value' => '0'], ['id' => $actions[0]->getID()]))->isIdenticalTo(1);
+            $this->string($selection->getTabNameForItem($entity))->contains("<sup class='tab_nb'>" . ($initialCount + 1) . '</sup>');
+            $this->integer($connection->update('glpi_ruleactions', ['value' => '0'], ['id' => $actions[1]->getID()]))->isIdenticalTo(1);
+            $this->array(array_map(static fn (ApplicationRule $match): int => (int)$match->getID(), $selection->getRulesForCriteria($criteria)))
+                ->notContains((int)$rule->getID());
+            $this->integer($connection->update('glpi_ruleactions', ['value' => (string)$entityId], ['id' => $actions[1]->getID()]))->isIdenticalTo(1);
+            $this->exception(static fn () => $selection->getRulesForCriteria(['field' => new stdClass()]))
+                ->isInstanceOf(UnsupportedCriteria::class);
+            $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+
+            $owner = Orm::create($DB);
+            $dirty = $owner->find(MappedRule::class, (int)$first->getID());
+            $dirty->ranking = $next + 100;
+            $level = $connection->getTransactionNestingLevel();
+            Orm::read($DB, function ($nestedOwner) use ($category, $first, $selection, $criteria, $rule, $entity, $initialCount, $next): void {
+                $nested = $nestedOwner->find(MappedRule::class, (int)$first->getID());
+                $nested->name = 'Unflushed nested rule';
+                $this->integer($category->getNextRanking())->isIdenticalTo($next + 7);
+                $this->array(array_map(static fn (ApplicationRule $match): int => (int)$match->getID(), $selection->getRulesForCriteria($criteria)))
+                    ->contains((int)$rule->getID());
+                $this->string($selection->getTabNameForItem($entity))->contains("<sup class='tab_nb'>" . ($initialCount + 1) . '</sup>');
+                $this->boolean($nestedOwner->contains($nested))->isTrue();
+                $this->string($nested->name)->isIdenticalTo('Unflushed nested rule');
+            });
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->integer($dirty->ranking)->isIdenticalTo($next + 100);
+            $this->integer((int)$connection->fetchOne('SELECT ranking FROM glpi_rules WHERE id = ?', [$first->getID()]))->isIdenticalTo($next + 5);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
+    public function testRuleRankPreparationPinsCustomRouteBeforeGetterAndWeakConversion(): void
+    {
+        global $DB;
+        $original = $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $category = new RuleSoftwareCategory();
+            $expected = $category->getNextRanking();
+            $connection = $DB->getDoctrineConnection();
+            $observer = new class () {
+                public array $trace = [];
+                public int $clears = 0;
+                public function onClear(): void
+                {
+                    ++$this->clears;
+                }
+            };
+            $selected = new class ($connection) extends ScalarReadProbe {
+                public EventManager $events;
+                public object $observer;
+                public function getEventManager(): EventManager
+                {
+                    $this->observer->trace[] = 'constructed';
+                    return $this->events;
+                }
+            };
+            $selected->events = new EventManager();
+            $selected->events->addEventListener(['onClear'], $observer);
+            $selected->observer = $observer;
+            $other = new ScalarReadProbe($connection);
+            $route = $selected;
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new RuleRouteAdapter();
+            $this->calling($adapter)->getDoctrineConnection = static function () use (&$route): Connection {
+                return $route;
+            };
+            $value = new class ($this, $connection, $observer, $other, $route) {
+                public function __construct(
+                    private object $test,
+                    private Connection $connection,
+                    private object $observer,
+                    private Connection $other,
+                    private Connection &$route
+                ) {
+                }
+                public function __toString(): string
+                {
+                    $this->test->boolean($this->connection->isApplicationEntityManagerActive())->isFalse();
+                    $this->observer->trace[] = 'converted';
+                    $this->route = $this->other;
+                    return RuleSoftwareCategory::class;
+                }
+            };
+            $probe = new class () extends ApplicationRule {
+                public static $readType;
+                public static function getType()
+                {
+                    return (self::$readType)();
+                }
+            };
+            $probe::$readType = static function () use ($observer, $value) {
+                $observer->trace[] = 'getter';
+                return $value;
+            };
+            $DB = $adapter;
+            $this->integer($probe->getNextRanking())->isIdenticalTo($expected);
+            $this->array($observer->trace)->isIdenticalTo(['constructed', 'getter', 'converted']);
+            $this->array($selected->queries)->hasSize(1);
+            $this->array($other->queries)->isEmpty();
+            $this->integer($observer->clears)->isIdenticalTo(0);
+            $route = $selected;
+            $probe::$readType = static fn () => new stdClass();
+            $this->exception(static fn () => $probe->getNextRanking())->isInstanceOf(TypeError::class);
+            $this->array($selected->queries)->hasSize(1);
+            $this->integer($observer->clears)->isIdenticalTo(0);
+            $probe::$readType = static fn (): string => RuleSoftwareCategory::class;
+            $this->integer($probe->getNextRanking())->isIdenticalTo($expected);
+            $this->array($selected->queries)->hasSize(2);
+        } finally {
+            $DB = $original;
+            $_SESSION = $session;
+        }
+    }
+
     public function testGetTable()
     {
         $table = \Rule::getTable('RuleDictionnarySoftware');

@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Features\Clonable;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
@@ -2126,7 +2127,12 @@ class Rule extends CommonDBTM
     {
         global $DB;
 
-        return 1 + (new RuleRepository(Orm::create($DB)))->maximumRank($this->getType());
+        return 1 + Orm::readPrepared(
+            $DB,
+            fn (): string => $this->getType(),
+            static fn (EntityManager $manager, string $type): int =>
+                (new RuleRepository($manager))->maximumRank($type)
+        );
     }
 
 
@@ -3011,8 +3017,17 @@ class Rule extends CommonDBTM
 
         $rules = [];
 
-        $repository = new RuleRepository(Orm::create($DB));
-        foreach ($repository->rulesForActions(getTableForItemType($this->ruleactionclass), $this->rules_id_field, get_class($this), $crit) as $ruleId) {
+        $identifiers = Orm::readPrepared(
+            $DB,
+            function () use ($crit): array {
+                $arguments = static fn (string $table, string $column, string $type, array $criteria): array =>
+                    [$table, $column, $type, $criteria];
+                return $arguments(getTableForItemType($this->ruleactionclass), $this->rules_id_field, get_class($this), $crit);
+            },
+            static fn (EntityManager $manager, array $arguments): array =>
+                (new RuleRepository($manager))->rulesForActions(...$arguments)
+        );
+        foreach ($identifiers as $ruleId) {
             $affect_rule = clone $this;
             $affect_rule->getRuleWithCriteriasAndActions($ruleId, 0, 1);
             $rules[]     = $affect_rule;
@@ -3346,8 +3361,12 @@ class Rule extends CommonDBTM
                         }
                         if (count($types)) {
                             global $DB;
-                            $nb = (new RuleRepository(Orm::create($DB)))
-                                ->entityActionCount($types, (int)$item->getID());
+                            $nb = Orm::readPrepared(
+                                $DB,
+                                static fn (): int => (int)$item->getID(),
+                                static fn (EntityManager $manager, int $entity): int =>
+                                    (new RuleRepository($manager))->entityActionCount($types, $entity)
+                            );
                         }
                     }
                     return self::createTabEntry(self::getTypeName(Session::getPluralNumber()), $nb);
