@@ -35,6 +35,7 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\SoftwareDictionaryRepository;
 use itsmng\Database\Repository\SoftwareRepository;
@@ -219,7 +220,12 @@ class RuleDictionnarySoftwareCollection extends RuleCollection
         $delete_ids = [];
 
         foreach ($IDs as $ID) {
-            $soft = (new SoftwareDictionaryRepository(Orm::create($DB)))->replaySoftware((int)$ID);
+            $soft = Orm::readPrepared(
+                $DB,
+                static fn (): int => (int)$ID,
+                static fn (EntityManager $manager, int $id): ?array =>
+                    (new SoftwareDictionaryRepository($manager))->replaySoftware($id)
+            );
 
             if ($soft !== null) {
                 //For each software
@@ -339,7 +345,12 @@ class RuleDictionnarySoftwareCollection extends RuleCollection
         }
 
         //Get all the different versions for a software
-        foreach ((new SoftwareRepository(Orm::create($DB)))->versions((int)$ID) as $version) {
+        $versions = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$ID,
+            static fn (EntityManager $manager, int $id): array => (new SoftwareRepository($manager))->versions($id)
+        );
+        foreach ($versions as $version) {
             $input["version"] = addslashes((string) $version["name"]);
             $old_version_name = $input["version"];
 
@@ -380,7 +391,13 @@ class RuleDictionnarySoftwareCollection extends RuleCollection
             //Try to delete all the software that are not used anymore
             // (which means that don't have version associated anymore)
             $software = new Software();
-            foreach ((new SoftwareDictionaryRepository(Orm::create($DB)))->unusedSoftware($soft_ids) as $id) {
+            $unused = Orm::readPrepared(
+                $DB,
+                static fn (): array => array_map('intval', $soft_ids),
+                static fn (EntityManager $manager, array $ids): array =>
+                    (new SoftwareDictionaryRepository($manager))->unusedSoftware($ids)
+            );
+            foreach ($unused as $id) {
                 $software->putInTrash($id, __('Software deleted by ITSM-NG dictionary rules'));
             }
         }

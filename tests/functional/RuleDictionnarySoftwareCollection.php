@@ -34,11 +34,178 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\Common\EventManager;
+use Doctrine\ORM\EntityManager;
+use RuleDictionnarySoftwareCollection as DictionaryCollection;
+use Software as LegacySoftware;
+use SoftwareVersion as LegacyVersion;
+use itsmng\Database\Entity\Software as SoftwareRecord;
+use itsmng\Database\Entity\SoftwareVersion as VersionRecord;
+use itsmng\Database\Orm;
+use mock\DBmysql as DictionaryRouteAdapter;
+use tests\fixtures\ScalarReadProbe;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/ruledictionnarysoftwarecollection.class.php */
 
 class RuleDictionnarySoftwareCollection extends DbTestCase
 {
+    public function testDictionaryReplayKeepsCurrentSnapshotsAndIndependentMutationOwners(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $owner = null;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $first = $this->createItem(LegacySoftware::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $later = $this->createItem(LegacySoftware::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $template = $this->createItem(LegacySoftware::class, ['name' => $this->getUniqueString(), 'entities_id' => 0, 'is_template' => 1]);
+            $unused = $this->createItem(LegacySoftware::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $one = $this->createItem(LegacyVersion::class, ['name' => '1', 'softwares_id' => $first->getID(), 'entities_id' => 0]);
+            $two = $this->createItem(LegacyVersion::class, ['name' => '2', 'softwares_id' => $first->getID(), 'entities_id' => 0]);
+            $connection = $DB->getDoctrineConnection();
+            $collection = new class () extends DictionaryCollection {
+                public object $connection;
+                public int $firstId;
+                public int $laterId;
+                public int $secondVersion;
+                public string $laterName;
+                public bool $changeVersion = true;
+                public array $names = [];
+                public array $versions = [];
+                public array $active = [];
+
+                public function replayDictionnaryOnOneSoftware(
+                    array &$new_softs,
+                    array $res_rule,
+                    $ID,
+                    $entity,
+                    $name,
+                    $manufacturer,
+                    array &$soft_ids
+                ) {
+                    $this->names[(int)$ID] = $name;
+                    parent::replayDictionnaryOnOneSoftware($new_softs, $res_rule, $ID, $entity, $name, $manufacturer, $soft_ids);
+                    if ((int)$ID === $this->firstId) {
+                        $this->connection->update('glpi_softwares', ['name' => $this->laterName], ['id' => $this->laterId]);
+                    }
+                }
+
+                public function moveVersions($ID, $new_software_id, $version_id, $old_version, $new_version, $entity)
+                {
+                    $this->versions[] = $old_version;
+                    $this->active[] = $this->connection->isApplicationEntityManagerActive();
+                    if ($this->changeVersion) {
+                        $this->changeVersion = false;
+                        $this->connection->update('glpi_softwareversions', ['name' => 'Callback changed current name'], ['id' => $this->secondVersion]);
+                    }
+                    parent::moveVersions($ID, $new_software_id, $version_id, $old_version, $new_version, $entity);
+                }
+            };
+            $collection->connection = $connection;
+            $collection->firstId = (int)$first->getID();
+            $collection->laterId = (int)$later->getID();
+            $collection->secondVersion = (int)$two->getID();
+            $collection->laterName = $this->getUniqueString();
+            $owner = Orm::create($DB);
+            $dirtySoftware = $owner->find(SoftwareRecord::class, $first->getID());
+            $dirtyVersion = $owner->find(VersionRecord::class, $one->getID());
+            $dirtySoftware->name = 'Unflushed software';
+            $dirtyVersion->name = 'Unflushed version';
+            $collection->replayDictionnaryOnSoftwaresByID(
+                [$first->getID(), $template->getID(), $later->getID()],
+                ['version_append' => '_dictionary']
+            );
+            $this->array($collection->versions)->isIdenticalTo(['1', '2']);
+            $this->array($collection->active)->isIdenticalTo([false, false]);
+            $this->array(array_keys($collection->names))->isIdenticalTo([(int)$first->getID(), (int)$later->getID()]);
+            $this->string($collection->names[(int)$later->getID()])->isIdenticalTo($collection->laterName);
+            $this->string($connection->fetchOne('SELECT name FROM glpi_softwareversions WHERE id=?', [$two->getID()]))
+                ->isIdenticalTo('2_dictionary');
+            Orm::read($DB, function (EntityManager $outer) use ($collection, $first): void {
+                $nested = $outer->find(SoftwareRecord::class, $first->getID());
+                $nested->name = 'Unflushed enclosing software';
+                $collection->replayDictionnaryOnSoftwaresByID([$first->getID()], ['version_append' => '_again']);
+                $this->boolean($outer->contains($nested))->isTrue();
+                $this->string($nested->name)->isIdenticalTo('Unflushed enclosing software');
+            });
+            $this->array($collection->versions)->isIdenticalTo(['1', '2', '1_dictionary', '2_dictionary']);
+            $this->string($connection->fetchOne('SELECT name FROM glpi_softwareversions WHERE id=?', [$one->getID()]))
+                ->isIdenticalTo('1_dictionary_again');
+            $collection->replayDictionnaryOnSoftwaresByID([$first->getID()], ['version' => 'merged']);
+            $this->string($connection->fetchOne('SELECT name FROM glpi_softwareversions WHERE id=?', [$one->getID()]))
+                ->isIdenticalTo('merged');
+            $this->variable($connection->fetchOne('SELECT id FROM glpi_softwareversions WHERE id=?', [$two->getID()]))
+                ->isIdenticalTo(false);
+            $collection->putOldSoftsInTrash([$unused->getID(), $first->getID(), $template->getID()]);
+            $this->integer((int)$connection->fetchOne('SELECT is_deleted FROM glpi_softwares WHERE id=?', [$unused->getID()]))->isIdenticalTo(1);
+            $this->integer((int)$connection->fetchOne('SELECT is_deleted FROM glpi_softwares WHERE id=?', [$template->getID()]))->isIdenticalTo(1);
+            $this->integer((int)$connection->fetchOne('SELECT is_deleted FROM glpi_softwares WHERE id=?', [$first->getID()]))->isIdenticalTo(0);
+            $this->boolean($owner->contains($dirtySoftware))->isTrue();
+            $this->boolean($owner->contains($dirtyVersion))->isTrue();
+            $this->string($dirtySoftware->name)->isIdenticalTo('Unflushed software');
+            $this->string($dirtyVersion->name)->isIdenticalTo('Unflushed version');
+        } finally {
+            $owner?->clear();
+            $_SESSION = $session;
+        }
+    }
+
+    public function testDictionarySoftwareSnapshotKeepsCustomSelectedRouteBeforeReplayCallback(): void
+    {
+        global $DB;
+        $original = $DB;
+        try {
+            $software = getItemByTypeName(LegacySoftware::class, '_test_soft');
+            $selected = new class ($DB->getDoctrineConnection()) extends ScalarReadProbe {
+                public object $original;
+                public EventManager $events;
+                public int $constructed = 0;
+                public int $clears = 0;
+                public function getEventManager(): EventManager
+                {
+                    ++$this->constructed;
+                    $GLOBALS['DB'] = $this->original;
+                    return $this->events;
+                }
+                public function onClear(): void
+                {
+                    ++$this->clears;
+                }
+            };
+            $selected->original = $original;
+            $selected->events = new EventManager();
+            $selected->events->addEventListener(['onClear'], $selected);
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new DictionaryRouteAdapter();
+            $this->calling($adapter)->getDoctrineConnection = $selected;
+            $collection = new class () extends DictionaryCollection {
+                public array $names = [];
+                public function replayDictionnaryOnOneSoftware(
+                    array &$new_softs,
+                    array $res_rule,
+                    $ID,
+                    $entity,
+                    $name,
+                    $manufacturer,
+                    array &$soft_ids
+                ) {
+                    $this->names[(int)$ID] = $name;
+                }
+            };
+            $DB = $adapter;
+            $collection->replayDictionnaryOnSoftwaresByID([(string)$software->getID()], ['marker' => 'retained']);
+            $this->array($collection->names)->isIdenticalTo([(int)$software->getID() => $software->fields['name']]);
+            $this->array($selected->queries)->hasSize(1);
+            $this->integer($selected->constructed)->isIdenticalTo(1);
+            $this->integer($selected->clears)->isIdenticalTo(0);
+        } finally {
+            $DB = $original;
+        }
+    }
+
     public function testCleanTestOutputCriterias()
     {
         $collection = new \RuleDictionnarySoftwareCollection();
