@@ -53,6 +53,9 @@ use itsmng\Database\Entity\NetworkName as NetworkNameEntity;
 use itsmng\Database\CloneInput;
 use itsmng\Database\Entity\NetworkPortAggregate as NetworkPortAggregateEntity;
 use itsmng\Database\Entity\Vlan as VlanEntity;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Migration\Ledger;
+use itsmng\Database\Repository\RecordWriter;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\NetworkPortAggregateRepository;
 use itsmng\Database\Repository\NetworkPortVlanRepository;
@@ -447,6 +450,61 @@ class NetworkPort extends DbTestCase
         $this->boolean($probe->update(['id' => $id, 'name' => 'accepted-opaque']))->isTrue();
         $this->integer((int)$connection->fetchOne('SELECT items_id FROM glpi_networknames WHERE id=?', [$id]))->isIdenticalTo($ports[1]);
         $this->variable($connection->fetchOne('SELECT networkports_id FROM glpi_networknames WHERE id=?', [$id]))->isNull();
+    }
+
+    public function testNullLegacyParentsRejectPayloadWritesWithoutFlushingLiveOwners(): void
+    {
+        global $DB;
+        $this->login();
+        $entity = (int)$_SESSION['glpiactive_entity'];
+        $prefix = $this->getUniqueString();
+        $computer = $this->createItem('Computer', ['name' => $prefix, 'entities_id' => $entity]);
+        $port = $this->createItem(LegacyNetworkPort::class, ['itemtype' => 'Computer', 'items_id' => $computer->getID(),
+            'entities_id' => $entity, 'instantiation_type' => 'NetworkPortEthernet', 'name' => $prefix]);
+        $name = $this->createItem(LegacyNetworkName::class, ['itemtype' => 'NetworkPort', 'items_id' => $port->getID(),
+            'entities_id' => $entity, 'name' => strtolower($prefix)]);
+        $address = $this->createItem('IPAddress', ['itemtype' => 'NetworkName', 'items_id' => $name->getID(), 'name' => '192.0.2.213']);
+        $device = $this->createItem('DeviceGraphicCard', ['designation' => $prefix, 'entities_id' => $entity]);
+        $graphic = $this->createItem('Item_DeviceGraphicCard', ['devicegraphiccards_id' => $device->getID(),
+            'entities_id' => $entity, 'itemtype' => 'Computer', 'items_id' => $computer->getID(), 'serial' => $prefix]);
+        $connection = $DB->getDoctrineConnection();
+        $computerRows = $connection->fetchAllAssociative('SELECT * FROM glpi_computers ORDER BY id');
+        $ledger = Ledger::states($connection);
+        $depth = $connection->getTransactionNestingLevel();
+        $manager = Orm::create($DB);
+        try {
+            $owner = $manager->find(EntityRegistry::tables()['glpi_computers'], (int)$computer->getID());
+            $owner->name = $prefix . '-unflushed-owner';
+            $writer = new RecordWriter($manager);
+            foreach ([[$name, 'name', $prefix . '-dirty-name'], [$address, 'name', '192.0.2.214'],
+                [$graphic, 'serial', $prefix . '-dirty-serial']] as [$model, $field, $dirty]) {
+                $table = $model->getTable();
+                $id = (int)$model->getID();
+                $rows = $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id');
+                $record = $manager->find(EntityRegistry::tables()[$table], $id);
+                $record->$field = $dirty;
+                $values = get_object_vars($record);
+                $manager->getUnitOfWork()->computeChangeSets();
+                $changes = $manager->getUnitOfWork()->getEntityChangeSet($record);
+                $ownerChanges = $manager->getUnitOfWork()->getEntityChangeSet($owner);
+                $this->array($changes)->hasKey($field);
+                $this->array($ownerChanges)->hasKey('name');
+                $this->exception(static fn () => $writer->update($table, $id, [$field => $prefix . '-rejected', 'items_id' => null]))
+                    ->isInstanceOf(InvalidArgumentException::class);
+                $this->array(get_object_vars($record))->isIdenticalTo($values);
+                $this->boolean($manager->contains($record) && $manager->contains($owner) && $manager->isOpen())->isTrue();
+                $this->object($manager->find(EntityRegistry::tables()[$table], $id))->isIdenticalTo($record);
+                $this->array($manager->getUnitOfWork()->getEntityChangeSet($record))->isIdenticalTo($changes);
+                $this->array($manager->getUnitOfWork()->getEntityChangeSet($owner))->isIdenticalTo($ownerChanges);
+                $this->string($owner->name)->isIdenticalTo($prefix . '-unflushed-owner');
+                $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id'))->isIdenticalTo($rows);
+                $this->array($connection->fetchAllAssociative('SELECT * FROM glpi_computers ORDER BY id'))->isIdenticalTo($computerRows);
+                $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
+                $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+            }
+        } finally {
+            $manager->clear();
+        }
     }
 
     public function testNetworkNameParentNormalizationAndCloneKeepAuthoritativeIdentity(): void

@@ -909,6 +909,37 @@ class OrmMigration extends GLPITestCase
         $this->fixtureCompleted = true;
     }
 
+    /** Native NULL may be rejected or ignored; neither outcome may rewrite generated identity. */
+    private function assertGeneratedIdentityNullPreservesRows(Connection $connection, string $table, int $id): void
+    {
+        $rows = $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id');
+        $ledger = Ledger::states($connection);
+        $depth = $connection->getTransactionNestingLevel();
+        $assignmentError = null;
+        try {
+            $connection->transactional(function () use ($connection, $table, $id, $rows, $ledger, &$assignmentError): void {
+                try {
+                    $connection->update($table, ['items_id' => null], ['id' => $id]);
+                } catch (DbalException $exception) {
+                    $assignmentError = $exception;
+                    throw $exception;
+                }
+                // Read before commit: rollback must never hide an accepted write.
+                $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id'))
+                    ->isIdenticalTo($rows, 'Accepted generated NULL preserves every fixture payload');
+                $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
+            });
+        } catch (DbalException $exception) {
+            if ($exception !== $assignmentError) {
+                throw $exception;
+            }
+            // PostgreSQL/MySQL may reject assignment; transactional owns its rollback.
+        }
+        $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id'))->isIdenticalTo($rows);
+        $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+    }
+
     private function assertIPAddressParentRetry(Connection $connection): void
     {
         self::runtimeMarker('test4.ip-address.setup');
@@ -980,7 +1011,11 @@ class OrmMigration extends GLPITestCase
         $release->apply($connection, static fn () => throw new LogicException('Completed address adoption replayed'));
         $this->array(Ledger::state($connection, IPAddressParentDefinition::PHASE))->isIdenticalTo($receipt);
         foreach ([['networknames_id' => 2001], ['networknames_id' => 0], ['itemtype' => 'PluginOpaqueParent'], ['opaque_parent_id' => 2000], ['items_id' => null]] as $invalid) {
-            $this->exception(static fn () => $connection->transactional(static fn () => $connection->update('glpi_ipaddresses', $invalid, ['id' => 2000])))->isInstanceOf(DbalException::class);
+            if ($invalid === ['items_id' => null]) {
+                $this->assertGeneratedIdentityNullPreservesRows($connection, 'glpi_ipaddresses', 2000);
+            } else {
+                $this->exception(static fn () => $connection->transactional(static fn () => $connection->update('glpi_ipaddresses', $invalid, ['id' => 2000])))->isInstanceOf(DbalException::class);
+            }
         }
         $this->exception(static fn () => $connection->transactional(static fn () =>
             $connection->insert('glpi_ipaddresses', ['id' => 2006, 'name' => '192.0.2.106', 'itemtype' => 'NetworkName',
@@ -1060,28 +1095,14 @@ class OrmMigration extends GLPITestCase
         self::runtimeMarker('test4.network-name.completed.replay');
         $release->apply($connection, static fn () => throw new LogicException('Completed name adoption replayed'));
         $this->array(Ledger::state($connection, NetworkNameParentDefinition::PHASE))->isIdenticalTo($receipt);
-        $beforeInvalid = $connection->fetchAssociative('SELECT id,itemtype,items_id,networkports_id,opaque_parent_id FROM glpi_networknames WHERE id=1000');
         foreach ([['networkports_id' => 1001], ['networkports_id' => 0], ['itemtype' => 'PluginOpaqueParent'],
             ['opaque_parent_id' => 1000], ['items_id' => null]] as $invalid) {
-            $caught = null;
-            try {
-                $connection->transactional(static fn () => $connection->update('glpi_networknames', $invalid, ['id' => 1000]));
-            } catch (DbalException $caught) {
+            if ($invalid === ['items_id' => null]) {
+                $this->assertGeneratedIdentityNullPreservesRows($connection, 'glpi_networknames', 1000);
+            } else {
+                $this->exception(static fn () => $connection->transactional(static fn () =>
+                    $connection->update('glpi_networknames', $invalid, ['id' => 1000])))->isInstanceOf(DbalException::class);
             }
-            $context = ['table' => 'glpi_networknames', 'invalid' => $invalid, 'before' => $beforeInvalid];
-            if ($caught === null) {
-                $context['accepted'] = $connection->fetchAssociative('SELECT id,itemtype,items_id,networkports_id,opaque_parent_id FROM glpi_networknames WHERE id=1000');
-                if ($connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
-                    $context['native'] = $connection->fetchAssociative(
-                        'SELECT VERSION() AS server_version, @@SESSION.sql_mode AS sql_mode, EXTRA AS `generated`, '
-                        . 'GENERATION_EXPRESSION AS `expression`, DATA_TYPE AS data_type, IS_NULLABLE AS is_nullable '
-                        . 'FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?',
-                        ['glpi_networknames', 'items_id']
-                    );
-                }
-            }
-            $this->boolean($caught instanceof DbalException)->isTrue('Native parent mutation must be rejected: ' . json_encode($context, JSON_THROW_ON_ERROR));
-            $this->exception($caught)->isInstanceOf(DbalException::class);
         }
         $this->exception(static fn () => $connection->transactional(static fn () =>
             $connection->insert('glpi_networknames', ['id' => 1006, 'name' => 'orphan-insert', 'itemtype' => 'NetworkPort',
@@ -1452,8 +1473,12 @@ class OrmMigration extends GLPITestCase
         $this->array(Ledger::state($connection, GraphicCardParentDefinition::PHASE))->isIdenticalTo($receipt);
         foreach ([['computers_id' => 3001], ['computers_id' => 0], ['itemtype' => null],
             ['itemtype' => 'PluginOpaqueParent'], ['opaque_parent_id' => 3000], ['items_id' => null]] as $invalid) {
-            $this->exception(static fn () => $connection->transactional(static fn () =>
-                $connection->update('glpi_items_devicegraphiccards', $invalid, ['id' => 3000])))->isInstanceOf(DbalException::class);
+            if ($invalid === ['items_id' => null]) {
+                $this->assertGeneratedIdentityNullPreservesRows($connection, 'glpi_items_devicegraphiccards', 3000);
+            } else {
+                $this->exception(static fn () => $connection->transactional(static fn () =>
+                    $connection->update('glpi_items_devicegraphiccards', $invalid, ['id' => 3000])))->isInstanceOf(DbalException::class);
+            }
         }
         $this->exception(static fn () => $connection->transactional(static fn () =>
             $connection->insert('glpi_items_devicegraphiccards', ['id' => 3008, 'devicegraphiccards_id' => 3000,
