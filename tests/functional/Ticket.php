@@ -70,6 +70,7 @@ use Document;
 use Document_Item;
 use Dropdown;
 use Entity as LegacyEntity;
+use GlpitestSQLError;
 use Group;
 use Group_Ticket;
 use Html;
@@ -621,7 +622,7 @@ class Ticket extends DbTestCase
             };
             $connection->beginTransaction();
             try {
-                $this->exception(static fn () => $ticket->numberOfFollowups())->isInstanceOf(DatabaseException::class);
+                $this->exception(static fn () => $ticket->numberOfFollowups())->isInstanceOf(GlpitestSQLError::class);
             } finally {
                 $connection->rollBack();
             }
