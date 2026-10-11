@@ -7,7 +7,6 @@ namespace itsmng\Database;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\Configuration;
 use Doctrine\ORM\EntityManager;
-use Doctrine\ORM\Events;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Query;
 use LogicException;
@@ -15,7 +14,6 @@ use Psr\SimpleCache\CacheInterface;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Adapter\ChainAdapter;
 use Symfony\Component\Cache\Adapter\ProxyAdapter;
-use Throwable;
 
 /** @internal Private implementation shared only by final read operation owners. */
 trait PrivateReadOwnership
@@ -28,7 +26,6 @@ trait PrivateReadOwnership
     private ?SerializedMetadataCache $queryCache = null;
     private array $identifiers = [];
     private bool $ownedMapping;
-    private bool $persistentMetadataLoaded = false;
     private bool $readCachesInitialized = false;
     private mixed $pool;
     private ?string $context = null;
@@ -80,36 +77,12 @@ trait PrivateReadOwnership
         // Custom/composite roots continue with the independently mutable local cache.
         $persistent = isset($this->identifiers[$class]) && $this->context !== null
             && ($lookupColumn === null || $this->identifiers[$class]['column'] === $lookupColumn);
-        $this->persistentMetadataLoaded = $this->persistentMetadataLoaded || $persistent;
         $cache = $persistent
             ? new SerializedMetadataCache($this->pool, 'orm_record_metadata_' . $this->context)
             : new ArrayAdapter(storeSerialized: true);
         $this->manager->getConfiguration()->setMetadataCache($cache);
         $this->manager->getMetadataFactory()->setCache($cache);
         return $this->manager->getClassMetadata($class);
-    }
-
-    private function fallbackManager(): EntityManager
-    {
-        if ($this->sharedManager || $this->persistentMetadataLoaded) {
-            return Orm::forConnection($this->connection);
-        }
-        // This manager has only local metadata. Retire private cache eligibility
-        // before callbacks can observe it, including on later operation reads.
-        $this->readCachesInitialized = true;
-        $this->context = null;
-        $this->queryCache = null;
-        $this->identifiers = [];
-        return $this->manager;
-    }
-
-    private function scalar(ClassMetadata $metadata): bool
-    {
-        return count($metadata->identifier) === 1
-            && $metadata->hasField($metadata->getSingleIdentifierFieldName())
-            && !$metadata->hasLifecycleCallbacks(Events::postLoad)
-            && empty($metadata->entityListeners[Events::postLoad])
-            && !$this->manager->getEventManager()->hasListeners(Events::postLoad);
     }
 
     private function defaultIdentifiers(ClassMetadata $metadata): ?array
@@ -154,23 +127,6 @@ trait PrivateReadOwnership
     {
         if (!$this->suppliedManager) {
             $this->cleanupRequired = true;
-        }
-    }
-
-    /** Clean the actual fallback owner once, preserving both real failures. */
-    private function clearFallback(EntityManager $manager, ?Throwable $primary): void
-    {
-        if ($manager === $this->manager) {
-            if ($this->suppliedManager) {
-                return;
-            }
-            // Clear listeners may throw: terminal close must not retry this cleanup.
-            $this->cleanupRequired = false;
-        }
-        try {
-            $manager->clear();
-        } catch (Throwable $cleanup) {
-            throw $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
         }
     }
 

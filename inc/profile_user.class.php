@@ -753,7 +753,7 @@ class Profile_User extends CommonDBRelation
         global $DB;
         $connection = $DB->getDoctrineConnection();
         $table = self::getTable();
-        $ids = $sqlfilter === [] && $table === 'glpi_profiles_users'
+        $ids = $sqlfilter === []
             ? Orm::withReadConnection($connection, static fn (?EntityManager $manager): array =>
                 (new ProfileUserReadOperation($connection, $manager))->profileIds($user_ID))
             : Orm::withReadConnection($connection, static fn (?EntityManager $manager): array =>
