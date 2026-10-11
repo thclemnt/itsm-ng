@@ -470,7 +470,7 @@ class User extends CommonDBTM
      */
     public function getFromDBbyName($name)
     {
-        return $this->getFromDBByCrit(['name' => $name]);
+        return $this->getFromDBByLogin($name, []);
     }
 
     /**
@@ -484,11 +484,35 @@ class User extends CommonDBTM
      */
     public function getFromDBbyNameAndAuth($name, $authtype, $auths_id)
     {
-        return $this->getFromDBByCrit([
-           'name'     => $name,
-           'authtype' => $authtype,
-           'auths_id' => $auths_id
-           ]);
+        return $this->getFromDBByLogin($name, ['authtype' => $authtype, 'auths_id' => $auths_id]);
+    }
+
+
+    /** Primitive login names are text; custom models and criteria retain their public dispatch. */
+    private function getFromDBByLogin($name, array $source)
+    {
+        global $DB;
+
+        if (
+            static::class !== self::class || !is_string($name)
+            || array_filter($source, static fn ($value): bool => $value !== null && !is_scalar($value))
+        ) {
+            return $this->getFromDBByCrit(['name' => $name] + $source);
+        }
+        $database = $DB;
+        // Exact core User uses the inherited pure cached getter. Forced routes stay legacy.
+        if ($this->getTable() !== 'glpi_users') {
+            return $this->getFromDBByCrit(['name' => $name] + $source);
+        }
+        $match = Orm::read($database, static fn (EntityManager $manager): array =>
+            (new UserRepository($manager))->loginMatch(LegacyValues::decodeString($name), $source), clearCustomManager: true);
+        if ($match['count'] === 1) {
+            return $this->getFromDB($match['id']);
+        }
+        if ($match['count'] > 1) {
+            trigger_error(sprintf('getFromDBByCrit expects to get one result, %s found.', $match['count']), E_USER_WARNING);
+        }
+        return false;
     }
 
     /**
@@ -677,7 +701,9 @@ class User extends CommonDBTM
 
         // Check if user does not exists
         if (Orm::read($DB, static fn (EntityManager $manager): bool =>
-            (new UserRepository($manager))->exists(['name' => $input['name']] + $authentication['identity'], true))) {
+            is_string($input['name'])
+                ? (new UserRepository($manager))->loginExists(LegacyValues::decodeString($input['name']), $authentication['identity'])
+                : (new UserRepository($manager))->exists(['name' => $input['name']] + $authentication['identity'], true))) {
             Session::addMessageAfterRedirect(
                 __('Unable to add. The user already exists.'),
                 false,
@@ -4714,7 +4740,15 @@ class User extends CommonDBTM
      */
     public static function getIdByName($name)
     {
-        return self::getIdByField('name', $name);
+        global $DB;
+
+        if (!is_string($name)) {
+            return self::getIdByField('name', $name);
+        }
+        return Orm::read($DB, static function (EntityManager $manager) use ($name): ?int {
+            $ids = (new UserRepository($manager))->loginIdentities(LegacyValues::decodeString(addslashes($name)));
+            return count($ids) === 1 ? $ids[0] : null;
+        }) ?? false;
     }
 
 

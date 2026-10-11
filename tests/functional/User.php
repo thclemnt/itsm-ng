@@ -48,6 +48,8 @@ use DbTestCase;
 use DbUtils;
 use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Configuration;
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\DBAL\Result;
 use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\DBAL\Exception\LockWaitTimeoutException;
 use Doctrine\DBAL\Logging\Middleware;
@@ -61,6 +63,7 @@ use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use Doctrine\ORM\Event\OnClearEventArgs;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\NoResultException;
@@ -74,6 +77,7 @@ use itsmng\Database\Entity\Computer;
 use itsmng\Database\Entity\Entity as EntityRecord;
 use itsmng\Database\Entity\ProfileUser;
 use itsmng\Database\Entity\User as UserRecord;
+use itsmng\Database\Entity\AuthLDAP as LdapRecord;
 use itsmng\Database\MutationCleanupFailure;
 use itsmng\Database\MutationRollbackFailure;
 use itsmng\Database\MySQLConnection;
@@ -2556,6 +2560,221 @@ class User extends DbTestCase
         $this->array($user->fields)
            ->integer['id']->isIdenticalTo($uid)
            ->string['name']->isIdenticalTo('user_with_syncfield');
+    }
+
+    public function testLiteralLoginIdentityKeepsNativeNullAuthAndCurrentRows(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $manager = Orm::create($DB);
+            $nullName = new UserRecord();
+            $nullName->entities = $manager->getReference(EntityRecord::class, $entity);
+            $manager->persist($nullName);
+            $manager->flush();
+            $connection = $DB->getDoctrineConnection();
+            foreach (['NULL', 'null'] as $name) {
+                $user = new UserModel();
+                $id = (int)$user->add([
+                    'name' => $name,
+                    'entities_id' => $entity,
+                    'password' => 'Literal fixture password',
+                    'password2' => 'Literal fixture password',
+                    '_profiles_id' => (int)$_SESSION['glpiactiveprofile']['id'],
+                    '_entities_id' => $entity,
+                ]);
+                $this->integer($id)->isGreaterThan(0);
+                $this->string($connection->fetchOne('SELECT name FROM glpi_users WHERE id=?', [$id]))->isIdenticalTo($name);
+                $this->boolean($user->getFromDBbyName($name))->isTrue();
+                $this->integer((int)$user->getID())->isIdenticalTo($id);
+                $this->integer(UserModel::getIdByName($name))->isIdenticalTo($id);
+                $this->boolean($user->getFromDBbyNameAndAuth($name, Auth::DB_GLPI, 0))->isTrue();
+                $this->boolean($user->getFromDBbyNameAndAuth($name, Auth::LDAP, 0))->isFalse();
+                $this->boolean($user->getFromDBbyName(null))->isTrue();
+                $this->integer((int)$user->getID())->isIdenticalTo($nullName->id);
+                $this->boolean($user->getFromDBbyNameAndAuth($name, ['=', $nullName->authtype], ['=', 0]))->isTrue();
+                $this->integer((int)$user->getID())->isIdenticalTo($nullName->id);
+                $this->boolean((new Auth())->login($name, 'Literal fixture password', true))->isTrue();
+                $this->integer((int)Session::getLoginUserID())->isIdenticalTo($id);
+                $this->boolean(in_array($entity, array_map('intval', $_SESSION['glpiactiveentities']), true))->isTrue();
+                $this->login();
+                $this->setEntity('_test_root_entity', true);
+                $this->integer($connection->update('glpi_users', ['name' => 'retired_' . $id], ['id' => $id]))->isIdenticalTo(1);
+            }
+            $record = new UserRecord();
+            $record->entities = $manager->getReference(EntityRecord::class, $entity);
+            $record->name = "Lookup O'Brien\\path";
+            $manager->persist($record);
+            $manager->flush();
+            $user = new UserModel();
+            $this->boolean($user->getFromDBbyName(addslashes($record->name)))->isTrue();
+            $this->integer(UserModel::getIdByName($record->name))->isIdenticalTo($record->id);
+            $record->name = 'Unflushed independent identity';
+            $this->integer($connection->update('glpi_users', ['name' => 'NULL'], ['id' => $record->id]))->isIdenticalTo(1);
+            $level = $connection->getTransactionNestingLevel();
+            Orm::read($DB, function (EntityManager $outer) use ($record, $user): void {
+                $dirty = $outer->find(UserRecord::class, $record->id);
+                $dirty->name = 'Unflushed enclosing identity';
+                $this->boolean($user->getFromDBbyName('NULL'))->isTrue();
+                $this->integer((int)$user->getID())->isIdenticalTo($record->id);
+                $this->boolean($outer->contains($dirty))->isTrue();
+                $this->string($dirty->name)->isIdenticalTo('Unflushed enclosing identity');
+            });
+            $this->boolean($manager->contains($record))->isTrue();
+            $this->string($record->name)->isIdenticalTo('Unflushed independent identity');
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+            $duplicate = new UserRecord();
+            $duplicate->entities = $manager->getReference(EntityRecord::class, $entity);
+            $duplicate->name = 'NULL';
+            // Never flush the independently dirty account along with the new duplicate.
+            $duplicateOwner = Orm::create($DB);
+            $duplicate->entities = $duplicateOwner->getReference(EntityRecord::class, $entity);
+            $duplicateOwner->persist($duplicate);
+            $third = new UserRecord();
+            $third->entities = $duplicateOwner->getReference(EntityRecord::class, $entity);
+            $third->name = 'NULL';
+            $duplicateOwner->persist($third);
+            $duplicateOwner->flush();
+            $this->variable(UserModel::getIdByName('NULL'))->isFalse();
+            $this->when(static fn () => $user->getFromDBbyName('NULL'))->error()
+                ->withType(E_USER_WARNING)
+                ->withMessage('getFromDBByCrit expects to get one result, 3 found.')->exists();
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
+    public function testLoginIdentityPreservesCustomRouteAndOpaqueDispatch(): void
+    {
+        global $DB;
+        $original = $DB;
+        $session = $_SESSION;
+        $table = UserModel::getTable();
+        try {
+            $this->login();
+            $user = $this->createItem(UserModel::class, ['name' => 'route_identity_' . $this->getUniqueString()]);
+            $name = $user->fields['name'];
+            $connection = $DB->getDoctrineConnection();
+            $observer = new class () {
+                public array $trace = [];
+                public int $clears = 0;
+                public array $clearedManagers = [];
+                public array $clearTraces = [];
+
+                public function onClear(OnClearEventArgs $event): void
+                {
+                    ++$this->clears;
+                    $this->clearedManagers[] = $event->getObjectManager();
+                    $this->clearTraces[] = $this->trace;
+                }
+            };
+            $selected = new class ($connection) extends ScalarReadProbe {
+                public object $observer;
+                public EventManager $events;
+                public bool $fail = false;
+
+                public function getEventManager(): EventManager
+                {
+                    $this->observer->trace[] = 'constructed';
+                    return $this->events;
+                }
+
+                public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
+                {
+                    if ($this->fail) {
+                        throw new LogicException('Refused login identity read');
+                    }
+                    return parent::executeQuery($sql, $params, $types, $qcp);
+                }
+            };
+            $selected->observer = $observer;
+            $selected->events = new EventManager();
+            $selected->events->addEventListener('onClear', $observer);
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new DBmysql();
+            $this->calling($adapter)->getDoctrineConnection = $selected;
+            $DB = $adapter;
+            $this->integer(UserModel::getIdByName($name))->isIdenticalTo((int)$user->getID());
+            $this->array($observer->trace)->isIdenticalTo(['constructed']);
+            $this->integer($observer->clears)->isIdenticalTo(0);
+            $observer->trace = [];
+            $value = new class ($name, $observer, $original) {
+                public function __construct(private string $name, private object $observer, private DBAdapter $original)
+                {
+                }
+
+                public function __toString(): string
+                {
+                    $this->observer->trace[] = 'converted';
+                    $GLOBALS['DB'] = $this->original;
+                    return $this->name;
+                }
+            };
+            $DB = $adapter;
+            $this->integer(UserModel::getIdByName($value))->isIdenticalTo((int)$user->getID());
+            $this->array($observer->trace)->isIdenticalTo(['constructed', 'converted']);
+            $this->array($selected->queries)->hasSize(2);
+            $this->integer($observer->clears)->isIdenticalTo(0);
+            $selected->fail = true;
+            $DB = $adapter;
+            $this->exception(static fn () => UserModel::getIdByName($name))->isInstanceOf(LogicException::class)
+                ->hasMessage('Refused login identity read');
+            $selected->fail = false;
+            $this->integer(UserModel::getIdByName($name))->isIdenticalTo((int)$user->getID());
+            $this->integer($observer->clears)->isIdenticalTo(0);
+            $observer->trace = [];
+            $byName = new UserModel();
+            $this->boolean($byName->getFromDBbyName($name))->isTrue();
+            $this->integer((int)$byName->getID())->isIdenticalTo((int)$user->getID());
+            $this->array($observer->trace)->isIdenticalTo(['constructed', 'constructed']);
+            $this->integer($observer->clears)->isIdenticalTo(2);
+            $this->array($observer->clearTraces)->isIdenticalTo([['constructed'], ['constructed', 'constructed']]);
+            $this->boolean($observer->clearedManagers[0] === $observer->clearedManagers[1])->isFalse();
+            $this->boolean($observer->clearedManagers[0]->getConnection() === $selected)->isTrue();
+            $this->boolean($observer->clearedManagers[1]->getConnection() === $selected)->isTrue();
+            $selected->fail = true;
+            $this->exception(static fn () => (new UserModel())->getFromDBbyName($name))->isInstanceOf(LogicException::class)
+                ->hasMessage('Refused login identity read');
+            $this->integer($observer->clears)->isIdenticalTo(3);
+            $this->boolean($observer->clearedManagers[2] === $observer->clearedManagers[0])->isFalse();
+            $this->boolean($observer->clearedManagers[2]->getConnection() === $selected)->isTrue();
+            $selected->fail = false;
+            $DB = $original;
+            $opaque = new class () extends UserModel {
+                public array $criteria = [];
+
+                public function getFromDBByCrit(array $criteria)
+                {
+                    $this->criteria = $criteria;
+                    return false;
+                }
+            };
+            $this->boolean($opaque->getFromDBbyName(['=', $name]))->isFalse();
+            $this->array($opaque->criteria)->isIdenticalTo(['name' => ['=', $name]]);
+            $directory = $this->createItem(AuthLDAP::class, ['name' => 'forced_' . $this->getUniqueString()]);
+            $directoryOwner = Orm::create($DB);
+            $external = new UserRecord();
+            $external->entities = $directoryOwner->getReference(EntityRecord::class, 0);
+            $external->name = 'NULL';
+            $external->authtype = Auth::LDAP;
+            $external->auth_source_code = null;
+            $external->authldap = $directoryOwner->getReference(LdapRecord::class, (int)$directory->getID());
+            $directoryOwner->persist($external);
+            $directoryOwner->flush();
+            $externalModel = new UserModel();
+            $this->boolean($externalModel->getFromDBbyNameAndAuth('NULL', Auth::LDAP, $directory->getID()))->isTrue();
+            $this->integer((int)$externalModel->getID())->isIdenticalTo($external->id);
+            $this->boolean($externalModel->getFromDBbyNameAndAuth('NULL', Auth::LDAP, 0))->isFalse();
+            UserModel::forceTable(AuthLDAP::getTable());
+            $this->boolean((new UserModel())->getFromDBbyName($directory->fields['name']))->isTrue();
+        } finally {
+            UserModel::forceTable($table);
+            $DB = $original;
+            $_SESSION = $session;
+        }
     }
 
     public function testGetFromDBbyName()

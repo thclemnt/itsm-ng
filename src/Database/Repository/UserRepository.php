@@ -469,6 +469,41 @@ final class UserRepository
         return $row === null ? null : (int)$row['id'];
     }
 
+    /** Login is domain text; authentication-source criteria retain their existing operators. */
+    private function loginQuery(string $name, array $source): QueryBuilder
+    {
+        $metadata = $this->em->getClassMetadata(User::class);
+        $query = $this->em->createQueryBuilder()->from(User::class, 'r');
+        $query->where('r.' . $metadata->getFieldName('name') . ' = :login_name')
+            ->setParameter('login_name', $name, $metadata->getTypeOfField($metadata->getFieldName('name')));
+        if ($source) {
+            $query->andWhere((new RecordCriteria($query, $metadata))->where($source));
+        }
+        return $query;
+    }
+
+    /** Completed identities before the public User model reload; ambiguity never selects one. */
+    public function loginIdentities(string $name, array $source = []): array
+    {
+        $rows = $this->loginQuery($name, $source)->select('r.id')->setMaxResults(2)
+            ->getQuery()->getScalarResult();
+        return array_map(static fn (array $row): int => (int)$row['id'], $rows);
+    }
+
+    /** Count and sole identity are one current snapshot; a duplicate never reaches model reload. */
+    public function loginMatch(string $name, array $source = []): array
+    {
+        $row = $this->loginQuery($name, $source)->select('COUNT(r.id) AS matches, MIN(r.id) AS identity')
+            ->getQuery()->getSingleResult(Query::HYDRATE_SCALAR);
+        return ['count' => (int)$row['matches'], 'id' => $row['identity'] === null ? null : (int)$row['identity']];
+    }
+
+    public function loginExists(string $name, array $source): bool
+    {
+        return $this->loginQuery($name, $source)->select('r.id')->setMaxResults(1)
+            ->getQuery()->getOneOrNullResult() !== null;
+    }
+
     /** Fetch at most two IDs so ambiguity never resolves to an arbitrary account. */
     public function uniqueId(string $field, mixed $value, bool $legacyValues = false): ?int
     {
