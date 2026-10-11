@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\SavedSearchRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -129,7 +132,7 @@ class SavedSearch_Alert extends CommonDBChild
             if ($data = $search->execute()) {
                 $count = $data['data']['totalcount'];
             }
-        } catch (\RuntimeException $e) {
+        } catch (RuntimeException $e) {
             Toolbox::logError($e);
         }
 
@@ -197,8 +200,6 @@ class SavedSearch_Alert extends CommonDBChild
     **/
     public static function showForSavedSearch(SavedSearch $search, $withtemplate = 0)
     {
-        global $DB;
-
         $ID = $search->getID();
 
         if (
@@ -213,15 +214,12 @@ class SavedSearch_Alert extends CommonDBChild
 
         echo "<div class='firstbloc'>";
 
-        $iterator = $DB->request([
-           'FROM'   => Notification::getTable(),
-           'WHERE'  => [
+        $rows = (new Notification())->find([
               'itemtype'  => self::getType(),
               'event'     => 'alert' . ($search->getField('is_private') ? '' : '_' . $search->getID())
-           ]
         ]);
 
-        if (!$iterator->numRows()) {
+        if (!count($rows)) {
             echo "<span class='required'><strong>" . __('Notification does not exists!') . "</strong></span>";
             if ($canedit) {
                 echo "<br/><a href='{$search->getFormURLWithID($search->fields['id'])}&amp;create_notif=true'>"
@@ -229,9 +227,9 @@ class SavedSearch_Alert extends CommonDBChild
                 $canedit = false;
             }
         } else {
-            echo _n('Notification used:', 'Notifications used:', $iterator->numRows()) . "&nbsp;";
+            echo _n('Notification used:', 'Notifications used:', count($rows)) . "&nbsp;";
             $first = true;
-            while ($row = $iterator->next()) {
+            foreach ($rows as $row) {
                 if (!$first) {
                     echo ', ';
                 }
@@ -257,16 +255,13 @@ class SavedSearch_Alert extends CommonDBChild
             echo "</a></div>\n";
         }
 
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['savedsearches_id' => $ID]
-        ]);
+        $rows = (new self())->find(['savedsearches_id' => $ID], ['id']);
 
         echo "<table class='tab_cadre_fixehov' aria-label'Tables for active item'>";
 
         $colspan = 4;
-        if ($iterator->numrows()) {
-            echo "<tr class='noHover'><th colspan='$colspan'>" . self::getTypeName($iterator->numrows()) .
+        if (count($rows)) {
+            echo "<tr class='noHover'><th colspan='$colspan'>" . self::getTypeName(count($rows)) .
                "</th></tr>";
 
             $header = "<tr><th>" . __('Name') . "</th>";
@@ -277,7 +272,7 @@ class SavedSearch_Alert extends CommonDBChild
             echo $header;
 
             $alert = new self();
-            while ($data = $iterator->next()) {
+            foreach ($rows as $data) {
                 $alert->getFromDB($data['id']);
                 echo "<tr class='tab_bg_2'>";
                 echo "<td>" . $alert->getLink() . "</td>";
@@ -370,12 +365,9 @@ class SavedSearch_Alert extends CommonDBChild
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['is_active' => true]
-        ]);
+        $rows = (new SavedSearchRepository(Orm::create($DB)))->activeAlerts();
 
-        if ($iterator->numrows()) {
+        if ($rows) {
             $savedsearch = new SavedSearch();
 
             if (!isset($_SESSION['glpiname'])) {
@@ -386,14 +378,18 @@ class SavedSearch_Alert extends CommonDBChild
             // Will save $_SESSION and $CFG_GLPI cron context into an array
             $context = self::saveContext();
 
-            while ($row = $iterator->next()) {
+            foreach ($rows as $row) {
                 //execute saved search to get results
                 try {
-                    $savedsearch->getFromDB($row['savedsearches_id']);
+                    if (!$savedsearch->getFromDB($row['savedsearches_id']) || empty($savedsearch->fields['users_id'])) {
+                        continue;
+                    }
                     if (isCommandLine()) {
                         //search requires a logged in user...
                         $user = new User();
-                        $user->getFromDB($savedsearch->fields['users_id']);
+                        if (!$user->getFromDB($savedsearch->fields['users_id'])) {
+                            continue;
+                        }
                         $auth = new Auth();
                         $auth->user = $user;
                         $auth->auth_succeded = true;
@@ -433,7 +429,7 @@ class SavedSearch_Alert extends CommonDBChild
                             $tr_op = __('greater than');
                             break;
                         default:
-                            throw new \RuntimeException("Unknonw operator '{$row['operator']}'");
+                            throw new RuntimeException("Unknonw operator '{$row['operator']}'");
                     }
 
                     //TRANS : %1$s is the name of the saved search,
@@ -460,7 +456,7 @@ class SavedSearch_Alert extends CommonDBChild
                         NotificationEvent::raiseEvent($event, $alert, $data);
                         $task->addVolume(1);
                     }
-                } catch (\Exception $e) {
+                } catch (Exception $e) {
                     self::restoreContext($context);
                     Toolbox::logError($e);
                 }

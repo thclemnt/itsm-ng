@@ -1,0 +1,179 @@
+name: Application tests
+
+on: [pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  isolated:
+    name: Isolated units / PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.5']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mysqli, pdo_mysql, pgsql, pdo_pgsql, dom, curl, mbstring, zip, pcntl, intl, gd, ldap, exif, apcu, redis
+          coverage: none
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: php bin/console dependencies install
+      - name: Test isolated Doctrine and domain units
+        run: composer test:units:isolated
+
+  application:
+    name: Application / PHP ${{ matrix.php }} / ${{ matrix.database.label }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.5']
+        database:
+          - image: mariadb:11.8
+            label: MariaDB 11.8
+            id: mariadb-11.8
+            provider: mysql
+            port: 3306
+            health: mariadb-admin ping
+            client: mariadb
+            tzinfo: mariadb-tzinfo-to-sql
+          - image: mysql:8.4
+            label: MySQL 8.4
+            id: mysql-8.4
+            provider: mysql
+            port: 3306
+            health: mysqladmin ping
+            client: mysql
+            tzinfo: mysql_tzinfo_to_sql
+          - image: postgres:14
+            label: PostgreSQL 14
+            id: postgres-14
+            provider: pgsql
+            port: 5432
+            health: pg_isready -U test -d itsm_test_application
+          - image: postgres:18
+            label: PostgreSQL 18
+            id: postgres-18
+            provider: pgsql
+            port: 5432
+            health: pg_isready -U test -d itsm_test_application
+    env:
+      GLPI_CONFIG_DIR: ${{ github.workspace }}/tests/config
+      ITSM_TEST_MIGRATION_DB: itsm_test_ci_migration
+    services:
+      database:
+        image: ${{ matrix.database.image }}
+        env:
+          MYSQL_DATABASE: itsm_test_application
+          MYSQL_USER: test
+          MYSQL_PASSWORD: test
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_ROOT_HOST: '%'
+          POSTGRES_DB: itsm_test_application
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports:
+          - ${{ matrix.database.port }}:${{ matrix.database.port }}
+        options: >-
+          --health-cmd "${{ matrix.database.health }}"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mysqli, pdo_mysql, pgsql, pdo_pgsql, dom, curl, mbstring, zip, pcntl, intl, gd, ldap, exif, soap, bcmath, apcu, redis
+          coverage: none
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: php bin/console dependencies install
+      - name: Prepare MySQL timezone data and separate migration target
+        if: matrix.database.provider == 'mysql'
+        run: |
+          docker exec "${{ job.services.database.id }}" "${{ matrix.database.tzinfo }}" /usr/share/zoneinfo | docker exec -i "${{ job.services.database.id }}" "${{ matrix.database.client }}" -uroot -ptest mysql
+          docker exec "${{ job.services.database.id }}" ${{ matrix.database.client }} -uroot -ptest -e "GRANT SELECT ON mysql.time_zone_name TO 'test'@'%'; CREATE DATABASE $ITSM_TEST_MIGRATION_DB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON $ITSM_TEST_MIGRATION_DB.* TO 'test'@'%';"
+          # Only disposable Config catalog fixtures may create/drop extra databases.
+          docker exec -i "${{ job.services.database.id }}" "${{ matrix.database.client }}" -uroot -ptest <<'SQL'
+          GRANT ALL ON `itsm\_test\_config\_catalog\_%`.* TO 'test'@'%';
+          SQL
+      - name: Prepare MySQL 8.4 redo capacity for native DDL
+        if: matrix.database.id == 'mysql-8.4'
+        timeout-minutes: 2
+        run: |
+          container="${{ job.services.database.id }}"
+          durability='SELECT @@GLOBAL.innodb_flush_log_at_trx_commit, @@GLOBAL.sync_binlog, @@GLOBAL.innodb_doublewrite, @@GLOBAL.sql_mode'
+          before=$(docker exec "$container" mysql -uroot -ptest --batch --skip-column-names -e "$durability")
+          # Increase only redo capacity on this disposable service; preserve durability.
+          docker exec "$container" mysql -uroot -ptest -e 'SET GLOBAL innodb_redo_log_capacity = 268435456'
+          resized=false
+          for attempt in {1..30}; do
+            actual=$(docker exec "$container" mysql -uroot -ptest --batch --skip-column-names -e "SELECT @@GLOBAL.innodb_redo_log_capacity, VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Innodb_redo_log_capacity_resized'")
+            if [[ "$actual" == $'268435456\t268435456' ]]; then resized=true; break; fi
+            sleep 1
+          done
+          after=$(docker exec "$container" mysql -uroot -ptest --batch --skip-column-names -e "$durability")
+          test "$before" = "$after"
+          test "$resized" = true
+      - name: Prepare PostgreSQL migration lock budget and separate target
+        if: matrix.database.provider == 'pgsql'
+        run: |
+          docker exec "${{ job.services.database.id }}" psql -U test -d itsm_test_application --set=ON_ERROR_STOP=1 -c 'ALTER SYSTEM SET max_locks_per_transaction = 512'
+          docker restart "${{ job.services.database.id }}"
+          ready=false
+          for attempt in $(seq 1 30); do
+            if docker exec "${{ job.services.database.id }}" pg_isready -U test -d itsm_test_application; then ready=true; break; fi
+            sleep 1
+          done
+          test "$ready" = true
+          docker exec "${{ job.services.database.id }}" psql -U test -d itsm_test_application --set=ON_ERROR_STOP=1 -c "CREATE DATABASE $ITSM_TEST_MIGRATION_DB"
+      - name: Install through the public command
+        run: >-
+          php bin/console db:install --config-dir="$GLPI_CONFIG_DIR"
+          --db-type=${{ matrix.database.provider }}
+          --db-host=127.0.0.1 --db-port=${{ matrix.database.port }}
+          --db-name=itsm_test_application --db-user=test --db-password=test --no-interaction
+      - name: Test native installation and populated migration boundaries
+        env:
+          ITSM_MIGRATION_XUNIT: ${{ runner.temp }}/migration.xml
+          COMPOSER_PROCESS_TIMEOUT: '0'
+        # Complete MySQL runs reached 299s; allow headroom for runner variance.
+        # The finite outer timeout owns the suite, including Composer's child.
+        run: timeout --signal=TERM --kill-after=10s 600s composer test:migration -- --use-tap-report -c tests/configurations/migration.php 2>&1 | tee "$RUNNER_TEMP/migration.log"
+      - name: Test ordinary units
+        run: composer test:units -- --fail-if-skipped-methods 2>&1 | tee "$RUNNER_TEMP/units.log"
+      - name: Test application behavior
+        id: application_behavior
+        run: composer test:function -- --fail-if-skipped-methods 2>&1 | tee "$RUNNER_TEMP/functional.log"
+      - name: Verify the core schema after application tests
+        if: ${{ !cancelled() && (steps.application_behavior.outcome == 'success' || steps.application_behavior.outcome == 'failure') }}
+        run: php bin/console db:check --config-dir="$GLPI_CONFIG_DIR" --no-interaction 2>&1 | tee "$RUNNER_TEMP/schema-check.log"
+      - name: Retain test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: application-php-${{ matrix.php }}-${{ matrix.database.id }}
+          path: |
+            ${{ runner.temp }}/migration.log
+            ${{ runner.temp }}/migration.xml
+            ${{ runner.temp }}/units.log
+            ${{ runner.temp }}/functional.log
+            ${{ runner.temp }}/schema-check.log
+            tests/files/_log/
+          if-no-files-found: ignore

@@ -1,10 +1,16 @@
 services:
+  app:
+    environment:
+      GLPI_VAR_DIR: "${PLAYWRIGHT_VAR_DIR}"
+
   app-web:
     container_name: "app-web"
     image: "${PHP_IMAGE:-itsm-tests-app:local}"
+    pull_policy: never
     working_dir: "/var/itsm"
-    command: ["php", "-S", "0.0.0.0:8088", "tests/router.php"]
+    command: ["php", "-S", "127.0.0.1:8088", "tests/router.php"]
     environment:
+      GLPI_VAR_DIR: "${PLAYWRIGHT_VAR_DIR}"
       CODE_COVERAGE: "${CODE_COVERAGE:-false}"
     depends_on:
       - db
@@ -19,11 +25,28 @@ services:
 
   e2e:
     container_name: "e2e"
-    image: "${E2E_IMAGE:-mcr.microsoft.com/playwright:v1.59.1-jammy}"
+    build:
+      context: "${APPLICATION_ROOT}"
+      dockerfile: ".github/actions/images/app/Dockerfile"
+      target: e2e
+      args:
+        PHP_VERSION: "${TEST_PHP_VERSION:-8.2}"
+    image: "${E2E_IMAGE:-itsm-tests-e2e:local}"
+    pull_policy: build
     working_dir: "/var/itsm"
     command: ["sleep", "infinity"]
     ipc: host
+    network_mode: "service:app-web"
+    environment:
+      GLPI_VAR_DIR: "${PLAYWRIGHT_VAR_DIR}"
+      PLAYWRIGHT_BASE_URL: http://127.0.0.1:8088
+      PLAYWRIGHT_DOMAIN_CONFIG: /var/itsm/tests/config
+      PLAYWRIGHT_APPLIANCE_CONFIG: /var/itsm/tests/config
+      PLAYWRIGHT_TRANSFER_CONFIG: /var/itsm/tests/config
+      PLAYWRIGHT_DROPDOWN_CONFIG: /var/itsm/tests/config
+      PLAYWRIGHT_SESSION_CONFIG: /var/itsm/tests/config
     depends_on:
       - app-web
     volumes:
       - "${APPLICATION_ROOT}:/var/itsm:z"
+      - "${APP_CONTAINER_HOME}:/home/itsm:z"

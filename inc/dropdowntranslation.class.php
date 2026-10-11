@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DropdownTranslationRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -46,6 +51,12 @@ class DropdownTranslation extends CommonDBChild
     public static $items_id = 'items_id';
     public $dohistory       = true;
     public static $rightname       = 'dropdown';
+
+    private static function repository(): DropdownTranslationRepository
+    {
+        global $DB;
+        return new DropdownTranslationRepository(Orm::create($DB));
+    }
 
 
     public static function getTypeName($nb = 0)
@@ -273,7 +284,6 @@ class DropdownTranslation extends CommonDBChild
     **/
     public function generateCompletename($input, $add = true)
     {
-        global $DB;
         // Force completename translated : used for the first translation
         $_SESSION['glpi_dropdowntranslations'][$input['itemtype']]['completename'] = 'completename';
 
@@ -339,17 +349,12 @@ class DropdownTranslation extends CommonDBChild
                 }
             }
 
-            $iterator = $DB->request([
-               'SELECT' => ['id'],
-               'FROM'   => $item->getTable(),
-               'WHERE'  => [
-                  $foreignKey => $item->getID()
-               ]
-            ]);
-
-            while ($tmp = $iterator->next()) {
+            $childIds = isset(EntityRegistry::tables()[$item->getTable()])
+                ? self::repository()->childIds($item->getTable(), $foreignKey, $item->getID())
+                : array_keys($item->find([$foreignKey => $item->getID()]));
+            foreach ($childIds as $childId) {
                 $input2 = $input;
-                $input2['items_id'] = $tmp['id'];
+                $input2['items_id'] = $childId;
                 $this->generateCompletename($input2, $add);
             }
         }
@@ -365,7 +370,7 @@ class DropdownTranslation extends CommonDBChild
     **/
     public static function showTranslations(CommonDropdown $item)
     {
-        global $DB, $CFG_GLPI;
+        global $CFG_GLPI;
 
         $rand    = mt_rand();
         $canedit = $item->can($item->getID(), UPDATE);
@@ -392,15 +397,14 @@ class DropdownTranslation extends CommonDBChild
                  "</a></div><br>";
         }
 
-        $iterator = $DB->request([
-           'FROM'   => getTableForItemType(__CLASS__),
-           'WHERE'  => [
+        $iterator = new RowIterator(self::repository()->rows(
+            [
               'itemtype'  => $item->getType(),
               'items_id'  => $item->getID(),
               'field'     => ['<>', 'completename']
            ],
-           'ORDER'  => ['language ASC']
-        ]);
+            ['language ASC', 'id ASC']
+        ));
         if (count($iterator)) {
             if ($canedit) {
                 Html::openMassiveActionsForm('mass' . __CLASS__ . $rand);
@@ -550,7 +554,6 @@ class DropdownTranslation extends CommonDBChild
     **/
     public static function dropdownFields(CommonDBTM $item, $language = '', $value = '')
     {
-        global $DB;
 
         $options = [];
         foreach (Search::getOptions(get_class($item)) as $id => $field) {
@@ -568,15 +571,11 @@ class DropdownTranslation extends CommonDBChild
 
         $used = [];
         if (!empty($options)) {
-            $iterator = $DB->request([
-               'SELECT' => 'field',
-               'FROM'   => self::getTable(),
-               'WHERE'  => [
+            $iterator = new RowIterator(self::repository()->rows([
                   'itemtype'  => $item->getType(),
                   'items_id'  => $item->getID(),
                   'language'  => $language
-               ]
-            ]);
+            ]));
             if (count($iterator) > 0) {
                 while ($data = $iterator->next()) {
                     $used[$data['field']] = $data['field'];
@@ -602,7 +601,6 @@ class DropdownTranslation extends CommonDBChild
     **/
     public static function getTranslatedValue($ID, $itemtype, $field = 'name', $language = '', $value = '')
     {
-        global $DB;
 
         if ($language == '') {
             $language = $_SESSION['glpilanguage'];
@@ -621,31 +619,20 @@ class DropdownTranslation extends CommonDBChild
         if ($ID > 0) {
             //There's at least one translation for this itemtype
             if (self::hasItemtypeATranslation($itemtype)) {
-                $iterator = $DB->request([
-                   'SELECT' => ['value'],
-                   'FROM'   => self::getTable(),
-                   'WHERE'  => [
+                $rows = self::repository()->rows([
                       'itemtype'  => $itemtype,
                       'items_id'  => $ID,
                       'field'     => $field,
                       'language'  => $language
-                   ]
-                ]);
+                ], limit: 1);
                 //The field is already translated in this language
-                if (count($iterator)) {
-                    $current = $iterator->next();
-                    return $current['value'];
+                if ($rows) {
+                    return $rows[0]['value'];
                 }
             }
             //Get the value coming from the dropdown table
-            $iterator = $DB->request([
-               'SELECT' => $field,
-               'FROM'   => getTableForItemType($itemtype),
-               'WHERE'  => ['id' => $ID]
-            ]);
-            if (count($iterator)) {
-                $current = $iterator->next();
-                return $current[$field];
+            if ($item->getFromDB($ID)) {
+                return $item->fields[$field];
             }
         }
 
@@ -665,23 +652,13 @@ class DropdownTranslation extends CommonDBChild
     **/
     public static function getTranslationID($ID, $itemtype, $field, $language)
     {
-        global $DB;
-
-        $iterator = $DB->request([
-           'SELECT' => ['id'],
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
+        $rows = self::repository()->rows([
               'itemtype'  => $itemtype,
               'items_id'  => $ID,
               'language'  => $language,
               'field'     => $field
-           ]
-        ]);
-        if (count($iterator)) {
-            $current = $iterator->next();
-            return $current['id'];
-        }
-        return 0;
+        ], limit: 1);
+        return $rows[0]['id'] ?? 0;
     }
 
 
@@ -727,19 +704,16 @@ class DropdownTranslation extends CommonDBChild
     **/
     public static function getTranslationByName($itemtype, $field, $value)
     {
-        global $DB;
-
-        $iterator = $DB->request([
-           'SELECT' => ['id'],
-           'FROM'   => getTableForItemType($itemtype),
-           'WHERE'  => [
-              $field   => Toolbox::addslashes_deep($value)
-           ]
-        ]);
-        if (count($iterator) > 0) {
-            $current = $iterator->next();
+        $item = new $itemtype();
+        if (isset(EntityRegistry::tables()[$item->getTable()])) {
+            $id = self::repository()->dropdownId($item->getTable(), $field, $value);
+        } else {
+            $matches = $item->find([$field => Toolbox::addslashes_deep($value)], ['id ASC'], 1);
+            $id = $matches ? array_key_first($matches) : null;
+        }
+        if ($id !== null) {
             return self::getTranslatedValue(
-                $current['id'],
+                $id,
                 $itemtype,
                 $field,
                 $_SESSION['glpilanguage'],
@@ -760,22 +734,11 @@ class DropdownTranslation extends CommonDBChild
     **/
     public static function getTranslationsForAnItem($itemtype, $items_id, $field)
     {
-        global $DB;
-
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
+        return array_column(self::repository()->rows([
               'itemtype'  => $itemtype,
               'items_id'  => $items_id,
               'field'     => $field
-           ]
-        ]);
-        $data = [];
-        while ($tmp = $iterator->next()) {
-            $data[$tmp['id']] = $tmp;
-        }
-
-        return $data;
+        ]), null, 'id');
     }
     /**
      * Regenerate all completename translations for an item
@@ -815,20 +778,9 @@ class DropdownTranslation extends CommonDBChild
     **/
     public static function getAvailableTranslations($language)
     {
-        global $DB;
-
         $tab = [];
         if (self::isDropdownTranslationActive()) {
-            $iterator = $DB->request([
-               'SELECT'          => [
-                  'itemtype',
-                  'field'
-               ],
-               'DISTINCT'        => true,
-               'FROM'            => self::getTable(),
-               'WHERE'           => ['language' => $language]
-            ]);
-            while ($data = $iterator->next()) {
+            foreach (self::repository()->available($language) as $data) {
                 $tab[$data['itemtype']][$data['field']] = $data['field'];
             }
         }

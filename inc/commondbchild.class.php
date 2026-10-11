@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\ConnexityInput;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -84,7 +86,7 @@ abstract class CommonDBChild extends CommonDBConnexity
             $criteria['WHERE'][static::$itemtype] = $itemtype;
             $request = true;
         } else {
-            $criteria['SELECT'][] = new \QueryExpression("'" . static::$itemtype . "' AS itemtype");
+            $criteria['SELECT'][] = new QueryExpression("'" . static::$itemtype . "' AS itemtype");
             if (
                 ($itemtype ==  static::$itemtype)
                 || is_subclass_of($itemtype, static::$itemtype)
@@ -462,7 +464,8 @@ abstract class CommonDBChild extends CommonDBConnexity
 
         // True if item changed
         if (
-            !$this->checkAttachedItemChangesAllowed($input, [static::$itemtype,
+            !ConnexityInput::endpoints($this)
+            && !$this->checkAttachedItemChangesAllowed($input, [static::$itemtype,
                                                                    static::$items_id])
         ) {
             return false;
@@ -998,6 +1001,6 @@ abstract class CommonDBChild extends CommonDBConnexity
             return static::$items_id;
         }
 
-        throw new \RuntimeException('Cannot guess field for itemtype ' . $itemtype . ' on ' . static::class);
+        throw new RuntimeException('Cannot guess field for itemtype ' . $itemtype . ' on ' . static::class);
     }
 }

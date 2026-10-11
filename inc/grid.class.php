@@ -333,7 +333,7 @@ HTML;
                     return false;
                 }
 
-                $testClass = new \ReflectionClass($itemtype);
+                $testClass = new ReflectionClass($itemtype);
                 return !$testClass->isAbstract();
             });
         }

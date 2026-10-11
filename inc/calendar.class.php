@@ -31,6 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use Glpi\Features\Clonable;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\CalendarRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -40,7 +46,7 @@ if (!defined('GLPI_ROOT')) {
 **/
 class Calendar extends CommonDropdown
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     // From CommonDBTM
     public $dohistory                   = true;
@@ -275,50 +281,13 @@ class Calendar extends CommonDropdown
     {
         global $DB;
 
-        // Use a static cache to improve performances when multiple elements requires a computation
-        // on same calendars/dates.
-        static $result_cache = [];
-        $cache_key = $this->fields['id'] . '-' . date('Y-m-d', strtotime($date));
-        if (array_key_exists($cache_key, $result_cache)) {
-            return $result_cache[$cache_key];
-        }
-
-        $result = $DB->request([
-           'COUNT'        => 'cpt',
-           'FROM'         => 'glpi_calendars_holidays',
-           'INNER JOIN'   => [
-              'glpi_holidays'   => [
-                 'ON' => [
-                    'glpi_calendars_holidays'  => 'holidays_id',
-                    'glpi_holidays'            => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              'glpi_calendars_holidays.calendars_id' => $this->fields['id'],
-              'OR'                                   => [
-                 [
-                    'AND' => [
-                       'glpi_holidays.end_date'            => ['>=', $date],
-                       'glpi_holidays.begin_date'          => ['<=', $date]
-                    ]
-                 ],
-                 [
-                    'AND' => [
-                       'glpi_holidays.is_perpetual'  => 1,
-                       new \QueryExpression("MONTH(" . $DB->quoteName('end_date') . ")*100 + DAY(" . $DB->quoteName('end_date') . ") >= " . date('nd', strtotime($date))),
-                       new \QueryExpression("MONTH(" . $DB->quoteName('begin_date') . ")*100 + DAY(" . $DB->quoteName('begin_date') . ") <= " . date('nd', strtotime($date)))
-                    ]
-                 ]
-              ]
-           ]
-        ])->next();
-
-        $is_holiday = (int)$result['cpt'] > 0;
-
-        $result_cache[$cache_key] = $is_holiday;
-
-        return $is_holiday;
+        $day = new DateTimeImmutable(date('Y-m-d', strtotime($date)));
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        return Orm::withReadConnection($connection, fn (?EntityManager $manager): bool =>
+            (new CalendarRepository($manager ?? Orm::forConnection($connection)))
+                ->isHoliday((int)$this->fields['id'], $day));
     }
 
 

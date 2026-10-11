@@ -31,6 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\Clonable;
+use Glpi\Features\DCBreadcrumb;
+use itsmng\Database\ComputerItemReadOperation;
+use itsmng\Database\MappedReads;
+use itsmng\Domain\SoftwareAllocationSubjectLifecycle;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -40,8 +46,9 @@ if (!defined('GLPI_ROOT')) {
 **/
 class Computer extends CommonDBTM
 {
-    use Glpi\Features\DCBreadcrumb;
-    use Glpi\Features\Clonable;
+    use DCBreadcrumb;
+    use Clonable;
+    use SoftwareAllocationSubjectLifecycle;
 
     // From CommonDBTM
     public $dohistory                   = true;
@@ -192,56 +199,32 @@ class Computer extends CommonDBTM
 
             // Propagates the changes to linked items
             foreach ($CFG_GLPI['directconnect_types'] as $type) {
-                $items_result = $DB->request(
-                    [
-                      'SELECT' => ['items_id'],
-                      'FROM'   => Computer_Item::getTable(),
-                      'WHERE'  => [
-                         'itemtype'     => $type,
-                         'computers_id' => $this->fields["id"],
-                         'is_deleted'   => 0
-                      ]
-                    ]
-                );
-                $item      = new $type();
-                foreach ($items_result as $data) {
-                    $tID = $data['items_id'];
-                    $item->getFromDB($tID);
+                $ids = MappedReads::identifiers($DB, Computer_Item::getTable(), 'items_id', [
+                    'itemtype' => $type, 'computers_id' => $this->getID(), 'is_deleted' => false,
+                ]);
+                $item = new $type();
+                foreach (array_unique($ids) as $tID) {
+                    if (!$item->getFromDB($tID)) {
+                        continue;
+                    }
                     if (!$item->getField('is_global')) {
-                        $changes['id'] = $item->getField('id');
-                        if ($item->update($changes)) {
+                        if ($item->update(['id' => $item->getID()] + $changes)) {
                             $update_done = true;
                         }
                     }
                 }
             }
 
-            //fields that are not present for devices
-            unset($changes['groups_id']);
-            unset($changes['users_id']);
-            unset($changes['contact_num']);
-            unset($changes['contact']);
-
-            if (count($changes) > 0) {
-                // Propagates the changes to linked devices
+            // Device associations only receive fields they actually store.
+            $deviceChanges = array_intersect_key($changes, array_flip(['states_id', 'locations_id']));
+            if ($deviceChanges) {
                 foreach ($CFG_GLPI['itemdevices'] as $device) {
                     $item = new $device();
-                    $devices_result = $DB->request(
-                        [
-                          'SELECT' => ['id'],
-                          'FROM'   => $item::getTable(),
-                          'WHERE'  => [
-                             'itemtype'     => self::getType(),
-                             'items_id'     => $this->fields["id"],
-                             'is_deleted'   => 0
-                          ]
-                        ]
-                    );
-                    foreach ($devices_result as $data) {
-                        $tID = $data['id'];
-                        $item->getFromDB($tID);
-                        $changes['id'] = $item->getField('id');
-                        if ($item->update($changes)) {
+                    $ids = $item->findIds([
+                        'itemtype' => self::getType(), 'items_id' => $this->getID(), 'is_deleted' => false,
+                    ]);
+                    foreach ($ids as $tID) {
+                        if ($item->getFromDB($tID) && $item->update(['id' => $tID] + $deviceChanges)) {
                             $update_done = true;
                         }
                     }
@@ -255,19 +238,19 @@ class Computer extends CommonDBTM
                         true
                     );
                 }
-                if (isset($changes['groups_id']) || isset($changes['users_id'])) {
+                if (array_key_exists('groups_id', $changes) || isset($changes['users_id'])) {
                     Session::addMessageAfterRedirect(
                         __('User or group updated. The connected items have been moved in the same values.'),
                         true
                     );
                 }
-                if (isset($changes['states_id'])) {
+                if (array_key_exists('states_id', $changes)) {
                     Session::addMessageAfterRedirect(
                         __('Status updated. The connected items have been updated using this status.'),
                         true
                     );
                 }
-                if (isset($changes['locations_id'])) {
+                if (array_key_exists('locations_id', $changes)) {
                     Session::addMessageAfterRedirect(
                         __('Location updated. The connected items have been moved in the same location.'),
                         true
@@ -490,17 +473,12 @@ class Computer extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT' => ['itemtype', 'items_id'],
-           'FROM'   => 'glpi_computers_items',
-           'WHERE'  => ['computers_id' => $this->getID()]
-        ]);
-
-        $tab = [];
-        while ($data = $iterator->next()) {
-            $tab[$data['itemtype']][$data['items_id']] = $data['items_id'];
+        $read = ComputerItemReadOperation::forDatabase($DB);
+        try {
+            return $read->linkedItems(Computer::class, (int)$this->getID());
+        } finally {
+            $read->close();
         }
-        return $tab;
     }
 
 

@@ -31,6 +31,14 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\ITILDocumentAccess;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DocumentRepository;
+use itsmng\Database\Repository\NotificationRecipientRepository;
+use itsmng\Database\Repository\UserRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -158,27 +166,15 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
         $userlinktable = getTableForItemType($this->obj->userlinkclass);
         $fkfield       = $this->obj->getForeignKeyField();
 
-        //Look for the user by his id
-        $criteria = ['LEFT JOIN' => [
-           User::getTable() => [
-              'ON' => [
-                 $userlinktable    => 'users_id',
-                 User::getTable()  => 'id'
-              ]
-           ]
-        ]] + $this->getDistinctUserCriteria() + $this->getProfileJoinCriteria();
-        $criteria['FROM'] = $userlinktable;
-        $criteria['FIELDS'] = array_merge(
-            $criteria['FIELDS'],
-            [
-              "$userlinktable.use_notification AS notif",
-              "$userlinktable.alternative_email AS altemail"
-            ]
-        );
-        $criteria['WHERE']["$userlinktable.$fkfield"] = $this->obj->fields['id'];
-        $criteria['WHERE']["$userlinktable.type"] = $type;
-
-        $iterator = $DB->request($criteria);
+        $iterator = new RowIterator($this->readRecipients(
+            fn (NotificationRecipientRepository $recipients): array => $recipients->linkedUsers(
+                $userlinktable,
+                $fkfield,
+                (int)$this->obj->fields['id'],
+                (int)$type,
+                $this->getProfileJoinCriteria()
+            )
+        ));
         while ($data = $iterator->next()) {
             //Add the user email and language in the notified users list
             if ($data['notif']) {
@@ -212,16 +208,14 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
         }
 
         // Anonymous user
-        $iterator = $DB->request([
-           'SELECT' => 'alternative_email',
-           'FROM'   => $userlinktable,
-           'WHERE'  => [
-              $fkfield             => $this->obj->fields['id'],
-              'users_id'           => 0,
-              'use_notification'   => 1,
-              'type'               => $type
-           ]
-        ]);
+        $iterator = new RowIterator($this->readRecipients(
+            fn (NotificationRecipientRepository $recipients): array => $recipients->anonymousUsers(
+                $userlinktable,
+                $fkfield,
+                (int)$this->obj->fields['id'],
+                (int)$type
+            )
+        ));
         while ($data = $iterator->next()) {
             if ($this->isMailMode()) {
                 if (NotificationMailing::isUserAddressValid($data['alternative_email'])) {
@@ -245,24 +239,16 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
      */
     public function addLinkedGroupByType($type)
     {
-        global $DB;
 
-        $grouplinktable = getTableForItemType($this->obj->grouplinkclass);
-        $fkfield        = $this->obj->getForeignKeyField();
-
-        //Look for the user by his id
-        $iterator = $DB->request([
-           'SELECT' => 'groups_id',
-           'FROM'   => $grouplinktable,
-           'WHERE'  => [
-              $fkfield => $this->obj->fields['id'],
-              'type'   => $type
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
-            //Add the group in the notified users list
-            $this->addForGroup(0, $data['groups_id']);
+        foreach ($this->readRecipients(
+            fn (NotificationRecipientRepository $recipients): array => $recipients->linkedGroups(
+                getTableForItemType($this->obj->grouplinkclass),
+                $this->obj->getForeignKeyField(),
+                (int)$this->obj->fields['id'],
+                (int)$type
+            )
+        ) as $group) {
+            $this->addForGroup(0, $group);
         }
     }
 
@@ -279,23 +265,16 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
      */
     public function addLinkedGroupWithoutSupervisorByType($type)
     {
-        global $DB;
 
-        $grouplinktable = getTableForItemType($this->obj->grouplinkclass);
-        $fkfield        = $this->obj->getForeignKeyField();
-
-        $iterator = $DB->request([
-           'SELECT' => 'groups_id',
-           'FROM'   => $grouplinktable,
-           'WHERE'  => [
-              $fkfield => $this->obj->fields['id'],
-              'type'   => $type
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
-            //Add the group in the notified users list
-            $this->addForGroup(2, $data['groups_id']);
+        foreach ($this->readRecipients(
+            fn (NotificationRecipientRepository $recipients): array => $recipients->linkedGroups(
+                getTableForItemType($this->obj->grouplinkclass),
+                $this->obj->getForeignKeyField(),
+                (int)$this->obj->fields['id'],
+                (int)$type
+            )
+        ) as $group) {
+            $this->addForGroup(2, $group);
         }
     }
 
@@ -309,23 +288,16 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
      */
     public function addLinkedGroupSupervisorByType($type)
     {
-        global $DB;
 
-        $grouplinktable = getTableForItemType($this->obj->grouplinkclass);
-        $fkfield        = $this->obj->getForeignKeyField();
-
-        $iterator = $DB->request([
-           'SELECT' => 'groups_id',
-           'FROM'   => $grouplinktable,
-           'WHERE'  => [
-              $fkfield => $this->obj->fields['id'],
-              'type'   => $type
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
-            //Add the group in the notified users list
-            $this->addForGroup(1, $data['groups_id']);
+        foreach ($this->readRecipients(
+            fn (NotificationRecipientRepository $recipients): array => $recipients->linkedGroups(
+                getTableForItemType($this->obj->grouplinkclass),
+                $this->obj->getForeignKeyField(),
+                (int)$this->obj->fields['id'],
+                (int)$type
+            )
+        ) as $group) {
+            $this->addForGroup(1, $group);
         }
     }
 
@@ -406,8 +378,6 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
      */
     public function addSupplier($sendprivate = false)
     {
-        global $DB;
-
         if (
             !$sendprivate
             && $this->obj->countSuppliers(CommonITILActor::ASSIGN)
@@ -416,26 +386,13 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
             $supplierlinktable = getTableForItemType($this->obj->supplierlinkclass);
             $fkfield           = $this->obj->getForeignKeyField();
 
-            $iterator = $DB->request([
-               'SELECT'          => [
-                  'glpi_suppliers.email AS email',
-                  'glpi_suppliers.name AS name'
-               ],
-               'DISTINCT'        => true,
-               'FROM'            => $supplierlinktable,
-               'LEFT JOIN'       => [
-                  'glpi_suppliers'  => [
-                     'ON' => [
-                        $supplierlinktable   => 'suppliers_id',
-                        'glpi_suppliers'     => 'id'
-                     ]
-                  ]
-               ],
-               'WHERE'           => [
-                  "$supplierlinktable.$fkfield" => $this->obj->getID()
-               ]
-            ]);
-
+            $iterator = new RowIterator($this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): array => $recipients->suppliers(
+                    $supplierlinktable,
+                    $fkfield,
+                    (int)$this->obj->getID()
+                )
+            ));
             while ($data = $iterator->next()) {
                 $this->addToRecipientsList($data);
             }
@@ -452,24 +409,16 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
      */
     public function addValidationApprover($options = [])
     {
-        global $DB;
 
         if (isset($options['validation_id'])) {
-            $validationtable = getTableForItemType($this->obj->getType() . 'Validation');
-
-            $criteria = ['LEFT JOIN' => [
-               User::getTable() => [
-                  'ON' => [
-                     $validationtable  => 'users_id_validate',
-                     User::getTable()  => 'id'
-                  ]
-               ]
-            ]] + $this->getDistinctUserCriteria() + $this->getProfileJoinCriteria();
-            $criteria['FROM'] = $validationtable;
-            $criteria['WHERE']["$validationtable.id"] = $options['validation_id'];
-
-            $iterator = $DB->request($criteria);
-            while ($data = $iterator->next()) {
+            foreach ($this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): array => $recipients->recordUsers(
+                    getTableForItemType($this->obj->getType() . 'Validation'),
+                    'users_id_validate',
+                    (int)$options['validation_id'],
+                    $this->getProfileJoinCriteria()
+                )
+            ) as $data) {
                 $this->addToRecipientsList($data);
             }
         }
@@ -484,24 +433,16 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
     **/
     public function addValidationRequester($options = [])
     {
-        global $DB;
 
         if (isset($options['validation_id'])) {
-            $validationtable = getTableForItemType($this->obj->getType() . 'Validation');
-
-            $criteria = ['LEFT JOIN' => [
-               User::getTable() => [
-                  'ON' => [
-                     $validationtable  => 'users_id',
-                     User::getTable()  => 'id'
-                  ]
-               ]
-            ]] + $this->getDistinctUserCriteria() + $this->getProfileJoinCriteria();
-            $criteria['FROM'] = $validationtable;
-            $criteria['WHERE']["$validationtable.id"] = $options['validation_id'];
-
-            $iterator = $DB->request($criteria);
-            while ($data = $iterator->next()) {
+            foreach ($this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): array => $recipients->recordUsers(
+                    getTableForItemType($this->obj->getType() . 'Validation'),
+                    'users_id',
+                    (int)$options['validation_id'],
+                    $this->getProfileJoinCriteria()
+                )
+            ) as $data) {
                 $this->addToRecipientsList($data);
             }
         }
@@ -517,27 +458,16 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
      */
     public function addFollowupAuthor($options = [])
     {
-        global $DB;
 
         if (isset($options['followup_id'])) {
-            $followuptable = ITILFollowup::getTable();
-
-            $criteria = array_merge_recursive(
-                ['INNER JOIN' => [
-                  User::getTable() => [
-                     'ON' => [
-                        $followuptable    => 'users_id',
-                        User::getTable()  => 'id'
-                     ]
-                  ]
-                ]],
-                $this->getDistinctUserCriteria() + $this->getProfileJoinCriteria()
-            );
-            $criteria['FROM'] = $followuptable;
-            $criteria['WHERE']["$followuptable.id"] = $options['followup_id'];
-
-            $iterator = $DB->request($criteria);
-            while ($data = $iterator->next()) {
+            foreach ($this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): array => $recipients->recordUsers(
+                    ITILFollowup::getTable(),
+                    'users_id',
+                    (int)$options['followup_id'],
+                    $this->getProfileJoinCriteria()
+                )
+            ) as $data) {
                 $this->addToRecipientsList($data);
             }
         }
@@ -553,39 +483,28 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
      */
     public function addTaskAuthor($options = [])
     {
-        global $DB;
 
-        // In case of delete task pass user id
         if (isset($options['task_users_id'])) {
-            $criteria = $this->getDistinctUserCriteria() + $this->getProfileJoinCriteria();
-            $criteria['FROM'] = User::getTable();
-            $criteria['WHERE'][User::getTable() . '.id'] = $options['task_users_id'];
-
-            $iterator = $DB->request($criteria);
-            while ($data = $iterator->next()) {
-                $this->addToRecipientsList($data);
-            }
-        } elseif (isset($options['task_id'])) {
-            $tasktable = getTableForItemType($this->obj->getType() . 'Task');
-
-            $criteria = array_merge_recursive(
-                ['INNER JOIN' => [
-                  User::getTable() => [
-                     'ON' => [
-                        $tasktable        => 'users_id',
-                        User::getTable()  => 'id'
-                     ]
-                  ]
-                ]],
-                $this->getDistinctUserCriteria() + $this->getProfileJoinCriteria()
+            $users = $this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): array => $recipients->users(
+                    [(int)$options['task_users_id']],
+                    $this->getProfileJoinCriteria()
+                )
             );
-            $criteria['FROM'] = $tasktable;
-            $criteria['WHERE']["$tasktable.id"] = $options['task_id'];
-
-            $iterator = $DB->request($criteria);
-            while ($data = $iterator->next()) {
-                $this->addToRecipientsList($data);
-            }
+        } elseif (isset($options['task_id'])) {
+            $users = $this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): array => $recipients->recordUsers(
+                    getTableForItemType($this->obj->getType() . 'Task'),
+                    'users_id',
+                    (int)$options['task_id'],
+                    $this->getProfileJoinCriteria()
+                )
+            );
+        } else {
+            return;
+        }
+        foreach ($users as $data) {
+            $this->addToRecipientsList($data);
         }
     }
 
@@ -599,39 +518,28 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
      */
     public function addTaskAssignUser($options = [])
     {
-        global $DB;
 
-        // In case of delete task pass user id
         if (isset($options['task_users_id_tech'])) {
-            $criteria = $this->getDistinctUserCriteria() + $this->getProfileJoinCriteria();
-            $criteria['FROM'] = User::getTable();
-            $criteria['WHERE'][User::getTable() . '.id'] = $options['task_users_id_tech'];
-
-            $iterator = $DB->request($criteria);
-            while ($data = $iterator->next()) {
-                $this->addToRecipientsList($data);
-            }
-        } elseif (isset($options['task_id'])) {
-            $tasktable = getTableForItemType($this->obj->getType() . 'Task');
-
-            $criteria = array_merge_recursive(
-                ['INNER JOIN' => [
-                  User::getTable() => [
-                     'ON' => [
-                        $tasktable        => 'users_id_tech',
-                        User::getTable()  => 'id'
-                     ]
-                  ]
-                ]],
-                $this->getDistinctUserCriteria() + $this->getProfileJoinCriteria()
+            $users = $this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): array => $recipients->users(
+                    [(int)$options['task_users_id_tech']],
+                    $this->getProfileJoinCriteria()
+                )
             );
-            $criteria['FROM'] = $tasktable;
-            $criteria['WHERE']["$tasktable.id"] = $options['task_id'];
-
-            $iterator = $DB->request($criteria);
-            while ($data = $iterator->next()) {
-                $this->addToRecipientsList($data);
-            }
+        } elseif (isset($options['task_id'])) {
+            $users = $this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): array => $recipients->recordUsers(
+                    getTableForItemType($this->obj->getType() . 'Task'),
+                    'users_id_tech',
+                    (int)$options['task_id'],
+                    $this->getProfileJoinCriteria()
+                )
+            );
+        } else {
+            return;
+        }
+        foreach ($users as $data) {
+            $this->addToRecipientsList($data);
         }
     }
 
@@ -647,27 +555,17 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
      */
     public function addTaskAssignGroup($options = [])
     {
-        global $DB;
 
-        // In case of delete task pass user id
         if (isset($options['task_groups_id_tech'])) {
             $this->addForGroup(0, $options['task_groups_id_tech']);
         } elseif (isset($options['task_id'])) {
-            $tasktable = getTableForItemType($this->obj->getType() . 'Task');
-            $iterator = $DB->request([
-               'FROM'   => $tasktable,
-               'INNER JOIN'   => [
-                  'glpi_groups'  => [
-                     'ON'  => [
-                        'glpi_groups'  => 'id',
-                        $tasktable     => 'groups_id_tech'
-                     ]
-                  ]
-               ],
-               'WHERE'        => ["$tasktable.id" => $options['task_id']]
-            ]);
-            while ($data = $iterator->next()) {
-                $this->addForGroup(0, $data['groups_id_tech']);
+            foreach ($this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): array => $recipients->taskGroups(
+                    getTableForItemType($this->obj->getType() . 'Task'),
+                    (int)$options['task_id']
+                )
+            ) as $group) {
+                $this->addForGroup(0, $group);
             }
         }
     }
@@ -675,44 +573,26 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
 
     public function addAdditionnalInfosForTarget()
     {
-        global $DB;
 
-        $iterator = $DB->request([
-           'SELECT' => ['profiles_id'],
-           'FROM'   => 'glpi_profilerights',
-           'WHERE'  => [
-              'name'   => 'followup',
-              'rights' => ['&', ITILFollowup::SEEPRIVATE]
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
-            $this->private_profiles[$data['profiles_id']] = $data['profiles_id'];
+        foreach ($this->readRecipients(
+            fn (NotificationRecipientRepository $recipients): array => $recipients->privateProfiles()
+        ) as $profile) {
+            $this->private_profiles[$profile] = $profile;
         }
     }
 
 
     public function addAdditionnalUserInfo(array $data)
     {
-        global $DB;
 
-        if (!isset($data['users_id']) || count($this->private_profiles) === 0) {
-            return ['show_private' => 0];
-        }
-
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => 'glpi_profiles_users',
-           'WHERE'  => [
-              'users_id'     => $data['users_id'],
-              'profiles_id'  => $this->private_profiles
-           ] + getEntitiesRestrictCriteria('glpi_profiles_users', 'entities_id', $this->getEntity(), true)
-        ])->next();
-
-        if ($result['cpt']) {
-            return ['show_private' => 1];
-        }
-        return ['show_private' => 0];
+        $private = isset($data['users_id']) && $this->readRecipients(
+            fn (NotificationRecipientRepository $recipients): bool => $recipients->canSeePrivate(
+                (int)$data['users_id'],
+                $this->private_profiles,
+                getEntitiesRestrictCriteria('glpi_profiles_users', 'entities_id', $this->getEntity(), true)
+            )
+        );
+        return ['show_private' => (int)$private];
     }
 
 
@@ -1179,24 +1059,36 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
         $data["##$objettype.openbyuser##"] = '';
         if ($item->getField('users_id_recipient')) {
             $user_tmp = new User();
-            $user_tmp->getFromDB($item->getField('users_id_recipient'));
+            $uid = (int)$item->getField('users_id_recipient');
+            $names = Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new UserRepository($manager))->friendlyNameData([$uid]));
+            $user_tmp->fields = $names[$uid] ?? [];
             $data["##$objettype.openbyuser##"] = $user_tmp->getName();
         }
 
         $data["##$objettype.lastupdater##"] = '';
         if ($item->getField('users_id_lastupdater')) {
             $user_tmp = new User();
-            $user_tmp->getFromDB($item->getField('users_id_lastupdater'));
+            $uid = (int)$item->getField('users_id_lastupdater');
+            $names = Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new UserRepository($manager))->friendlyNameData([$uid]));
+            $user_tmp->fields = $names[$uid] ?? [];
             $data["##$objettype.lastupdater##"] = $user_tmp->getName();
         }
 
         $data["##$objettype.assigntousers##"] = '';
         if ($item->countUsers(CommonITILActor::ASSIGN)) {
             $users = [];
-            foreach ($item->getUsers(CommonITILActor::ASSIGN) as $tmp) {
+            $assigned = $item->getUsers(CommonITILActor::ASSIGN);
+            // The selected actor list owns order and duplicate handling. Read only
+            // after its callback, without sharing a snapshot with other tag stages.
+            $names = Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new UserRepository($manager))->friendlyNameData(array_column($assigned, 'users_id')));
+            foreach ($assigned as $tmp) {
                 $uid      = $tmp['users_id'];
                 $user_tmp = new User();
-                if ($user_tmp->getFromDB($uid)) {
+                if (isset($names[$uid])) {
+                    $user_tmp->fields = $names[$uid];
                     $users[$uid] = $user_tmp->getName();
                 }
             }
@@ -1366,22 +1258,11 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
                   = countElementsInTableForEntity($item->getTable(), $this->getEntity(), $restrict, false);
 
             // Document
-            $iterator = $DB->request([
-               'SELECT'    => 'glpi_documents.*',
-               'FROM'      => 'glpi_documents',
-               'LEFT JOIN' => [
-                  'glpi_documents_items'  => [
-                     'ON' => [
-                        'glpi_documents_items'  => 'documents_id',
-                        'glpi_documents'        => 'id'
-                     ]
-                  ]
-               ],
-               'WHERE'     => [
-                  $item->getAssociatedDocumentsCriteria(),
-                  'timeline_position' => ['>', CommonITILObject::NO_TIMELINE], // skip inlined images
-               ]
-            ]);
+            $iterator = new RowIterator((new DocumentRepository(Orm::create($DB)))->notificationDocuments(
+                $item->getType(),
+                (int)$item->getID(),
+                ITILDocumentAccess::current($item->getType())
+            ));
 
             $data["documents"] = [];
             $addtodownloadurl   = '';

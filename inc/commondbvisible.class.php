@@ -51,11 +51,11 @@ abstract class CommonDBVisible extends CommonDBTM
     public function haveVisibilityAccess()
     {
         // Author
-        if ($this->fields['users_id'] == Session::getLoginUserID()) {
+        if ((int)Session::getLoginUserID() > 0 && $this->fields['users_id'] == Session::getLoginUserID()) {
             return true;
         }
         // Users
-        if (isset($this->users[Session::getLoginUserID()])) {
+        if ((int)Session::getLoginUserID() > 0 && isset($this->users[Session::getLoginUserID()])) {
             return true;
         }
 
@@ -68,7 +68,7 @@ abstract class CommonDBVisible extends CommonDBTM
                 foreach ($data as $group) {
                     if (in_array($group['groups_id'], $_SESSION["glpigroups"])) {
                         // All the group
-                        if ($group['entities_id'] < 0) {
+                        if ($group['entities_id'] === null || $group['entities_id'] < 0) {
                             return true;
                         }
                         // Restrict to entities
@@ -103,7 +103,7 @@ abstract class CommonDBVisible extends CommonDBTM
             if (isset($this->profiles[$_SESSION["glpiactiveprofile"]['id']])) {
                 foreach ($this->profiles[$_SESSION["glpiactiveprofile"]['id']] as $profile) {
                     // All the profile
-                    if ($profile['entities_id'] < 0) {
+                    if ($profile['entities_id'] === null || $profile['entities_id'] < 0) {
                         return true;
                     }
                     // Restrict to entities
@@ -299,7 +299,7 @@ abstract class CommonDBVisible extends CommonDBTM
                         $names["name"],
                         Html::showToolTip($names["comment"], ['display' => false])
                     );
-                    if ($data['entities_id'] >= 0) {
+                    if ($data['entities_id'] !== null && $data['entities_id'] >= 0) {
                         $entname = sprintf(
                             __('%1$s / %2$s'),
                             $entname,
@@ -354,7 +354,7 @@ abstract class CommonDBVisible extends CommonDBTM
                     $names   = Dropdown::getDropdownName('glpi_profiles', $data['profiles_id'], 1);
                     $tooltip = Html::showToolTip($names["comment"], ['display' => false]);
                     $entname = sprintf(__('%1$s %2$s'), $names["name"], $tooltip);
-                    if ($data['entities_id'] >= 0) {
+                    if ($data['entities_id'] !== null && $data['entities_id'] >= 0) {
                         $entname = sprintf(
                             __('%1$s / %2$s'),
                             $entname,

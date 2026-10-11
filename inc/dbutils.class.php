@@ -31,6 +31,25 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\DeletionUnit;
+use itsmng\Database\DropdownReadOperation;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\EntityRestriction;
+use itsmng\Database\EntityScopeReadOperation;
+use itsmng\Database\Expressions;
+use itsmng\Database\LegacyValues;
+use itsmng\Database\MappedReads;
+use itsmng\Database\MappedStorage;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\AutoNameRepository;
+use itsmng\Database\Repository\TreeRepository;
+use itsmng\Database\RowIterator;
+use itsmng\Database\TreeReadOperation;
+use itsmng\Database\UnsupportedCriteria;
+use itsmng\Database\UserDisplayReadOperation;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -43,6 +62,10 @@ if (!defined('GLPI_ROOT')) {
  */
 final class DbUtils
 {
+    public function __construct(private readonly ?EntityScopeReadOperation $treeReads = null)
+    {
+    }
+
     /**
      * Return foreign key field name for a table
      *
@@ -202,8 +225,8 @@ final class DbUtils
                 $table   = strtolower((string) $plug['class']);
             } else {
                 $table = strtolower($itemtype);
-                if (substr($itemtype, 0, \strlen(NS_GLPI)) === NS_GLPI) {
-                    $table = substr($table, \strlen(NS_GLPI));
+                if (substr($itemtype, 0, strlen(NS_GLPI)) === NS_GLPI) {
+                    $table = substr($table, strlen(NS_GLPI));
                 }
             }
             $table = str_replace(['mock\\', '\\'], ['', '_'], $table);
@@ -366,6 +389,14 @@ final class DbUtils
                 $condition = [];
             }
         }
+        if (count($table) === 1 && array_is_list($table) && is_string($table[0]) && is_array($condition)
+            && !DBmysqlIterator::hasQueryOptions($condition)) {
+            try {
+                return MappedReads::countMatching($DB, $table[0], $condition);
+            } catch (UnsupportedCriteria $unsupported) {
+                // Joins, aggregate options and unmapped plugin tables need dedicated queries.
+            }
+        }
         $condition['COUNT'] = 'cpt';
 
         $row = $DB->request($table, $condition)->next();
@@ -507,13 +538,9 @@ final class DbUtils
             return false;
         }
 
-        $result = $DB->query("SHOW INDEX FROM `$table`");
-
-        if ($result && $DB->numrows($result)) {
-            while ($data = $DB->fetchAssoc($result)) {
-                if ($data["Key_name"] == $field) {
-                    return true;
-                }
+        foreach ($DB->getDoctrineConnection()->createSchemaManager()->listTableIndexes($table) as $index) {
+            if ($index->getName() === $field) {
+                return true;
             }
         }
         return false;
@@ -551,6 +578,7 @@ final class DbUtils
         // !='0' needed because consider as empty
         if (
             !$complete_request
+            && !is_array($value)
             && ($value != '0')
             && empty($value)
             && isset($_SESSION['glpishowallentities'])
@@ -560,7 +588,7 @@ final class DbUtils
             if (trim($separator) == "AND") {
                 return "";
             }
-            return $query . " 1 ) ";
+            return $query . " 1 = 1 ) ";
         }
 
         if (empty($field)) {
@@ -570,6 +598,7 @@ final class DbUtils
                 $field = "entities_id";
             }
         }
+        $globalScope = EntityRegistry::hasPolicy($table, $field, ReferenceKind::GlobalScope);
         if (empty($table)) {
             $field = $DB->quoteName($field);
         } else {
@@ -579,20 +608,20 @@ final class DbUtils
         $query .= "$field";
 
         if (is_array($value)) {
-            $query .= " IN ('" . implode("','", $value) . "') ";
+            $query .= $value ? " IN ('" . implode("','", $value) . "') " : ' IN (NULL) ';
         } else {
             if (strlen((string) $value) == 0 && !isset($_SESSION['glpiactiveentities_string'])) {
                 //set root entity if not set
                 $value = 0;
             }
             if (strlen((string) $value) == 0) {
-                $query .= " IN (" . $_SESSION['glpiactiveentities_string'] . ") ";
+                $query .= " IN (" . ($_SESSION['glpiactiveentities_string'] !== '' ? $_SESSION['glpiactiveentities_string'] : 'NULL') . ") ";
             } else {
                 $query .= " = '$value' ";
             }
         }
 
-        if ($is_recursive) {
+        if ($is_recursive && (!is_array($value) || $value)) {
             $ancestors = [];
             if (
                 isset($_SESSION['glpiactiveentities'])
@@ -619,6 +648,9 @@ final class DbUtils
                     $query .= " OR ($recur='1' AND $field IN (" . implode(', ', $ancestors) . '))';
                 }
             }
+        }
+        if ($globalScope) {
+            $query .= " OR $field IS NULL";
         }
         $query .= " ) ";
 
@@ -651,15 +683,28 @@ final class DbUtils
         $complete_request = false
     ) {
 
+        return $this->getEntityRestriction($table, $field, $value, $is_recursive, $complete_request)->criteria;
+    }
+
+    /** The array API and typed readers share this single permission calculation. */
+    public function getEntityRestriction(
+        $table = '',
+        $field = '',
+        $value = '',
+        $is_recursive = false,
+        $complete_request = false
+    ): EntityRestriction {
+
         // !='0' needed because consider as empty
         if (
             !$complete_request
+            && !is_array($value)
             && ($value != '0')
             && empty($value)
             && isset($_SESSION['glpishowallentities'])
             && $_SESSION['glpishowallentities']
         ) {
-            return [];
+            return new EntityRestriction([], $table, $field ?: 'entities_id', true, null);
         }
 
         if (empty($field)) {
@@ -669,6 +714,8 @@ final class DbUtils
                 $field = "entities_id";
             }
         }
+        $scopeField = $field;
+        $globalScope = EntityRegistry::hasPolicy($table, $field, ReferenceKind::GlobalScope);
         if (!empty($table)) {
             $field = "$table.$field";
         }
@@ -681,7 +728,9 @@ final class DbUtils
             }
         }
 
-        $crit = [$field => $value];
+        $crit = is_array($value) && !$value
+            ? ['AND' => [[$field => null], ['NOT' => [$field => null]]]]
+            : [$field => $value];
 
         if ($is_recursive === 'auto' && !empty($table) && $table != 'glpi_entities') {
             $item = $this->getItemForItemtype($this->getItemTypeForTable($table));
@@ -690,8 +739,8 @@ final class DbUtils
             }
         }
 
-        if ($is_recursive) {
-            $ancestors = [];
+        $ancestors = [];
+        if ($is_recursive && (!is_array($value) || $value)) {
             if (is_array($value)) {
                 $ancestors = $this->getAncestorsOf("glpi_entities", $value);
                 $ancestors = array_diff($ancestors, $value);
@@ -718,7 +767,8 @@ final class DbUtils
                 }
             }
         }
-        return $crit;
+        $criteria = $globalScope ? ['OR' => [$crit, [$field => null]]] : $crit;
+        return EntityRestriction::fromSelection($criteria, $table, $scopeField, $value, $ancestors, $globalScope);
     }
 
     /**
@@ -733,10 +783,13 @@ final class DbUtils
     {
         global $DB, $GLPI_CACHE;
 
+        $connection = $DB->getDoctrineConnection();
+        $privateTree = $connection->isTransactionActive() || DeletionUnit::isActive($connection);
+
         $ckey = 'sons_cache_' . $table . '_' . $IDf;
         $sons = false;
 
-        if (Toolbox::useCache()) {
+        if (Toolbox::useCache() && !$privateTree) {
             if ($GLPI_CACHE->has($ckey)) {
                 $sons = $GLPI_CACHE->get($ckey);
                 if ($sons !== null) {
@@ -746,20 +799,17 @@ final class DbUtils
         }
 
         $parentIDfield = $this->getForeignKeyFieldForTable($table);
-        $use_cache     = $DB->fieldExists($table, "sons_cache");
+        $use_cache     = $this->hasTreeColumn($table, 'sons_cache');
 
         if (
             $use_cache
+            && !$privateTree
             && ($IDf > 0)
         ) {
-            $iterator = $DB->request([
-               'SELECT' => 'sons_cache',
-               'FROM'   => $table,
-               'WHERE'  => ['id' => $IDf]
-            ]);
+            $iterator = $this->getTreeRows($table, ['sons_cache'], ['id' => $IDf]);
 
             if (count($iterator) > 0) {
-                $db_sons = trim($iterator->next()['sons_cache'] ?? '');
+                $db_sons = trim($iterator[0]['sons_cache'] ?? '');
                 if (!empty($db_sons)) {
                     $sons = $this->importArrayFromDB($db_sons, true);
                 }
@@ -772,40 +822,18 @@ final class DbUtils
             $sons[$IDf] = $IDf;
             // current ID found to be added
             $found = [];
-            // First request init the  varriables
-            $iterator = $DB->request([
-               'SELECT' => 'id',
-               'FROM'   => $table,
-               'WHERE'  => [$parentIDfield => $IDf],
-               'ORDER'  => 'name'
-            ]);
-
-            if (count($iterator) > 0) {
-                while ($row = $iterator->next()) {
-                    $sons[$row['id']]    = $row['id'];
-                    $found[$row['id']]   = $row['id'];
-                }
+            foreach ($this->getTreeChildIds($table, $parentIDfield, $IDf, 'name') as $id) {
+                $sons[$id] = $id;
+                $found[$id] = $id;
             }
 
-            // Get the leafs of previous found item
-            while (count($found) > 0) {
-                // Get next elements
-                $iterator = $DB->request([
-                   'SELECT' => 'id',
-                   'FROM'   => $table,
-                   'WHERE'  => [$parentIDfield => $found]
-                ]);
-
-                // CLear the found array
-                unset($found);
+            while ($found) {
+                $children = $this->getTreeChildIds($table, $parentIDfield, $found);
                 $found = [];
-
-                if (count($iterator) > 0) {
-                    while ($row = $iterator->next()) {
-                        if (!isset($sons[$row['id']])) {
-                            $sons[$row['id']]    = $row['id'];
-                            $found[$row['id']]   = $row['id'];
-                        }
+                foreach ($children as $id) {
+                    if (!isset($sons[$id])) {
+                        $sons[$id] = $id;
+                        $found[$id] = $id;
                     }
                 }
             }
@@ -813,25 +841,75 @@ final class DbUtils
             // Store cache data in DB
             if (
                 $use_cache
+                && !$privateTree
                 && ($IDf > 0)
             ) {
-                $DB->update(
-                    $table,
-                    [
-                      'sons_cache' => $this->exportArrayToDB($sons)
-                    ],
-                    [
-                      'id' => $IDf
-                    ]
-                );
+                $this->updateTreeCache($table, (int)$IDf, 'sons_cache', $this->exportArrayToDB($sons));
             }
         }
 
         if (Toolbox::useCache()) {
-            $GLPI_CACHE->set($ckey, $sons);
+            if ($privateTree) {
+                $GLPI_CACHE->delete($ckey);
+            } else {
+                $GLPI_CACHE->set($ckey, $sons);
+            }
         }
 
         return $sons;
+    }
+
+    private function hasTreeColumn(string $table, string $column): bool
+    {
+        global $DB;
+
+        return MappedStorage::supports($table)
+            ? in_array($column, EntityRegistry::columnNames($table), true)
+            : $DB->fieldExists($table, $column);
+    }
+
+    private function getTreeRows(string $table, array $fields, array $criteria): array
+    {
+        global $DB;
+
+        if (MappedStorage::supports($table)) {
+            if ($this->treeReads !== null) {
+                return $this->treeReads->rows($DB, $table, $fields, $criteria);
+            }
+            $connection = $DB->getDoctrineConnection();
+            $rows = TreeReadOperation::projectedRows($connection, $table, $fields, $criteria);
+            if ($rows !== null) {
+                return $rows;
+            }
+            return Orm::withReadConnection($connection, static fn (?EntityManager $manager): array =>
+                (new TreeReadOperation($connection, $manager))->rows($table, $fields, $criteria));
+        }
+        return array_values(iterator_to_array($DB->request(['SELECT' => $fields, 'FROM' => $table, 'WHERE' => $criteria])));
+    }
+
+    private function updateTreeCache(string $table, int $id, string $field, string $value): void
+    {
+        global $DB;
+
+        if (MappedStorage::supports($table)) {
+            (new TreeRepository(Orm::create($DB)))
+                ->updateDerived($table, [$id], [$field => LegacyValues::decode($value)]);
+        } else {
+            $DB->update($table, [$field => $value], ['id' => $id]);
+        }
+    }
+
+    /** Select tree IDs without hydrating rows; mapped optional roots use SQL NULL. */
+    private function getTreeChildIds(string $table, string $parentColumn, $parents, array|string $order = []): array
+    {
+        global $DB;
+
+        if (isset(EntityRegistry::tables()[$table])) {
+            return MappedReads::identifiers($DB, $table, 'id', [$parentColumn => $parents], $order);
+        }
+        return array_map('intval', array_column(iterator_to_array($DB->request([
+            'SELECT' => 'id', 'FROM' => $table, 'WHERE' => [$parentColumn => $parents], 'ORDER' => $order,
+        ])), 'id'));
     }
 
     /**
@@ -846,6 +924,9 @@ final class DbUtils
     {
         global $DB, $GLPI_CACHE;
 
+        $connection = $DB->getDoctrineConnection();
+        $privateTree = $connection->isTransactionActive() || DeletionUnit::isActive($connection);
+
         $ckey = 'ancestors_cache_';
         if (is_array($items_id)) {
             $ckey .= $table . '_' . md5(implode('|', $items_id));
@@ -853,8 +934,16 @@ final class DbUtils
             $ckey .= $table . '_' . $items_id;
         }
         $ancestors = [];
+        if (is_array($items_id) && $items_id === []) {
+            if (Toolbox::useCache()) {
+                $GLPI_CACHE->delete($ckey);
+            }
+            return [];
+        }
+        // Aggregate keys have no owning node whose move can invalidate them.
+        $sharedAncestors = !$privateTree && !is_array($items_id);
 
-        if (Toolbox::useCache()) {
+        if (Toolbox::useCache() && $sharedAncestors) {
             if ($GLPI_CACHE->has($ckey)) {
                 $ancestors = $GLPI_CACHE->get($ckey);
                 if ($ancestors !== null) {
@@ -867,26 +956,28 @@ final class DbUtils
 
         // IDs to be present in the final array
         $parentIDfield = $this->getForeignKeyFieldForTable($table);
-        $use_cache     = $DB->fieldExists($table, "ancestors_cache");
+        $use_cache     = $this->hasTreeColumn($table, 'ancestors_cache');
 
         if (!is_array($items_id)) {
             $items_id = (array)$items_id;
         }
 
         if ($use_cache) {
-            $iterator = $DB->request([
-               'SELECT' => ['id', 'ancestors_cache', $parentIDfield],
-               'FROM'   => $table,
-               'WHERE'  => ['id' => $items_id]
-            ]);
+            $iterator = $this->getTreeRows($table, ['id', 'ancestors_cache', $parentIDfield], ['id' => $items_id]);
 
-            while ($row = $iterator->next()) {
-                if ($row['id'] > 0) {
+            // An IN predicate does not preserve the caller's selection order.
+            $rowsById = [];
+            foreach ($iterator as $row) {
+                $rowsById[(int)$row['id']] = $row;
+            }
+            foreach (array_unique(array_map('intval', $items_id)) as $id) {
+                $row = $rowsById[$id] ?? null;
+                if ($row !== null && $row['id'] > 0) {
                     $rancestors = $row['ancestors_cache'];
                     $parent     = $row[$parentIDfield];
 
                     // Return datas from cache in DB
-                    if (isset($rancestors) && !empty($rancestors)) {
+                    if (!$privateTree && isset($rancestors) && !empty($rancestors)) {
                         $ancestors = array_replace($ancestors, $this->importArrayFromDB($rancestors, true));
                     } else {
                         $loc_id_found = [];
@@ -904,15 +995,9 @@ final class DbUtils
                         }
 
                         // Store cache datas in DB
-                        $DB->update(
-                            $table,
-                            [
-                              'ancestors_cache' => $this->exportArrayToDB($loc_id_found)
-                            ],
-                            [
-                              'id' => $row['id']
-                            ]
-                        );
+                        if (!$privateTree) {
+                            $this->updateTreeCache($table, (int)$row['id'], 'ancestors_cache', $this->exportArrayToDB($loc_id_found));
+                        }
 
                         $ancestors = array_replace($ancestors, $loc_id_found);
                     }
@@ -925,15 +1010,11 @@ final class DbUtils
                 $IDf = $id;
                 while ($IDf > 0) {
                     // Get next elements
-                    $iterator = $DB->request([
-                       'SELECT' => [$parentIDfield],
-                       'FROM'   => $table,
-                       'WHERE'  => ['id' => $IDf]
-                    ]);
+                    $iterator = $this->getTreeRows($table, [$parentIDfield], ['id' => $IDf]);
 
                     if (count($iterator) > 0) {
-                        $result = $iterator->next();
-                        $IDf = $result[$parentIDfield];
+                        $result = $iterator[0];
+                        $IDf = $result[$parentIDfield] ?? 0;
                     } else {
                         $IDf = 0;
                     }
@@ -951,7 +1032,11 @@ final class DbUtils
         }
 
         if (Toolbox::useCache()) {
-            $GLPI_CACHE->set($ckey, $ancestors);
+            if (!$sharedAncestors) {
+                $GLPI_CACHE->delete($ckey);
+            } else {
+                $GLPI_CACHE->set($ckey, $ancestors);
+            }
         }
 
         return $ancestors;
@@ -991,8 +1076,8 @@ final class DbUtils
         $name    = "";
         $comment = "";
 
-        $SELECTNAME    = new \QueryExpression("'' AS " . $DB->quoteName('transname'));
-        $SELECTCOMMENT = new \QueryExpression("'' AS " . $DB->quoteName('transcomment'));
+        $SELECTNAME    = new QueryExpression("'' AS " . $DB->quoteName('transname'));
+        $SELECTCOMMENT = new QueryExpression("'' AS " . $DB->quoteName('transcomment'));
         $JOIN          = [];
         $JOINS         = [];
         if ($translate) {
@@ -1092,71 +1177,90 @@ final class DbUtils
         $name    = "";
         $comment = "";
 
-        $SELECTNAME    = new \QueryExpression("'' AS " . $DB->quoteName('transname'));
-        $SELECTCOMMENT = new \QueryExpression("'' AS " . $DB->quoteName('transcomment'));
-        $JOIN          = [];
-        $JOINS         = [];
-        if ($translate) {
-            if (Session::haveTranslations($this->getItemTypeForTable($table), 'completename')) {
-                $SELECTNAME = 'namet.value AS transname';
-                $JOINS['glpi_dropdowntranslations AS namet'] = [
-                   'ON' => [
-                      'namet'  => 'items_id',
-                      $table   => 'id', [
-                         'AND' => [
-                            'namet.itemtype'  => $this->getItemTypeForTable($table),
-                            'namet.language'  => $_SESSION['glpilanguage'],
-                            'namet.field'     => 'completename'
-                         ]
-                      ]
-                   ]
-                ];
+        if (isset(EntityRegistry::tables()[$table])) {
+            $type = $this->getItemTypeForTable($table);
+            $translations = [];
+            foreach (['completename', 'comment'] as $field) {
+                if ($translate && Session::haveTranslations($type, $field)) {
+                    $translations[] = $field;
+                }
             }
-            if (Session::haveTranslations($this->getItemTypeForTable($table), 'comment')) {
-                $SELECTCOMMENT = 'namec.value AS transcomment';
-                $JOINS['glpi_dropdowntranslations AS namec'] = [
-                   'ON' => [
-                      'namec'  => 'items_id',
-                      $table   => 'id', [
-                         'AND' => [
-                            'namec.itemtype'  => $this->getItemTypeForTable($table),
-                            'namec.language'  => $_SESSION['glpilanguage'],
-                            'namec.field'     => 'comment'
-                         ]
-                      ]
-                   ]
-                ];
+            $columns = ['completename', 'comment'];
+            if ($table === Location::getTable()) {
+                $columns = array_merge($columns, ['address', 'town', 'country']);
+            }
+            $connection = $DB->getDoctrineConnection();
+            $result = Orm::withReadConnection($connection, static fn (?EntityManager $manager): ?array =>
+                (new DropdownReadOperation($connection, $manager))
+                    ->label($table, (int)$ID, $type, $_SESSION['glpilanguage'] ?? '', $translations, $columns));
+            $iterator = new RowIterator($result === null ? [] : [$result]);
+        } else {
+            $SELECTNAME    = new QueryExpression("'' AS " . $DB->quoteName('transname'));
+            $SELECTCOMMENT = new QueryExpression("'' AS " . $DB->quoteName('transcomment'));
+            $JOIN          = [];
+            $JOINS         = [];
+            if ($translate) {
+                if (Session::haveTranslations($this->getItemTypeForTable($table), 'completename')) {
+                    $SELECTNAME = 'namet.value AS transname';
+                    $JOINS['glpi_dropdowntranslations AS namet'] = [
+                       'ON' => [
+                          'namet'  => 'items_id',
+                          $table   => 'id', [
+                             'AND' => [
+                                'namet.itemtype'  => $this->getItemTypeForTable($table),
+                                'namet.language'  => $_SESSION['glpilanguage'],
+                                'namet.field'     => 'completename'
+                             ]
+                          ]
+                       ]
+                    ];
+                }
+                if (Session::haveTranslations($this->getItemTypeForTable($table), 'comment')) {
+                    $SELECTCOMMENT = 'namec.value AS transcomment';
+                    $JOINS['glpi_dropdowntranslations AS namec'] = [
+                       'ON' => [
+                          'namec'  => 'items_id',
+                          $table   => 'id', [
+                             'AND' => [
+                                'namec.itemtype'  => $this->getItemTypeForTable($table),
+                                'namec.language'  => $_SESSION['glpilanguage'],
+                                'namec.field'     => 'comment'
+                             ]
+                          ]
+                       ]
+                    ];
+                }
+
+                if (count($JOINS)) {
+                    $JOIN = ['LEFT JOIN' => $JOINS];
+                }
             }
 
-            if (count($JOINS)) {
-                $JOIN = ['LEFT JOIN' => $JOINS];
+            $criteria = [
+               'SELECT' => [
+                  "$table.completename",
+                  "$table.comment",
+                  $SELECTNAME,
+                  $SELECTCOMMENT
+               ],
+               'FROM'   => $table,
+               'WHERE'  => ["$table.id" => $ID]
+            ] + $JOIN;
+
+            if ($table == Location::getTable()) {
+                $criteria['SELECT'] = array_merge(
+                    $criteria['SELECT'],
+                    [
+                      "$table.address",
+                      "$table.town",
+                      "$table.country"
+                    ]
+                );
             }
+
+            $iterator = $DB->request($criteria);
+            $result = $iterator->next();
         }
-
-        $criteria = [
-           'SELECT' => [
-              "$table.completename",
-              "$table.comment",
-              $SELECTNAME,
-              $SELECTCOMMENT
-           ],
-           'FROM'   => $table,
-           'WHERE'  => ["$table.id" => $ID]
-        ] + $JOIN;
-
-        if ($table == Location::getTable()) {
-            $criteria['SELECT'] = array_merge(
-                $criteria['SELECT'],
-                [
-                  "$table.address",
-                  "$table.town",
-                  "$table.country"
-                ]
-            );
-        }
-
-        $iterator = $DB->request($criteria);
-        $result = $iterator->next();
 
         if (count($iterator) == 1) {
             $transname = $result['transname'];
@@ -1478,7 +1582,7 @@ final class DbUtils
         if (strlen($realname ?? '') > 0) {
             $formatted = $realname;
 
-            if (strlen($firstname) > 0) {
+            if (strlen($firstname ?? '') > 0) {
                 if ($order == User::FIRSTNAME_BEFORE) {
                     $formatted = $firstname . " " . $formatted;
                 } else {
@@ -1493,7 +1597,7 @@ final class DbUtils
                 $formatted = Toolbox::substr($formatted, 0, $cut) . " ...";
             }
         } else {
-            $formatted = $login;
+            $formatted = $login ?? '';
         }
 
         if (
@@ -1538,12 +1642,9 @@ final class DbUtils
         }
 
         if ($ID) {
-            $iterator = $DB->request(
-                'glpi_users',
-                [
-                  'WHERE' => ['id' => $ID]
-                ]
-            );
+            $connection = $DB->getDoctrineConnection();
+            $data = Orm::withReadConnection($connection, static fn (?EntityManager $manager): ?array =>
+                (new UserDisplayReadOperation($connection, $manager))->displayData((int)$ID));
 
             if ($link == 2) {
                 $user = ["name"    => "",
@@ -1551,8 +1652,7 @@ final class DbUtils
                          "link"    => ""];
             }
 
-            if (count($iterator) == 1) {
-                $data     = $iterator->next();
+            if ($data !== null) {
                 $username = $this->formatUserName(
                     $data["id"],
                     $data["name"],
@@ -1689,99 +1789,33 @@ final class DbUtils
                 );
 
                 $mask = $mask[0];
-                $pos  = strpos($autoNum, $mask) + 1;
-
-                //got substring position, add extra escapements
-                $autoNum = str_replace(
-                    ['_', '%'],
-                    ['\\_', '\\%'],
-                    $autoNum
-                );
-                $len  = Toolbox::strlen($mask);
-                $like = str_replace('#', '_', $autoNum);
-
-                if ($global == 1) {
-                    $types = [
-                       'Computer',
-                       'Monitor',
-                       'NetworkEquipment',
-                       'Peripheral',
-                       'Phone',
-                       'Printer'
-                    ];
-
-                    $subqueries = [];
-                    foreach ($types as $t) {
-                        $table = $this->getTableForItemType($t);
-                        $criteria = [
-                           'SELECT' => ["$field AS code"],
-                           'FROM'   => $table,
-                           'WHERE'  => [
-                              $field         => ['LIKE', $like],
-                              'is_deleted'   => 0,
-                              'is_template'  => 0
-                           ]
-                        ];
-
-                        if (
-                            $CFG_GLPI["use_autoname_by_entity"]
-                            && ($entities_id >= 0)
-                        ) {
-                            $criteria['WHERE']['entities_id'] = $entities_id;
-                        }
-
-                        $subqueries[] = new \QuerySubQuery($criteria);
-                    }
-
-                    $criteria = [
-                       'SELECT' => [
-                          new \QueryExpression(
-                              "CAST(SUBSTRING(" . $DB->quoteName('code') . ", $pos, $len) AS " .
-                              "unsigned) AS " . $DB->quoteName('no')
-                          )
-                       ],
-                       'FROM'   => new \QueryUnion($subqueries, false, 'codes')
-                    ];
+                // SQL SUBSTRING counts characters, including multibyte prefixes.
+                $pos = Toolbox::strpos($autoNum, $mask) + 1;
+                $len = Toolbox::strlen($mask);
+                // Bind the pattern with an explicit escape: %, _ and ! in the
+                // template are literals; only # contributes a wildcard.
+                $like = strtr($autoNum, ['!' => '!!', '%' => '!%', '_' => '!_', '#' => '_']);
+                $numbers = new AutoNameRepository(Orm::create($DB));
+                $entity = $CFG_GLPI['use_autoname_by_entity'] && $entities_id >= 0 ? (int)$entities_id : null;
+                if ($itemtype === 'Infocom') {
+                    $maximum = $numbers->financialMaximum($field, $like, $pos, $len);
+                } elseif ($global) {
+                    $maximum = $numbers->globalAssetMaximum($field, $like, $pos, $len, $entity);
                 } else {
                     $table = $this->getTableForItemType($itemtype);
-                    $criteria = [
-                       'SELECT' => [
-                          new \QueryExpression(
-                              "CAST(SUBSTRING(" . $DB->quoteName($field) . ", $pos, $len) AS " .
-                              "unsigned) AS " . $DB->quoteName('no')
-                          )
-                       ],
-                       'FROM'   => $table,
-                       'WHERE'  => [
-                          $field   => ['LIKE', $like]
-                       ]
-                    ];
-
-                    if ($itemtype != 'Infocom') {
-                        $criteria['WHERE']['is_deleted'] = 0;
-                        $criteria['WHERE']['is_template'] = 0;
-
-                        if (
-                            $CFG_GLPI["use_autoname_by_entity"]
-                            && ($entities_id >= 0)
-                        ) {
-                            $criteria['WHERE']['entities_id'] = $entities_id;
-                        }
+                    $class = EntityRegistry::tables()[$table] ?? null;
+                    if ($class !== null) {
+                        $maximum = $numbers->assetMaximum($class, $field, $like, $pos, $len, $entity);
+                    } elseif (isPluginItemType($itemtype)) {
+                        $maximum = $numbers->pluginAssetMaximum($table, $field, $like, $pos, $len, $entity);
+                    } else {
+                        throw new InvalidArgumentException('Automatic numbering requires a mapped item type.');
                     }
                 }
-
-                $subquery = new \QuerySubQuery($criteria, 'Num');
-                $iterator = $DB->request([
-                   'SELECT' => ['MAX' => 'Num.no AS lastNo'],
-                   'FROM'   => $subquery
-                ]);
-
-                if (count($iterator)) {
-                    $result = $iterator->next();
-                    $newNo = $result['lastNo'] + 1;
-                } else {
-                    $newNo = 0;
-                }
+                // Retain the public increment/formatting behavior, including the
+                // historical floating-point result above PHP_INT_MAX.
+                $newNo = ($maximum ?? 0) + 1;
+                $autoNum = str_replace(['_', '%'], ['\\_', '\\%'], $autoNum);
 
                 $objectName = str_replace(
                     [
@@ -1843,7 +1877,7 @@ final class DbUtils
 
         if (is_string($end) && preg_match($date_pattern, $end) === 1) {
             $end_expr = new QueryExpression(
-                'ADDDATE(' . $DB->quoteValue($end) . ', INTERVAL 1 DAY)'
+                (new Expressions($DB->getDoctrineConnection()->getDatabasePlatform()))->dateAdd($DB->quoteValue($end), 1, 'DAY')
             );
             $criteria[] = [$field => ['<=', $end_expr]];
         } elseif ($end !== null && $end !== '') {

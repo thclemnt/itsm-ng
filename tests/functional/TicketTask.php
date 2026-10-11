@@ -33,12 +33,263 @@
 
 namespace tests\units;
 
+use CommonITILObject;
+use DateTime;
 use DbTestCase;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Query;
+use Entity;
+use Html;
+use Planning;
+use ReflectionProperty;
+use Session;
+use TicketTask as LegacyTicketTask;
+use Toolbox;
+use itsmng\Database\Entity\Entity as EntityRecord;
+use itsmng\Database\Entity\Group;
+use itsmng\Database\Entity\User;
+use itsmng\Database\Entity\Ticket as TicketRecord;
+use itsmng\Database\Entity\TicketTask as TicketTaskRecord;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILTaskRepository;
 
 /* Test for inc/tickettask.class.php */
 
 class TicketTask extends DbTestCase
 {
+    public function testPlanningAndCalendarReadsKeepFreshRowsAndIndependentWriter(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $writer = null;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $writer = Orm::create($DB);
+            $entity = $writer->getReference(EntityRecord::class, (int)$_SESSION['glpiactive_entity']);
+            $group = new Group();
+            $group->name = $this->getUniqueString();
+            $group->entities = $entity;
+            $writer->persist($group);
+            $parent = new TicketRecord();
+            $parent->name = $this->getUniqueString();
+            $parent->entities = $entity;
+            $parent->status = CommonITILObject::INCOMING;
+            $parent->priority = 3;
+            $parent->date_mod = new DateTime('2030-01-01 12:00:00');
+            $writer->persist($parent);
+            $task = new TicketTaskRecord();
+            $task->tickets = $parent;
+            $task->groups_tech = $group;
+            $task->uuid = $this->getUniqueString();
+            $task->content = 'Before write';
+            $task->begin = new DateTime('2030-01-01 12:00:00');
+            $task->end = new DateTime('2030-01-01 13:00:00');
+            $task->state = Planning::TODO;
+            $writer->persist($task);
+            $writer->flush();
+            $options = ['begin' => '2030-01-01 00:00:00', 'end' => '2030-01-02 00:00:00', 'who' => 0, 'whogroup' => $group->id];
+            $events = static fn (): array => array_values(LegacyTicketTask::populatePlanning($options));
+            $calendars = static fn (): array => LegacyTicketTask::getGroupItemsAsVCalendars($group->id);
+            $this->array($events())->hasSize(1);
+            $this->array($calendars())->hasSize(1);
+            $connection = $DB->getDoctrineConnection();
+            $connection->withApplicationEntityManager(function (EntityManager $outer) use ($group, $events, $calendars): void {
+                $sentinel = $outer->find(Group::class, $group->id);
+                $this->array($events())->hasSize(1);
+                $this->array($calendars())->hasSize(1);
+                $this->boolean($outer->contains($sentinel))->isTrue();
+            });
+            $connection->update('glpi_tickettasks', ['content' => 'After write', 'begin' => '2030-01-01 12:30:00'], ['id' => $task->id]);
+            $fresh = $events();
+            $this->string($fresh[0]['content'])->isIdenticalTo('After write');
+            $this->string($fresh[0]['begin'])->isIdenticalTo('2030-01-01 12:30:00');
+            $this->string((string)$calendars()[0]->getBaseComponent()->DESCRIPTION)->isIdenticalTo('After write');
+            $this->boolean($writer->contains($task))->isTrue();
+            // These completed read scopes must not detach or flush a caller's live writer.
+            $savedName = $parent->name;
+            $parent->name = 'Pending writer';
+            $events();
+            $calendars();
+            $this->string((string)$connection->fetchOne('SELECT name FROM glpi_tickets WHERE id = ?', [$parent->id]))
+                ->isIdenticalTo($savedName);
+            $writer->flush();
+            $this->string((string)$connection->fetchOne('SELECT name FROM glpi_tickets WHERE id = ?', [$parent->id]))
+                ->isIdenticalTo('Pending writer');
+            $connection->update('glpi_tickets', ['is_deleted' => 1], ['id' => $parent->id]);
+            $this->array($events())->isEmpty();
+            $this->array($calendars())->isEmpty();
+            $connection->update('glpi_tickets', ['is_deleted' => 0], ['id' => $parent->id]);
+            $this->array($events())->hasSize(1);
+            $this->array($calendars())->hasSize(1);
+            $_SESSION['glpiactiveentities'] = [];
+            $this->array($events())->isEmpty();
+            $this->array($calendars())->isEmpty();
+        } finally {
+            $_SESSION = $session;
+            $writer?->clear();
+        }
+    }
+
+    public function centralDisplayProvider(): array
+    {
+        return [['TicketTask', 'Ticket', 'tickets', 'Ticket'], ['ProblemTask', 'Problem', 'problems', 'ProblemTask']];
+    }
+
+    /** @dataProvider centralDisplayProvider */
+    public function testCentralDisplayRetainsSelectionAndRenderedRows(string $type, string $parentType, string $relation, string $tab): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $writer = null;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $outside = (int)$_SESSION['glpiactive_entity'];
+            $entity = $this->createItem(Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => $outside]);
+            $this->setEntity((int)$entity->getID(), false);
+            $writer = Orm::create($DB);
+            $scopeEntity = $writer->getReference(EntityRecord::class, (int)$entity->getID());
+            $user = (int)Session::getLoginUserID();
+            $group = new Group();
+            $group->name = $this->getUniqueString();
+            $group->entities = $scopeEntity;
+            $writer->persist($group);
+            $parents = $tasks = [];
+            $parentClass = 'itsmng\\Database\\Entity\\' . $parentType;
+            $taskClass = 'itsmng\\Database\\Entity\\' . $type;
+            foreach (range(0, 7) as $index) {
+                $parent = new $parentClass();
+                $parent->name = 'Parent ' . $index;
+                $parent->entities = $index === 3
+                    ? $writer->getReference(EntityRecord::class, $outside) : $scopeEntity;
+                $parent->status = $index === 4 ? CommonITILObject::CLOSED : CommonITILObject::INCOMING;
+                $parent->is_deleted = $index === 2;
+                $parent->priority = 3;
+                $writer->persist($parent);
+                $task = new $taskClass();
+                $task->$relation = $parent;
+                $task->content = '&lt;b&gt;Task ' . $index . '&lt;/b&gt; &amp; detail';
+                $task->technician = $index === 6 ? null : $writer->getReference(User::class, $user);
+                $task->groups_tech = $index === 7 ? null : $group;
+                $task->state = $index === 5 ? Planning::DONE : Planning::TODO;
+                $task->is_private = $index === 1;
+                $task->date_mod = $index === 7 ? null : new DateTime('2030-01-0' . ($index + 1) . ' 12:00:00');
+                $writer->persist($task);
+                $parents[] = $parent;
+                $tasks[] = $task;
+            }
+            $writer->flush();
+            $ids = static fn (array $indexes): array => array_map(static fn (int $index): int => $tasks[$index]->id, $indexes);
+            $_SESSION['glpigroups'] = [$group->id];
+            $_SESSION['glpidisplay_count_on_home'] = 2;
+            $_SESSION['glpipriority_3'] = '#123456';
+            $scope = getEntitiesRestrictCriteria($parentType::getTable());
+            $statuses = $parentType::getNotSolvedStatusArray();
+            $reader = new class ($DB->getDoctrineConnection(), Orm::configuration($DB->getDoctrineConnection()->getDatabasePlatform())) extends EntityManager {
+                public int $queries = 0;
+                public function createQuery(string $dql = ''): Query
+                {
+                    ++$this->queries;
+                    return parent::createQuery($dql);
+                }
+            };
+            $repository = new ITILTaskRepository($reader);
+            $page = $repository->centralList($type, $statuses, true, $user, null, $scope, 0);
+            $rows = $page['rows'];
+            $this->integer($page['total'])->isIdenticalTo(4);
+            $this->integer($reader->queries)->isIdenticalTo(2);
+            $this->array($reader->getUnitOfWork()->getIdentityMap())->isEmpty();
+            // Deleted parents and private tasks remain included by the established task-list policy.
+            $this->array(array_column($rows, 'id'))->isIdenticalTo($ids([2, 1, 0, 7]));
+            $this->array(array_column($type::getTaskList('todo', false), 'id'))->isIdenticalTo($ids([2, 1, 0, 7]));
+            $this->array(array_column($type::getTaskList('todo', false, 1, 2), 'id'))->isIdenticalTo($ids([1, 0]));
+            $limited = $repository->centralList($type, $statuses, true, $user, null, $scope, 2);
+            $this->integer($limited['total'])->isIdenticalTo(4);
+            $this->array(array_column($limited['rows'], 'id'))->isIdenticalTo($ids([2, 1]));
+            $this->array(array_column($repository->centralList($type, $statuses, true, $user, [$group->id], $scope, 0)['rows'], 'id'))->isIdenticalTo($ids([6, 2, 1, 0]));
+            $this->array(array_column($repository->centralList($type, $statuses, false, $user, [$group->id], $scope, 0)['rows'], 'id'))->isIdenticalTo($ids([6, 5, 2, 1, 0]));
+            $this->array($repository->centralList($type, $statuses, true, $user, [], $scope, 0))->isIdenticalTo(['total' => 0, 'rows' => []]);
+            $this->array($repository->centralList($type, $statuses, true, 0, null, $scope, 0))->isIdenticalTo(['total' => 0, 'rows' => []]);
+            $render = function (bool $groups = false, ?string $displayType = null, string $status = 'todo') use ($type): array {
+                $displayType ??= $type;
+                ob_start();
+                try {
+                    // The historical homepage entrypoint ignores its start argument.
+                    $displayType::showCentralList(99, $status, $groups);
+                    $html = ob_get_contents();
+                } finally {
+                    ob_end_clean();
+                }
+                if (!preg_match('/<script type="application\/json"[^>]*>(.*?)<\/script>/s', $html, $match)) {
+                    return [$html, []];
+                }
+                return [$html, json_decode($match[1], true, 512, JSON_THROW_ON_ERROR)['dataSource']['rows']];
+            };
+            [$html, $rendered] = $render();
+            $this->array($rendered)->hasSize(2);
+            foreach ([2, 1] as $position => $index) {
+                $id = sprintf(__('%1$s: %2$s'), __('ID'), $tasks[$index]->id);
+                $content = Toolbox::unclean_cross_side_scripting_deep(html_entity_decode($tasks[$index]->content, ENT_QUOTES, 'UTF-8'));
+                $this->array($rendered[$position])->isIdenticalTo([
+                    "<div class='priority_block' style='border-color: #123456'>\n                  <span style='background: #123456'></span>&nbsp;$id</div>",
+                    $parents[$index]->name,
+                    "<a href='" . $parentType::getFormURLWithID($parents[$index]->id) . "&amp;forcetab=" . $tab . "$1'> " . Html::resume_text(Html::Clean($content), 50),
+                ]);
+            }
+            $this->string($html)->contains(Html::makeTitle($type === 'TicketTask' ? __('Ticket tasks to do') : __('Problem tasks to do'), 2, 4));
+            $this->boolean($DB->update($parentType::getTable(), ['name' => 'Current parent title'], ['id' => $parents[2]->id]))->isTrue();
+            [, $fresh] = $render();
+            $this->string($fresh[0][1])->isIdenticalTo('Current parent title');
+            $this->string($parents[2]->name)->isIdenticalTo('Parent 2');
+            [, $groupRows] = $render(true);
+            $this->string($groupRows[0][1])->isIdenticalTo('Parent 6');
+            $_SESSION['glpigroups'] = [];
+            [$emptyHtml, $emptyRows] = $render(true);
+            $this->string($emptyHtml)->isEmpty();
+            $this->array($emptyRows)->isEmpty();
+            if ($type === 'TicketTask') {
+                $custom = new class () extends LegacyTicketTask {
+                    public static int $loads = 0;
+                    public static function getType()
+                    {
+                        return 'TicketTask';
+                    }
+                    public static function getTable($classname = null)
+                    {
+                        return LegacyTicketTask::getTable();
+                    }
+                    public function getFromDB($id)
+                    {
+                        ++self::$loads;
+                        $found = parent::getFromDB($id);
+                        $this->fields['content'] = 'Custom task reader';
+                        return $found;
+                    }
+                };
+                [, $customRows] = $render(false, $custom::class, 'all');
+                $this->integer($custom::$loads)->isIdenticalTo(2);
+                $this->string($customRows[0][2])->contains('Custom task reader');
+            }
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $allocated = $factories->getValue();
+            for ($i = 0; $i < 16; ++$i) {
+                $currentTasks = $type::getTaskList('todo', false);
+                [, $currentRows] = $render();
+            }
+            $createdManagers = $factories->getValue() - $allocated;
+            $this->array(array_column($currentTasks, 'id'))->isIdenticalTo($ids([2, 1, 0, 7]));
+            $this->string($currentRows[0][1])->isIdenticalTo('Current parent title');
+            $this->boolean($writer->contains($parents[2]))->isTrue();
+            $this->boolean($writer->contains($tasks[2]))->isTrue();
+            $this->string($parents[2]->name)->isIdenticalTo('Parent 2');
+        } finally {
+            $writer?->clear();
+            $_SESSION = $session;
+        }
+        $this->integer($createdManagers)->isIdenticalTo(0);
+    }
+
     /**
      * Create a new ticket
      *
@@ -365,4 +616,76 @@ class TicketTask extends DbTestCase
          ]
         );
     }
+
+    public function testLinkedParentPlanningProjectionKeepsUnfilteredTaskRows(): void
+    {
+        global $DB;
+        $this->login();
+        $session = $_SESSION;
+        try {
+            foreach ([['Ticket', 'TicketTask', 'tickets_id'], ['Change', 'ChangeTask', 'changes_id'],
+                ['Problem', 'ProblemTask', 'problems_id']] as [$parentType, $taskType, $field]) {
+                $parent = $this->createItem($parentType, ['name' => 'Planning projection ' . $this->getUniqueString(), 'content' => 'Linked task parent']);
+                $other = $this->createItem($parentType, ['name' => 'Other planning parent ' . $this->getUniqueString(), 'content' => 'Other task parent']);
+                $first = $this->createItem($taskType, [$field => $parent->getID(), 'content' => 'Private completed task', 'is_private' => 1, 'state' => Planning::DONE]);
+                $second = $this->createItem($taskType, [$field => $parent->getID(), 'content' => 'Same calendar separate task']);
+                $unplanned = $this->createItem($taskType, [$field => $parent->getID(), 'content' => 'Unplanned task']);
+                $outside = $this->createItem($taskType, [$field => $other->getID(), 'content' => 'Different parent task']);
+                $connection = $DB->getDoctrineConnection();
+                $connection->update(
+                    $first->getTable(),
+                    [
+                        $connection->quoteIdentifier('begin') => '2030-02-03 04:05:06',
+                        $connection->quoteIdentifier('end') => null,
+                        'users_id_tech' => null
+                    ],
+                    ['id' => $first->getID()]
+                );
+                $connection->update(
+                    $second->getTable(),
+                    [
+                        $connection->quoteIdentifier('begin') => '2030-02-03 04:05:06',
+                        $connection->quoteIdentifier('end') => '2030-02-03 05:06:07',
+                        'users_id_tech' => Session::getLoginUserID()
+                    ],
+                    ['id' => $second->getID()]
+                );
+                $read = static fn (): array => Orm::read($DB, static fn (EntityManager $manager): array =>
+                    (new ITILTaskRepository($manager))->parentPlanning($taskType, (int)$parent->getID()));
+                $rows = $read();
+                $this->integer(count($rows))->isIdenticalTo(3);
+                $indexed = array_column($rows, null, 'id');
+                $this->variable($indexed[$first->getID()]['users_id_tech'])->isNull();
+                $this->variable($indexed[$first->getID()]['end'])->isNull();
+                $this->string($indexed[$first->getID()]['begin'])->isIdenticalTo('2030-02-03 04:05:06');
+                $this->integer((int)$indexed[$second->getID()]['users_id_tech'])->isIdenticalTo((int)Session::getLoginUserID());
+                $this->variable($indexed[$unplanned->getID()]['begin'])->isNull();
+                $this->array($indexed)->notHasKey($outside->getID());
+                $this->integer(count(array_filter($rows, static fn (array $row): bool => isset($row['begin']) && (bool)$row['begin'])))->isIdenticalTo(2);
+                foreach ([null, 0, -1] as $empty) {
+                    $this->array(Orm::read($DB, static fn (EntityManager $manager): array =>
+                        (new ITILTaskRepository($manager))->parentPlanning($taskType, $empty)))->isEmpty();
+                }
+                $_SESSION['glpiactiveentities'] = [];
+                $this->integer(count($read()))->isIdenticalTo(3, 'Planning projection adds no target entity admission');
+                $_SESSION = $session;
+                $connection->update(
+                    $first->getTable(),
+                    [
+                        $connection->quoteIdentifier('begin') => '2030-03-04 05:06:07',
+                        $connection->quoteIdentifier('end') => '2030-03-04 06:07:08'
+                    ],
+                    ['id' => $first->getID()]
+                );
+                $fresh = array_column($read(), null, 'id');
+                $this->string($fresh[$first->getID()]['begin'])->isIdenticalTo('2030-03-04 05:06:07');
+                $this->string($indexed[$first->getID()]['begin'])->isIdenticalTo('2030-02-03 04:05:06');
+                $this->boolean($second->delete(['id' => $second->getID()], true))->isTrue();
+                $this->integer(count($read()))->isIdenticalTo(2);
+            }
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
 }

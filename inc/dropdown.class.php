@@ -31,6 +31,15 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\DropdownChoiceContext;
+use itsmng\Database\DropdownReadOperation;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\EntityScopeReadOperation;
+use itsmng\Database\Orm;
+use itsmng\Database\RowIterator;
+use itsmng\Database\UnmappedDropdownChoices;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -184,10 +193,9 @@ class Dropdown
               'on_change'            => $params['on_change'],
               'permit_select_parent' => $params['permit_select_parent'],
               'specific_tags'        => $params['specific_tags'],
-              '_idor_token'          => Session::getNewIDORToken($itemtype, [
-                 'entity_restrict' => $entity_restrict,
-              ]),
         ];
+
+        $p['_idor_token'] = DropdownChoiceContext::token($itemtype, $p);
 
         $output = "<span class='no-wrap input-group'>";
         $output .= Html::jsAjaxDropdown(
@@ -351,57 +359,76 @@ class Dropdown
         $comment = "";
 
         if ($id) {
-            $SELECTNAME    = new \QueryExpression("'' AS " . $DB->quoteName('transname'));
-            $SELECTCOMMENT = new \QueryExpression("'' AS " . $DB->quoteName('transcomment'));
-            $JOIN          = [];
-            $JOINS         = [];
-            if ($translate) {
-                if (Session::haveTranslations(getItemTypeForTable($table), 'name')) {
-                    $SELECTNAME = 'namet.value AS transname';
-                    $JOINS['glpi_dropdowntranslations AS namet'] = [
-                       'ON' => [
-                          'namet'  => 'items_id',
-                          $table   => 'id', [
-                             'AND' => [
-                                'namet.itemtype'  => getItemTypeForTable($table),
-                                'namet.language'  => $_SESSION['glpilanguage'],
-                                'namet.field'     => 'name'
-                             ]
-                          ]
-                       ]
-                    ];
+            if (isset(EntityRegistry::tables()[$table])) {
+                $type = getItemTypeForTable($table);
+                $translations = [];
+                foreach (['name', 'comment'] as $field) {
+                    if ($translate && Session::haveTranslations($type, $field)) {
+                        $translations[] = $field;
+                    }
                 }
-                if (Session::haveTranslations(getItemTypeForTable($table), 'comment')) {
-                    $SELECTCOMMENT = 'namec.value AS transcomment';
-                    $JOINS['glpi_dropdowntranslations AS namec'] = [
-                       'ON' => [
-                          'namec'  => 'items_id',
-                          $table   => 'id', [
-                             'AND' => [
-                                'namec.itemtype'  => getItemTypeForTable($table),
-                                'namec.language'  => $_SESSION['glpilanguage'],
-                                'namec.field'     => 'comment'
-                             ]
-                          ]
-                       ]
-                    ];
+                $columns = array_values(array_intersect(
+                    $item->getDropdownNameFields((bool)$tooltip),
+                    EntityRegistry::columnNames($table)
+                ));
+                $connection = $DB->getDoctrineConnection();
+                $data = Orm::withReadConnection($connection, static fn (?EntityManager $manager): ?array =>
+                    (new DropdownReadOperation($connection, $manager))
+                        ->label($table, (int)$id, $type, $_SESSION['glpilanguage'] ?? '', $translations, $columns));
+                $iterator = new RowIterator($data === null ? [] : [$data]);
+            } else {
+                $SELECTNAME    = new QueryExpression("'' AS " . $DB->quoteName('transname'));
+                $SELECTCOMMENT = new QueryExpression("'' AS " . $DB->quoteName('transcomment'));
+                $JOIN          = [];
+                $JOINS         = [];
+                if ($translate) {
+                    if (Session::haveTranslations(getItemTypeForTable($table), 'name')) {
+                        $SELECTNAME = 'namet.value AS transname';
+                        $JOINS['glpi_dropdowntranslations AS namet'] = [
+                           'ON' => [
+                              'namet'  => 'items_id',
+                              $table   => 'id', [
+                                 'AND' => [
+                                    'namet.itemtype'  => getItemTypeForTable($table),
+                                    'namet.language'  => $_SESSION['glpilanguage'],
+                                    'namet.field'     => 'name'
+                                 ]
+                              ]
+                           ]
+                        ];
+                    }
+                    if (Session::haveTranslations(getItemTypeForTable($table), 'comment')) {
+                        $SELECTCOMMENT = 'namec.value AS transcomment';
+                        $JOINS['glpi_dropdowntranslations AS namec'] = [
+                           'ON' => [
+                              'namec'  => 'items_id',
+                              $table   => 'id', [
+                                 'AND' => [
+                                    'namec.itemtype'  => getItemTypeForTable($table),
+                                    'namec.language'  => $_SESSION['glpilanguage'],
+                                    'namec.field'     => 'comment'
+                                 ]
+                              ]
+                           ]
+                        ];
+                    }
+
+                    if (count($JOINS)) {
+                        $JOIN = ['LEFT JOIN' => $JOINS];
+                    }
                 }
 
-                if (count($JOINS)) {
-                    $JOIN = ['LEFT JOIN' => $JOINS];
-                }
+                $criteria = [
+                   'SELECT' => [
+                      "$table.*",
+                      $SELECTNAME,
+                      $SELECTCOMMENT
+                   ],
+                   'FROM'   => $table,
+                   'WHERE'  => ["$table.id" => $id]
+                ] + $JOIN;
+                $iterator = $DB->request($criteria);
             }
-
-            $criteria = [
-               'SELECT' => [
-                  "$table.*",
-                  $SELECTNAME,
-                  $SELECTCOMMENT
-               ],
-               'FROM'   => $table,
-               'WHERE'  => ["$table.id" => $id]
-            ] + $JOIN;
-            $iterator = $DB->request($criteria);
 
             /// TODO review comment management...
             /// TODO getDropdownName need to return only name
@@ -435,7 +462,7 @@ class Dropdown
                     case "glpi_contacts":
                         //TRANS: %1$s is the name, %2$s is the firstname
                         $name = sprintf(__('%1$s %2$s'), $name, $data["firstname"]);
-                        if ($tooltip) {
+                        if ($tooltip && $withcomment) {
                             if (!empty($data["phone"])) {
                                 $comment .= "<br>" . sprintf(
                                     __('%1$s: %2$s'),
@@ -475,7 +502,7 @@ class Dropdown
                         break;
 
                     case "glpi_suppliers":
-                        if ($tooltip) {
+                        if ($tooltip && $withcomment) {
                             if (!empty($data["phonenumber"])) {
                                 $comment .= "<br>" . sprintf(
                                     __('%1$s: %2$s'),
@@ -514,7 +541,7 @@ class Dropdown
                         break;
 
                     case "glpi_budgets":
-                        if ($tooltip) {
+                        if ($tooltip && $withcomment) {
                             if (!empty($data['locations_id'])) {
                                 $comment .= "<br>" . sprintf(
                                     __('%1$s: %2$s'),
@@ -1434,115 +1461,224 @@ class Dropdown
      *    - entity_restrict     : restrict entity in searching items (default -1)
      *    - onlyglobal          : don't match item that don't have `is_global` == 1 (false by default)
      *    - checkright          : check to see if we can "view" the itemtype (false by default)
-     *    - showItemSpecificity : given an item, the AJAX file to open if there is special
-     *                            treatment. For instance, select a Item_Device* for CommonDevice
      *    - emptylabel          : Empty choice's label (default self::EMPTY_VALUE)
      *    - used                : array / Already used items ID: not to display in dropdown (default empty)
      *    - display             : true : display directly, false return the html
      *
-     * @return integer randomized value used to generate HTML IDs
+     * @return int|string randomized ID when displayed, or HTML when display is false
     **/
     public static function showSelectItemFromItemtypes(array $options = [])
     {
         global $CFG_GLPI;
 
-        $params = [];
-        $params['itemtype_name']       = 'itemtype';
-        $params['items_id_name']       = 'items_id';
-        $params['itemtypes']           = '';
-        $params['default_itemtype']    = 0;
-        $params['entity_restrict']     = -1;
-        $params['onlyglobal']          = false;
-        $params['checkright']          = false;
-        $params['showItemSpecificity'] = '';
-        $params['emptylabel']          = self::EMPTY_VALUE;
-        $params['used']                = [];
-        $params['display']             = true;
-        $params['rand']                = mt_rand();
-
-        if (is_array($options) && count($options)) {
-            foreach ($options as $key => $val) {
-                $params[$key] = $val;
+        $params = $options + [
+            'itemtype_name' => 'itemtype', 'items_id_name' => 'items_id',
+            'itemtypes' => $CFG_GLPI['state_types'], 'default_itemtype' => 0,
+            'entity_restrict' => -1, 'onlyglobal' => false, 'checkright' => false,
+            'emptylabel' => self::EMPTY_VALUE, 'used' => [], 'display' => true, 'rand' => mt_rand(),
+            'condition' => [],
+        ];
+        $types = is_array($params['itemtypes']) ? $params['itemtypes'] : $CFG_GLPI['state_types'];
+        $values = [];
+        $requests = [];
+        foreach ($types as $kind) {
+            $item = getItemForItemtype($kind);
+            if (!$item instanceof CommonDBTM || ($params['checkright'] && !$item->canView())) {
+                continue;
             }
+            $values[$kind] = $item::getTypeName(1);
+            $used = $params['used'][$kind] ?? (array_is_list($params['used']) ? $params['used'] : []);
+            // Bind JSON strings rather than arrays: IDOR's array matching is
+            // intentionally a subset match, unsuitable for an exact scope.
+            $context = [
+                '_select_itemtypes' => 1,
+                'entity_restrict' => json_encode($params['entity_restrict'], JSON_THROW_ON_ERROR),
+                'used' => json_encode(array_values($used), JSON_THROW_ON_ERROR),
+                'onlyglobal' => (int)(bool)$params['onlyglobal'],
+                'checkright' => (int)(bool)$params['checkright'],
+                'emptylabel' => $params['emptylabel'],
+            ];
+            $condition = is_callable($params['condition']) ? ($params['condition'])($item) : $params['condition'];
+            if (!is_array($condition)) {
+                throw new InvalidArgumentException('Item selection conditions must be structured criteria');
+            }
+            if ($condition) {
+                $context['condition'] = self::addNewCondition($condition);
+            }
+            $requests[$kind] = ['idtable' => $kind] + $context + ['_idor_token' => Session::getNewIDORToken($kind, $context)];
         }
-
-
-        $dropdownValues = [Dropdown::EMPTY_VALUE];
-        foreach ($CFG_GLPI["ticket_types"] as $itemtype) {
-            $dropdownValues[$itemtype] = $itemtype::getTypeName(1);
-        }
-        asort($dropdownValues);
-        $entity = Session::getActiveEntity();
+        asort($values);
+        $values = [0 => $params['emptylabel']] + $values;
+        $default = isset($requests[$params['default_itemtype']]) ? $params['default_itemtype'] : 0;
+        $typeId = Html::cleanId('select_itemtype_' . $params['itemtype_name'] . '_' . $params['rand']);
+        $itemId = Html::cleanId('select_item_' . $params['items_id_name'] . '_' . $params['rand']);
+        $jsonFlags = JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT | JSON_THROW_ON_ERROR;
+        $requestsJson = json_encode($requests, $jsonFlags);
+        $itemIdJson = json_encode($itemId, $jsonFlags);
+        $urlJson = json_encode($CFG_GLPI['root_doc'] . '/ajax/dropdownAllItems.php', $jsonFlags);
+        $emptyJson = json_encode($params['emptylabel'], $jsonFlags);
         $inputs = [
-           __('Itemtype') => [
-              'type' => 'select',
-              'id' => 'selectItemTypeForTicketMassiveAction',
-              'name' => $params['itemtype_name'],
-              'values' => $dropdownValues,
-              'col_lg' => 6,
-              'hooks' => [
-                 'change' => <<<JS
-                  const val = this.value;
-                  $('#selectItemForTicketMassiveAction').empty();
-                  if (val != 0) {
-                     $.ajax({
-                        url: '{$CFG_GLPI['root_doc']}/ajax/dropdownAllItems.php',
-                        data: {
-                           itemtype_name: 'devicetype',
-                           items_id_name: 'devices_id',
-                           idtable: val,
-                           entity_restrict: $entity,
-                        },
+            __('Itemtype') => [
+                'type' => 'select', 'id' => $typeId, 'name' => $params['itemtype_name'],
+                'values' => $values, 'value' => $default, 'col_lg' => 6, 'text_only' => true,
+                'hooks' => ['change' => <<<JS
+                    const requests = $requestsJson;
+                    const target = document.getElementById($itemIdJson);
+                    const selectionRequest = String(Number(target.dataset.selectionRequest || 0) + 1);
+                    target.dataset.selectionRequest = selectionRequest;
+                    target.replaceChildren(new Option($emptyJson, '0'));
+                    const request = requests[this.value];
+                    target.disabled = !request;
+                    if (!request) {
+                        return;
+                    }
+                    $.ajax({
+                        url: $urlJson,
+                        data: request,
                         type: 'POST',
-                        success: function(data) {
-                           const jsonDatas = JSON.parse(data);
-                           for (const key in jsonDatas) {
-                             if (typeof jsonDatas[key] === 'object') {
-                                for (const key2 in jsonDatas[key]) {
-                                   $('#selectItemForTicketMassiveAction').append('<option value="' + key2 + '">' + jsonDatas[key][key2] + '</option>');
+                        dataType: 'json',
+                        success: function(values) {
+                            if (target.dataset.selectionRequest !== selectionRequest) {
+                                return;
+                            }
+                            target.replaceChildren();
+                            for (const [id, label] of Object.entries(values)) {
+                                if (label !== null && typeof label === 'object') {
+                                    const group = document.createElement('optgroup');
+                                    group.label = id;
+                                    for (const [childId, childLabel] of Object.entries(label)) {
+                                        group.append(new Option(String(childLabel), String(childId)));
+                                    }
+                                    target.append(group);
+                                } else {
+                                    target.append(new Option(String(label), String(id)));
                                 }
-                             } else {
-                                $('#selectItemForTicketMassiveAction').append('<option value="' + key + '">' + jsonDatas[key] + '</option>');
-                             }
-                           }
+                            }
                         }
-                     });
-                  }
-                  if (val == 0) {
-                     $('#selectItemForTicketMassiveAction').prop('disabled', true);
-                     $('#selectItemForTicketMassiveAction').empty();
-                  } else {
-                     $('#selectItemForTicketMassiveAction').prop('disabled', false);
-                  }
-               JS,
-              ]
-           ],
-           __('Component') => [
-              'type' => 'select',
-              'name' => $params['items_id_name'],
-              'id' => 'selectItemForTicketMassiveAction',
-              'values' => [],
-              'col_lg' => 6,
-              'disabled' => '',
-           ],
+                    });
+                JS],
+            ],
+            __('Item') => [
+                'type' => 'select', 'id' => $itemId, 'name' => $params['items_id_name'],
+                'values' => $default ? (self::getAllItemsSelection($requests[$default]) ?? []) : [0 => $params['emptylabel']],
+                'col_lg' => 6, 'disabled' => !$default, 'text_only' => true,
+            ],
         ];
         ob_start();
         echo "<div class='center row'>";
         foreach ($inputs as $title => $input) {
-            renderTwigTemplate('macros/wrappedInput.twig', [
-               'title' => $title,
-               'input' => $input,
-            ]);
+            renderTwigTemplate('macros/wrappedInput.twig', ['title' => $title, 'input' => $input]);
         }
-        echo "</div>";
+        echo '</div>';
         $out = ob_get_clean();
-
         if ($params['display']) {
             echo $out;
+            return $params['rand'];
         }
         return $out;
     }
 
+    /** Selection data honors the rendered capability and current session scope. */
+    public static function getAllItemsSelection(array $post): ?array
+    {
+        $kind = $post['idtable'] ?? '';
+        if (!is_string($kind)) {
+            return null;
+        }
+        $item = getItemForItemtype($kind);
+        if (!$item instanceof CommonDBTM) {
+            return null;
+        }
+        $signed = isset($post['_select_itemtypes']);
+        if ($signed && !Session::validateIDOR(array_replace($post, ['itemtype' => $kind]))) {
+            return null;
+        }
+        if ((!$signed || !empty($post['checkright'])) && !$item->canView()) {
+            return null;
+        }
+        $scope = $post['entity_restrict'] ?? -1;
+        if (is_string($scope) && str_starts_with($scope, '[')) {
+            try {
+                $scope = json_decode($scope, true, flags: JSON_THROW_ON_ERROR);
+            } catch (JsonException) {
+                return null;
+            }
+        }
+        if ($scope === 'default') {
+            $scope = -1;
+        }
+        if (is_array($scope)) {
+            foreach ($scope as $entity) {
+                if (filter_var($entity, FILTER_VALIDATE_INT) === false || (int)$entity < 0) {
+                    return null;
+                }
+            }
+            $scope = array_map('intval', array_values($scope));
+        } elseif (filter_var($scope, FILTER_VALIDATE_INT) === false || (int)$scope < -1) {
+            return null;
+        } else {
+            $scope = (int)$scope;
+        }
+        $used = $post['used'] ?? [];
+        if (is_string($used)) {
+            try {
+                $used = json_decode($used, true, flags: JSON_THROW_ON_ERROR);
+            } catch (JsonException) {
+                return null;
+            }
+        }
+        if (!is_array($used)) {
+            return null;
+        }
+        $used = $used[$kind] ?? (array_is_list($used) ? $used : []);
+        if (!is_array($used)) {
+            return null;
+        }
+        foreach ($used as $id) {
+            if (filter_var($id, FILTER_VALIDATE_INT) === false || (int)$id < 0) {
+                return null;
+            }
+        }
+        $conditions = [];
+        if ($item->isEntityAssign()) {
+            $conditions[] = getEntitiesRestrictCriteria($item->getTable(), '', '', 'auto');
+            if ($scope !== -1) {
+                $conditions[] = getEntitiesRestrictCriteria($item->getTable(), '', $scope, 'auto');
+            }
+        }
+        if (!empty($post['onlyglobal']) && $item->isField('is_global')) {
+            $conditions[] = ['is_global' => true];
+        }
+        $condition = $post['condition'] ?? [];
+        if (is_string($condition)) {
+            $condition = $_SESSION['glpicondition'][$condition] ?? null;
+        }
+        if (!is_array($condition)) {
+            return null;
+        }
+        if ($condition) {
+            $conditions[] = $condition;
+        }
+        $conditions = array_filter($conditions);
+        $data = self::getDropdownValue([
+            'itemtype' => $kind, 'entity_restrict' => $scope,
+            'restrict_session_scope' => true,
+            // This native select needs the whole permitted candidate set.
+            'page' => 1, 'page_limit' => 0,
+            'condition' => $conditions ? self::addNewCondition(['AND' => $conditions]) : '',
+            'used' => array_values($used), 'display_emptychoice' => true,
+            'emptylabel' => $post['emptylabel'] ?? self::EMPTY_VALUE,
+        ], false);
+        $values = [];
+        foreach ($data['results'] as $value) {
+            if (isset($value['children'])) {
+                $values[$value['text']] = ($values[$value['text']] ?? []) + array_column($value['children'], 'text', 'id');
+            } else {
+                $values[$value['id']] = $value['text'];
+            }
+        }
+        return $values;
+    }
 
     /**
      * Dropdown numbers
@@ -2041,9 +2177,11 @@ class Dropdown
 
         $output .= Ajax::commonDropdownUpdateItem($param, false);
 
-        ob_start();
-        renderTwigTemplate('macros/input.twig', $input);
-        $output .= ob_get_clean();
+        if (!$param['readonly']) {
+            ob_start();
+            renderTwigTemplate('macros/input.twig', $input);
+            $output .= ob_get_clean();
+        }
 
         if ($param['display']) {
             echo $output;
@@ -2280,10 +2418,10 @@ class Dropdown
     {
         global $DB, $CFG_GLPI;
 
-        // check if asked itemtype is the one originaly requested by the form
-        // if (!Session::validateIDOR($post)) {
-        //    return;
-        // }
+        $scopeReads = new EntityScopeReadOperation();
+
+        // Trusted PHP callers already own their component authorization. The
+        // public AJAX boundary validates the issued kind and complete context.
 
         if (
             isset($post["entity_restrict"])
@@ -2327,9 +2465,7 @@ class Dropdown
             }
         }
 
-        if (!isset($post['permit_select_parent'])) {
-            $post['permit_select_parent'] = false;
-        }
+        $post['permit_select_parent'] = filter_var($post['permit_select_parent'] ?? false, FILTER_VALIDATE_BOOL);
 
         $condition = [];
         if (isset($post['condition']) && !empty($post['condition']) && !is_array($post['condition'])) {
@@ -2389,7 +2525,7 @@ class Dropdown
 
         if ($item instanceof CommonTreeDropdown) {
             if ($one_item >= 0) {
-                $where["$table.id"] = $one_item;
+                $where[] = ["$table.id" => $one_item];
             } else {
                 if (!empty($post['searchText'])) {
                     $search = Search::makeTextSearchValue($post['searchText']);
@@ -2434,7 +2570,7 @@ class Dropdown
                 }
 
                 if (isset($post["entity_restrict"]) && !($post["entity_restrict"] < 0)) {
-                    $where = $where + getEntitiesRestrictCriteria(
+                    $where = $where + $scopeReads->criteria(
                         $table,
                         '',
                         $post["entity_restrict"],
@@ -2447,7 +2583,7 @@ class Dropdown
                 } else {
                     // If private item do not use entity
                     if (!$item->maybePrivate()) {
-                        $where = $where + getEntitiesRestrictCriteria($table, '', '', $recur);
+                        $where = $where + $scopeReads->criteria($table, '', '', $recur);
 
                         if (count((array)($_SESSION['glpiactiveentities'] ?? [])) > 1) {
                             $multi = true;
@@ -2472,54 +2608,6 @@ class Dropdown
                 }
             }
 
-            $addselect = [];
-            $ljoin = [];
-            if (Session::haveTranslations($post['itemtype'], 'completename')) {
-                $addselect[] = "namet.value AS transcompletename";
-                $ljoin['glpi_dropdowntranslations AS namet'] = [
-                   'ON' => [
-                      'namet'  => 'items_id',
-                      $table   => 'id', [
-                         'AND' => [
-                            'namet.itemtype'  => $post['itemtype'],
-                            'namet.language'  => $_SESSION['glpilanguage'],
-                            'namet.field'     => 'completename'
-                         ]
-                      ]
-                   ]
-                ];
-            }
-            if (Session::haveTranslations($post['itemtype'], 'name')) {
-                $addselect[] = "namet2.value AS transname";
-                $ljoin['glpi_dropdowntranslations AS namet2'] = [
-                   'ON' => [
-                      'namet2' => 'items_id',
-                      $table   => 'id', [
-                         'AND' => [
-                            'namet2.itemtype' => $post['itemtype'],
-                            'namet2.language' => $_SESSION['glpilanguage'],
-                            'namet2.field'    => 'name'
-                         ]
-                      ]
-                   ]
-                ];
-            }
-            if (Session::haveTranslations($post['itemtype'], 'comment')) {
-                $addselect[] = "commentt.value AS transcomment";
-                $ljoin['glpi_dropdowntranslations AS commentt'] = [
-                   'ON' => [
-                      'commentt'  => 'items_id',
-                      $table      => 'id', [
-                         'AND' => [
-                            'commentt.itemtype'  => $post['itemtype'],
-                            'commentt.language'  => $_SESSION['glpilanguage'],
-                            'commentt.field'     => 'comment'
-                         ]
-                      ]
-                   ]
-                ];
-            }
-
             if ($start > 0 && $multi) {
                 //we want to load last entry of previous page
                 //(and therefore one more result) to check if
@@ -2528,18 +2616,17 @@ class Dropdown
                 ++$limit;
             }
 
-            $criteria = [
-               'SELECT' => array_merge(["$table.*"], $addselect),
-               'FROM'   => $table,
-               'WHERE'  => $where,
-               'ORDER'  => $order,
-               'START'  => $start,
-               'LIMIT'  => $limit
-            ];
-            if (count($ljoin)) {
-                $criteria['LEFT JOIN'] = $ljoin;
-            }
-            $iterator = $DB->request($criteria);
+            $iterator = self::choiceRows(
+                $DB,
+                $item,
+                $where,
+                $order,
+                self::choiceTranslations($post['itemtype'], true),
+                $post['itemtype'],
+                $limit,
+                $start,
+                $scopeReads
+            );
 
             // Empty search text : display first
             if ($post['page'] == 1 && empty($post['searchText'])) {
@@ -2570,7 +2657,7 @@ class Dropdown
                 $prev             = -1;
                 $firstitem_entity = -1;
 
-                while ($data = $iterator->next()) {
+                foreach ($iterator as $data) {
                     $ID    = $data['id'];
                     $level = $data['level'];
 
@@ -2744,7 +2831,7 @@ class Dropdown
                 $multi = $item->maybeRecursive();
 
                 if (isset($post["entity_restrict"]) && !($post["entity_restrict"] < 0)) {
-                    $where = $where + getEntitiesRestrictCriteria(
+                    $where = $where + $scopeReads->criteria(
                         $table,
                         "entities_id",
                         $post["entity_restrict"],
@@ -2757,7 +2844,7 @@ class Dropdown
                 } else {
                     // Do not use entity if may be private
                     if (!$item->maybePrivate()) {
-                        $where = $where + getEntitiesRestrictCriteria($table, '', '', $multi);
+                        $where = $where + $scopeReads->criteria($table, '', '', $multi);
 
                         if (count((array)($_SESSION['glpiactiveentities'] ?? [])) > 1) {
                             $multi = true;
@@ -2793,9 +2880,6 @@ class Dropdown
                 if (Session::haveTranslations($post['itemtype'], $field)) {
                     $orwhere['namet.value'] = ['LIKE', $search];
                 }
-                if ($post['itemtype'] == "SoftwareLicense") {
-                    $orwhere['glpi_softwares.name'] = ['LIKE', $search];
-                }
 
                 // search also in displaywith columns
                 if ($displaywith && count($post['displaywith'])) {
@@ -2806,255 +2890,132 @@ class Dropdown
 
                 $where[] = ['OR' => $orwhere];
             }
-            $addselect = [];
-            $ljoin = [];
-            if (Session::haveTranslations($post['itemtype'], $field)) {
-                $addselect[] = "namet.value AS transname";
-                $ljoin['glpi_dropdowntranslations AS namet'] = [
-                   'ON' => [
-                      'namet'  => 'items_id',
-                      $table   => 'id', [
-                         'AND' => [
-                            'namet.itemtype'  => $post['itemtype'],
-                            'namet.language'  => $_SESSION['glpilanguage'],
-                            'namet.field'     => $field
-                         ]
-                      ]
-                   ]
-                ];
-            }
-            if (Session::haveTranslations($post['itemtype'], 'comment')) {
-                $addselect[] = "commentt.value AS transcomment";
-                $ljoin['glpi_dropdowntranslations AS commentt'] = [
-                   'ON' => [
-                      'commentt'  => 'items_id',
-                      $table      => 'id', [
-                         'AND' => [
-                            'commentt.itemtype'  => $post['itemtype'],
-                            'commentt.language'  => $_SESSION['glpilanguage'],
-                            'commentt.field'     => 'comment'
-                         ]
-                      ]
-                   ]
-                ];
-            }
+            if ($item instanceof User) {
+                $right = $post['right'] ?? 'all';
 
-            $criteria = [];
-            switch ($post['itemtype']) {
-                case "Contact":
-                    $criteria = [
-                       'SELECT' => [
-                          "$table.entities_id",
-                          new \QueryExpression(
-                              "CONCAT(IFNULL(" . $DB->quoteName('name') . ",''),' ',IFNULL(" .
-                              $DB->quoteName('firstname') . ",'')) AS " . $DB->quoteName($field)
-                          ),
-                          "$table.comment",
-                          "$table.id"
-                       ],
-                       'FROM'   => $table
-                    ];
-                    break;
-
-                case "SoftwareLicense":
-                    $criteria = [
-                       'SELECT' => [
-                          "$table.*",
-                          new \QueryExpression("CONCAT(glpi_softwares.name,' - ',glpi_softwarelicenses.name) AS $field")
-                       ],
-                       'FROM'   => $table,
-                       'LEFT JOIN' => [
-                          'glpi_softwares'  => [
-                             'ON' => [
-                                'glpi_softwarelicenses' => 'softwares_id',
-                                'glpi_softwares'        => 'id'
-                             ]
-                          ]
-                       ]
-                    ];
-                    break;
-
-                case "Profile":
-                    $criteria = [
-                       'SELECT'          => "$table.*",
-                       'DISTINCT'        => true,
-                       'FROM'            => $table,
-                       'LEFT JOIN'       => [
-                          'glpi_profilerights' => [
-                             'ON' => [
-                                'glpi_profilerights' => 'profiles_id',
-                                $table               => 'id'
-                             ]
-                          ]
-                       ]
-                    ];
-                    break;
-
-                case KnowbaseItem::getType():
-                    $criteria = [
-                       'SELECT' => array_merge(["$table.*"], $addselect),
-                       'DISTINCT'        => true,
-                       'FROM'            => $table
-                    ];
-                    if (count($ljoin)) {
-                        $criteria['LEFT JOIN'] = $ljoin;
-                    }
-
-                    $visibility = KnowbaseItem::getVisibilityCriteria();
-                    if (count($visibility['LEFT JOIN'])) {
-                        $criteria['LEFT JOIN'] = array_merge(
-                            (isset($criteria['LEFT JOIN']) ? $criteria['LEFT JOIN'] : []),
-                            $visibility['LEFT JOIN']
-                        );
-                        //Do not use where??
-                        /*if (isset($visibility['WHERE'])) {
-                           $where = $visibility['WHERE'];
-                        }*/
-                    }
-                    break;
-
-                case Project::getType():
-                    $visibility = Project::getVisibilityCriteria();
-                    if (count($visibility['LEFT JOIN'])) {
-                        $ljoin = array_merge($ljoin, $visibility['LEFT JOIN']);
-                        if (isset($visibility['WHERE'])) {
-                            $where[] = $visibility['WHERE'];
-                        }
-                    }
-
-                    $criteria = [
-                       'SELECT' => array_merge(["$table.*"], $addselect),
-                       'FROM'   => $table
-                    ];
-                    if (count($ljoin)) {
-                        $criteria['LEFT JOIN'] = $ljoin;
-                    }
-                    break;
-
-                case User::class:
-                    $right = $post['right'] ?? 'all';
-
-                    $user_search_text = (isset($post['searchText']) ? $post['searchText'] : '');
-                    $user_inactive_deleted = isset($post['inactive_deleted']) ? $post['inactive_deleted'] : 0;
-                    $user_with_no_right = isset($post['with_no_right']) ? $post['with_no_right'] : 0;
-                    $user_used = isset($post['used']) ? $post['used'] : [];
-                    $user_entity_restrict = -1;
-                    if (isset($post['entity_restrict'])) {
-                        $user_entity_restrict = Toolbox::jsonDecode($post['entity_restrict']);
-                    }
-                    if (isset($post['value'])) {
-                        $user_used[] = (int)$post['value'];
-                    }
-
-                    // Use User::getSqlSearchResult for permission-based filtering
-                    $iterator = User::getSqlSearchResult(
-                        false,  // count = false
-                        $right,
-                        $user_entity_restrict,
-                        0,  // value
-                        $user_used,
-                        $user_search_text,
-                        $start,
-                        (int)$post['page_limit'],
-                        $user_inactive_deleted,
-                        $user_with_no_right
+                $user_search_text = (isset($post['searchText']) ? $post['searchText'] : '');
+                $user_inactive_deleted = isset($post['inactive_deleted']) ? $post['inactive_deleted'] : 0;
+                $user_with_no_right = isset($post['with_no_right']) ? $post['with_no_right'] : 0;
+                $user_used = isset($post['used']) ? $post['used'] : [];
+                $user_entity_restrict = -1;
+                if (isset($post['entity_restrict'])) {
+                    $user_entity_restrict = is_string($post['entity_restrict']) ? Toolbox::jsonDecode($post['entity_restrict']) : $post['entity_restrict'];
+                }
+                $currentScope = Session::getActiveEntityScope();
+                $userConditions = $condition;
+                if (!empty($post['restrict_session_scope'])) {
+                    // Component-selected users retain both requested and grant scopes.
+                    $userConditions[] = $scopeReads->criteria(
+                        'glpi_profiles_users',
+                        '',
+                        (array)($_SESSION['glpiactiveentities'] ?? []),
+                        true
                     );
+                }
+                if ($currentScope !== null) {
+                    $requested = is_array($user_entity_restrict) ? array_map('intval', $user_entity_restrict)
+                        : ($user_entity_restrict < 0 ? $currentScope : [(int)$user_entity_restrict]);
+                    $user_entity_restrict = array_values(array_intersect($requested, $currentScope));
+                    if (!$user_entity_restrict) {
+                        $userConditions[] = false;
+                    }
+                }
+                if (isset($post['value'])) {
+                    $user_used[] = (int)$post['value'];
+                }
 
-                    // Display first if no search
-                    if ($post['page'] == 1 && empty($post['searchText'])) {
-                        if (!isset($post['display_emptychoice']) || $post['display_emptychoice']) {
+                // Use User::getSqlSearchResult for permission-based filtering
+                $iterator = User::getSqlSearchResult(
+                    false,  // count = false
+                    $right,
+                    $user_entity_restrict,
+                    0,  // value
+                    $user_used,
+                    $user_search_text,
+                    $start,
+                    (int)$post['page_limit'],
+                    $user_inactive_deleted,
+                    $user_with_no_right,
+                    $userConditions
+                );
+
+                // Display first if no search
+                if ($post['page'] == 1 && empty($post['searchText'])) {
+                    if (!isset($post['display_emptychoice']) || $post['display_emptychoice']) {
+                        $datas[] = [
+                           'id' => 0,
+                           'text' => $post["emptylabel"]
+                        ];
+                    }
+                }
+                if ($post['page'] == 1) {
+                    if (count($toadd)) {
+                        foreach ($toadd as $key => $val) {
                             $datas[] = [
-                               'id' => 0,
-                               'text' => $post["emptylabel"]
+                               'id' => $key,
+                               'text' => stripslashes((string) $val)
                             ];
                         }
                     }
-                    if ($post['page'] == 1) {
-                        if (count($toadd)) {
-                            foreach ($toadd as $key => $val) {
-                                $datas[] = [
-                                   'id' => $key,
-                                   'text' => stripslashes((string) $val)
-                                ];
-                            }
+                }
+
+                // Process iterator results
+                if (count($iterator)) {
+                    while ($data = $iterator->next()) {
+                        $outputval = formatUserName(
+                            $data['id'],
+                            $data['name'],
+                            $data['realname'],
+                            $data['firstname']
+                        );
+
+                        $title = sprintf(__('%1$s - %2$s'), $outputval, $data['name']);
+
+                        if (
+                            $_SESSION["glpiis_ids_visible"]
+                            || (strlen($outputval) == 0)
+                        ) {
+                            $outputval = sprintf(__('%1$s (%2$s)'), $outputval, $data['id']);
                         }
-                    }
 
-                    // Process iterator results
-                    if (count($iterator)) {
-                        while ($data = $iterator->next()) {
-                            $outputval = formatUserName(
-                                $data['id'],
-                                $data['name'],
-                                $data['realname'],
-                                $data['firstname']
-                            );
-
-                            $title = sprintf(__('%1$s - %2$s'), $outputval, $data['name']);
-
-                            if (
-                                $_SESSION["glpiis_ids_visible"]
-                                || (strlen($outputval) == 0)
-                            ) {
-                                $outputval = sprintf(__('%1$s (%2$s)'), $outputval, $data['id']);
-                            }
-
-                            if ($displaywith) {
-                                foreach ($post['displaywith'] as $key) {
-                                    if (isset($data[$key])) {
-                                        $withoutput = $data[$key];
-                                        if (isForeignKeyField($key)) {
-                                            $withoutput = Dropdown::getDropdownName(
-                                                getTableNameForForeignKeyField($key),
-                                                $data[$key]
-                                            );
-                                        }
-                                        if ((strlen((string) $withoutput) > 0) && ($withoutput != '&nbsp;')) {
-                                            $outputval = sprintf(__('%1$s - %2$s'), $outputval, $withoutput);
-                                        }
+                        if ($displaywith) {
+                            foreach ($post['displaywith'] as $key) {
+                                if (isset($data[$key])) {
+                                    $withoutput = self::choiceDisplayValue($table, $key, $data);
+                                    if ((strlen((string) $withoutput) > 0) && ($withoutput != '&nbsp;')) {
+                                        $outputval = sprintf(__('%1$s - %2$s'), $outputval, $withoutput);
                                     }
                                 }
                             }
-
-                            $datas[] = [
-                               'id' => $data['id'],
-                               'text' => $outputval,
-                               'title' => $title
-                            ];
-                            $count++;
                         }
-                    }
 
-                    $ret['results'] = $datas;
-                    $ret['count']   = $count;
-                    return ($json === true) ? json_encode($ret) : $ret;
-
-                default:
-                    $criteria = [
-                       'SELECT' => array_merge(["$table.*"], $addselect),
-                       'FROM'   => $table
-                    ];
-                    if (count($ljoin)) {
-                        $criteria['LEFT JOIN'] = $ljoin;
+                        $datas[] = [
+                           'id' => $data['id'],
+                           'text' => $outputval,
+                           'title' => $title
+                        ];
+                        $count++;
                     }
+                }
+
+                $ret['results'] = $datas;
+                $ret['count']   = $count;
+                return ($json === true) ? json_encode($ret) : $ret;
+
             }
 
-            $criteria = array_merge(
-                $criteria,
-                [
-                  'WHERE'  => $where,
-                  'START'  => $start,
-                  'LIMIT'  => $limit
-                ]
+            $order = $multi ? ["$table.entities_id", "$table.$field"] : ["$table.$field"];
+            $iterator = self::choiceRows(
+                $DB,
+                $item,
+                $where,
+                $order,
+                self::choiceTranslations($post['itemtype'], false, $field),
+                $post['itemtype'],
+                $limit,
+                $start,
+                $scopeReads
             );
-
-            if ($multi) {
-                $criteria['ORDERBY'] = ["$table.entities_id", "$table.$field"];
-            } else {
-                $criteria['ORDERBY'] = ["$table.$field"];
-            }
-
-            $iterator = $DB->request($criteria);
 
             // Display first if no search
             if ($post['page'] == 1 && empty($post['searchText'])) {
@@ -3081,7 +3042,7 @@ class Dropdown
             if (count($iterator)) {
                 $prev = -1;
 
-                while ($data = $iterator->next()) {
+                foreach ($iterator as $data) {
                     if (
                         $multi
                         && ($data["entities_id"] != $prev)
@@ -3136,13 +3097,7 @@ class Dropdown
                     if ($displaywith) {
                         foreach ($post['displaywith'] as $key) {
                             if (isset($data[$key])) {
-                                $withoutput = $data[$key];
-                                if (isForeignKeyField($key)) {
-                                    $withoutput = Dropdown::getDropdownName(
-                                        getTableNameForForeignKeyField($key),
-                                        $data[$key]
-                                    );
-                                }
+                                $withoutput = self::choiceDisplayValue($table, $key, $data);
                                 if ((strlen((string) $withoutput) > 0) && ($withoutput != '&nbsp;')) {
                                     $outputval = sprintf(__('%1$s - %2$s'), $outputval, $withoutput);
                                 }
@@ -3176,6 +3131,81 @@ class Dropdown
         $ret['pagination']['more']    = ($count >= $post['page_limit']);
 
         return ($json === true) ? json_encode($ret) : $ret;
+    }
+
+    /** An association's property owns its label target, including subject projections. */
+    private static function choiceDisplayValue(string $table, string $column, array $row): mixed
+    {
+        if (isset(EntityRegistry::tables()[$table])) {
+            $target = EntityRegistry::relations()[$table][$column] ?? null;
+            $selection = EntityRegistry::discriminatedReferences($table)[$column] ?? null;
+            if ($selection !== null) {
+                $target = $selection['selections'][$row[$selection['discriminator']]]['target'] ?? null;
+            }
+            return $target === null ? $row[$column] : self::getDropdownName($target, $row[$column]);
+        }
+        // Unmapped custom plugin columns retain their declared legacy convention.
+        return isForeignKeyField($column) ? self::getDropdownName(getTableNameForForeignKeyField($column), $row[$column]) : $row[$column];
+    }
+
+    /** Mapped choices cannot silently fall back to a plugin's SQL contract. */
+    private static function choiceRows(DBAdapter $database, CommonDBTM $model, array $criteria, array $order, array $translations, string $kind, int $limit, int $offset, ?EntityScopeReadOperation $scopeReads = null): iterable
+    {
+        $scopeReads ??= new EntityScopeReadOperation();
+        $table = $model->getTable();
+        if ($model->isEntityAssign() && !$model->maybePrivate()) {
+            $scope = Session::getActiveEntityScope();
+            if ($scope !== null) {
+                // Caller restrictions are additional filters, never authority to
+                // select another entity. An empty session scope matches nothing.
+                $criteria[] = $scope ? $scopeReads->criteria(
+                    $table,
+                    '',
+                    $scope,
+                    $model instanceof Entity ? false : $model->maybeRecursive()
+                ) : false;
+            }
+        }
+        if (isset(EntityRegistry::tables()[$table])) {
+            $connection = $database->getDoctrineConnection();
+            return Orm::withReadConnection($connection, static fn (?EntityManager $manager): array =>
+                (new DropdownReadOperation($connection, $manager))->choices(
+                    $table,
+                    $criteria,
+                    $order,
+                    $translations,
+                    $kind,
+                    $_SESSION['glpilanguage'],
+                    $limit,
+                    $offset
+                ));
+        }
+        return UnmappedDropdownChoices::read(
+            $database,
+            $table,
+            $criteria,
+            $order,
+            $translations,
+            $kind,
+            $_SESSION['glpilanguage'],
+            $limit,
+            $offset
+        );
+    }
+
+    /** Query-local translated fields retain the widget's scalar response names. */
+    private static function choiceTranslations(string $kind, bool $tree, string $nameField = 'name'): array
+    {
+        $fields = $tree ? ['namet' => ['completename', 'transcompletename'], 'namet2' => ['name', 'transname']]
+            : ['namet' => [$nameField, 'transname']];
+        $fields['commentt'] = ['comment', 'transcomment'];
+        $translations = [];
+        foreach ($fields as $role => [$field, $output]) {
+            if (Session::haveTranslations($kind, $field)) {
+                $translations[$role] = ['field' => $field, 'output' => $output];
+            }
+        }
+        return $translations;
     }
 
     /**

@@ -1,10 +1,10 @@
-{% macro optgroup(name, options, selected) %}
+{% macro optgroup(name, options, selected, text_only = false) %}
   <optgroup label="{{name}}">
     {% for name, content in options %}
       {% if content is iterable %}
-        {{ _self.optgroup(name, content) }}
+        {{ _self.optgroup(name, content, selected, text_only) }}
       {% else %}
-        <option value="{{name}}" {% if selected == name %}selected="selected"{% endif %}>{{content|raw}}</option>
+        <option value="{{name}}" {% if selected == name %}selected="selected"{% endif %}>{% if text_only %}{{content}}{% else %}{{content|raw}}{% endif %}</option>
       {% endif %}
     {% endfor %}
   </optgroup>
@@ -18,7 +18,7 @@
   {% endif %}
   <select class='no-print form-select form-select-sm {{attributes.class}}' id="{{id}}" {{ attributes.multiple ? 'multiple="multiple"' : '' }}
     {% for name, value in attributes %}
-      {% if name not in  ['values', 'value', 'class', 'multiple', 'condition', 'conditions', 'used', 'ajax', 'itemtype']%}
+      {% if name not in  ['values', 'value', 'class', 'multiple', 'condition', 'conditions', 'used', 'ajax', 'itemtype', 'text_only']%}
         {{name}}="{{value}}"
       {% endif %}
     {% endfor %}
@@ -27,9 +27,9 @@
     {% endif %}>
     {% for key, item in attributes.values %}
       {% if item is iterable %}
-        {{ _self.optgroup(key, item, attributes.value) }}
+        {{ _self.optgroup(key, item, attributes.value, attributes.text_only) }}
       {% else %}
-        <option value="{{key}}" {% if attributes.value == key %}selected="selected"{% endif %}>{{item|raw}}</option>
+        <option value="{{key}}" {% if attributes.value == key %}selected="selected"{% endif %}>{% if attributes.text_only %}{{item}}{% else %}{{item|raw}}{% endif %}</option>
       {% endif %}
     {% endfor %}
   </select>
@@ -54,6 +54,7 @@
                 if (id !== '') {
                     $.ajax({
                         url: params.url,
+                        type: params.type,
                         dataType: 'json',
                         data: {
                             id: id,
@@ -68,9 +69,11 @@
         $.getScript('{{root_doc}}/node_modules/select2/dist/js/select2.min.js', function() {
             $('#{{attributes.id ? attributes.id : id}}').select2({
                 theme: 'bootstrap-5',
+                {% if not attributes.text_only %}
                 escapeMarkup: function(markup) {
                     return markup;
                 },
+                {% endif %}
                 {% if attributes.ajax %}
                 ajax: params,
                 {% endif %}

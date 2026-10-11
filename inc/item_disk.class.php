@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\InventoryRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -123,17 +126,8 @@ class Item_Disk extends CommonDBChild
     **/
     public static function cloneItem($type, $oldid, $newid)
     {
-        global $DB;
-
         Toolbox::deprecated('Use clone');
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'itemtype'  => $type,
-              'items_id'  => $oldid
-           ]
-        ]);
-        while ($data = $iterator->next()) {
+        foreach ((new self())->find(['itemtype' => $type, 'items_id' => $oldid]) as $data) {
             $cd                  = new self();
             unset($data['id']);
             $data['items_id']    = $newid;
@@ -162,7 +156,7 @@ class Item_Disk extends CommonDBChild
         } elseif (isset($this->fields['itemtype']) && !empty($this->fields['itemtype'])) {
             $itemtype = $this->fields['itemtype'];
         } else {
-            throw new \RuntimeException('Unable to retrieve itemtype');
+            throw new RuntimeException('Unable to retrieve itemtype');
         }
 
         if (!Session::haveRight($itemtype::$rightname, READ)) {
@@ -286,32 +280,14 @@ class Item_Disk extends CommonDBChild
      * @param string     $sort  Field to sort on
      * @param string     $order Sort order
      *
-     * @return DBmysqlIterator
+     * @return array
      */
-    public static function getFromItem(CommonDBTM $item, $sort = null, $order = null): DBmysqlIterator
+    public static function getFromItem(CommonDBTM $item, $sort = null, $order = null): array
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT'    => [
-              Filesystem::getTable() . '.name AS fsname',
-              self::getTable() . '.*'
-           ],
-           'FROM'      => self::getTable(),
-           'LEFT JOIN' => [
-              Filesystem::getTable() => [
-                 'FKEY' => [
-                    self::getTable()        => 'filesystems_id',
-                    Filesystem::getTable()  => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'itemtype'     => $item->getType(),
-              'items_id'     => $item->fields['id']
-           ]
-        ]);
-        return $iterator;
+        return (new InventoryRepository(Orm::create($DB)))
+            ->disks($item->getType(), (int)$item->getID());
     }
 
     /**
@@ -386,7 +362,7 @@ class Item_Disk extends CommonDBChild
             );
 
             $disk = new self();
-            while ($data = $iterator->next()) {
+            foreach ($iterator as $data) {
                 $disk->getFromResultSet($data);
                 echo "<tr class='tab_bg_2" . (isset($data['is_deleted']) && $data['is_deleted'] ? " tab_bg_2_2'" : "'") . "'>";
                 echo "<td>" . $disk->getLink() . "</td>";
@@ -541,7 +517,6 @@ class Item_Disk extends CommonDBChild
            'unit'               => 'auto',
            'name'               => __('Global size'),
            'forcegroupby'       => true,
-           'usehaving'          => true,
            'datatype'           => 'number',
            'width'              => 1000,
            'massiveaction'      => false,
@@ -573,7 +548,7 @@ class Item_Disk extends CommonDBChild
            'forcegroupby'       => true,
            'datatype'           => 'progressbar',
            'width'              => 2,
-           'computation'        => 'ROUND(100*TABLE.freesize/TABLE.totalsize)',
+           'computation'        => 'ROUND(100.0*TABLE.freesize/NULLIF(TABLE.totalsize, 0))',
            'computationgroupby' => true,
            'unit'               => '%',
            'massiveaction'      => false,

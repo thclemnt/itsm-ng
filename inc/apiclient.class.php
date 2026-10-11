@@ -312,7 +312,7 @@ class APIClient extends CommonDBTM
         }
 
         if (isset($input['ipv6']) && empty($input['ipv6'])) {
-            $input['ipv6'] = "NULL";
+            $input['ipv6'] = null;
         }
 
         if (!empty($input['_reset_app_token'])) {

@@ -31,6 +31,13 @@
  * ---------------------------------------------------------------------
  */
 
+
+use itsmng\Database\LegacyValues;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DropdownLifecycleRepository;
+use itsmng\Database\Repository\KnowledgeBaseRepository;
+use itsmng\Database\Repository\RelationshipLifecycleRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -219,15 +226,10 @@ abstract class CommonDropdown extends CommonDBTM
 
         // if item based on location, create item in the same entity as location
         if (isset($input['locations_id']) && !isset($input['_is_update'])) {
-            $iterator = $DB->request([
-               'SELECT' => ['entities_id'],
-               'FROM'   => 'glpi_locations',
-               'WHERE'  => [
-                  'id' => $input['locations_id']
-               ]
-            ]);
-            while ($data = $iterator->next()) {
-                $input['entities_id'] = $data['entities_id'];
+            $entity = (new DropdownLifecycleRepository(Orm::create($DB)))
+                ->locationEntity((int)$input['locations_id']);
+            if ($entity !== null) {
+                $input['entities_id'] = $entity;
             }
         }
 
@@ -433,32 +435,24 @@ abstract class CommonDropdown extends CommonDBTM
     {
         global $DB;
 
-        $ID = $this->fields['id'];
-
-        $RELATION = getDbRelations();
-        if (isset($RELATION[$this->getTable()])) {
-            foreach ($RELATION[$this->getTable()] as $tablename => $field) {
-                if ($tablename[0] != '_') {
-                    if (!is_array($field)) {
-                        $row = $DB->request([
-                           'FROM'   => $tablename,
-                           'COUNT'  => 'cpt',
-                           'WHERE'  => [$field => $ID]
-                        ])->next();
-                        if ($row['cpt'] > 0) {
-                            return true;
-                        }
-                    } else {
-                        foreach ($field as $f) {
-                            $row = $DB->request([
-                               'FROM'   => $tablename,
-                               'COUNT'  => 'cpt',
-                               'WHERE'  => [$f => $ID]
-                            ])->next();
-                            if ($row['cpt'] > 0) {
-                                return true;
-                            }
-                        }
+        if ((new DropdownLifecycleRepository(Orm::create($DB)))
+            ->isUsed($this->getTable(), (int)$this->fields['id'], $this->getType())) {
+            return true;
+        }
+        $relations = new RelationshipLifecycleRepository(Orm::create($DB));
+        foreach (Plugin::getDatabaseRelations()[$this->getTable()] ?? [] as $table => $columns) {
+            if (str_starts_with($table, '_')) {
+                continue;
+            }
+            $columns = (array)$columns;
+            if (in_array('itemtype', $columns, true)) {
+                if ($relations->declaredReferenceExists($table, ['items_id' => $this->fields['id'], 'itemtype' => $this->getType()])) {
+                    return true;
+                }
+            } else {
+                foreach ($columns as $column) {
+                    if ($relations->declaredReferenceExists($table, [$column => $this->fields['id']])) {
+                        return true;
                     }
                 }
             }
@@ -564,17 +558,10 @@ abstract class CommonDropdown extends CommonDBTM
         global $DB;
 
         if (!empty($input["name"])) {
-            $crit = [
-               'SELECT' => 'id',
-               'FROM'   => $this->getTable(),
-               'WHERE'  => [
-                  'name'   => $input['name']
-               ],
-               'LIMIT'  => 1
-            ];
+            $scope = [];
 
             if ($this->isEntityAssign()) {
-                $crit['WHERE'] += getEntitiesRestrictCriteria(
+                $scope = getEntitiesRestrictCriteria(
                     $this->getTable(),
                     '',
                     $input['entities_id'],
@@ -582,13 +569,8 @@ abstract class CommonDropdown extends CommonDBTM
                 );
             }
 
-            $iterator = $DB->request($crit);
-
-            // Check twin :
-            if (count($iterator) > 0) {
-                $result = $iterator->next();
-                return $result['id'];
-            }
+            return (new DropdownLifecycleRepository(Orm::create($DB)))
+                ->findId($this->getTable(), LegacyValues::decodeString((string)$input['name']), $scope);
         }
         return -1;
     }
@@ -806,7 +788,7 @@ abstract class CommonDropdown extends CommonDBTM
     **/
     public function getLinks($withname = false)
     {
-        global $CFG_GLPI;
+        global $DB, $CFG_GLPI;
 
         $ret = '';
 
@@ -827,12 +809,16 @@ abstract class CommonDropdown extends CommonDBTM
 
             $rand = mt_rand();
             $kbitem = new KnowbaseItem();
-            $found_kbitem = $kbitem->find([
-               KnowbaseItem::getTable() . '.id'  => KnowbaseItem::getForCategory($this->fields['knowbaseitemcategories_id'])
-            ]);
+            $visibleIds = KnowbaseItem::getForCategory($this->fields['knowbaseitemcategories_id']);
+            $em = Orm::create($DB);
+            try {
+                $found_ids = (new KnowledgeBaseRepository($em))->existingLinkIds($visibleIds);
+            } finally {
+                $em->clear();
+            }
 
-            if (count($found_kbitem)) {
-                $kbitem->getFromDB(reset($found_kbitem)['id']);
+            if (count($found_ids)) {
+                $kbitem->getFromDB(reset($found_ids));
                 $ret .= "<div class='faqadd_block'>";
                 $ret .= "<label for='display_faq_chkbox$rand'>";
                 $ret .= "<img src='" . $CFG_GLPI["root_doc"] . "/pics/faqadd.png' class='middle pointer'
@@ -840,7 +826,7 @@ abstract class CommonDropdown extends CommonDBTM
                 $ret .= "</label>";
                 $ret .= "<input type='checkbox'  class='display_faq_chkbox' id='display_faq_chkbox$rand'>";
                 $ret .= "<div class='faqadd_entries'>";
-                if (count($found_kbitem) == 1) {
+                if (count($found_ids) == 1) {
                     $ret .= "<div class='faqadd_block_content' id='faqadd_block_content$rand'>";
                     $ret .= $kbitem->showFull(['display' => false]);
                     $ret .= "</div>"; // .faqadd_block_content
@@ -859,7 +845,7 @@ abstract class CommonDropdown extends CommonDBTM
                     $ret .= "<label for='dropdown_knowbaseitems_id$rand'>" .
                            KnowbaseItem::getTypeName() . "</label>&nbsp;";
                     $ret .= KnowbaseItem::dropdown([
-                       'value'     => reset($found_kbitem)['id'],
+                       'value'     => reset($found_ids),
                        'display'   => false,
                        'rand'      => $rand,
                        'condition' => [

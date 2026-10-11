@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NetworkPortAggregateRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -317,23 +322,12 @@ class NetworkPortInstantiation extends CommonDBChild
         if (($this->canHaveVirtualPort) && ($display_options['virtual_ports'])) {
             $virtual_header = $row->getHeaderByName('Instantiation', 'VirtualPorts');
 
-            $iterator = $DB->request([
-               'FROM' => new \QueryUnion(
-                   [
-                     [
-                        'SELECT' => 'networkports_id',
-                        'FROM'   => 'glpi_networkportaliases',
-                        'WHERE'  => ['networkports_id_alias' => $netport->getID()]
-                     ], [
-                        'SELECT' => 'networkports_id',
-                        'FROM'   => 'glpi_networkportaggregates',
-                        'WHERE'  => ['networkports_id_list' => ['LIKE', '%"' . $netport->getID() . '"%']]
-                     ]
-                   ],
-                   false,
-                   'networkports'
-               )
-            ]);
+            $virtualPorts = Orm::read(
+                $DB,
+                static fn (EntityManager $manager): array => (new NetworkPortAggregateRepository($manager))
+                    ->virtualPorts((int)$netport->getID())
+            );
+            $iterator = new RowIterator($virtualPorts);
 
             if (count($iterator)) {
                 $new_father = $row->addCell($virtual_header, __('this port'), $father);
@@ -754,21 +748,15 @@ class NetworkPortInstantiation extends CommonDBChild
 
         $macAddresses = [];
         foreach ($netport_types as $netport_type) {
-            $instantiationTable = getTableForItemType($netport_type);
-            $iterator = $DB->request([
-               'SELECT' => [
-                  'port.id',
-                  'port.name',
-                  'port.mac'
-               ],
-               'FROM'   => 'glpi_networkports AS port',
-               'WHERE'  => [
-                  'items_id'           => $lastItem->getID(),
-                  'itemtype'           => $lastItem->getType(),
-                  'instantiation_type' => $netport_type
-               ],
-               'ORDER'  => ['logical_number', 'name']
-            ]);
+            $availablePorts = Orm::read(
+                $DB,
+                static fn (EntityManager $manager): array => (new NetworkPortAggregateRepository($manager))->availablePorts(
+                    $lastItem->getType(),
+                    (int)$lastItem->getID(),
+                    $netport_type
+                )
+            );
+            $iterator = new RowIterator($availablePorts);
 
             if (count($iterator)) {
                 $array_element_name = call_user_func(

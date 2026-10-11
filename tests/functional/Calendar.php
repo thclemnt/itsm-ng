@@ -33,12 +33,78 @@
 
 namespace tests\units;
 
+use Calendar_Holiday;
+use CalendarSegment as CalendarSegmentModel;
+use DateTimeImmutable;
+use Doctrine\Common\EventManager;
 use DbTestCase;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Types\DateImmutableType;
+use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Event\PostLoadEventArgs;
+use itsmng\Database\Entity\Config;
+use itsmng\Database\Entity\Calendar as CalendarRecord;
+use itsmng\Database\Entity\CalendarHoliday as CalendarHolidayRecord;
+use itsmng\Database\Entity\Holiday as HolidayRecord;
+use itsmng\Database\Entity\CalendarSegment as CalendarSegmentRecord;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CalendarRepository;
+use ReflectionProperty;
+use mock\DBmysql as CalendarAdapterProbe;
+use tests\fixtures\ScalarReadProbe;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/calendar.class.php */
 
 class Calendar extends DbTestCase
 {
+    public function testClosurePermissionsFollowTheCalendarOwnerAndDeclaredHolidayRole(): void
+    {
+        $savedSession = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $name = 'closure-rights-' . $this->getUniqueString();
+            $calendar = $this->createItem('Calendar', ['name' => $name, 'entities_id' => 0, 'is_recursive' => false]);
+            $holiday = $this->createItem('Holiday', ['name' => $name, 'begin_date' => '2030-05-01', 'end_date' => '2030-05-02', 'is_perpetual' => false]);
+            $second = $this->createItem('Holiday', ['name' => $name . '-second', 'begin_date' => '2030-06-01', 'end_date' => '2030-06-02', 'is_perpetual' => false]);
+            $link = $this->createItem('Calendar_Holiday', ['calendars_id' => (int)$calendar->getID(), 'holidays_id' => (int)$holiday->getID()]);
+            $id = (int)$link->getID();
+            $input = ['calendars_id' => (int)$calendar->getID(), 'holidays_id' => (int)$second->getID()];
+            $_SESSION['glpiactiveprofile']['calendar'] = READ;
+            $this->boolean($calendar->can($calendar->getID(), READ))->isTrue();
+            $this->boolean($link->canCreateItem())->isFalse('DONT_CHECK is not an alternate write grant when the Calendar is only readable');
+            $this->boolean((new Calendar_Holiday())->can(-1, CREATE, $input))->isFalse();
+            $this->boolean($link->can($id, PURGE))->isFalse();
+
+            $_SESSION['glpiactiveprofile']['calendar'] = UPDATE;
+            $this->boolean($holiday->can($holiday->getID(), READ))->isFalse();
+            $this->boolean($link->canCreateItem())->isTrue('The declared secondary DONT_CHECK role does not require Holiday READ');
+            $this->boolean((new Calendar_Holiday())->can(-1, CREATE, $input))->isTrue();
+            $added = $this->createItem('Calendar_Holiday', $input);
+            $addedId = (int)$added->getID();
+            $this->boolean($added->can($addedId, PURGE))->isTrue();
+            $this->boolean($added->delete(['id' => $addedId], true))->isTrue();
+            $this->boolean($added->getFromDB($addedId))->isFalse();
+            $this->boolean($second->getFromDB($second->getID()))->isTrue('Purging a closure does not purge its reusable Holiday');
+            $this->boolean($link->can($id, UPDATE))->isTrue();
+            $this->boolean($link->can($id, PURGE))->isTrue();
+
+            $invalid = ['calendars_id' => (int)$calendar->getID(), 'holidays_id' => -1];
+            $this->boolean((new Calendar_Holiday())->can(-1, CREATE, $invalid))->isFalse();
+            $_SESSION['glpiactiveentities'] = [];
+            $_SESSION['glpishowallentities'] = false;
+            $this->boolean((new Calendar_Holiday())->can(-1, CREATE, $input))->isFalse('Calendar entity scope still owns closure admission');
+            $this->boolean($link->can($id, PURGE))->isFalse();
+        } finally {
+            $_SESSION = $savedSession;
+        }
+    }
+
     public function testComputeEndDate()
     {
         $calendar = new \Calendar();
@@ -255,6 +321,197 @@ class Calendar extends DbTestCase
         foreach ($dates as $date => $expected) {
             $this->boolean($calendar->isHoliday($date))->isIdenticalTo($expected);
         }
+
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeFactories = $factories->getValue();
+        for ($repeat = 0; $repeat < 3; ++$repeat) {
+            $this->boolean($calendar->isHoliday('2019-07-12'))->isTrue();
+        }
+        $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+
+        $connection = $GLOBALS['DB']->getDoctrineConnection();
+        try {
+            $connection->update('glpi_holidays', ['begin_date' => '2020-07-08', 'end_date' => '2020-09-01'], ['id' => $hid]);
+            $this->boolean($calendar->isHoliday('2019-07-12'))->isFalse();
+        } finally {
+            $connection->update('glpi_holidays', ['begin_date' => '2019-07-08', 'end_date' => '2019-09-01'], ['id' => $hid]);
+        }
+        $this->boolean($calendar->isHoliday('2019-07-12'))->isTrue();
+
+        Orm::withConnection($connection, function (EntityManager $outer) use ($calendar, $factories): void {
+            $sentinel = $outer->getReference(Config::class, 1);
+            $beforeFactories = $factories->getValue();
+            $this->boolean($calendar->isHoliday('2019-07-12'))->isTrue();
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(1);
+            $this->boolean($outer->contains($sentinel))->isTrue();
+        });
+
+        $timezone = date_default_timezone_get();
+        try {
+            date_default_timezone_set('UTC');
+            $this->boolean($calendar->isHoliday('2019-07-07 23:30:00-02:00'))->isTrue();
+            date_default_timezone_set('America/Los_Angeles');
+            $this->boolean($calendar->isHoliday('2019-07-07 23:30:00-02:00'))->isFalse();
+        } finally {
+            date_default_timezone_set($timezone);
+        }
+
+        $originalAdapter = $GLOBALS['DB'];
+        $events = new EventManager();
+        $listener = new class () {
+            public int $clears = 0;
+            public int $segmentLoads = 0;
+            public ?EntityManager $segmentManager = null;
+            public ?CalendarSegmentRecord $segment = null;
+            public bool $captureClosures = false;
+            public ?EntityManager $holidayManager = null;
+            public array $loadedClosures = [];
+
+            public function postLoad(PostLoadEventArgs $event): void
+            {
+                $record = $event->getObject();
+                if ($this->captureClosures && ($record instanceof CalendarHolidayRecord || $record instanceof HolidayRecord)) {
+                    $this->holidayManager = $event->getObjectManager();
+                    $this->loadedClosures[] = $record;
+                    if ($record instanceof HolidayRecord) {
+                        $record->comment = 'pending custom holiday callback';
+                    }
+                }
+                if ($event->getObject() instanceof CalendarSegmentRecord) {
+                    ++$this->segmentLoads;
+                    $this->segmentManager = $event->getObjectManager();
+                    $this->segment = $record;
+                    $event->getObject()->end = '09:00:00';
+                }
+            }
+
+            public function onClear(): void
+            {
+                ++$this->clears;
+            }
+        };
+        $events->addEventListener(['onClear', 'postLoad'], $listener);
+        $probe = new class ($connection) extends ScalarReadProbe {
+            public EventManager $events;
+
+            public function getEventManager(): EventManager
+            {
+                return $this->events;
+            }
+        };
+        $probe->events = $events;
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new CalendarAdapterProbe();
+        $getters = 0;
+        $this->calling($adapter)->getDoctrineConnection = static function () use ($probe, $originalAdapter, &$getters): Connection {
+            ++$getters;
+            $GLOBALS['DB'] = $originalAdapter;
+            return $probe;
+        };
+        $this->calling($adapter)->getProvider = $originalAdapter->getProvider();
+        try {
+            $beforeFactories = $factories->getValue();
+            for ($repeat = 0; $repeat < 3; ++$repeat) {
+                $GLOBALS['DB'] = $adapter;
+                $this->boolean($calendar->isHoliday('2019-07-12'))->isTrue();
+            }
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(3);
+            $this->integer($getters)->isIdenticalTo(3);
+            $this->array($probe->queries)->hasSize(3);
+            $this->integer($listener->clears)->isIdenticalTo(0);
+            $this->object($GLOBALS['DB'])->isIdenticalTo($originalAdapter);
+            $beforeFactories = $factories->getValue();
+            for ($repeat = 0; $repeat < 3; ++$repeat) {
+                $GLOBALS['DB'] = $adapter;
+                // The selected custom manager must dispatch its segment postLoad before calculating.
+                $this->integer(CalendarSegmentModel::getActiveTimeBetween((int)$calendar->getID(), 1, '00:00:00', '24:00:00'))
+                    ->isIdenticalTo(HOUR_TIMESTAMP);
+            }
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(3);
+            $this->integer($getters)->isIdenticalTo(6);
+            $this->array($probe->queries)->hasSize(6);
+            $this->integer($listener->segmentLoads)->isIdenticalTo(3);
+            $this->integer($listener->clears)->isIdenticalTo(0);
+            $this->object($GLOBALS['DB'])->isIdenticalTo($originalAdapter);
+            $calendarId = (int)$calendar->getID();
+            foreach ([
+                [static fn () => array_column(CalendarSegmentModel::getSegmentsBetween($calendarId, 1, '00:00:00', 1, '24:00:00'), 'end'), ['09:00:00']],
+                [static fn () => CalendarSegmentModel::addDelayInDay($calendarId, 1, '08:00:00', 1800), '08:30:00'],
+                [static fn () => CalendarSegmentModel::getFirstWorkingHour($calendarId, 1), '08:00:00'],
+                [static fn () => CalendarSegmentModel::getLastWorkingHour($calendarId, 1), '09:00:00'],
+                [static fn () => CalendarSegmentModel::isAWorkingHour($calendarId, 1, '09:30:00'), false],
+            ] as [$selectedRead, $expectedValue]) {
+                $GLOBALS['DB'] = $adapter;
+                $this->variable($selectedRead())->isIdenticalTo($expectedValue);
+                $this->boolean($listener->segmentManager->contains($listener->segment))->isTrue();
+            }
+            $this->integer($getters)->isIdenticalTo(11);
+            $this->array($probe->queries)->hasSize(11);
+            $this->integer($listener->segmentLoads)->isIdenticalTo(8);
+            $this->integer($listener->clears)->isIdenticalTo(0);
+            $this->object($GLOBALS['DB'])->isIdenticalTo($originalAdapter);
+            // The annual May closure is inspected even though July 1 is not a holiday.
+            $listener->captureClosures = true;
+            $GLOBALS['DB'] = $adapter;
+            $this->boolean($calendar->isHoliday('2019-07-01'))->isFalse();
+            $this->array($listener->loadedClosures)->hasSize(2);
+            foreach ($listener->loadedClosures as $record) {
+                $this->boolean($listener->holidayManager->contains($record))
+                    ->isTrue('A custom postLoad owner retains both closure and Holiday identities');
+            }
+            $this->integer($listener->clears)->isIdenticalTo(0);
+        } finally {
+            $GLOBALS['DB'] = $originalAdapter;
+            $listener->holidayManager?->clear();
+            $listener->segmentManager?->clear();
+        }
+
+        $originalDate = Type::getType(Types::DATE_IMMUTABLE);
+        $converter = new class () extends DateImmutableType {
+            public int $sqlCalls = 0;
+
+            public function convertToDatabaseValueSQL(string $expression, AbstractPlatform $platform): string
+            {
+                ++$this->sqlCalls;
+                return $expression;
+            }
+        };
+        try {
+            Type::getTypeRegistry()->override(Types::DATE_IMMUTABLE, $converter);
+            $beforeFactories = $factories->getValue();
+            for ($repeat = 0; $repeat < 2; ++$repeat) {
+                $this->boolean($calendar->isHoliday('2019-07-12'))->isTrue();
+            }
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(2);
+            // :day occurs twice in this fixed DQL query, once for each boundary.
+            $this->integer($converter->sqlCalls)->isIdenticalTo(4);
+        } finally {
+            Type::getTypeRegistry()->override(Types::DATE_IMMUTABLE, $originalDate);
+        }
+
+        $manager = Orm::forConnection($connection);
+        try {
+            $repository = new CalendarRepository($manager);
+            $annual = array_values(array_filter(
+                $repository->closures((int)$calendar->getID()),
+                static fn (CalendarHolidayRecord $link): bool => $link->holidays->is_perpetual
+            ));
+            $this->array($annual)->hasSize(1);
+            $link = $annual[0];
+            $holiday = $link->holidays;
+            $holiday->comment = 'pending caller holiday edit';
+            $link->calendars = $manager->getReference(CalendarRecord::class, (int)$default_id);
+            $this->boolean($repository->isHoliday((int)$calendar->getID(), new DateTimeImmutable('2019-07-01')))->isFalse();
+            $this->boolean($manager->contains($link))->isTrue();
+            $this->boolean($manager->contains($holiday))->isTrue();
+            $manager->flush();
+            $this->string($connection->fetchOne('SELECT comment FROM glpi_holidays WHERE id = ?', [$holiday->id]))
+                ->isIdenticalTo('pending caller holiday edit');
+            $this->integer((int)$connection->fetchOne('SELECT calendars_id FROM glpi_calendars_holidays WHERE id = ?', [$link->id]))
+                ->isIdenticalTo((int)$default_id);
+        } finally {
+            $manager->clear();
+        }
     }
 
     public function testClone()
@@ -284,5 +541,64 @@ class Calendar extends DbTestCase
         //should have been duplicated too.
         $this->checkXmas($calendar);
 
+        // The cloned segment schedule is read afresh within each scalar ownership scope.
+        $expected = (int)$calendar->getDurationsCache()[1];
+        $this->integer($expected)->isGreaterThan(HOUR_TIMESTAMP);
+        $read = static fn (): int => CalendarSegmentModel::getActiveTimeBetween($other_id, 1, '00:00:00', '24:00:00');
+        $this->integer($read())->isIdenticalTo($expected);
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeFactories = $factories->getValue();
+        for ($repeat = 0; $repeat < 3; ++$repeat) {
+            $this->integer($read())->isIdenticalTo($expected);
+        }
+        $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0, 'Warmed cloned-segment reads reuse their scalar owner');
+
+        $connection = $GLOBALS['DB']->getDoctrineConnection();
+        $segments = $connection->fetchAllAssociative('SELECT id, ' . $connection->quoteIdentifier('begin') . ', ' . $connection->quoteIdentifier('end')
+            . ' FROM glpi_calendarsegments WHERE calendars_id = ? AND day = ?', [$other_id, 1]);
+        $this->array($segments)->hasSize(1);
+        $segment = $segments[0];
+        $this->string(CalendarSegmentModel::getFirstWorkingHour($other_id, 1))->isIdenticalTo($segment['begin']);
+        $this->string(CalendarSegmentModel::getLastWorkingHour($other_id, 1))->isIdenticalTo($segment['end']);
+        $this->array(array_column(CalendarSegmentModel::getSegmentsBetween($other_id, 1, '00:00:00', 1, '24:00:00'), 'end'))
+            ->isIdenticalTo([$segment['end']]);
+        $this->boolean(CalendarSegmentModel::isAWorkingHour($other_id, 1, $segment['begin']))->isTrue();
+        $this->string(CalendarSegmentModel::addDelayInDay($other_id, 1, $segment['begin'], $expected))
+            ->isIdenticalTo($segment['end']);
+        $update = 'UPDATE glpi_calendarsegments SET ' . $connection->quoteIdentifier('end') . ' = ? WHERE id = ?';
+        try {
+            $connection->executeStatement($update, [date('H:i:s', strtotime($segment['end']) - HOUR_TIMESTAMP), $segment['id']]);
+            $this->integer($read())->isIdenticalTo($expected - HOUR_TIMESTAMP);
+            $shortEnd = date('H:i:s', strtotime($segment['end']) - HOUR_TIMESTAMP);
+            $this->string(CalendarSegmentModel::getLastWorkingHour($other_id, 1))->isIdenticalTo($shortEnd);
+            $this->array(array_column(CalendarSegmentModel::getSegmentsBetween($other_id, 1, '00:00:00', 1, '24:00:00'), 'end'))
+                ->isIdenticalTo([$shortEnd]);
+            $this->boolean(CalendarSegmentModel::isAWorkingHour($other_id, 1, $segment['end']))->isFalse();
+            $this->boolean(CalendarSegmentModel::addDelayInDay($other_id, 1, $segment['begin'], $expected))->isFalse();
+            $lateBegin = date('H:i:s', strtotime($segment['begin']) + HOUR_TIMESTAMP);
+            $connection->update('glpi_calendarsegments', [$connection->quoteIdentifier('begin') => $lateBegin], ['id' => $segment['id']]);
+            $this->string(CalendarSegmentModel::getFirstWorkingHour($other_id, 1))->isIdenticalTo($lateBegin);
+        } finally {
+            $connection->executeStatement($update, [$segment['end'], $segment['id']]);
+            $connection->update('glpi_calendarsegments', [$connection->quoteIdentifier('begin') => $segment['begin']], ['id' => $segment['id']]);
+        }
+        $this->integer($read())->isIdenticalTo($expected);
+        Orm::withConnection($connection, function (EntityManager $outer) use ($read, $expected, $factories): void {
+            $sentinel = $outer->getReference(Config::class, 1);
+            $beforeFactories = $factories->getValue();
+            $this->integer($read())->isIdenticalTo($expected);
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(1);
+            $this->boolean($outer->contains($sentinel))->isTrue();
+        });
+
+        $beforeFactories = $factories->getValue();
+        for ($repeat = 0; $repeat < 16; ++$repeat) {
+            CalendarSegmentModel::getSegmentsBetween($other_id, 1, '00:00:00', 1, '24:00:00');
+            CalendarSegmentModel::addDelayInDay($other_id, 1, $segment['begin'], 1800);
+            CalendarSegmentModel::getFirstWorkingHour($other_id, 1);
+            CalendarSegmentModel::getLastWorkingHour($other_id, 1);
+            CalendarSegmentModel::isAWorkingHour($other_id, 1, $segment['begin']);
+        }
+        $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
     }
 }

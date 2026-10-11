@@ -37,9 +37,11 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use Config;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Twig;
 
 class ClearCacheCommand extends Command
 {
@@ -57,8 +59,13 @@ class ClearCacheCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output)
     {
 
-        global $GLPI_CACHE;
-        $GLPI_CACHE->clear();
+        $cache = Config::getCache('cache_db', allowFallback: false);
+        if (!$cache->clear()) {
+            $output->writeln('<error>' . __('The application cache could not be cleared.') . '</error>');
+            return Command::FAILURE;
+        }
+        require_once GLPI_ROOT . '/src/twig/twig.class.php';
+        Twig::clearCache();
 
         $output->writeln('<info>' . __('Cache reset successful') . '</info>');
 

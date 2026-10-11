@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Entity\ChangeItem;
+use itsmng\Database\Repository\ITILAssetRepository;
+use itsmng\Database\RowIterator;
 use itsmng\Timezone;
 
 if (!defined('GLPI_ROOT')) {
@@ -186,8 +191,7 @@ class Change extends CommonITILObject
         if (static::canView()) {
             switch ($item->getType()) {
                 case __CLASS__:
-                    $timeline    = $item->getTimelineItems();
-                    $nb_elements = count($timeline);
+                    $nb_elements = $item->getTimelineItemCount();
 
                     $ong = [
                        5 => __("Processing change") . " <sup class='tab_nb'>$nb_elements</sup>",
@@ -1574,39 +1578,16 @@ class Change extends CommonITILObject
      * @param string $itemtype     Item type
      * @param integer $items_id    ID of the Item
      *
-     * @return DBmysqlIterator
+     * @return RowIterator
      */
     public function getActiveChangesForItem($itemtype, $items_id)
     {
         global $DB;
 
-        return $DB->request([
-           'SELECT'    => [
-              $this->getTable() . '.id',
-              $this->getTable() . '.name',
-              $this->getTable() . '.priority',
-           ],
-           'FROM'      => $this->getTable(),
-           'LEFT JOIN' => [
-              'glpi_changes_items' => [
-                 'ON' => [
-                    'glpi_changes_items' => 'changes_id',
-                    $this->getTable()    => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_changes_items.itemtype' => $itemtype,
-              'glpi_changes_items.items_id'    => $items_id,
-              $this->getTable() . '.is_deleted' => 0,
-              'NOT'                         => [
-                 $this->getTable() . '.status' => array_merge(
-                     $this->getSolvedStatusArray(),
-                     $this->getClosedStatusArray()
-                 )
-              ]
-           ]
-        ]);
+        $rows = Orm::read($DB, fn (EntityManager $manager): array =>
+            (new ITILAssetRepository($manager))
+                ->activeForLink(ChangeItem::class, (string)$itemtype, (int)$items_id, array_merge($this->getSolvedStatusArray(), $this->getClosedStatusArray())));
+        return new RowIterator($rows);
     }
 
 

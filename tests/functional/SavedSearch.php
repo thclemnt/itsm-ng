@@ -41,6 +41,10 @@ class SavedSearch extends DbTestCase
 {
     public function testAddVisibilityRestrict()
     {
+        global $DB;
+        $privateColumn = $DB::quoteName('glpi_savedsearches.is_private');
+        $userColumn = $DB::quoteName('glpi_savedsearches.users_id');
+
         //first, as a super-admin
         $this->login();
         $this->string(\SavedSearch::addVisibilityRestrict())
@@ -48,10 +52,9 @@ class SavedSearch extends DbTestCase
 
         $this->login('normal', 'normal');
         $this->string(\SavedSearch::addVisibilityRestrict())
-           ->isIdenticalTo("`glpi_savedsearches`.`is_private` = '1' AND `glpi_savedsearches`.`users_id` = '5'");
+           ->isIdenticalTo("$privateColumn = '1' AND $userColumn = '5'");
 
         //add public saved searches read right for normal profile
-        global $DB;
         $DB->update(
             'glpi_profilerights',
             ['rights' => 1],
@@ -75,6 +78,6 @@ class SavedSearch extends DbTestCase
         );
 
         $this->string(\SavedSearch::addVisibilityRestrict())
-           ->isIdenticalTo("((`glpi_savedsearches`.`is_private` = '1' AND `glpi_savedsearches`.`users_id` = '5') OR `glpi_savedsearches`.`is_private` = '0')");
+           ->isIdenticalTo("(($privateColumn = '1' AND $userColumn = '5') OR $privateColumn = '0')");
     }
 }

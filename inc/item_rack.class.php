@@ -1,5 +1,9 @@
 <?php
 
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\PlacementRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access directly to this file");
 }
@@ -105,13 +109,7 @@ class Item_Rack extends CommonDBRelation
         }
         $canedit = $rack->canEdit($ID);
 
-        $items = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'racks_id' => $rack->getID()
-           ],
-           'ORDER' => 'position DESC'
-        ]);
+        $items = MappedReads::matching($DB, self::getTable(), ['racks_id' => $rack->getID()], ['position DESC']);
         $link = new self();
 
         if ($canedit) {
@@ -132,7 +130,6 @@ class Item_Rack extends CommonDBRelation
         echo "<i id='sviewgraph' class='pointer fa fa-th-large selected' title='" . __('View graphical representation') . "'></i>";
         echo "</div>";
 
-        $items = iterator_to_array($items);
         echo "<div id='viewlist'>";
 
         echo "<h2>" . __("Racked items") . "</h2>";
@@ -189,7 +186,7 @@ class Item_Rack extends CommonDBRelation
         $outbound = [];
         foreach ($items as $row) {
             $rel  = new self();
-            $rel->getFromDB($row['id']);
+            $rel->fields = $row;
             $item = new $row['itemtype']();
             if (!$item->getFromDB($row['items_id'])) {
                 continue;
@@ -449,12 +446,16 @@ JAVASCRIPT;
     {
         global $DB;
 
-        $items = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'racks_id' => $rack->getID()
-           ]
-        ]);
+        if (static::class === self::class) {
+            $manager = Orm::create($DB);
+            try {
+                $items = (new PlacementRepository($manager))->rackStatistics((int)$rack->getID());
+            } finally {
+                $manager->clear();
+            }
+        } else {
+            $items = MappedReads::matching($DB, self::getTable(), ['racks_id' => $rack->getID()]);
+        }
 
         $weight = 0;
         $power  = 0;
@@ -463,33 +464,33 @@ JAVASCRIPT;
            Rack::REAR  => array_fill(0, $rack->fields['number_units'], 0),
         ];
 
-        $rel = new self();
-        while ($row = $items->next()) {
-            $rel->getFromDB($row['id']);
+        foreach ($items as $row) {
+            if (static::class === self::class && array_key_exists('dimensions', $row)) {
+                $modelFields = $row['dimensions'];
+            } else {
+                // Unmapped extensions retain their own legacy model-loading behavior.
+                $item = new $row['itemtype']();
+                $item->getFromDB($row['items_id']);
+                $model_class = $item->getType() . 'Model';
+                $modelsfield = strtolower($item->getType()) . 'models_id';
+                $model = new $model_class();
+                $modelFields = $model->getFromDB($item->fields[$modelsfield]) ? $model->fields : null;
+            }
 
-            $item = new $row['itemtype']();
-            $item->getFromDB($row['items_id']);
-
-            $model_class = $item->getType() . 'Model';
-            $modelsfield = strtolower($item->getType()) . 'models_id';
-            $model = new $model_class();
-
-            if ($model->getFromDB($item->fields[$modelsfield])) {
-                $required_units = $model->fields['required_units'];
-
-                for ($i = 0; $i < $model->fields['required_units']; $i++) {
+            if ($modelFields !== null) {
+                for ($i = 0; $i < $modelFields['required_units']; $i++) {
                     $units[$row['orientation']][$row['position'] + $i] = 1;
-                    if ($model->fields['depth'] == 1) {
+                    if ($modelFields['depth'] == 1) {
                         $other_side = (int) !(bool) $row['orientation'];
                         $units[$other_side][$row['position'] + $i] = 1;
                     }
                 }
 
-                if (array_key_exists('power_consumption', $model->fields)) { // PDU does not consume energy
-                    $power += $model->fields['power_consumption'];
+                if (array_key_exists('power_consumption', $modelFields)) { // PDU does not consume energy
+                    $power += $modelFields['power_consumption'];
                 }
 
-                $weight += $model->fields['weight'];
+                $weight += $modelFields['weight'];
             } else {
                 $units[Rack::FRONT][$row['position']] = 1;
                 $units[Rack::REAR][$row['position']]  = 1;
@@ -546,35 +547,10 @@ JAVASCRIPT;
             $text = $type::getTypeName(1);
         }
 
-        $used = $used_reserved = [];
-        $iterator = $DB->request([
-           'FROM' => $this->getTable()
-        ]);
-        while ($row = $iterator->next()) {
-            $used[$row['itemtype']][] = $row['items_id'];
-        }
-        // find used pdu (not racked)
-        foreach (PDU_Rack::getUsed() as $used_pdu) {
-            $used['PDU'][] = $used_pdu['pdus_id'];
-        }
-        // get all reserved items
-        $iterator = $DB->request([
-           'FROM'  => $this->getTable(),
-           'WHERE' => [
-              'is_reserved' => true
-           ]
-        ]);
-        while ($row = $iterator->next()) {
-            $used_reserved[$row['itemtype']][] = $row['items_id'];
-        }
-
-        //items part of an enclosure should not be listed
-        $iterator = $DB->request([
-           'FROM'   => Item_Enclosure::getTable()
-        ]);
-        while ($row = $iterator->next()) {
-            $used[$row['itemtype']][] = $row['items_id'];
-        }
+        $selection = (new PlacementRepository(Orm::create($DB)))->rackSelection();
+        $used = $selection['used'];
+        $used_reserved = $selection['reserved'];
+        $initialUsed = ($options['is_reserved'] ?? $this->fields['is_reserved'] ?? false) ? $used_reserved : $used;
 
         $form = [
           'action' => $this->getFormURL(),
@@ -592,7 +568,7 @@ JAVASCRIPT;
                           'type' => 'hidden',
                           'id' => 'used_input',
                           'name' => 'used',
-                          'value' => json_encode($used)
+                          'value' => json_encode($initialUsed)
                       ],
                       __('Item type') => (isset($options['_onlypdu']) && $options['_onlypdu']) ? [
                           'content' => PDU::getTypeName(1)
@@ -614,7 +590,7 @@ JAVASCRIPT;
                                     url: "{$CFG_GLPI["root_doc"]}/ajax/dropdownAllItems.php",
                                     data: {
                                         idtable: val,
-                                        is_reserved: $('#dropdown_is_reserved').val(),
+                                        is_reserved: $('#dropdown_is_reserved').is(':checked') ? 1 : 0,
                                         used: $('#used_input').val(),
                                         entity_restrict: {$rack->fields['entities_id']}
                                     },
@@ -642,7 +618,11 @@ JAVASCRIPT;
                           'name' => 'items_id',
                           'value' => $this->fields["items_id"] ?? 0,
                           'values' => isset($this->fields['itemtype']) && !empty($this->fields['itemtype'])
-                              ? getItemByEntity(new $this->fields['itemtype'](), $this->fields['entities_id'])
+                              ? getItemByEntity(
+                                  $this->fields['itemtype'],
+                                  $rack->fields['entities_id'],
+                                  getEntitiesRestrictCriteria($this->fields['itemtype']::getTable(), '', $rack->fields['entities_id'], true)
+                              )
                               : []
                       ],
                       Rack::getTypeName(1) => [
@@ -686,6 +666,8 @@ JAVASCRIPT;
                       __('Reserved position ?') => [
                           'type' => 'checkbox',
                           'name' => 'is_reserved',
+                          'id' => 'dropdown_is_reserved',
+                          'hooks' => ['change' => 'toggleUsed(this.checked ? 1 : 0);'],
                           'value' => $options["is_reserved"] ?? $this->fields["is_reserved"] ?? 0,
                       ]
                   ]
@@ -700,9 +682,9 @@ JAVASCRIPT;
         echo Html::scriptBlock("
          var toggleUsed = function(reserved) {
             if (reserved == 1) {
-               $('#used_').val('" . json_encode($used_reserved) . "');
+               $('#used_input').val('" . json_encode($used_reserved) . "');
             } else {
-               $('#used_').val('" . json_encode($used) . "');
+               $('#used_input').val('" . json_encode($used) . "');
             }
             // force change of itemtype dropdown to have a correct (with empty/filled used input)
             // filtered items list
@@ -877,12 +859,12 @@ JAVASCRIPT;
 
     public function prepareInputForAdd($input)
     {
-        return $this->prepareInput($input);
+        return $this->validateLifecycleEndpoints($input);
     }
 
     public function prepareInputForUpdate($input)
     {
-        return $this->prepareInput($input);
+        return $this->validateLifecycleEndpoints($input);
     }
 
     /**
@@ -892,7 +874,7 @@ JAVASCRIPT;
      *
      * @return array
      */
-    private function prepareInput($input)
+    protected function validateLifecycleEndpoints(array $input): array|false
     {
         $error_detected = [];
 

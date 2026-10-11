@@ -37,14 +37,19 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
-use DB;
+use DBAdapter;
+use DBConnection;
+use Doctrine\DBAL\Exception;
 use GLPIKey;
+use Symfony\Component\Console\Helper\QuestionHelper;
 use Toolbox;
-use Symfony\Component\Console\Exception\RuntimeException;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
+use itsmng\Database\InstallationConnection;
+use itsmng\Database\Installer;
+use itsmng\Database\Migration\History;
 
 class InstallCommand extends AbstractConfigureCommand
 {
@@ -117,7 +122,7 @@ class InstallCommand extends AbstractConfigureCommand
             && $this->isInputContainingConfigValues($input, $output)
             && !$input->getOption('reconfigure')
         ) {
-            /** @var \Symfony\Component\Console\Helper\QuestionHelper $question_helper */
+            /** @var QuestionHelper $question_helper */
             $question_helper = $this->getHelper('question');
             $reconfigure = $question_helper->ask(
                 $input,
@@ -144,6 +149,7 @@ class InstallCommand extends AbstractConfigureCommand
 
         $default_language = $input->getOption('default-language');
         $force            = $input->getOption('force');
+        $database         = null;
 
         if (
             $this->isDbAlreadyConfigured()
@@ -174,24 +180,19 @@ class InstallCommand extends AbstractConfigureCommand
             $db_user     = $input->getOption('db-user');
             $db_pass     = $input->getOption('db-password');
         } else {
-            // Ask to confirm installation based on existing configuration.
+            // The console owns the configured write connection, including its
+            // provider-specific transport and schema. Do not reconstruct it.
+            if (!$DB instanceof DBAdapter || !$DB->connected || $DB->isSlave()) {
+                $output->writeln('<error>Installation requires a connected configured write adapter.</error>');
+                return self::ERROR_DB_CONNECTION_FAILED;
+            }
 
+            // Ask to confirm installation based on existing configuration.
             // $DB->dbhost can be array when using round robin feature
             $db_hostport = is_array($DB->dbhost) ? $DB->dbhost[0] : $DB->dbhost;
 
-            $hostport = explode(':', (string) $db_hostport);
-            $db_host = $hostport[0];
-            if (count($hostport) < 2) {
-                // Host only case
-                $db_port = null;
-            } else {
-                // Host:port case or :Socket case
-                $db_port = $hostport[1];
-            }
-
             $db_name = $DB->dbdefault;
             $db_user = $DB->dbuser;
-            $db_pass = rawurldecode((string) $DB->dbpassword); //rawurldecode as in DBmysql::connect()
 
             $run = $this->askForDbConfigConfirmation(
                 $input,
@@ -207,87 +208,73 @@ class InstallCommand extends AbstractConfigureCommand
                 );
                 return 0;
             }
+            $database = $DB;
         }
 
-        // Create security key
-        $glpikey = new GLPIKey();
-        if (!$glpikey->keyExists() && !$glpikey->generate()) {
-            $message = __('Security key cannot be generated!');
-            $output->writeln('<error>' . $message . '</error>', OutputInterface::VERBOSITY_QUIET);
-            return self::ERROR_CANNOT_CREATE_ENCRYPTION_KEY_FILE;
+        $provider = $database === null ? $input->getOption('db-type') : $database->getProvider();
+        if ($provider === 'pgsql') {
+            $database ??= DBConnection::createConnection('pgsql', $db_hostport, $db_user, $db_pass, $db_name);
+            if (!$database->connected) {
+                $output->writeln('<error>' . $database->error() . '</error>');
+                return self::ERROR_DB_CONNECTION_FAILED;
+            }
+            if (count($database->listTables()) > 0 && !History::isInstalling($database->getDoctrineConnection())) {
+                $output->writeln('<error>PostgreSQL installation requires an empty schema. Use a new database.</error>');
+                return self::ERROR_DB_ALREADY_CONTAINS_TABLES;
+            }
+            $glpikey = new GLPIKey();
+            if (!$glpikey->keyExists() && !$glpikey->generate(false)) {
+                return self::ERROR_CANNOT_CREATE_ENCRYPTION_KEY_FILE;
+            }
+            Installer::installPostgres($database, $default_language);
+            $output->writeln('<info>' . __('Installation done.') . '</info>');
+            return 0;
         }
 
-        $mysqli = new \mysqli();
-        if (intval($db_port) > 0) {
-            // Network port
-            @$mysqli->connect($db_host, $db_user, $db_pass, null, $db_port);
-        } else {
-            // Unix Domain Socket
-            @$mysqli->connect($db_host, $db_user, $db_pass, null, 0, $db_port);
-        }
+        $db_instance = $database;
+        if ($db_instance === null) {
+            $server = InstallationConnection::mysqlServer($db_hostport, $db_user, $db_pass);
+            try {
+                $server->getServerVersion();
+            } catch (Exception $error) {
+                $output->writeln('<error>' . $error->getMessage() . '</error>', OutputInterface::VERBOSITY_QUIET);
+                $server->close();
+                return self::ERROR_DB_CONNECTION_FAILED;
+            }
 
-        if (0 !== $mysqli->connect_errno) {
-            $message = sprintf(
-                __('Database connection failed with message "(%s) %s".'),
-                $mysqli->connect_errno,
-                $mysqli->connect_error
+            $output->writeln(
+                '<comment>' . __('Creating the database...') . '</comment>',
+                OutputInterface::VERBOSITY_VERBOSE
             );
-            $output->writeln('<error>' . $message . '</error>', OutputInterface::VERBOSITY_QUIET);
+            try {
+                InstallationConnection::ensureMysqlDatabase($server, $db_name);
+            } catch (Exception $error) {
+                $output->writeln('<error>' . $error->getMessage() . '</error>', OutputInterface::VERBOSITY_QUIET);
+                return self::ERROR_DB_CREATION_FAILED;
+            } finally {
+                $server->close();
+            }
+
+            // A provider change cannot reuse the previously loaded DB subclass.
+            $db_instance = DBConnection::createConnection('mysql', $db_hostport, $db_user, $db_pass, $db_name);
+        }
+        if (!$db_instance->connected) {
+            $output->writeln('<error>' . $db_instance->error() . '</error>', OutputInterface::VERBOSITY_QUIET);
             return self::ERROR_DB_CONNECTION_FAILED;
         }
-
-        // Create database or select existing one
-        $output->writeln(
-            '<comment>' . __('Creating the database...') . '</comment>',
-            OutputInterface::VERBOSITY_VERBOSE
-        );
-        if (
-            !$mysqli->query('CREATE DATABASE IF NOT EXISTS `' . $db_name . '`')
-            || !$mysqli->select_db($db_name)
-        ) {
-            $message = sprintf(
-                __('Database creation failed with message "(%s) %s".'),
-                $mysqli->errno,
-                $mysqli->error
-            );
-            $output->writeln('<error>' . $message . '</error>', OutputInterface::VERBOSITY_QUIET);
-            return self::ERROR_DB_CREATION_FAILED;
-        }
-
-        // Prevent overriding of existing DB
-        $tables_result = $mysqli->query(
-            "SELECT COUNT(table_name)
-          FROM information_schema.tables
-          WHERE table_schema = '{$db_name}'
-             AND table_type = 'BASE TABLE'
-             AND table_name LIKE 'glpi\_%'"
-        );
-        if (!$tables_result) {
-            throw new RuntimeException('Unable to check GLPI tables existence.');
-        }
-        if ($tables_result->fetch_array()[0] > 0 && !$force) {
+        if (InstallationConnection::hasApplicationTables($db_instance->getDoctrineConnection()) && !$force && !History::isInstalling($db_instance->getDoctrineConnection())) {
             $output->writeln(
                 '<error>' . __('Database already contains "glpi_*" tables. Use --force option to override existing database.') . '</error>'
             );
             return self::ERROR_DB_ALREADY_CONTAINS_TABLES;
         }
 
-        if ($DB instanceof DB) {
-            // If global $DB is set at this point, it means that configuration file has been loaded
-            // prior to reconfiguration.
-            // As configuration is part of a class, it cannot be reloaded and class properties
-            // have to be updated manually in order to make `Toolbox::createSchema()` work correctly.
-            $DB->dbhost     = $db_hostport;
-            $DB->dbuser     = $db_user;
-            $DB->dbpassword = rawurlencode($db_pass);
-            $DB->dbdefault  = $db_name;
-            $DB->clearSchemaCache();
-            $DB->connect();
-
-            $db_instance = $DB;
-        } else {
-            include_once(GLPI_CONFIG_DIR . "/config_db.php");
-            $db_instance = new DB();
+        // Schema creation supplies all values; there are no stored passwords to migrate.
+        $glpikey = new GLPIKey();
+        if (!$glpikey->keyExists() && !$glpikey->generate(false)) {
+            $message = __('Security key cannot be generated!');
+            $output->writeln('<error>' . $message . '</error>', OutputInterface::VERBOSITY_QUIET);
+            return self::ERROR_CANNOT_CREATE_ENCRYPTION_KEY_FILE;
         }
 
         $output->writeln(
@@ -296,7 +283,7 @@ class InstallCommand extends AbstractConfigureCommand
         );
         // TODO Get rid of output buffering
         ob_start();
-        Toolbox::createSchema($default_language, $db_instance);
+        Toolbox::createSchema($default_language, $db_instance, $force);
         $message = ob_get_clean();
         if (!empty($message)) {
             $output->writeln('<error>' . $message . '</error>', OutputInterface::VERBOSITY_QUIET);
@@ -334,6 +321,7 @@ class InstallCommand extends AbstractConfigureCommand
     {
 
         $config_options = [
+           'db-type',
            'db-host',
            'db-port',
            'db-name',

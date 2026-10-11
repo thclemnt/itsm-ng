@@ -96,7 +96,7 @@ function isPluginItemType($classname)
         $plug['plugin'] = $matches[1];
         $plug['class']  = $matches[2];
         return $plug;
-    } elseif (substr($classname, 0, \strlen(NS_PLUG)) === NS_PLUG) {
+    } elseif (substr($classname, 0, strlen(NS_PLUG)) === NS_PLUG) {
         $tab = explode('\\', $classname, 3);
         $plug           = [];
         $plug['plugin'] = $tab[1];
@@ -295,6 +295,17 @@ function glpi_autoload($classname)
         return false;
     }
 
+    // Namespaced application/vendor classes use Composer's PSR loaders. The
+    // legacy paths below only translate Glpi and GlpiPlugin namespaces; other
+    // backslash-qualified names cannot resolve to their .class.php layout.
+    if (
+        str_contains($classname, '\\')
+        && !str_starts_with($classname, NS_GLPI)
+        && !str_starts_with($classname, NS_PLUG)
+    ) {
+        return false;
+    }
+
     if (
         $classname === 'phpCAS'
         && file_exists(stream_resolve_include_path("CAS.php"))
@@ -334,8 +345,8 @@ function glpi_autoload($classname)
         }
     } else {
         $item = strtolower($classname);
-        if (substr($classname, 0, \strlen(NS_GLPI)) === NS_GLPI) {
-            $item = str_replace('\\', '/', substr($item, \strlen(NS_GLPI)));
+        if (substr($classname, 0, strlen(NS_GLPI)) === NS_GLPI) {
+            $item = str_replace('\\', '/', substr($item, strlen(NS_GLPI)));
         }
     }
 

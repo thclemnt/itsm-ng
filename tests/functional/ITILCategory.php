@@ -34,9 +34,132 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\ORM\Events;
+use Entity_KnowbaseItem;
+use ITILCategory as LegacyITILCategory;
+use KnowbaseItem;
+use KnowbaseItemCategory;
+use Session;
+use itsmng\Database\Entity\KnowbaseItem as KnowbaseItemEntity;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\KnowledgeBaseRepository;
 
 class ITILCategory extends DbTestCase
 {
+    public function testKnowledgeLinksUseCurrentIdentifiersAndKeepArticleAdmission(): void
+    {
+        global $DB, $CFG_GLPI;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $session = $_SESSION;
+        $publicFaq = $CFG_GLPI['use_public_faq'];
+        $entity = (int)Session::getActiveEntity();
+        $connection = $DB->getDoctrineConnection();
+        $em = Orm::create($DB);
+        $listener = new class () {
+            public int $loaded = 0;
+            public function postLoad(): void
+            {
+                ++$this->loaded;
+            }
+        };
+        $em->getEventManager()->addEventListener([Events::postLoad], $listener);
+        try {
+            $prefix = 'Knowledge links ' . $this->getUniqueString();
+            $author = (int)getItemByTypeName('User', 'itsm', true);
+            $this->integer($author)->isGreaterThan(0)->isNotIdenticalTo((int)Session::getLoginUserID());
+            $category = $this->createItem(KnowbaseItemCategory::class, ['name' => $prefix]);
+            $other = $this->createItem(KnowbaseItemCategory::class, ['name' => $prefix . ' other']);
+            $dropdown = $this->createItem(LegacyITILCategory::class, [
+                'name' => $prefix . ' dropdown', 'entities_id' => $entity, 'knowbaseitemcategories_id' => $category->getID(),
+            ]);
+            $empty = $this->createItem(LegacyITILCategory::class, ['name' => $prefix . ' unlinked', 'entities_id' => $entity]);
+            $this->variable($empty->fields['knowbaseitemcategories_id'])->isNull();
+            $this->string($empty->getLinks())->isEmpty();
+            $this->string($empty->getLinks(true))->isIdenticalTo($prefix . ' unlinked&nbsp;&nbsp;');
+            $articles = [];
+            foreach (['shared', 'hidden', 'owned', 'public'] as $kind) {
+                $articles[$kind] = $this->createItem(KnowbaseItem::class, [
+                    'name' => $prefix . ' ' . $kind, 'answer' => $prefix . ' answer ' . $kind,
+                    'users_id' => $kind === 'owned' ? (int)Session::getLoginUserID() : $author,
+                    'knowbaseitemcategories_id' => in_array($kind, ['shared', 'hidden'], true) ? $category->getID() : $other->getID(),
+                    'is_faq' => $kind === 'public' ? 1 : 0,
+                ]);
+                if ($kind !== 'owned') {
+                    $this->createItem(Entity_KnowbaseItem::class, [
+                        'knowbaseitems_id' => $articles[$kind]->getID(), 'entities_id' => $kind === 'shared' ? $entity : 0,
+                        'is_recursive' => $kind === 'public' ? 1 : 0,
+                    ]);
+                }
+            }
+            $_SESSION['glpiactiveprofile']['knowbase'] = READ;
+            $admitted = KnowbaseItem::getForCategory($category->getID());
+            $this->array(array_values($admitted))->isIdenticalTo([(int)$articles['shared']->getID()]);
+            $repository = new KnowledgeBaseRepository($em);
+            $this->array($repository->existingLinkIds([...$admitted, ...$admitted, -1, PHP_INT_MAX]))
+                ->isIdenticalTo([(int)$articles['shared']->getID()]);
+            $this->array($repository->existingLinkIds([]))->isEmpty();
+            $this->array($repository->existingLinkIds([-1]))->isEmpty();
+            $this->integer($listener->loaded)->isIdenticalTo(0);
+            $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+
+            $html = $dropdown->getLinks(true);
+            $this->string($html)->contains($prefix . ' dropdown')->contains($prefix . ' answer shared')
+                ->notContains($prefix . ' answer hidden')->notContains('getKnowbaseItemAnswer');
+            $this->boolean($articles['shared']->getFromDB($articles['shared']->getID()))->isTrue();
+            $this->integer($articles['shared']->fields['view'])->isIdenticalTo(1);
+            $managed = $em->find(KnowbaseItemEntity::class, (int)$articles['shared']->getID());
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+            $this->boolean($DB->update(KnowbaseItem::getTable(), ['answer' => $prefix . ' current answer'], ['id' => $articles['shared']->getID()]))->isTrue();
+            $this->string($dropdown->getLinks())->contains($prefix . ' current answer');
+            $this->string($managed->answer)->isIdenticalTo($prefix . ' answer shared');
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+
+            $this->boolean($articles['owned']->update(['id' => $articles['owned']->getID(),
+                'knowbaseitemcategories_id' => $category->getID()]))->isTrue();
+            $html = $dropdown->getLinks();
+            $this->string($html)->contains('getKnowbaseItemAnswer')->notContains($prefix . ' answer hidden');
+            $this->boolean(str_contains($html, $prefix . ' current answer') || str_contains($html, $prefix . ' answer owned'))->isTrue();
+            $views = 0;
+            foreach (['shared', 'owned'] as $kind) {
+                $this->boolean($articles[$kind]->getFromDB($articles[$kind]->getID()))->isTrue();
+                $views += $articles[$kind]->fields['view'];
+            }
+            $this->integer($views)->isIdenticalTo(3); // Exactly one rich preview per invocation.
+
+            // Author admission without READ is intentionally different from the
+            // list repository's visibility rule. showFull still denies rendering.
+            $_SESSION['glpiactiveprofile']['knowbase'] = 0;
+            $this->array(array_values(KnowbaseItem::getForCategory($category->getID())))
+                ->isIdenticalTo([(int)$articles['owned']->getID()]);
+            $this->string($dropdown->getLinks())->contains('faqadd_block')->notContains($prefix . ' answer owned');
+            $_SESSION = $session;
+            $this->boolean($articles['public']->update(['id' => $articles['public']->getID(),
+                'knowbaseitemcategories_id' => $category->getID()]))->isTrue();
+            $CFG_GLPI['use_public_faq'] = true;
+            unset($_SESSION['glpiID']);
+            $_SESSION['glpiactiveprofile']['knowbase'] = 0;
+            $this->array(array_values(KnowbaseItem::getForCategory($category->getID())))
+                ->isIdenticalTo([(int)$articles['public']->getID()]);
+            $this->string($dropdown->getLinks())->contains($prefix . ' answer public')
+                ->notContains($prefix . ' answer owned')->notContains($prefix . ' current answer');
+            $CFG_GLPI['use_public_faq'] = false;
+            $this->string($dropdown->getLinks())->isEmpty();
+
+            $_SESSION = $session;
+            $this->boolean($articles['shared']->delete(['id' => $articles['shared']->getID()], true))->isTrue();
+            $this->array($repository->existingLinkIds($admitted))->isEmpty();
+            $this->boolean($em->contains($managed))->isTrue();
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+            $this->object($DB->getDoctrineConnection())->isIdenticalTo($connection);
+        } finally {
+            $_SESSION = $session;
+            $CFG_GLPI['use_public_faq'] = $publicFaq;
+            $em->getEventManager()->removeEventListener([Events::postLoad], $listener);
+            $em->clear();
+        }
+    }
+
     public function testPrepareInputForAdd()
     {
         $this->login();

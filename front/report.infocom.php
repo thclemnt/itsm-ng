@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\FinancialRepository;
+use itsmng\Reporting\Criteria;
+
 include('../inc/includes.php');
 
 Session::checkRight("reports", READ);
@@ -108,65 +112,66 @@ function display_infocoms_report($itemtype, $begin, $end)
 {
     global $DB, $valeurtot, $valeurnettetot, $valeurnettegraphtot, $valeurgraphtot, $CFG_GLPI, $stat, $chart_opts;
 
+    $display_entity = Session::isMultiEntitiesMode();
     $itemtable = getTableForItemType($itemtype);
     // report need name and ticket_tco, many asset type don't have it therefore are not compatible
     if (!$DB->fieldExists($itemtable, "ticket_tco", false)) {
         return false;
     }
-    $criteria = [
-       'SELECT'       => [
-          'glpi_infocoms.*',
-          "$itemtable.name AS name",
-          "$itemtable.ticket_tco",
-          'glpi_entities.completename AS entname',
-          'glpi_entities.id AS entID'
+    if (FinancialRepository::supports($itemtype)) {
+        $em = Orm::create($DB);
+        try {
+            $iterator = (new FinancialRepository($em))->rows(
+                $itemtype,
+                (string)$begin,
+                (string)$end,
+                Criteria::entities(),
+                true
+            );
+        } finally {
+            $em->clear();
+        }
+    } else {
+        $criteria = [
+           'SELECT'       => [
+              'glpi_infocoms.*',
+              "$itemtable.name AS name",
+              "$itemtable.ticket_tco",
+              'glpi_entities.completename AS entname',
+              'glpi_entities.id AS entID'
 
-       ],
-       'FROM'         => 'glpi_infocoms',
-       'INNER JOIN'   => [
-          $itemtable  => [
-             'ON'  => [
-                'glpi_infocoms'   => 'items_id',
-                $itemtable        => 'id', [
-                   'AND' => [
-                      'glpi_infocoms.itemtype'   => $itemtype
-                   ]
-                ]
-             ]
-          ]
-       ],
-       'LEFT JOIN'    => [
-          'glpi_entities'   => [
-             'ON'  => [
-                'glpi_entities'   => 'id',
-                $itemtable        => 'entities_id'
-             ]
-          ]
-       ],
-       'WHERE'        => ["$itemtable.is_template" => 0] + getEntitiesRestrictCriteria($itemtable),
-       'ORDERBY'      => ['entname ASC', 'buy_date', 'use_date']
-    ];
-
-    if (!empty($begin)) {
-        $criteria['WHERE'][] = [
-           'OR'  => [
-              'glpi_infocoms.buy_date'   => ['>=', $begin],
-              'glpi_infocoms.use_date'   => ['>=', $begin]
-           ]
+           ],
+           'FROM'         => 'glpi_infocoms',
+           'INNER JOIN'   => [
+              $itemtable  => [
+                 'ON'  => [
+                    'glpi_infocoms'   => 'items_id',
+                    $itemtable        => 'id', [
+                       'AND' => [
+                          'glpi_infocoms.itemtype'   => $itemtype
+                       ]
+                    ]
+                 ]
+              ]
+           ],
+           'LEFT JOIN'    => [
+              'glpi_entities'   => [
+                 'ON'  => [
+                    'glpi_entities'   => 'id',
+                    $itemtable        => 'entities_id'
+                 ]
+              ]
+           ],
+           'WHERE'        => ["$itemtable.is_template" => 0] + getEntitiesRestrictCriteria($itemtable),
+           'ORDERBY'      => ['entname ASC', 'buy_date', 'use_date']
         ];
-    }
 
-    if (!empty($end)) {
-        $criteria['WHERE'][] = [
-           'OR'  => [
-              'glpi_infocoms.buy_date'   => ['<=', $end],
-              'glpi_infocoms.use_date'   => ['<=', $end]
-           ]
-        ];
+        $dates = Criteria::financialDates((string)$begin, (string)$end);
+        if ($dates) {
+            $criteria['WHERE'][] = $dates;
+        }
+        $iterator = iterator_to_array($DB->request($criteria));
     }
-
-    $display_entity = Session::isMultiEntitiesMode();
-    $iterator = $DB->request($criteria);
 
     if (
         count($iterator)
@@ -188,7 +193,7 @@ function display_infocoms_report($itemtype, $begin, $end)
         $valeurnettegraph   = [];
         $valeurgraph        = [];
 
-        while ($line = $iterator->next()) {
+        foreach ($iterator as $line) {
             if (
                 isset($line["is_global"]) && $line["is_global"]
                 && $item->getFromDB($line["items_id"])

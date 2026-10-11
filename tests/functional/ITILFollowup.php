@@ -33,17 +33,269 @@
 
 namespace tests\units;
 
+use Change;
+use Change_User;
 use CommonITILActor;
+use DBAdapter;
+use DateTimeImmutable;
 use DbTestCase;
+use Doctrine\DBAL\Configuration;
+use Doctrine\DBAL\Logging\Middleware;
 use ITILFollowup as CoreITILFollowup;
+use Log;
+use Plugin;
+use Problem;
+use Psr\Log\AbstractLogger;
+use ReflectionProperty;
+use Session;
+use Throwable;
 use Ticket;
 use Ticket_User;
 use User;
+use itsmng\Database\MutationCleanupFailure;
+use itsmng\Database\MutationRollbackFailure;
+use itsmng\Database\MySQLConnection;
+use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\PostgresConnection;
+use itsmng\Search\Provider\JoinBuilder;
+
+use const CREATE;
+use const DELETE;
+use const ERROR;
+use const PURGE;
+use const UPDATE;
 
 /* Test for inc/itilfollowup.class.php */
 
 class ITILFollowup extends DbTestCase
 {
+    public function testFollowupReadsAvoidUnusedBuiltInParentsAndKeepCurrentAuthority(): void
+    {
+        global $DB;
+        $original = $DB;
+        $session = $_SESSION;
+        $level = $original->getDoctrineConnection()->getTransactionNestingLevel();
+        $scope = $original->getDoctrineConnection()->captureManagedTransactionScope();
+        $logger = new class () extends AbstractLogger {
+            public array $queries = [];
+            public function log($level, $message, array $context = []): void
+            {
+                if (isset($context['sql'])) {
+                    $this->queries[] = str_replace(['`', '"'], '', $context['sql']);
+                }
+            }
+        };
+        $configuration = new Configuration();
+        $configuration->setMiddlewares([new Middleware($logger)]);
+        $parameters = $original->getDoctrineConnection()->getParams();
+        $connection = $original->getProvider() === 'pgsql'
+            ? PostgresConnection::create($parameters, $configuration)
+            : MySQLConnection::create($parameters, $configuration);
+        $probe = clone $original;
+        (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
+        $frame = null;
+        $primary = null;
+        try {
+            $DB = $probe;
+            $frame = OwnedMutationFrame::begin($connection);
+            $this->login();
+            $this->setEntity(0, true);
+            foreach ([Ticket::class, Change::class, Problem::class] as $kind) {
+                $parent = new $kind();
+                $parentId = $parent->add(['name' => $this->getUniqueString(), 'content' => 'Followup parent',
+                    'entities_id' => 0, '_disablenotif' => true]);
+                $this->integer($parentId)->isGreaterThan(0);
+                $followup = new CoreITILFollowup();
+                $id = $followup->add(['itemtype' => $kind, 'items_id' => $parentId,
+                    'content' => 'Followup read', '_disablenotif' => true]);
+                $this->integer($id)->isGreaterThan(0);
+                $model = new class () extends CoreITILFollowup {
+                    public int $posts = 0;
+                    public $afterRead = null;
+                    public static function getTable($classname = null)
+                    {
+                        return 'glpi_itilfollowups';
+                    }
+                    public static function getType()
+                    {
+                        return 'ITILFollowup';
+                    }
+                    public function post_getFromDB()
+                    {
+                        ++$this->posts;
+                        parent::post_getFromDB();
+                        if ($this->afterRead !== null) {
+                            ($this->afterRead)();
+                        }
+                    }
+                };
+                $this->boolean($model->getFromDB($id))->isTrue();
+                $model->posts = 0;
+                $logger->queries = [];
+                $this->boolean($model->getFromDB($id))->isTrue();
+                $this->integer($model->posts)->isIdenticalTo(1);
+                $this->array($logger->queries)->hasSize(1);
+                $this->string($logger->queries[0])->contains('glpi_itilfollowups');
+                $this->integer((int)$model->fields['items_id'])->isIdenticalTo($parentId);
+                // Positive control: ordinary parent reads still load their actors.
+                $logger->queries = [];
+                $this->boolean($parent->getFromDB($parentId))->isTrue();
+                $this->array($logger->queries)->hasSize(4);
+                $this->string($logger->queries[0])->contains($parent::getTable());
+                // A previously read followup cannot retain the parent's old authorization.
+                $_SESSION['glpiactiveprofile'][CoreITILFollowup::$rightname] = CoreITILFollowup::UPDATEALL | CoreITILFollowup::UPDATEMY;
+                $this->boolean($model->canUpdateItem())->isTrue();
+                $rights = $_SESSION['glpiactiveprofile'][$kind::$rightname];
+                $_SESSION['glpiactiveprofile'][$kind::$rightname] = 0;
+                $this->boolean($model->canUpdateItem())->isFalse();
+                $_SESSION['glpiactiveprofile'][$kind::$rightname] = $rights;
+                $this->boolean($model->canUpdateItem())->isTrue();
+                $connection->update('glpi_itilfollowups', ['content' => 'Changed after first read'], ['id' => $id]);
+                $this->boolean($model->getFromDB($id))->isTrue();
+                $this->string($model->fields['content'])->isIdenticalTo('Changed after first read');
+                if ($kind === Change::class) {
+                    // A public followup callback changes real parent actors before permission evaluation.
+                    $connection->delete('glpi_changes_users', ['changes_id' => $parentId]);
+                    $connection->delete('glpi_changes_groups', ['changes_id' => $parentId]);
+                    $actor = new Change_User();
+                    $this->integer($actor->add(['changes_id' => $parentId,
+                        'users_id' => Session::getLoginUserID(), 'type' => CommonITILActor::REQUESTER]))->isGreaterThan(0);
+                    $_SESSION['glpiactiveprofile'][$kind::$rightname] = $kind::READMY;
+                    $this->boolean($model->canUpdateItem())->isTrue();
+                    $model->afterRead = static function () use ($connection, $parentId): void {
+                        $connection->delete('glpi_changes_users', ['changes_id' => $parentId]);
+                    };
+                    $this->boolean($model->getFromDB($id))->isTrue();
+                    $model->afterRead = null;
+                    $this->boolean($model->canUpdateItem())->isFalse();
+                    $this->integer($actor->add(['changes_id' => $parentId,
+                        'users_id' => Session::getLoginUserID(), 'type' => CommonITILActor::REQUESTER]))->isGreaterThan(0);
+                    $this->boolean($model->canUpdateItem())->isTrue();
+                    $_SESSION['glpiactiveprofile'][$kind::$rightname] = $rights;
+                }
+
+            }
+            $frame->assertActive();
+        } catch (Throwable $error) {
+            $primary = $error;
+        } finally {
+            $DB = $original;
+            $_SESSION = $session;
+            try {
+                if ($frame !== null) {
+                    $frame->rollBack();
+                }
+            } catch (Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new MutationRollbackFailure($primary, $cleanup);
+            }
+            try {
+                $connection->close();
+            } catch (Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
+            }
+            try {
+                $scope->assertActive();
+                $this->integer($original->getDoctrineConnection()->getTransactionNestingLevel())->isIdenticalTo($level);
+            } catch (Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
+            }
+        }
+        if ($primary !== null) {
+            throw $primary;
+        }
+    }
+
+    public function testCustomFollowupParentReadDispatchIsRetained(): void
+    {
+        $parent = new class () extends Ticket {
+            public static array $reads = [];
+            public function getFromDB($id)
+            {
+                self::$reads[] = $id;
+                $this->fields = ['id' => $id];
+                $this->post_getFromDB();
+                return true;
+            }
+            public function post_getFromDB()
+            {
+                self::$reads[] = 'post';
+            }
+        };
+        $followup = new CoreITILFollowup();
+        $followup->fields = ['itemtype' => get_class($parent), 'items_id' => 37];
+        $followup->post_getFromDB();
+        $followup->fields['items_id'] = 38;
+        $followup->post_getFromDB();
+        $this->array($parent::$reads)->isIdenticalTo([37, 'post', 38, 'post']);
+    }
+
+    public function testSearchAuthorVisibilityRequiresAnIdentity(): void
+    {
+        global $DB;
+
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $parent = $this->getNewITILObject(Ticket::class);
+        $ids = [];
+        foreach ([0, 1, 1] as $private) {
+            $followup = new CoreITILFollowup();
+            $id = $followup->add([
+                'itemtype' => Ticket::class, 'items_id' => $parent,
+                'content' => 'Search author visibility ' . $this->getUniqueString(),
+                'is_private' => $private,
+            ]);
+            $this->integer($id)->isGreaterThan(0);
+            $ids[] = $id;
+        }
+        // Purged authors are genuinely nullable history, not user identity zero.
+        $DB->getDoctrineConnection()->update(CoreITILFollowup::getTable(), ['users_id' => null], ['id' => $ids[2]]);
+        $session = $_SESSION;
+        $level = $DB->getDoctrineConnection()->getTransactionNestingLevel();
+        $visible = static function () use ($DB, $parent): array {
+            $options = CoreITILFollowup::rawSearchOptionsToAdd(Ticket::class);
+            foreach ($options as $option) {
+                if (($option['id'] ?? null) === '25') {
+                    $params = $option['joinparams'];
+                    break;
+                }
+            }
+            $links = [];
+            $table = CoreITILFollowup::getTable();
+            $join = JoinBuilder::addLeftJoin(
+                Ticket::class,
+                Ticket::getTable(),
+                $links,
+                $table,
+                getForeignKeyFieldForTable($table),
+                0,
+                0,
+                $params
+            );
+            $alias = $DB->quoteName($links[0]);
+            $result = $DB->query('SELECT ' . $alias . '.`id` AS followup FROM `glpi_tickets` '
+                . $join . ' WHERE `glpi_tickets`.`id` = ' . $parent
+                . ' AND ' . $alias . '.`id` IS NOT NULL ORDER BY ' . $alias . '.`id`');
+            $found = [];
+            while ($row = $DB->fetchAssoc($result)) {
+                $found[] = (int)$row['followup'];
+            }
+            return $found;
+        };
+        try {
+            $_SESSION['glpiactiveprofile'][CoreITILFollowup::$rightname] = 0;
+            $this->array($visible())->isIdenticalTo([$ids[0], $ids[1]]);
+            unset($_SESSION['glpiID']);
+            $this->array($visible())->isIdenticalTo([$ids[0]]);
+            $_SESSION['glpiID'] = 0;
+            $this->array($visible())->isIdenticalTo([$ids[0]]);
+            $_SESSION['glpiactiveprofile'][CoreITILFollowup::$rightname] = CoreITILFollowup::SEEPRIVATE;
+            $this->array($visible())->isIdenticalTo($ids);
+            $this->integer($DB->getDoctrineConnection()->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
     /**
      * Create a new ITILObject and return its id
      *
@@ -64,6 +316,60 @@ class ITILFollowup extends DbTestCase
         $this->boolean($itilobject->isNewItem())->isFalse();
         $this->boolean($itilobject->can($itilobject->getID(), \READ))->isTrue();
         return (int)$itilobject->getID();
+    }
+
+    public function testReparentingRequiresApplicableRemovalRights()
+    {
+        $this->login();
+        $source = $this->getNewITILObject(Ticket::class);
+        $target = $this->getNewITILObject(Ticket::class);
+        $followup = new CoreITILFollowup();
+        $id = $followup->add([
+            'itemtype' => Ticket::class,
+            'items_id' => $source,
+            'content' => 'Followup parent permission regression',
+        ]);
+        $this->integer($id)->isGreaterThan(0);
+        $this->boolean($followup->maybeDeleted())->isFalse();
+        $this->boolean($followup->can($id, DELETE))->isFalse();
+        $this->boolean($followup->can($id, PURGE))->isTrue();
+        $profile = $_SESSION['glpiactiveprofile'];
+        $input = ['id' => $id, 'itemtype' => Ticket::class, 'items_id' => $target];
+        try {
+            $_SESSION['glpiactiveprofile'][CoreITILFollowup::$rightname] &= ~PURGE;
+            $this->boolean($followup->can($id, PURGE))->isFalse();
+            $this->boolean((new CoreITILFollowup())->can(-1, CREATE, $input))->isTrue();
+            $this->boolean($followup->update($input))->isFalse();
+            $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'][ERROR])->isIdenticalTo([
+                __('Cannot update item: not enough right on the parent(s) item(s)'),
+            ]);
+            unset($_SESSION['MESSAGE_AFTER_REDIRECT'][ERROR]);
+            $this->boolean($followup->getFromDB($id))->isTrue();
+            $this->integer($followup->fields['items_id'])->isIdenticalTo($source);
+
+            $_SESSION['glpiactiveprofile'] = $profile;
+            $_SESSION['glpiactiveprofile'][CoreITILFollowup::$rightname] = PURGE;
+            $_SESSION['glpiactiveprofile'][Ticket::$rightname] &= ~Ticket::OWN;
+            $this->boolean($followup->can($id, PURGE))->isTrue();
+            $this->boolean((new CoreITILFollowup())->can(-1, CREATE, $input))->isFalse();
+            $this->boolean($followup->update($input))->isFalse();
+            $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'][ERROR])->isIdenticalTo([
+                __('Cannot update item: not enough right on the parent(s) item(s)'),
+            ]);
+            unset($_SESSION['MESSAGE_AFTER_REDIRECT'][ERROR]);
+            $this->boolean($followup->getFromDB($id))->isTrue();
+            $this->integer($followup->fields['items_id'])->isIdenticalTo($source);
+
+            $_SESSION['glpiactiveprofile'] = $profile;
+            $this->boolean($followup->update($input))->isTrue();
+            $this->boolean($followup->getFromDB($id))->isTrue();
+            $this->integer($followup->fields['items_id'])->isIdenticalTo($target);
+            $this->integer($followup->fields['tickets_id'])->isIdenticalTo($target);
+            $this->variable($followup->fields['problems_id'])->isNull();
+            $this->variable($followup->fields['changes_id'])->isNull();
+        } finally {
+            $_SESSION['glpiactiveprofile'] = $profile;
+        }
     }
 
     public function testACL()
@@ -116,105 +422,86 @@ class ITILFollowup extends DbTestCase
         $this->boolean((bool) $fup->canPurgeItem())->isTrue();
     }
 
-    public function testUpdateAndDelete()
+    protected function updateAndDeleteProvider(): array
     {
+        return [
+            ['Ticket', false], ['Ticket', true],
+            ['Problem', false], ['Problem', true],
+            ['Change', false], ['Change', true],
+        ];
+    }
+
+    /** @dataProvider updateAndDeleteProvider */
+    public function testUpdateAndDelete(string $itemtype, bool $force)
+    {
+        global $DB, $PLUGIN_HOOKS;
+
         $this->login();
+        $parentId = $this->getNewITILObject($itemtype);
+        $parent = new $itemtype();
+        $this->boolean($parent->can($parentId, UPDATE))->isTrue();
+        $connection = $DB->getDoctrineConnection();
+        $depth = $connection->getTransactionNestingLevel();
+        $this->integer($depth)->isGreaterThan(0);
+        $savedHooks = $PLUGIN_HOOKS;
+        $activated = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $savedPlugins = $activated->getValue();
+        $savedClock = $_SESSION['glpi_currenttime'];
+        $events = [];
+        $clock = new DateTimeImmutable('2031-02-03 04:05:06');
+        $assertUpdater = function () use ($connection, $parent, $parentId, &$clock): void {
+            $row = $connection->fetchAssociative('SELECT users_id_lastupdater, date_mod FROM '
+                . $connection->quoteIdentifier($parent->getTable()) . ' WHERE id = ?', [$parentId]);
+            $this->integer((int)$row['users_id_lastupdater'])->isEqualTo((int)Session::getLoginUserID());
+            $this->integer((new DateTimeImmutable($row['date_mod']))->getTimestamp())->isEqualTo($clock->getTimestamp());
+        };
+        try {
+            $activated->setValue(null, [...$savedPlugins, 'itil_purge_fixture']);
+            // A non-trashable followup must emit purge hooks even for delete()'s default force.
+            // Register delete hooks too, so the exact vector proves they never fire.
+            foreach (['item_add', 'item_update', 'pre_item_delete', 'item_delete', 'pre_item_purge', 'item_purge'] as $event) {
+                $PLUGIN_HOOKS[$event]['itil_purge_fixture'][CoreITILFollowup::class] = static function (CoreITILFollowup $item) use (&$events, $event): void {
+                    $events[] = $event;
+                };
+            }
+            $_SESSION['glpi_currenttime'] = $clock->format('Y-m-d H:i:s');
+            $fup = new CoreITILFollowup();
+            $fupId = $fup->add(['content' => 'my followup', 'itemtype' => $itemtype, 'items_id' => $parentId]);
+            $this->integer((int)$fupId)->isGreaterThan(0);
+            $this->boolean((bool)$fup->maybeDeleted())->isFalse();
+            $this->boolean((bool)$fup->can($fupId, PURGE))->isTrue();
+            $this->array($events)->isEqualTo(['item_add']);
+            $assertUpdater();
 
-        $ticketId = $this->getNewITILObject('Ticket');
-        $fup      = new \ITILFollowup();
-        $tmp      = ['itemtype' => 'Ticket', 'items_id' => $ticketId];
+            $clock = $clock->modify('+1 second');
+            $_SESSION['glpi_currenttime'] = $clock->format('Y-m-d H:i:s');
+            $this->boolean($fup->update(['id' => $fupId, 'content' => 'my followup updated',
+                'itemtype' => $itemtype, 'items_id' => $parentId]))->isTrue();
+            $this->boolean($fup->getFromDB($fupId))->isTrue();
+            $this->string((string)$fup->fields['content'])->isEqualTo('my followup updated');
+            $this->array($events)->isEqualTo(['item_add', 'item_update']);
+            $assertUpdater();
 
-        $fup_id = $fup->add([
-           'content'      => "my followup",
-           'itemtype'   => 'Ticket',
-           'items_id'   => $ticketId
-        ]);
-        $this->integer((int)$fup_id)->isGreaterThan(0);
-
-        $this->boolean(
-            $fup->update([
-              'id'         => $fup_id,
-              'content'    => "my followup updated",
-              'itemtype'   => 'Ticket',
-              'items_id'   => $ticketId
-         ])
-        )->isTrue();
-
-        $this->boolean(
-            $fup->getFromDB($fup_id)
-        )->isTrue();
-        $this->string((string) $fup->fields['content'])->isEqualTo('my followup updated');
-
-        $this->boolean(
-            $fup->delete([
-              'id'  => $fup_id
-         ])
-        )->isTrue();
-        $this->boolean((bool) $fup->getFromDB($fup_id))->isFalse();
-
-        $changeId = $this->getNewITILObject('Change');
-        $fup      = new \ITILFollowup();
-        $tmp      = ['itemtype' => 'Change', 'items_id' => $changeId];
-
-        $fup_id = $fup->add([
-           'content'      => "my followup",
-           'itemtype'   => 'Change',
-           'items_id'   => $changeId
-        ]);
-        $this->integer((int)$fup_id)->isGreaterThan(0);
-
-        $this->boolean(
-            $fup->update([
-              'id'         => $fup_id,
-              'content'    => "my followup updated",
-              'itemtype'   => 'Change',
-              'items_id'   => $changeId
-         ])
-        )->isTrue();
-
-        $this->boolean(
-            $fup->getFromDB($fup_id)
-        )->isTrue();
-        $this->string((string) $fup->fields['content'])->isEqualTo('my followup updated');
-
-        $this->boolean(
-            $fup->delete([
-              'id'  => $fup_id
-         ])
-        )->isTrue();
-        $this->boolean((bool) $fup->getFromDB($fup_id))->isFalse();
-
-        $problemId = $this->getNewITILObject('Problem');
-        $fup      = new \ITILFollowup();
-        $tmp      = ['itemtype' => 'Problem', 'items_id' => $problemId];
-
-        $fup_id = $fup->add([
-           'content'      => "my followup",
-           'itemtype'   => 'Problem',
-           'items_id'   => $problemId
-        ]);
-        $this->integer((int)$fup_id)->isGreaterThan(0);
-
-        $this->boolean(
-            $fup->update([
-              'id'         => $fup_id,
-              'content'    => "my followup updated",
-              'itemtype'   => 'Problem',
-              'items_id'   => $problemId
-         ])
-        )->isTrue();
-
-        $this->boolean(
-            $fup->getFromDB($fup_id)
-        )->isTrue();
-        $this->string((string) $fup->fields['content'])->isEqualTo('my followup updated');
-
-        $this->boolean(
-            $fup->delete([
-              'id'  => $fup_id
-         ])
-        )->isTrue();
-        $this->boolean((bool) $fup->getFromDB($fup_id))->isFalse();
+            $clock = $clock->modify('+1 second');
+            $_SESSION['glpi_currenttime'] = $clock->format('Y-m-d H:i:s');
+            $deleted = $force ? $fup->delete(['id' => $fupId], true) : $fup->delete(['id' => $fupId]);
+            $this->boolean($deleted)->isTrue();
+            $this->array($events)->isEqualTo(['item_add', 'item_update', 'pre_item_purge', 'item_purge']);
+            $this->boolean((bool)$fup->getFromDB($fupId))->isFalse();
+            $assertUpdater();
+            $actions = array_map('intval', $connection->fetchFirstColumn('SELECT linked_action FROM glpi_logs '
+                . 'WHERE itemtype = ? AND items_id = ? ORDER BY id', [$itemtype, $parentId]));
+            foreach ([Log::HISTORY_ADD_SUBITEM, Log::HISTORY_UPDATE_SUBITEM, Log::HISTORY_DELETE_SUBITEM] as $action) {
+                $this->boolean(in_array($action, $actions, true))->isTrue();
+            }
+            $this->variable($DB->getDoctrineConnection())->isIdenticalTo($connection);
+            $this->integer($connection->getTransactionNestingLevel())->isEqualTo($depth);
+            $DB->assertManagedTransaction();
+        } finally {
+            $_SESSION['glpi_currenttime'] = $savedClock;
+            $PLUGIN_HOOKS = $savedHooks;
+            $activated->setValue(null, $savedPlugins);
+        }
     }
 
     /**

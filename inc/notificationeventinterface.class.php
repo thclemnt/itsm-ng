@@ -49,7 +49,8 @@ interface NotificationEventInterface
      * @param NotificationTemplate $template           Template
      * @param boolean              $notify_me          Whether to notify current user
      *
-     * @return void
+     * @return bool|null False on admission refusal; legacy void is compatible
+     *                   but does not establish queue admission or delivery.
      */
     public static function raise(
         $event,

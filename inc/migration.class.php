@@ -259,7 +259,7 @@ class Migration
                     } elseif (in_array($default_value, ['0', '1'])) {
                         $format .= " DEFAULT '$default_value'";
                     } else {
-                        trigger_error(__('default_value must be 0 or 1'), E_USER_ERROR);
+                        throw new InvalidArgumentException(__('default_value must be 0 or 1'));
                     }
                 }
                 break;
@@ -297,7 +297,7 @@ class Migration
                     } elseif (is_numeric($default_value)) {
                         $format .= " DEFAULT '$default_value'";
                     } else {
-                        trigger_error(__('default_value must be numeric'), E_USER_ERROR);
+                        throw new InvalidArgumentException(__('default_value must be numeric'));
                     }
                 }
                 break;
@@ -1152,7 +1152,6 @@ class Migration
             $DB->insertOrDie(
                 'glpi_profilerights',
                 [
-                  'id'           => null,
                   'profiles_id'  => $profile['id'],
                   'name'         => $name,
                   'rights'       => $reqmet ? $rights : 0
@@ -1314,7 +1313,7 @@ class Migration
 
             // Check prerequisites
             if (!$DB->tableExists($old_table)) {
-                throw new \RuntimeException(
+                throw new RuntimeException(
                     sprintf(
                         'Table "%s" does not exists.',
                         $old_table
@@ -1322,7 +1321,7 @@ class Migration
                 );
             }
             if ($DB->tableExists($new_table)) {
-                throw new \RuntimeException(
+                throw new RuntimeException(
                     sprintf(
                         'Table "%s" cannot be renamed as table "%s" already exists.',
                         $old_table,
@@ -1354,7 +1353,7 @@ class Migration
                 $fkey_oldname = $fkey_column['COLUMN_NAME'];
                 $fkey_newname = preg_replace('/^' . preg_quote($old_fkey) . '/', $new_fkey, (string) $fkey_oldname);
                 if ($DB->fieldExists($fkey_table, $fkey_newname)) {
-                    throw new \RuntimeException(
+                    throw new RuntimeException(
                         sprintf(
                             'Field "%s" cannot be renamed in table "%s" as "%s" is field already exists.',
                             $fkey_oldname,

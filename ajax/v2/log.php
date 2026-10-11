@@ -66,15 +66,15 @@ $sort = $_GET['sort'] ?? '';
 $order = $_GET['order'] ?? '';
 
 $filters = [];
-if (isset($_GET['filters']) && $_GET['filters'] !== '') {
-    $decoded = json_decode((string) $_GET['filters'], true);
+if (isset($_UGET['filters']) && is_string($_UGET['filters']) && $_UGET['filters'] !== '') {
+    $decoded = json_decode($_UGET['filters'], true);
     if (is_array($decoded)) {
         $filters = $decoded;
     }
 }
 
 $sql_filters = Log::convertFiltersValuesToSqlCriteria($filters);
-$total = countElementsInTable('glpi_logs', ['items_id' => $items_id, 'itemtype' => $itemtype] + $sql_filters);
+$total = Log::countForItem($item, $sql_filters);
 
 $rows = [];
 if ($total > 0) {

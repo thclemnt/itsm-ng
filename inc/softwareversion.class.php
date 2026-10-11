@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\SoftwareRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -274,44 +278,28 @@ class SoftwareVersion extends CommonDBChild
             }
         }
 
-        // Make a select box
-        $criteria = [
-           'SELECT'    => [
-              'glpi_softwareversions.*',
-              'glpi_states.name AS sname'
-           ],
-           'DISTINCT'  => true,
-           'FROM'      => 'glpi_softwareversions',
-           'LEFT JOIN' => [
-              'glpi_states'  => [
-                 'ON' => [
-                    'glpi_softwareversions' => 'states_id',
-                    'glpi_states'           => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_softwareversions.softwares_id'   => $p['softwares_id']
-           ],
-           'ORDERBY'   => 'name'
-        ];
-
-        if (count($p['used'])) {
-            $criteria['WHERE']['NOT'] = ['glpi_softwareversions.id' => $p['used']];
-        }
-
-        $iterator = $DB->request($criteria);
+        $rows = Orm::readPrepared(
+            $DB,
+            static function () use ($p): array {
+                // Excluded IDs may raise conversion warnings: prepare them before
+                // the private materialized scope, retaining the array argument contract.
+                $arguments = static fn (int $software, array $used): array => [$software, array_map('intval', $used)];
+                return $arguments((int)$p['softwares_id'], $p['used']);
+            },
+            static fn (EntityManager $manager, array $arguments): array =>
+                (new SoftwareRepository($manager))->versionChoices(...$arguments)
+        );
 
         $values = [];
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             $ID     = $data['id'];
             $output = $data['name'];
 
             if (empty($output) || $_SESSION['glpiis_ids_visible']) {
                 $output = sprintf(__('%1$s (%2$s)'), $output, $ID);
             }
-            if (!empty($data['sname'])) {
-                $output = sprintf(__('%1$s - %2$s'), $output, $data['sname']);
+            if (!empty($data['status_name'])) {
+                $output = sprintf(__('%1$s - %2$s'), $output, $data['status_name']);
             }
             $values[$ID] = $output;
         }
@@ -349,25 +337,12 @@ class SoftwareVersion extends CommonDBChild
          HTML;
         }
 
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'glpi_softwareversions.*',
-              'glpi_states.name AS sname'
-           ],
-           'FROM'      => 'glpi_softwareversions',
-           'LEFT JOIN' => [
-              'glpi_states'  => [
-                 'ON' => [
-                    'glpi_softwareversions' => 'states_id',
-                    'glpi_states'           => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'softwares_id' => $softwares_id
-           ],
-           'ORDERBY'   => 'name'
-        ]);
+        $rows = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$softwares_id,
+            static fn (EntityManager $manager, int $software): array =>
+                (new SoftwareRepository($manager))->versions($software)
+        );
 
         Session::initNavigateListItems(
             'SoftwareVersion',
@@ -380,7 +355,7 @@ class SoftwareVersion extends CommonDBChild
             )
         );
 
-        if (count($iterator)) {
+        if (count($rows)) {
             echo "<table class='tab_cadre_fixehov' aria-label='Comments'><tr>";
             echo "<th>" . self::getTypeName(Session::getPluralNumber()) . "</th>";
             echo "<th>" . __('Status') . "</th>";
@@ -389,9 +364,11 @@ class SoftwareVersion extends CommonDBChild
             echo "<th>" . __('Comments') . "</th>";
             echo "</tr>\n";
 
-            for ($tot = $nb = 0; $data = $iterator->next(); $tot += $nb) {
+            $tot = 0;
+            foreach ($rows as $data) {
                 Session::addToNavigateListItems('SoftwareVersion', $data['id']);
                 $nb = Item_SoftwareVersion::countForVersion($data['id']);
+                $tot += $nb;
 
                 echo "<tr class='tab_bg_2'>";
                 echo "<td><a href='" . SoftwareVersion::getFormURLWithID($data['id']) . "'>";

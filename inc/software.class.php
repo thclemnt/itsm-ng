@@ -31,6 +31,17 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\Clonable;
+use itsmng\Database\LifecycleModelJournal;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\SoftwareAssignmentRepository;
+use itsmng\Database\Repository\SoftwareRepository;
+use itsmng\Domain\SoftwareAssignmentCancelled;
+use itsmng\Domain\SoftwareAssignmentService;
+use itsmng\Domain\SoftwareLifecycleAdmission;
+use itsmng\Domain\SoftwareMutation;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -39,7 +50,75 @@ if (!defined('GLPI_ROOT')) {
 **/
 class Software extends CommonDBTM
 {
-    use Glpi\Features\Clonable;
+    use SoftwareLifecycleAdmission;
+
+    use Clonable;
+
+    protected function executePreparedAdd(callable $operation, array $priorState): mixed
+    {
+        global $DB;
+
+        return (new SoftwareAssignmentService($DB))->mutateSoftware(
+            $this,
+            $priorState,
+            fn () => parent::executePreparedAdd($operation, $priorState),
+            'add'
+        );
+    }
+
+    protected function executePreparedUpdate(callable $operation, array $storedFields): bool
+    {
+        global $DB;
+
+        $checkpoint = LifecycleModelJournal::state($this);
+        $checkpoint['fields'] = $storedFields;
+        $checkpoint['updates'] = [];
+        $checkpoint['oldvalues'] = [];
+        return (new SoftwareAssignmentService($DB))->mutateSoftware(
+            $this,
+            $checkpoint,
+            fn () => parent::executePreparedUpdate($operation, $storedFields),
+            'update'
+        );
+    }
+
+    protected function executePreparedRestore(callable $operation, array $storedFields): bool
+    {
+        global $DB;
+
+        $checkpoint = LifecycleModelJournal::state($this);
+        $checkpoint['fields'] = $storedFields;
+        $checkpoint['updates'] = [];
+        $checkpoint['oldvalues'] = [];
+        return (new SoftwareAssignmentService($DB))->mutateSoftware(
+            $this,
+            $checkpoint,
+            fn () => parent::executePreparedRestore($operation, $storedFields),
+            'restore'
+        );
+    }
+
+    public function delete(array $input, $force = 0, $history = 1)
+    {
+        global $DB;
+
+        $database = $DB;
+        if (!array_key_exists(static::getIndexName(), $input)
+            || !SoftwareMutation::loadForMutation(
+                $database,
+                $this,
+                $input[static::getIndexName()],
+                fn () => $this->admitSoftwareLifecycle()
+            )) {
+            return false;
+        }
+        return (new SoftwareAssignmentService($database))->mutateSoftware(
+            $this,
+            LifecycleModelJournal::state($this),
+            fn () => parent::delete($input, $force, $history),
+            'delete'
+        );
+    }
 
     // From CommonDBTM
     public $dohistory                   = true;
@@ -184,7 +263,7 @@ class Software extends CommonDBTM
 
         // SoftwareLicense does not extends CommonDBConnexity
         $sl = new SoftwareLicense();
-        $sl->deleteByCriteria(['softwares_id' => $this->fields['id']]);
+        $sl->deleteByCriteria(['softwares_id' => $this->fields['id']], true);
 
         $this->deleteChildrenAndRelationsFromDb(
             [
@@ -202,28 +281,13 @@ class Software extends CommonDBTM
      *
      * @since 0.85
      *
-     * @return void
+     * @return bool required aggregate refresh accepted
     **/
-    public static function updateValidityIndicator($ID)
+    public static function updateValidityIndicator($ID): bool
     {
+        global $DB;
 
-        $soft = new self();
-        if ($soft->getFromDB($ID)) {
-            $valid = 1;
-            if (
-                countElementsInTable(
-                    'glpi_softwarelicenses',
-                    ['softwares_id' => $ID,
-                                      'NOT' => [ 'is_valid']]
-                ) > 0
-            ) {
-                $valid = 0;
-            }
-            if ($valid != $soft->fields['is_valid']) {
-                $soft->update(['id'       => $ID,
-                                   'is_valid' => $valid]);
-            }
-        }
+        return (new SoftwareAssignmentService($DB))->refreshSoftwareValidity((int)$ID);
     }
 
 
@@ -622,9 +686,9 @@ class Software extends CommonDBTM
                  'table'      => 'glpi_softwareversions',
                  'joinparams' => ['jointype' => 'child'],
               ],
-              'condition'  => "AND NEWTABLE.`is_deleted_item` = 0
-                             AND NEWTABLE.`is_deleted` = 0
-                             AND NEWTABLE.`is_template_item` = 0",
+              'condition'  => "AND NEWTABLE.`is_deleted_item` = '0'
+                             AND NEWTABLE.`is_deleted` = '0'
+                             AND NEWTABLE.`is_template_item` = '0'",
            ]
         ];
 
@@ -646,9 +710,9 @@ class Software extends CommonDBTM
                  'table'      => 'glpi_softwareversions',
                  'joinparams' => ['jointype' => 'child'],
               ],
-              'condition'  => "AND NEWTABLE.`is_deleted_item` = 0
-                             AND NEWTABLE.`is_deleted` = 0
-                             AND NEWTABLE.`is_template_item` = 0",
+              'condition'  => "AND NEWTABLE.`is_deleted_item` = '0'
+                             AND NEWTABLE.`is_deleted` = '0'
+                             AND NEWTABLE.`is_template_item` = '0'",
            ]
         ];
 
@@ -779,33 +843,9 @@ class Software extends CommonDBTM
     {
         global $CFG_GLPI, $DB;
 
-        $iterator = $DB->request([
-           'SELECT'          => [
-              'glpi_softwares.id',
-              'glpi_softwares.name'
-           ],
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_softwares',
-           'INNER JOIN'      => [
-              'glpi_softwarelicenses' => [
-                 'ON' => [
-                    'glpi_softwarelicenses' => 'softwares_id',
-                    'glpi_softwares'        => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => [
-              'glpi_softwares.is_deleted'    => 0,
-              'glpi_softwares.is_template'  => 0
-           ] + getEntitiesRestrictCriteria('glpi_softwarelicenses', 'entities_id', $entity_restrict, true),
-           'ORDERBY'         => 'glpi_softwares.name'
-        ]);
-
-        $values = [];
-        while ($data = $iterator->next()) {
-            $softwares_id          = $data["id"];
-            $values[$softwares_id] = $data["name"];
-        }
+        $rows = (new SoftwareRepository(Orm::create($DB)))
+            ->withLicenses(getEntitiesRestrictCriteria('glpi_softwarelicenses', 'entities_id', $entity_restrict, true));
+        $values = array_column($rows, 'name', 'id');
         $rand = Dropdown::showFromArray('softwares_id', $values, ['display_emptychoice' => true]);
 
         $paramsselsoft = ['softwares_id'    => '__VALUE__',
@@ -906,22 +946,16 @@ class Software extends CommonDBTM
             $manufacturer_id = Dropdown::import('Manufacturer', ['name' => $manufacturer]);
         }
 
-        $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_softwares.id',
-              'glpi_softwares.is_deleted'
-           ],
-           'FROM'   => 'glpi_softwares',
-           'WHERE'  => [
-              'name'               => $name,
-              'manufacturers_id'   => $manufacturer_id,
-              'is_template'        => 0
-           ] + getEntitiesRestrictCriteria('glpi_softwares', 'entities_id', $entity, true)
-        ]);
+        $rows = (new RecordRepository(Orm::create($DB)))
+            ->matching('glpi_softwares', [
+                'name' => stripslashes((string)$name),
+                'manufacturers_id' => $manufacturer_id ?: null,
+                'is_template' => false,
+            ] + getEntitiesRestrictCriteria('glpi_softwares', 'entities_id', $entity, true), ['id'], 1, legacyValues: false);
 
-        if (count($iterator)) {
-            //Software already exists for this entity, get his ID
-            $data = $iterator->next();
+        if ($rows) {
+            // Software already exists for this entity; restore it if necessary.
+            $data = $rows[0];
             $ID   = $data["id"];
 
             // restore software
@@ -977,6 +1011,75 @@ class Software extends CommonDBTM
     }
 
 
+    /** Merge source removal owns the real delete lifecycle and its follow-up intents. */
+    public function removeMergedSource(int $ID, string $comment = ''): bool
+    {
+        global $DB, $CFG_GLPI;
+
+        $database = $DB;
+        if ($database->isSlave()) {
+            return false;
+        }
+        $loaded = SoftwareMutation::loadForMutation($database, $this, $ID);
+        if (!$loaded || (int)$this->getID() !== $ID || $this->isTemplate()) {
+            return false;
+        }
+        // Preserve the existing merge comment/category input, including its
+        // historical conditional newline. Dictionary putInTrash stays separate.
+        $input = ['id' => $ID, 'is_deleted' => 1];
+        if (isset($CFG_GLPI['softwarecategories_id_ondelete']) && $CFG_GLPI['softwarecategories_id_ondelete'] != 0) {
+            $input['softwarecategories_id'] = $CFG_GLPI['softwarecategories_id_ondelete'];
+        }
+        $input['comment'] = (($this->fields['comment'] != '') ? "\n" : '') . $comment;
+        return (new SoftwareAssignmentService($database))->mutateSoftware(
+            $this,
+            LifecycleModelJournal::state($this),
+            function () use ($database, $ID, $input): bool {
+                $assertOwner = SoftwareMutation::writerContinuity($database);
+                $manager = Orm::create($database);
+                try {
+                    $repository = new SoftwareAssignmentRepository($manager);
+                    $source = $repository->software($ID);
+                    if ($source === null || $source->is_template) {
+                        return false;
+                    }
+                } finally {
+                    $manager->clear();
+                }
+                $deleted = $this->delete(['id' => $ID]);
+                $assertOwner();
+                if (!$deleted) {
+                    return false;
+                }
+                if ((int)$this->getID() !== $ID) {
+                    throw new SoftwareAssignmentCancelled('Merged source delete changed its selected identity.');
+                }
+                $updated = $this->update($input);
+                $assertOwner();
+                if (!$updated) {
+                    return false;
+                }
+                if ((int)$this->getID() !== $ID) {
+                    throw new SoftwareAssignmentCancelled('Merged source update changed its selected identity.');
+                }
+                // Completion hooks may write on this same owner. Observe the
+                // actual selected source, never a callback-mutated model ID.
+                $manager = Orm::create($database);
+                try {
+                    $source = (new SoftwareAssignmentRepository($manager))->software($ID);
+                    if ($source === null || !$source->is_deleted || $source->is_template) {
+                        throw new SoftwareAssignmentCancelled('Merged source removal did not retain the deleted source.');
+                    }
+                } finally {
+                    $manager->clear();
+                }
+                return true;
+            },
+            'delete'
+        );
+    }
+
+
     /**
      * Restore a software from trashbin
      *
@@ -1018,35 +1121,14 @@ class Software extends CommonDBTM
         $rand = mt_rand();
 
         echo "<div class='center'>";
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'glpi_softwares.id',
-              'glpi_softwares.name',
-              'glpi_entities.completename AS entity'
-           ],
-           'FROM'      => 'glpi_softwares',
-           'LEFT JOIN' => [
-              'glpi_entities'   => [
-                 'ON' => [
-                    'glpi_softwares'  => 'entities_id',
-                    'glpi_entities'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_softwares.id'           => ['!=', $ID],
-              'glpi_softwares.name'         => addslashes((string) $this->fields['name']),
-              'glpi_softwares.is_deleted'   => 0,
-              'glpi_softwares.is_template'  => 0
-           ] + getEntitiesRestrictCriteria(
-               'glpi_softwares',
-               'entities_id',
-               getSonsOf("glpi_entities", $this->fields["entities_id"]),
-               false
-           ),
-           'ORDERBY'   => 'entity'
-        ]);
-        $nb = count($iterator);
+        $rows = (new SoftwareRepository(Orm::create($DB)))
+            ->mergeCandidates((int)$ID, (string)$this->fields['name'], getEntitiesRestrictCriteria(
+                'glpi_softwares',
+                'entities_id',
+                getSonsOf('glpi_entities', $this->fields['entities_id']),
+                false
+            ));
+        $nb = count($rows);
 
         if ($nb) {
             $link = Toolbox::getItemTypeFormURL('Software');
@@ -1070,7 +1152,7 @@ class Software extends CommonDBTM
             echo "<th>" . _n('Installation', 'Installations', Session::getPluralNumber()) . "</th>";
             echo "<th>" . SoftwareLicense::getTypeName(Session::getPluralNumber()) . "</th></tr>";
 
-            while ($data = $iterator->next()) {
+            foreach ($rows as $data) {
                 echo "<tr class='tab_bg_2'>";
                 echo "<td>" . Html::getMassiveActionCheckBox(__CLASS__, $data["id"]) . "</td>";
                 echo "<td><a href='" . $link . "?id=" . $data["id"] . "'>" . $data["name"] . "</a></td>";
@@ -1112,113 +1194,28 @@ class Software extends CommonDBTM
             echo "</td></tr></table></div>\n";
         }
 
-        $item = array_keys($item);
-
-        // Search for software version
-        $req = $DB->request("glpi_softwareversions", ["softwares_id" => $item]);
-        $i   = 0;
-
-        if ($nb = $req->numrows()) {
-            foreach ($req as $from) {
-                $found = false;
-
-                foreach (
-                    $DB->request(
-                        "glpi_softwareversions",
-                        ["softwares_id" => $ID,
-                                            "name"         => $from["name"]]
-                    ) as $dest
-                ) {
-                    // Update version ID on License
-                    $DB->update(
-                        'glpi_softwarelicenses',
-                        [
-                          'softwareversions_id_buy' => $dest['id']
-                        ],
-                        [
-                          'softwareversions_id_buy' => $from['id']
-                        ]
-                    );
-
-                    $DB->update(
-                        'glpi_softwarelicenses',
-                        [
-                          'softwareversions_id_use' => $dest['id']
-                        ],
-                        [
-                          'softwareversions_id_use' => $from['id']
-                        ]
-                    );
-
-                    // Move installation to existing version in destination software
-                    $found = $DB->update(
-                        'glpi_items_softwareversions',
-                        [
-                          'softwareversions_id' => $dest['id']
-                        ],
-                        [
-                          'softwareversions_id' => $from['id']
-                        ]
-                    );
-                }
-
-                if ($found) {
-                    // Installation has be moved, delete the source version
-                    $result = $DB->delete(
-                        'glpi_softwareversions',
-                        [
-                          'id'  => $from['id']
-                        ]
-                    );
-                } else {
-                    // Move version to destination software
-                    $result = $DB->update(
-                        'glpi_softwareversions',
-                        [
-                          'softwares_id' => $ID,
-                          'entities_id'  => $this->getField('entities_id')
-                        ],
-                        [
-                          'id' => $from['id']
-                        ]
-                    );
-                }
-
-                if ($result) {
-                    $i++;
-                }
-                if ($html) {
-                    Html::changeProgressBarPosition($i, $nb + 1);
-                }
+        $accepted = SoftwareMutation::run(
+            $DB,
+            $this,
+            LifecycleModelJournal::state($this),
+            function () use ($DB, $ID, $item, $html): bool {
+                (new SoftwareRepository(Orm::create($DB)))->merge(
+                    (int)$ID,
+                    (int)$this->getField('entities_id'),
+                    array_keys($item),
+                    static fn (int $source): bool => (new self())->removeMergedSource($source, __('Software deleted after merging')),
+                    $html ? static fn (int $done, int $total) => Html::changeProgressBarPosition($done, $total) : null
+                );
+                return true;
             }
-        }
-
-        // Move software license
-        $result = $DB->update(
-            'glpi_softwarelicenses',
-            [
-              'softwares_id' => $ID
-            ],
-            [
-              'softwares_id' => $item
-            ]
         );
-
-        if ($result) {
-            $i++;
-        }
-
-        if ($i == ($nb + 1)) {
-            //error_log ("All merge operations ok.");
-            $soft = new self();
-            foreach ($item as $old) {
-                $soft->putInTrash($old, __('Software deleted after merging'));
-            }
+        if (!$accepted) {
+            return false;
         }
         if ($html) {
-            Html::changeProgressBarPosition($i, $nb + 1, __('Task completed.'));
+            Html::changeProgressBarPosition(1, 1, __('Task completed.'));
         }
-        return $i == ($nb + 1);
+        return true;
     }
 
 

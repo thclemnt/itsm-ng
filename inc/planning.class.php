@@ -35,14 +35,20 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use Doctrine\ORM\EntityManager;
+use Glpi\CalDAV\Backend\Calendar;
 use RRule\RRule;
 use Sabre\VObject\Component\VCalendar;
 use Sabre\VObject\Property\FlatText;
+use Sabre\VObject\Property\ICalendar\DateTime as ICalendarDateTime;
 use Sabre\VObject\Reader;
 use Sabre\VObject\ParseException;
 use Sabre\VObject\Component\VEvent;
 use Sabre\VObject\Component\VTodo;
 use Sabre\VObject\Property\ICalendar\Recur;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\PlanningRepository;
+use itsmng\Database\Repository\UserRepository;
 
 /**
  * Planning Class
@@ -680,6 +686,8 @@ class Planning extends CommonGLPI
 
     public static function getTimelineResources()
     {
+        global $DB;
+
         $resources = [];
         foreach ($_SESSION['glpi_plannings']['plannings'] as $planning_id => $planning) {
             if ($planning['type'] == 'external') {
@@ -708,11 +716,19 @@ class Planning extends CommonGLPI
                    'itemtype'   => 'Group_User',
                    'items_id'   => $group_id
                 ];
+                // Read after this group's formatter and before its concrete User loop.
+                // Dynamic resources elsewhere in the pass may perform current writes.
+                $userIds = array_map(
+                    static fn ($key) => (int)explode('_', (string)$key)[1],
+                    array_keys($planning['users'])
+                );
+                $names = $userIds ? Orm::read($DB, static fn (EntityManager $manager): array =>
+                    (new UserRepository($manager))->friendlyNameData($userIds)) : [];
                 foreach (array_keys($planning['users']) as $planning_id_user) {
                     $child_exploded = explode('_', (string) $planning_id_user);
                     $user = new User();
                     $users_id = (int) $child_exploded[1];
-                    $user->getFromDB($users_id);
+                    $user->fields = $names[$users_id] ?? [];
                     $planning_id_user = "gu_" . $planning_id_user;
                     $resources[] = [
                        'id'         => $planning_id_user,
@@ -727,7 +743,13 @@ class Planning extends CommonGLPI
                 $itemtype   = $exploded[0];
                 $object = new $itemtype();
                 $users_id = (int) $exploded[1];
-                $object->getFromDB($users_id);
+                if ($itemtype === 'User') {
+                    $names = Orm::read($DB, static fn (EntityManager $manager): array =>
+                        (new UserRepository($manager))->friendlyNameData([$users_id]));
+                    $object->fields = $names[$users_id] ?? [];
+                } else {
+                    $object->getFromDB($users_id);
+                }
 
                 $resources[] = [
                    'id'         => $planning_id,
@@ -907,7 +929,7 @@ class Planning extends CommonGLPI
      */
     public static function showSingleLinePlanningFilter($filter_key, $filter_data, $options = [])
     {
-        global $CFG_GLPI;
+        global $CFG_GLPI, $DB;
 
         // Invalid data, skip
         if (!isset($filter_data['type'])) {
@@ -999,13 +1021,23 @@ class Planning extends CommonGLPI
                     $port = 443;
                 }
 
-                $loginUser = new User();
-                $loginUser->getFromDB(Session::getLoginUserID(true));
+                // Re-read the credential for each rendered filter: an intervening
+                // callback may rotate it. Existing tokens need no full User record.
+                $loginId = Session::getLoginUserID(true);
+                $token = Orm::read($DB, static fn (EntityManager $manager): ?string =>
+                    (new UserRepository($manager))->tokenValue((int)$loginId, 'personal_token'));
+                if (empty($token)) {
+                    // Keep issuance, public update hooks and persisted-token checks
+                    // in the existing User lifecycle, including a missing account.
+                    $loginUser = new User();
+                    $loginUser->getFromDB($loginId);
+                    $token = $loginUser->getAuthToken();
+                }
                 $cal_url = "/front/planning.php?genical=1&uID=" . $uID . "&gID=" . $gID .
                            //"&limititemtype=$limititemtype".
                            "&entities_id=" . $_SESSION["glpiactive_entity"] .
                            "&is_recursive=" . $_SESSION["glpiactive_entity_recursive"] .
-                           "&token=" . $loginUser->getAuthToken();
+                           "&token=" . $token;
 
                 echo "<li><a target='_blank' href='" . $CFG_GLPI["root_doc"] . "$cal_url'>" .
                      _sx("button", "Export") . " - " . __("Ical") . "</a></li>";
@@ -1182,16 +1214,10 @@ class Planning extends CommonGLPI
     public static function showAddGroupUsersForm()
     {
         global $DB;
-
         echo Group::getTypeName(1) . " : <br>";
 
-        $groups = $DB->request([
-            'FROM'   => 'glpi_groups',
-            'WHERE'  => [
-                'entities_id' => $_SESSION['glpiactive_entity']
-            ],
-            'ORDER'  => 'name'
-        ]);
+        $groups = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new PlanningRepository($manager))->groupChoices((int)$_SESSION['glpiactive_entity']));
 
         echo "<select name='groups_id' id='dropdown_groups_id'>";
         echo "<option value='0'>-----</option>";
@@ -1292,16 +1318,13 @@ class Planning extends CommonGLPI
     public static function showAddGroupForm()
     {
         global $DB;
-
         echo Group::getTypeName(1) . " : <br>";
 
-        $where_condition = [
-            'entities_id' => $_SESSION['glpiactive_entity']
-        ];
+        $memberships = null;
 
         if (!Session::haveRight('planning', self::READALL)) {
             if (isset($_SESSION['glpigroups']) && is_array($_SESSION['glpigroups']) && !empty($_SESSION['glpigroups'])) {
-                $where_condition['id'] = $_SESSION['glpigroups'];
+                $memberships = $_SESSION['glpigroups'];
             } else {
                 echo "<select name='groups_id' id='dropdown_groups_id'>";
                 echo "<option value='0'>-----</option>";
@@ -1313,11 +1336,8 @@ class Planning extends CommonGLPI
             }
         }
 
-        $groups = $DB->request([
-            'FROM'   => 'glpi_groups',
-            'WHERE'  => $where_condition,
-            'ORDER'  => 'name'
-        ]);
+        $groups = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new PlanningRepository($manager))->groupChoices((int)$_SESSION['glpiactive_entity'], $memberships));
 
         echo "<select name='groups_id' id='dropdown_groups_id'>";
         echo "<option value='0'>-----</option>";
@@ -2042,7 +2062,7 @@ class Planning extends CommonGLPI
 
                 // append icon to distinguish reccurent event in views
                 // use UTC datetime to avoid some issues with rlan/phprrule
-                $dtstart_datetime  = new \DateTime($new_event['start']);
+                $dtstart_datetime  = new DateTime($new_event['start']);
                 unset($rrule['exceptions']); // remove exceptions key (as libraries throw exception for unknow keys)
                 $hr_rrule_o = new RRule(
                     array_merge(
@@ -2212,12 +2232,12 @@ class Planning extends CommonGLPI
 
                 $end_date_prop = $vcomp instanceof VTodo ? 'DUE' : 'DTEND';
                 if (
-                    !$vcomp->DTSTART instanceof \Sabre\VObject\Property\ICalendar\DateTime
-                    || !$vcomp->$end_date_prop instanceof \Sabre\VObject\Property\ICalendar\DateTime
+                    !$vcomp->DTSTART instanceof ICalendarDateTime
+                    || !$vcomp->$end_date_prop instanceof ICalendarDateTime
                 ) {
                     continue;
                 }
-                $user_tz  = new \DateTimeZone(date_default_timezone_get());
+                $user_tz  = new DateTimeZone(date_default_timezone_get());
                 $begin_dt = $vcomp->DTSTART->getDateTime();
                 $begin_dt = $begin_dt->setTimeZone($user_tz);
                 $end_dt   = $vcomp->$end_date_prop->getDateTime();
@@ -2704,21 +2724,21 @@ class Planning extends CommonGLPI
      *
      * @return string|null
      */
-    private static function getCaldavBaseCalendarUrl(\CommonDBTM $item)
+    private static function getCaldavBaseCalendarUrl(CommonDBTM $item)
     {
 
         $calendar_uri = null;
 
         switch (get_class($item)) {
-            case \Group::class:
-                $calendar_uri = \Glpi\CalDAV\Backend\Calendar::PREFIX_GROUPS
+            case Group::class:
+                $calendar_uri = Calendar::PREFIX_GROUPS
                    . '/' . $item->fields['id']
-                   . '/' . \Glpi\CalDAV\Backend\Calendar::BASE_CALENDAR_URI;
+                   . '/' . Calendar::BASE_CALENDAR_URI;
                 break;
-            case \User::class:
-                $calendar_uri = \Glpi\CalDAV\Backend\Calendar::PREFIX_USERS
+            case User::class:
+                $calendar_uri = Calendar::PREFIX_USERS
                    . '/' . $item->fields['name']
-                   . '/' . \Glpi\CalDAV\Backend\Calendar::BASE_CALENDAR_URI;
+                   . '/' . Calendar::BASE_CALENDAR_URI;
                 break;
         }
 

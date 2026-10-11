@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
 * */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\IPNetworkRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -207,6 +211,20 @@ class IPNetwork extends CommonImplicitTreeDropdown
     }
 
 
+    /** Cloned child updates promote ancestry without validating unchanged CIDR input. */
+    private bool $promotingChildren = false;
+    private bool $structuralParentUpdate = false;
+
+    public function pre_deleteItem()
+    {
+        $this->promotingChildren = true;
+        try {
+            return parent::pre_deleteItem();
+        } finally {
+            $this->promotingChildren = false;
+        }
+    }
+
     public function getNewAncestor()
     {
 
@@ -289,13 +307,7 @@ class IPNetwork extends CommonImplicitTreeDropdown
                 $params["exclude IDs"] = $this->fields["id"];
             }
 
-            if (isset($this->fields["entities_id"])) {
-                $entities_id = $this->fields["entities_id"];
-            } elseif (isset($input["entities_id"])) {
-                $entities_id = $input["entities_id"];
-            } else {
-                $entities_id = -1;
-            }
+            $entities_id = $input['entities_id'] ?? $this->fields['entities_id'] ?? -1;
 
             // TODO : what is the best way ? recursive or not ?
             $sameNetworks = self::searchNetworks("equals", $params, $entities_id, false);
@@ -329,7 +341,7 @@ class IPNetwork extends CommonImplicitTreeDropdown
             $this->networkUpdate = false;
             $address->setAddressFromArray($this->fields, "version", "address", "address");
             $netmask->setAddressFromArray($this->fields, "version", "netmask", "netmask");
-            $entities_id = $this->fields['entities_id'];
+            $entities_id = $input['entities_id'] ?? $this->fields['entities_id'];
         }
 
         // Update class for the CommonImplicitTree update ...
@@ -369,6 +381,8 @@ class IPNetwork extends CommonImplicitTreeDropdown
             $input = $gateway->setArrayFromAddress($input, "", "gateway", "gateway");
         }
 
+        // The CIDR form field is derived; persist its parsed address and mask only.
+        unset($input['network']);
         $returnValue['input'] = $input;
 
         return $returnValue;
@@ -395,6 +409,11 @@ class IPNetwork extends CommonImplicitTreeDropdown
 
     public function prepareInputForUpdate($input)
     {
+        if ($this->promotingChildren && array_key_exists('ipnetworks_id', $input) && !array_key_exists('network', $input)) {
+            $this->structuralParentUpdate = true;
+            $this->networkUpdate = false;
+            return CommonTreeDropdown::prepareInputForUpdate($input);
+        }
 
         $preparedInput = $this->prepareInput($input);
 
@@ -420,18 +439,26 @@ class IPNetwork extends CommonImplicitTreeDropdown
 
         unset($this->networkUpdate);
         parent::post_addItem();
+        $this->post_getFromDB();
     }
 
 
     public function post_updateItem($history = 1)
     {
-
-        if ($this->networkUpdate) {
-            IPAddress_IPNetwork::linkIPAddressFromIPNetwork($this);
+        try {
+            if ($this->networkUpdate) {
+                IPAddress_IPNetwork::linkIPAddressFromIPNetwork($this);
+            }
+            unset($this->networkUpdate);
+            if ($this->structuralParentUpdate) {
+                CommonTreeDropdown::post_updateItem($history);
+            } else {
+                parent::post_updateItem($history);
+            }
+            $this->post_getFromDB();
+        } finally {
+            $this->structuralParentUpdate = false;
         }
-
-        unset($this->networkUpdate);
-        parent::post_updateItem($history);
     }
 
 
@@ -479,7 +506,7 @@ class IPNetwork extends CommonImplicitTreeDropdown
      * @param boolean                    $recursive  set to false to only search in current entity,
      *                                               otherwise, all visible entities will be search
      * @param string|array               $fields     list of fields to return in the result (default : only ID of the networks)
-     * @param string                     $where      search criteria
+     * @param array|string               $where      structured search criteria (or empty string)
      *
      * @return array|false  list of networks (see searchNetworks())
     **/
@@ -515,7 +542,7 @@ class IPNetwork extends CommonImplicitTreeDropdown
      *    - address (see \ref parameterType) : the address for the query
      *    - netmask (see \ref parameterType) : the netmask for the query
      *    - exclude IDs : the IDs to exclude from the query (for instance, $this->getID())
-     *    - where : filters to add to the SQL request
+     *    - where : structured field criteria to add to the mapped query
      *
      * @param integer $entityID   the entity on which the selection should occur (-1 => the current active
      *                            entity) (default -1)
@@ -554,62 +581,20 @@ class IPNetwork extends CommonImplicitTreeDropdown
             $fields = [$fields];
         }
 
-        $startIndex = (($version == 4) ? 3 : 1);
-
-        $addressDB  = ['address_0', 'address_1', 'address_2', 'address_3'];
-        $netmaskDB  = ['netmask_0', 'netmask_1', 'netmask_2', 'netmask_3'];
-
-        $WHERE      = [];
-        if (
-            isset($condition["address"])
-            && isset($condition["netmask"])
-        ) {
-            $addressPa = new IPAddress($condition["address"]);
-
-            // Check version equality ...
-            if ($version != $addressPa->getVersion()) {
-                if ($version != 0) {
-                    return false;
-                }
-                $version = $addressPa->getVersion();
-            }
-
-            $netmaskPa = new IPNetmask($condition["netmask"], $version);
-
-            // Get the array of the adresses
-            $addressPa = $addressPa->getBinary();
-            $netmaskPa = $netmaskPa->getBinary();
-
-            // Check the binary is valid
-            if (!is_array($addressPa) || (count($addressPa) != 4)) {
+        if (!in_array($relation, ['equals', 'contains', 'is contained by'], true)) {
+            return false;
+        }
+        $address = $mask = null;
+        if (isset($condition['address'], $condition['netmask'])) {
+            $parsed = new IPAddress($condition['address']);
+            if ((int)$version !== 0 && $version != $parsed->getVersion()) {
                 return false;
             }
-            if (!is_array($netmaskPa) || (count($netmaskPa) != 4)) {
+            $version = $parsed->getVersion();
+            $address = $parsed->getBinary();
+            $mask = (new IPNetmask($condition['netmask'], $version))->getBinary();
+            if (!is_array($address) || count($address) !== 4 || !is_array($mask) || count($mask) !== 4) {
                 return false;
-            }
-
-            $startIndex = (($version == 4) ? 3 : 0);
-
-            if ($relation == "equals") {
-                for ($i = $startIndex; $i < 4; ++$i) {
-                    $WHERE = [
-                       new \QueryExpression("(" . $DB->quoteName($addressDB[$i]) . " & " . $DB->quoteValue($netmaskPa[$i]) . ") = (" . $DB->quoteValue($addressPa[$i]) . " & " . $DB->quoteValue($netmaskPa[$i]) . ")"),
-                       $netmaskDB[$i]  => $netmaskPa[$i]
-                    ];
-                }
-            } else {
-                for ($i = $startIndex; $i < 4; ++$i) {
-                    if ($relation == "is contained by") {
-                        $globalNetmask = $DB->quoteValue($netmaskPa[$i]);
-                    } else {
-                        $globalNetmask = $DB->quoteName($netmaskDB[$i]);
-                    }
-
-                    $WHERE = [
-                       new \QueryExpression("(" . $DB->quoteName($addressDB[$i]) . " & $globalNetmask) = (" . $DB->quoteValue($addressPa[$i]) . " & $globalNetmask)"),
-                       new \QueryExpression("(" . $DB->quoteValue($netmaskPa[$i]) . " & " . $DB->quoteName($netmaskDB[$i]) . ")=$globalNetmask")
-                    ];
-                }
             }
         }
 
@@ -619,21 +604,18 @@ class IPNetwork extends CommonImplicitTreeDropdown
         $entitiesID = [];
         switch ($relation) {
             case "is contained by":
-                $ORDER_ORIENTATION = 'ASC';
                 if ($recursive) {
                     $entitiesID = getSonsOf('glpi_entities', $entityID);
                 }
                 break;
 
             case "contains":
-                $ORDER_ORIENTATION = 'DESC';
                 if ($recursive) {
                     $entitiesID = getAncestorsOf('glpi_entities', $entityID);
                 }
                 break;
 
             case "equals":
-                $ORDER_ORIENTATION = '';
                 if ($recursive) {
                     $entitiesID = getSonsAndAncestorsOf('glpi_entities', $entityID);
                 }
@@ -641,53 +623,26 @@ class IPNetwork extends CommonImplicitTreeDropdown
         }
 
         $entitiesID[] = $entityID;
-        $WHERE['entities_id']   = $entitiesID;
-        $WHERE['version']       = $version;
-
-        if (!empty($condition["exclude IDs"])) {
-            if (is_array($condition["exclude IDs"])) {
-                if (count($condition["exclude IDs"]) > 1) {
-                    $WHERE['NOT'] = ['id' => $condition['exclude IDs']];
-                } else {
-                    $WHERE['id'] = ['<>', $condition['exclude IDs'][0]];
-                }
-            } else {
-                $WHERE['id'] = ['<>', $condition['exclude IDs']];
-            }
+        $criteria = $condition['where'] ?? [];
+        if ($criteria === '') {
+            $criteria = [];
         }
-
-        $ORDER = [];
-        // By ordering on the netmask, we ensure that the first element is the nearest one (ie:
-        // the last should be 0.0.0.0/0.0.0.0 of x.y.z.a/255.255.255.255 regarding the interested
-        // element)
-        for ($i = $startIndex; $i < 4; ++$i) {
-            $ORDER[] = new \QueryExpression("BIT_COUNT(" . $DB->quoteName($netmaskDB[$i]) . ") $ORDER_ORIENTATION");
+        if (!is_array($criteria)) {
+            throw new InvalidArgumentException('Network filters must use structured field criteria.');
         }
-
-        if (!empty($condition["where"])) {
-            $WHERE .= " AND " . $condition["where"];
-        }
-
-        $iterator = $DB->request([
-           'SELECT' => $fields,
-           'FROM'   => self::getTable(),
-           'WHERE'  => $WHERE,
-           'ORDER'  => $ORDER
-        ]);
-
-        $returnValues = [];
-        while ($data = $iterator->next()) {
-            if (count($fields) > 1) {
-                $returnValue = [];
-                foreach ($fields as $field) {
-                    $returnValue[$field] = $data[$field];
-                }
-            } else {
-                $returnValue = $data[$fields[0]];
-            }
-            $returnValues[] = $returnValue;
-        }
-        return $returnValues;
+        return Orm::read(
+            $DB,
+            static fn (EntityManager $manager): array => (new IPNetworkRepository($manager))->matching(
+                $relation,
+                $address,
+                $mask,
+                (int)$version,
+                array_values(array_unique($entitiesID)),
+                array_values($fields),
+                (array)($condition['exclude IDs'] ?? []),
+                $criteria
+            )
+        );
     }
 
 
@@ -727,7 +682,7 @@ class IPNetwork extends CommonImplicitTreeDropdown
 
         $result = [];
         for ($i = ($version == 4 ? 3 : 0); $i < 4; ++$i) {
-            $result[] = new \QueryExpression(
+            $result[] = new QueryExpression(
                 "({$DB->quoteName($tableName.'.'.$binaryFieldPrefix.'_'.$i)} & " . $this->fields["netmask_$i"] . ") = ({$start[$i]})"
             );
         }
@@ -952,33 +907,29 @@ class IPNetwork extends CommonImplicitTreeDropdown
     **/
     public static function recreateTree()
     {
-        global $DB;
+        global $DB, $GLPI_CACHE;
 
-        // Reset the tree
-        $DB->update(
-            'glpi_ipnetworks',
-            [
-              'ipnetworks_id'   => 0,
-              'level'           => 1,
-              'completename'    => new \QueryExpression($DB->quoteName('name'))
-            ],
-            [true]
-        );
-
-        // Foreach IPNetwork ...
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => self::getTable()
-        ]);
-
-        $network = new self();
-
-        while ($network_entry = $iterator->next()) {
-            if ($network->getFromDB($network_entry['id'])) {
-                $input = $network->fields;
-                // ... update it by its own entries
-                $network->update($input);
+        $ids = [];
+        $invalidate = static function () use (&$ids, $GLPI_CACHE): void {
+            foreach ([0, ...$ids] as $id) {
+                $GLPI_CACHE->delete('ancestors_cache_glpi_ipnetworks_' . $id);
+                $GLPI_CACHE->delete('sons_cache_glpi_ipnetworks_' . $id);
             }
+        };
+        try {
+            $DB->getDoctrineConnection()->transactional(static function () use ($DB, &$ids, $invalidate): void {
+                $ids = (new IPNetworkRepository(Orm::create($DB)))->resetTree();
+                $invalidate();
+                foreach ($ids as $id) {
+                    $network = new self();
+                    if (!$network->getFromDB($id) || !$network->update($network->fields)) {
+                        throw new RuntimeException('Unable to rebuild IP network tree at ' . $id);
+                    }
+                }
+            });
+        } finally {
+            // Also discard derived cache values from any rolled-back rebuild.
+            $invalidate();
         }
     }
 

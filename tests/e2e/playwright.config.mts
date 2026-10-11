@@ -10,10 +10,13 @@ export default defineConfig({
   testMatch: '*.spec.mts',
   timeout: 60_000,
   fullyParallel: false,
+  forbidOnly: !!process.env.CI,
   workers: 1,
   retries: process.env.CI ? 2 : 0,
   reporter: [
+    ['./completion-reporter.mts'],
     ['list'],
+    ['json', { outputFile: path.join(dirname, '../files/_playwright/results.json') }],
     ['html', { open: 'never', outputFolder: path.join(dirname, '../files/_playwright/report') }],
   ],
   outputDir: path.join(dirname, '../files/_playwright/test-results'),

@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\InventoryLockRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -68,6 +71,7 @@ class Lock extends CommonGLPI
         $ID       = $item->getID();
         $itemtype = $item->getType();
         $header   = false;
+        $locks = new InventoryLockRepository(Orm::create($DB));
 
         //If user doesn't have update right on the item, lock form must not be displayed
         if (!$item->isDynamic() || !$item->can($item->fields['id'], UPDATE)) {
@@ -93,13 +97,8 @@ class Lock extends CommonGLPI
             //Locks for items recorded in glpi_computers_items table
             $types = ['Monitor', 'Peripheral', 'Printer'];
             foreach ($types as $type) {
-                $params = ['is_dynamic'    => 1,
-                                'is_deleted'    => 1,
-                                'computers_id'  => $ID,
-                                'itemtype'      => $type];
-                $params['FIELDS'] = ['id', 'items_id'];
-                $first  = true;
-                foreach ($DB->request('glpi_computers_items', $params) as $line) {
+                $first = true;
+                foreach ($locks->forItem($type, $itemtype, (int)$ID) as $line) {
                     /** @var CommonDBTM $asset */
                     $asset = new $type();
                     $asset->getFromDB($line['items_id']);
@@ -124,15 +123,8 @@ class Lock extends CommonGLPI
 
             //items disks
             $item_disk = new Item_Disk();
-            $params = [
-               'is_dynamic'   => 1,
-               'is_deleted'   => 1,
-               'items_id'     => $ID,
-               'itemtype'     => $itemtype
-            ];
-            $params['FIELDS'] = ['id', 'name'];
-            $first  = true;
-            foreach ($DB->request($item_disk->getTable(), $params) as $line) {
+            $first = true;
+            foreach ($locks->forItem('Item_Disk', $itemtype, (int)$ID) as $line) {
                 if ($first) {
                     echo "<tr><th colspan='2'>" . $item_disk->getTypeName(Session::getPluralNumber()) . "</th></tr>\n";
                     $first = false;
@@ -152,12 +144,8 @@ class Lock extends CommonGLPI
             }
 
             $computer_vm = new ComputerVirtualMachine();
-            $params = ['is_dynamic'    => 1,
-                            'is_deleted'    => 1,
-                            'computers_id'  => $ID];
-            $params['FIELDS'] = ['id', 'name'];
-            $first  = true;
-            foreach ($DB->request($computer_vm->getTable(), $params) as $line) {
+            $first = true;
+            foreach ($locks->forItem('ComputerVirtualMachine', $itemtype, (int)$ID) as $line) {
                 if ($first) {
                     echo "<tr><th colspan='2'>" . $computer_vm->getTypeName(Session::getPluralNumber()) . "</th></tr>\n";
                     $first = false;
@@ -179,38 +167,8 @@ class Lock extends CommonGLPI
 
         //Software versions
         $item_sv = new Item_SoftwareVersion();
-        $item_sv_table = Item_SoftwareVersion::getTable();
-
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'isv.id AS id',
-              'sv.name AS version',
-              's.name AS software'
-           ],
-           'FROM'      => "{$item_sv_table} AS isv",
-           'LEFT JOIN' => [
-              'glpi_softwareversions AS sv' => [
-                 'FKEY' => [
-                    'isv' => 'softwareversions_id',
-                    'sv'  => 'id'
-                 ]
-              ],
-              'glpi_softwares AS s'         => [
-                 'FKEY' => [
-                    'sv'  => 'softwares_id',
-                    's'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'isv.is_deleted'  => 1,
-              'isv.is_dynamic'  => 1,
-              'isv.items_id'    => $ID,
-              'isv.itemtype'    => $itemtype,
-           ]
-        ]);
         echo "<tr><th colspan='2'>" . Software::getTypeName(Session::getPluralNumber()) . "</th></tr>\n";
-        while ($data = $iterator->next()) {
+        foreach ($locks->forItem('SoftwareVersion', $itemtype, (int)$ID) as $data) {
             echo "<tr class='tab_bg_1'>";
 
             echo "<td class='center' width='10'>";
@@ -226,39 +184,8 @@ class Lock extends CommonGLPI
 
         //Software licenses
         $item_sl = new Item_SoftwareLicense();
-        $item_sl_table = Item_SoftwareLicense::getTable();
-
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'isl.id AS id',
-              'sl.name AS version',
-              's.name AS software'
-           ],
-           'FROM'      => "{$item_sl_table} AS isl",
-           'LEFT JOIN' => [
-              'glpi_softwarelicenses AS sl' => [
-                 'FKEY' => [
-                    'isl' => 'softwarelicenses_id',
-                    'sl'  => 'id'
-                 ]
-              ],
-              'glpi_softwares AS s'         => [
-                 'FKEY' => [
-                    'sl'  => 'softwares_id',
-                    's'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'isl.is_deleted'  => 1,
-              'isl.is_dynamic'  => 1,
-              'isl.items_id'    => $ID,
-              'isl.itemtype'    => $itemtype,
-           ]
-        ]);
-
         echo "<tr><th colspan='2'>" . SoftwareLicense::getTypeName(Session::getPluralNumber()) . "</th></tr>\n";
-        while ($data = $iterator->next()) {
+        foreach ($locks->forItem('SoftwareLicense', $itemtype, (int)$ID) as $data) {
             echo "<tr class='tab_bg_1'>";
 
             echo "<td class='center' width='10'>";
@@ -274,12 +201,7 @@ class Lock extends CommonGLPI
 
         $first  = true;
         $networkport = new NetworkPort();
-        $params = ['is_dynamic' => 1,
-                        'is_deleted' => 1,
-                        'items_id'   => $ID,
-                        'itemtype'   => $itemtype];
-        $params['FIELDS'] = ['id'];
-        foreach ($DB->request($networkport->getTable(), $params) as $line) {
+        foreach ($locks->forItem('NetworkPort', $itemtype, (int)$ID) as $line) {
             $networkport->getFromDB($line['id']);
             if ($first) {
                 echo "<tr><th colspan='2'>" . $networkport->getTypeName(Session::getPluralNumber()) . "</th></tr>\n";
@@ -301,16 +223,7 @@ class Lock extends CommonGLPI
 
         $first = true;
         $networkname = new NetworkName();
-        $params = [
-           'glpi_networknames.is_dynamic' => 1,
-           'glpi_networknames.is_deleted' => 1,
-           'glpi_networknames.itemtype'   => 'NetworkPort',
-           'glpi_networknames.items_id'   => new QueryExpression($DB->quoteName('glpi_networkports.id')),
-           'glpi_networkports.items_id'   => $ID,
-           'glpi_networkports.itemtype'   => $itemtype
-        ];
-        $params['FIELDS'] = ['glpi_networknames' => 'id'];
-        foreach ($DB->request(['glpi_networknames', 'glpi_networkports'], $params) as $line) {
+        foreach ($locks->forItem('NetworkName', $itemtype, (int)$ID) as $line) {
             $networkname->getFromDB($line['id']);
             if ($first) {
                 echo "<tr><th colspan='2'>" . NetworkName::getTypeName(Session::getPluralNumber()) . "</th></tr>\n";
@@ -332,22 +245,7 @@ class Lock extends CommonGLPI
 
         $first  = true;
         $ipaddress = new IPAddress();
-        $params = [
-           'glpi_ipaddresses.is_dynamic' => 1,
-           'glpi_ipaddresses.is_deleted' => 1,
-           'glpi_ipaddresses.itemtype'   => 'NetworkName',
-           'glpi_ipaddresses.items_id'   => new QueryExpression($DB->quoteName('glpi_networknames.id')),
-           'glpi_networknames.itemtype'  => 'NetworkPort',
-           'glpi_networknames.items_id'  => new QueryExpression($DB->quoteName('glpi_networkports.id')),
-           'glpi_networkports.items_id'  => $ID,
-           'glpi_networkports.itemtype'  => $itemtype
-        ];
-        $params['FIELDS'] = ['glpi_ipaddresses' => 'id'];
-        foreach (
-            $DB->request(['glpi_ipaddresses',
-                                    'glpi_networknames',
-                                    'glpi_networkports'], $params) as $line
-        ) {
+        foreach ($locks->forItem('IPAddress', $itemtype, (int)$ID) as $line) {
             $ipaddress->getFromDB($line['id']);
             if ($first) {
                 echo "<tr><th colspan='2'>" . IPAddress::getTypeName(Session::getPluralNumber()) . "</th></tr>\n";
@@ -368,48 +266,19 @@ class Lock extends CommonGLPI
         }
 
         $types = Item_Devices::getDeviceTypes();
-        $nb    = 0;
+        $components = [];
         foreach ($types as $type) {
-            $nb += countElementsInTable(
-                getTableForItemType($type),
-                ['items_id'   => $ID,
-                                         'itemtype'   => $itemtype,
-                                         'is_dynamic' => 1,
-                                         'is_deleted' => 1 ]
-            );
+            $rows = $locks->forItem($type, $itemtype, (int)$ID);
+            if ($rows) {
+                $components[$type] = $rows;
+            }
         }
-        if ($nb) {
+        if ($components) {
             echo "<tr><th colspan='2'>" . _n('Component', 'Components', Session::getPluralNumber()) . "</th></tr>\n";
-            foreach ($types as $type) {
+            foreach ($components as $type => $rows) {
                 $type_item = new $type();
-
-                $associated_type  = str_replace('Item_', '', $type);
-                $associated_table = getTableForItemType($associated_type);
-                $fk               = getForeignKeyFieldForTable($associated_table);
-
-                $iterator = $DB->request([
-                   'SELECT'    => [
-                      'i.id',
-                      't.designation AS name'
-                   ],
-                   'FROM'      => getTableForItemType($type) . ' AS i',
-                   'LEFT JOIN' => [
-                      "$associated_table AS t"   => [
-                         'ON' => [
-                            't'   => 'id',
-                            'i'   => $fk
-                         ]
-                      ]
-                   ],
-                   'WHERE'     => [
-                      'itemtype'     => $itemtype,
-                      'items_id'     => $ID,
-                      'is_dynamic'   => 1,
-                      'is_deleted'   => 1
-                   ]
-                ]);
-
-                while ($data = $iterator->next()) {
+                $associated_type = $type::getDeviceType();
+                foreach ($rows as $data) {
                     echo "<tr class='tab_bg_1'>";
 
                     echo "<td class='center' width='10'>";
@@ -472,120 +341,6 @@ class Lock extends CommonGLPI
             self::showForItem($item);
         }
         return true;
-    }
-
-
-    /**
-     * Get infos to build an SQL query to get locks fields in a table
-     *
-     * @param string $itemtype      itemtype of the item to look for locked fields
-     * @param string $baseitemtype  itemtype of the based item
-     *
-     * @return array  which contains necessary information to build the SQL query
-    **/
-    public static function getLocksQueryInfosByItemType($itemtype, $baseitemtype)
-    {
-        global $DB;
-
-        $condition = [];
-        $table     = false;
-        $field     = '';
-        $type      = $itemtype;
-
-        switch ($itemtype) {
-            case 'Peripheral':
-            case 'Monitor':
-            case 'Printer':
-            case 'Phone':
-                $condition = ['itemtype'   => $itemtype,
-                                   'is_dynamic' => 1,
-                                   'is_deleted' => 1];
-                $table     = 'glpi_computers_items';
-                $field     = 'computers_id';
-                $type      = 'Computer_Item';
-                break;
-
-            case 'NetworkPort':
-                $condition = ['itemtype'   => $baseitemtype,
-                                   'is_dynamic' => 1,
-                                   'is_deleted' => 1];
-                $table     = 'glpi_networkports';
-                $field     = 'items_id';
-                break;
-
-            case 'NetworkName':
-                $condition = [
-                   'glpi_networknames.is_dynamic' => 1,
-                   'glpi_networknames.is_deleted' => 1,
-                   'glpi_networknames.itemtype'   => 'NetworkPort',
-                   'glpi_networknames.items_id'   => new QueryExpression($DB->quoteName('glpi_networkports.id')),
-                   'glpi_networkports.itemtype'   => $baseitemtype
-                ];
-                $condition['FIELDS']
-                           = ['glpi_networknames' => 'id'];
-                $table     = ['glpi_networknames', 'glpi_networkports'];
-                $field     = 'glpi_networkports.items_id';
-                break;
-
-            case 'IPAddress':
-                $condition = [
-                   'glpi_ipaddresses.is_dynamic'   => 1,
-                   'glpi_ipaddresses.is_deleted'   => 1,
-                   'glpi_ipaddresses.itemtype'     => 'NetworkName',
-                   'glpi_ipaddresses.items_id'     => 'glpi_networknames.id',
-                   'glpi_networknames.itemtype'    => 'NetworkPort',
-                   'glpi_networknames.items_id'    => 'glpi_networkports.id',
-                   'glpi_networkports.itemtype'    => $baseitemtype];
-                $condition['FIELDS']
-                           = ['glpi_ipaddresses' => 'id'];
-                $table     = ['glpi_ipaddresses', 'glpi_networknames', 'glpi_networkports'];
-                $field     = 'glpi_networkports.items_id';
-                break;
-
-            case 'Item_Disk':
-                $condition = [
-                   'is_dynamic' => 1,
-                   'is_deleted' => 1,
-                   'itemtype'   => $itemtype
-                ];
-                $table     = Item_Disk::getTable();
-                $field     = 'items_id';
-                break;
-
-            case 'ComputerVirtualMachine':
-                $condition = [
-                   'is_dynamic' => 1,
-                   'is_deleted' => 1,
-                   'itemtype'   => $itemtype];
-                $table     = 'glpi_computervirtualmachines';
-                $field     = 'computers_id';
-                break;
-
-            case 'SoftwareVersion':
-                $condition = [
-                   'is_dynamic' => 1,
-                   'is_deleted' => 1,
-                   'itemtype'   => $itemtype];
-                $table     = 'glpi_items_softwareversions';
-                $field     = 'items_id';
-                $type      = 'Item_SoftwareVersion';
-                break;
-
-            default:
-                // Devices
-                if (preg_match('/^Item\_Device/', $itemtype)) {
-                    $condition = ['itemtype'   => $baseitemtype,
-                                       'is_dynamic' => 1,
-                                       'is_deleted' => 1];
-                    $table     = getTableForItemType($itemtype);
-                    $field     = 'items_id';
-                }
-        }
-
-        return ['condition' => $condition,
-                     'table'     => $table,
-                     'field'     => $field,
-                     'type'      => $type];
     }
 
 
@@ -671,27 +426,25 @@ class Lock extends CommonGLPI
                         unset($attached_items[$device_key]);
                         $attached_items = array_merge($attached_items, Item_Devices::getDeviceTypes());
                     }
+                    $locks = new InventoryLockRepository(Orm::create($DB));
                     $links = [];
                     foreach ($attached_items as $attached_item) {
-                        $infos = self::getLocksQueryInfosByItemType($attached_item, $baseitem->getType());
-                        if ($item = getItemForItemtype($infos['type'])) {
-                            $infos['item'] = $item;
-                            $links[$attached_item] = $infos;
+                        if ($item = getItemForItemtype(InventoryLockRepository::modelType($attached_item))) {
+                            $links[$attached_item] = $item;
                         }
                     }
                     foreach ($ids as $id) {
                         $action_valid = false;
-                        foreach ($links as $infos) {
-                            $infos['condition'][$infos['field']] = $id;
-                            $locked_items = $DB->request($infos['table'], $infos['condition']);
+                        foreach ($links as $attached_item => $item) {
+                            $locked_items = $locks->forItem($attached_item, $baseitem->getType(), (int)$id);
 
-                            if ($locked_items->count() === 0) {
+                            if ($locked_items === []) {
                                 $action_valid = true;
                                 continue;
                             }
                             foreach ($locked_items as $data) {
                                 // Restore without history
-                                $action_valid = $infos['item']->restore(['id' => $data['id']]);
+                                $action_valid = $item->restore(['id' => $data['id']]);
                             }
                         }
 

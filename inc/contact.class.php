@@ -35,7 +35,10 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use Doctrine\ORM\EntityManager;
 use Sabre\VObject;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ContactRepository;
 
 /**
  * Contact class
@@ -53,6 +56,15 @@ class Contact extends CommonDBTM
     public static function getTypeName($nb = 0)
     {
         return _n('Contact', 'Contacts', $nb);
+    }
+
+    public function getDropdownNameFields(bool $tooltip = true): array
+    {
+        return array_merge(
+            parent::getDropdownNameFields($tooltip),
+            ['firstname'],
+            $tooltip ? ['phone', 'phone2', 'mobile', 'fax', 'email'] : []
+        );
     }
 
 
@@ -93,30 +105,16 @@ class Contact extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_suppliers.name',
-              'glpi_suppliers.address',
-              'glpi_suppliers.postcode',
-              'glpi_suppliers.town',
-              'glpi_suppliers.state',
-              'glpi_suppliers.country'
-           ],
-           'FROM'         => 'glpi_suppliers',
-           'INNER JOIN'   => [
-              'glpi_contacts_suppliers'  => [
-                 'ON' => [
-                    'glpi_contacts_suppliers'  => 'suppliers_id',
-                    'glpi_suppliers'           => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => ['contacts_id' => $this->fields['id']]
-        ]);
-
-        if ($data = $iterator->next()) {
-            return $data;
+        $details = Orm::readPrepared(
+            $DB,
+            fn (): int => (int)$this->getID(),
+            static fn (EntityManager $em, int $contact): ?array =>
+                (new ContactRepository($em))->companyDetails($contact)
+        );
+        if ($details !== null) {
+            unset($details['website']);
         }
+        return $details;
     }
 
 
@@ -129,26 +127,13 @@ class Contact extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_suppliers.website AS website'
-           ],
-           'FROM'         => 'glpi_suppliers',
-           'INNER JOIN'   => [
-              'glpi_contacts_suppliers'  => [
-                 'ON' => [
-                    'glpi_contacts_suppliers'  => 'suppliers_id',
-                    'glpi_suppliers'           => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => ['contacts_id' => $this->fields['id']]
-        ]);
-
-        if ($data = $iterator->next()) {
-            return $data['website'];
-        }
-        return '';
+        $details = Orm::readPrepared(
+            $DB,
+            fn (): int => (int)$this->getID(),
+            static fn (EntityManager $em, int $contact): ?array =>
+                (new ContactRepository($em))->companyDetails($contact)
+        );
+        return $details === null ? '' : $details['website'];
     }
 
 

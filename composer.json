@@ -9,7 +9,11 @@
         "docs": "https://wiki.itsm-ng.org/"
     },
     "require": {
-        "php": "^8.1",
+        "apereo/phpcas": "^1.6",
+        "blueimp/jquery-file-upload": "^10.2",
+        "doctrine/dbal": "^4.4",
+        "doctrine/orm": "^3.5",
+        "elvanto/litemoji": "^4.3",
         "ext-ctype": "*",
         "ext-curl": "*",
         "ext-fileinfo": "*",
@@ -18,44 +22,35 @@
         "ext-intl": "*",
         "ext-json": "*",
         "ext-mbstring": "*",
-        "ext-mysqli": "*",
         "ext-simplexml": "*",
         "ext-zlib": "*",
-        "apereo/phpcas": "^1.6",
-        "blueimp/jquery-file-upload": "^10.2",
-        "doctrine/doctrine-module": "^6.0",
-        "elvanto/litemoji": "^4.3",
         "guzzlehttp/guzzle": "^7.8",
         "guzzlehttp/psr7": "^2.6",
         "htmlawed/htmlawed": "^1.2",
         "iamcal/lib_autolink": "^1.7",
         "jumbojett/openid-connect-php": "^1.0",
-        "laminas/laminas-cache": "^3.11",
-        "laminas/laminas-cache-storage-adapter-apcu": "^2.5",
-        "laminas/laminas-cache-storage-adapter-filesystem": "^2.3",
-        "laminas/laminas-cache-storage-adapter-redis": "^2.9",
-        "laminas/laminas-cache-storage-adapter-session": "^2.4",
-        "laminas/laminas-cache-storage-deprecated-factory": "^1.1",
-        "laminas/laminas-i18n": "^2.23",
-        "laminas/laminas-mail": "^2.23",
-        "laminas/laminas-mime": "^2.11",
-        "laminas/laminas-serializer": "^2.16",
+        "laminas/laminas-i18n": "^3.0",
+        "laminas/laminas-servicemanager": "^4.5",
         "mexitek/phpcolors": "^1.0.0",
         "michelf/php-markdown": "^2",
         "monolog/monolog": "^2.0",
+        "oroinc/laminas-mail": "^2.28.1",
+        "oroinc/laminas-mime": "^2.15.0",
         "paragonie/sodium_compat": "^1.14",
+        "php": "^8.2.27",
         "phpmailer/phpmailer": "^7.0",
         "psr/log": "^3.0",
-        "psr/simple-cache": "^1.0",
+        "psr/simple-cache": "^3.0",
         "ramsey/uuid": "^4.0",
         "rlanvin/php-rrule": "^2.1",
         "sabre/dav": "^4.4",
         "sabre/http": "^5.0",
         "sabre/uri": "^2.0",
         "sabre/vobject": "^4.5",
-        "scssphp/scssphp": "^1.11",
+        "scssphp/scssphp": "^2.1",
         "sebastian/diff": "^5.0",
-        "simplepie/simplepie": "^1.8",
+        "simplepie/simplepie": "dev-master",
+        "symfony/cache": "^6.4",
         "symfony/console": "^6.0",
         "tecnickcom/tcpdf": "^6.8",
         "twbs/bootstrap": "^5.3",
@@ -68,14 +63,14 @@
         "ext-xml": "*",
         "atoum/atoum": "^4.2",
         "friendsofphp/php-cs-fixer": "^3.64",
-        "maglnet/composer-require-checker": "^4.6",
+        "maglnet/composer-require-checker": "~4.17.0",
         "matthiasmullie/minify": "^1.3",
         "mikey179/vfsstream": "^1.6",
         "natxet/cssmin": "^3.0",
         "rector/rector": "^2.3",
         "sserbin/twig-linter": "^3.1",
         "symfony/var-dumper": "^6.3",
-        "vimeo/psalm": "^5.26"
+        "vimeo/psalm": "^6.19"
     },
     "replace": {
         "paragonie/random_compat": "*",
@@ -85,12 +80,15 @@
     },
     "suggest": {
         "ext-ldap": "Used to provide LDAP authentication and synchronization",
+        "ext-pdo_mysql": "Required for MySQL/MariaDB databases",
+        "ext-mysqli": "Used by legacy plugin and tooling integrations",
+        "ext-pdo_pgsql": "Required for PostgreSQL databases",
         "ext-sodium": "Used to provide strong encryption for sensitive data in database"
     },
     "config": {
         "optimize-autoloader": true,
         "platform": {
-            "php": "8.1"
+            "php": "8.2.27"
         },
         "sort-packages": true,
         "allow-plugins": {
@@ -109,9 +107,14 @@
         ]
     },
     "scripts": {
-        "test:db": "php vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap.php --no-code-coverage --max-children-number 1 -d tests/database",
-        "test:function": "php vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap.php --no-code-coverage --max-children-number 1 -d tests/functional/",
-        "test:units": "php vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap.php --no-code-coverage --max-children-number 1 -d tests/units",
+        "test:db": "php vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap.php --no-code-coverage --max-children-number 1 -f tests/database/DBmysql.php",
+        "test:migration": "php vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap-app.php --fail-if-skipped-methods --no-code-coverage --max-children-number 1 -f tests/database/OrmMigration.php",
+        "test:function": [
+            "Composer\\Config::disableProcessTimeout",
+            "php vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap.php --no-code-coverage --max-children-number 1 -d tests/functional/"
+        ],
+        "test:units": "php vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap.php --no-code-coverage --max-children-number 1 --glob 'tests/units/*.php' 'tests/units/Glpi'",
+        "test:units:isolated": "php vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file vendor/autoload.php --fail-if-skipped-methods --no-code-coverage --max-children-number 1 -d tests/units/itsmng",
         "test:web": "php vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap.php --no-code-coverage --max-children-number 1 -d tests/web",
         "test:ldap": "php vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap.php --no-code-coverage --max-children-number 1 -d tests/LDAP",
         "test:imap": "php vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap.php --no-code-coverage --max-children-number 1 -d tests/imap",
@@ -126,7 +129,7 @@
                 "source": {
                     "type": "git",
                     "url": "https://github.com/EsupPortail/phpCAS",
-                    "reference": "master"
+                    "reference": "21f24f48b4ebcf1eaf80ca33c4164d1bf6294ec4"
                 }
             }
         }

@@ -32,6 +32,14 @@
  */
 
 use Glpi\Event;
+use itsmng\Database\ITILDocumentAccess;
+use itsmng\Database\KnowledgeBaseAccess;
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DocumentRepository;
+use itsmng\Database\Repository\KnowledgeBaseRepository;
+use itsmng\Database\Repository\SharedContentRepository;
+use itsmng\Database\SharedContentAccess;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -169,6 +177,7 @@ class Document extends CommonDBTM
 
     public function cleanDBonPurge()
     {
+        global $DB;
 
         $this->deleteChildrenAndRelationsFromDb(
             [
@@ -181,7 +190,8 @@ class Document extends CommonDBTM
             if (
                 is_file(GLPI_DOC_DIR . "/" . $this->fields["filepath"])
                 && !is_dir(GLPI_DOC_DIR . "/" . $this->fields["filepath"])
-                && (countElementsInTable(
+                && (MappedReads::countMatching(
+                    $DB,
                     $this->getTable(),
                     ['sha1sum' => $this->fields["sha1sum"] ]
                 ) <= 1)
@@ -328,20 +338,6 @@ class Document extends CommonDBTM
             return false;
         }
 
-        /* Unicity check
-        if (isset($input['sha1sum'])) {
-           // Check if already upload in the current entity
-           $crit = array('sha1sum'=>$input['sha1sum'],
-                         'entities_id'=>$input['entities_id']);
-           foreach ($DB->request($this->getTable(), $crit) as $data) {
-              $link=$this->getFormURL();
-              Session::addMessageAfterRedirect(__('"A document with that filename has already been attached to another record.').
-                 "&nbsp;: <a href=\"".$link."?id=".
-                       $data['id']."\">".$data['name']."</a>",
-                 false, ERROR, true);
-              return false;
-           }
-        } */
         return $input;
     }
 
@@ -661,18 +657,8 @@ class Document extends CommonDBTM
         $splitter = explode("/", (string) $this->fields['filepath']);
 
         if (count($splitter)) {
-            $iterator = $DB->request([
-               'SELECT' => 'icon',
-               'FROM'   => 'glpi_documenttypes',
-               'WHERE'  => [
-                  'ext'    => ['LIKE', $splitter[0]],
-                  'icon'   => ['<>', '']
-               ]
-            ]);
-
-            if (count($iterator) > 0) {
-                $result = $iterator->next();
-                $icon = $result['icon'];
+            $icon = (new DocumentRepository(Orm::create($DB)))->icon($splitter[0]);
+            if ($icon !== null) {
                 if (!file_exists(GLPI_ROOT . "/pics/icones/$icon")) {
                     $icon = "defaut-dist.png";
                 }
@@ -709,24 +695,8 @@ class Document extends CommonDBTM
             return false;
         }
 
-        $doc_iterator = $DB->request(
-            [
-              'SELECT' => 'id',
-              'FROM'   => $this->getTable(),
-              'WHERE'  => [
-                 $this->getTable() . '.sha1sum'      => $sum,
-                 $this->getTable() . '.entities_id'  => $entity
-              ],
-              'LIMIT'  => 1,
-            ]
-        );
-
-        if ($doc_iterator->count() === 0) {
-            return false;
-        }
-
-        $doc_data = $doc_iterator->next();
-        return $this->getFromDB($doc_data['id']);
+        $id = (new DocumentRepository(Orm::create($DB)))->contentId((int)$entity, $sum);
+        return $id !== null && $this->getFromDB($id);
     }
 
 
@@ -791,7 +761,7 @@ class Document extends CommonDBTM
      */
     private static function loadAPISessionIfExist()
     {
-        $session_token = \Toolbox::getHeader('Session-Token');
+        $session_token = Toolbox::getHeader('Session-Token');
 
         // No api token found
         if ($session_token === null) {
@@ -813,10 +783,8 @@ class Document extends CommonDBTM
     /**
      * Check if file of current instance can be viewed from a Reminder.
      *
-     * @global DBmysql $DB
      * @return boolean
      *
-     * @TODO Use DBmysqlIterator instead of raw SQL
      */
     private function canViewFileFromReminder()
     {
@@ -827,38 +795,14 @@ class Document extends CommonDBTM
             return false;
         }
 
-        $criteria = array_merge_recursive(
-            [
-              'COUNT'     => 'cpt',
-              'FROM'      => 'glpi_documents_items',
-              'LEFT JOIN' => [
-                 'glpi_reminders'  => [
-                    'ON' => [
-                       'glpi_documents_items'  => 'items_id',
-                       'glpi_reminders'        => 'id', [
-                          'AND' => [
-                             'glpi_documents_items.itemtype'  => 'Reminder'
-                          ]
-                       ]
-                    ]
-                 ]
-              ],
-              'WHERE'     => [
-                 'glpi_documents_items.documents_id' => $this->fields['id']
-              ]
-            ],
-            Reminder::getVisibilityCriteria()
-        );
-
-        $result = $DB->request($criteria)->next();
-        return $result['cpt'] > 0;
+        return (new SharedContentRepository(Orm::create($DB)))
+            ->reminderHasDocument((int)$this->getID(), SharedContentAccess::current(Session::haveRight(Reminder::$rightname, READ)));
     }
 
     /**
      * Check if file of current instance can be viewed from a KnowbaseItem.
      *
      * @global array $CFG_GLPI
-     * @global DBmysql $DB
      * @return boolean
      */
     private function canViewFileFromKnowbaseItem()
@@ -879,41 +823,13 @@ class Document extends CommonDBTM
             return false;
         }
 
-        $visibilityCriteria = KnowbaseItem::getVisibilityCriteria();
-
-        $request = [
-           'FROM'      => 'glpi_documents_items',
-           'COUNT'     => 'cpt',
-           'LEFT JOIN' => [
-              'glpi_knowbaseitems' => [
-                 'FKEY' => [
-                    'glpi_knowbaseitems'   => 'id',
-                    'glpi_documents_items' => 'items_id',
-                    ['AND' => ['glpi_documents_items.itemtype' => 'KnowbaseItem']]
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_documents_items.documents_id' => $this->fields['id'],
-           ]
-        ];
-
-        if (array_key_exists('LEFT JOIN', $visibilityCriteria) && count($visibilityCriteria['LEFT JOIN']) > 0) {
-            $request['LEFT JOIN'] += $visibilityCriteria['LEFT JOIN'];
-        }
-        if (array_key_exists('WHERE', $visibilityCriteria) && count($visibilityCriteria['WHERE']) > 0) {
-            $request['WHERE'] += $visibilityCriteria['WHERE'];
-        }
-
-        $result = $DB->request($request)->next();
-
-        return $result['cpt'] > 0;
+        return (new KnowledgeBaseRepository(Orm::create($DB)))
+            ->hasDocument((int)$this->getID(), KnowledgeBaseAccess::current());
     }
 
     /**
      * Check if file of current instance can be viewed from a CommonITILObject.
      *
-     * @global DBmysql $DB
      * @param string  $itemtype
      * @param integer $items_id
      * @return boolean
@@ -936,16 +852,8 @@ class Document extends CommonDBTM
 
         $itil->getFromDB($items_id);
 
-        $result = $DB->request([
-           'FROM'  => Document_Item::getTable(),
-           'COUNT' => 'cpt',
-           'WHERE' => [
-              $itil->getAssociatedDocumentsCriteria(),
-              'documents_id' => $this->fields['id']
-           ]
-        ])->next();
-
-        return $result['cpt'] > 0;
+        return (new DocumentRepository(Orm::create($DB)))
+            ->linkedToITIL((int)$this->getID(), $itemtype, (int)$items_id, ITILDocumentAccess::current($itemtype));
     }
 
     public static function rawSearchOptionsToAdd($itemtype = null)
@@ -1155,6 +1063,7 @@ class Document extends CommonDBTM
     **/
     public function moveUploadedDocument(array &$input, $filename)
     {
+        global $DB;
         $prefix = '';
         if (isset($input['_prefix_filename'])) {
             $prefix = array_shift($input['_prefix_filename']);
@@ -1189,7 +1098,8 @@ class Document extends CommonDBTM
             isset($input['current_filepath'])
             && !empty($input['current_filepath'])
             && is_file(GLPI_DOC_DIR . "/" . $input['current_filepath'])
-            && (countElementsInTable(
+            && (MappedReads::countMatching(
+                $DB,
                 'glpi_documents',
                 ['sha1sum' => sha1_file(GLPI_DOC_DIR . "/" .
                                                $input['current_filepath']) ]
@@ -1255,6 +1165,7 @@ class Document extends CommonDBTM
     **/
     public static function moveDocument(array &$input, $filename)
     {
+        global $DB;
         $prefix = '';
         if (isset($input['_prefix_filename'])) {
             $prefix = array_shift($input['_prefix_filename']);
@@ -1289,7 +1200,8 @@ class Document extends CommonDBTM
             isset($input['current_filepath'])
             && !empty($input['current_filepath'])
             && is_file(GLPI_DOC_DIR . "/" . $input['current_filepath'])
-            && (countElementsInTable(
+            && (MappedReads::countMatching(
+                $DB,
                 'glpi_documents',
                 ['sha1sum' => sha1_file(GLPI_DOC_DIR . "/" .
                                                $input['current_filepath']) ]
@@ -1356,6 +1268,7 @@ class Document extends CommonDBTM
     **/
     public static function uploadDocument(array &$input, $FILEDESC)
     {
+        global $DB;
 
         if (
             !count($FILEDESC)
@@ -1388,7 +1301,8 @@ class Document extends CommonDBTM
         if (
             isset($input['current_filepath'])
             && !empty($input['current_filepath'])
-            && (countElementsInTable(
+            && (MappedReads::countMatching(
+                $DB,
                 'glpi_documents',
                 ['sha1sum' => sha1_file(GLPI_DOC_DIR . "/" .
                                                $input['current_filepath']) ]
@@ -1542,28 +1456,13 @@ class Document extends CommonDBTM
         $splitter = explode(".", $filename);
         $ext      = end($splitter);
 
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_documenttypes',
-           'WHERE'  => [
-              'ext'             => ['LIKE', $ext],
-              'is_uploadable'   => 1
-           ]
-        ]);
-
-        if (count($iterator)) {
+        $repository = new DocumentRepository(Orm::create($DB));
+        if ($repository->uploadableTypes($ext)) {
             return Toolbox::strtoupper($ext);
         }
 
-        // Not found try with regex one
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_documenttypes',
-           'WHERE'  => [
-              'ext'             => ['LIKE', '/%/'],
-              'is_uploadable'   => 1
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
+        // Not found: try the configured regular expressions.
+        foreach ($repository->uploadableTypes('/%/') as $data) {
             if (
                 preg_match(
                     Toolbox::unclean_cross_side_scripting_deep($data['ext']) . "i",
@@ -1616,24 +1515,7 @@ class Document extends CommonDBTM
             $subwhere['NOT'] = ['id' => array_merge([0], $p['used'])];
         }
 
-        $criteria = [
-           'FROM'   => 'glpi_documentcategories',
-           'WHERE'  => [
-              'id' => new QuerySubQuery([
-                 'SELECT'          => 'documentcategories_id',
-                 'DISTINCT'        => true,
-                 'FROM'            => 'glpi_documents',
-                 'WHERE'           => $subwhere
-              ])
-           ],
-           'ORDER'  => 'name'
-        ];
-        $iterator = $DB->request($criteria);
-
-        $values = [];
-        while ($data = $iterator->next()) {
-            $values[$data['id']] = $data['name'];
-        }
+        $values = (new DocumentRepository(Orm::create($DB)))->categories($subwhere);
         $entity = Session::getActiveEntity();
 
         $initial_docs = getItemByEntity(
@@ -1788,7 +1670,7 @@ class Document extends CommonDBTM
                     $mheight = $mheight ?? 100;
                     break;
                 default:
-                    throw new \RuntimeException("Unknown context $context!");
+                    throw new RuntimeException("Unknown context $context!");
             }
         }
 
@@ -1858,32 +1740,12 @@ class Document extends CommonDBTM
     {
         global $DB;
 
-        $dtable = static::getTable();
-        $ditable = Document_Item::getTable();
-        //documents tht are nt present in Document_Item are oprhan
-        $iterator = $DB->request([
-           'SELECT'    => ["$dtable.id"],
-           'FROM'      => $dtable,
-           'LEFT JOIN' => [
-              $ditable => [
-                 'ON'  => [
-                    $dtable  => 'id',
-                    $ditable => 'documents_id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-                 "$ditable.documents_id" => null
-           ]
-        ]);
-
+        $ids = (new DocumentRepository(Orm::create($DB)))->orphanIds();
         $nb = 0;
-        if (count($iterator)) {
-            while ($row = $iterator->next()) {
-                $doc = new Document();
-                $doc->delete(['id' => $row['id']], true);
-                ++$nb;
-            }
+        foreach ($ids as $id) {
+            $doc = new Document();
+            $doc->delete(['id' => $id], true);
+            ++$nb;
         }
 
         if ($nb) {

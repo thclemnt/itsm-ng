@@ -33,7 +33,16 @@
 
 namespace tests\units;
 
+use CronTask;
 use DbTestCase;
+use DateTime;
+use OlaLevel_Ticket as OlaLevelTicketModel;
+use SlaLevel_Ticket as SlaLevelTicketModel;
+use SLM as LegacySLM;
+use itsmng\Database\Entity\SlaLevelTicket as SlaLevelTicketEntity;
+use itsmng\Database\Entity\OlaLevelTicket as OlaLevelTicketEntity;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ServiceLevelRepository;
 
 class SLM extends DbTestCase
 {
@@ -76,7 +85,7 @@ class SLM extends DbTestCase
             $this->checkInput($calseg, $calseg_id);
         }
 
-        $slm    = new \SLM();
+        $slm    = new LegacySLM();
         $slm_id = $slm->add($slm_in = [
            'name'         => $this->method,
            'comment'      => $this->getUniqueString(),
@@ -89,11 +98,11 @@ class SLM extends DbTestCase
            'slms_id'         => $slm_id,
            'name'            => "SLA TTO",
            'comment'         => $this->getUniqueString(),
-           'type'            => \SLM::TTO,
+           'type'            => LegacySLM::TTO,
            'number_time'     => 4,
            'definition_time' => 'day',
         ];
-        $sla2_in['type'] = \SLM::TTR;
+        $sla2_in['type'] = LegacySLM::TTR;
         $sla2_in['name'] = "SLA TTR";
 
         // add two sla (TTO & TTR)
@@ -278,7 +287,7 @@ class SLM extends DbTestCase
     {
         $this->login();
 
-        $slm = new \SLM();
+        $slm = new LegacySLM();
         $slm_id = $slm->add([
            'name'    => $this->method,
            'comment' => $this->getUniqueString(),
@@ -289,7 +298,7 @@ class SLM extends DbTestCase
         $sla_rule_tto_id = $sla->add([
            'slms_id'         => $slm_id,
            'name'            => 'Rule SLA TTO',
-           'type'            => \SLM::TTO,
+           'type'            => LegacySLM::TTO,
            'number_time'     => 4,
            'definition_time' => 'day',
         ]);
@@ -297,7 +306,7 @@ class SLM extends DbTestCase
         $sla_rule_ttr_id = $sla->add([
            'slms_id'         => $slm_id,
            'name'            => 'Rule SLA TTR',
-           'type'            => \SLM::TTR,
+           'type'            => LegacySLM::TTR,
            'number_time'     => 5,
            'definition_time' => 'day',
         ]);
@@ -305,7 +314,7 @@ class SLM extends DbTestCase
         $sla_manual_tto_id = $sla->add([
            'slms_id'         => $slm_id,
            'name'            => 'Manual SLA TTO',
-           'type'            => \SLM::TTO,
+           'type'            => LegacySLM::TTO,
            'number_time'     => 6,
            'definition_time' => 'day',
         ]);
@@ -313,7 +322,7 @@ class SLM extends DbTestCase
         $sla_manual_ttr_id = $sla->add([
            'slms_id'         => $slm_id,
            'name'            => 'Manual SLA TTR',
-           'type'            => \SLM::TTR,
+           'type'            => LegacySLM::TTR,
            'number_time'     => 7,
            'definition_time' => 'day',
         ]);
@@ -323,7 +332,7 @@ class SLM extends DbTestCase
         $ola_rule_tto_id = $ola->add([
            'slms_id'         => $slm_id,
            'name'            => 'Rule OLA TTO',
-           'type'            => \SLM::TTO,
+           'type'            => LegacySLM::TTO,
            'number_time'     => 4,
            'definition_time' => 'day',
         ]);
@@ -331,7 +340,7 @@ class SLM extends DbTestCase
         $ola_rule_ttr_id = $ola->add([
            'slms_id'         => $slm_id,
            'name'            => 'Rule OLA TTR',
-           'type'            => \SLM::TTR,
+           'type'            => LegacySLM::TTR,
            'number_time'     => 5,
            'definition_time' => 'day',
         ]);
@@ -339,7 +348,7 @@ class SLM extends DbTestCase
         $ola_manual_tto_id = $ola->add([
            'slms_id'         => $slm_id,
            'name'            => 'Manual OLA TTO',
-           'type'            => \SLM::TTO,
+           'type'            => LegacySLM::TTO,
            'number_time'     => 6,
            'definition_time' => 'day',
         ]);
@@ -347,7 +356,7 @@ class SLM extends DbTestCase
         $ola_manual_ttr_id = $ola->add([
            'slms_id'         => $slm_id,
            'name'            => 'Manual OLA TTR',
-           'type'            => \SLM::TTR,
+           'type'            => LegacySLM::TTR,
            'number_time'     => 7,
            'definition_time' => 'day',
         ]);
@@ -448,7 +457,7 @@ class SLM extends DbTestCase
     {
         $this->login();
 
-        $slm = new \SLM();
+        $slm = new LegacySLM();
         $slm_id = $slm->add([
            'name'    => $this->method,
            'comment' => $this->getUniqueString(),
@@ -459,7 +468,7 @@ class SLM extends DbTestCase
         $ola_id = $ola->add([
            'slms_id'         => $slm_id,
            'name'            => 'No calendar OLA',
-           'type'            => \SLM::TTR,
+           'type'            => LegacySLM::TTR,
            'number_time'     => 2,
            'definition_time' => 'hour',
         ]);
@@ -483,9 +492,10 @@ class SLM extends DbTestCase
 
     public function testSlaAndOlaLevelProgressionSchedulesNextLevel()
     {
+        global $DB;
         $this->login();
 
-        $slm = new \SLM();
+        $slm = new LegacySLM();
         $slm_id = $slm->add([
            'name'    => $this->method,
            'comment' => $this->getUniqueString(),
@@ -496,7 +506,7 @@ class SLM extends DbTestCase
         $sla_id = $sla->add([
            'slms_id'         => $slm_id,
            'name'            => 'Escalation SLA',
-           'type'            => \SLM::TTR,
+           'type'            => LegacySLM::TTR,
            'number_time'     => 2,
            'definition_time' => 'hour',
         ]);
@@ -524,7 +534,7 @@ class SLM extends DbTestCase
         $ola_id = $ola->add([
            'slms_id'         => $slm_id,
            'name'            => 'Escalation OLA',
-           'type'            => \SLM::TTR,
+           'type'            => LegacySLM::TTR,
            'number_time'     => 2,
            'definition_time' => 'hour',
         ]);
@@ -568,8 +578,29 @@ class SLM extends DbTestCase
         $this->integer((int)$sla_rows[0]['slalevels_id'])->isEqualTo($slalevel_1_id);
         $this->integer((int)$ola_rows[0]['olalevels_id'])->isEqualTo($olalevel_1_id);
 
-        \SlaLevel_Ticket::doLevelForTicket($sla_rows[0], \SLM::TTR);
-        \OlaLevel_Ticket::doLevelForTicket($ola_rows[0], \SLM::TTR);
+        // Scheduled row projections must leave selected queue changes in the caller's unit of work.
+        foreach ([
+            ['sla', SlaLevelTicketEntity::class, $sla_rows[0]['id'], 'glpi_slalevels_tickets'],
+            ['ola', OlaLevelTicketEntity::class, $ola_rows[0]['id'], 'glpi_olalevels_tickets'],
+        ] as [$kind, $class, $queueId, $table]) {
+            $manager = Orm::create($DB);
+            try {
+                $managed = $manager->find($class, (int)$queueId);
+                $managed->date = new DateTime('2030-01-10 09:00:00');
+                $selected = (new ServiceLevelRepository($manager, $kind))->scheduled((int)$ticket_id, LegacySLM::TTR);
+                $this->integer(count($selected))->isEqualTo(1);
+                $this->string($selected[0]['date'])->isIdenticalTo('2030-01-10 09:00:00');
+                $this->boolean($manager->contains($managed))->isTrue();
+                $manager->flush();
+                $storedDate = $manager->getConnection()->fetchOne('SELECT date FROM ' . $table . ' WHERE id = ?', [$queueId]);
+                $this->dateTime(new DateTime($storedDate))->isEqualTo(new DateTime('2030-01-10 09:00:00'));
+            } finally {
+                $manager->clear();
+            }
+        }
+
+        SlaLevelTicketModel::doLevelForTicket($sla_rows[0], LegacySLM::TTR);
+        OlaLevelTicketModel::doLevelForTicket($ola_rows[0], LegacySLM::TTR);
 
         $sla_rows = array_values(getAllDataFromTable('glpi_slalevels_tickets', ['tickets_id' => $ticket_id]));
         $ola_rows = array_values(getAllDataFromTable('glpi_olalevels_tickets', ['tickets_id' => $ticket_id]));
@@ -577,6 +608,14 @@ class SLM extends DbTestCase
         $this->integer(count($ola_rows))->isEqualTo(1);
         $this->integer((int)$sla_rows[0]['slalevels_id'])->isEqualTo($slalevel_2_id);
         $this->integer((int)$ola_rows[0]['olalevels_id'])->isEqualTo($olalevel_2_id);
+
+        // Public replay owns each selection across the following legacy queue mutation.
+        $DB->update('glpi_slalevels_tickets', ['date' => '2000-01-01 00:00:00'], ['id' => $sla_rows[0]['id']]);
+        $DB->update('glpi_olalevels_tickets', ['date' => '2000-01-01 00:00:00'], ['id' => $ola_rows[0]['id']]);
+        SlaLevelTicketModel::replayForTicket($ticket_id, LegacySLM::TTR);
+        OlaLevelTicketModel::replayForTicket($ticket_id, LegacySLM::TTR);
+        $this->integer((int)countElementsInTable('glpi_slalevels_tickets', ['tickets_id' => $ticket_id]))->isEqualTo(0);
+        $this->integer((int)countElementsInTable('glpi_olalevels_tickets', ['tickets_id' => $ticket_id]))->isEqualTo(0);
     }
 
     public function testCronSlaAndOlaTicketProcessOverdueLevels()
@@ -585,7 +624,7 @@ class SLM extends DbTestCase
 
         $this->login();
 
-        $slm = new \SLM();
+        $slm = new LegacySLM();
         $slm_id = $slm->add([
            'name'    => $this->method,
            'comment' => $this->getUniqueString(),
@@ -596,7 +635,7 @@ class SLM extends DbTestCase
         $sla_id = $sla->add([
            'slms_id'         => $slm_id,
            'name'            => 'Cron SLA',
-           'type'            => \SLM::TTR,
+           'type'            => LegacySLM::TTR,
            'number_time'     => 2,
            'definition_time' => 'hour',
         ]);
@@ -616,7 +655,7 @@ class SLM extends DbTestCase
         $ola_id = $ola->add([
            'slms_id'         => $slm_id,
            'name'            => 'Cron OLA',
-           'type'            => \SLM::TTR,
+           'type'            => LegacySLM::TTR,
            'number_time'     => 2,
            'definition_time' => 'hour',
         ]);
@@ -654,8 +693,8 @@ class SLM extends DbTestCase
         $DB->update('glpi_slalevels_tickets', ['date' => $past_date], ['id' => $sla_rows[0]['id']]);
         $DB->update('glpi_olalevels_tickets', ['date' => $past_date], ['id' => $ola_rows[0]['id']]);
 
-        $this->integer(\SlaLevel_Ticket::cronSlaTicket(new \CronTask()))->isEqualTo(1);
-        $this->integer(\OlaLevel_Ticket::cronOlaTicket(new \CronTask()))->isEqualTo(1);
+        $this->integer(SlaLevelTicketModel::cronSlaTicket(new CronTask()))->isEqualTo(1);
+        $this->integer(OlaLevelTicketModel::cronOlaTicket(new CronTask()))->isEqualTo(1);
 
         $this->integer((int)countElementsInTable('glpi_slalevels_tickets', ['tickets_id' => $ticket_id]))->isEqualTo(0);
         $this->integer((int)countElementsInTable('glpi_olalevels_tickets', ['tickets_id' => $ticket_id]))->isEqualTo(0);
@@ -682,7 +721,7 @@ class SLM extends DbTestCase
         ]);
         $this->integer($segments_id)->isGreaterThan(0);
 
-        $slm = new \SLM();
+        $slm = new LegacySLM();
         $slms_id = $slm->add([
             'name'         => 'waiting-sla-' . $this->getUniqueString(),
             'calendars_id' => $calendars_id,
@@ -693,7 +732,7 @@ class SLM extends DbTestCase
         $slas_id = $sla->add([
             'slms_id'         => $slms_id,
             'name'            => 'waiting-ttr-sla-' . $this->getUniqueString(),
-            'type'            => \SLM::TTR,
+            'type'            => LegacySLM::TTR,
             'number_time'     => 4,
             'definition_time' => 'hour',
         ]);
@@ -754,7 +793,7 @@ class SLM extends DbTestCase
         $this->integer($segment_id)->isGreaterThan(0);
 
         // Create SLM with TTR OLA
-        $slm = new \SLM();
+        $slm = new LegacySLM();
         $slm_id = $slm->add(
             [
               'name'         => 'Test SLM',
@@ -768,7 +807,7 @@ class SLM extends DbTestCase
             [
               'slms_id'         => $slm_id,
               'name'            => 'Test TTR OLA',
-              'type'            => \SLM::TTR,
+              'type'            => LegacySLM::TTR,
               'number_time'     => 4,
               'definition_time' => 'hour',
          ]

@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILOriginRepository;
+use itsmng\Database\Repository\ITILUserRepository;
+
 use function PHPSTORM_META\map;
 
 if (!defined('GLPI_ROOT')) {
@@ -63,6 +67,14 @@ class ITILFollowup extends CommonDBChild
     public static $itemtype = 'itemtype';
     public static $items_id = 'items_id';
 
+
+    public function cleanDBonPurge()
+    {
+        global $DB;
+        (new ITILOriginRepository(Orm::create($DB)))
+            ->reassignFollowup((int)$this->getID(), empty($this->input['_replace_by']) ? null : (int)$this->input['_replace_by']);
+        parent::cleanDBonPurge();
+    }
 
     public function getItilObjectItemType()
     {
@@ -479,8 +491,8 @@ class ITILFollowup extends CommonDBChild
             return false;
         }
         $input = $this->normalizeRichTextUploads($input);
-        $input["_job"] = new $this->fields['itemtype']();
-        if (!$input["_job"]->getFromDB($this->fields["items_id"])) {
+        $input = $this->validateLifecycleEndpoints($input);
+        if ($input === false) {
             return false;
         }
 
@@ -490,6 +502,17 @@ class ITILFollowup extends CommonDBChild
             && isset($input['content']) && ($input['content'] != $this->fields['content'])
         ) {
             $input["users_id_editor"] = $uid;
+        }
+
+        return $input;
+    }
+
+    protected function validateLifecycleEndpoints(array $input): array|false
+    {
+        $kind = $input['itemtype'] ?? $this->fields['itemtype'];
+        $input["_job"] = new $kind();
+        if (!$input["_job"]->getFromDB($input['items_id'] ?? $this->fields["items_id"])) {
+            return false;
         }
 
         return $input;
@@ -523,7 +546,7 @@ class ITILFollowup extends CommonDBChild
             return $input;
         }
 
-        $dom = new \DOMDocument('1.0', 'UTF-8');
+        $dom = new DOMDocument('1.0', 'UTF-8');
         $internal_errors = libxml_use_internal_errors(true);
         $loaded = $dom->loadHTML(
             '<?xml encoding="UTF-8"><div id="glpi-richtext-root">' . $content . '</div>',
@@ -550,9 +573,9 @@ class ITILFollowup extends CommonDBChild
             return $input;
         }
 
-        $xpath = new \DOMXPath($dom);
+        $xpath = new DOMXPath($dom);
         foreach ($xpath->query('//*[@data-glpi-doc-tag]') as $node) {
-            if (!$node instanceof \DOMElement) {
+            if (!$node instanceof DOMElement) {
                 continue;
             }
 
@@ -565,7 +588,7 @@ class ITILFollowup extends CommonDBChild
             $target = strtolower($node->tagName) === 'figure'
                 ? $node
                 : (
-                    $node->parentNode instanceof \DOMElement
+                    $node->parentNode instanceof DOMElement
                     && strtolower($node->parentNode->tagName) === 'figure'
                     && $node->parentNode->hasAttribute('data-glpi-doc-tag')
                     && $node->parentNode->getElementsByTagName('img')->length === 1
@@ -578,7 +601,7 @@ class ITILFollowup extends CommonDBChild
         }
 
         $root = $dom->getElementById('glpi-richtext-root');
-        if (!$root instanceof \DOMElement) {
+        if (!$root instanceof DOMElement) {
             return $input;
         }
 
@@ -675,6 +698,11 @@ class ITILFollowup extends CommonDBChild
 
     public function post_getFromDB()
     {
+        // Built-in parents only load actors here, but this private parent is never read.
+        // Authorization loads its own current parent; preserve custom parent callbacks.
+        if (in_array($this->fields['itemtype'], [Ticket::class, Change::class, Problem::class], true)) {
+            return;
+        }
 
         $this->item = new $this->fields['itemtype']();
         $this->item->getFromDB($this->fields['items_id']);
@@ -684,7 +712,7 @@ class ITILFollowup extends CommonDBChild
     protected function computeFriendlyName()
     {
 
-        if (isset($this->fields['requesttypes_id'])) {
+        if (array_key_exists('requesttypes_id', $this->fields)) {
             if ($this->fields['requesttypes_id']) {
                 return Dropdown::getDropdownName('glpi_requesttypes', $this->fields['requesttypes_id']);
             }
@@ -770,8 +798,12 @@ class ITILFollowup extends CommonDBChild
 
         $followup_condition = '';
         if (!Session::haveRight('followup', self::SEEPRIVATE)) {
-            $followup_condition = "AND (`NEWTABLE`.`is_private` = 0
-                                     OR `NEWTABLE`.`users_id` = '" . Session::getLoginUserID() . "')";
+            $followup_condition = "AND (`NEWTABLE`.`is_private` = '0'";
+            $author = (int)Session::getLoginUserID();
+            if ($author > 0) {
+                $followup_condition .= " OR `NEWTABLE`.`users_id` = '$author'";
+            }
+            $followup_condition .= ')';
         }
 
         $tab[] = [
@@ -1233,23 +1265,8 @@ class ITILFollowup extends CommonDBChild
         // Print Followups for a job
         $showprivate = Session::haveRight(self::$rightname, self::SEEPRIVATE);
 
-        $where = [
-           'itemtype'  => $itemtype,
-           'items_id'  => $ID
-        ];
-        if (!$showprivate) {
-            $where['OR'] = [
-               'is_private'   => 0,
-               'users_id'     => Session::getLoginUserID()
-            ];
-        }
-
-        // Get Followups
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_itilfollowups',
-           'WHERE'  => $where,
-           'ORDER'  => 'date DESC'
-        ]);
+        $iterator = (new ITILUserRepository(Orm::create($DB)))
+            ->followups((string)$itemtype, (int)$ID, (int)Session::getLoginUserID(), $showprivate);
 
         $out = "";
         if (count($iterator)) {
@@ -1261,7 +1278,7 @@ class ITILFollowup extends CommonDBChild
             if (Session::haveRight('user', READ)) {
                 $showuserlink = 1;
             }
-            while ($data = $iterator->next()) {
+            foreach ($iterator as $data) {
                 $out .= "<tr class='tab_bg_3'>
                      <td class='center'>" . Html::convDateTime($data["date"]) . "</td>
                      <td class='center'>" . getUserName($data["users_id"], $showuserlink) . "</td>
@@ -1503,27 +1520,8 @@ class ITILFollowup extends CommonDBChild
             // The author is an observer or a requester -> can be support agent OR
             // requester depending on how GLPI is used so we must check the user's
             // profiles
-            $central_profiles = $DB->request([
-               'COUNT' => 'total',
-               'FROM' => Profile::getTable(),
-               'WHERE' => [
-                  'interface' => 'central',
-                  'id' => new QuerySubQuery([
-                     'SELECT' => ['profiles_id'],
-                     'FROM' => Profile_User::getTable(),
-                     'WHERE' => [
-                        'users_id' => $user_id
-                     ]
-                  ])
-               ]
-            ]);
-
-            // No profiles, let's assume it is a support agent to be safe
-            if (!count($central_profiles)) {
-                return false;
-            }
-
-            return $central_profiles->next()['total'] > 0;
+            return (new ITILUserRepository(Orm::create($DB)))
+                ->hasCentralProfile((int)$user_id);
         } elseif (in_array(CommonITILActor::REQUESTER, $roles)) {
             // The author is a requester -> not from support agent
             return false;

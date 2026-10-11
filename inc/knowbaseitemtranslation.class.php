@@ -32,6 +32,9 @@
  */
 
 use Glpi\Event;
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\KnowledgeBaseRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -393,10 +396,13 @@ class KnowbaseItemTranslation extends CommonDBChild
     **/
     public static function getNumberOfTranslationsForItem($item)
     {
+        global $DB;
 
-        return countElementsInTable(
-            getTableForItemType(__CLASS__),
-            ['knowbaseitems_id' => $item->getID()]
+        return Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$item->getID(),
+            static fn (EntityManager $manager, int $id): int =>
+                (new KnowledgeBaseRepository($manager))->translationCount($id)
         );
     }
 
@@ -412,21 +418,19 @@ class KnowbaseItemTranslation extends CommonDBChild
     {
         global $DB;
 
-        $tab = [];
-
-        $iterator = $DB->request([
-           'FROM'   => getTableForItemType(__CLASS__),
-           'WHERE'  => ['knowbaseitems_id' => $item->getID()]
-        ]);
-
-        while ($data = $iterator->next()) {
-            $tab[$data['language']] = $data['language'];
-        }
-        return $tab;
+        return Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$item->getID(),
+            static fn (EntityManager $manager, int $id): array =>
+                (new KnowledgeBaseRepository($manager))->translatedLanguages($id)
+        );
     }
 
     public function pre_updateInDB()
     {
+        if (!array_intersect($this->updates, ['name', 'answer', 'language'])) {
+            return;
+        }
         $revision = new KnowbaseItem_Revision();
         $translation = new KnowbaseItemTranslation();
         $translation->getFromDB($this->getID());

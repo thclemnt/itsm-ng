@@ -35,6 +35,10 @@
 declare(ticks=1);
 
 use Glpi\Event;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CronLogRepository;
+use itsmng\Database\Repository\CronTaskRepository;
+use itsmng\Database\Repository\RecordRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -111,6 +115,8 @@ class CronTask extends CommonDBTM
 
     public function cleanDBonPurge()
     {
+        (new Alert())->cleanDBonItemDelete($this->getType(), $this->getID());
+
 
         // CronTaskLog does not extends CommonDBConnexity
         $ctl = new CronTaskLog();
@@ -180,16 +186,8 @@ class CronTask extends CommonDBTM
     {
         global $DB;
 
-        $types = [];
-        $iterator = $DB->request([
-            'SELECT' => 'itemtype',
-            'DISTINCT' => true,
-            'FROM' => 'glpi_crontasks'
-        ]);
-        while ($data = $iterator->next()) {
-            $types[] = $data['itemtype'];
-        }
-        return $types;
+        return (new CronTaskRepository(Orm::create($DB)))
+            ->usedItemtypes();
     }
 
     /**
@@ -277,42 +275,36 @@ class CronTask extends CommonDBTM
             pcntl_signal(SIGTERM, $this->signal(...));
         }
 
-        $result = $DB->update(
-            $this->getTable(),
-            [
-                'state' => self::STATE_RUNNING,
-                'lastrun' => new \QueryExpression('DATE_FORMAT(NOW(),\'%Y-%m-%d %H:%i:00\')')
-            ],
-            [
-                'id' => $this->fields['id'],
-                'NOT' => ['state' => self::STATE_RUNNING]
-            ]
-        );
+        return $DB->getDoctrineConnection()->transactional(function () use ($DB) {
+            if ((new CronLogRepository(Orm::create($DB)))
+                ->start((int)$this->fields['id'])) {
+                $this->timer = microtime(true);
+                $this->volume = 0;
+                $log = new CronTaskLog();
+                // No gettext for log
+                $txt = sprintf(
+                    '%1$s: %2$s',
+                    'Run mode',
+                    $this->getModeName(isCommandLine() ? self::MODE_EXTERNAL
+                        : self::MODE_INTERNAL)
+                );
 
-        if ($DB->affectedRows($result) > 0) {
-            $this->timer = microtime(true);
-            $this->volume = 0;
-            $log = new CronTaskLog();
-            // No gettext for log
-            $txt = sprintf(
-                '%1$s: %2$s',
-                'Run mode',
-                $this->getModeName(isCommandLine() ? self::MODE_EXTERNAL
-                    : self::MODE_INTERNAL)
-            );
-
-            $this->startlog = $log->add([
-                'crontasks_id' => $this->fields['id'],
-                'date' => $_SESSION['glpi_currenttime'],
-                'content' => addslashes($txt),
-                'crontasklogs_id' => 0,
-                'state' => CronTaskLog::STATE_START,
-                'volume' => 0,
-                'elapsed' => 0
-            ]);
-            return true;
-        }
-        return false;
+                $this->startlog = $log->add([
+                    'crontasks_id' => $this->fields['id'],
+                    'date' => $_SESSION['glpi_currenttime'],
+                    'content' => addslashes($txt),
+                    'crontasklogs_id' => 0,
+                    'state' => CronTaskLog::STATE_START,
+                    'volume' => 0,
+                    'elapsed' => 0
+                ]);
+                if (!$this->startlog) {
+                    throw new RuntimeException('Unable to record cron task start.');
+                }
+                return true;
+            }
+            return false;
+        });
     }
 
 
@@ -359,50 +351,45 @@ class CronTask extends CommonDBTM
             return false;
         }
 
-        $result = $DB->update(
-            $this->getTable(),
-            [
-                'state' => $this->fields['state']
-            ],
-            [
-                'id' => $this->fields['id'],
-                'state' => self::STATE_RUNNING
-            ]
-        );
+        return $DB->getDoctrineConnection()->transactional(function () use ($DB, $retcode, $log_state) {
+            if ((new CronLogRepository(Orm::create($DB)))
+                ->finish((int)$this->fields['id'], (int)$this->fields['state'])) {
+                // No gettext for log but add gettext line to be parsed for pot generation
+                // order is important for insertion in english in the database
+                if ($log_state === CronTaskLog::STATE_ERROR) {
+                    $content = __('Execution error');
+                    $content = 'Execution error';
+                } elseif (is_null($retcode)) {
+                    $content = __('Action aborted');
+                    $content = 'Action aborted';
+                } elseif ($retcode < 0) {
+                    $content = __('Action completed, partially processed');
+                    $content = 'Action completed, partially processed';
+                } elseif ($retcode > 0) {
+                    $content = __('Action completed, fully processed');
+                    $content = 'Action completed, fully processed';
+                } else {
+                    $content = __('Action completed, no processing required');
+                    $content = 'Action completed, no processing required';
+                }
 
-        if ($DB->affectedRows($result) > 0) {
-            // No gettext for log but add gettext line to be parsed for pot generation
-            // order is important for insertion in english in the database
-            if ($log_state === CronTaskLog::STATE_ERROR) {
-                $content = __('Execution error');
-                $content = 'Execution error';
-            } elseif (is_null($retcode)) {
-                $content = __('Action aborted');
-                $content = 'Action aborted';
-            } elseif ($retcode < 0) {
-                $content = __('Action completed, partially processed');
-                $content = 'Action completed, partially processed';
-            } elseif ($retcode > 0) {
-                $content = __('Action completed, fully processed');
-                $content = 'Action completed, fully processed';
-            } else {
-                $content = __('Action completed, no processing required');
-                $content = 'Action completed, no processing required';
+                $log = new CronTaskLog();
+                $logId = $log->add([
+                    'crontasks_id' => $this->fields['id'],
+                    'date' => $_SESSION['glpi_currenttime'],
+                    'content' => $content,
+                    'crontasklogs_id' => $this->startlog,
+                    'state' => $log_state,
+                    'volume' => $this->volume,
+                    'elapsed' => (microtime(true) - $this->timer)
+                ]);
+                if (!$logId) {
+                    throw new RuntimeException('Unable to record cron task completion.');
+                }
+                return true;
             }
-
-            $log = new CronTaskLog();
-            $log->add([
-                'crontasks_id' => $this->fields['id'],
-                'date' => $_SESSION['glpi_currenttime'],
-                'content' => $content,
-                'crontasklogs_id' => $this->startlog,
-                'state' => $log_state,
-                'volume' => $this->volume,
-                'elapsed' => (microtime(true) - $this->timer)
-            ]);
-            return true;
-        }
-        return false;
+            return false;
+        });
     }
 
 
@@ -444,107 +431,22 @@ class CronTask extends CommonDBTM
     {
         global $DB;
 
-        $hour_criteria = new QueryExpression('hour(curtime())');
-
-        $itemtype_orwhere = [
-            // Core crontasks
-            [
-                ['NOT' => ['itemtype' => ['LIKE', 'Plugin%']]],
-                ['NOT' => ['itemtype' => ['LIKE', addslashes('GlpiPlugin\\\\') . '%']]]
-            ]
-        ];
-        foreach (Plugin::getPlugins() as $plug) {
-            // Activated plugin tasks
-            $itemtype_orwhere[] = [
-                'OR' => [
-                    ['itemtype' => ['LIKE', sprintf('Plugin%s', $plug) . '%']],
-                    ['itemtype' => ['LIKE', addslashes(sprintf('GlpiPlugin\\\\%s\\\\', $plug)) . '%']]
-                ]
-            ];
-        }
-
-        $WHERE = [
-            ['OR' => $itemtype_orwhere]
-        ];
-
-        if ($name) {
-            $WHERE['name'] = addslashes($name);
-        }
-
-        // In force mode
-        if ($mode < 0) {
-            $WHERE['state'] = ['!=', self::STATE_RUNNING];
-            $WHERE['allowmode'] = ['&', (int) $mode * -1];
-        } else {
-            $WHERE['state'] = self::STATE_WAITING;
-            if ($mode > 0) {
-                $WHERE['mode'] = $mode;
-            }
-
-            // Get system lock
+        $locks = [];
+        if ($mode >= 0) {
             if (is_file(GLPI_CRON_DIR . '/all.lock')) {
-                // Global lock
                 return false;
             }
-            $locks = [];
             foreach (glob(GLPI_CRON_DIR . '/*.lock') as $lock) {
-                $reg = [];
-                if (preg_match('!.*/(.*).lock$!', $lock, $reg)) {
-                    $locks[] = $reg[1];
-                }
+                $locks[] = basename($lock, '.lock');
             }
-            if (count($locks)) {
-                $WHERE[] = ['NOT' => ['name' => $locks]];
-            }
-
-            // Build query for frequency and allowed hour
-            $WHERE[] = [
-                'OR' => [
-                    [
-                        'AND' => [
-                            ['hourmin' => ['<', new QueryExpression($DB->quoteName('hourmax'))]],
-                            'hourmin' => ['<=', $hour_criteria],
-                            'hourmax' => ['>', $hour_criteria]
-                        ]
-                    ],
-                    [
-                        'AND' => [
-                            'hourmin' => ['>', new QueryExpression($DB->quoteName('hourmax'))],
-                            'OR' => [
-                                'hourmin' => ['<=', $hour_criteria],
-                                'hourmax' => ['>', $hour_criteria]
-                            ]
-                        ]
-                    ]
-                ]
-            ];
-            $WHERE[] = [
-                'OR' => [
-                    'lastrun' => null,
-                    new \QueryExpression('unix_timestamp(' . $DB->quoteName('lastrun') . ') + ' . $DB->quoteName('frequency') . ' <= unix_timestamp(now())')
-                ]
-            ];
         }
-
-        $iterator = $DB->request([
-            'SELECT' => [
-                '*',
-                new \QueryExpression("LOCATE('Plugin', " . $DB->quoteName('itemtype') . ") AS ISPLUGIN")
-            ],
-            'FROM' => $this->getTable(),
-            'WHERE' => $WHERE,
-            // Core task before plugins
-            'ORDER' => [
-                'ISPLUGIN',
-                new \QueryExpression('unix_timestamp(' . $DB->quoteName('lastrun') . ')+' . $DB->quoteName('frequency') . '')
-            ]
-        ]);
-
-        if (count($iterator)) {
-            $this->fields = $iterator->next();
-            return true;
+        $row = (new CronTaskRepository(Orm::create($DB)))
+            ->next((int)$mode, (string)$name, Plugin::getPlugins(), $locks);
+        if ($row === null) {
+            return false;
         }
-        return false;
+        $this->fields = $row;
+        return true;
     }
 
     /**
@@ -554,49 +456,8 @@ class CronTask extends CommonDBTM
     {
         global $DB;
 
-        $alert_iterator = $DB->request(
-            [
-                'FROM' => 'glpi_alerts',
-                'WHERE' => [
-                    'items_id' => $this->fields['id'],
-                    'itemtype' => 'CronTask',
-                    'date' => ['>', new QueryExpression('CURRENT_TIMESTAMP() - INTERVAL 1 day')],
-                ],
-            ]
-        );
-        if ($alert_iterator->count() > 0) {
-            // An alert has been sent within last day, so do not send a new one to not bother administrator
-            return;
-        }
-
-        // Check if errors threshold is exceeded, and send a notification in this case.
-        //
-        // We check on last "$threshold * 2" runs as a task that works only half of the time
-        // is not a normal behaviour.
-        // For instance, if threshold is 5, then a task that fails 5 times on last 10 executions
-        // will trigger a notification.
-        $threshold = 5;
-
-        $iterator = $DB->request(
-            [
-                'FROM' => 'glpi_crontasklogs',
-                'WHERE' => [
-                    'crontasks_id' => $this->fields['id'],
-                    'state' => [CronTaskLog::STATE_STOP, CronTaskLog::STATE_ERROR],
-                ],
-                'ORDER' => 'id DESC',
-                'LIMIT' => $threshold * 2
-            ]
-        );
-
-        $error_count = 0;
-        foreach ($iterator as $row) {
-            if ($row['state'] === CronTaskLog::STATE_ERROR) {
-                $error_count++;
-            }
-        }
-
-        if ($error_count >= $threshold) {
+        if ((new CronTaskRepository(Orm::create($DB)))
+            ->needsErrorNotification((int)$this->fields['id'])) {
             // No alert has been sent within last day, so we can send one without bothering administrator
             NotificationEvent::raiseEvent('alert', $this, ['items' => [$this->fields['id'] => $this->fields]]);
             QueuedNotification::forceSendFor($this->getType(), $this->fields['id']);
@@ -1084,7 +945,7 @@ class CronTask extends CommonDBTM
                                 );
                                 try {
                                     $retcode = call_user_func($function, $crontask);
-                                } catch (\Throwable $e) {
+                                } catch (Throwable $e) {
                                     global $GLPI;
                                     $GLPI->getErrorHandler()->handleException($e);
                                     Toolbox::logInFile(
@@ -1134,7 +995,7 @@ class CronTask extends CommonDBTM
                         $msgcron = sprintf(__('%1$s: %2$s'), $msgprefix, __('Nothing to launch'));
                         Toolbox::logInFile('cron', $msgcron . "\n");
                     }
-                } catch (\Throwable $e) {
+                } catch (Throwable $e) {
                     global $GLPI;
                     $GLPI->getErrorHandler()->handleException($e);
                     Toolbox::logInFile(
@@ -1247,17 +1108,9 @@ class CronTask extends CommonDBTM
         $temp = new CronTask();
         $ret = true;
 
-        $iterator = $DB->request([
-            'FROM' => self::getTable(),
-            'WHERE' => [
-                'OR' => [
-                    ['itemtype' => ['LIKE', sprintf('Plugin%s', $plugin) . '%']],
-                    ['itemtype' => ['LIKE', addslashes(sprintf('GlpiPlugin\\\\%s\\\\', $plugin)) . '%']]
-                ]
-            ]
-        ]);
-
-        while ($data = $iterator->next()) {
+        $rows = (new CronTaskRepository(Orm::create($DB)))
+            ->forPlugin((string)$plugin);
+        foreach ($rows as $data) {
             if (!$temp->delete($data)) {
                 $ret = false;
             }
@@ -1319,32 +1172,8 @@ class CronTask extends CommonDBTM
         echo "</td></tr>";
 
         if ($nbstop) {
-            $data = $DB->request([
-                'SELECT' => [
-                    'MIN' => [
-                        'date AS datemin',
-                        'elapsed AS elapsedmin',
-                        'volume AS volmin'
-                    ],
-                    'MAX' => [
-                        'elapsed AS elapsedmax',
-                        'volume AS volmax'
-                    ],
-                    'SUM' => [
-                        'elapsed AS elapsedtot',
-                        'volume AS voltot'
-                    ],
-                    'AVG' => [
-                        'elapsed AS elapsedavg',
-                        'volume AS volavg'
-                    ]
-                ],
-                'FROM' => CronTaskLog::getTable(),
-                'WHERE' => [
-                    'crontasks_id' => $this->fields['id'],
-                    'state' => CronTaskLog::STATE_STOP
-                ]
-            ])->next();
+            $data = (new CronLogRepository(Orm::create($DB)))
+                ->statistics((int)$this->fields['id']);
 
             echo "<tr class='tab_bg_1'><td>" . __('Start date') . "</td>";
             echo "<td class='right'>" . Html::convDateTime($data['datemin']) . "</td></tr>";
@@ -1455,16 +1284,8 @@ class CronTask extends CommonDBTM
         // Display the pager
         Html::printAjaxPager(__('Last run list'), $start, $number);
 
-        $iterator = $DB->request([
-            'FROM' => 'glpi_crontasklogs',
-            'WHERE' => [
-                'crontasks_id' => $this->fields['id'],
-                'state' => [CronTaskLog::STATE_STOP, CronTaskLog::STATE_ERROR],
-            ],
-            'ORDER' => 'id DESC',
-            'START' => (int) $start,
-            'LIMIT' => (int) $_SESSION['glpilist_limit']
-        ]);
+        $iterator = (new CronLogRepository(Orm::create($DB)))
+            ->history((int)$this->fields['id'], (int)$_SESSION['glpilist_limit'], (int)$start);
 
         if (count($iterator)) {
             echo "<table class='tab_cadrehov' aria-label='Activity Log'>";
@@ -1476,10 +1297,10 @@ class CronTask extends CommonDBTM
             $header .= "</tr>\n";
             echo $header;
 
-            while ($data = $iterator->next()) {
+            foreach ($iterator as $data) {
                 echo "<tr class='tab_bg_2'>";
                 echo "<td><a href='javascript:reloadTab(\"crontasklogs_id=" .
-                    $data['crontasklogs_id'] . "\");'>" . Html::convDateTime($data['date']) .
+                    ($data['crontasklogs_id'] ?: $data['id']) . "\");'>" . Html::convDateTime($data['date']) .
                     "</a></td>";
                 echo "<td class='right'>" . sprintf(
                     _n(
@@ -1521,16 +1342,8 @@ class CronTask extends CommonDBTM
         echo "<p><a href='javascript:reloadTab(\"crontasklogs_id=0\");'>" . __('Last run list') . "</a>" .
             "</p>";
 
-        $iterator = $DB->request([
-            'FROM' => 'glpi_crontasklogs',
-            'WHERE' => [
-                'OR' => [
-                    'id' => $logid,
-                    'crontasklogs_id' => $logid
-                ]
-            ],
-            'ORDER' => 'id ASC'
-        ]);
+        $iterator = (new CronLogRepository(Orm::create($DB)))
+            ->details((int)$this->fields['id'], (int)$logid);
 
         if (count($iterator)) {
             echo "<table class='tab_cadrehov' aria-label='Activity Log Table'><tr>";
@@ -1542,7 +1355,7 @@ class CronTask extends CommonDBTM
             echo "</tr>\n";
 
             $first = true;
-            while ($data = $iterator->next()) {
+            foreach ($iterator as $data) {
                 echo "<tr class='tab_bg_2'>";
                 echo "<td class='center'>" . ($first ? Html::convDateTime($data['date'])
                     : "&nbsp;") . "</a></td>";
@@ -2083,7 +1896,8 @@ class CronTask extends CommonDBTM
             $vol += Event::cleanOld($task->fields['param']);
         }
 
-        foreach ($DB->request('glpi_crontasks') as $data) {
+        foreach ((new RecordRepository(Orm::create($DB)))
+            ->matching('glpi_crontasks', ['logs_lifetime' => ['>', 0]], 'id') as $data) {
             if ($data['logs_lifetime'] > 0) {
                 $vol += CronTaskLog::cleanOld($data['id'], $data['logs_lifetime']);
             }
@@ -2103,21 +1917,9 @@ class CronTask extends CommonDBTM
     {
         global $DB;
 
-        // CronTasks running for more than 1 hour or 2 frequency
-        $iterator = $DB->request([
-            'FROM' => self::getTable(),
-            'WHERE' => [
-                'state' => self::STATE_RUNNING,
-                'OR' => [
-                    new \QueryExpression('unix_timestamp(' . $DB->quoteName('lastrun') . ') + 2 * ' . $DB->quoteName('frequency') . ' < unix_timestamp(now())'),
-                    new \QueryExpression('unix_timestamp(' . $DB->quoteName('lastrun') . ') + 2 * ' . HOUR_TIMESTAMP . ' < unix_timestamp(now())')
-                ]
-            ]
-        ]);
-        $crontasks = [];
-        while ($data = $iterator->next()) {
-            $crontasks[$data['id']] = $data;
-        }
+        $rows = (new CronTaskRepository(Orm::create($DB)))
+            ->overdue();
+        $crontasks = array_column($rows, null, 'id');
 
         if (count($crontasks)) {
             $task = new self();

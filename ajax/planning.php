@@ -74,8 +74,8 @@ if ($_REQUEST["action"] == "get_externalevent_template") {
         $template = new PlanningExternalEventTemplate();
         $template->getFromDB($_POST[$key]);
 
-        $template->fields = array_map('html_entity_decode', $template->fields);
-        $template->fields['rrule'] = json_decode($template->fields['rrule'], true);
+        $template->fields = array_map(static fn ($value) => is_string($value) ? html_entity_decode($value) : $value, $template->fields);
+        $template->fields['rrule'] = json_decode((string)$template->fields['rrule'], true);
         header("Content-Type: application/json; charset=UTF-8");
         echo json_encode($template->fields, JSON_NUMERIC_CHECK);
         exit;

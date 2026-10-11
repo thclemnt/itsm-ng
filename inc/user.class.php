@@ -35,9 +35,31 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
-use Sabre\VObject;
+use Doctrine\DBAL\Exception;
+use Doctrine\ORM\EntityManager;
 use Glpi\Exception\ForgetPasswordException;
 use Glpi\Exception\PasswordTooWeakException;
+use itsmng\Database\CurrentReadUnavailable;
+use itsmng\Database\DeletionDecision;
+use itsmng\Database\Entity\User as UserRecord;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\LegacyValues;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\ReferenceValues;
+use itsmng\Database\Repository\ITILUserRepository;
+use itsmng\Database\Repository\LdapRepository;
+use itsmng\Database\Repository\OidcRepository;
+use itsmng\Database\Repository\PlanningGuestRepository;
+use itsmng\Database\Repository\ProfileUserRepository;
+use itsmng\Database\Repository\UserItemRepository;
+use itsmng\Database\Repository\UserPasswordRepository;
+use itsmng\Database\Repository\UserRepository;
+use itsmng\Database\Repository\UserSelectionRepository;
+use itsmng\Database\RowIterator;
+use itsmng\Database\TimelineAuthorReader;
+use itsmng\Domain\Authentication\AuthenticationCompletion;
+use Sabre\VObject;
 
 class User extends CommonDBTM
 {
@@ -63,8 +85,16 @@ class User extends CommonDBTM
        'cookie_token',
     ];
 
-    private $entities = null;
-
+    /** Load a complete timeline author while retaining legacy permission and hook behavior. */
+    public function getTimelineAuthorFromDB($id): bool
+    {
+        global $DB;
+        // Custom User models retain their own loading/lifecycle dispatch.
+        if (static::class !== self::class) {
+            return $this->getFromDB($id);
+        }
+        return (new TimelineAuthorReader())->load($this, $id, $DB);
+    }
 
     public static function getTypeName($nb = 0)
     {
@@ -307,36 +337,46 @@ class User extends CommonDBTM
 
     public function pre_deleteItem()
     {
+        return $this->decideAccountDeletion() === DeletionDecision::Proceed;
+    }
+
+    public function deletionDecision(): DeletionDecision
+    {
+        // Existing extensions can veto deletion through their original hook.
+        // Its false remains cancellation; typed scoped outcomes are opt-in via
+        // this structured extension point, never inferred from a mutable flag.
+        if ((new ReflectionMethod($this, 'pre_deleteItem'))->getDeclaringClass()->getName() !== self::class) {
+            return parent::deletionDecision();
+        }
+        return $this->decideAccountDeletion();
+    }
+
+    protected function decideAccountDeletion(): DeletionDecision
+    {
         global $DB;
 
-        $entities = $this->getEntities();
-        $view_all = Session::canViewAllEntities();
-        // Have right on all entities ?
-        $all      = true;
-        if (!$view_all) {
-            foreach ($entities as $ent) {
-                if (!Session::haveAccessToEntity($ent)) {
-                    $all = false;
-                }
-            }
+        // Incoming grants need a current read as well as the locked User row.
+        // Reuse this writer and its deletion frame; ordinary scope APIs retain
+        // their normal read routing and snapshot semantics.
+        try {
+            $entities = (new ProfileUserRepository(Orm::create($DB)))
+                ->currentDeletionEntities((int)$this->fields['id']);
+        } catch (CurrentReadUnavailable $error) {
+            Session::addMessageAfterRedirect(__('Finish the current operation, then retry this account deletion.'), true, ERROR, false);
+            return DeletionDecision::Cancelled;
         }
-        if ($all) { // Mark as deleted
-            return true;
+        if (Session::canViewAllEntities() || !array_filter($entities, static fn ($entity): bool => !Session::haveAccessToEntity($entity))) {
+            return DeletionDecision::Proceed;
         }
-        // only delete profile
-        foreach ($entities as $ent) {
-            if (Session::haveAccessToEntity($ent)) {
-                $all   = false;
-                $DB->delete(
-                    'glpi_profiles_users',
-                    [
-                      'users_id'     => $this->fields['id'],
-                      'entities_id'  => $ent
-                    ]
-                );
-            }
-            return false;
+        // Existing backend deletion detaches the account in accessible entities.
+        // It returns false because the account itself is retained, not because
+        // this explicit domain operation failed. All grants detach atomically.
+        $accessible = array_values(array_filter($entities, static fn ($entity): bool => Session::haveAccessToEntity($entity)));
+        if (!$accessible) {
+            return DeletionDecision::Cancelled;
         }
+        (new UserRepository(Orm::create($DB)))->detachEntityGrants((int)$this->fields['id'], $accessible);
+        return DeletionDecision::ScopedDetachment;
     }
 
 
@@ -345,6 +385,20 @@ class User extends CommonDBTM
 
         global $DB;
 
+        (new ITILUserRepository(Orm::create($DB)))
+            ->reassignReferences((int)$this->getID(), empty($this->input['_replace_by']) ? null : (int)$this->input['_replace_by']);
+
+        (new UserItemRepository(Orm::create($DB)))
+            ->reassignPlanningOwners((int)$this->getID(), empty($this->input['_replace_by']) ? null : (int)$this->input['_replace_by']);
+        (new PlanningGuestRepository(Orm::create($DB)))
+            ->reassignUser((int)$this->getID(), empty($this->input['_replace_by']) ? null : (int)$this->input['_replace_by']);
+        (new Dashboard())->deleteByCriteria(['userId' => $this->getID()]);
+
+        // Personal recalls and their delivery markers belong to the deleted recipient.
+        (new PlanningRecall())->deleteByCriteria(['users_id' => $this->getID()]);
+
+        (new OidcRepository(Orm::create($DB)))->deleteUserState((int)$this->getID());
+
         // ObjectLock does not extends CommonDBConnexity
         $ol = new ObjectLock();
         $ol->deleteByCriteria(['users_id' => $this->fields['id']]);
@@ -352,6 +406,9 @@ class User extends CommonDBTM
         // Reminder does not extends CommonDBConnexity
         $r = new Reminder();
         $r->deleteByCriteria(['users_id' => $this->fields['id']]);
+
+        (new UserItemRepository(Orm::create($DB)))
+            ->reassignPersonalContentOwners((int)$this->getID(), empty($this->input['_replace_by']) ? null : (int)$this->input['_replace_by']);
 
         // Delete private bookmark
         $ss = new SavedSearch();
@@ -362,30 +419,8 @@ class User extends CommonDBTM
             ]
         );
 
-        // Set no user to public bookmark
-        $DB->update(
-            SavedSearch::getTable(),
-            [
-              'users_id' => 0
-            ],
-            [
-              'users_id' => $this->fields['id']
-            ]
-        );
-
-        // Set no user to consumables
-        $DB->update(
-            'glpi_consumables',
-            [
-              'items_id' => 0,
-              'itemtype' => 'NULL',
-              'date_out' => 'NULL'
-            ],
-            [
-              'items_id' => $this->fields['id'],
-              'itemtype' => 'User'
-            ]
-        );
+        (new UserItemRepository(Orm::create($DB)))
+            ->releaseUserResources((int)$this->fields['id']);
 
         $this->deleteChildrenAndRelationsFromDb(
             [
@@ -393,6 +428,7 @@ class User extends CommonDBTM
               Change_User::class,
               Group_User::class,
               KnowbaseItem_User::class,
+              Item_Kanban::class,
               Problem_User::class,
               Profile_User::class,
               ProjectTaskTeam::class,
@@ -434,7 +470,7 @@ class User extends CommonDBTM
      */
     public function getFromDBbyName($name)
     {
-        return $this->getFromDBByCrit(['name' => $name]);
+        return $this->getFromDBByLogin($name, []);
     }
 
     /**
@@ -448,11 +484,35 @@ class User extends CommonDBTM
      */
     public function getFromDBbyNameAndAuth($name, $authtype, $auths_id)
     {
-        return $this->getFromDBByCrit([
-           'name'     => $name,
-           'authtype' => $authtype,
-           'auths_id' => $auths_id
-           ]);
+        return $this->getFromDBByLogin($name, ['authtype' => $authtype, 'auths_id' => $auths_id]);
+    }
+
+
+    /** Primitive login names are text; custom models and criteria retain their public dispatch. */
+    private function getFromDBByLogin($name, array $source)
+    {
+        global $DB;
+
+        if (
+            static::class !== self::class || !is_string($name)
+            || array_filter($source, static fn ($value): bool => $value !== null && !is_scalar($value))
+        ) {
+            return $this->getFromDBByCrit(['name' => $name] + $source);
+        }
+        $database = $DB;
+        // Exact core User uses the inherited pure cached getter. Forced routes stay legacy.
+        if ($this->getTable() !== 'glpi_users') {
+            return $this->getFromDBByCrit(['name' => $name] + $source);
+        }
+        $match = Orm::read($database, static fn (EntityManager $manager): array =>
+            (new UserRepository($manager))->loginMatch(LegacyValues::decodeString($name), $source), clearCustomManager: true);
+        if ($match['count'] === 1) {
+            return $this->getFromDB($match['id']);
+        }
+        if ($match['count'] > 1) {
+            trigger_error(sprintf('getFromDBByCrit expects to get one result, %s found.', $match['count']), E_USER_WARNING);
+        }
+        return false;
     }
 
     /**
@@ -495,22 +555,8 @@ class User extends CommonDBTM
     ): array {
         global $DB;
 
-        $query = [
-           'SELECT'    => self::getTable() . '.id',
-           'FROM'      => self::getTable(),
-           'LEFT JOIN' => [
-              UserEmail::getTable() => [
-                 'FKEY' => [
-                    self::getTable()      => 'id',
-                    UserEmail::getTable() => self::getForeignKeyField()
-                 ]
-              ]
-           ],
-           'WHERE' => [UserEmail::getTable() . '.email' => $email] + $condition
-        ];
-
-        $data = iterator_to_array($DB->request($query));
-        return array_column($data, 'id');
+        return Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new UserSelectionRepository($manager))->byEmail($email, $condition));
     }
 
     /**
@@ -643,29 +689,21 @@ class User extends CommonDBTM
 
         // avoid xss (picture field is autogenerated)
         if (isset($input['picture'])) {
-            $input['picture'] = 'NULL';
+            $input['picture'] = null;
         }
 
         if (!isset($input["authtype"])) {
             $input["authtype"] = Auth::DB_GLPI;
         }
 
-        if (!isset($input["auths_id"])) {
-            $input["auths_id"] = 0;
-        }
+        $authentication = (new UserRecord())->prepareAuthenticationInput($input);
+        $input = $authentication['input'];
 
         // Check if user does not exists
-        $iterator = $DB->request([
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [
-              'name'      => $input['name'],
-              'authtype'  => $input['authtype'],
-              'auths_id'  => $input['auths_id']
-           ],
-           'LIMIT'  => 1
-        ]);
-
-        if (count($iterator)) {
+        if (Orm::read($DB, static fn (EntityManager $manager): bool =>
+            is_string($input['name'])
+                ? (new UserRepository($manager))->loginExists(LegacyValues::decodeString($input['name']), $authentication['identity'])
+                : (new UserRepository($manager))->exists(['name' => $input['name']] + $authentication['identity'], true))) {
             Session::addMessageAfterRedirect(
                 __('Unable to add. The user already exists.'),
                 false,
@@ -826,6 +864,104 @@ class User extends CommonDBTM
     }
 
 
+    private ?AuthenticationCompletion $authenticationCompletion = null;
+    private ?AuthenticationCompletion $pendingAuthenticationCompletion = null;
+    private int $authenticationUpdateDepth = 0;
+
+    /** Complete a verified existing local login through the ordinary public lifecycle. */
+    public function completeAuthentication(AuthenticationCompletion $completion): bool
+    {
+        if ((int)$this->getID() !== $completion->user) {
+            throw new LogicException('Authentication completion belongs to another account.');
+        }
+        $previous = $this->pendingAuthenticationCompletion;
+        $checkpoint = $this->authenticationUpdateDepth > 0 ? $this->authenticationLifecycleView() : null;
+        try {
+            if (!$this->getFromDB($completion->user)
+                || (int)$this->fields['authtype'] !== Auth::DB_GLPI
+                || (int)$this->fields['auths_id'] !== 0) {
+                return false;
+            }
+            $this->pendingAuthenticationCompletion = $completion;
+            $input = Toolbox::addslashes_deep($completion->lifecycleInput());
+            if (!$this->update($input)) {
+                return false;
+            }
+            // Completion requires the actual accepted account, including any
+            // security-rule admission decision, after all public callbacks.
+            return $this->getFromDB($completion->user)
+                && $this->fields['last_login'] === $completion->at
+                && $this->fields['is_deleted_ldap'] === 0
+                && $completion->acceptsAdmission($this->fields);
+        } finally {
+            $this->pendingAuthenticationCompletion = $previous;
+            if ($checkpoint !== null) {
+                $this->restoreAuthenticationLifecycleView($checkpoint);
+            }
+        }
+    }
+
+
+    public function update(array $input, $history = 1, $options = [])
+    {
+        // Only this public lifecycle consumes its typed completion. Reentrant
+        // ordinary edits retain their own authorization and preference policy.
+        $previous = $this->authenticationCompletion;
+        $checkpoint = $this->authenticationUpdateDepth > 0
+            ? $this->authenticationLifecycleView() : null;
+        ++$this->authenticationUpdateDepth;
+        $this->authenticationCompletion = $this->pendingAuthenticationCompletion;
+        $this->pendingAuthenticationCompletion = null;
+        try {
+            return parent::update($input, $history, $options);
+        } finally {
+            $this->authenticationCompletion = $previous;
+            --$this->authenticationUpdateDepth;
+            if ($checkpoint !== null) {
+                // Restore the outer lifecycle view; completion reloads actual
+                // persisted state after all callbacks, including nested writes.
+                $this->restoreAuthenticationLifecycleView($checkpoint);
+            }
+        }
+    }
+
+
+    /** Model lifecycle state, including properties not yet initialized by update. */
+    private function authenticationLifecycleView(): array
+    {
+        return array_intersect_key(get_object_vars($this), array_flip(['fields', 'input', 'updates', 'oldvalues']));
+    }
+
+    private function restoreAuthenticationLifecycleView(array $checkpoint): void
+    {
+        foreach (['fields', 'input', 'updates', 'oldvalues'] as $property) {
+            if (array_key_exists($property, $checkpoint)) {
+                $this->{$property} = $checkpoint[$property];
+            } else {
+                unset($this->{$property});
+            }
+        }
+    }
+
+
+    protected function authorizeLifecycleUpdate(array $input): array|false
+    {
+        $input = parent::authorizeLifecycleUpdate($input);
+        if ($input !== false && $this->authenticationCompletion !== null
+            && !$this->authenticationCompletion->acceptsAdmission($input)) {
+            return false;
+        }
+        return $input;
+    }
+
+    protected function finalizeLifecycleUpdate(array $storedFields): bool
+    {
+        return parent::finalizeLifecycleUpdate($storedFields)
+            && ($this->authenticationCompletion === null
+                || $this->authenticationCompletion->acceptsAdmission($this->fields));
+    }
+
+
     public function prepareInputForUpdate($input)
     {
         global $CFG_GLPI;
@@ -853,7 +989,7 @@ class User extends CommonDBTM
             if (!empty($this->fields['picture']) && file_exists($this->fields['picture'])) {
                 unlink($this->fields['picture']);
             }
-            $input['picture'] = 'NULL';
+            $input['picture'] = null;
         } else {
             if (
                 isset($picture['path'], $picture['name'])
@@ -995,7 +1131,7 @@ class User extends CommonDBTM
         }
 
         // Security on default profile update
-        if (isset($input['profiles_id'])) {
+        if (isset($input['profiles_id']) && !ReferenceValues::isEmptySelection($input['profiles_id'])) {
             if (!in_array($input['profiles_id'], Profile_User::getUserProfiles($input['id']))) {
                 unset($input['profiles_id']);
             }
@@ -1011,6 +1147,7 @@ class User extends CommonDBTM
         // Security on default group  update
         if (
             isset($input['groups_id'])
+            && (int)$input['groups_id'] !== 0
             && !Group_User::isUserInGroup($input['id'], $input['groups_id'])
         ) {
             unset($input['groups_id']);
@@ -1048,9 +1185,11 @@ class User extends CommonDBTM
             }
         }
 
+        $booleanFields = EntityRegistry::booleanFields($this->getTable());
         foreach ($CFG_GLPI['user_pref_field'] as $f) {
-            if (isset($input[$f])) {
-                if (Session::getLoginUserID() == $input['id']) {
+            $inheritedBoolean = ($booleanFields[$f] ?? false) && array_key_exists($f, $input) && $input[$f] === null;
+            if (isset($input[$f]) || $inheritedBoolean) {
+                if (!($booleanFields[$f] ?? false) && Session::getLoginUserID() == $input['id']) {
                     if ($_SESSION["glpi$f"] != $input[$f]) {
                         $_SESSION["glpi$f"] = $input[$f];
                         // reinit translations
@@ -1060,18 +1199,18 @@ class User extends CommonDBTM
                         }
                     }
                 }
-                if ($input[$f] == $CFG_GLPI[$f]) {
-                    $input[$f] = "NULL";
+                if ($inheritedBoolean || $input[$f] == $CFG_GLPI[$f]) {
+                    $input[$f] = null;
                 }
             }
         }
 
-        if (isset($input['language']) && GLPI_DEMO_MODE) {
+        if (array_key_exists('language', $input) && GLPI_DEMO_MODE) {
             unset($input['language']);
         }
 
         if (array_key_exists('timezone', $input) && empty($input['timezone'])) {
-            $input['timezone'] = 'NULL';
+            $input['timezone'] = null;
         }
 
         return $input;
@@ -1080,6 +1219,13 @@ class User extends CommonDBTM
 
     public function post_updateItem($history = 1)
     {
+        // No-change updates can reach this callback without the final write
+        // guard. Refuse an incomplete security decision before grant effects.
+        if ($this->authenticationCompletion !== null
+            && !$this->authenticationCompletion->acceptsAdmission($this->fields)) {
+            throw new LogicException('Authentication security-rule admission was not accepted.');
+        }
+        $this->refreshSubmittedBooleanPreferences();
         //handle timezone change for current user
         if ($this->fields['id'] == Session::getLoginUserID()) {
             if (null == $this->fields['timezone'] || 'null' === strtolower((string) $this->fields['timezone'])) {
@@ -1107,6 +1253,32 @@ class User extends CommonDBTM
         }
     }
 
+
+
+    /** Refresh submitted inherited flags only after the accepted update's stored view. */
+    private function refreshSubmittedBooleanPreferences(): void
+    {
+        global $CFG_GLPI;
+
+        if ($this->fields['id'] != Session::getLoginUserID() || !is_array($this->input)) {
+            return;
+        }
+        $flags = EntityRegistry::booleanFields($this->getTable());
+        $submitted = array_filter($CFG_GLPI['user_pref_field'], fn ($field) => ($flags[$field] ?? false) && array_key_exists($field, $this->input));
+        if (!$submitted) {
+            return;
+        }
+        // A cancelled callback/no-change update may differ from attempted input.
+        // Reuse the User's ORM read and established effective preference policy.
+        $stored = new self();
+        if (!$stored->getFromDB($this->fields['id'])) {
+            return;
+        }
+        $stored->computePreferences();
+        foreach ($submitted as $field) {
+            $_SESSION['glpi' . $field] = $stored->fields[$field];
+        }
+    }
 
 
     /**
@@ -1293,28 +1465,11 @@ class User extends CommonDBTM
                     $this->input["_groups"] = array_unique($this->input["_groups"]);
 
                     // Delete not available groups like to LDAP
-                    $iterator = $DB->request([
-                       'SELECT'    => [
-                          'glpi_groups_users.id',
-                          'glpi_groups_users.groups_id',
-                          'glpi_groups_users.is_dynamic'
-                       ],
-                       'FROM'      => 'glpi_groups_users',
-                       'LEFT JOIN' => [
-                          'glpi_groups'  => [
-                             'FKEY'   => [
-                                'glpi_groups_users'  => 'groups_id',
-                                'glpi_groups'        => 'id'
-                             ]
-                          ]
-                       ],
-                       'WHERE'     => [
-                          'glpi_groups_users.users_id' => $this->fields['id']
-                       ]
-                    ]);
+                    $memberships = Orm::read($DB, fn (EntityManager $manager): array =>
+                        (new UserRepository($manager))->memberships((int)$this->fields['id']));
 
                     $groupuser = new Group_User();
-                    while ($data =  $iterator->next()) {
+                    foreach ($memberships as $data) {
                         if (in_array($data["groups_id"], $this->input["_groups"])) {
                             // Delete found item in order not to add it again
                             unset($this->input["_groups"][array_search(
@@ -1539,19 +1694,11 @@ class User extends CommonDBTM
                     $this->input["_emails"] = $unique_emails;
 
                     // Delete not available groups like to LDAP
-                    $iterator = $DB->request([
-                       'SELECT' => [
-                          'id',
-                          'users_id',
-                          'email',
-                          'is_dynamic'
-                       ],
-                       'FROM'   => 'glpi_useremails',
-                       'WHERE'  => ['users_id' => $this->fields['id']]
-                    ]);
+                    $emails = Orm::read($DB, fn (EntityManager $manager): array =>
+                        (new UserRepository($manager))->emails((int)$this->fields['id']));
 
                     $useremail = new UserEmail();
-                    while ($data = $iterator->next()) {
+                    foreach ($emails as $data) {
                         // Do a case insensitive comparison as email may be stored with a different case
                         $i = array_search(strtolower((string) $data["email"]), array_map(strtolower(...), $this->input["_emails"]));
                         if ($i !== false) {
@@ -1626,18 +1773,8 @@ class User extends CommonDBTM
         global $DB;
 
         // Search in DB the ldap_field we need to search for in LDAP
-        $iterator = $DB->request([
-           'SELECT'          => 'ldap_field',
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_groups',
-           'WHERE'           => ['NOT' => ['ldap_field' => '']],
-           'ORDER'           => 'ldap_field'
-        ]);
-        $group_fields = [];
-
-        while ($data = $iterator->next()) {
-            $group_fields[] = Toolbox::strtolower($data["ldap_field"]);
-        }
+        $repository = new LdapRepository(Orm::create($DB));
+        $group_fields = array_map(Toolbox::strtolower(...), $repository->membershipFields());
         if (count($group_fields)) {
             //Need to sort the array because edirectory don't like it!
             sort($group_fields);
@@ -1662,14 +1799,8 @@ class User extends CommonDBTM
                         ($ldap_method["group_field"] == 'dn')
                         && (count($v[$i]['ou']) > 0)
                     ) {
-                        $group_iterator = $DB->request([
-                           'SELECT' => 'id',
-                           'FROM'   => 'glpi_groups',
-                           'WHERE'  => ['ldap_group_dn' => Toolbox::addslashes_deep($v[$i]['ou'])]
-                        ]);
-
-                        while ($group = $group_iterator->next()) {
-                            $this->fields["_groups"][] = $group['id'];
+                        foreach ($repository->groupsForDns($v[$i]['ou']) as $groupId) {
+                            $this->fields["_groups"][] = $groupId;
                         }
                     }
 
@@ -1685,25 +1816,8 @@ class User extends CommonDBTM
                         && ($v[$i][$field]['count'] > 0)
                     ) {
                         unset($v[$i][$field]['count']);
-                        $lgroups = [];
-                        foreach (Toolbox::addslashes_deep($v[$i][$field]) as $lgroup) {
-                            $lgroups[] = [
-                               new \QueryExpression($DB::quoteValue($lgroup) .
-                                                    " LIKE " .
-                                                    $DB::quoteName('ldap_value'))
-                            ];
-                        }
-                        $group_iterator = $DB->request([
-                           'SELECT' => 'id',
-                           'FROM'   => 'glpi_groups',
-                           'WHERE'  => [
-                              'ldap_field' => $field,
-                              'OR'         => $lgroups
-                           ]
-                        ]);
-
-                        while ($group = $group_iterator->next()) {
-                            $this->fields["_groups"][] = $group['id'];
+                        foreach ($repository->groupsForAttribute($field, $v[$i][$field]) as $groupId) {
+                            $this->fields["_groups"][] = $groupId;
                         }
                     }
                 }
@@ -1754,14 +1868,10 @@ class User extends CommonDBTM
                 && is_array($result[$ldap_method["group_member_field"]])
                 && (count($result[$ldap_method["group_member_field"]]) > 0)
             ) {
-                $iterator = $DB->request([
-                  'SELECT' => 'id',
-                  'FROM'   => 'glpi_groups',
-                  'WHERE'  => ['ldap_group_dn' => Toolbox::addslashes_deep($result[$ldap_method["group_member_field"]])]
-                ]);
-
-                while ($group = $iterator->next()) {
-                    $this->fields["_groups"][] = $group['id'];
+                $groups = Orm::read($DB, static fn (EntityManager $manager): array =>
+                    (new LdapRepository($manager))->groupsForDns($result[$ldap_method["group_member_field"]]));
+                foreach ($groups as $groupId) {
+                    $this->fields["_groups"][] = $groupId;
                 }
             }
         }
@@ -2236,15 +2346,7 @@ class User extends CommonDBTM
         global $DB;
 
         if (!empty($this->fields["name"])) {
-            $DB->update(
-                $this->getTable(),
-                [
-                  'password' => ''
-                ],
-                [
-                  'name' => $this->fields['name']
-                ]
-            );
+            (new UserRepository(Orm::create($DB)))->clearPassword($this->fields['name']);
         }
     }
 
@@ -2373,15 +2475,8 @@ class User extends CommonDBTM
             $timezones = $DB->getTimezones();
         }
 
-        $emails = iterator_to_array($DB->request([
-           'SELECT' => [
-              'id',
-              'is_default',
-              'email',
-           ],
-           'FROM'   => 'glpi_useremails',
-           'WHERE'  => ['users_id' => $ID]
-        ]));
+        $emails = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new UserRepository($manager))->emails((int)$ID));
         $emailsValues = [];
         $defaultEmailTitle = __('Default email');
         foreach ($emails as $email) {
@@ -2783,8 +2878,6 @@ class User extends CommonDBTM
     {
         global $CFG_GLPI, $DB;
 
-        $user_id = Session::getLoginUserID();
-
         // Affiche un formulaire User
         if (
             ($ID != Session::getLoginUserID())
@@ -2797,32 +2890,10 @@ class User extends CommonDBTM
                           || (($this->fields["authtype"] == Auth::NOT_YET_AUTHENTIFIED)
                               && !empty($this->fields["password"])));
 
-            // Get all available profile of user
-            $query = "SELECT DISTINCT `glpi_profiles`.`id`, `glpi_profiles`.`name`
-                   FROM `glpi_profiles`
-                   JOIN `glpi_profiles_users`
-                     ON (`glpi_profiles_users`.`profiles_id` = `glpi_profiles`.`id`)
-                   WHERE `glpi_profiles_users`.`users_id` = '$user_id'
-                   ORDER BY `glpi_profiles`.`id`";
-            $result = $DB->query($query);
-            // Initialize an empty array to store the results
-            $User_profile = array();
-
-            // Fetch all rows
-            while ($row = $DB->fetchRow($result)) {
-                // Use the 'id' column as the key and 'name' column as the value
-                $User_profile[$row[0]] = $row[1];
-            }
-
-            $emails = iterator_to_array($DB->request([
-               'SELECT' => [
-                  'id',
-                  'is_default',
-                  'email',
-               ],
-               'FROM'   => 'glpi_useremails',
-               'WHERE'  => ['users_id' => $ID]
-            ]));
+            [$User_profile, $emails] = Orm::read($DB, static function (EntityManager $manager) use ($ID): array {
+                $repository = new UserRepository($manager);
+                return [$repository->profiles((int)$ID), $repository->emails((int)$ID)];
+            });
             $emailsValues = [];
             $defaultEmailTitle = __('Default email');
             foreach ($emails as $email) {
@@ -3026,15 +3097,10 @@ class User extends CommonDBTM
 
         if (($key = array_search('name', $this->updates)) !== false) {
             /// Check if user does not exists
-            $iterator = $DB->request([
-               'FROM'   => $this->getTable(),
-               'WHERE'  => [
-                  'name'   => $this->input['name'],
-                  'id'     => ['<>', $this->input['id']]
-               ]
-            ]);
-
-            if (count($iterator)) {
+            if (Orm::read($DB, fn (EntityManager $manager): bool =>
+                (new UserRepository($manager))->exists([
+                    'name' => $this->input['name'], 'id' => ['<>', $this->input['id']],
+                ], true))) {
                 //To display a message
                 $this->fields['name'] = $this->oldvalues['name'];
                 unset($this->updates[$key]);
@@ -3253,7 +3319,7 @@ class User extends CommonDBTM
                 $timezone = $input["timezone"];
                 // Convert empty string to NULL for database storage
                 if ($timezone === '') {
-                    $timezone = 'NULL';
+                    $timezone = null;
                 }
 
                 foreach ($ids as $id) {
@@ -3750,29 +3816,11 @@ class User extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT'          => 'glpi_groups_users.groups_id',
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_groups_users',
-           'INNER JOIN'      => [
-              'glpi_groups'  => [
-                 'FKEY'   => [
-                    'glpi_groups_users'  => 'groups_id',
-                    'glpi_groups'        => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => [
-              'glpi_groups_users.users_id'        => Session::getLoginUserID(),
-              'glpi_groups_users.is_userdelegate' => 1
-           ] + getEntitiesRestrictCriteria('glpi_groups', '', $entities_id, 1)
-        ]);
-
-        $groups = [];
-        while ($data = $iterator->next()) {
-            $groups[$data['groups_id']] = $data['groups_id'];
-        }
-        return $groups;
+        return Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new UserSelectionRepository($manager))->delegatedGroups(
+                (int)Session::getLoginUserID(),
+                getEntitiesRestrictCriteria('glpi_groups', '', $entities_id, 1)
+            ));
     }
 
 
@@ -3790,8 +3838,10 @@ class User extends CommonDBTM
      * @param integer         $start            start LIMIT value (default 0)
      * @param integer         $limit            limit LIMIT value (default -1 no limit)
      * @param boolean         $inactive_deleted true to retreive also inactive or deleted users
+     * @param array           $additionalCriteria structured criteria that further narrow eligible grants/users
+     * @param boolean         $namesOnly        project display names without hydrating complete users
      *
-     * @return mysqli_result|boolean
+     * @return RowIterator
      */
     public static function getSqlSearchResult(
         $count = true,
@@ -3803,7 +3853,9 @@ class User extends CommonDBTM
         $start = 0,
         $limit = -1,
         $inactive_deleted = 0,
-        $with_no_right = 0
+        $with_no_right = 0,
+        array $additionalCriteria = [],
+        bool $namesOnly = false
     ) {
         global $DB;
 
@@ -3815,13 +3867,10 @@ class User extends CommonDBTM
             }
         }
 
-        $joinprofile      = false;
-        $joinprofileright = false;
         $WHERE = [];
 
         switch ($right) {
             case "interface":
-                $joinprofile = true;
                 $WHERE = [
                    'glpi_profiles.interface' => 'central'
                 ] + getEntitiesRestrictCriteria('glpi_profiles_users', '', $entity_restrict, 1);
@@ -3832,75 +3881,18 @@ class User extends CommonDBTM
                 break;
 
             case "delegate":
-                $groups = self::getDelegateGroupsForUser($entity_restrict);
-                $users  = [];
-                if (count($groups)) {
-                    $iterator = $DB->request([
-                       'SELECT'    => 'glpi_users.id',
-                       'FROM'      => 'glpi_groups_users',
-                       'LEFT JOIN' => [
-                          'glpi_users'   => [
-                             'FKEY'   => [
-                                'glpi_groups_users'  => 'users_id',
-                                'glpi_users'         => 'id'
-                             ]
-                          ]
-                       ],
-                       'WHERE'     => [
-                          'glpi_groups_users.groups_id' => $groups,
-                          'glpi_groups_users.users_id'  => ['<>', Session::getLoginUserID()]
-                       ]
-                    ]);
-                    while ($data = $iterator->next()) {
-                        $users[$data["id"]] = $data["id"];
-                    }
-                }
-                // Add me to users list for central
-                if (Session::getCurrentInterface() == 'central') {
-                    $users[Session::getLoginUserID()] = Session::getLoginUserID();
-                }
-
-                if (count($users)) {
-                    $WHERE = ['glpi_users.id' => $users];
-                }
-                break;
-
             case "groups":
-                $groups = [];
-                if (isset($_SESSION['glpigroups'])) {
-                    $groups = $_SESSION['glpigroups'];
-                }
-                $users  = [];
-                if (count($groups)) {
-                    $iterator = $DB->request([
-                       'SELECT'    => 'glpi_users.id',
-                       'FROM'      => 'glpi_groups_users',
-                       'LEFT JOIN' => [
-                          'glpi_users'   => [
-                             'FKEY'   => [
-                                'glpi_groups_users'  => 'users_id',
-                                'glpi_users'         => 'id'
-                             ]
-                          ]
-                       ],
-                       'WHERE'     => [
-                          'glpi_groups_users.groups_id' => $groups,
-                          'glpi_groups_users.users_id'  => ['<>', Session::getLoginUserID()]
-                       ]
-                    ]);
-                    while ($data = $iterator->next()) {
-                        $users[$data["id"]] = $data["id"];
-                    }
-                }
-                // Add me to users list for central
-                if (Session::getCurrentInterface() == 'central') {
+                $groups = $right === 'delegate' ? self::getDelegateGroupsForUser($entity_restrict) : ($_SESSION['glpigroups'] ?? []);
+                $database = $DB;
+                $connection = $database->getDoctrineConnection();
+                OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+                $users = Orm::withReadConnection($connection, static fn (?EntityManager $manager): array =>
+                    (new UserSelectionRepository($manager ?? Orm::forConnection($connection)))->groupMembers($groups, (int)Session::getLoginUserID()));
+                if (Session::getCurrentInterface() === 'central') {
                     $users[Session::getLoginUserID()] = Session::getLoginUserID();
                 }
-
-                if (count($users)) {
-                    $WHERE = ['glpi_users.id' => $users];
-                }
-
+                // No eligible group members must never open an unrestricted selector.
+                $WHERE = $users ? ['glpi_users.id' => $users] : ['OR' => []];
                 break;
 
             case "all":
@@ -3915,8 +3907,6 @@ class User extends CommonDBTM
                 break;
 
             default:
-                $joinprofile = true;
-                $joinprofileright = true;
                 if (!is_array($right)) {
                     $right = [$right];
                 }
@@ -3980,7 +3970,7 @@ class User extends CommonDBTM
                             $ORWHERE[] = [
                                [
                                   'glpi_profilerights.name'     => 'changevalidation',
-                                  'glpi_profilerights.rights'   => ['&', ChangeValidation::CREATE]
+                                  'glpi_profilerights.rights'   => ['&', CREATE]
                                ] + getEntitiesRestrictCriteria('glpi_profiles_users', '', $entity_restrict, 1)
                             ];
                             break;
@@ -4020,140 +4010,41 @@ class User extends CommonDBTM
                     }
                 }
 
-                if (count($ORWHERE)) {
-                    $WHERE[] = ['OR' => $ORWHERE];
-                }
+                $WHERE[] = ['OR' => $ORWHERE];
 
                 if ($forcecentral) {
                     $WHERE['glpi_profiles.interface'] = 'central';
                 }
         }
 
-        if (!$inactive_deleted) {
-            $WHERE = array_merge(
+        // Selection callers can narrow the permission graph without replacing
+        // its profile/grant ownership or fetching unrestricted recipients.
+        if ($additionalCriteria) {
+            $WHERE = ['AND' => [$WHERE, $additionalCriteria]];
+        }
+        $hasSearch = strlen($search ?? '') > 0;
+        $decoded = LegacyValues::decode($search);
+        // Binding removes SQL-string escaping; literal backslashes still need
+        // escaping for the LIKE pattern itself before the text-search wildcards.
+        $pattern = $hasSearch && $decoded !== null ? Search::makeTextSearchValue(str_replace('\\', '\\\\', $decoded)) : null;
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        return Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $WHERE, $count, $used, $pattern, $inactive_deleted, $start, $limit, $hasSearch, $namesOnly): RowIterator {
+            return (new UserSelectionRepository($manager ?? Orm::forConnection($connection)))->search(
                 $WHERE,
-                [
-                  'glpi_users.is_deleted' => 0,
-                  'glpi_users.is_active'  => 1,
-                  [
-                     'OR' => [
-                        ['glpi_users.begin_date' => null],
-                        ['glpi_users.begin_date' => ['<', new QueryExpression('NOW()')]]
-                     ]
-                  ],
-                  [
-                     'OR' => [
-                        ['glpi_users.end_date' => null],
-                        ['glpi_users.end_date' => ['>', new QueryExpression('NOW()')]]
-                     ]
-                  ]
-
-                ]
+                (bool)$count,
+                $used,
+                $pattern,
+                (bool)$inactive_deleted,
+                (int)($_SESSION['glpinames_format'] ?? self::REALNAME_BEFORE) === self::FIRSTNAME_BEFORE,
+                (int)$start,
+                (int)$limit,
+                $hasSearch,
+                $namesOnly
             );
-        }
-
-        if (
-            (is_numeric($value) && $value)
-            || count($used)
-        ) {
-            $WHERE[] = [
-               'NOT' => [
-                  'glpi_users.id' => $used
-               ]
-            ];
-        }
-
-        $criteria = [
-           'FROM'            => 'glpi_users',
-           'LEFT JOIN'       => [
-              'glpi_useremails'       => [
-                 'ON' => [
-                    'glpi_useremails' => 'users_id',
-                    'glpi_users'      => 'id'
-                 ]
-              ],
-              'glpi_profiles_users'   => [
-                 'ON' => [
-                    'glpi_profiles_users'   => 'users_id',
-                    'glpi_users'            => 'id'
-                 ]
-              ]
-           ]
-        ];
-        if ($count) {
-            $criteria['SELECT'] = ['COUNT' => 'glpi_users.id AS CPT'];
-            $criteria['DISTINCT'] = true;
-        } else {
-            $criteria['SELECT'] = 'glpi_users.*';
-            $criteria['DISTINCT'] = true;
-        }
-
-        if ($joinprofile) {
-            $criteria['LEFT JOIN']['glpi_profiles'] = [
-               'ON' => [
-                  'glpi_profiles_users'   => 'profiles_id',
-                  'glpi_profiles'         => 'id'
-               ]
-            ];
-            if ($joinprofileright) {
-                $criteria['LEFT JOIN']['glpi_profilerights'] = [
-                   'ON' => [
-                      'glpi_profilerights' => 'profiles_id',
-                      'glpi_profiles'      => 'id'
-                   ]
-                ];
-            }
-        }
-
-        if (!$count) {
-            if ((strlen($search ?? '') > 0)) {
-                $txt_search = Search::makeTextSearchValue($search);
-
-                $firstname_field = $DB->quoteName(self::getTableField('firstname'));
-                $realname_field = $DB->quoteName(self::getTableField('realname'));
-                $fields = $_SESSION["glpinames_format"] == self::FIRSTNAME_BEFORE
-                   ? [$firstname_field, $realname_field]
-                   : [$realname_field, $firstname_field];
-
-                $concat = new \QueryExpression(
-                    'CONCAT(' . implode(',' . $DB->quoteValue(' ') . ',', $fields) . ')'
-                    . ' LIKE ' . $DB->quoteValue($txt_search)
-                );
-                $WHERE[] = [
-                   'OR' => [
-                      'glpi_users.name'       => ['LIKE', $txt_search],
-                      'glpi_users.realname'   => ['LIKE', $txt_search],
-                      'glpi_users.firstname'  => ['LIKE', $txt_search],
-                      'glpi_users.phone'      => ['LIKE', $txt_search],
-                      'glpi_useremails.email' => ['LIKE', $txt_search],
-                      $concat
-                   ]
-                ];
-            }
-
-            if ($_SESSION["glpinames_format"] == self::FIRSTNAME_BEFORE) {
-                $criteria['ORDERBY'] = [
-                   'glpi_users.firstname',
-                   'glpi_users.realname',
-                   'glpi_users.name'
-                ];
-            } else {
-                $criteria['ORDERBY'] = [
-                   'glpi_users.realname',
-                   'glpi_users.firstname',
-                   'glpi_users.name'
-                ];
-            }
-
-            if ($limit > 0) {
-                $criteria['LIMIT'] = $limit;
-                $criteria['START'] = $start;
-            }
-        }
-        $criteria['WHERE'] = $WHERE;
-        return $DB->request($criteria);
+        });
     }
-
 
     /**
      * Make a select box with all glpi users where select key = name
@@ -4433,36 +4324,28 @@ class User extends CommonDBTM
             !empty($IDs)
             && in_array($authtype, [Auth::DB_GLPI, Auth::LDAP, Auth::MAIL, Auth::EXTERNAL])
         ) {
-            $result = $DB->update(
-                self::getTable(),
-                [
-                  'authtype'        => $authtype,
-                  'auths_id'        => $server,
-                  'password'        => '',
-                  'is_deleted_ldap' => 0
-                ],
-                [
-                  'id' => $IDs
-                ]
-            );
-            if ($result) {
-                foreach ($IDs as $ID) {
-                    $changes = [
-                       0,
-                       '',
-                       addslashes(
-                           sprintf(
-                               __('%1$s: %2$s'),
-                               __('Update authentification method to'),
-                               Auth::getMethodName($authtype, $server)
-                           )
-                       )
-                    ];
-                    Log::history($ID, __CLASS__, $changes, '', Log::HISTORY_LOG_SIMPLE_MESSAGE);
-                }
-
-                return true;
+            try {
+                (new UserRepository(Orm::create($DB)))->changeAuthentication($IDs, (int)$authtype, (int)$server);
+            } catch (Exception $error) {
+                Toolbox::logSqlError($error->getMessage());
+                return false;
             }
+            foreach ($IDs as $ID) {
+                $changes = [
+                   0,
+                   '',
+                   addslashes(
+                       sprintf(
+                           __('%1$s: %2$s'),
+                           __('Update authentification method to'),
+                           Auth::getMethodName($authtype, $server)
+                       )
+                   )
+                ];
+                Log::history($ID, __CLASS__, $changes, '', Log::HISTORY_LOG_SIMPLE_MESSAGE);
+            }
+
+            return true;
         }
         return false;
     }
@@ -4534,29 +4417,13 @@ class User extends CommonDBTM
             $field_group = 'groups_id';
         }
 
-        $group_where = "";
-        $groups      = [];
-
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'glpi_groups_users.groups_id',
-              'glpi_groups.name'
-           ],
-           'FROM'      => 'glpi_groups_users',
-           'LEFT JOIN' => [
-              'glpi_groups' => [
-                 'FKEY' => [
-                    'glpi_groups_users'  => 'groups_id',
-                    'glpi_groups'        => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => ['glpi_groups_users.users_id' => $ID]
-        ]);
+        $repository = new UserItemRepository(Orm::create($DB));
+        $groups = [];
+        $iterator = $repository->groups((int)$ID);
         $number = count($iterator);
 
         $group_where = [];
-        while ($data = $iterator->next()) {
+        foreach ($iterator as $data) {
             $group_where[$field_group][] = $data['groups_id'];
             $groups[$data["groups_id"]] = $data["name"];
         }
@@ -4589,13 +4456,19 @@ class User extends CommonDBTM
                     $iterator_params['WHERE']['is_deleted'] = 0;
                 }
 
-                $item_iterator = $DB->request($iterator_params);
+                $scope = $item->isEntityAssign() ? getEntitiesRestrictCriteria($itemtable, '', '', $item->maybeRecursive()) : [];
+                $item_iterator = UserItemRepository::supports($itemtype)
+                    ? $repository->items($itemtype, $field_user, [(int)$ID], $scope)
+                    : $item->find([$iterator_params['WHERE'], $scope]);
 
                 $type_name = $item->getTypeName();
 
-                while ($data = $item_iterator->next()) {
+                foreach ($item_iterator as $data) {
                     $cansee = $item->can($data["id"], READ);
-                    if (!isset($data["name"])) {
+                    if (!$cansee) {
+                        continue;
+                    }
+                    if (!array_key_exists("name", $data)) {
                         $linked_component = new ($itemtype::getDeviceType())();
                         $linked_component->getFromDB($data[getForeignKeyFieldForItemType($itemtype::getDeviceType())]);
                         $link = $linked_component->fields['designation'] . " (" . $data['id'] . ")";
@@ -4614,10 +4487,9 @@ class User extends CommonDBTM
                         $linktype = self::getTypeName(1);
                     }
                     echo "<tr class='tab_bg_1'><td class='center'>$type_name</td>";
-                    echo "<td class='center'>" . Dropdown::getDropdownName(
-                        "glpi_entities",
-                        $data["entities_id"]
-                    ) . "</td>";
+                    echo "<td class='center'>" . (array_key_exists('_entity_name', $data)
+                        ? htmlspecialchars((string)$data['_entity_name'], ENT_QUOTES, 'UTF-8')
+                        : Dropdown::getDropdownName("glpi_entities", $data["entities_id"])) . "</td>";
                     echo "<td class='center'>$link</td>";
                     echo "<td class='center'>";
                     if (isset($data["serial"]) && !empty($data["serial"])) {
@@ -4633,7 +4505,9 @@ class User extends CommonDBTM
                     }
                     echo "</td><td class='center'>";
                     if (isset($data["states_id"])) {
-                        echo Dropdown::getDropdownName("glpi_states", $data['states_id']);
+                        echo array_key_exists('_state_name', $data)
+                            ? htmlspecialchars((string)$data['_state_name'], ENT_QUOTES, 'UTF-8')
+                            : Dropdown::getDropdownName("glpi_states", $data['states_id']);
                     } else {
                         echo '&nbsp;';
                     }
@@ -4677,13 +4551,19 @@ class User extends CommonDBTM
                         $iterator_params['WHERE']['is_deleted'] = 0;
                     }
 
-                    $group_iterator = $DB->request($iterator_params);
+                    $scope = $item->isEntityAssign() ? getEntitiesRestrictCriteria($itemtable, '', '', $item->maybeRecursive()) : [];
+                    $group_iterator = UserItemRepository::supports($itemtype)
+                        ? $repository->items($itemtype, $field_group, array_keys($groups), $scope)
+                        : $item->find([$iterator_params['WHERE'], $scope]);
 
                     $type_name = $item->getTypeName();
 
-                    while ($data = $group_iterator->next()) {
-                        $nb++;
+                    foreach ($group_iterator as $data) {
                         $cansee = $item->can($data["id"], READ);
+                        if (!$cansee) {
+                            continue;
+                        }
+                        $nb++;
                         $link   = $data["name"];
                         if ($cansee) {
                             $link_item = $item::getFormURLWithID($data['id']);
@@ -4701,10 +4581,9 @@ class User extends CommonDBTM
                             );
                         }
                         echo "<tr class='tab_bg_1'><td class='center'>$type_name</td>";
-                        echo "<td class='center'>" . Dropdown::getDropdownName(
-                            "glpi_entities",
-                            $data["entities_id"]
-                        );
+                        echo "<td class='center'>" . (array_key_exists('_entity_name', $data)
+                            ? htmlspecialchars((string)$data['_entity_name'], ENT_QUOTES, 'UTF-8')
+                            : Dropdown::getDropdownName("glpi_entities", $data["entities_id"]));
                         echo "</td><td class='center'>$link</td>";
                         echo "<td class='center'>";
                         if (isset($data["serial"]) && !empty($data["serial"])) {
@@ -4720,7 +4599,9 @@ class User extends CommonDBTM
                         }
                         echo "</td><td class='center'>";
                         if (isset($data["states_id"])) {
-                            echo Dropdown::getDropdownName("glpi_states", $data['states_id']);
+                            echo array_key_exists('_state_name', $data)
+                            ? htmlspecialchars((string)$data['_state_name'], ENT_QUOTES, 'UTF-8')
+                            : Dropdown::getDropdownName("glpi_states", $data['states_id']);
                         } else {
                             echo '&nbsp;';
                         }
@@ -4748,27 +4629,10 @@ class User extends CommonDBTM
     {
         global $DB, $CFG_GLPI;
 
-        $iterator = $DB->request([
-           'SELECT'    => 'users_id AS id',
-           'FROM'      => 'glpi_useremails',
-           'LEFT JOIN' => [
-              'glpi_users' => [
-                 'FKEY' => [
-                    'glpi_useremails' => 'users_id',
-                    'glpi_users'      => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_useremails.email' => $DB->escape(stripslashes($email))
-           ],
-           'ORDER'     => ['glpi_users.is_active DESC', 'is_deleted ASC']
-        ]);
-
-        //User still exists in DB
-        if (count($iterator)) {
-            $result = $iterator->next();
-            return $result['id'];
+        $id = Orm::read($DB, static fn (EntityManager $manager): ?int =>
+            (new UserRepository($manager))->preferredByEmail(stripslashes($email)));
+        if ($id !== null) {
+            return $id;
         } else {
             if ($CFG_GLPI["is_users_auto_add"]) {
                 //Get all ldap servers with email field configured
@@ -4876,7 +4740,15 @@ class User extends CommonDBTM
      */
     public static function getIdByName($name)
     {
-        return self::getIdByField('name', $name);
+        global $DB;
+
+        if (!is_string($name)) {
+            return self::getIdByField('name', $name);
+        }
+        return Orm::read($DB, static function (EntityManager $manager) use ($name): ?int {
+            $ids = (new UserRepository($manager))->loginIdentities(LegacyValues::decodeString(addslashes($name)));
+            return count($ids) === 1 ? $ids[0] : null;
+        }) ?? false;
     }
 
 
@@ -4894,21 +4766,8 @@ class User extends CommonDBTM
     {
         global $DB;
 
-        if ($escape) {
-            $value = addslashes($value);
-        }
-
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [$field => $value]
-        ]);
-
-        if (count($iterator) == 1) {
-            $row = $iterator->next();
-            return (int)$row['id'];
-        }
-        return false;
+        return Orm::read($DB, static fn (EntityManager $manager): ?int =>
+            (new UserRepository($manager))->uniqueId((string)$field, $escape ? addslashes($value) : $value, true)) ?? false;
     }
 
 
@@ -5238,29 +5097,18 @@ class User extends CommonDBTM
      */
     public function forgetPassword(string $email): bool
     {
-        $condition = [
-           'glpi_users.is_active'  => 1,
-           'glpi_users.is_deleted' => 0, [
-              'OR' => [
-                 ['glpi_users.begin_date' => null],
-                 ['glpi_users.begin_date' => ['<', new QueryExpression('NOW()')]]
-              ],
-           ], [
-              'OR'  => [
-                 ['glpi_users.end_date'   => null],
-                 ['glpi_users.end_date'   => ['>', new QueryExpression('NOW()')]]
-              ]
-           ]
-        ];
+        global $DB;
 
         // Randomly increase the response time to prevent an attacker to be able to detect whether
         // a notification was sent (a longer response time could correspond to a SMTP operation).
         sleep(rand(1, 3));
 
 
-        // Try to find a single user matching the given email
-        if (!$this->getFromDBbyEmail($email, $condition)) {
-            $count = self::countUsersByEmail($email, $condition);
+        // Try to find one currently active account using the database clock.
+        $ids = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new UserSelectionRepository($manager))->byEmail($email, [], activeOnly: true));
+        if (count($ids) !== 1 || !$this->getFromDB($ids[0])) {
+            $count = count($ids);
             trigger_error(
                 "Failed to find a single user for '$email', $count user(s) found.",
                 E_USER_WARNING
@@ -5390,19 +5238,13 @@ class User extends CommonDBTM
     {
         global $DB;
 
-        $ok = false;
-        do {
-            $key    = Toolbox::getRandomString(40);
-            $row = $DB->request([
-               'COUNT'  => 'cpt',
-               'FROM'   => self::getTable(),
-               'WHERE'  => [$field => $key]
-            ])->next();
-
-            if ($row['cpt'] == 0) {
-                return $key;
-            }
-        } while (!$ok);
+        return Orm::read($DB, static function (EntityManager $manager) use ($field): string {
+            $repository = new UserRepository($manager);
+            do {
+                $key = Toolbox::getRandomString(40);
+            } while ($repository->exists([$field => $key]));
+            return $key;
+        });
     }
 
 
@@ -5437,20 +5279,22 @@ class User extends CommonDBTM
      */
     public function getAuthToken($field = 'personal_token', $force_new = false)
     {
-        global $CFG_GLPI;
+        global $CFG_GLPI, $DB;
 
         if ($this->isNewItem()) {
             return false;
         }
 
-        // check date validity for cookie token
+        // Expiry matters only when reusing an existing cookie token. Forced
+        // rotation and an absent token must not parse a nullable timestamp.
         $outdated = false;
-        if ($field === 'cookie_token') {
-            $date_create = new DateTime($this->fields[$field . "_date"]);
-            $date_expir  = $date_create->add(new DateInterval('PT' . $CFG_GLPI["login_remember_time"] . 'S'));
-
-            if ($date_expir < new DateTime()) {
+        if ($field === 'cookie_token' && !$force_new && !empty($this->fields[$field])) {
+            if (empty($this->fields[$field . '_date'])) {
                 $outdated = true;
+            } else {
+                $date_create = new DateTime($this->fields[$field . '_date']);
+                $date_expir = $date_create->add(new DateInterval('PT' . $CFG_GLPI['login_remember_time'] . 'S'));
+                $outdated = $date_expir < new DateTime();
             }
         }
 
@@ -5468,10 +5312,31 @@ class User extends CommonDBTM
             $hash = Auth::getPasswordHash($token);
         }
 
+        // Capture the requested outcome before public hooks can change input.
+        $issuedAt = $_SESSION['glpi_currenttime'];
+        $cookieIssuedAt = $field === 'cookie_token' ? new DateTimeImmutable($issuedAt) : null;
+
         // save this token in db
-        $this->update(['id'             => $this->getID(),
+        if (!$this->update(['id'        => $this->getID(),
                        $field           => $hash,
-                       $field . "_date" => $_SESSION['glpi_currenttime']]);
+                       $field . "_date" => $issuedAt])) {
+            return false;
+        }
+        // User preparation can remove protected fields, and public hooks may
+        // alter persistence. Verify the stored value on the supplied writer;
+        // a mutable model field is not evidence of an accepted credential.
+        $accepted = Orm::read($DB, function (EntityManager $manager) use ($cookieIssuedAt, $hash, $field): bool {
+            $repository = new UserRepository($manager);
+            // The real cookie consumer also requires its timestamp. Preserve
+            // accepted hook mutations/history, but issue no raw credential if
+            // either persisted part differs from the requested outcome.
+            return $cookieIssuedAt !== null
+                ? ($repository->cookieCredential((int)$this->getID())?->matchesRequested($hash, $cookieIssuedAt) ?? false)
+                : $repository->tokenValue((int)$this->getID(), $field) === $hash;
+        });
+        if (!$accepted) {
+            return false;
+        }
 
         return $token;
     }
@@ -5492,12 +5357,9 @@ class User extends CommonDBTM
                            'post-only' => 'postonly'];
         $default_password_set = [];
 
-        $crit = ['FIELDS'     => ['name', 'password'],
-                      'is_active'  => 1,
-                      'is_deleted' => 0,
-                      'name'       => array_keys($passwords)];
-
-        foreach ($DB->request('glpi_users', $crit) as $data) {
+        $candidates = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new UserRepository($manager))->defaultPasswordCandidates(array_keys($passwords)));
+        foreach ($candidates as $data) {
             if (Auth::checkPassword($passwords[strtolower((string) $data['name'])], $data['password'])) {
                 $default_password_set[] = $data['name'];
             }
@@ -5709,11 +5571,9 @@ class User extends CommonDBTM
      */
     private function getEntities()
     {
-        //get user entities
-        if ($this->entities == null) {
-            $this->entities = Profile_User::getUserEntities($this->fields['id'], true);
-        }
-        return $this->entities;
+        // The model can change identity, and item_can hooks can change grants
+        // without reloading it. Permission checks must use current ownership.
+        return Profile_User::getUserEntities($this->fields['id'], true);
     }
 
 
@@ -5765,61 +5625,15 @@ class User extends CommonDBTM
         // Notify users about expiration of their password.
         $to_notify_count = 0;
         if (-1 !== $notice_time) {
-            $notification_request = [
-               'FROM'      => self::getTable(),
-               'LEFT JOIN' => [
-                  Alert::getTable() => [
-                     'ON' => [
-                        Alert::getTable() => 'items_id',
-                        self::getTable()  => 'id',
-                        [
-                           'AND' => [
-                              Alert::getTableField('itemtype') => self::getType(),
-                           ]
-                        ],
-                     ]
-                  ]
-               ],
-               'WHERE'     => [
-                  self::getTableField('is_deleted') => 0,
-                  self::getTableField('is_active')  => 1,
-                  self::getTableField('authtype')   => Auth::DB_GLPI,
-                  new QueryExpression(
-                      sprintf(
-                          'NOW() > ADDDATE(%s, INTERVAL %s DAY)',
-                          $DB->quoteName(self::getTableField('password_last_update')),
-                          $expiration_delay - $notice_time
-                      )
-                  ),
-                  // Get only users that has not yet been notified within last day
-                  'OR'                              => [
-                     [Alert::getTableField('date') => null],
-                     [Alert::getTableField('date') => ['<', new QueryExpression('CURRENT_TIMESTAMP() - INTERVAL 1 day')]],
-                  ],
-               ],
-            ];
+            [$to_notify_count, $notifications] = Orm::read($DB, static function (EntityManager $manager) use ($expiration_delay, $notice_time, $notification_limit): array {
+                $repository = new UserPasswordRepository($manager);
+                return [
+                    $repository->noticeCount($expiration_delay - $notice_time),
+                    $repository->notices($expiration_delay - $notice_time, $notification_limit),
+                ];
+            });
 
-            $to_notify_count_request = array_merge(
-                $notification_request,
-                [
-                  'COUNT'  => 'cpt',
-                ]
-            );
-            $to_notify_count = $DB->request($to_notify_count_request)->next()['cpt'];
-
-            $notification_data_request  = array_merge(
-                $notification_request,
-                [
-                  'SELECT'    => [
-                     self::getTableField('id as user_id'),
-                     Alert::getTableField('id as alert_id'),
-                  ],
-                  'LIMIT'     => $notification_limit,
-                ]
-            );
-            $notification_data_iterator = $DB->request($notification_data_request);
-
-            foreach ($notification_data_iterator as $notification_data) {
+            foreach ($notifications as $notification_data) {
                 $user_id  = $notification_data['user_id'];
                 $alert_id = $notification_data['alert_id'];
 
@@ -5857,27 +5671,7 @@ class User extends CommonDBTM
 
         // Disable users if their password has expire for too long.
         if (-1 !== $lock_delay) {
-            $DB->update(
-                self::getTable(),
-                [
-                  'is_active'         => 0,
-                  'cookie_token'      => null,
-                  'cookie_token_date' => null,
-                ],
-                [
-                  'is_deleted' => 0,
-                  'is_active'  => 1,
-                  'authtype'   => Auth::DB_GLPI,
-                  new QueryExpression(
-                      sprintf(
-                          'NOW() > ADDDATE(ADDDATE(%s, INTERVAL %d DAY), INTERVAL %s DAY)',
-                          $DB->quoteName(self::getTableField('password_last_update')),
-                          $expiration_delay,
-                          $lock_delay
-                      )
-                  ),
-                ]
-            );
+            (new UserPasswordRepository(Orm::create($DB)))->disableExpired($expiration_delay + $lock_delay);
         }
 
         return -1 !== $notice_time && $to_notify_count > $notification_limit
@@ -6048,27 +5842,14 @@ class User extends CommonDBTM
 
         // Find users which match the given token and asked for a password reset
         // less than one day ago
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'password_forget_token'       => $token,
-              new \QueryExpression('NOW() < ADDDATE(' . $DB->quoteName('password_forget_token_date') . ', INTERVAL 1 DAY)')
-           ]
-        ]);
-
-        // Check that we found exactly one user
-        if (count($iterator) !== 1) {
+        $id = Orm::read($DB, static fn (EntityManager $manager): ?int =>
+            (new UserPasswordRepository($manager))->forgottenTokenUser($token));
+        if ($id === null) {
             return null;
         }
 
-        // Get first row, should use current() when updated to GLPI 10
-        $data = iterator_to_array($iterator);
-        $data = array_pop($data);
-
-        // Try to load the user
         $user = new self();
-        if (!$user->getFromDB($data['id'])) {
+        if (!$user->getFromDB($id)) {
             return null;
         }
 

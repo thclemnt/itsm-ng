@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
 * */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NetworkNameRepository;
+use itsmng\Reporting\Criteria;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -63,6 +68,14 @@ class NetworkName extends FQDNLabel
 
     public static $rightname                   = 'internet';
 
+
+    /** Cloned DNS labels retain the ordinary uniqueness loop without invalid punctuation. */
+    public function computeCloneName(string $current_name, int $copy_index): string
+    {
+        $suffix = $copy_index === 1 ? 'copy' : 'copy-' . $copy_index;
+        $prefix = rtrim(substr($current_name, 0, 62 - strlen($suffix)), '-');
+        return ($prefix === '' ? '' : $prefix . '-') . $suffix;
+    }
 
     public static function getTypeName($nb = 0)
     {
@@ -160,11 +173,7 @@ class NetworkName extends FQDNLabel
                            return {values, title};
                         }
                      JS,
-                       'values' => getOptionsWithNameForItem(
-                           'IpAddress',
-                           ['itemtype' => $this::class, 'items_id' => $this->getID()],
-                           ['_ipaddresses' => 'name']
-                       ),
+                       'values' => IPAddress::getFormOptions($this::class, $this->getID()),
                     ],
                     __('Comments') => [
                        'name' => 'comment',
@@ -244,7 +253,7 @@ class NetworkName extends FQDNLabel
            'massiveaction'      => false,
            'joinparams'         => [
               'jointype'  => 'mainitemtype_mainitem',
-              'condition' => 'AND NEWTABLE.`is_deleted` = 0'
+              'condition' => 'AND NEWTABLE.`is_deleted` = \'0\''
            ]
         ];
 
@@ -320,8 +329,6 @@ class NetworkName extends FQDNLabel
 
     public function post_updateItem($history = 1)
     {
-        global $DB;
-
         $this->post_workOnItem();
         if (count($this->updates)) {
             // Update Ticket Tco
@@ -331,13 +338,7 @@ class NetworkName extends FQDNLabel
             ) {
                 $ip = new IPAddress();
                 // Update IPAddress
-                foreach (
-                    $DB->request(
-                        'glpi_ipaddresses',
-                        ['itemtype' => 'NetworkName',
-                                            'items_id' => $this->getID()]
-                    ) as $data
-                ) {
+                foreach ($ip->find(['itemtype' => 'NetworkName', 'items_id' => $this->getID()]) as $data) {
                     $ip->update(['id'       => $data['id'],
                                       'itemtype' => 'NetworkName',
                                       'items_id' => $this->getID()]);
@@ -370,19 +371,8 @@ class NetworkName extends FQDNLabel
     **/
     public static function unaffectAddressesOfItem($items_id, $itemtype)
     {
-        global $DB;
-
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'itemtype'  => $itemtype,
-              'items_id'  => $items_id
-           ]
-        ]);
-
-        while ($networkNameID = $iterator->next()) {
-            self::unaffectAddressByID($networkNameID['id']);
+        foreach ((new self())->findIds(['itemtype' => $itemtype, 'items_id' => $items_id]) as $id) {
+            self::unaffectAddressByID($id);
         }
     }
 
@@ -441,21 +431,11 @@ class NetworkName extends FQDNLabel
     **/
     public static function showFormForNetworkPort($networkPortID)
     {
-        global $DB;
-
         $name         = new self();
 
         if ($networkPortID > 0) {
-            $iterator = $DB->request([
-               'SELECT' => 'id',
-               'FROM'   => $name->getTable(),
-               'WHERE'  => [
-                  'itemtype'     => 'NetworkPort',
-                  'items_id'     => $networkPortID,
-                  'is_deleted'   => 0
-               ]
-            ]);
-            $numrows = count($iterator);
+            $rows = $name->find(['itemtype' => 'NetworkPort', 'items_id' => $networkPortID, 'is_deleted' => 0], 'id');
+            $numrows = count($rows);
 
             if ($numrows > 1) {
                 // echo "<tr class='tab_bg_1'><th colspan='4'>" .
@@ -466,7 +446,7 @@ class NetworkName extends FQDNLabel
 
             switch ($numrows) {
                 case 1:
-                    $result = $iterator->next();
+                    $result = reset($rows);
                     $name->getFromDB($result['id']);
                     break;
 
@@ -525,11 +505,7 @@ class NetworkName extends FQDNLabel
                         return {values, title};
                      }
                   JS,
-                    'values' => getOptionsWithNameForItem(
-                        'IpAddress',
-                        ['itemtype' => self::class, 'items_id' => $name->getID()],
-                        ['NetworkName__ipaddresses' => 'name']
-                    ),
+                    'values' => IPAddress::getFormOptions(self::class, $name->getID(), 'NetworkName__ipaddresses'),
                  ],
               ],
            ]
@@ -616,109 +592,25 @@ class NetworkName extends FQDNLabel
             $item = $father->getItem();
         }
 
-        $table = static::getTable();
-        $criteria = [
-           'SELECT' => [
-              "$table.id"
-           ],
-           'FROM'   => $table,
-           'WHERE'  => []
-        ];
-
-        switch ($item->getType()) {
-            case 'FQDN':
-                $criteria['ORDERBY'] = "$table.name";
-
-                if (isset($options['order'])) {
-                    switch ($options['order']) {
-                        case 'name':
-                            break;
-
-                        case 'ip':
-                            $criteria['LEFT JOIN'] = [
-                               'glpi_ipaddresses'   => [
-                                  'glpi_ipaddresses'   => 'items_id',
-                                  $table               => 'id', [
-                                     'AND' => [
-                                        'glpi_ipaddresses.itemtype'   => self::getType(),
-                                        'glpi_ipaddresses.is_deleted' => 0
-                                     ]
-                                  ]
-                               ]
-                            ];
-                            $criteria['ORDERBY'] = [
-                               new QueryExpression("ISNULL (" . $DB->quoteName('glpi_ipaddresses.id') . ")"),
-                               'glpi_ipaddresses.binary_3',
-                               'glpi_ipaddresses.binary_2',
-                               'glpi_ipaddresses.binary_1',
-                               'glpi_ipaddresses.binary_0'
-                            ];
-                            break;
-
-                        case 'alias':
-                            $criteria['LEFT JOIN'] = [
-                               'glpi_networkaliases'   => [
-                                  'ON'  => [
-                                     'glpi_networkaliases'   => 'networknames_id',
-                                     $table                  => 'id'
-                                  ]
-                               ]
-                            ];
-                            $criteria['ORDERBY'] = [
-                               new QueryExpression("ISNULL (" . $DB->quoteName('glpi_networkaliases.name') . ")"),
-                               'glpi_networkaliases.name'
-                            ];
-                            break;
-                    }
-                }
-
-                $criteria['WHERE'] = [
-                   "$table.fqdns_id"    => $item->fields['id'],
-                   "$table.is_deleted"  => 0
-                ];
-                break;
-
-            case 'NetworkPort':
-                $criteria['WHERE'] = [
-                   'itemtype'     => $item->getType(),
-                   'items_id'     => $item->getID(),
-                   'is_deleted'   => 0
-                ];
-                break;
-
-            case 'NetworkEquipment':
-                $criteria['INNER JOIN'] = [
-                   'glpi_networkports'  => [
-                      'ON'  => [
-                         'glpi_networkports'  => 'id',
-                         $table               => 'items_id', [
-                            'AND' => [
-                               "$table.itemtype"    => 'NetworkPort',
-                               "$table.is_deleted"  => 0
-                            ]
-                         ]
-                      ]
-                   ]
-                ];
-                $criteria['WHERE'] = [
-                   'glpi_networkports.itemtype'  => $item->getType(),
-                   'glpi_networkports.items_id'  => $item->getID()
-                ];
-                break;
-        }
-
-        if (isset($options['SQL_options'])) {
-            $criteria = array_merge($criteria, $options['SQL_options']);
-        }
-
         $canedit              = (isset($options['canedit']) && $options['canedit']);
         $createRow            = (isset($options['createRow']) && $options['createRow']);
         $options['createRow'] = false;
         $address              = new self();
 
-        $iterator = $DB->request($criteria);
-        while ($line = $iterator->next()) {
-            if ($address->getFromDB($line["id"])) {
+        $ids = Orm::read(
+            $DB,
+            static fn (EntityManager $manager): array => (new NetworkNameRepository($manager))
+                ->identifiersForItem(
+                    $item->getType(),
+                    (int)$item->getID(),
+                    $options['order'] ?? 'name',
+                    isset($options['limit']) ? (int)$options['limit'] : null,
+                    (int)($options['offset'] ?? 0),
+                    Criteria::entities()
+                )
+        );
+        foreach ($ids as $id) {
+            if ($address->getFromDB($id)) {
                 if ($createRow) {
                     $row = $row->createAnotherRow();
                 }
@@ -728,13 +620,13 @@ class NetworkName extends FQDNLabel
                     && $options['massiveactionnetworkname']
                 ) {
                     $header      = $row->getGroup()->getHeaderByName('Internet', 'delete');
-                    $cell_value  = Html::getMassiveActionCheckBox(__CLASS__, $line["id"]);
+                    $cell_value  = Html::getMassiveActionCheckBox(__CLASS__, $id);
                     $row->addCell($header, $cell_value, $father);
                 }
 
                 $internetName = $address->getInternetName();
                 if (empty($internetName)) {
-                    $internetName = "(" . $line["id"] . ")";
+                    $internetName = "(" . $id . ")";
                 }
                 $content  = $internetName;
                 if (Session::haveRight('internet', READ)) {
@@ -853,10 +745,8 @@ class NetworkName extends FQDNLabel
                                                              => 'javascript:reloadTab("order=ip");'];
             }
 
-            $table_options['SQL_options']  = [
-               'LIMIT'  => $_SESSION['glpilist_limit'],
-               'START'  => $start
-            ];
+            $table_options['limit'] = $_SESSION['glpilist_limit'];
+            $table_options['offset'] = $start;
 
             $canedit = false;
         } else {
@@ -943,48 +833,11 @@ class NetworkName extends FQDNLabel
     {
         global $DB;
 
-        switch ($item->getType()) {
-            case 'FQDN':
-                return countElementsInTable(
-                    'glpi_networknames',
-                    ['fqdns_id'   => $item->fields["id"],
-                                             'is_deleted' => 0 ]
-                );
-
-            case 'NetworkPort':
-                return countElementsInTable(
-                    'glpi_networknames',
-                    ['itemtype'   => $item->getType(),
-                                            'items_id'   => $item->getID(),
-                                            'is_deleted' => 0 ]
-                );
-
-            case 'NetworkEquipment':
-                $result = $DB->request([
-                   'SELECT'          => ['COUNT DISTINCT' => 'glpi_networknames.id AS cpt'],
-                   'FROM'            => 'glpi_networknames',
-                   'INNER JOIN'       => [
-                      'glpi_networkports'  => [
-                         'ON' => [
-                            'glpi_networknames'  => 'items_id',
-                            'glpi_networkports'  => 'id', [
-                               'AND' => [
-                                  'glpi_networknames.itemtype' => 'NetworkPort'
-                               ]
-                            ]
-                         ]
-                      ]
-                   ],
-                   'WHERE'           => [
-                      'glpi_networkports.itemtype'     => $item->getType(),
-                      'glpi_networkports.items_id'     => $item->getID(),
-                      'glpi_networkports.is_deleted'   => 0,
-                      'glpi_networknames.is_deleted'   => 0
-                   ]
-                ])->next();
-
-                return (int)$result['cpt'];
-        }
+        return Orm::read(
+            $DB,
+            static fn (EntityManager $manager): int => (new NetworkNameRepository($manager))
+                ->countForItem($item->getType(), (int)$item->getID(), Criteria::entities())
+        );
     }
 
 

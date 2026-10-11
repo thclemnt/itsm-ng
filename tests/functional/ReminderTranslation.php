@@ -34,6 +34,16 @@
 namespace tests\units;
 
 use DbTestCase;
+use Closure;
+use RuntimeException;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
+use ReflectionProperty;
+use Reminder as LegacyReminder;
+use ReminderTranslation as LegacyReminderTranslation;
+use itsmng\Database\Entity\Reminder as ReminderEntity;
+use itsmng\Database\Entity\ReminderTranslation as ReminderTranslationEntity;
+use itsmng\Database\Orm;
 
 /* Test for inc/ReminderTranslation.class.php */
 
@@ -42,6 +52,123 @@ use DbTestCase;
  */
 class ReminderTranslation extends DbTestCase
 {
+    public function testTranslationReadsMaterializeValuesWithoutClearingCaller(): void
+    {
+        global $DB;
+        $manager = Orm::create($DB);
+        $connection = $manager->getConnection();
+        $depth = $connection->getTransactionNestingLevel();
+        try {
+            $parent = new ReminderEntity();
+            $parent->name = 'Scoped translation parent';
+            $empty = new ReminderEntity();
+            $nullParent = new ReminderEntity();
+            foreach ([$parent, $empty, $nullParent] as $owner) {
+                $manager->persist($owner);
+            }
+            $translations = [];
+            foreach (['fr_FR', 'fr_FR', 'de_DE', '0', '01', null, ''] as $language) {
+                $translation = new ReminderTranslationEntity();
+                $translation->reminders = $parent;
+                $translation->language = $language;
+                $manager->persist($translation);
+                $translations[] = $translation;
+            }
+            $nullable = new ReminderTranslationEntity();
+            $nullable->reminders = $nullParent;
+            $manager->persist($nullable);
+            $manager->flush();
+            $item = new LegacyReminder();
+            $item->fields['id'] = $parent->id;
+            $emptyItem = new LegacyReminder();
+            $emptyItem->fields['id'] = $empty->id;
+            $nullItem = new LegacyReminder();
+            $nullItem->fields['id'] = $nullParent->id;
+            $this->integer(LegacyReminderTranslation::getNumberOfTranslationsForItem($item))->isIdenticalTo(7);
+            $snapshot = LegacyReminderTranslation::getAlreadyTranslatedForItem($item);
+            $languages = $connection->fetchFirstColumn(
+                'SELECT DISTINCT language FROM glpi_remindertranslations WHERE reminders_id = ? ORDER BY language',
+                [$parent->id],
+                [Types::BIGINT]
+            );
+            $this->array($snapshot)->isIdenticalTo(array_combine($languages, $languages));
+            $this->integer(LegacyReminderTranslation::getNumberOfTranslationsForItem($emptyItem))->isIdenticalTo(0);
+            $this->array(LegacyReminderTranslation::getAlreadyTranslatedForItem($emptyItem))->isEmpty();
+            $this->array(LegacyReminderTranslation::getAlreadyTranslatedForItem($nullItem))->isIdenticalTo(['' => null]);
+
+            $this->integer($connection->update(
+                'glpi_remindertranslations',
+                ['language' => 'es_ES'],
+                ['id' => $translations[0]->id],
+                ['language' => Types::STRING, 'id' => Types::BIGINT]
+            ))->isIdenticalTo(1);
+            $creations = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $before = $creations->getValue();
+            for ($repeat = 0; $repeat < 2; ++$repeat) {
+                $this->integer(LegacyReminderTranslation::getNumberOfTranslationsForItem($item))->isIdenticalTo(7);
+                $current = LegacyReminderTranslation::getAlreadyTranslatedForItem($item);
+                $this->string($current['es_ES'])->isIdenticalTo('es_ES');
+                $this->string($current['fr_FR'])->isIdenticalTo('fr_FR');
+            }
+            $this->integer($creations->getValue())->isIdenticalTo($before);
+            $this->boolean(array_key_exists('es_ES', $snapshot))->isFalse();
+            $this->boolean($manager->contains($translations[0]))->isTrue();
+            $this->string($translations[0]->language)->isIdenticalTo('fr_FR');
+            $this->boolean($manager->contains($parent))->isTrue();
+
+            $active = new ReflectionProperty($connection, 'applicationEntityManagerActive');
+            $probe = new class ($parent->id, function () use ($active, $connection): void {
+                $this->boolean($active->getValue($connection))->isFalse('Model getID runs before the reusable scope');
+            }) {
+                public int $calls = 0;
+                public function __construct(private int $id, private Closure $probe)
+                {
+                }
+                public function getID(): string
+                {
+                    ++$this->calls;
+                    ($this->probe)();
+                    return $this->id . '.75';
+                }
+            };
+            $this->integer(LegacyReminderTranslation::getNumberOfTranslationsForItem($probe))->isIdenticalTo(7);
+            $this->string(LegacyReminderTranslation::getAlreadyTranslatedForItem($probe)['es_ES'])->isIdenticalTo('es_ES');
+            $this->integer($probe->calls)->isIdenticalTo(2);
+            $this->integer($creations->getValue())->isIdenticalTo($before);
+            $failure = new RuntimeException('Translation model identity failure');
+            $invalid = new class ($failure) {
+                public function __construct(private RuntimeException $failure)
+                {
+                }
+                public function getID(): never
+                {
+                    throw $this->failure;
+                }
+            };
+            foreach (['getNumberOfTranslationsForItem', 'getAlreadyTranslatedForItem'] as $method) {
+                $caught = null;
+                try {
+                    LegacyReminderTranslation::$method($invalid);
+                } catch (RuntimeException $error) {
+                    $caught = $error;
+                }
+                $this->boolean($caught === $failure)->isTrue();
+                $this->boolean($active->getValue($connection))->isFalse();
+            }
+            $this->integer($creations->getValue())->isIdenticalTo($before);
+            Orm::read($DB, function (EntityManager $outer) use ($parent, $item): void {
+                $reference = $outer->getReference(ReminderEntity::class, $parent->id);
+                $this->integer(LegacyReminderTranslation::getNumberOfTranslationsForItem($item))->isIdenticalTo(7);
+                $this->string(LegacyReminderTranslation::getAlreadyTranslatedForItem($item)['es_ES'])->isIdenticalTo('es_ES');
+                $this->boolean($outer->contains($reference))->isTrue();
+            });
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+            $this->boolean($manager->contains($parent))->isTrue();
+        } finally {
+            $manager->clear();
+        }
+    }
+
     public function testGetTranslationForReminder()
     {
 

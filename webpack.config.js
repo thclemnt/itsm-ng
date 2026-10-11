@@ -168,9 +168,14 @@ const libsConfig = {
   plugins: [
     new CleanWebpackPlugin(),
     new MiniCssExtractPlugin({ filename: '[name].css' }),
+    new webpack.ProvidePlugin({ Buffer: ['buffer', 'Buffer'] }),
   ],
   resolve: {
     mainFields: ['main'],
+    alias: {
+      'process$': require.resolve('process/browser'),
+      'process/$': require.resolve('process/browser'),
+    },
     fallback: {
       tty: require.resolve('tty-browserify'),
       stream: require.resolve('stream-browserify'),

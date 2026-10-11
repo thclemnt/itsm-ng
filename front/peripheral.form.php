@@ -117,15 +117,16 @@ if (isset($_POST["add"])) {
 } elseif (isset($_POST["unglobalize"])) {
     $peripheral->check($_POST["id"], UPDATE);
 
-    Computer_Item::unglobalizeItem($peripheral);
-    Event::log(
-        $_POST["id"],
-        "peripherals",
-        4,
-        "inventory",
-        //TRANS: %s is the user login
-        sprintf(__('%s sets unitary management'), $_SESSION["glpiname"])
-    );
+    if (Computer_Item::unglobalizeItem($peripheral)) {
+        Event::log(
+            $_POST["id"],
+            "peripherals",
+            4,
+            "inventory",
+            //TRANS: %s is the user login
+            sprintf(__('%s sets unitary management'), $_SESSION["glpiname"])
+        );
+    }
 
     Html::redirect($peripheral->getFormURLWithID($_POST["id"]));
 } else {

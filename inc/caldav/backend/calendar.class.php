@@ -37,17 +37,30 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use CommonDBTM;
+use DateTime as PhpDateTime;
 use Glpi\CalDAV\Contracts\CalDAVCompatibleItemInterface;
 use Glpi\CalDAV\Node\Property;
 use Glpi\CalDAV\Traits\CalDAVUriUtilTrait;
+use Group;
+use Html;
+use Planning;
+use PlanningExternalEvent;
 use Ramsey\Uuid\Uuid;
 use Sabre\CalDAV\Backend\AbstractBackend;
 use Sabre\CalDAV\Xml\Property\SupportedCalendarComponentSet;
+use Sabre\DAV\Exception;
+use Sabre\DAV\Exception\NotFound;
+use Sabre\DAV\Exception\NotImplemented;
 use Sabre\DAV\Xml\Property\ResourceType;
 use Sabre\VObject\Component\VCalendar;
 use Sabre\VObject\Property\FlatText;
 use Sabre\VObject\Property\ICalendar\DateTime;
 use Sabre\VObject\Reader;
+use Session;
+use Toolbox;
+use User;
+use VObject;
 
 /**
  * Calendar backend for CalDAV server.
@@ -76,7 +89,7 @@ class Calendar extends AbstractBackend
             return [];
         }
 
-        $principal_calendar_key = \Planning::getPlanningKeyForActor(
+        $principal_calendar_key = Planning::getPlanningKeyForActor(
             $principal_item->getType(),
             $principal_item->fields['id']
         );
@@ -93,7 +106,7 @@ class Calendar extends AbstractBackend
            ]
         ];
 
-        if ($principal_item instanceof \User) {
+        if ($principal_item instanceof User) {
             $user_params = importArrayFromDB($principal_item->fields['plannings']);
             $user_calendars = is_array($user_params) && array_key_exists('plannings', $user_params)
                ? $user_params['plannings']
@@ -108,10 +121,10 @@ class Calendar extends AbstractBackend
                     continue; // Ignore 'group_users' plannings
                 }
 
-                $item_type = \Planning::getActorTypeFromPlanningKey($key);
-                $item_id   = \Planning::getActorIdFromPlanningKey($key);
+                $item_type = Planning::getActorTypeFromPlanningKey($key);
+                $item_id   = Planning::getActorIdFromPlanningKey($key);
 
-                if (null === $item_type || !is_a($item_type, \CommonDBTM::class, true) || null === $item_id) {
+                if (null === $item_type || !is_a($item_type, CommonDBTM::class, true) || null === $item_id) {
                     continue;
                 }
                 $calendar_principal = new $item_type();
@@ -121,7 +134,7 @@ class Calendar extends AbstractBackend
 
                 $calendars_params[$key] = [
                    'key'          => $key,
-                   'uri'          => \User::class === get_class($calendar_principal)
+                   'uri'          => User::class === get_class($calendar_principal)
                       ? $calendar_principal->fields['name']
                       : $key,
                    'principaluri' => $this->getPrincipalUri($calendar_principal),
@@ -155,12 +168,12 @@ class Calendar extends AbstractBackend
 
     public function createCalendar($principalPath, $calendarPath, array $properties)
     {
-        throw new \Sabre\DAV\Exception\NotImplemented('Calendar creation is not implemented');
+        throw new NotImplemented('Calendar creation is not implemented');
     }
 
     public function deleteCalendar($calendarId)
     {
-        throw new \Sabre\DAV\Exception\NotImplemented('Calendar deletion is not implemented');
+        throw new NotImplemented('Calendar deletion is not implemented');
     }
 
     public function getCalendarObjects($calendarId)
@@ -168,15 +181,15 @@ class Calendar extends AbstractBackend
 
         global $CFG_GLPI;
 
-        $principal_type = \Planning::getActorTypeFromPlanningKey($calendarId);
-        $principal_id   = \Planning::getActorIdFromPlanningKey($calendarId);
-        if (null !== $principal_type && is_a($principal_type, \CommonDBTM::class, true) && null !== $principal_id) {
+        $principal_type = Planning::getActorTypeFromPlanningKey($calendarId);
+        $principal_id   = Planning::getActorIdFromPlanningKey($calendarId);
+        if (null !== $principal_type && is_a($principal_type, CommonDBTM::class, true) && null !== $principal_id) {
             $item = new $principal_type();
             $exists = $item->getFromDB($principal_id);
         }
 
         if (!$exists) {
-            throw new \Sabre\DAV\Exception\NotFound(sprintf('Calendar "%s" not found', $calendarId));
+            throw new NotFound(sprintf('Calendar "%s" not found', $calendarId));
         }
 
         $objects = [];
@@ -188,10 +201,10 @@ class Calendar extends AbstractBackend
 
             $vcalendars = [];
             switch ($principal_type) {
-                case \Group::class:
+                case Group::class:
                     $vcalendars = $itemtype::getGroupItemsAsVCalendars($item->fields['id']);
                     break;
-                case \User::class:
+                case User::class:
                     $vcalendars = $itemtype::getUserItemsAsVCalendars($item->fields['id']);
                     break;
             }
@@ -220,7 +233,7 @@ class Calendar extends AbstractBackend
     {
 
         if (!$this->storeCalendarObject($calendarId, $calendarData)) {
-            throw new \Sabre\DAV\Exception('Error during object creation');
+            throw new Exception('Error during object creation');
         }
 
         return null;
@@ -231,11 +244,11 @@ class Calendar extends AbstractBackend
 
         $item = $this->getCalendarItemForPath($objectPath);
         if (null === $item) {
-            throw new \Sabre\DAV\Exception\NotFound(sprintf('Object "%s" not found', $objectPath));
+            throw new NotFound(sprintf('Object "%s" not found', $objectPath));
         }
 
         if (!$this->storeCalendarObject($calendarId, $calendarData, $item)) {
-            throw new \Sabre\DAV\Exception('Error during object creation');
+            throw new Exception('Error during object creation');
         }
 
         return null;
@@ -246,11 +259,11 @@ class Calendar extends AbstractBackend
 
         $item = $this->getCalendarItemForPath($objectPath);
         if (null === $item) {
-            throw new \Sabre\DAV\Exception\NotFound(sprintf('Object "%s" not found', $objectPath));
+            throw new NotFound(sprintf('Object "%s" not found', $objectPath));
         }
 
-        if (!$item->deleteFromDB()) {
-            throw new \Sabre\DAV\Exception('Error during object deletion');
+        if (!$item->delete(['id' => $item->getID()], true)) {
+            throw new Exception('Error during object deletion');
         }
     }
 
@@ -271,11 +284,11 @@ class Calendar extends AbstractBackend
         /* @var \DateTimeInterface $last_modified */
         $last_modified = $vcomponent->{'LAST-MODIFIED'} instanceof DateTime
            ? $vcomponent->{'LAST-MODIFIED'}->getDateTime()
-           : new \DateTime();
+           : new PhpDateTime();
 
         return  [
            'uri'          => $vcomponent->UID . '.ics',
-           'lastmodified' => (new \DateTime('@' . $last_modified->getTimestamp())),
+           'lastmodified' => (new PhpDateTime('@' . $last_modified->getTimestamp())),
            'size'         => strlen($calendardata),
            'calendardata' => $calendardata
         ];
@@ -301,7 +314,7 @@ class Calendar extends AbstractBackend
         $vcomponent = $vcalendar->getBaseComponent();
 
         if (!in_array($vcomponent->name, $CFG_GLPI['caldav_supported_components'])) {
-            throw new \Sabre\DAV\Exception\UnsupportedMediaType('Component "%s" is not supported');
+            throw new Exception\UnsupportedMediaType('Component "%s" is not supported');
         }
 
         $input = [];
@@ -309,17 +322,17 @@ class Calendar extends AbstractBackend
         if (null === $item) {
             // $item is null when a new calendar item is created
             // New objects are handled as PlanningExternalEvent
-            $item = new \PlanningExternalEvent();
+            $item = new PlanningExternalEvent();
 
-            $principal_id   = \Planning::getActorIdFromPlanningKey($calendarId);
-            $principal_type = \Planning::getActorTypeFromPlanningKey($calendarId);
+            $principal_id   = Planning::getActorIdFromPlanningKey($calendarId);
+            $principal_type = Planning::getActorTypeFromPlanningKey($calendarId);
 
             switch ($principal_type) {
-                case \Group::class:
-                    $input['users_id'] = \Session::getLoginUserID();  // Owner is current logged user
+                case Group::class:
+                    $input['users_id'] = Session::getLoginUserID();  // Owner is current logged user
                     $input['groups_id'] = $principal_id;
                     break;
-                case \User::class:
+                case User::class:
                     $input['users_id'] = $principal_id;
                     break;
             }
@@ -334,8 +347,8 @@ class Calendar extends AbstractBackend
             $input['uuid'] = Uuid::uuid4();
         }
 
-        $input = \Html::entities_deep($input);
-        $input = \Toolbox::addslashes_deep($input);
+        $input = Html::entities_deep($input);
+        $input = Toolbox::addslashes_deep($input);
 
         if ($item->isNewItem()) {
             // Auto set entities_id if exists and not set
@@ -347,7 +360,7 @@ class Calendar extends AbstractBackend
                 $input['entities_id'] = $_SESSION['glpiactive_entity'];
             }
             if (!$item->can(-1, CREATE, $input)) {
-                throw new \Sabre\DAV\Exception\Forbidden();
+                throw new Exception\Forbidden();
             }
             $items_id = $item->add($input);
             if (false === $items_id) {
@@ -358,7 +371,7 @@ class Calendar extends AbstractBackend
 
         $input['id'] = $item->fields['id'];
         if (!$item->can($item->fields['id'], UPDATE, $input)) {
-            throw new \Sabre\DAV\Exception\Forbidden();
+            throw new Exception\Forbidden();
         }
         if (array_key_exists('date_creation', $input)) {
             unset($input['date_creation']); // Prevent date creation override
@@ -382,7 +395,7 @@ class Calendar extends AbstractBackend
     private function storeVCalendarData($calendarData, $items_id, $itemtype)
     {
 
-        $vobject = new \VObject();
+        $vobject = new VObject();
 
         // Load existing object if exists.
         $vobject->getFromDBByCrit(
@@ -398,7 +411,7 @@ class Calendar extends AbstractBackend
            'data'     => $calendarData,
         ];
 
-        $input = \Toolbox::addslashes_deep($input);
+        $input = Toolbox::addslashes_deep($input);
 
         if ($vobject->isNewItem()) {
             return $vobject->add($input);

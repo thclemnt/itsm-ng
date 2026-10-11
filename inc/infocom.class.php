@@ -31,6 +31,15 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Entity\Infocom as InfocomEntity;
+use itsmng\Database\InfocomPresenceReadOperation;
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\InfocomRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -266,6 +275,30 @@ class Infocom extends CommonDBChild
     }
 
 
+    /**
+     * Activation presence for the single-item action menu, without loading the
+     * financial record. Missing records retain the model's empty-default hooks.
+     */
+    public function isActivatedForDevice($itemtype, $ID): bool
+    {
+        global $DB;
+
+        if (static::class !== self::class
+            || (EntityRegistry::tables()[$this->getTable()] ?? null) !== InfocomEntity::class) {
+            return $this->getFromDBforDevice($itemtype, $ID);
+        }
+        $activated = InfocomPresenceReadOperation::forDatabase($DB)
+            ->forItem($itemtype, (int)$ID);
+        if (!$activated) {
+            // item_empty hooks see defaults before the captured link is assigned.
+            $this->getEmpty();
+            $this->fields['items_id'] = $ID;
+            $this->fields['itemtype'] = $itemtype;
+        }
+        return $activated;
+    }
+
+
     public function prepareInputForAdd($input)
     {
         if (!$this->getFromDBforDevice($input['itemtype'], $input['items_id'])) {
@@ -490,44 +523,17 @@ class Infocom extends CommonDBChild
 
         foreach (Entity::getEntitiesToNotify('use_infocoms_alert') as $entity => $value) {
             $before    = Entity::getUsedConfig('send_infocoms_alert_before_delay', $entity);
-            $table = self::getTable();
-            $iterator = $DB->request([
-               'SELECT'    => "$table.*",
-               'FROM'      => $table,
-               'LEFT JOIN'  => [
-                  'glpi_alerts'  => [
-                     'ON' => [
-                        'glpi_alerts'  => 'items_id',
-                        $table         => 'id', [
-                           'AND' => [
-                              'glpi_alerts.itemtype'  => self::getType(),
-                              'glpi_alerts.type'      => Alert::END
-                           ]
-                        ]
-                     ]
-                  ]
-               ],
-               'WHERE'     => [
-                  new \QueryExpression(
-                      '(' . $DB->quoteName('glpi_infocoms.alert') . ' & ' . pow(2, Alert::END) . ') > 0'
-                  ),
-                  "$table.entities_id"       => $entity,
-                  "$table.warranty_duration" => ['>', 0],
-                  'NOT'                      => ["$table.warranty_date" => null],
-                  new \QueryExpression(
-                      'DATEDIFF(ADDDATE(' . $DB->quoteName('glpi_infocoms.warranty_date') . ', INTERVAL (' .
-                      $DB->quoteName('glpi_infocoms.warranty_duration') . ') MONTH), CURDATE() ) <= ' .
-                      $DB->quoteValue($before)
-                  ),
-                  'glpi_alerts.date'         => null
-               ]
-            ]);
-
-            while ($data = $iterator->next()) {
+            $em = Orm::create($DB);
+            try {
+                $rows = (new InfocomRepository($em))->warrantiesExpiring((int)$entity, (int)$before);
+            } finally {
+                $em->clear();
+            }
+            foreach ($rows as $data) {
                 if ($item_infocom = getItemForItemtype($data["itemtype"])) {
                     if ($item_infocom->getFromDB($data["items_id"])) {
                         $entity   = $data['entities_id'];
-                        $warranty = self::getWarrantyExpir($data["warranty_date"], $data["warranty_duration"]);
+                        $warranty = Html::convDate($data['warrantyexpiration']);
                         //TRANS: %1$s is a type, %2$s is a name (used in croninfocom)
                         $name    = sprintf(
                             __('%1$s - %2$s'),
@@ -835,18 +841,13 @@ JS;
             return false;
         }
 
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => 'glpi_infocoms',
-           'WHERE'  => [
-              'itemtype'  => $itemtype,
-              'items_id'  => $device_id
-           ]
-        ])->next();
+        $count = MappedReads::countMatching($DB, self::getTable(), [
+            'itemtype' => $itemtype, 'items_id' => $device_id,
+        ]);
 
         $add    = "add";
         $text   = __('Add');
-        if ($result['cpt'] > 0) {
+        if ($count > 0) {
             $add  = "";
             $text = _x('button', 'Show');
         } elseif (!Infocom::canUpdate()) {
@@ -886,10 +887,10 @@ JS;
 
         try {
             if ($fiscaldate == '') {
-                throw new \RuntimeException('Empty date');
+                throw new RuntimeException('Empty date');
             }
-            $fiscaldate = new \DateTime($fiscaldate, new DateTimeZone($TZ));
-        } catch (\Exception $e) {
+            $fiscaldate = new DateTime($fiscaldate, new DateTimeZone($TZ));
+        } catch (Exception $e) {
             Session::addMessageAfterRedirect(
                 __('Please fill you fiscal year date in preferences.'),
                 false,
@@ -901,14 +902,14 @@ JS;
         //get begin date. Work on use date if provided.
         try {
             if ($buydate == '' && $usedate == '') {
-                throw new \RuntimeException('Empty date');
+                throw new RuntimeException('Empty date');
             }
             if ($usedate != '') {
-                $usedate = new \DateTime($usedate, new DateTimeZone($TZ));
+                $usedate = new DateTime($usedate, new DateTimeZone($TZ));
             } else {
-                $usedate = new \DateTime($buydate, new DateTimeZone($TZ));
+                $usedate = new DateTime($buydate, new DateTimeZone($TZ));
             }
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Session::addMessageAfterRedirect(
                 __('Please fill either buy or use date in preferences.'),
                 false,
@@ -917,7 +918,7 @@ JS;
             return false;
         }
 
-        $now = new \DateTime('now', new DateTimeZone($TZ));
+        $now = new DateTime('now', new DateTimeZone($TZ));
 
         $elapsed_years = $now->format('Y') - $usedate->format('Y');
 
@@ -930,7 +931,7 @@ JS;
         for ($i = 0; $i <= $elapsed_years; ++$i) {
             $begin_value      = $value;
             $current_annuity  = $annuity;
-            $fiscal_end       = new \DateTime(
+            $fiscal_end       = new DateTime(
                 $fiscaldate->format('d-m-') . ($usedate->format('Y') + $i),
                 new DateTimeZone($TZ)
             );
@@ -1033,6 +1034,12 @@ JS;
                 return '-';
             }
             return self::mapOldAmortiseFormat($values, $view != 'all');
+        }
+
+        // Missing acquisition dates and unusable degressive inputs have no
+        // schedule. Reject them before parsing nullable financial dates.
+        if ($type_amort != "1" || !($va > 0 && $duree > 0 && $coef > 1 && !empty($date_achat))) {
+            return '-';
         }
 
         $prorata             = 0;
@@ -2226,22 +2233,19 @@ JS;
      *
      * @param array $where Where clause
      *
-     * @return DBmysqlIterator
+     * @return array List of distinct itemtype rows
      */
     public static function getTypes($where)
     {
         global $DB;
 
-        $types_iterator = $DB->request([
-           'SELECT'          => 'itemtype',
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_infocoms',
-           'WHERE'           => [
-              'NOT'          => ['itemtype' => self::getExcludedTypes()]
-           ] + $where,
-           'ORDER'           => 'itemtype'
-        ]);
-        return $types_iterator;
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        return Orm::withConnection(
+            $connection,
+            static fn (EntityManager $manager): array => (new InfocomRepository($manager))->types($where)
+        );
     }
 
 

@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\AssetRepository;
+use itsmng\Database\Repository\NetworkReportRepository;
+use itsmng\Reporting\Criteria;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -184,38 +189,27 @@ class Report extends CommonGLPI
         // 1. Get counts of itemtype
         $items     = $CFG_GLPI["asset_types"];
 
-        $linkitems = $CFG_GLPI['directconnect_types'];
+        $assets = new AssetRepository(Orm::create($DB));
 
         echo "<table class='tab_cadrehov' aria-label='Show default report'>";
 
         foreach ($items as $itemtype) {
             $table_item = getTableForItemType($itemtype);
-            $criteria = [
-               'COUNT'  => 'cpt',
-               'FROM'   => $table_item,
-               'WHERE'  => [
-                  "$table_item.is_deleted"   => 0,
-                  "$table_item.is_template"  => 0
-               ] + getEntitiesRestrictCriteria($table_item)
-            ];
-
-            if (in_array($itemtype, $linkitems)) {
-                $criteria['LEFT JOIN'] = [
-                   'glpi_computers_items' => [
-                      'ON' => [
-                         'glpi_computers_items'  => 'items_id',
-                         $table_item             => 'id', [
-                            'AND' => [
-                               'glpi_computers_items.itemtype' => $itemtype
-                            ]
-                         ]
-                      ]
-                   ]
-                ];
+            if ($assets->supports($itemtype)) {
+                $number = $assets->count($itemtype, Criteria::entities());
+            } else {
+                // Plugin assets retain their registered table and visibility rules.
+                $filters = [];
+                foreach (['is_deleted', 'is_template'] as $flag) {
+                    if ($DB->fieldExists($table_item, $flag)) {
+                        $filters["$table_item.$flag"] = 0;
+                    }
+                }
+                $number = (int)$DB->request([
+                    'COUNT' => 'cpt', 'FROM' => $table_item,
+                    'WHERE' => $filters + getEntitiesRestrictCriteria($table_item),
+                ])->next()['cpt'];
             }
-
-            $result = $DB->request($criteria)->next();
-            $number = (int)$result['cpt'];
 
             echo "<tr class='tab_bg_2'><td>" . $itemtype::getTypeName(Session::getPluralNumber()) . "</td>";
             echo "<td class='numeric'>$number</td></tr>";
@@ -224,25 +218,7 @@ class Report extends CommonGLPI
         echo "<tr class='tab_bg_1'><td colspan='2' class='b'>" . OperatingSystem::getTypeName(1) . "</td></tr>";
 
         // 2. Get some more number data (operating systems per computer)
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'COUNT' => '* AS count',
-              'glpi_operatingsystems.name AS name'
-           ],
-           'FROM'      => 'glpi_items_operatingsystems',
-           'LEFT JOIN' => [
-              'glpi_operatingsystems' => [
-                 'ON' => [
-                    'glpi_items_operatingsystems' => 'operatingsystems_id',
-                    'glpi_operatingsystems'       => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => ['is_deleted' => 0],
-           'GROUPBY'   => 'glpi_operatingsystems.name'
-        ]);
-
-        while ($data = $iterator->next()) {
+        foreach ($assets->operatingSystems(Criteria::entities()) as $data) {
             if (empty($data['name'])) {
                 $data['name'] = Dropdown::EMPTY_VALUE;
             }
@@ -264,42 +240,37 @@ class Report extends CommonGLPI
             $type_table = getTableForItemType($typeclass);
             $typefield  = getForeignKeyFieldForTable(getTableForItemType($typeclass));
 
-            $criteria = [
-               'SELECT'    => [
-                  'COUNT'  => '* AS count',
-                  "$type_table.name AS name"
-               ],
-               'FROM'      => $table_item,
-               'LEFT JOIN' => [
-                  $type_table => [
-                     'ON' => [
-                        $table_item => $typefield,
-                        $type_table => 'id'
-                     ]
-                  ]
-               ],
-               'WHERE'     => [
-                  "$table_item.is_deleted"   => 0,
-                  "$table_item.is_template"  => 0
-               ] + getEntitiesRestrictCriteria($table_item),
-               'GROUPBY'   => "$type_table.name"
-            ];
-
-            if (in_array($itemtype, $linkitems)) {
-                $criteria['LEFT JOIN']['glpi_computers_items'] = [
-                   'ON' => [
-                      'glpi_computers_items'  => 'items_id',
-                      $table_item             => 'id', [
-                         'AND' => [
-                            'glpi_computers_items.itemtype'  => $itemtype
+            if ($assets->supports($itemtype)) {
+                $rows = $assets->countsByType($itemtype, Criteria::entities());
+            } else {
+                $criteria = [
+                   'SELECT'    => [
+                      'COUNT'  => '* AS count',
+                      "$type_table.name AS name"
+                   ],
+                   'FROM'      => $table_item,
+                   'LEFT JOIN' => [
+                      $type_table => [
+                         'ON' => [
+                            $table_item => $typefield,
+                            $type_table => 'id'
                          ]
                       ]
-                   ]
+                   ],
+                   'WHERE'     => [
+                      "$table_item.is_deleted"   => 0,
+                      "$table_item.is_template"  => 0
+                   ] + getEntitiesRestrictCriteria($table_item),
+                   'GROUPBY'   => "$type_table.name"
                 ];
-            }
 
-            $iterator = $DB->request($criteria);
-            while ($data = $iterator->next()) {
+                if (!$DB->fieldExists($table_item, 'is_template')) {
+                    unset($criteria['WHERE']["$table_item.is_template"]);
+                }
+
+                $rows = $DB->request($criteria);
+            }
+            foreach ($rows as $data) {
                 if (empty($data['name'])) {
                     $data['name'] = Dropdown::EMPTY_VALUE;
                 }
@@ -311,145 +282,15 @@ class Report extends CommonGLPI
     }
 
 
-    /**
-     * Get report information
-     *
-     * @param string $from      From table
-     * @param array  $joincrit  Join criteria
-     * @param array  $where     Where clause
-     * @param array  $select    Extra select clause
-     * @param array  $leftjoin  Extra LEFT JOIN clause
-     * @param array  $innerjoin Extra INNER JOIN clause
-     * @param array  $order     Order clause
-     * @param string $extra     ?
-     *
-     * @return void
-     *
-     * @since 10.0.0
-    **/
-    public static function reportForNetworkInformations(
-        $from,
-        array $joincrit,
-        array $where = [],
-        array $select = [],
-        array $leftjoin = [],
-        array $innerjoin = [],
-        array $order = [],
-        $extra = ''
-    ) {
+    /** Render a mapped network report for selected equipment, outlets or locations. */
+    public static function showNetworkReport(string $kind, array $ids, string $extra = ''): void
+    {
         global $DB;
 
-        // This SQL request matches the NetworkPort, then its NetworkName and IPAddreses. It also
-        //      match opposite NetworkPort, then its NetworkName and IPAddresses.
-        // Results are groupes by NetworkPort. Then all IPs are concatenated by comma as separator.
+        $rows = (new NetworkReportRepository(Orm::create($DB)))
+            ->rows($kind, $ids, Criteria::entities());
 
-        if (count($joincrit) === 3) {
-            $andcrit = array_pop($joincrit);
-            $andcrit['AND']['PORT_1.is_deleted'] = 0;
-            $joincrit[] = $andcrit;
-        } else {
-            $joincrit[]['AND']['PORT_1.is_deleted'] = 0;
-        }
-
-        $criteria = [
-           'SELECT'       => array_merge([
-              'PORT_1.itemtype AS itemtype_1',
-              'PORT_1.items_id AS items_id_1',
-              'PORT_1.id AS id_1',
-              'PORT_1.name AS port_1',
-              'PORT_1.mac AS mac_1',
-              'PORT_1.logical_number AS logical_1',
-              new QueryExpression('GROUP_CONCAT(' . $DB->quoteName('ADDR_1.name') . ' SEPARATOR ' . $DB->quote(',') . ') AS ' . $DB->quoteName('ip_1')),
-              'PORT_2.itemtype AS itemtype_2',
-              'PORT_2.items_id AS items_id_2',
-              'PORT_2.id AS id_2',
-              'PORT_2.name AS port_2',
-              'PORT_2.mac AS mac_2',
-              new QueryExpression('GROUP_CONCAT(' . $DB->quoteName('ADDR_2.name') . ' SEPARATOR ' . $DB->quote(',') . ') AS ' . $DB->quoteName('ip_2'))
-           ], $select),
-           'FROM'         => $from,
-           'INNER JOIN'   => $innerjoin + [
-              'glpi_networkports AS PORT_1' => [
-                 'ON' => $joincrit
-              ]
-           ],
-           'LEFT JOIN'    => [
-              'glpi_networknames AS NAME_1' => [
-                 'ON'  => [
-                    'PORT_1' => 'id',
-                    'NAME_1' => 'items_id', [
-                       'AND'    => [
-                          'NAME_1.itemtype'    => 'NetworkPort',
-                          'NAME_1.is_deleted'  => 0
-                       ]
-                    ]
-                 ]
-              ],
-              'glpi_ipaddresses AS ADDR_1'  => [
-                 'ON'  => [
-                    'NAME_1' => 'id',
-                    'ADDR_1' => 'items_id', [
-                       'AND'    => [
-                          'ADDR_1.itemtype'    => 'NetworkName',
-                          'ADDR_1.is_deleted'  => 0
-                       ]
-                    ]
-                 ]
-              ],
-              'glpi_networkports_networkports AS LINK'  => [
-                 'ON'  => [
-                    'LINK'   => 'networkports_id_1',
-                    'PORT_1' => 'id', [
-                       'OR'     => [
-                          'LINK.networkports_id_2'   => new QueryExpression($DB->quoteName('PORT_1.id'))
-                       ]
-                    ]
-                 ]
-              ],
-              'glpi_networkports AS PORT_2' => [
-                 'ON'  => [
-                    'PORT_2' => 'id',
-                    new QueryExpression(
-                        'IF(' . $DB->quoteName('LINK.networkports_id_1') . ' = ' . $DB->quoteName('PORT_1.id') . ', ' .
-                          $DB->quoteName('LINK.networkports_id_2') . ', ' .
-                          $DB->quoteName('LINK.networkports_id_1') . ')'
-                    )
-                 ]
-              ],
-              'glpi_networknames AS NAME_2' => [
-               'ON'  => [
-                    'PORT_2' => 'id',
-                    'NAME_2' => 'items_id', [
-                       'AND'    => [
-                          'NAME_2.itemtype'     => 'NetworkPort',
-                          'NAME_2.is_deleted'   => 0
-                       ]
-                    ]
-               ]
-              ],
-              'glpi_ipaddresses AS ADDR_2'  => [
-               'ON'  => [
-                    'NAME_2' => 'id',
-                    'ADDR_2' => 'items_id', [
-                       'AND'    => [
-                          'ADDR_2.itemtype'    => 'NetworkName',
-                          'ADDR_2.is_deleted'  => 0
-                       ]
-                    ]
-               ]
-              ]
-           ] + $leftjoin,
-           'WHERE'        => $where,
-           'GROUPBY'      => ['PORT_1.id']
-        ];
-
-        if (count($order)) {
-            $criteria['ORDER'] = $order;
-        }
-
-        $iterator = $DB->request($criteria);
-
-        if (count($iterator)) {
+        if ($rows) {
             echo "<table class='tab_cadre_fixehov'aria-label='Devices'>";
             echo "<tr>";
             if (!empty($extra)) {
@@ -476,7 +317,7 @@ class Report extends CommonGLPI
             echo "<th>" . __('Device name') . "</th>";
             echo "</tr>\n";
 
-            while ($line = $iterator->next()) {
+            foreach ($rows as $line) {
                 echo "<tr class='tab_bg_1'>";
 
                 // To ensure that the NetworkEquipment remain the first item, we test its type

@@ -40,6 +40,7 @@ if (!defined('GLPI_ROOT')) {
 use Html;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
+use RuntimeException;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -76,7 +77,7 @@ class CompileScssCommand extends Command
         $compile_directory = Html::getScssCompileDir();
 
         if (!@is_dir($compile_directory) && !@mkdir($compile_directory)) {
-            throw new \RuntimeException(
+            throw new RuntimeException(
                 sprintf(
                     'Destination directory "%s" cannot be accessed.',
                     $compile_directory

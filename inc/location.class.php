@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\LocationRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -433,35 +436,7 @@ class Location extends CommonTreeDropdown
         }
 
         $rand = mt_rand();
-        $queries = [];
         $itemtypes = $current_itemtype ? [$current_itemtype] : $CFG_GLPI['location_types'];
-        foreach ($itemtypes as $itemtype) {
-            $item = new $itemtype();
-            if (!$item->maybeLocated()) {
-                continue;
-            }
-            $table = getTableForItemType($itemtype);
-            $itemtype_criteria = [
-               'SELECT' => [
-                  "$table.id",
-                  new \QueryExpression($DB->quoteValue($itemtype) . ' AS ' . $DB->quoteName('type')),
-               ],
-               'FROM'   => $table,
-               'WHERE'  => [
-                  "$table.locations_id"   => $locations_id,
-               ] + getEntitiesRestrictCriteria($table, 'entities_id')
-            ];
-            if ($item->maybeDeleted()) {
-                $itemtype_criteria['WHERE']['is_deleted'] = 0;
-            }
-            $queries[] = $itemtype_criteria;
-        }
-        $criteria = null;
-        if (count($queries) === 1) {
-            $criteria = $queries[0];
-        } elseif (count($queries) > 1) {
-            $criteria = ['FROM' => new \QueryUnion($queries)];
-        }
 
         $filter_options = [0 => Dropdown::EMPTY_VALUE];
         foreach ($CFG_GLPI['location_types'] as $type) {
@@ -520,12 +495,6 @@ $(function() {
 JS;
         echo "</div>";
 
-        if ($criteria === null) {
-            echo "<p class='center b'>" . __('No item found') . "</p>";
-            return;
-        }
-
-        $iterator = $DB->request($criteria);
         $fields = [
            'type' => _n('Type', 'Types', 1),
            'entity' => Entity::getTypeName(1),
@@ -534,25 +503,44 @@ JS;
            'inventory' => __('Inventory number'),
         ];
         $values = [];
-        while ($data = $iterator->next()) {
-            $item = getItemForItemtype($data['type']);
-            if (!$item || !$item->getFromDB($data['id'])) {
-                continue;
+        $em = Orm::create($DB);
+        try {
+            $repository = new LocationRepository($em);
+            foreach (array_unique($itemtypes) as $itemtype) {
+                $item = getItemForItemtype($itemtype);
+                if (!$item || !$item->maybeLocated()) {
+                    continue;
+                }
+                $scope = getEntitiesRestrictCriteria($item::getTable(), 'entities_id');
+                if ($repository::supports($itemtype)) {
+                    $rows = $repository->items($itemtype, (int)$locations_id, $scope, Session::haveTranslations('Entity', 'completename') ? $_SESSION['glpilanguage'] : null);
+                } else {
+                    $criteria = ['locations_id' => $locations_id] + $scope;
+                    if ($item->maybeDeleted()) {
+                        $criteria['is_deleted'] = 0;
+                    }
+                    $rows = [];
+                    foreach ($item->find($criteria, 'id') as $row) {
+                        $rows[] = ['fields' => $row, 'entity_name' => Dropdown::getDropdownName('glpi_entities', $row['entities_id'])];
+                    }
+                }
+                foreach ($rows as $row) {
+                    $item->fields = $row['fields'];
+                    $values[] = [
+                       'type' => $item->getTypeName(),
+                       'entity' => implode(Toolbox::clean_cross_side_scripting_deep(' > '), explode(' > ', $row['entity_name'])) ?: '&nbsp;',
+                       'name' => $item->getLink(),
+                       'serial' => (isset($item->fields['serial']) && $item->fields['serial'] !== '')
+                           ? $item->fields['serial']
+                           : '-',
+                       'inventory' => (isset($item->fields['otherserial']) && $item->fields['otherserial'] !== '')
+                           ? $item->fields['otherserial']
+                           : '-',
+                    ];
+                }
             }
-            $values[] = [
-               'type' => $item->getTypeName(),
-               'entity' => Dropdown::getDropdownName(
-                   'glpi_entities',
-                   $item->getEntityID()
-               ),
-               'name' => $item->getLink(),
-               'serial' => (isset($item->fields['serial']) && $item->fields['serial'] !== '')
-                   ? $item->fields['serial']
-                   : '-',
-               'inventory' => (isset($item->fields['otherserial']) && $item->fields['otherserial'] !== '')
-                   ? $item->fields['otherserial']
-                   : '-',
-            ];
+        } finally {
+            $em->clear();
         }
 
         if (count($values)) {
@@ -575,7 +563,7 @@ JS;
                 $this->showMap();
                 break;
             default:
-                throw new \RuntimeException("Unknown {$field['type']}");
+                throw new RuntimeException("Unknown {$field['type']}");
         }
     }
 

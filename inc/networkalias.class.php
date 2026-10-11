@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
 * */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NetworkNameRepository;
+use itsmng\Reporting\Criteria;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -50,6 +55,12 @@ class NetworkAlias extends FQDNLabel
 
     public static $checkParentRights = CommonDBConnexity::HAVE_SAME_RIGHT_ON_ITEM;
 
+
+    private static function visibleForName(int $id): array
+    {
+        $entities = Criteria::entities();
+        return (new self())->find(['networknames_id' => $id] + ($entities === null ? [] : ['entities_id' => $entities]), 'id');
+    }
 
     public static function getTypeName($nb = 0)
     {
@@ -200,8 +211,6 @@ class NetworkAlias extends FQDNLabel
         ?HTMLTableCell $father = null,
         array $options = []
     ) {
-        global $DB;
-
         if (empty($item)) {
             if (empty($father)) {
                 return;
@@ -227,13 +236,7 @@ class NetworkAlias extends FQDNLabel
         $options['createRow'] = false;
         $alias                = new self();
 
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => 'glpi_networkaliases',
-           'WHERE'  => ['networknames_id' => $item->getID()]
-        ]);
-
-        while ($line = $iterator->next()) {
+        foreach (self::visibleForName((int)$item->getID()) as $line) {
             if ($alias->getFromDB($line["id"])) {
                 if ($createRow) {
                     $row = $row->createRow();
@@ -257,7 +260,7 @@ class NetworkAlias extends FQDNLabel
     **/
     public static function showForNetworkName(NetworkName $item, $withtemplate = 0)
     {
-        global $DB, $CFG_GLPI;
+        global $CFG_GLPI;
 
         $ID = $item->getID();
         if (!$item->can($ID, READ)) {
@@ -267,16 +270,8 @@ class NetworkAlias extends FQDNLabel
         $canedit = $item->canEdit($ID);
         $rand    = mt_rand();
 
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_networkaliases',
-           'WHERE'  => ['networknames_id' => $ID]
-        ]);
-        $number = count($iterator);
-
-        $aliases = [];
-        while ($line = $iterator->next()) {
-            $aliases[$line["id"]] = $line;
-        }
+        $aliases = self::visibleForName((int)$ID);
+        $number = count($aliases);
 
         if ($canedit) {
             echo "\n<div class='firstbloc'>";
@@ -404,7 +399,12 @@ class NetworkAlias extends FQDNLabel
             $order = "alias";
         }
 
-        $number = countElementsInTable($alias->getTable(), ['fqdns_id' => $item->getID() ]);
+        $number = Orm::readPrepared(
+            $DB,
+            static fn (): array => [(int)$item->getID(), Criteria::entities()],
+            static fn (EntityManager $manager, array $arguments): int =>
+                (new NetworkNameRepository($manager))->countAliasesForDomain(...$arguments),
+        );
 
         echo "<br><div class='center'>";
 
@@ -434,29 +434,13 @@ class NetworkAlias extends FQDNLabel
                 )
             );
 
-            $iterator = $DB->request([
-               'SELECT'    => [
-                  'glpi_networkaliases.id AS alias_id',
-                  'glpi_networkaliases.name AS alias',
-                  'glpi_networknames.id AS address_id',
-                  'glpi_networkaliases.comment AS comment'
-               ],
-               'FROM'      => 'glpi_networkaliases',
-               'INNER JOIN' => [
-                  'glpi_networknames'  => [
-                     'ON' => [
-                        'glpi_networkaliases'   => 'networknames_id',
-                        'glpi_networknames'     => 'id'
-                     ]
-                  ]
-               ],
-               'WHERE'     => ['glpi_networkaliases.fqdns_id' => $item->getID()],
-               'ORDERBY'   => $order,
-               'LIMIT'     => $_SESSION['glpilist_limit'],
-               'START'     => $start
-            ]);
-
-            while ($data = $iterator->next()) {
+            $rows = Orm::readPrepared(
+                $DB,
+                static fn (): array => [(int)$item->getID(), $order, (int)$_SESSION['glpilist_limit'], (int)$start, Criteria::entities()],
+                static fn (EntityManager $manager, array $arguments): array =>
+                    (new NetworkNameRepository($manager))->aliasesForDomain(...$arguments),
+            );
+            foreach ($rows as $data) {
                 Session::addToNavigateListItems($alias->getType(), $data["alias_id"]);
                 if ($address->getFromDB($data["address_id"])) {
                     echo "<tr class='tab_bg_1'>";

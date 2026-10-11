@@ -31,6 +31,13 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DocumentRepository;
+use itsmng\Database\Repository\ProjectAssetRepository;
+use itsmng\Database\Repository\ProjectRepository;
+use itsmng\Database\Repository\RecordRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -150,20 +157,11 @@ class NotificationTargetProject extends NotificationTarget
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT' => 'items_id',
-           'FROM'   => 'glpi_projectteams',
-           'WHERE'  => [
-              'itemtype'     => 'User',
-              'projects_id'  => $this->obj->fields['id']
-           ]
-        ]);
-        $user = new User();
-        while ($data = $iterator->next()) {
-            if ($user->getFromDB($data['items_id'])) {
-                $this->addToRecipientsList(['language' => $user->getField('language'),
-                                                'users_id' => $user->getField('id')]);
-            }
+        $members = Orm::read($DB, fn (EntityManager $em): array =>
+            (new ProjectRepository($em))
+                ->projectTeamRecipients((int)$this->obj->fields['id'], 'User'), clearCustomManager: true);
+        foreach ($members as $member) {
+            $this->addToRecipientsList(['language' => $member['language'], 'users_id' => $member['id']]);
         }
     }
 
@@ -179,17 +177,12 @@ class NotificationTargetProject extends NotificationTarget
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT' => 'items_id',
-           'FROM'   => 'glpi_projectteams',
-           'WHERE'  => [
-              'itemtype'     => 'Group',
-              'projects_id'  => $this->obj->fields['id']
-           ]
-        ]);
+        $members = Orm::read($DB, fn (EntityManager $em): array =>
+            (new ProjectRepository($em))
+                ->projectTeamMemberIds((int)$this->obj->fields['id'], 'Group'));
 
-        while ($data = $iterator->next()) {
-            $this->addForGroup($manager, $data['items_id']);
+        foreach ($members as $member) {
+            $this->addForGroup($manager, $member);
         }
     }
 
@@ -203,23 +196,16 @@ class NotificationTargetProject extends NotificationTarget
     {
         global $DB, $CFG_GLPI;
 
-        $iterator = $DB->request([
-           'SELECT' => 'items_id',
-           'FROM'   => 'glpi_projectteams',
-           'WHERE'  => [
-              'itemtype'     => 'Contact',
-              'projects_id'  => $this->obj->fields['id']
-           ]
-        ]);
-
+        $members = Orm::read($DB, fn (EntityManager $em): array =>
+            (new ProjectRepository($em))
+                ->projectTeamRecipients((int)$this->obj->fields['id'], 'Contact'), clearCustomManager: true);
         $contact = new Contact();
-        while ($data = $iterator->next()) {
-            if ($contact->getFromDB($data['items_id'])) {
-                $this->addToRecipientsList(["email"    => $contact->fields["email"],
-                                                "name"     => $contact->getName(),
-                                                "language" => $CFG_GLPI["language"],
-                                                'usertype' => NotificationTarget::ANONYMOUS_USER]);
-            }
+        foreach ($members as $member) {
+            // Keep the concrete model's existing name formatting without reloading it.
+            $contact->fields = $member;
+            $this->addToRecipientsList(['email' => $member['email'],
+                'name' => $contact->getName(), 'language' => $CFG_GLPI['language'],
+                'usertype' => NotificationTarget::ANONYMOUS_USER]);
         }
     }
 
@@ -233,23 +219,16 @@ class NotificationTargetProject extends NotificationTarget
     {
         global $DB, $CFG_GLPI;
 
-        $iterator = $DB->request([
-           'SELECT' => 'items_id',
-           'FROM'   => 'glpi_projectteams',
-           'WHERE'  => [
-              'itemtype'     => 'Supplier',
-              'projects_id'  => $this->obj->fields['id']
-           ]
-        ]);
-
+        $members = Orm::read($DB, fn (EntityManager $em): array =>
+            (new ProjectRepository($em))
+                ->projectTeamRecipients((int)$this->obj->fields['id'], 'Supplier'), clearCustomManager: true);
         $supplier = new Supplier();
-        while ($data = $iterator->next()) {
-            if ($supplier->getFromDB($data['items_id'])) {
-                $this->addToRecipientsList(["email"    => $supplier->fields["email"],
-                                                "name"     => $supplier->getName(),
-                                                "language" => $CFG_GLPI["language"],
-                                                'usertype' => NotificationTarget::ANONYMOUS_USER]);
-            }
+        foreach ($members as $member) {
+            // Keep the concrete model's existing name formatting without reloading it.
+            $supplier->fields = $member;
+            $this->addToRecipientsList(['email' => $member['email'],
+                'name' => $supplier->getName(), 'language' => $CFG_GLPI['language'],
+                'usertype' => NotificationTarget::ANONYMOUS_USER]);
         }
     }
 
@@ -257,6 +236,8 @@ class NotificationTargetProject extends NotificationTarget
     public function addDataForTemplate($event, $options = [])
     {
         global $CFG_GLPI, $DB;
+
+        $records = new RecordRepository(Orm::create($DB));
 
         //----------- Reservation infos -------------- //
         $events = $this->getAllEvents();
@@ -357,7 +338,7 @@ class NotificationTargetProject extends NotificationTarget
         }
         // Team infos
         $restrict = ['projects_id' => $item->getField('id')];
-        $items    = getAllDataFromTable('glpi_projectteams', $restrict);
+        $items    = $records->matching('glpi_projectteams', $restrict, ['id ASC']);
 
         $this->data['teammembers'] = [];
         if (count($items)) {
@@ -376,13 +357,7 @@ class NotificationTargetProject extends NotificationTarget
         $this->data['##project.numberofteammembers##'] = count($this->data['teammembers']);
 
         // Task infos
-        $tasks                = getAllDataFromTable(
-            'glpi_projecttasks',
-            [
-              'WHERE'  => $restrict,
-              'ORDER'  => ['date DESC', 'id ASC']
-            ]
-        );
+        $tasks = $records->matching('glpi_projecttasks', $restrict, ['date DESC', 'id ASC']);
         $this->data['tasks'] = [];
         foreach ($tasks as $task) {
             $tmp                            = [];
@@ -425,13 +400,7 @@ class NotificationTargetProject extends NotificationTarget
         $this->data["##project.numberoftasks##"] = count($this->data['tasks']);
 
         //costs infos
-        $costs                = getAllDataFromTable(
-            'glpi_projectcosts',
-            [
-              'WHERE'  => $restrict,
-              'ORDER'  => ['begin_date DESC', 'id ASC']
-            ]
-        );
+        $costs = $records->matching('glpi_projectcosts', $restrict, ['begin_date DESC', 'id ASC']);
         $this->data['costs'] = [];
         $this->data["##project.totalcost##"] = 0;
         foreach ($costs as $cost) {
@@ -475,7 +444,7 @@ class NotificationTargetProject extends NotificationTarget
                'projects_id' => $item->getField('id'),
                'itemtype'    => $itemtype,
             ];
-            $link_items = getAllDataFromTable(Itil_Project::getTable(), $restrict);
+            $link_items = $records->matching(Itil_Project::getTable(), $restrict, ['id ASC']);
             if (count($link_items)) {
                 $nitem = new $itemtype();
                 foreach ($link_items as $data) {
@@ -499,25 +468,15 @@ class NotificationTargetProject extends NotificationTarget
         }
 
         // Document
-        $iterator = $DB->request([
-           'SELECT'    => 'glpi_documents.*',
-           'FROM'      => 'glpi_documents',
-           'LEFT JOIN' => [
-              'glpi_documents_items'  => [
-                 'ON' => [
-                    'glpi_documents_items'  => 'documents_id',
-                    'glpi_documents'        => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_documents_items.itemtype'  => 'Project',
-              'glpi_documents_items.items_id'  => $item->fields['id']
-           ]
-        ]);
+        $documents = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$item->fields['id'],
+            static fn (EntityManager $manager, int $id): array =>
+                (new DocumentRepository($manager))->documentsForItem('Project', $id)
+        );
 
         $this->data["documents"] = [];
-        while ($data = $iterator->next()) {
+        foreach ($documents as $data) {
             $tmp                       = [];
             $tmp['##document.id##']    = $data['id'];
             $tmp['##document.name##']  = $data['name'];
@@ -557,7 +516,12 @@ class NotificationTargetProject extends NotificationTarget
                        = count($this->data['documents']);
 
         // Items infos
-        $items                = getAllDataFromTable('glpi_items_projects', $restrict);
+        $items = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$item->getField('id'),
+            static fn (EntityManager $manager, int $id): array =>
+                (new ProjectAssetRepository($manager))->bindings($id)
+        );
 
         $this->data['items'] = [];
         if (count($items)) {

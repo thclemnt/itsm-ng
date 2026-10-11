@@ -31,6 +31,14 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\ComputerItemReadOperation;
+use itsmng\Database\ConnexityInput;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -113,7 +121,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
             $where1[static::$itemtype_1] = $itemtype;
             $request = true;
         } else {
-            $fields[] = new \QueryExpression("'" . static::$itemtype_1 . "' AS itemtype_1");
+            $fields[] = new QueryExpression("'" . static::$itemtype_1 . "' AS itemtype_1");
             if (
                 ($itemtype ==  static::$itemtype_1)
                 || is_subclass_of($itemtype, static::$itemtype_1)
@@ -123,12 +131,12 @@ abstract class CommonDBRelation extends CommonDBConnexity
         }
         if ($request === true) {
             $conditions[] = $where1;
-            $it = new \DBmysqlIterator($DB);
-            $fields[]     = new \QueryExpression(
-                'IF(' . $it->analyseCrit($where1) . ', 1, 0) AS is_1'
+            $it = new DBmysqlIterator($DB);
+            $fields[]     = new QueryExpression(
+                'CASE WHEN ' . $it->analyseCrit($where1) . ' THEN 1 ELSE 0 END AS is_1'
             );
         } else {
-            $fields[] = new \QueryExpression('0 AS is_1');
+            $fields[] = new QueryExpression('0 AS is_1');
         }
 
         // Check item 2 type
@@ -141,7 +149,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
             $where2[static::$itemtype_2] = $itemtype;
             $request = true;
         } else {
-            $fields[] = new \QueryExpression("'" . static::$itemtype_2 . "' AS itemtype_2");
+            $fields[] = new QueryExpression("'" . static::$itemtype_2 . "' AS itemtype_2");
             if (
                 ($itemtype ==  static::$itemtype_2)
                 || is_subclass_of($itemtype, static::$itemtype_2)
@@ -151,12 +159,12 @@ abstract class CommonDBRelation extends CommonDBConnexity
         }
         if ($request === true) {
             $conditions[] = $where2;
-            $it = new \DBmysqlIterator($DB);
-            $fields[]     = new \QueryExpression(
-                'IF(' . $it->analyseCrit($where2) . ', 1, 0) AS is_2'
+            $it = new DBmysqlIterator($DB);
+            $fields[]     = new QueryExpression(
+                'CASE WHEN ' . $it->analyseCrit($where2) . ' THEN 1 ELSE 0 END AS is_2'
             );
         } else {
-            $fields[] = new \QueryExpression('0 AS is_2');
+            $fields[] = new QueryExpression('0 AS is_2');
         }
 
         if (count($conditions) != 0) {
@@ -457,9 +465,12 @@ abstract class CommonDBRelation extends CommonDBConnexity
     public function canRelationItem($method, $methodNotItem, $check_entity = true, $forceCheckBoth = false)
     {
 
+        // Only equivalent operation roles allow either endpoint to own a write,
+        // as in canRelation(). A VIEW or DONT_CHECK role is not an alternate
+        // operation grant and must not acquire an implicit view requirement.
         $OneWriteIsEnough = (!$forceCheckBoth
                              && ((static::HAVE_SAME_RIGHT_ON_ITEM == static::$checkItem_1_Rights)
-                                 || (static::HAVE_SAME_RIGHT_ON_ITEM == static::$checkItem_2_Rights)));
+                                 && (static::HAVE_SAME_RIGHT_ON_ITEM == static::$checkItem_2_Rights)));
 
         try {
             $item1 = null;
@@ -471,6 +482,14 @@ abstract class CommonDBRelation extends CommonDBConnexity
                 static::$items_id_1,
                 $item1
             );
+            // Fixed endpoints need their global policy as well as their loaded-item policy.
+            // Dynamic endpoints and DONT_CHECK roles retain canConnexity's existing semantics.
+            $can1 = $can1 && static::canConnexity(
+                $methodNotItem,
+                static::$checkItem_1_Rights,
+                static::$itemtype_1,
+                static::$items_id_1
+            );
             if ($OneWriteIsEnough) {
                 $view1 = $this->canConnexityItem(
                     $method,
@@ -479,6 +498,12 @@ abstract class CommonDBRelation extends CommonDBConnexity
                     static::$itemtype_1,
                     static::$items_id_1,
                     $item1
+                );
+                $view1 = $view1 && static::canConnexity(
+                    'canView',
+                    static::$checkItem_1_Rights,
+                    static::$itemtype_1,
+                    static::$items_id_1
                 );
             }
         } catch (CommonDBConnexityItemNotFound $e) {
@@ -500,6 +525,14 @@ abstract class CommonDBRelation extends CommonDBConnexity
                 static::$items_id_2,
                 $item2
             );
+            // Fixed endpoints need their global policy as well as their loaded-item policy.
+            // Dynamic endpoints and DONT_CHECK roles retain canConnexity's existing semantics.
+            $can2 = $can2 && static::canConnexity(
+                $methodNotItem,
+                static::$checkItem_2_Rights,
+                static::$itemtype_2,
+                static::$items_id_2
+            );
             if ($OneWriteIsEnough) {
                 $view2 = $this->canConnexityItem(
                     $method,
@@ -508,6 +541,12 @@ abstract class CommonDBRelation extends CommonDBConnexity
                     static::$itemtype_2,
                     static::$items_id_2,
                     $item2
+                );
+                $view2 = $view2 && static::canConnexity(
+                    'canView',
+                    static::$checkItem_2_Rights,
+                    static::$itemtype_2,
+                    static::$items_id_2
                 );
             }
         } catch (CommonDBConnexityItemNotFound $e) {
@@ -762,7 +801,8 @@ abstract class CommonDBRelation extends CommonDBConnexity
 
         // True if item changed
         if (
-            !$this->checkAttachedItemChangesAllowed($input, [static::$itemtype_1,
+            !ConnexityInput::endpoints($this)
+            && !$this->checkAttachedItemChangesAllowed($input, [static::$itemtype_1,
                                                                    static::$items_id_1,
                                                                    static::$itemtype_2,
                                                                    static::$items_id_2])
@@ -834,7 +874,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
 
         if ($item1 instanceof CommonDBTM && $item2 instanceof CommonDBTM) {
             if (
-                $item1->dohistory
+                $item1->dohistory && !$item1->isNewItem()
                 && static::$logs_for_item_1
             ) {
                 $changes = [
@@ -851,7 +891,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
                 );
             }
 
-            if ($item2->dohistory && static::$logs_for_item_2) {
+            if ($item2->dohistory && !$item2->isNewItem() && static::$logs_for_item_2) {
                 $changes = [
                    '0',
                    '',
@@ -909,7 +949,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
             }
             /// TODO clean management of it
             if (
-                $new1 && $new1->dohistory
+                $new1 && $new1->dohistory && !$new1->isNewItem()
                 && static::$logs_for_item_1
             ) {
                 Log::history(
@@ -921,7 +961,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
                 );
             }
             if (
-                $new2 && $new2->dohistory
+                $new2 && $new2->dohistory && !$new2->isNewItem()
                 && static::$logs_for_item_2
             ) {
                 Log::history(
@@ -937,7 +977,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
         if (isset($items_1['previous']) || isset($items_2['previous'])) {
             if (
                 $previous2
-                && $previous1 && $previous1->dohistory
+                && $previous1 && $previous1->dohistory && !$previous1->isNewItem()
                 && static::$logs_for_item_1
             ) {
                 $changes[0] = '0';
@@ -957,7 +997,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
 
             if (
                 $previous1
-                && $previous2 && $previous2->dohistory
+                && $previous2 && $previous2->dohistory && !$previous2->isNewItem()
                 && static::$logs_for_item_2
             ) {
                 $changes[0] = '0';
@@ -977,7 +1017,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
 
             if (
                 $new2
-                && $new1 && $new1->dohistory
+                && $new1 && $new1->dohistory && !$new1->isNewItem()
                 && static::$logs_for_item_1
             ) {
                 $changes[0] = '0';
@@ -994,7 +1034,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
 
             if (
                 $new1
-                && $new2 && $new2->dohistory
+                && $new2 && $new2->dohistory && !$new2->isNewItem()
                 && static::$logs_for_item_2
             ) {
                 $changes[0] = '0';
@@ -1031,7 +1071,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
 
             if ($item1 instanceof CommonDBTM && $item2 instanceof CommonDBTM) {
                 if (
-                    $item1->dohistory
+                    $item1->dohistory && !$item1->isNewItem()
                     && static::$logs_for_item_1
                 ) {
                     $changes = [
@@ -1050,7 +1090,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
                 }
 
                 if (
-                    $item2->dohistory
+                    $item2->dohistory && !$item2->isNewItem()
                     && static::$logs_for_item_2
                 ) {
                     $changes = [
@@ -1090,7 +1130,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
 
             if ($item1 instanceof CommonDBTM && $item2 instanceof CommonDBTM) {
                 if (
-                    $item1->dohistory
+                    $item1->dohistory && !$item1->isNewItem()
                     && static::$logs_for_item_1
                 ) {
                     $changes = [
@@ -1108,7 +1148,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
                 }
 
                 if (
-                    $item2->dohistory
+                    $item2->dohistory && !$item2->isNewItem()
                     && static::$logs_for_item_2
                 ) {
                     $changes = [
@@ -1144,7 +1184,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
 
         if ($item1 instanceof CommonDBTM && $item2 instanceof CommonDBTM) {
             if (
-                $item1->dohistory
+                $item1->dohistory && !$item1->isNewItem()
                 && static::$logs_for_item_1
             ) {
                 $changes = [
@@ -1162,7 +1202,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
             }
 
             if (
-                $item2->dohistory
+                $item2->dohistory && !$item2->isNewItem()
                 && static::$logs_for_item_2
             ) {
                 $changes = [
@@ -1861,7 +1901,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
         if ($inverse === true) {
             $link_type  = static::$itemtype_2;
             if ($link_type == 'itemtype') {
-                throw new \RuntimeException(
+                throw new RuntimeException(
                     sprintf(
                         'Cannot use getListForItemParams() for a %s',
                         $item->getType()
@@ -1972,13 +2012,30 @@ abstract class CommonDBRelation extends CommonDBConnexity
      * @param integer $items_id    Object id to restrict on
      * @param array   $extra_where Extra where clause
      *
-     * @return DBmysqlIterator
+     * @return DBmysqlIterator|RowIterator
      */
     public static function getDistinctTypes($items_id, $extra_where = [])
     {
         global $DB;
 
         $params = static::getDistinctTypesParams($items_id, $extra_where);
+        if (isset(EntityRegistry::tables()[static::getTable()])
+            && !array_diff(array_keys($params), ['SELECT', 'DISTINCT', 'FROM', 'WHERE', 'ORDER'])
+            && $params['FROM'] === static::getTable() && $params['SELECT'] === 'itemtype'
+            && ($params['DISTINCT'] ?? false) === true && is_array($params['WHERE'])) {
+            if (static::class === Computer_Item::class && is_int($items_id)
+                && $params['WHERE'] === [static::$items_id_1 => $items_id] && ($params['ORDER'] ?? null) === 'itemtype') {
+                return new RowIterator(
+                    ComputerItemReadOperation::forDatabase($DB)
+                        ->distinctTypes(static::getTable(), array_key_first($params['WHERE']), $items_id)
+                );
+            }
+            return new RowIterator(
+                Orm::read($DB, static fn (EntityManager $manager): array =>
+                    (new RecordRepository($manager))
+                        ->distinctValues(static::getTable(), 'itemtype', $params['WHERE'], $params['ORDER'] ?? []))
+            );
+        }
         $types_iterator = $DB->request($params);
         return $types_iterator;
     }
@@ -2103,7 +2160,9 @@ abstract class CommonDBRelation extends CommonDBConnexity
         global $DB;
 
         $params = static::getListForItemParams($item);
-        unset($params['SELECT']);
+        // A total has no row order; keeping list ordering also makes this
+        // aggregate invalid on PostgreSQL.
+        unset($params['SELECT'], $params['ORDER']);
         $params['COUNT'] = 'cpt';
         $iterator = $DB->request($params);
 
@@ -2136,7 +2195,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
             }
 
             $params = static::getTypeItemsQueryParams($item->fields['id'], $data['itemtype']);
-            unset($params['SELECT']);
+            unset($params['SELECT'], $params['ORDER']);
             $params['COUNT'] = 'cpt';
             $iterator = $DB->request($params);
 
@@ -2157,7 +2216,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
         }
 
         if (isset(static::$itemtype_1) && isset(static::$itemtype_2) && preg_match('/^itemtype/', static::$itemtype_1) && preg_match('/^itemtype/', static::$itemtype_2)) {
-            throw new \RuntimeException('Bad relation (' . $itemtype . ', ' . static::class . ', ' . static::$itemtype_1 . ', ' . static::$itemtype_2 . ')');
+            throw new RuntimeException('Bad relation (' . $itemtype . ', ' . static::class . ', ' . static::$itemtype_1 . ', ' . static::$itemtype_2 . ')');
         }
 
         if (isset(static::$itemtype_1) && preg_match('/^itemtype/', static::$itemtype_1)) {
@@ -2167,7 +2226,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
             return static::$items_id_2;
         }
 
-        throw new \RuntimeException('Cannot guess ');
+        throw new RuntimeException('Cannot guess ');
     }
 
     public function getForbiddenStandardMassiveAction()

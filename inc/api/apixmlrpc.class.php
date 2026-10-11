@@ -34,6 +34,7 @@
 namespace Glpi\Api;
 
 use Toolbox;
+use stdClass;
 
 class APIXmlrpc extends API
 {
@@ -228,7 +229,7 @@ class APIXmlrpc extends API
             } elseif ($resource === "deleteItems") { // delete one or many CommonDBTM items
                 if (isset($this->parameters['id'])) {
                     //override input
-                    $this->parameters['input'] = new \stdClass();
+                    $this->parameters['input'] = new stdClass();
                     $this->parameters['input']->id = $this->parameters['id'];
                 }
                 return $this->returnResponse(

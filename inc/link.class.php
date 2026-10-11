@@ -31,7 +31,13 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Toolbox\URL;
+use itsmng\Database\EntityScopeReadOperation;
+use itsmng\Database\LinkCountReadOperation;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\LinkRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -71,24 +77,22 @@ class Link extends CommonDBTM
 
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
     {
+        global $DB;
 
         if (self::canView()) {
             $nb = 0;
             if ($_SESSION['glpishow_count_on_tabs']) {
-                $entity_criteria = getEntitiesRestrictCriteria(
+                $scope = (new EntityScopeReadOperation())->restriction(
                     Link::getTable(),
                     '',
                     self::getEntityRestrictForItem($item),
-                    $item instanceof CommonDBTM ? $item->maybeRecursive() : false
+                    true
                 );
 
-                $nb = countElementsInTable(
-                    ['glpi_links_itemtypes','glpi_links'],
-                    [
-                      'glpi_links_itemtypes.links_id'  => new \QueryExpression(DB::quoteName('glpi_links.id')),
-                      'glpi_links_itemtypes.itemtype'  => $item->getType()
-                    ] + $entity_criteria
-                );
+                $connection = $DB->getDoctrineConnection();
+                $nb = Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $item, $scope): int {
+                    return (new LinkCountReadOperation($connection, $manager))->countForItem($item->getType(), $scope);
+                });
             }
             return self::createTabEntry(self::getTypeName(Session::getPluralNumber()), $nb);
         }
@@ -135,9 +139,10 @@ class Link extends CommonDBTM
     public function getEmpty()
     {
 
-        parent::getEmpty();
+        $empty = parent::getEmpty();
         //Keep the same behavior as in previous versions
         $this->fields['open_window'] = 1;
+        return $empty;
     }
 
 
@@ -343,24 +348,15 @@ class Link extends CommonDBTM
             strstr($link, "[DOMAIN]")
             && in_array($item->getType(), $CFG_GLPI['domain_types'], true)
         ) {
-            $domain_table = Domain::getTable();
-            $domain_item_table = Domain_Item::getTable();
-            $iterator = $DB->request([
-               'SELECT'    => ['name'],
-               'FROM'      => $domain_table,
-               'LEFT JOIN' => [
-                  $domain_item_table => [
-                     'FKEY'   => [
-                        $domain_table        => 'id',
-                        $domain_item_table   => 'domains_id'
-                     ],
-                     'AND'    => ['itemtype' => $item->getType()]
-                  ]
-               ],
-               'WHERE'     => ['items_id' => $item->getID()]
-            ]);
-            if ($iterator->count()) {
-                $link = str_replace("[DOMAIN]", $iterator->next()['name'], $link);
+            $database = $DB;
+            $connection = $database->getDoctrineConnection();
+            OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+            $domain = Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $item): ?string {
+                return (new LinkRepository($manager ?? Orm::forConnection($connection)))
+                    ->domainName($item->getType(), (int)$item->getID());
+            });
+            if ($domain !== null) {
+                $link = str_replace('[DOMAIN]', $domain, $link);
             }
         }
         if (
@@ -429,32 +425,16 @@ class Link extends CommonDBTM
         $ipmac = [];
         if (get_class($item) == 'NetworkEquipment') {
             if ($replace_IP) {
-                $iterator = $DB->request([
-                   'SELECT' => [
-                      'glpi_ipaddresses.id',
-                      'glpi_ipaddresses.name AS ip',
-                   ],
-                   'FROM'   => 'glpi_networknames',
-                   'INNER JOIN'   => [
-                      'glpi_ipaddresses'   => [
-                         'ON' => [
-                            'glpi_ipaddresses'   => 'items_id',
-                            'glpi_networknames'  => 'id', [
-                               'AND' => [
-                                  'glpi_ipaddresses.itemtype' => 'NetworkName'
-                               ]
-                            ]
-                         ]
-                      ]
-                   ],
-                   'WHERE'        => [
-                      'glpi_networknames.items_id'  => $item->getID(),
-                      'glpi_networknames.itemtype'  => ['NetworkEquipment']
-                   ]
-                ]);
-                while ($data2 = $iterator->next()) {
+                $database = $DB;
+                $connection = $database->getDoctrineConnection();
+                OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+                $rows = Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $item): array {
+                    return (new LinkRepository($manager ?? Orm::forConnection($connection)))
+                        ->equipmentAddresses((int)$item->getID());
+                });
+                foreach ($rows as $data2) {
                     $ipmac['ip' . $data2['id']]['ip']  = $data2["ip"];
-                    $ipmac['ip' . $data2['id']]['mac'] = $item->getField('mac');
+                    $ipmac['ip' . $data2['id']]['mac'] = ($item->isField('mac') ? $item->getField('mac') : '');
                 }
             }
 
@@ -462,84 +442,34 @@ class Link extends CommonDBTM
                 // If there is no entry, then, we must at least define the mac of the item ...
                 if (count($ipmac) == 0) {
                     $ipmac['mac0']['ip']    = '';
-                    $ipmac['mac0']['mac']   = $item->getField('mac');
+                    $ipmac['mac0']['mac']   = ($item->isField('mac') ? $item->getField('mac') : '');
                 }
             }
         }
 
         if ($replace_IP) {
-            $iterator = $DB->request([
-               'SELECT' => [
-                  'glpi_ipaddresses.id',
-                  'glpi_ipaddresses.name AS ip',
-                  'glpi_networkports.mac'
-               ],
-               'FROM'   => 'glpi_networkports',
-               'INNER JOIN'   => [
-                  'glpi_networknames'   => [
-                     'ON' => [
-                        'glpi_networknames'  => 'items_id',
-                        'glpi_networkports'  => 'id', [
-                           'AND' => [
-                              'glpi_networknames.itemtype' => 'NetworkPort'
-                           ]
-                        ]
-                     ]
-                  ],
-                  'glpi_ipaddresses'   => [
-                     'ON' => [
-                        'glpi_ipaddresses'   => 'items_id',
-                        'glpi_networknames'  => 'id', [
-                           'AND' => [
-                              'glpi_ipaddresses.itemtype' => 'NetworkName'
-                           ]
-                        ]
-                     ]
-                  ]
-               ],
-               'WHERE'        => [
-                  'glpi_networkports.items_id'  => $item->getID(),
-                  'glpi_networkports.itemtype'  => $item->getType()
-               ]
-            ]);
-            while ($data2 = $iterator->next()) {
+            $database = $DB;
+            $connection = $database->getDoctrineConnection();
+            OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+            $rows = Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $item): array {
+                return (new LinkRepository($manager ?? Orm::forConnection($connection)))
+                    ->portAddresses($item->getType(), (int)$item->getID());
+            });
+            foreach ($rows as $data2) {
                 $ipmac['ip' . $data2['id']]['ip']  = $data2["ip"];
                 $ipmac['ip' . $data2['id']]['mac'] = $data2["mac"];
             }
         }
 
         if ($replace_MAC) {
-            $criteria = [
-               'SELECT' => [
-                  'glpi_networkports.id',
-                  'glpi_networkports.mac'
-               ],
-               'FROM'   => 'glpi_networkports',
-               'WHERE'  => [
-                  'glpi_networkports.items_id'  => $item->getID(),
-                  'glpi_networkports.itemtype'  => $item->getType()
-               ],
-               'GROUP' => 'glpi_networkports.mac'
-            ];
-
-            if ($replace_IP) {
-                $criteria['LEFT JOIN'] = [
-                   'glpi_networknames' => [
-                      'ON' => [
-                         'glpi_networknames'  => 'items_id',
-                         'glpi_networkports'  => 'id', [
-                            'AND' => [
-                               'glpi_networknames.itemtype'  => 'NetworkPort'
-                            ]
-                         ]
-                      ]
-                   ]
-                ];
-                $criteria['WHERE']['glpi_networknames.id'] = null;
-            }
-
-            $iterator = $DB->request($criteria);
-            while ($data2 = $iterator->next()) {
+            $database = $DB;
+            $connection = $database->getDoctrineConnection();
+            OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+            $rows = Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $item, $replace_IP): array {
+                return (new LinkRepository($manager ?? Orm::forConnection($connection)))
+                    ->portMacs($item->getType(), (int)$item->getID(), (bool)$replace_IP);
+            });
+            foreach ($rows as $data2) {
                 $ipmac['mac' . $data2['id']]['ip']  = '';
                 $ipmac['mac' . $data2['id']]['mac'] = $data2["mac"];
             }
@@ -608,7 +538,7 @@ class Link extends CommonDBTM
 
         if (count($iterator)) {
             echo "<tr><th>" . self::getTypeName(Session::getPluralNumber()) . "</th></tr>";
-            while ($data = $iterator->next()) {
+            foreach ($iterator as $data) {
                 $links = self::getAllLinksFor($item, $data);
 
                 foreach ($links as $link) {
@@ -753,28 +683,7 @@ class Link extends CommonDBTM
 
         $restrict = self::getEntityRestrictForItem($item);
 
-        return $DB->request([
-           'SELECT'       => [
-              'glpi_links.id',
-              'glpi_links.link AS link',
-              'glpi_links.name AS name',
-              'glpi_links.data AS data',
-              'glpi_links.open_window AS open_window'
-           ],
-           'FROM'         => 'glpi_links',
-           'INNER JOIN'   => [
-              'glpi_links_itemtypes'  => [
-                 'ON' => [
-                    'glpi_links_itemtypes'  => 'links_id',
-                    'glpi_links'            => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              'glpi_links_itemtypes.itemtype'  => $item->getType(),
-           ] + getEntitiesRestrictCriteria('glpi_links', 'entities_id', $restrict, true),
-           'ORDERBY'      => 'name'
-        ]);
+        return (new LinkRepository(Orm::create($DB)))->forItem($item->getType(), getEntitiesRestrictCriteria('glpi_links', 'entities_id', $restrict, true));
     }
 
     public static function getIcon()

@@ -34,11 +34,239 @@
 namespace tests\units\Glpi\CalDAV;
 
 use DbTestCase;
+use Auth;
+use AuthLDAP;
+use Closure;
+use Computer;
+use Doctrine\DBAL\Exception as DbalException;
+use Glpi\CalDAV\Backend\Principal;
+use Group;
+use Group_User as GroupUser;
+use itsmng\Database\Entity\Computer as MappedComputer;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnedMutationFrame;
+use mock\DBmysql as PrincipalRouteAdapter;
+use Sabre\HTTP\Response;
+use tests\fixtures\ScalarReadProbe;
+use User;
+
+require_once dirname(__DIR__, 3) . '/fixtures/ScalarReadProbe.php';
+
 
 /* Test for inc/glpi/caldav/server.class.php */
 
 class Server extends DbTestCase
 {
+    public function testPrincipalRelationsKeepTaskEntityScopeAndHttpAcl(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $parent = $this->createItem(Group::class, [
+                'name' => $this->getUniqueString(), 'entities_id' => $entity, 'is_task' => 1,
+            ]);
+            $child = $this->createItem(Group::class, [
+                'name' => $this->getUniqueString(), 'entities_id' => $entity, 'is_task' => 1, 'groups_id' => $parent->getID(),
+            ]);
+            $this->createItem(Group::class, [
+                'name' => $this->getUniqueString(), 'entities_id' => $entity, 'is_task' => 0, 'groups_id' => $parent->getID(),
+            ]);
+            $recursive = $this->createItem(Group::class, [
+                'name' => $this->getUniqueString(), 'entities_id' => 0,
+                'is_recursive' => 1, 'is_task' => 1, 'groups_id' => $parent->getID(),
+            ]);
+            $this->createItem(Group::class, [
+                'name' => $this->getUniqueString(), 'entities_id' => 0,
+                'is_recursive' => 0, 'is_task' => 1, 'groups_id' => $parent->getID(),
+            ]);
+            $tech = (int)getItemByTypeName(User::class, 'tech', true);
+            $this->createItem(GroupUser::class, ['groups_id' => $parent->getID(), 'users_id' => $tech]);
+            $_SESSION['glpiactiveentities'] = [$entity];
+            $backend = new Principal();
+            $path = Principal::PREFIX_GROUPS . '/' . $parent->getID();
+            $groups = [Principal::PREFIX_GROUPS . '/' . $child->getID(), Principal::PREFIX_GROUPS . '/' . $recursive->getID()];
+            $actual = $backend->getGroupMembership($path);
+            sort($actual);
+            sort($groups);
+            $this->array($actual)->isIdenticalTo($groups);
+            $members = $backend->getGroupMemberSet($path);
+            $this->string(array_pop($members))->isIdenticalTo(Principal::PREFIX_USERS . '/tech');
+            sort($members);
+            $this->array($members)->isIdenticalTo($groups);
+            $this->array($backend->getGroupMembership(Principal::PREFIX_USERS . '/tech'))
+                ->contains(Principal::PREFIX_GROUPS . '/' . $parent->getID());
+            $this->array($backend->getGroupMemberSet(Principal::PREFIX_USERS . '/tech'))->isEmpty();
+            $this->array($backend->getGroupMembership('principals/unknown/123'))->isEmpty();
+            $this->array($backend->getGroupMembership(Principal::PREFIX_GROUPS . '/0'))->isEmpty();
+            $this->array($backend->getGroupMembership(Principal::PREFIX_GROUPS . '/NULL'))
+                ->contains(Principal::PREFIX_GROUPS . '/' . $parent->getID());
+            $_SESSION['glpiactiveentities'] = [];
+            $this->array($backend->getGroupMembership(Principal::PREFIX_USERS . '/tech'))->isEmpty();
+            $this->array($backend->getGroupMemberSet($path))->isIdenticalTo([Principal::PREFIX_USERS . '/tech']);
+
+            // Actual HTTP authorization stays separate from relation filtering.
+            $this->setEntity(0, true);
+            $httpGroup = $this->createItem(Group::class, ['name' => $this->getUniqueString(), 'entities_id' => 0, 'is_task' => 1]);
+            $this->createItem(GroupUser::class, ['groups_id' => $httpGroup->getID(), 'users_id' => $tech]);
+            $httpPath = Principal::PREFIX_GROUPS . '/' . $httpGroup->getID();
+            foreach (['normal' => 'HTTP/1.1 403 Forbidden', 'tech' => 'HTTP/1.1 200 OK'] as $login => $status) {
+                $this->login($login, $login);
+                $server = $this->getServerInstance('PROPFIND', $httpPath);
+                $server->setBaseUri($server->httpRequest->getBaseUrl());
+                $server->httpRequest->addHeader('Authorization', 'Basic ' . base64_encode($login . ':' . $login));
+                $server->httpRequest->setBody('<d:propfind xmlns:d="DAV:"><d:prop><d:group-member-set/><d:group-membership/></d:prop></d:propfind>');
+                $response = new Response();
+                $server->invokeMethod($server->httpRequest, $response, false);
+                $this->validateResponseIsOk($response, 207, 'application/xml');
+                $xpath = $this->getXpathFromResponse($response);
+                $this->string($xpath->evaluate('string(/d:multistatus/d:response[1]/d:propstat/d:status)'))->isIdenticalTo($status);
+                if ($login === 'tech') {
+                    $this->integer((int)$xpath->evaluate('count(/d:multistatus/d:response[1]/d:propstat/d:prop/d:group-member-set/d:href[contains(., "principals/users/tech/")])'))->isIdenticalTo(1);
+                }
+            }
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
+    public function testPrincipalRelationsReadCurrentRowsAfterCallbacksAndRetainDirtyOwners(): void
+    {
+        global $DB;
+        $original = $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $parent = $this->createItem(Group::class, ['name' => $this->getUniqueString(), 'entities_id' => 0, 'is_task' => 1]);
+            $child = $this->createItem(Group::class, [
+                'name' => $this->getUniqueString(), 'entities_id' => 0, 'is_task' => 1, 'groups_id' => $parent->getID(),
+            ]);
+            $computer = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $tech = (int)getItemByTypeName(User::class, 'tech', true);
+            $connection = $original->getDoctrineConnection();
+            $level = $connection->getTransactionNestingLevel();
+            $owner = Orm::create($original);
+            $dirty = $owner->find(MappedComputer::class, (int)$computer->getID());
+            $dirty->name = 'Unflushed CalDAV owner';
+            $backend = new PrincipalCallbackProbe();
+            $_SESSION['glpiactiveentities'] = [0];
+            $first = new ScalarReadProbe($connection);
+            $second = new ScalarReadProbe($connection);
+            $this->mockGenerator()->orphanize('__construct');
+            $firstAdapter = new PrincipalRouteAdapter();
+            $secondAdapter = new PrincipalRouteAdapter();
+            $resolutions = [0, 0];
+            $this->calling($firstAdapter)->getDoctrineConnection = static function () use ($first, &$resolutions) {
+                ++$resolutions[0];
+                return $first;
+            };
+            $this->calling($secondAdapter)->getDoctrineConnection = static function () use ($second, &$resolutions) {
+                ++$resolutions[1];
+                return $second;
+            };
+            $backend->onGroupUri = function ($id) use ($connection, $parent, $child, $tech, $secondAdapter, $original): void {
+                $this->variable($id)->isEqualTo($child->getID());
+                $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+                $GLOBALS['DB'] = $original;
+                $this->createItem(GroupUser::class, ['groups_id' => $parent->getID(), 'users_id' => $tech]);
+                $GLOBALS['DB'] = $secondAdapter;
+            };
+            $DB = $firstAdapter;
+            $path = Principal::PREFIX_GROUPS . '/' . $parent->getID();
+            $this->array($backend->getGroupMemberSet($path))->isIdenticalTo([
+                Principal::PREFIX_GROUPS . '/' . $child->getID(), Principal::PREFIX_USERS . '/tech',
+            ]);
+            $this->integer($resolutions[0])->isGreaterThanOrEqualTo(1);
+            $this->integer($resolutions[1])->isIdenticalTo(1);
+            $groupReads = array_filter(
+                $first->queries,
+                static fn (array $query): bool => str_contains(str_replace(['`', '"'], '', $query['sql']), 'FROM glpi_groups g'),
+            );
+            $this->array($groupReads)->hasSize(1);
+            $this->array($second->queries)->hasSize(1);
+            $this->array($backend->events)->isIdenticalTo(['type', 'group-id', 'type', 'group-uri', 'user-uri']);
+            $backend->onGroupUri = null;
+            $atParser = null;
+            $backend->onType = static function () use ($secondAdapter, &$atParser, &$resolutions): void {
+                $atParser = $resolutions;
+                $GLOBALS['DB'] = $secondAdapter;
+            };
+            $DB = $firstAdapter;
+            $this->array($backend->getGroupMembership(Principal::PREFIX_USERS . '/tech'))
+                ->contains(Principal::PREFIX_GROUPS . '/' . $parent->getID());
+            $this->array($resolutions)->isIdenticalTo([$atParser[0], $atParser[1] + 1]);
+            $DB = $original;
+            $backend->onType = null;
+            $backend->parentIds = [(int)$parent->getID()];
+            $this->array($backend->getGroupMemberSet($path))->hasSize(2);
+            $backend->parentIds = null;
+            Orm::read($original, function ($nestedOwner) use ($backend, $path, $computer): void {
+                $nested = $nestedOwner->find(MappedComputer::class, (int)$computer->getID());
+                $nested->name = 'Nested dirty CalDAV owner';
+                $this->array($backend->getGroupMemberSet($path))->hasSize(2);
+                $this->boolean($nestedOwner->contains($nested))->isTrue();
+                $this->string($nested->name)->isIdenticalTo('Nested dirty CalDAV owner');
+            });
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->string($dirty->name)->isIdenticalTo('Unflushed CalDAV owner');
+            $this->variable($connection->fetchOne(
+                'SELECT name FROM glpi_computers WHERE id = ?',
+                [$computer->getID()]
+            ))->isIdenticalTo($computer->fields['name']);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $DB = $original;
+            $_SESSION = $session;
+        }
+    }
+
+    public function testPrincipalUsernameBindingsAndAmbiguityFailClosed(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $group = $this->createItem(Group::class, ['name' => $this->getUniqueString(), 'entities_id' => 0, 'is_task' => 1]);
+            $name = "dav'" . bin2hex(random_bytes(6));
+            $user = $this->createItem(User::class, ['name' => addslashes($name)]);
+            $this->createItem(GroupUser::class, ['groups_id' => $group->getID(), 'users_id' => $user->getID()]);
+            $backend = new Principal();
+            $expected = [Principal::PREFIX_GROUPS . '/' . $group->getID()];
+            $this->array($backend->getGroupMembership(Principal::PREFIX_USERS . '/' . $name))->isIdenticalTo($expected);
+            $this->array($backend->getGroupMemberSet(Principal::PREFIX_GROUPS . '/' . $group->getID()))
+                ->isIdenticalTo([Principal::PREFIX_USERS . '/' . $name]);
+            // Backslashes are rejected by public login creation, but stored imported names remain readable.
+            $connection = $DB->getDoctrineConnection();
+            $imported = $name . '\\imported';
+            $this->integer($connection->update('glpi_users', ['name' => $imported], ['id' => $user->getID()]))->isIdenticalTo(1);
+            $this->array($backend->getGroupMembership(Principal::PREFIX_USERS . '/' . $imported))->isIdenticalTo($expected);
+            $this->array($backend->getGroupMembership(Principal::PREFIX_USERS . '/' . $name))->isEmpty();
+            $this->integer($connection->update('glpi_users', ['name' => $name], ['id' => $user->getID()]))->isIdenticalTo(1);
+            $defaultDirectory = AuthLDAP::getNumberOfServers() === 0 ? 1 : 0;
+            $ldap = $this->createItem(AuthLDAP::class, ['name' => $this->getUniqueString(), 'is_active' => 0, 'is_default' => $defaultDirectory]);
+            $other = $this->createItem(User::class, [
+                'name' => addslashes($name), 'authtype' => Auth::LDAP, 'authldaps_id' => $ldap->getID(),
+            ]);
+            $this->createItem(GroupUser::class, ['groups_id' => $group->getID(), 'users_id' => $other->getID()]);
+            $this->array($backend->getGroupMemberSet(Principal::PREFIX_GROUPS . '/' . $group->getID()))
+                ->isIdenticalTo([Principal::PREFIX_USERS . '/' . $name, Principal::PREFIX_USERS . '/' . $name]);
+            $frame = OwnedMutationFrame::begin($connection);
+            try {
+                $this->exception(static fn () => $backend->getGroupMembership(Principal::PREFIX_USERS . '/' . $name))
+                    ->isInstanceOf(DbalException::class);
+            } finally {
+                $frame->rollBack();
+            }
+            $this->array($backend->getGroupMemberSet(Principal::PREFIX_GROUPS . '/' . $group->getID()))->hasSize(2);
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
     protected function propfindMainEndpointsProvider()
     {
         $dataset = [];
@@ -1701,5 +1929,41 @@ VCALENDAR
         } else {
             $this->variable($vcomp->RRULE)->isNull();
         }
+    }
+}
+
+/** Trace existing virtual boundaries without changing parser or URI semantics. */
+class PrincipalCallbackProbe extends Principal
+{
+    public array $events = [];
+    public ?Closure $onGroupUri = null;
+    public ?Closure $onType = null;
+    public ?array $parentIds = null;
+
+    protected function getPrincipalItemtypeFromUri($uri)
+    {
+        $this->events[] = 'type';
+        ($this->onType)?->__invoke();
+        return parent::getPrincipalItemtypeFromUri($uri);
+    }
+
+    protected function getGroupIdFromPrincipalUri($uri)
+    {
+        $this->events[] = 'group-id';
+        $id = parent::getGroupIdFromPrincipalUri($uri);
+        return $this->parentIds ?? $id;
+    }
+
+    protected function getGroupPrincipalUri($id)
+    {
+        $this->events[] = 'group-uri';
+        ($this->onGroupUri)?->__invoke($id);
+        return parent::getGroupPrincipalUri($id);
+    }
+
+    protected function getUserPrincipalUri($name)
+    {
+        $this->events[] = 'user-uri';
+        return parent::getUserPrincipalUri($name);
     }
 }

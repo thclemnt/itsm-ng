@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -343,11 +346,8 @@ class RuleCriteria extends CommonDBChild
         global $DB;
 
         $rules_list = [];
-        $params = ['FROM'  => $this->getTable(),
-                   'WHERE' => [static::$items_id => $rules_id],
-                   'ORDER' => 'id'
-                  ];
-        foreach ($DB->request($params) as $rule) {
+        $records = new RecordRepository(Orm::create($DB));
+        foreach ($records->matching($this->getTable(), [static::$items_id => $rules_id], 'id') as $rule) {
             $tmp          = new self();
             $tmp->fields  = $rule;
             $rules_list[] = $tmp;

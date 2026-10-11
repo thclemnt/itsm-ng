@@ -33,13 +33,232 @@
 
 namespace tests\units;
 
+use Auth;
+use Closure;
+use Computer;
+use Document;
+use Document_Item;
+use Item_Project;
+use NotificationTargetProject;
 use DbTestCase;
+use Doctrine\ORM\Events;
+use Project as LegacyProject;
+use ProjectState;
 use ProjectTask;
 use ProjectTeam;
+use Session;
+use User;
+use itsmng\Database\Entity\Document as DocumentEntity;
+use itsmng\Database\Entity\ItemProject as ItemProjectEntity;
+use itsmng\Database\Entity\Project as ProjectEntity;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ProjectRepository;
 
 /* Test for inc/project.class.php */
 class Project extends DbTestCase
 {
+    public function testNotificationDocumentAndAssetSnapshotsRetainLiveOwners(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $entity = (int)Session::getActiveEntity();
+            $project = $this->createItem(LegacyProject::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+            $computer = $this->createItem(Computer::class, [
+                'name' => 'Before document formatting', 'serial' => 'Notification serial', 'entities_id' => $entity,
+            ]);
+            $binding = $this->createItem(Item_Project::class, [
+                'projects_id' => $project->getID(), 'itemtype' => Computer::class, 'items_id' => $computer->getID(),
+            ]);
+            $documents = [];
+            foreach (['Second alphabetically', 'First alphabetically'] as $name) {
+                $document = $this->createItem(Document::class, [
+                    'name' => $name, 'link' => 'https://example.invalid/project-document', 'entities_id' => $entity,
+                ]);
+                $this->createItem(Document_Item::class, [
+                    'documents_id' => $document->getID(), 'itemtype' => LegacyProject::class, 'items_id' => $project->getID(),
+                ]);
+                $documents[] = $document;
+            }
+            $connection = $DB->getDoctrineConnection();
+            $owner = Orm::create($DB);
+            $dirty = $owner->find(DocumentEntity::class, (int)$documents[0]->getID());
+            $dirty->name = 'Unflushed document name';
+            $managedBinding = $owner->find(ItemProjectEntity::class, (int)$binding->getID());
+            $target = new class ($entity, 'new', $project) extends NotificationTargetProject {
+                public ?Closure $onDocument = null;
+
+                public function formatURL($usertype, $redirect)
+                {
+                    if (str_starts_with($redirect, 'document_') && $this->onDocument !== null) {
+                        $callback = $this->onDocument;
+                        $this->onDocument = null;
+                        $callback();
+                    }
+                    return parent::formatURL($usertype, $redirect);
+                }
+            };
+            $target->onDocument = function () use ($connection, $computer, $documents): void {
+                $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+                $this->integer($connection->update('glpi_documents', ['name' => 'Written after document snapshot'], ['id' => $documents[0]->getID()]))->isIdenticalTo(1);
+                $this->integer($connection->update('glpi_computers', ['name' => 'Written before asset snapshot'], ['id' => $computer->getID()]))->isIdenticalTo(1);
+            };
+            $options = ['additionnaloption' => ['usertype' => NotificationTargetProject::GLPI_USER]];
+            $depth = $connection->getTransactionNestingLevel();
+            $data = $target->getForTemplate('new', $options);
+            $this->array(array_column($data['documents'], '##document.id##'))
+                ->isIdenticalTo(array_map(static fn ($document): int => (int)$document->getID(), $documents));
+            $this->array(array_column($data['documents'], '##document.name##'))
+                ->isIdenticalTo(['Second alphabetically', 'First alphabetically']);
+            $this->string($data['documents'][0]['##document.weblink##'])->isIdenticalTo('https://example.invalid/project-document');
+            $this->string($data['documents'][0]['##document.url##'])->contains('redirect=document_' . $documents[0]->getID());
+            $this->string($data['documents'][0]['##document.downloadurl##'])->contains('docid=' . $documents[0]->getID());
+            $this->integer($data['##project.numberofdocuments##'])->isIdenticalTo(2);
+            $this->array($data['items'])->hasSize(1);
+            $this->string($data['items'][0]['##item.name##'])->isIdenticalTo('Written before asset snapshot');
+            $this->string($data['items'][0]['##item.serial##'])->isIdenticalTo('Notification serial');
+            $this->integer($data['##project.numberofitems##'])->isIdenticalTo(1);
+            Orm::read($DB, function ($nested) use ($documents, $target, $options): void {
+                $retained = $nested->find(DocumentEntity::class, (int)$documents[0]->getID());
+                $retained->name = 'Nested unflushed document';
+                $current = $target->getForTemplate('new', $options);
+                $this->string($current['documents'][0]['##document.name##'])->isIdenticalTo('Written after document snapshot');
+                $this->boolean($nested->contains($retained))->isTrue();
+                $this->string($retained->name)->isIdenticalTo('Nested unflushed document');
+            });
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->string($dirty->name)->isIdenticalTo('Unflushed document name');
+            $this->boolean($owner->contains($managedBinding))->isTrue();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
+    public function testChildIdentifiersPreserveRichRenderingAndCustomSelection(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $session = $_SESSION;
+        $entity = (int)Session::getActiveEntity();
+        $em = Orm::create($DB);
+        $listener = new class () {
+            public int $loaded = 0;
+            public function postLoad(): void
+            {
+                ++$this->loaded;
+            }
+        };
+        $em->getEventManager()->addEventListener([Events::postLoad], $listener);
+        try {
+            $prefix = 'Project children ' . $this->getUniqueString();
+            $owner = $this->createItem(User::class, [
+                'name' => $prefix . ' owner', 'entities_id' => $entity, 'authtype' => Auth::DB_GLPI,
+            ]);
+            $this->integer((int)$owner->getID())->isNotIdenticalTo((int)Session::getLoginUserID());
+            $parent = $this->createItem(LegacyProject::class, [
+                'name' => $prefix . ' parent', 'entities_id' => $entity, 'users_id' => Session::getLoginUserID(),
+            ]);
+            $other = $this->createItem(LegacyProject::class, ['name' => $prefix . ' other', 'entities_id' => $entity]);
+            $state = $this->createItem(ProjectState::class, ['name' => $prefix . ' state', 'color' => '#123456']);
+            $children = [];
+            foreach (['team', 'denied', 'deleted', 'other'] as $kind) {
+                $children[$kind] = $this->createItem(LegacyProject::class, [
+                    'name' => $prefix . ' ' . $kind, 'content' => $prefix . ' detail ' . $kind,
+                    'projects_id' => $kind === 'other' ? $other->getID() : $parent->getID(),
+                    'entities_id' => $entity, 'users_id' => $owner->getID(), 'projectstates_id' => $state->getID(),
+                ]);
+            }
+            $this->createItem(ProjectTeam::class, [
+                'projects_id' => $children['team']->getID(), 'itemtype' => 'User', 'items_id' => Session::getLoginUserID(),
+            ]);
+            $this->boolean($children['deleted']->delete(['id' => $children['deleted']->getID()]))->isTrue();
+            $repository = new ProjectRepository($em);
+            $expected = [(int)$children['team']->getID(), (int)$children['denied']->getID()];
+            $ids = $repository->childIds((int)$parent->getID());
+            $actual = $ids;
+            sort($expected);
+            sort($actual);
+            $this->array($actual)->isIdenticalTo($expected);
+            // No ORDER BY existed on the original find; compare membership,
+            // then verify the renderer consumes the selector's returned order.
+            $old = array_map('intval', array_column($parent->find(['projects_id' => $parent->getID(), 'is_deleted' => 0]), 'id'));
+            sort($old);
+            $this->array($actual)->isIdenticalTo($old);
+            $this->array($repository->childIds(0))->contains((int)$parent->getID());
+            $this->array($repository->childIds(PHP_INT_MAX))->isEmpty();
+            $this->integer($listener->loaded)->isIdenticalTo(0);
+            $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+
+            $managed = $em->find(ProjectEntity::class, (int)$children['team']->getID());
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+            $this->boolean($children['team']->update([
+                'id' => $children['team']->getID(), 'projects_id' => $other->getID(),
+            ]))->isTrue();
+            $this->array($repository->childIds((int)$parent->getID()))->isIdenticalTo([(int)$children['denied']->getID()]);
+            $this->integer((int)$em->getClassMetadata(ProjectEntity::class)
+                ->getIdentifierValues($managed->projects)['id'])->isIdenticalTo((int)$parent->getID());
+            $this->boolean($em->contains($managed))->isTrue();
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+            $this->boolean($children['team']->update([
+                'id' => $children['team']->getID(), 'projects_id' => $parent->getID(),
+            ]))->isTrue();
+
+            $_SESSION['glpiactiveprofile']['project'] = LegacyProject::READMY;
+            $this->boolean($parent->can($parent->getID(), READ))->isTrue();
+            $this->boolean($children['team']->getFromDB($children['team']->getID()))->isTrue();
+            $this->boolean($children['team']->canViewItem())->isTrue();
+            $this->boolean($children['denied']->canViewItem())->isFalse();
+            $ids = $repository->childIds((int)$parent->getID());
+            ob_start();
+            try {
+                $parent->showChildren();
+                $html = ob_get_contents();
+            } finally {
+                ob_end_clean();
+            }
+            $this->string($html)->contains($children['team']->getLinkURL() . '&amp;forcetab=Project$')
+                ->contains($prefix . ' detail team')->contains($prefix . ' state')->contains("bgcolor='#123456'")
+                ->contains($prefix . ' denied')->notContains($children['denied']->getLinkURL())
+                ->notContains($prefix . ' deleted')->notContains($prefix . ' other');
+            $this->boolean(strpos($html, '<span class=\'b\'>' . $prefix . ' ' . ($ids[0] === (int)$children['team']->getID() ? 'team' : 'denied'))
+                < strpos($html, '<span class=\'b\'>' . $prefix . ' ' . ($ids[1] === (int)$children['team']->getID() ? 'team' : 'denied')))->isTrue();
+
+            $custom = new class () extends LegacyProject {
+                public array $selection = [];
+                public array $calls = [];
+                public static function getTable($classname = null)
+                {
+                    return LegacyProject::getTable();
+                }
+                public function find($condition = [], $order = [], $limit = null)
+                {
+                    $this->calls[] = [$condition, $order, $limit];
+                    return $this->selection;
+                }
+            };
+            $custom->fields = $parent->fields;
+            $custom->selection = [['id' => $children['other']->getID()], ['id' => $children['denied']->getID()]];
+            ob_start();
+            try {
+                $custom->showChildren();
+                $customHtml = ob_get_contents();
+            } finally {
+                ob_end_clean();
+            }
+            $this->array($custom->calls)->isIdenticalTo([[['projects_id' => $parent->getID(), 'is_deleted' => 0], [], null]]);
+            $this->string($customHtml)->contains($prefix . ' other')->contains($prefix . ' denied')->notContains($prefix . ' team');
+            $this->boolean(strpos($customHtml, $prefix . ' other') < strpos($customHtml, $prefix . ' denied'))->isTrue();
+        } finally {
+            $em->getEventManager()->removeEventListener([Events::postLoad], $listener);
+            $em->clear();
+            $_SESSION = $session;
+        }
+    }
+
     public function testAutocalculatePercentDone()
     {
 

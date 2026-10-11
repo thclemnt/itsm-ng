@@ -1,5 +1,7 @@
 <?php
 
+use itsmng\Database\MappedReads;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access directly to this file");
 }
@@ -95,12 +97,7 @@ class Pdu_Plug extends CommonDBRelation
         }
         $canedit = $pdu->canEdit($ID);
 
-        $items = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'pdus_id' => $pdu->getID()
-           ]
-        ]);
+        $items = MappedReads::matching($DB, self::getTable(), ['pdus_id' => $pdu->getID()]);
         $link = new self();
 
         Session::initNavigateListItems(
@@ -113,8 +110,6 @@ class Pdu_Plug extends CommonDBRelation
                 $pdu->getName()
             )
         );
-
-        $items = iterator_to_array($items);
 
         if ($canedit) {
             $form = [

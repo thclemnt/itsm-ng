@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\LegacyValues;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\KnowledgeBaseRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -46,6 +50,8 @@ class KnowbaseItem_Revision extends CommonDBTM
 
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
     {
+        global $DB;
+
         if (!$item->canUpdateItem()) {
             return '';
         }
@@ -65,10 +71,8 @@ class KnowbaseItem_Revision extends CommonDBTM
                 ];
             }
 
-            $nb = countElementsInTable(
-                'glpi_knowbaseitems_revisions',
-                $where
-            );
+            $nb = (new KnowledgeBaseRepository(Orm::create($DB)))
+                ->revisionCount((int)$where['knowbaseitems_id'], $where['language']);
         }
         return self::createTabEntry(self::getTypeName($nb), $nb);
     }
@@ -110,10 +114,8 @@ class KnowbaseItem_Revision extends CommonDBTM
             ];
         }
 
-        $number = countElementsInTable(
-            'glpi_knowbaseitems_revisions',
-            $where
-        );
+        $repository = new KnowledgeBaseRepository(Orm::create($DB));
+        $number = $repository->revisionCount((int)$where['knowbaseitems_id'], $where['language']);
 
         // No revisions in database
         if ($number < 1) {
@@ -142,22 +144,19 @@ class KnowbaseItem_Revision extends CommonDBTM
         echo $header;
 
         $user = new User();
-        $user->getFromDB($item->fields['users_id']);
+        $hasUser = $user->getFromDB($item->fields['users_id']);
 
         //current contents
         echo "<tr class='tab_bg_2'>";
         echo "<td>(" . __('cur')  . ")</td>" .
                 "<td><input type='radio' name='oldid' value='0' style='visibility:hidden'/>" .
                 "<input type='radio' name='diff' value='0' checked='checked'/></td>" .
-                "<td>" . $user->getLink() . "</td>" .
+                "<td>" . ($hasUser ? $user->getLink() : __('Unknown user')) . "</td>" .
                 "<td class='tab_date'>" . $item->fields['date_mod'] . "</td>" .
                 "<td></td>" .
                 "</tr>";
 
-        $revisions = $DB->request(
-            'glpi_knowbaseitems_revisions',
-            $where + ['ORDER' => 'id DESC']
-        );
+        $revisions = $repository->revisions((int)$where['knowbaseitems_id'], $where['language'], (int)$_SESSION['glpilist_limit'], $start);
 
         $is_checked = true;
         foreach ($revisions as $revision) {
@@ -345,23 +344,7 @@ class KnowbaseItem_Revision extends CommonDBTM
     {
         global $DB;
 
-        $result = $DB->request([
-           'SELECT' => ['MAX' => 'revision AS revision'],
-           'FROM'   => 'glpi_knowbaseitems_revisions',
-           'WHERE'  => [
-              'knowbaseitems_id'   => $this->fields['knowbaseitems_id'],
-              'language'           => $this->fields['language']
-           ]
-        ])->next();
-
-        $rev = $result['revision'];
-        if ($rev === null) {
-            //no revisions yet
-            $rev = 1;
-        } else {
-            ++$rev;
-        }
-
-        return $rev;
+        return (new KnowledgeBaseRepository(Orm::create($DB)))
+            ->nextRevision((int)$this->fields['knowbaseitems_id'], LegacyValues::decode($this->fields['language']));
     }
 }

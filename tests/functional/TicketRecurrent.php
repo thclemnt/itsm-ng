@@ -33,7 +33,18 @@
 
 namespace tests\units;
 
+use Calendar;
+use CalendarSegment;
+use Calendar_Holiday;
 use DbTestCase;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Query;
+use Holiday;
+use ReflectionProperty;
+use TicketRecurrent as LegacyTicketRecurrent;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CalendarRepository;
+use itsmng\Domain\CalendarSchedule;
 
 /* Test for inc/ticketrecurrent.class.php */
 
@@ -424,6 +435,92 @@ class TicketRecurrent extends DbTestCase
            'expected_value' => date('Y-m-d H:00:00', $next_time),
         ];
 
+        // Fixed calendar and clock cover the late-evening anticipation boundary.
+        $fixed_calendar = $calendar->add(['name' => 'Fixed recurrent anticipation calendar']);
+        $this->integer($fixed_calendar)->isGreaterThan(0);
+        for ($day = 1; $day <= 5; $day++) {
+            $this->integer($cal_segment->add([
+                'calendars_id' => $fixed_calendar,
+                'day' => $day,
+                'begin' => '09:00:00',
+                'end' => '19:00:00',
+            ]))->isGreaterThan(0);
+        }
+        $fixed_holiday = $holiday->add([
+            'name' => 'Fixed recurrent holiday',
+            'begin_date' => '2026-10-08',
+            'end_date' => '2026-10-08',
+        ]);
+        $this->integer($fixed_holiday)->isGreaterThan(0);
+        $this->integer($cal_holiday->add([
+            'calendars_id' => $fixed_calendar,
+            'holidays_id' => $fixed_holiday,
+        ]))->isGreaterThan(0);
+        $monday_holiday = $holiday->add([
+            'name' => 'Fixed Monday recurrence closure',
+            'begin_date' => '2026-10-05',
+            'end_date' => '2026-10-05',
+        ]);
+        $this->integer($monday_holiday)->isGreaterThan(0);
+        $this->integer($cal_holiday->add([
+            'calendars_id' => $fixed_calendar,
+            'holidays_id' => $monday_holiday,
+        ]))->isGreaterThan(0);
+        foreach ([
+            ['2026-10-05 22:30:00', '2026-10-06 07:00:00', $fixed_calendar],
+            ['2026-10-06 06:59:59', '2026-10-06 07:00:00', $fixed_calendar],
+            ['2026-10-06 07:00:00', '2026-10-06 07:00:00', $fixed_calendar],
+            ['2026-10-06 07:00:01', '2026-10-07 07:00:00', $fixed_calendar],
+            ['2026-10-07 22:30:00', '2026-10-09 07:00:00', $fixed_calendar],
+            ['2026-10-09 23:00:00', '2026-10-12 07:00:00', $fixed_calendar],
+            ['2026-10-05 22:30:00', '2026-10-06 22:00:00', 0],
+        ] as [$now, $expected, $calendar_id]) {
+            $data[] = [
+                'begin_date' => '2026-10-01 00:00:00',
+                'end_date' => '2026-10-31 23:59:59',
+                'periodicity' => DAY_TIMESTAMP,
+                'create_before' => 2 * HOUR_TIMESTAMP,
+                'calendars_id' => $calendar_id,
+                'expected_value' => $expected,
+                'messages' => null,
+                'now' => strtotime($now),
+            ];
+        }
+
+        $data[] = [
+            'begin_date' => '2025-10-01 00:00:00',
+            'end_date' => '2026-10-31 23:59:59',
+            'periodicity' => DAY_TIMESTAMP,
+            'create_before' => 2 * HOUR_TIMESTAMP,
+            'calendars_id' => $fixed_calendar,
+            'expected_value' => '2026-10-06 07:00:00',
+            'messages' => null,
+            'now' => strtotime('2026-10-05 22:30:00'),
+        ];
+
+        // Calendar postponement applies to an unexpired interval; it cannot
+        // revive a weekly/monthly slot whose nominal creation deadline passed.
+        foreach ([
+            ['2026-09-28 12:00:00', 7 * DAY_TIMESTAMP, 0, '2026-10-05 11:59:59', '2026-10-06 12:00:00'],
+            ['2026-09-28 12:00:00', 7 * DAY_TIMESTAMP, 0, '2026-10-05 12:00:00', '2026-10-06 12:00:00'],
+            ['2026-09-28 12:00:00', 7 * DAY_TIMESTAMP, 0, '2026-10-05 12:00:01', '2026-10-12 12:00:00'],
+            ['2026-09-28 12:00:00', 7 * DAY_TIMESTAMP, 2 * HOUR_TIMESTAMP, '2026-10-05 09:59:59', '2026-10-06 10:00:00'],
+            ['2026-09-28 12:00:00', 7 * DAY_TIMESTAMP, 2 * HOUR_TIMESTAMP, '2026-10-05 10:00:01', '2026-10-12 10:00:00'],
+            ['2026-09-03 12:00:00', '1MONTH', 0, '2026-10-03 11:59:59', '2026-10-06 12:00:00'],
+            ['2026-09-03 12:00:00', '1MONTH', 0, '2026-10-03 12:00:01', '2026-11-03 12:00:00'],
+        ] as [$begin, $periodicity, $anticipation, $now, $expected]) {
+            $data[] = [
+                'begin_date' => $begin,
+                'end_date' => '2027-01-31 23:59:59',
+                'periodicity' => $periodicity,
+                'create_before' => $anticipation,
+                'calendars_id' => $fixed_calendar,
+                'expected_value' => $expected,
+                'messages' => null,
+                'now' => strtotime($now),
+            ];
+        }
+
         return $data;
     }
 
@@ -435,6 +532,7 @@ class TicketRecurrent extends DbTestCase
      * @param integer        $calendars_id
      * @param string         $expected_value
      * @param array          $messages
+     * @param integer|null   $now Fixed scheduling timestamp, or the real clock.
      *
      * @dataProvider computeNextCreationDateProvider
      */
@@ -445,10 +543,11 @@ class TicketRecurrent extends DbTestCase
         $create_before,
         $calendars_id,
         $expected_value,
-        $messages = null
+        $messages = null,
+        $now = null
     ) {
 
-        $ticketRecurrent = new \TicketRecurrent();
+        $ticketRecurrent = $this->clockedRecurrence($now);
         $value = $ticketRecurrent->computeNextCreationDate(
             $begin_date,
             $end_date,
@@ -458,11 +557,126 @@ class TicketRecurrent extends DbTestCase
         );
 
         $this->string($value)->isIdenticalTo($expected_value);
+        if ($now !== null) {
+            $this->integer($ticketRecurrent->calendarEntityManager->queryCount)->isIdenticalTo($calendars_id ? 2 : 0);
+        }
         if ($messages === null) {
             $this->hasNoSessionMessage(ERROR);
         } else {
             $this->hasSessionMessages(ERROR, $messages);
         }
+    }
+
+    private function clockedRecurrence(?int $now): LegacyTicketRecurrent
+    {
+        $ticketRecurrent = new class () extends LegacyTicketRecurrent {
+            public ?int $testTimestamp = null;
+            public ?EntityManager $calendarEntityManager = null;
+
+            protected function recurrenceTimestamp(): int
+            {
+                return $this->testTimestamp ?? parent::recurrenceTimestamp();
+            }
+
+            protected function recurrenceSchedule(int $calendar): CalendarSchedule
+            {
+                return $this->calendarEntityManager === null ? parent::recurrenceSchedule($calendar)
+                    : (new CalendarRepository($this->calendarEntityManager))->schedule($calendar);
+            }
+        };
+        $ticketRecurrent->testTimestamp = $now;
+        if ($now !== null) {
+            global $DB;
+            $connection = $DB->getDoctrineConnection();
+            $configuration = Orm::configuration($connection->getDatabasePlatform());
+            $ticketRecurrent->calendarEntityManager = new class ($connection, $configuration) extends EntityManager {
+                public int $queryCount = 0;
+
+                public function createQuery(string $dql = ''): Query
+                {
+                    $this->queryCount++;
+                    return parent::createQuery($dql);
+                }
+            };
+        }
+        return $ticketRecurrent;
+    }
+
+    public function testRecurrenceReadsFreshCalendarValues()
+    {
+        $calendar = new Calendar();
+        $calendarId = $calendar->add(['name' => 'Fresh recurrence calendar']);
+        $this->integer($calendarId)->isGreaterThan(0);
+        $segment = new CalendarSegment();
+        $segmentId = $segment->add([
+            'calendars_id' => $calendarId, 'day' => 2, 'begin' => '09:00:00', 'end' => '19:00:00',
+        ]);
+        $this->integer($segmentId)->isGreaterThan(0);
+        $recurrent = $this->clockedRecurrence(strtotime('2026-10-05 22:30:00'));
+        $calculate = static fn () => $recurrent->computeNextCreationDate(
+            '2025-10-01 00:00:00',
+            '2026-10-31 23:59:59',
+            DAY_TIMESTAMP,
+            2 * HOUR_TIMESTAMP,
+            $calendarId
+        );
+        $this->string($calculate())->isIdenticalTo('2026-10-06 07:00:00');
+        $this->integer($recurrent->calendarEntityManager->queryCount)->isIdenticalTo(2);
+
+        $this->boolean($segment->update(['id' => $segmentId, 'begin' => '10:00:00']))->isTrue();
+        $this->string($calculate())->isIdenticalTo('2026-10-06 08:00:00');
+        $this->integer($recurrent->calendarEntityManager->queryCount)->isIdenticalTo(4);
+
+        $holiday = new Holiday();
+        $holidayId = $holiday->add([
+            'name' => 'Fresh recurrence closure', 'begin_date' => '2026-10-06', 'end_date' => '2026-10-06',
+        ]);
+        $this->integer($holidayId)->isGreaterThan(0);
+        $link = new Calendar_Holiday();
+        $this->integer($link->add(['calendars_id' => $calendarId, 'holidays_id' => $holidayId]))->isGreaterThan(0);
+        $this->string($calculate())->isIdenticalTo('2026-10-13 08:00:00');
+        $this->integer($recurrent->calendarEntityManager->queryCount)->isIdenticalTo(6);
+
+        // The nominal day is allowed, but its calendar-shifted occurrence is not.
+        $this->string($recurrent->computeNextCreationDate(
+            '2025-10-01 00:00:00',
+            '2026-10-08 23:59:59',
+            DAY_TIMESTAMP,
+            2 * HOUR_TIMESTAMP,
+            $calendarId
+        ))->isIdenticalTo('NULL');
+        $this->integer($recurrent->calendarEntityManager->queryCount)->isIdenticalTo(8);
+
+        $this->boolean($holiday->update([
+            'id' => $holidayId, 'begin_date' => '2020-01-01',
+            'end_date' => '2020-12-31', 'is_perpetual' => 1,
+        ]))->isTrue();
+        $this->string($recurrent->computeNextCreationDate(
+            '2025-10-01 00:00:00',
+            null,
+            DAY_TIMESTAMP,
+            0,
+            $calendarId
+        ))->isIdenticalTo('NULL');
+        $this->integer($recurrent->calendarEntityManager->queryCount)->isIdenticalTo(10);
+
+        // Exercise the application accessor as well as the instrumented repository.
+        $recurrent->calendarEntityManager = null;
+        $this->string($calculate())->isIdenticalTo('NULL');
+        $this->boolean($holiday->update([
+            'id' => $holidayId, 'begin_date' => '2026-10-06',
+            'end_date' => '2026-10-06', 'is_perpetual' => 0,
+        ]))->isTrue();
+        $this->string($calculate())->isIdenticalTo('2026-10-13 08:00:00');
+        $this->boolean($segment->update(['id' => $segmentId, 'begin' => '11:00:00']))->isTrue();
+        $this->string($calculate())->isIdenticalTo('2026-10-13 09:00:00');
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $allocated = $factories->getValue();
+        for ($i = 0; $i < 16; ++$i) {
+            $value = $calculate();
+        }
+        $this->string($value)->isIdenticalTo('2026-10-13 09:00:00');
+        $this->integer($factories->getValue() - $allocated)->isIdenticalTo(0);
     }
 
     /**

@@ -3523,6 +3523,7 @@ a.copyright {
       opacity: 0.2;
       text-align: right;
       margin-top: .2em;
+      float: right;
 
       > * {
          vertical-align: middle;
@@ -3531,8 +3532,6 @@ a.copyright {
       &:hover {
          opacity: 1;
       }
-
-      float: right;
 
       h3 {
          display: inline-block;
@@ -4429,6 +4428,8 @@ a.copyright {
    -moz-user-select: none;
    -khtml-user-select: none;
    -ms-user-select: none;
+   padding: 4px;
+   display: inline-block;
 
    * {
       -webkit-user-select: none;
@@ -4436,9 +4437,6 @@ a.copyright {
       -khtml-user-select: none;
       -ms-user-select: none;
    }
-
-   padding: 4px;
-   display: inline-block;
 
    img {
       padding-right: 10px;

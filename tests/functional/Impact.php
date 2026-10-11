@@ -33,16 +33,151 @@
 
 namespace tests\units;
 
+use Change;
+use Change_Item;
 use CommonDBTM;
 use Computer;
+use Config as ConfigModel;
+use Doctrine\Common\EventManager;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Mapping as Mapping;
+use Doctrine\ORM\Event\PostLoadEventArgs;
+use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use ReflectionProperty;
+use InvalidArgumentException;
+use LogicException;
+use mock\DBmysql as ImpactAdapterProbe;
+use mock\Computer as ImpactComputerProbe;
+use tests\fixtures\ScalarReadProbe;
+use Impact as ImpactModel;
 use ImpactCompound;
 use ImpactItem;
 use ImpactRelation;
+use Item_Problem;
 use Item_Ticket;
+use Problem;
+use Session;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Ticket;
+use Toolbox;
+use itsmng\Database\Entity;
+use itsmng\Database\Entity\User;
+use itsmng\Database\Mapping\DiscriminatedBy;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILAssetRepository;
+use itsmng\Database\Repository\TicketAssetRepository;
+use itsmng\Database\Repository\UserRepository;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Impact extends \DbTestCase
 {
+    public function testListPriorityColorsUseCurrentAccountOverrides(): void
+    {
+        global $DB, $CFG_GLPI;
+
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $em = Orm::create($DB);
+        $connection = $em->getConnection();
+        $level = $connection->getTransactionNestingLevel();
+        $savedConfig = $CFG_GLPI;
+        $user = (int)Session::getLoginUserID();
+        $observer = new class () {
+            public int $loads = 0;
+            public function postLoad(PostLoadEventArgs $event): void
+            {
+                ++$this->loads;
+            }
+        };
+        $em->getEventManager()->addEventListener(['postLoad'], $observer);
+        try {
+            $computers = [];
+            for ($i = 0; $i < 3; ++$i) {
+                $computer = new Computer();
+                $this->integer($computer->add([
+                    'name' => 'Impact priority ' . $i . '-' . bin2hex(random_bytes(6)),
+                    'entities_id' => $entity,
+                ]))->isGreaterThan(0);
+                $this->boolean($computer->can($computer->getID(), READ))->isTrue();
+                $computers[] = $computer;
+            }
+            $connection->update('glpi_users', [
+                'priority_3' => null, 'priority_4' => '', 'priority_5' => '#123456', 'priority_6' => '0',
+            ], ['id' => $user]);
+            $CFG_GLPI['priority_3'] = '#abcdef';
+            $repository = new UserRepository($em);
+            $colors = $repository->priorityColors($user);
+            $this->array($colors)->hasSize(6);
+            $this->variable($colors['priority_3'])->isNull();
+            $this->string($colors['priority_4'])->isIdenticalTo('');
+            $this->string($colors['priority_5'])->isIdenticalTo('#123456');
+            $this->string($colors['priority_6'])->isIdenticalTo('0');
+            $this->array($repository->priorityColors(-1))->isEmpty();
+            $this->integer($observer->loads)->isIdenticalTo(0);
+            $this->integer($em->getUnitOfWork()->size())->isIdenticalTo(0);
+            $managed = $em->find(User::class, $user);
+            $this->integer($observer->loads)->isGreaterThan(0);
+
+            // The renderer consumes an already built graph; keep its counters and
+            // priorities explicit so maximum-priority and empty-cell behavior are tested.
+            $graph = ['nodes' => [], 'edges' => []];
+            foreach ($computers as $computer) {
+                $node = ImpactModel::getNodeID($computer);
+                $graph['nodes'][$node] = ['id' => $node, 'label' => $computer->fields['name'],
+                    'ITILObjects' => ['incidents' => [], 'problems' => [], 'changes' => []]];
+            }
+            $root = ImpactModel::getNodeID($computers[0]);
+            $first = ImpactModel::getNodeID($computers[1]);
+            $second = ImpactModel::getNodeID($computers[2]);
+            $graph['nodes'][$first]['ITILObjects'] = [
+                'incidents' => [['priority' => 2], ['priority' => 5]],
+                'problems' => [['priority' => 3]], 'changes' => [['priority' => 4]],
+            ];
+            $graph['nodes'][$second]['ITILObjects']['incidents'] = [['priority' => 6]];
+            foreach ([$first, $second] as $node) {
+                $graph['edges'][] = ['source' => $root, 'target' => $node, 'flag' => ImpactModel::DIRECTION_FORWARD];
+            }
+            $render = static function () use ($computers, &$graph): string {
+                ob_start();
+                try {
+                    ImpactModel::displayListView($computers[0], $graph);
+                    return ob_get_contents();
+                } finally {
+                    ob_end_clean();
+                }
+            };
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $beforeFactories = $factories->getValue();
+            $html = $render();
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0, 'Priority rendering reuses the existing request manager');
+            foreach (['#123456', '#abcdef', '', '0'] as $color) {
+                $this->string($html)->contains('background-color:' . $color . '; cursor:pointer;');
+            }
+            $this->string($html)->contains('<div>2</div>')->contains('<div></div>');
+            $this->string($html)->contains('itemtype=Ticket')->contains('itemtype=Problem')->contains('itemtype=Change');
+            $this->string($html)->contains($computers[1]->fields['name'])->contains($computers[2]->fields['name']);
+
+            $connection->update('glpi_users', ['priority_5' => '#654321'], ['id' => $user]);
+            $CFG_GLPI['priority_3'] = '#fedcba';
+            $this->string($repository->priorityColors($user)['priority_5'])->isIdenticalTo('#654321');
+            $this->string($managed->priority_5)->isIdenticalTo('#123456');
+            $html = $render();
+            $this->string($html)->contains('background-color:#654321;')->contains('background-color:#fedcba;');
+            $this->string($html)->notContains('background-color:#123456;')->notContains('background-color:#abcdef;');
+            foreach ($graph['nodes'] as &$node) {
+                $node['ITILObjects'] = ['incidents' => [], 'problems' => [], 'changes' => []];
+            }
+            unset($node);
+            $this->string($render())->notContains('background-color:');
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $em->clear();
+            $CFG_GLPI = $savedConfig;
+        }
+    }
+
     public function beforeTestMethod($method)
     {
         parent::beforeTestMethod($method);
@@ -134,6 +269,28 @@ class Impact extends \DbTestCase
             $not_enabled_or_itil = new ImpactCompound();
             $impact->getTabNameForItem($not_enabled_or_itil);
         })->isInstanceOf(\InvalidArgumentException::class);
+        global $CFG_GLPI;
+        $original = ConfigModel::getConfigurationValues('core', [ImpactModel::CONF_ENABLED]);
+        $allowed = $CFG_GLPI['impact_asset_types'];
+        try {
+            $CFG_GLPI['impact_asset_types'][Computer::class] = true;
+            ConfigModel::setConfigurationValues('core', [ImpactModel::CONF_ENABLED => exportArrayToDB([Computer::class, 'ForbiddenConfigurationItem'])]);
+            $this->array(ImpactModel::getEnabledItemtypes())->isIdenticalTo([Computer::class]);
+            unset($CFG_GLPI['impact_asset_types'][Computer::class]);
+            $this->array(ImpactModel::getEnabledItemtypes())->isEmpty();
+            $CFG_GLPI['impact_asset_types'][Computer::class] = true;
+            ConfigModel::setConfigurationValues('core', [ImpactModel::CONF_ENABLED => exportArrayToDB([])]);
+            $this->array(ImpactModel::getEnabledItemtypes())->isEmpty();
+            ConfigModel::deleteConfigurationValues('core', [ImpactModel::CONF_ENABLED]);
+            $this->array(ImpactModel::getEnabledItemtypes())->isEmpty();
+        } finally {
+            $CFG_GLPI['impact_asset_types'] = $allowed;
+            if (array_key_exists(ImpactModel::CONF_ENABLED, $original)) {
+                ConfigModel::setConfigurationValues('core', $original);
+            } else {
+                ConfigModel::deleteConfigurationValues('core', [ImpactModel::CONF_ENABLED]);
+            }
+        }
     }
 
     public function testGetTabNameForItem_tabCountDisabled()
@@ -151,23 +308,115 @@ class Impact extends \DbTestCase
 
     public function testGetTabNameForItem_enabledAsset()
     {
+        global $DB;
         $old_session = $_SESSION['glpishow_count_on_tabs'];
-        $_SESSION['glpishow_count_on_tabs'] = true;
+        $original = ConfigModel::getConfigurationValues('core', [ImpactModel::CONF_ENABLED]);
+        $connection = $DB->getDoctrineConnection();
+        try {
+            $_SESSION['glpishow_count_on_tabs'] = true;
+            ConfigModel::setConfigurationValues('core', [ImpactModel::CONF_ENABLED => exportArrayToDB([Computer::class])]);
+            $impact = new ImpactModel();
+            $computer1 = getItemByTypeName('Computer', '_test_pc01');
+            $computer2 = getItemByTypeName('Computer', '_test_pc02');
+            $computer3 = getItemByTypeName('Computer', '_test_pc03');
+            $this->addDbEdge($computer1, $computer2);
+            $edge = $this->addDbEdge($computer2, $computer3);
+            $this->string($impact->getTabNameForItem($computer2))
+                ->isIdenticalTo(ImpactModel::createTabEntry('Impact analysis', 2));
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $before = $factories->getValue();
+            $this->string($impact->getTabNameForItem($computer2))
+                ->isIdenticalTo(ImpactModel::createTabEntry('Impact analysis', 2));
+            $connection->delete('glpi_impactrelations', ['id' => $edge]);
+            $this->string($impact->getTabNameForItem($computer2))
+                ->isIdenticalTo(ImpactModel::createTabEntry('Impact analysis', 1));
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
 
-        $impact = new \Impact();
+            $connection->update('glpi_configs', ['value' => exportArrayToDB([])], ['context' => 'core', 'name' => ImpactModel::CONF_ENABLED]);
+            $this->exception(static function () use ($impact, $computer2): void {
+                $impact->getTabNameForItem($computer2);
+            })->isInstanceOf(InvalidArgumentException::class);
+            $connection->update('glpi_configs', ['value' => exportArrayToDB([Computer::class])], ['context' => 'core', 'name' => ImpactModel::CONF_ENABLED]);
+            $this->string($impact->getTabNameForItem($computer2))
+                ->isIdenticalTo(ImpactModel::createTabEntry('Impact analysis', 1));
+            $this->string($impact->getTabNameForItem(new Computer()))->isIdenticalTo('Impact analysis');
+        } finally {
+            $_SESSION['glpishow_count_on_tabs'] = $old_session;
+            if (array_key_exists(ImpactModel::CONF_ENABLED, $original)) {
+                ConfigModel::setConfigurationValues('core', $original);
+            } else {
+                ConfigModel::deleteConfigurationValues('core', [ImpactModel::CONF_ENABLED]);
+            }
+        }
+    }
 
-        // Get computers
-        $computer1 = getItemByTypeName('Computer', '_test_pc01');
-        $computer2 = getItemByTypeName('Computer', '_test_pc02');
-        $computer3 = getItemByTypeName('Computer', '_test_pc03');
-
-        // Create an impact graph
-        $this->addDbEdge($computer1, $computer2);
-        $this->addDbEdge($computer2, $computer3);
-        $tab_name = $impact->getTabNameForItem($computer2);
-        $_SESSION['glpishow_count_on_tabs'] = $old_session;
-
-        $this->string($tab_name)->isEqualTo("Impact analysis <sup class='tab_nb'>2</sup>");
+    public function testImpactTabUsesOneConfigurationSnapshotOnSelectedCustomRoute(): void
+    {
+        global $DB, $CFG_GLPI;
+        $this->login();
+        $originalAdapter = $DB;
+        $oldCount = $_SESSION['glpishow_count_on_tabs'];
+        $allowed = $CFG_GLPI['impact_asset_types'];
+        $original = ConfigModel::getConfigurationValues('core', [ImpactModel::CONF_ENABLED]);
+        $connection = $DB->getDoctrineConnection();
+        $this->mockGenerator()->orphanize('__construct');
+        $item = new ImpactComputerProbe();
+        $class = get_class($item);
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)Session::getActiveEntity();
+        $source = $this->createItem(Computer::class, ['name' => '_impact_scope_source', 'entities_id' => $entity]);
+        $target = $this->createItem(Computer::class, ['name' => '_impact_scope_target', 'entities_id' => $entity]);
+        $item->fields = $target->fields;
+        $targetId = (int)$target->getID();
+        $probe = new ScalarReadProbe($connection);
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new ImpactAdapterProbe();
+        $this->calling($adapter)->getDoctrineConnection = $probe;
+        $this->calling($adapter)->getProvider = $DB->getProvider();
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        try {
+            $_SESSION['glpishow_count_on_tabs'] = true;
+            $CFG_GLPI['impact_asset_types'][$class] = true;
+            $json = exportArrayToDB([Computer::class, $class]);
+            ConfigModel::setConfigurationValues('core', [ImpactModel::CONF_ENABLED => Toolbox::addslashes_deep($json)]);
+            $stored = ConfigModel::getConfigurationValues('core', [ImpactModel::CONF_ENABLED]);
+            $this->string($stored[ImpactModel::CONF_ENABLED])->isIdenticalTo($json);
+            $this->array(importArrayFromDB($stored[ImpactModel::CONF_ENABLED]))->isIdenticalTo([Computer::class, $class]);
+            $this->array(ImpactModel::getEnabledItemtypes())->isIdenticalTo([Computer::class, $class]);
+            $connection->insert('glpi_impactrelations', [
+                'itemtype_source' => Computer::class, 'items_id_source' => $source->getID(),
+                'itemtype_impacted' => $class, 'items_id_impacted' => $targetId,
+            ]);
+            $atId = [];
+            $this->calling($item)->getID = static function () use (&$atId, $factories, $probe, $connection, $targetId): int {
+                $atId = [$factories->getValue(), count($probe->queries)];
+                // A callback changes the next operation's admission; this count keeps its initial snapshot.
+                $connection->update('glpi_configs', ['value' => exportArrayToDB([])], ['context' => 'core', 'name' => ImpactModel::CONF_ENABLED]);
+                return $targetId;
+            };
+            $DB = $adapter;
+            $before = $factories->getValue();
+            $impact = new ImpactModel();
+            $this->string($impact->getTabNameForItem($item))
+                ->isIdenticalTo(ImpactModel::createTabEntry('Impact analysis', 1));
+            $this->array($atId)->isIdenticalTo([$before + 2, 1], 'Selected Config and count managers precede getID; only Config SQL has run');
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(2);
+            $this->array($probe->queries)->hasSize(2, 'One configuration query and one count use the supplied route');
+            $this->exception(static function () use ($impact, $item): void {
+                $impact->getTabNameForItem($item);
+            })->isInstanceOf(InvalidArgumentException::class);
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(3, 'The next custom read owns a new independent manager');
+            $this->array($probe->queries)->hasSize(3);
+        } finally {
+            $DB = $originalAdapter;
+            $_SESSION['glpishow_count_on_tabs'] = $oldCount;
+            $CFG_GLPI['impact_asset_types'] = $allowed;
+            if (array_key_exists(ImpactModel::CONF_ENABLED, $original)) {
+                ConfigModel::setConfigurationValues('core', array_map(static fn ($value) => Toolbox::addslashes_deep($value), $original));
+            } else {
+                ConfigModel::deleteConfigurationValues('core', [ImpactModel::CONF_ENABLED]);
+            }
+        }
     }
 
     public function testGetTabNameForItem_ITILObject()
@@ -253,8 +502,166 @@ class Impact extends \DbTestCase
 
         // Build graph from pc02
         $computer = getItemByTypeName('Computer', '_test_pc02');
-        $graph = \Impact::buildGraph($computer);
-        // var_dump(array_keys($graph['nodes']));
+        $this->login();
+        $objects = [];
+        foreach ([
+            ['incidents', Ticket::class, Item_Ticket::class, Ticket::INCIDENT_TYPE],
+            ['requests', Ticket::class, Item_Ticket::class, Ticket::DEMAND_TYPE],
+            ['changes', Change::class, Change_Item::class, null],
+            ['problems', Problem::class, Item_Problem::class, null],
+        ] as [$bucket, $class, $linkClass, $type]) {
+            $object = new $class();
+            $input = ['name' => 'Impact ' . $bucket . ' ' . $this->getUniqueString(),
+                'content' => 'Linked graph object', 'entities_id' => (int)$computer->fields['entities_id']];
+            if ($type !== null) {
+                $input['type'] = $type;
+            }
+            $this->integer((int)$object->add($input))->isGreaterThan(0);
+            $link = new $linkClass();
+            $this->integer((int)$link->add(['itemtype' => Computer::class, 'items_id' => $computer->getID(),
+                $class::getForeignKeyField() => $object->getID()]))->isGreaterThan(0);
+            $objects[$bucket] = $object;
+        }
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeFactories = $factories->getValue();
+        $graph = ImpactModel::buildGraph($computer);
+        $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0, 'A populated graph reuses the existing request manager');
+        $nodeId = ImpactModel::getNodeID($computer);
+        foreach ($objects as $bucket => $object) {
+            $this->array(array_column($graph['nodes'][$nodeId]['ITILObjects'][$bucket], 'id'))
+                ->contains((int)$object->getID());
+        }
+        $this->array(ImpactModel::buildGraph($computer))->isIdenticalTo($graph);
+        $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+
+        $connection = $GLOBALS['DB']->getDoctrineConnection();
+        $activeQueryPlans = null;
+        Orm::read($GLOBALS['DB'], function (EntityManager $manager) use ($computer, $objects, $graph, $nodeId, &$activeQueryPlans): void {
+            $this->boolean($manager->getConnection()->ownsApplicationEntityManager($manager))->isTrue();
+            $cache = $manager->getConfiguration()->getQueryCache();
+            $this->object($cache)->isInstanceOf(ArrayAdapter::class);
+            $cache->clear();
+            foreach ([
+                ['incidents', Entity\ItemTicket::class, Ticket::INCIDENT_TYPE],
+                ['requests', Entity\ItemTicket::class, Ticket::DEMAND_TYPE],
+                ['changes', Entity\ChangeItem::class, null],
+                ['problems', Entity\ItemProblem::class, null],
+            ] as [$bucket, $link, $type]) {
+                $object = $objects[$bucket];
+                $finished = array_merge($object->getSolvedStatusArray(), $object->getClosedStatusArray());
+                $read = $type === null
+                    ? fn (): array => (new ITILAssetRepository($manager))->activeForLink($link, Computer::class, (int)$computer->getID(), $finished)
+                    : fn (): array => (new TicketAssetRepository($manager))->active(Computer::class, (int)$computer->getID(), $finished, $type);
+                $rows = $read();
+                $this->array($rows)->isIdenticalTo($graph['nodes'][$nodeId]['ITILObjects'][$bucket]);
+                $byId = array_column($rows, null, 'id');
+                $this->array($byId[(int)$object->getID()])->isIdenticalTo([
+                    'id' => (int)$object->getID(), 'name' => $object->fields['name'], 'priority' => (int)$object->fields['priority'],
+                ]);
+                $original = ['is_deleted' => $object->fields['is_deleted'], 'status' => $object->fields['status']];
+                foreach ([['is_deleted' => 1], ['status' => $finished[0]]] as $hidden) {
+                    try {
+                        $manager->getConnection()->update($object::getTable(), $hidden, ['id' => $object->getID()]);
+                        $this->array(array_column($read(), 'id'))->notContains((int)$object->getID());
+                    } finally {
+                        $manager->getConnection()->update($object::getTable(), $original, ['id' => $object->getID()]);
+                    }
+                }
+                $this->array($read())->isIdenticalTo($graph['nodes'][$nodeId]['ITILObjects'][$bucket]);
+            }
+            $activeQueryPlans = count($cache->getValues());
+        });
+        $connection->update('glpi_tickets', ['name' => 'Fresh graph incident'], ['id' => $objects['incidents']->getID()]);
+        $fresh = ImpactModel::buildGraph($computer);
+        $this->array(array_column($fresh['nodes'][$nodeId]['ITILObjects']['incidents'], 'name', 'id'))
+            ->hasKey((int)$objects['incidents']->getID());
+        $names = array_column($fresh['nodes'][$nodeId]['ITILObjects']['incidents'], 'name', 'id');
+        $this->string($names[(int)$objects['incidents']->getID()])->isIdenticalTo('Fresh graph incident');
+        $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+        $found = ImpactModel::searchAsset(Computer::class, [], $computer->fields['name']);
+        $this->array(array_map('intval', array_column($found['items'], 'id')))->contains((int)$computer->getID());
+        $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+        Orm::withConnection($connection, function (EntityManager $outer) use ($computer, $factories): void {
+            $pending = $outer->find(User::class, (int)Session::getLoginUserID());
+            $pending->priority_5 = '#123789';
+            $beforeNestedFactories = $factories->getValue();
+            $computer->getITILTickets(true);
+            $this->integer($factories->getValue() - $beforeNestedFactories)->isIdenticalTo(4, 'Each nested ITIL read owns a separate manager');
+            $this->boolean($outer->contains($pending))->isTrue();
+            $this->string($pending->priority_5)->isIdenticalTo('#123789');
+        });
+
+        $events = new EventManager();
+        $observer = new class () {
+            public int $clears = 0;
+            public array $loaded = [];
+            public ?string $changeParent = null;
+            public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
+            {
+                $metadata = $event->getClassMetadata();
+                $this->loaded[] = $metadata->name;
+                if ($metadata->name === Entity\ChangeItem::class) {
+                    if ($this->changeParent === 'redirect') {
+                        $association = $metadata->associationMappings['changes'];
+                        $definition = $association->toArray();
+                        $definition['targetEntity'] = Entity\Problem::class;
+                        $metadata->associationMappings['changes'] = $association::fromMappingArray($definition);
+                    } elseif ($this->changeParent === 'remove') {
+                        unset($metadata->associationMappings['changes']);
+                    }
+                }
+            }
+            public function onClear(): void
+            {
+                ++$this->clears;
+            }
+        };
+        $events->addEventListener(['onClear', 'loadClassMetadata'], $observer);
+        $probe = new class ($connection) extends ScalarReadProbe {
+            public EventManager $events;
+            public function getEventManager(): EventManager
+            {
+                return $this->events;
+            }
+        };
+        $probe->events = $events;
+        $originalAdapter = $GLOBALS['DB'];
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new ImpactAdapterProbe();
+        $getters = 0;
+        $this->calling($adapter)->getDoctrineConnection = static function () use ($probe, &$getters) {
+            ++$getters;
+            return $probe;
+        };
+        $this->calling($adapter)->getProvider = $originalAdapter->getProvider();
+        try {
+            $GLOBALS['DB'] = $adapter;
+            $beforeFactories = $factories->getValue();
+            $this->array($computer->getITILTickets(true))->isIdenticalTo($fresh['nodes'][$nodeId]['ITILObjects']);
+            $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(4);
+            $this->integer($getters)->isIdenticalTo(4);
+            $this->array($probe->queries)->hasSize(4);
+            $this->integer($observer->clears)->isIdenticalTo(0);
+            $this->array($observer->loaded)->contains(Entity\ChangeItem::class)->contains(Entity\ItemProblem::class);
+            $this->array($observer->loaded)->notContains(Entity\TicketTask::class)
+                ->notContains(Entity\ChangeTask::class)->notContains(Entity\ProblemTask::class);
+
+            $observer->changeParent = 'redirect';
+            $probe->queries = [];
+            $objects['changes']->getActiveChangesForItem(Computer::class, $computer->getID());
+            $this->array($probe->queries)->hasSize(1);
+            $this->string($probe->queries[0]['sql'])->contains('glpi_problems');
+
+            $observer->changeParent = 'remove';
+            $probe->queries = [];
+            $this->exception(fn () => $objects['changes']->getActiveChangesForItem(Computer::class, $computer->getID()))
+                ->isInstanceOf(LogicException::class)
+                ->hasMessage('Expected one ITIL asset parent association: ' . Entity\ChangeItem::class);
+            $this->array($probe->queries)->isEmpty();
+            $this->integer($observer->clears)->isIdenticalTo(0);
+        } finally {
+            $GLOBALS['DB'] = $originalAdapter;
+        }
         $this->array($graph)->hasKeys(["nodes", "edges"]);
 
         // Nodes should contain 8 elements (6 nodes + 2 compounds)
@@ -282,6 +689,33 @@ class Impact extends \DbTestCase
             return $elem["flag"] == (\Impact::DIRECTION_FORWARD | \Impact::DIRECTION_BACKWARD);
         });
         $this->array($both)->hasSize(2);
+        // A subclass can redeclare its discriminator without changing the parent.
+        $reference = new class () extends Entity\ItemTicket {
+            #[Mapping\ManyToOne(targetEntity: Entity\Computer::class)]
+            #[Mapping\JoinColumn(name: 'extension_computers_id', referencedColumnName: 'id', nullable: true)]
+            #[DiscriminatedBy('itemtype', 'items_id', ['ExtendedComputer'])]
+            public ?Entity\Computer $computer = null;
+        };
+        $this->string($reference::referenceAssociation('ExtendedComputer'))->isIdenticalTo('computer');
+        $this->exception(fn () => $reference::referenceAssociation(Computer::class))
+            ->isInstanceOf(InvalidArgumentException::class);
+        $this->string(Entity\ItemTicket::referenceAssociation(Computer::class))->isIdenticalTo('computer');
+        $this->exception(fn () => Entity\ItemTicket::referenceAssociation('ExtendedComputer'))
+            ->isInstanceOf(InvalidArgumentException::class);
+        $reference->itemtype = 'ExtendedComputer';
+        $reference->computer = new Entity\Computer();
+        $reference->computer->id = 77;
+        $normalized = $reference->normalizeInput(['items_id' => 77]);
+        $this->integer($normalized['extension_computers_id'])->isIdenticalTo(77);
+        $this->array($normalized)->notHasKey('computers_id')->notHasKey('items_id');
+        $this->array($reference::withReference(['extension_computers_id' => 77, 'monitors_id' => 88], 'ExtendedComputer', 77))
+            ->isIdenticalTo(['itemtype' => 'ExtendedComputer', 'items_id' => 77]);
+        $this->array($reference->legacyChanges(['extension_computers_id']))
+            ->isIdenticalTo(['extension_computers_id', 'items_id']);
+        $reference->validateReference();
+        $reference->monitor = new Entity\Monitor();
+        $this->exception(fn () => $reference->validateReference())->isInstanceOf(InvalidArgumentException::class);
+        $this->integer($activeQueryPlans)->isIdenticalTo(0);
     }
 
     public function testClean()

@@ -31,14 +31,27 @@
  * ---------------------------------------------------------------------
  */
 
-use itsmng\Timezone;
+use Monolog\Logger;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
 use Glpi\Cache\SimpleCache;
-use PHPMailer\PHPMailer\PHPMailer;
-use Glpi\System\RequirementsManager;
 use Glpi\Exception\PasswordTooWeakException;
-use Laminas\Cache\Storage\FlushableInterface;
-use Laminas\Cache\Storage\TotalSpaceCapableInterface;
-use Laminas\Cache\Storage\AvailableSpaceCapableInterface;
+use Glpi\System\RequirementsManager;
+use SimplePie\SimplePie as SimplePieFeed;
+use itsmng\Cache\StorageFactory;
+use itsmng\Database\CheckConstraintSupport;
+use itsmng\Database\LegacyValues;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ConfigurationRepository;
+use itsmng\Timezone;
+use PHPMailer\PHPMailer\PHPMailer;
+use Psr\Cache\CacheItemPoolInterface;
+use Psr\SimpleCache\CacheInterface;
+use Symfony\Component\Cache\Adapter\ApcuAdapter;
+use Symfony\Component\Cache\Exception\InvalidArgumentException as CacheConfigurationException;
+use Symfony\Component\Cache\Psr16Cache;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -255,7 +268,10 @@ class Config extends CommonDBTM
         }
 
         if (isset($input[Impact::CONF_ENABLED])) {
-            $input[Impact::CONF_ENABLED] = exportArrayToDB($input[Impact::CONF_ENABLED]);
+            // Itemtypes arrive escaped; protect the completed JSON at the write boundary.
+            $input[Impact::CONF_ENABLED] = Toolbox::addslashes_deep(
+                exportArrayToDB(Toolbox::stripslashes_deep($input[Impact::CONF_ENABLED]))
+            );
         }
 
         // Beware : with new management system, we must update each value
@@ -1849,7 +1865,8 @@ class Config extends CommonDBTM
 
         echo "<tr><th colspan='4'>" . __('User data cache') . "</th></tr>";
         $ext = strtolower(get_class($GLPI_CACHE));
-        $ext = substr($ext, strrpos($ext, '\\') + 1);
+        $ext = preg_replace('/adapter$/', '', substr($ext, strrpos($ext, '\\') + 1));
+        $ext = $ext === 'array' ? 'memory' : $ext;
         if (in_array($ext, ['apcu', 'memcache', 'memcached', 'wincache', 'redis'])) {
             $msg = sprintf(__s('The "%s" cache extension is installed'), $ext);
         } else {
@@ -1860,9 +1877,9 @@ class Config extends CommonDBTM
           <td></td>
           <td class='icons_block'><i class='fa fa-check-circle ok' title='$msg'></i><span class='sr-only'>$msg</span></td></tr>";
 
-        if ($ext != 'filesystem' && $GLPI_CACHE instanceof AvailableSpaceCapableInterface && $GLPI_CACHE instanceof TotalSpaceCapableInterface) {
-            $free = $GLPI_CACHE->getAvailableSpace();
-            $max  = $GLPI_CACHE->getTotalSpace();
+        if ($GLPI_CACHE instanceof ApcuAdapter && ($memory = apcu_sma_info(true)) !== false) {
+            $free = $memory['avail_mem'];
+            $max = $memory['num_seg'] * $memory['seg_size'];
             $used = $max - $free;
             $rate = round(100.0 * $used / $max);
             $max  = Toolbox::getSize($max);
@@ -1881,7 +1898,7 @@ class Config extends CommonDBTM
             echo "</td><td class='icons_block'><i title='$msg' class='fa fa-$class'></td></tr>";
         }
 
-        if ($GLPI_CACHE instanceof FlushableInterface) {
+        if ($GLPI_CACHE instanceof CacheItemPoolInterface || $GLPI_CACHE instanceof CacheInterface) {
             echo "<tr><td></td><td colspan='3'>";
             echo '<form aria-label="Reset" method="POST" action="' . static::getFormURL() . '" style="display:inline;">';
             echo Html::hidden('_glpi_csrf_token', ['value' => Session::getNewCSRFToken()]);
@@ -1897,12 +1914,13 @@ class Config extends CommonDBTM
         echo "<tr><th colspan='4'>" . __('Translation cache') . "</th></tr>";
         $translation_cache = self::getCache('cache_trans', 'core', false);
         $adapter_class = strtolower(get_class($translation_cache));
-        $adapter = substr($adapter_class, strrpos($adapter_class, '\\') + 1);
+        $adapter = preg_replace('/adapter$/', '', substr($adapter_class, strrpos($adapter_class, '\\') + 1));
+        $adapter = $adapter === 'array' ? 'memory' : $adapter;
         $msg = sprintf(__s('"%s" cache system is used'), $adapter);
         echo "<tr><td colspan='3'>" . $msg . "</td>
           <td class='icons_block'><i class='fa fa-check-circle ok' title='$msg'></i><span class='sr-only'>$msg</span></td></tr>";
 
-        if ($translation_cache instanceof FlushableInterface) {
+        if ($translation_cache instanceof CacheItemPoolInterface || $translation_cache instanceof CacheInterface) {
             echo "<tr><td></td><td colspan='3'>";
             echo '<form aria-label="Reset" method="POST" action="' . static::getFormURL() . '" style="display:inline;">';
             echo Html::hidden('_glpi_csrf_token', ['value' => Session::getNewCSRFToken()]);
@@ -2187,7 +2205,7 @@ class Config extends CommonDBTM
     public static function getLibraries($all = false)
     {
         $pm = new PHPMailer();
-        $sp = new SimplePie\SimplePie();
+        $sp = new SimplePieFeed();
 
         // use same name that in composer.json
         $deps = [[ 'name'    => 'htmlawed/htmlawed',
@@ -2197,7 +2215,7 @@ class Config extends CommonDBTM
                    'version' => $pm::VERSION,
                    'check'   => 'PHPMailer\\PHPMailer\\PHPMailer' ],
                  [ 'name'    => 'simplepie/simplepie',
-                   'version' =>  \SimplePie\SimplePie::VERSION,
+                   'version' =>  SimplePieFeed::VERSION,
                    'check'   => $sp ],
                  [ 'name'    => 'tecnickcom/tcpdf',
                    'version' => TCPDF_STATIC::getTCPDFVersion(),
@@ -2216,12 +2234,10 @@ class Config extends CommonDBTM
                    'check'   => 'Sabre\\Uri\\Version' ],
                  [ 'name'    => 'sabre/vobject',
                    'check'   => 'Sabre\\VObject\\Component' ],
-                 [ 'name'    => 'laminas/laminas-cache',
-                   'check'   => 'Laminas\\Cache\\Module' ],
+                 [ 'name'    => 'symfony/cache',
+                   'check'   => 'Symfony\\Component\\Cache\\Psr16Cache' ],
                  [ 'name'    => 'laminas/laminas-i18n',
                    'check'   => 'Laminas\\I18n\\Module' ],
-                 [ 'name'    => 'laminas/laminas-serializer',
-                   'check'   => 'Laminas\\Serializer\\Module' ],
                  [ 'name'    => 'monolog/monolog',
                    'check'   => 'Monolog\\Logger' ],
                  [ 'name'    => 'sebastian/diff',
@@ -2232,9 +2248,9 @@ class Config extends CommonDBTM
                    'check'   => 'Symfony\\Component\\Console\\Application' ],
                  [ 'name'    => 'scssphp/scssphp',
                    'check'   => 'ScssPhp\ScssPhp\Compiler' ],
-                 [ 'name'    => 'laminas/laminas-mail',
+                 [ 'name'    => 'oroinc/laminas-mail',
                    'check'   => 'Laminas\\Mail\\Protocol\\Imap' ],
-                 [ 'name'    => 'laminas/laminas-mime',
+                 [ 'name'    => 'oroinc/laminas-mime',
                    'check'   => 'Laminas\\Mime\\Mime' ],
                  [ 'name'    => 'rlanvin/php-rrule',
                    'check'   => 'RRule\\RRule' ],
@@ -2557,7 +2573,8 @@ class Config extends CommonDBTM
         $db_ver = $result[$version];
 
         $ok_message = sprintf(__s('Database version seems correct (%s) - Perfect!'), $version);
-        $ko_message = sprintf(__s('Your database engine version seems too old: %s.'), $version);
+        $ko_message = sprintf(__s('Your database engine version seems too old: %s.'), $version)
+            . ' ' . __('Enforced CHECK constraints require MySQL 8.0.16 or later, or MariaDB 10.2.22 or later.');
 
         if (!$db_ver) {
             $error = 2;
@@ -2651,17 +2668,22 @@ class Config extends CommonDBTM
     **/
     public static function checkDbEngine($raw = null)
     {
-        // MySQL >= 5.6 || MariaDB >= 10
+        // Installation uses enforced CHECK constraints, not merely CHECK syntax.
         if ($raw === null) {
             global $DB;
             $raw = $DB->getVersion();
         }
 
-        /** @var array $found */
-        preg_match('/(\d+(\.)?)+/', (string) $raw, $found);
-        $version = $found[0];
-
-        $db_ver = version_compare($version, '5.6', '>=');
+        $maria = stripos((string)$raw, 'MariaDB') !== false;
+        try {
+            $version = CheckConstraintSupport::version((string)$raw, $maria);
+            $db_ver = CheckConstraintSupport::supportsVersion((string)$raw, $maria);
+        } catch (RuntimeException) {
+            // Retain the diagnostic's numeric display, never use an ambiguous
+            // version to grant an installation capability.
+            $version = preg_match('/^\d+/', (string)$raw, $found) ? $found[0] : (string)$raw;
+            $db_ver = false;
+        }
         return [$version => $db_ver];
     }
 
@@ -2683,8 +2705,11 @@ class Config extends CommonDBTM
     public static function checkExtensions($list = null)
     {
         if ($list === null) {
+            global $DB;
+            $postgres = ($DB ?? null) instanceof DBpgsql
+                || (!isset($DB) && !extension_loaded('pdo_mysql') && extension_loaded('pdo_pgsql'));
             $extensions_to_check = [
-               'mysqli'   => [
+               ($postgres ? 'pdo_pgsql' : 'pdo_mysql') => [
                   'required'  => true
                ],
                'ctype'    => [
@@ -2864,9 +2889,9 @@ class Config extends CommonDBTM
 
         try {
             global $PHPLOGGER;
-            $PHPLOGGER->addRecord(Monolog\Logger::WARNING, "Test logger");
+            $PHPLOGGER->addRecord(Logger::WARNING, "Test logger");
             $can_write_logs = true;
-        } catch (\UnexpectedValueException $e) {
+        } catch (UnexpectedValueException $e) {
             $catched = true;
             //empty catch
         }
@@ -3069,82 +3094,66 @@ class Config extends CommonDBTM
     public static function getConfigurationValues($context, array $names = [])
     {
         global $DB;
-
-        $query = [
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'context'   => $context
-           ]
-        ];
-
-        if (count($names) > 0) {
-            $query['WHERE']['name'] = $names;
-        }
-
-        $iterator = $DB->request($query);
-        $result = [];
-        while ($line = $iterator->next()) {
-            $result[$line['name']] = $line['value'];
-        }
-        return $result;
+        $connection = $DB->getDoctrineConnection();
+        return Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $context, $names): array {
+            return ConfigurationRepository::forConnection($connection, $manager)->values((string)$context, $names);
+        });
     }
 
     /**
      * Load legacy configuration into $CFG_GLPI global variable.
      *
      * @param boolean $older_to_latest Search on old configuration objects first
+     * @param boolean $loadLockProfile Enrich lock-profile state after canonical history is ready
      *
      * @return boolean True for success, false if an error occured
      */
-    public static function loadLegacyConfiguration($older_to_latest = true)
+    public static function loadLegacyConfiguration($older_to_latest = true, bool $loadLockProfile = true)
     {
 
         global $CFG_GLPI, $DB;
 
-        $config_tables_iterator = $DB->listTables('glpi_config%');
-        $config_tables = [];
-        foreach ($config_tables_iterator as $config_table) {
-            $config_tables[] = $config_table['TABLE_NAME'];
-        }
+        // Bootstrap must inspect historic configuration before the current
+        // entity shape or any profile/domain state can be required.
+        $connection = $DB->getDoctrineConnection();
+        $platform = $connection->getDatabasePlatform();
+        $postgres = $platform instanceof PostgreSQLPlatform;
+        $schema = $postgres ? 'current_schema()' : $platform->getCurrentDatabaseExpression();
+        $filter = $connection->getConfiguration()->getSchemaAssetsFilter();
+        // Inspect only the two physical bootstrap tables. information_schema
+        // retains the selected connection's table/column privilege visibility.
+        // Keep this local: later bootstrap code must observe intervening DDL.
+        $config_tables = array_values(array_filter($connection->fetchFirstColumn(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = " . $schema
+                . " AND table_type = 'BASE TABLE' AND table_name IN (?, ?)"
+                . ($postgres ? " AND table_schema NOT LIKE ? AND table_schema <> 'information_schema'" : ''),
+            $postgres ? ['glpi_config', 'glpi_configs', 'pg\\_%'] : ['glpi_config', 'glpi_configs']
+        ), static fn (string $table): bool => in_array($table, ['glpi_config', 'glpi_configs'], true) && $filter($table)));
 
-        $get_prior_to_078_config  = function () use ($DB, $config_tables) {
-            if (!in_array('glpi_config', $config_tables)) {
+        $get_prior_to_078_config = static function () use ($connection, $platform, $config_tables) {
+            if (!in_array('glpi_config', $config_tables, true)) {
                 return false;
             }
-
-            $config = new Config();
-            $config->forceTable('glpi_config');
-            if ($config->getFromDB(1)) {
-                return $config->fields;
-            }
-
-            return false;
+            return $connection->fetchAssociative('SELECT * FROM ' . $platform->quoteIdentifier('glpi_config') . ' WHERE ' . $platform->quoteIdentifier('id') . ' = ?', [1]);
         };
 
-        $get_078_to_latest_config    = function () use ($DB, $config_tables) {
-            if (!in_array('glpi_configs', $config_tables)) {
+        $get_078_to_latest_config = static function () use ($connection, $platform, $config_tables) {
+            if (!in_array('glpi_configs', $config_tables, true)) {
                 return false;
             }
-
-            Config::forceTable('glpi_configs');
-
-            $iterator = $DB->request(['FROM' => 'glpi_configs']);
-            if ($iterator->count() === 0) {
+            $rows = $connection->fetchAllAssociative('SELECT * FROM ' . $platform->quoteIdentifier('glpi_configs'));
+            if (!$rows) {
                 return false;
             }
-
-            if ($iterator->count() === 1) {
-                // 1 row = 0.78 to 0.84 config table schema
-                return $iterator->next();
+            if (count($rows) === 1) {
+                // 1 row = 0.78 to 0.84 config table schema.
+                return $rows[0];
             }
-
-            // multiple rows = 0.85+ config
             $config = [];
-            while ($row = $iterator->next()) {
-                if ('core' !== $row['context']) {
-                    continue;
+            foreach ($rows as $row) {
+                if (($row['context'] ?? null) === 'core' && isset($row['name'])) {
+                    $config[$row['name']] = $row['value'];
                 }
-                $config[$row['name']] = $row['value'];
             }
             return $config;
         };
@@ -3191,6 +3200,24 @@ class Config extends CommonDBTM
             $CFG_GLPI['lock_item_list'] = importArrayFromDB($CFG_GLPI['lock_item_list']);
         }
 
+        if ($loadLockProfile) {
+            self::loadLockProfileConfiguration();
+        }
+
+        // Path for icon of document type (web mode only)
+        if (isset($CFG_GLPI['root_doc'])) {
+            $CFG_GLPI['typedoc_icon_dir'] = $CFG_GLPI['root_doc'] . '/pics/icones';
+        }
+
+        return true;
+    }
+
+
+    /** Load domain-dependent configuration only after canonical history is ready. */
+    public static function loadLockProfileConfiguration(): void
+    {
+        global $CFG_GLPI;
+
         if (
             isset($CFG_GLPI['lock_lockprofile_id'])
             && $CFG_GLPI['lock_use_lock_item']
@@ -3203,12 +3230,6 @@ class Config extends CommonDBTM
             $CFG_GLPI['lock_lockprofile'] = $prof->fields;
         }
 
-        // Path for icon of document type (web mode only)
-        if (isset($CFG_GLPI['root_doc'])) {
-            $CFG_GLPI['typedoc_icon_dir'] = $CFG_GLPI['root_doc'] . '/pics/icones';
-        }
-
-        return true;
     }
 
 
@@ -3324,185 +3345,113 @@ class Config extends CommonDBTM
      *
      * @param string  $optname name of the configuration field
      * @param string  $context name of the configuration context (default 'core')
-     * @param boolean $psr16   Whether to return a PSR16 compliant obkect or not (since Laminas Translator is NOT PSR16 compliant).
+     * @param boolean $psr16   Return the application footprint wrapper; false exposes the configured backend.
+     * @param boolean $allowFallback Allow a memory fallback when the configured backend cannot initialize.
      *
-     * @return Psr\SimpleCache\CacheInterface|Laminas\Cache\Storage\StorageInterface object
+     * @return CacheInterface|CacheItemPoolInterface
      */
-    public static function getCache($optname, $context = 'core', $psr16 = true)
+    public static function getCache($optname, $context = 'core', $psr16 = true, bool $allowFallback = true)
     {
         global $DB;
 
-        /* Tested configuration values
-         *
-         * - {"adapter":"apcu"}
-         * - {"adapter":"redis","options":{"server":{"host":"127.0.0.1"}},"plugins":["serializer"]}
-         * - {"adapter":"filesystem"}
-         * - {"adapter":"filesystem","options":{"cache_dir":"_cache_trans"},"plugins":["serializer"]}
-         * - {"adapter":"dba"}
-         * - {"adapter":"dba","options":{"pathname":"trans.db","handler":"flatfile"},"plugins":["serializer"]}
-         * - {"adapter":"memcache","options":{"servers":["127.0.0.1"]}}
-         * - {"adapter":"memcached","options":{"servers":["127.0.0.1"]}}
-         * - {"adapter":"wincache"}
-         *
-         */
+        if (!$allowFallback && $DB && !$DB->connected) {
+            throw new RuntimeException('The configured cache cannot be read until the database is available.');
+        }
+
         // Read configuration
         $conf = [];
         if (
             $DB
             && $DB->connected
+            // Cache defaults are also needed before installation creates configuration.
+            && $DB->tableExists(self::getTable())
             && $DB->fieldExists(self::getTable(), 'context')
         ) {
-            $conf = self::getConfigurationValues($context, [$optname]);
+            $conf = self::getCacheConfiguration($DB->getDoctrineConnection(), (string) $context, (string) $optname);
         }
 
-        // Adapter default options
         $opt = [];
         if (isset($conf[$optname])) {
             $opt = json_decode($conf[$optname], true);
             Toolbox::logDebug("CACHE CONFIG  $optname", $opt);
         }
-
-        if (!isset($opt['options']['namespace'])) {
-            $namespace = "glpi_{$optname}_" . ITSM_VERSION;
-            if ($DB) {
-                $namespace .= md5(
-                    (is_array($DB->dbhost) ? implode(' ', $DB->dbhost) : $DB->dbhost) . $DB->dbdefault
-                );
-            }
-            $opt['options']['namespace'] = $namespace;
+        $opt = is_array($opt) ? $opt : [];
+        $computed = !isset($opt['adapter']);
+        $defaultNamespace = "glpi_{$optname}_" . ITSM_VERSION;
+        if ($DB) {
+            $defaultNamespace .= md5((is_array($DB->dbhost) ? implode(' ', $DB->dbhost) : $DB->dbhost) . $DB->dbdefault);
         }
-        if (!isset($opt['adapter'])) {
-            //  if (function_exists('apcu_fetch')) {
-
-            //     $opt['adapter'] = 'apcu';
-            //  } else {
-            $opt['adapter'] = 'filesystem';
-            //  }
-
-            // Cannot skip integrity checks if 'adapter' was computed,
-            // as computation result may differ for a different context (CLI VS web server).
-            $skip_integrity_checks = false;
-
-            $is_computed_config = true;
-        } else {
-            // Adapter names can be written using case variations.
-            // see Laminas\Cache\Storage\AdapterPluginManager::$aliases
-            $opt['adapter'] = strtolower((string) $opt['adapter']);
-
-            switch ($opt['adapter']) {
-                // Cache adapters that can share their data accross processes
-                case 'filesystem':
-                case 'memcache':
-                case 'memcached':
-                case 'redis':
-                    $skip_integrity_checks = true;
-                    break;
-
-                    // Cache adapters that cannot share their data accross processes
-                case 'apcu':
-                case 'memory':
-                case 'session':
-                default:
-                    $skip_integrity_checks = false;
-                    break;
-            }
-
-            $is_computed_config = false;
-        }
-
-        // Adapter specific options
-        $ser = false;
-        switch ($opt['adapter']) {
-            case 'filesystem':
-                if (!isset($opt['options']['cache_dir'])) {
-                    $opt['options']['cache_dir'] = $optname;
-                }
-                // Make configured directory relative to GLPI cache directory
-                $opt['options']['cache_dir'] = GLPI_CACHE_DIR . '/' . $opt['options']['cache_dir'];
-                if (!is_dir($opt['options']['cache_dir'])) {
-                    mkdir($opt['options']['cache_dir']);
-                }
-                $ser = true;
-                break;
-
-            case 'dba':
-                if (!isset($opt['options']['pathname'])) {
-                    $opt['options']['pathname'] = "$optname.data";
-                }
-                // Make configured path relative to GLPI cache directory
-                $opt['options']['pathname'] = GLPI_CACHE_DIR . '/' . $opt['options']['pathname'];
-                $ser = true;
-                break;
-
-            case 'redis':
-                $ser = true;
-                break;
-        }
-        // Some know plugins require data serialization
-        if ($ser && !isset($opt['plugins'])) {
-            $opt['plugins'] = ['serializer'];
-        }
-
-        // Create adapter
+        $namespace = $defaultNamespace;
         try {
-            $storage = Laminas\Cache\StorageFactory::factory($opt);
-        } catch (Exception $e) {
-            if (!$is_computed_config) {
-                Toolbox::logError($e->getMessage());
+            if (!is_array($opt['options'] ?? [])) {
+                throw new CacheConfigurationException('Cache options must be an array.');
             }
-
-            // fallback to filesystem cache system if adapter was not explicitely defined in config
-            $fallback = false;
-            if ($is_computed_config && $opt['adapter'] != 'filesystem') {
-                $opt = [
-                   'adapter'   => 'filesystem',
-                   'options'   => [
-                      'cache_dir' => GLPI_CACHE_DIR . '/' . $optname,
-                      'namespace' => $namespace,
-                   ],
-                   'plugins'   => ['serializer']
-                ];
-
-                if (!is_dir($opt['options']['cache_dir'])) {
-                    mkdir($opt['options']['cache_dir']);
+            if (is_array($opt['adapter'] ?? null)) {
+                $adapter = $opt['adapter'];
+                if (!is_array($adapter['options'] ?? [])) {
+                    throw new CacheConfigurationException('Cache adapter options must be an array.');
                 }
-                try {
-                    $storage = Laminas\Cache\StorageFactory::factory($opt);
-                    $fallback = true;
-                } catch (Exception $e1) {
-                    Toolbox::logError($e1->getMessage());
-                    if (
-                        isset($_SESSION['glpi_use_mode'])
-                        && Session::DEBUG_MODE == $_SESSION['glpi_use_mode']
-                    ) {
-                        //preivous attempt has faled as well.
-                        Toolbox::logDebug($e->getMessage());
-                    }
+                $opt['adapter'] = $adapter['name'] ?? null;
+                $opt['options'] = array_replace($adapter['options'] ?? [], $opt['options'] ?? []);
+            }
+            if (!is_string($opt['adapter'] ?? 'filesystem')) {
+                throw new CacheConfigurationException('Cache adapter must be a name.');
+            }
+            $opt['adapter'] = strtolower($opt['adapter'] ?? 'filesystem');
+            $opt['options']['namespace'] ??= $namespace;
+            $opt['options']['ttl'] ??= 600;
+            $namespace = $opt['options']['namespace'];
+            // Defaults may differ between execution contexts, so keep their footprints.
+            $checkFootprints = $computed || !in_array($opt['adapter'], ['filesystem', 'redis'], true);
+            if ($opt['adapter'] === 'filesystem') {
+                if (!is_string($opt['options']['cache_dir'] ?? $optname)) {
+                    throw new CacheConfigurationException('Cache directory must be a string.');
                 }
+                $opt['options']['cache_dir'] = GLPI_CACHE_DIR . '/' . ($opt['options']['cache_dir'] ?? $optname);
             }
-
-            if ($fallback === false) {
-                $opt = ['adapter' => 'memory'];
-                $storage = Laminas\Cache\StorageFactory::factory($opt);
+            $storage = StorageFactory::create($opt);
+        } catch (Exception $error) {
+            if (!$allowFallback) {
+                throw $error;
             }
-            if (
-                isset($_SESSION['glpi_use_mode'])
-                && Session::DEBUG_MODE == $_SESSION['glpi_use_mode']
-            ) {
-                Toolbox::logDebug($e->getMessage());
+            if (!$computed) {
+                Toolbox::logError($error->getMessage());
+            }
+            // An unavailable backend must not prevent installation or requests.
+            $storage = StorageFactory::create(['adapter' => 'memory', 'options' => ['ttl' => 600]]);
+            $namespace = $defaultNamespace;
+            $checkFootprints = true;
+            if (isset($_SESSION['glpi_use_mode']) && Session::DEBUG_MODE == $_SESSION['glpi_use_mode']) {
+                Toolbox::logDebug($error->getMessage());
             }
         }
-
-        // Set default TTL to 10 minutes if not already set
-        if (!isset($opt['options']['ttl'])) {
-            $storage->getOptions()->setTtl(600);
-        }
-
-        if ($psr16) {
-            return new SimpleCache($storage, GLPI_CACHE_DIR, !$skip_integrity_checks);
-        } else {
+        if (!$psr16) {
             return $storage;
         }
+        $cache = $storage instanceof CacheItemPoolInterface ? new Psr16Cache($storage) : $storage;
+        return new SimpleCache($cache, GLPI_CACHE_DIR, $checkFootprints, $namespace);
+    }
+
+    /**
+     * Read the cache backend settings before ORM metadata caching is available.
+     * Keep this bootstrap read on the supplied current connection and uncached:
+     * backend settings may change between adapter constructions in one request.
+     */
+    private static function getCacheConfiguration(Connection $connection, string $context, string $name): array
+    {
+        $query = $connection->createQueryBuilder()
+            ->select($connection->quoteIdentifier('name'), $connection->quoteIdentifier('value'))
+            ->from($connection->quoteIdentifier(self::getTable()))
+            ->where($connection->quoteIdentifier('context') . ' = :context')
+            ->andWhere($connection->quoteIdentifier('name') . ' = :name')
+            ->orderBy($connection->quoteIdentifier('id'))
+            ->setParameter('context', $context, Types::STRING)
+            ->setParameter('name', $name, Types::STRING);
+        $values = [];
+        foreach ($query->executeQuery()->iterateAssociative() as $row) {
+            $values[$row['name']] = $row['value'];
+        }
+        return $values;
     }
 
     /**
@@ -3849,7 +3798,7 @@ class Config extends CommonDBTM
             $this->logConfigChange(
                 $this->fields['context'],
                 $this->fields['name'],
-                (string)$this->fields['value'],
+                (string)LegacyValues::decode($this->fields['value']),
                 (string)$this->oldvalues['value']
             );
         }
@@ -3877,7 +3826,8 @@ class Config extends CommonDBTM
             $newvalue = $oldvalue = '********';
         }
         $oldvalue = $name . ($context !== 'core' ? ' (' . $context . ') ' : ' ') . $oldvalue;
-        Log::constructHistory($this, ['value' => $oldvalue], ['value' => $newvalue]);
+        // Lifecycle values are raw here; constructHistory expects PHP-escaped new values.
+        Log::constructHistory($this, ['value' => $oldvalue], ['value' => addslashes($newvalue)]);
     }
 
     /**

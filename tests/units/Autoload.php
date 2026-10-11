@@ -34,6 +34,8 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\ORM\Query\AST\Functions\BitAndFunction;
+use itsmng\Database\Entity\Ticket;
 
 require_once __DIR__ . '/../Autoload.php';
 
@@ -70,6 +72,19 @@ class Autoload extends DbTestCase
         } else {
             $this->boolean($res)->isFalse;
         }
+    }
+
+    public function testComposerNamespacesAreLeftToTheirOwningLoader(): void
+    {
+        foreach ([BitAndFunction::class, Ticket::class] as $class) {
+            $this->boolean(glpi_autoload($class))->isFalse();
+            $this->boolean(class_exists($class))->isTrue();
+        }
+        $this->boolean(glpi_autoload('UnknownVendor\\MissingClass'))->isFalse();
+        $this->boolean(glpi_autoload('GlpiPlugin\\Unloadedperf\\Missing'))->isFalse();
+        $this->boolean(glpi_autoload('PluginUnloadedperfMissing'))->isFalse();
+        $this->boolean(class_exists('Computer'))->isTrue();
+        $this->boolean(class_exists('Glpi\\Event'))->isTrue();
     }
 
     /**

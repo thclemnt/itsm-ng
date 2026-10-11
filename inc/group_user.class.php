@@ -31,6 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\GroupMembershipRepository;
+use itsmng\Database\Repository\PlanningRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -81,36 +87,8 @@ class Group_User extends CommonDBRelation
     public static function getUserGroups($users_id, $condition = [])
     {
         global $DB;
-
-        $groups = [];
-        $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_groups.*',
-              'glpi_groups_users.id AS IDD',
-              'glpi_groups_users.id AS linkid',
-              'glpi_groups_users.is_dynamic AS is_dynamic',
-              'glpi_groups_users.is_manager AS is_manager',
-              'glpi_groups_users.is_userdelegate AS is_userdelegate'
-           ],
-           'FROM'   => self::getTable(),
-           'LEFT JOIN'    => [
-              Group::getTable() => [
-                 'FKEY' => [
-                    Group::getTable() => 'id',
-                    self::getTable()  => 'groups_id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              'glpi_groups_users.users_id' => $users_id
-           ] + $condition,
-           'ORDER'        => 'glpi_groups.name'
-        ]);
-        while ($row = $iterator->next()) {
-            $groups[] = $row;
-        }
-
-        return $groups;
+        return Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new GroupMembershipRepository($manager))->groupsForUser((int)$users_id, $condition));
     }
 
 
@@ -127,37 +105,8 @@ class Group_User extends CommonDBRelation
     public static function getGroupUsers($groups_id, $condition = [])
     {
         global $DB;
-
-        $users = [];
-
-        $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_users.*',
-              'glpi_groups_users.id AS IDD',
-              'glpi_groups_users.id AS linkid',
-              'glpi_groups_users.is_dynamic AS is_dynamic',
-              'glpi_groups_users.is_manager AS is_manager',
-              'glpi_groups_users.is_userdelegate AS is_userdelegate'
-           ],
-           'FROM'   => self::getTable(),
-           'LEFT JOIN'    => [
-              User::getTable() => [
-                 'FKEY' => [
-                    User::getTable() => 'id',
-                    self::getTable()  => 'users_id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              'glpi_groups_users.groups_id' => $groups_id
-           ] + $condition,
-           'ORDER'        => 'glpi_users.name'
-        ]);
-        while ($row = $iterator->next()) {
-            $users[] = $row;
-        }
-
-        return $users;
+        return Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new GroupMembershipRepository($manager))->usersForGroup((int)$groups_id, $condition));
     }
 
 
@@ -373,21 +322,7 @@ class Group_User extends CommonDBRelation
     public static function getDataForGroup(Group $group, &$members, &$ids, $crit = '', $tree = 0)
     {
         global $DB;
-
-        // Entity restriction for this group, according to user allowed entities
-        if ($group->fields['is_recursive']) {
-            $entityrestrict = getSonsOf('glpi_entities', $group->fields['entities_id']);
-
-            // active entity could be a child of object entity
-            if (
-                ($_SESSION['glpiactive_entity'] != $group->fields['entities_id'])
-                && in_array($_SESSION['glpiactive_entity'], $entityrestrict)
-            ) {
-                $entityrestrict = getSonsOf('glpi_entities', $_SESSION['glpiactive_entity']);
-            }
-        } else {
-            $entityrestrict = $group->fields['entities_id'];
-        }
+        $entityrestrict = self::getEntityRestrictForGroup($group);
 
         if ($tree) {
             $restrict = getSonsOf('glpi_groups', $group->getID());
@@ -395,45 +330,12 @@ class Group_User extends CommonDBRelation
             $restrict = $group->getID();
         }
 
-        // All group members
-        $pu_table = Profile_User::getTable();
-        $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_users.id',
-              'glpi_groups_users.id AS linkid',
-              'glpi_groups_users.groups_id',
-              'glpi_groups_users.is_dynamic AS is_dynamic',
-              'glpi_groups_users.is_manager AS is_manager',
-              'glpi_groups_users.is_userdelegate AS is_userdelegate'
-           ],
-           'DISTINCT'  => true,
-           'FROM'      => self::getTable(),
-           'LEFT JOIN' => [
-              User::getTable() => [
-                 'ON' => [
-                    self::getTable() => 'users_id',
-                    User::getTable() => 'id'
-                 ]
-              ],
-              $pu_table => [
-                 'ON' => [
-                    $pu_table        => 'users_id',
-                    User::getTable() => 'id'
-                 ]
-              ]
-           ],
-           'WHERE' => [
-              self::getTable() . '.groups_id'  => $restrict,
-              'OR' => [
-                 "$pu_table.entities_id" => null
-              ] + getEntitiesRestrictCriteria($pu_table, '', $entityrestrict, 1)
-           ],
-           'ORDERBY' => [
-              User::getTable() . '.realname',
-              User::getTable() . '.firstname',
-              User::getTable() . '.name'
-           ]
-        ]);
+        $page = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new GroupMembershipRepository($manager))->members(
+                (array)$restrict,
+                getEntitiesRestrictCriteria(Profile_User::getTable(), '', $entityrestrict, true)
+            ));
+        $iterator = new RowIterator($page['rows']);
 
         while ($data = $iterator->next()) {
             // Add to display list, according to criterion
@@ -484,107 +386,11 @@ class Group_User extends CommonDBRelation
     private static function getDirectMembersForGroup(Group $group)
     {
         global $DB;
-
-        $entityrestrict = self::getEntityRestrictForGroup($group);
-        $pu_table       = Profile_User::getTable();
-        $ids            = [];
-
-        $iterator = $DB->request([
-           'SELECT'    => [self::getTable() . '.users_id'],
-           'DISTINCT'  => true,
-           'FROM'      => self::getTable(),
-           'LEFT JOIN' => [
-              User::getTable() => [
-                 'ON' => [
-                    self::getTable() => 'users_id',
-                    User::getTable() => 'id'
-                 ]
-              ],
-              $pu_table => [
-                 'ON' => [
-                    $pu_table        => 'users_id',
-                    User::getTable() => 'id'
-                 ]
-              ]
-           ],
-           'WHERE' => [
-              self::getTable() . '.groups_id' => $group->getID(),
-              'OR' => [
-                 "$pu_table.entities_id" => null
-              ] + getEntitiesRestrictCriteria($pu_table, '', $entityrestrict, 1)
-           ],
-        ]);
-
-        while ($row = $iterator->next()) {
-            $ids[] = (int)$row['users_id'];
-        }
-
-        return $ids;
-    }
-
-    /**
-     * Get allowed sort clauses for the paginated members table.
-     *
-     * @param string  $sort  Requested sort field
-     * @param string  $order Requested sort order
-     * @param boolean $tree  Whether child groups are included
-     *
-     * @return array
-     */
-    private static function getMembersSortClauses($sort, $order, $tree)
-    {
-        $order = (strtoupper($order) === 'DESC') ? 'DESC' : 'ASC';
-
-        switch ($sort) {
-            case 'parent':
-                return [
-                   'glpi_groups.completename ' . $order,
-                   'glpi_users.realname ASC',
-                   'glpi_users.firstname ASC',
-                   'glpi_users.name ASC'
-                ];
-
-            case 'dynamic':
-                return [
-                   self::getTable() . '.is_dynamic ' . $order,
-                   'glpi_users.realname ASC',
-                   'glpi_users.firstname ASC',
-                   'glpi_users.name ASC'
-                ];
-
-            case 'manager':
-                return [
-                   self::getTable() . '.is_manager ' . $order,
-                   'glpi_users.realname ASC',
-                   'glpi_users.firstname ASC',
-                   'glpi_users.name ASC'
-                ];
-
-            case 'delegatee':
-                return [
-                   self::getTable() . '.is_userdelegate ' . $order,
-                   'glpi_users.realname ASC',
-                   'glpi_users.firstname ASC',
-                   'glpi_users.name ASC'
-                ];
-
-            case 'group':
-            default:
-                if ($tree) {
-                    return [
-                       'glpi_groups.completename ' . $order,
-                       'glpi_users.realname ASC',
-                       'glpi_users.firstname ASC',
-                       'glpi_users.name ASC'
-                    ];
-                }
-
-                return [
-                   'glpi_users.realname ' . $order,
-                   'glpi_users.firstname ' . $order,
-                   'glpi_users.name ' . $order
-                ];
-        }
+        return Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new GroupMembershipRepository($manager))->directUserIds(
+                (int)$group->getID(),
+                getEntitiesRestrictCriteria(Profile_User::getTable(), '', self::getEntityRestrictForGroup($group), true)
+            ));
     }
 
     /**
@@ -609,94 +415,67 @@ class Group_User extends CommonDBRelation
         $sort = 'group',
         $order = 'ASC'
     ) {
-        global $DB, $CFG_GLPI;
+        global $CFG_GLPI, $PLUGIN_HOOKS, $DB;
 
         $entityrestrict = self::getEntityRestrictForGroup($group);
         $restrict       = $tree ? getSonsOf('glpi_groups', $group->getID()) : $group->getID();
-        $pu_table       = Profile_User::getTable();
-        $where          = [
-           self::getTable() . '.groups_id' => $restrict,
-           'OR' => [
-              "$pu_table.entities_id" => null
-           ] + getEntitiesRestrictCriteria($pu_table, '', $entityrestrict, 1)
-        ];
-
-        if (in_array($crit, ['is_manager', 'is_userdelegate'], true)) {
-            $where[self::getTable() . '.' . $crit] = 1;
-        }
-
-        $joins = [
-           User::getTable() => [
-              'ON' => [
-                 self::getTable() => 'users_id',
-                 User::getTable() => 'id'
-              ]
-           ],
-           $pu_table => [
-              'ON' => [
-                 $pu_table        => 'users_id',
-                 User::getTable() => 'id'
-              ]
-           ],
-           Group::getTable() => [
-              'ON' => [
-                 self::getTable() => 'groups_id',
-                 Group::getTable() => 'id'
-              ]
-           ]
-        ];
-
-        $count = $DB->request([
-           'SELECT'    => ['COUNT DISTINCT' => self::getTable() . '.id AS cpt'],
-           'FROM'      => self::getTable(),
-           'LEFT JOIN' => $joins,
-           'WHERE'     => $where
-        ])->next();
-
-        $params = [
-           'SELECT'    => [
-              'glpi_users.id',
-              self::getTable() . '.id AS linkid',
-              self::getTable() . '.groups_id',
-              self::getTable() . '.is_dynamic AS is_dynamic',
-              self::getTable() . '.is_manager AS is_manager',
-              self::getTable() . '.is_userdelegate AS is_userdelegate'
-           ],
-           'DISTINCT'  => true,
-           'FROM'      => self::getTable(),
-           'LEFT JOIN' => $joins,
-           'WHERE'     => $where,
-           'ORDER'     => self::getMembersSortClauses($sort, $order, $tree),
-        ];
-
-        if ($limit > 0) {
-            $params['START'] = max(0, (int)$offset);
-            $params['LIMIT'] = max(1, (int)$limit);
-        }
-
-        $iterator = $DB->request($params);
+        // Hooks receive complete models and can change later rows. Keep their
+        // ordinary per-row reads, including hooks loaded lazily by includeHook.
+        $withLinkFields = empty($PLUGIN_HOOKS['item_can']);
+        $page = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new GroupMembershipRepository($manager))->members(
+                (array)$restrict,
+                getEntitiesRestrictCriteria(Profile_User::getTable(), '', $entityrestrict, true),
+                $crit,
+                (int)$offset,
+                (int)$limit,
+                $sort,
+                $order,
+                (bool)$tree,
+                $withLinkFields
+            ));
+        $iterator = new RowIterator($page['rows']);
         $rows     = [];
-        $user     = new User();
-        $tmpgrp   = new Group();
-        $parent   = new Group();
 
         while ($data = $iterator->next()) {
-            $user->getFromDB($data["id"]);
             Session::addToNavigateListItems('User', $data["id"]);
+            $parent = new Group();
+            // These fields are consumed only by the existing link/ACL/tooltip
+            // renderer; no partial model leaves this loop or reaches a writer.
+            if ($withLinkFields) {
+                $parent->fields = [
+                    'id' => $data['groups_id'], 'name' => $data['group_name'],
+                    'completename' => $data['group_completename'], 'comment' => $data['group_comment'],
+                    'entities_id' => $data['group_entities_id'], 'is_recursive' => $data['group_is_recursive'],
+                ];
+                $hasGroup = true;
+            } else {
+                $hasGroup = $parent->getFromDB($data['groups_id']);
+            }
+            if ($tree && $hasGroup) {
+                $memberLink = $parent->getLink(['comments' => true]);
+            } else {
+                // User caches visibility entities on the instance, so every
+                // selected account must own a fresh model, also with hooks.
+                $user = new User();
+                if ($withLinkFields) {
+                    $user->fields = ['id' => $data['id'], 'name' => $data['user_name'],
+                        'realname' => $data['user_realname'], 'firstname' => $data['user_firstname']];
+                } else {
+                    $user->getFromDB($data['id']);
+                }
+                $memberLink = $user->getLink();
+            }
 
             $row = [
-               'group'     => $user->getLink(),
+               'group'     => $memberLink,
                'parent'    => __('Root'),
                'dynamic'   => '',
                'manager'   => '',
                'delegatee' => '',
             ];
 
-            if ($tree && $tmpgrp->getFromDB($data['groups_id'])) {
-                $row['group'] = $tmpgrp->getLink(['comments' => true]);
-            }
-
-            if ($parent->getFromDB($data['groups_id'])) {
+            if ($hasGroup) {
                 $row['parent'] = $parent->getLink(['comments' => true]);
             }
 
@@ -721,7 +500,7 @@ class Group_User extends CommonDBRelation
         }
 
         return [
-           'total' => (int)$count['cpt'],
+           'total' => $page['total'],
            'rows'  => $rows
         ];
     }
@@ -990,115 +769,44 @@ class Group_User extends CommonDBRelation
     }
 
 
-    public function post_addItem()
+    private function updatePlanningSubscriptions(bool $add): void
     {
         global $DB;
 
-        // add new user to plannings
-        $groups_id  = $this->fields['groups_id'];
-        $planning_k = 'group_' . $groups_id . '_users';
-
-        // find users with the current group in their plannings
-        $user_inst = new User();
-        $users = $user_inst->find([
-           'plannings' => ['LIKE', "%$planning_k%"]
-        ]);
-
-        // add the new user to found plannings
-        $query = $DB->buildUpdate(
-            User::getTable(),
-            [
-              'plannings' => new QueryParam(),
-            ],
-            [
-              'id'        => new QueryParam()
-            ]
-        );
-        $stmt = $DB->prepare($query);
-        $in_transaction = $DB->inTransaction();
-        if (!$in_transaction) {
-            $DB->beginTransaction();
-        }
-        foreach ($users as $user) {
-            $users_id  = $user['id'];
-            $plannings = importArrayFromDB($user['plannings']);
-            $nb_users  = count($plannings['plannings'][$planning_k]['users']);
-
-            // add the planning for the user
-            $plannings['plannings'][$planning_k]['users']['user_' . $this->fields['users_id']] = [
-               'color'   => Planning::getPaletteColor('bg', $nb_users),
-               'display' => true,
-               'type'    => 'user'
-            ];
-
-            // if current user logged, append also to its session
-            if ($users_id == Session::getLoginUserID()) {
-                $_SESSION['glpi_plannings'] = $plannings;
+        $member = 'user_' . $this->fields['users_id'];
+        $em = Orm::create($DB);
+        try {
+            $session = (new PlanningRepository($em))->updateGroupSubscriptions(
+                (int)$this->fields['groups_id'],
+                (int)Session::getLoginUserID(),
+                static function (array $settings, string $key) use ($add, $member): array {
+                    if ($add) {
+                        $settings['plannings'][$key]['users'][$member] = [
+                            'color' => Planning::getPaletteColor('bg', count($settings['plannings'][$key]['users'])),
+                            'display' => true,
+                            'type' => 'user',
+                        ];
+                    } else {
+                        unset($settings['plannings'][$key]['users'][$member]);
+                    }
+                    return $settings;
+                }
+            );
+            if ($session !== null) {
+                $_SESSION['glpi_plannings'] = $session;
             }
-
-            // save the planning completed to db
-            $json_plannings = exportArrayToDB($plannings);
-            $stmt->bind_param('si', $json_plannings, $users_id);
-            $stmt->execute();
+        } finally {
+            $em->clear();
         }
-
-        if (!$in_transaction) {
-            $DB->commit();
-        }
-        $stmt->close();
     }
 
+    public function post_addItem()
+    {
+        $this->updatePlanningSubscriptions(true);
+    }
 
     public function post_purgeItem()
     {
-        global $DB;
-
-        // remove user from plannings
-        $groups_id  = $this->fields['groups_id'];
-        $planning_k = 'group_' . $groups_id . '_users';
-
-        // find users with the current group in their plannings
-        $user_inst = new User();
-        $users = $user_inst->find([
-           'plannings' => ['LIKE', "%$planning_k%"]
-        ]);
-
-        // remove the deleted user to found plannings
-        $query = $DB->buildUpdate(
-            User::getTable(),
-            [
-              'plannings' => new QueryParam(),
-            ],
-            [
-              'id'        => new QueryParam()
-            ]
-        );
-        $stmt = $DB->prepare($query);
-        $in_transaction = $DB->inTransaction();
-        if (!$in_transaction) {
-            $DB->beginTransaction();
-        }
-        foreach ($users as $user) {
-            $users_id  = $user['id'];
-            $plannings = importArrayFromDB($user['plannings']);
-
-            // delete planning for the user
-            unset($plannings['plannings'][$planning_k]['users']['user_' . $this->fields['users_id']]);
-
-            // if current user logged, append also to its session
-            if ($users_id == Session::getLoginUserID()) {
-                $_SESSION['glpi_plannings'] = $plannings;
-            }
-
-            // save the planning completed to db
-            $json_plannings = exportArrayToDB($plannings);
-            $stmt->bind_param('si', $json_plannings, $users_id);
-            $stmt->execute();
-        }
-
-        if (!$in_transaction) {
-            $DB->commit();
-        }
-        $stmt->close();
+        $this->updatePlanningSubscriptions(false);
     }
 }

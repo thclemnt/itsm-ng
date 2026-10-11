@@ -54,6 +54,15 @@ abstract class ITILTemplate extends CommonDropdown
 
     public $can_be_translated = false;
 
+    public function cleanDBonPurge()
+    {
+        parent::cleanDBonPurge();
+        $type = static::getType();
+        $this->deleteChildrenAndRelationsFromDb([
+            $type . 'HiddenField', $type . 'MandatoryField', $type . 'PredefinedField',
+        ]);
+    }
+
     // Specific fields
     /// Mandatory Fields
     public $mandatory = [];

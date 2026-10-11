@@ -51,6 +51,16 @@ class Holiday extends CommonDropdown
     }
 
 
+    public function cleanDBonPurge()
+    {
+        // Replacement keeps calendar associations. Without a replacement the
+        // association has no meaning; a zero-valued FK is not an absent holiday.
+        if (empty($this->input['_replace_by'])) {
+            $this->deleteChildrenAndRelationsFromDb([Calendar_Holiday::class]);
+        }
+    }
+
+
     public function getAdditionalFields()
     {
 

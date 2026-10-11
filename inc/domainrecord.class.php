@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DomainRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -414,22 +417,8 @@ class DomainRecord extends CommonDBChild
                    || count($_SESSION['glpiactiveprofile']['managed_domainrecordtypes']);
         $rand    = mt_rand();
 
-        $iterator = $DB->request([
-           'SELECT'    => 'record.*',
-           'FROM'      => self::getTable() . ' AS record',
-           'WHERE'     => ['domains_id' => $instID],
-           'LEFT JOIN' => [
-              DomainRecordType::getTable() . ' AS rtype'  => [
-                 'ON'  => [
-                    'rtype'  => 'id',
-                    'record' => 'domainrecordtypes_id'
-                 ]
-              ]
-           ],
-           'ORDER'     => ['rtype.name ASC', 'record.name ASC']
-        ]);
-
-        $number = count($iterator);
+        $rows = (new DomainRepository(Orm::create($DB)))->records((int)$instID);
+        $number = count($rows);
 
         if ($canedit) {
             $form = [
@@ -482,7 +471,7 @@ class DomainRecord extends CommonDBChild
         ];
         $values = [];
         $massive_action = [];
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             $ID = "";
 
             if ($_SESSION["glpiis_ids_visible"] || empty(self::getDisplayName($domain, $data['name']))) {

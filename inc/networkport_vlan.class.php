@@ -31,6 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Entity\NetworkPortVlan;
+use itsmng\Database\RowIterator;
+use itsmng\Domain\VlanMembershipCommand;
+use itsmng\Domain\VlanMembershipService;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -38,6 +44,8 @@ if (!defined('GLPI_ROOT')) {
 
 class NetworkPort_Vlan extends CommonDBRelation
 {
+    private ?VlanMembershipCommand $membershipCommand = null;
+
     // From CommonDBRelation
     public static $itemtype_1          = 'NetworkPort';
     public static $items_id_1          = 'networkports_id';
@@ -45,6 +53,149 @@ class NetworkPort_Vlan extends CommonDBRelation
     public static $itemtype_2          = 'Vlan';
     public static $items_id_2          = 'vlans_id';
     public static $checkItem_2_Rights  = self::HAVE_VIEW_RIGHT_ON_ITEM;
+
+    public function __clone()
+    {
+        // Ordinary permission probes retain their real model fields and hooks;
+        // an instance's owned writer capability is never cloned with them.
+        $this->membershipCommand = null;
+    }
+
+    public function add(array $input, $options = [], $history = true)
+    {
+        if (!$this->hasMembershipMapping()) {
+            return parent::add($input, $options, $history);
+        }
+        return $this->mutateMembership(fn () => parent::add($input, $options, $history));
+    }
+
+    public function update(array $input, $history = 1, $options = [])
+    {
+        if (!$this->hasMembershipMapping()) {
+            return parent::update($input, $history, $options);
+        }
+        return $this->mutateMembership(fn () => parent::update($input, $history, $options));
+    }
+
+    public function delete(array $input, $force = 0, $history = 1)
+    {
+        if (!$this->hasMembershipMapping()) {
+            return parent::delete($input, $force, $history);
+        }
+        return $this->mutateMembership(fn () => parent::delete($input, $force, $history), removing: true);
+    }
+
+    protected function executePreparedAdd(callable $operation, array $priorState): mixed
+    {
+        if ($this->membershipCommand !== null && !$this->membershipCommand->prepareAdd()) {
+            return false;
+        }
+        return parent::executePreparedAdd($operation, $priorState);
+    }
+
+    protected function executePreparedUpdate(callable $operation, array $storedFields): bool
+    {
+        if ($this->membershipCommand !== null && !$this->membershipCommand->prepareUpdate($storedFields)) {
+            return false;
+        }
+        return parent::executePreparedUpdate($operation, $storedFields);
+    }
+
+    public function addToDB()
+    {
+        $this->membershipCommand?->assertModel();
+        $result = parent::addToDB();
+        if ($result !== false) {
+            $this->membershipCommand?->acceptCreatedIdentity((int)$result);
+        }
+        return $result;
+    }
+
+    public function updateInDB($updates, $oldvalues = [])
+    {
+        $this->membershipCommand?->assertModel();
+        $result = parent::updateInDB($updates, $oldvalues);
+        $this->membershipCommand?->assertModel();
+        return $result;
+    }
+
+    public function deleteFromDB($force = 0)
+    {
+        if ($this->membershipCommand !== null && !$this->membershipCommand->prepareRemoval()) {
+            return false;
+        }
+        return parent::deleteFromDB($force);
+    }
+
+    public function getFromDB($ID)
+    {
+        $this->membershipCommand?->assertReadIdentity($ID);
+        $result = parent::getFromDB($ID);
+        $this->membershipCommand?->assertModel();
+        return $result;
+    }
+
+    public function getConnexityItem($itemtype, $items_id, $getFromDB = true, $getEmpty = true, $getFromDBOrEmpty = false)
+    {
+        $this->membershipCommand?->assertModel();
+        $result = parent::getConnexityItem($itemtype, $items_id, $getFromDB, $getEmpty, $getFromDBOrEmpty);
+        $this->membershipCommand?->assertModel();
+        return $result;
+    }
+
+    protected function assertLifecycleUpdateContext(bool $persisted): void
+    {
+        parent::assertLifecycleUpdateContext($persisted);
+        $this->membershipCommand?->assertModel();
+    }
+
+    public function post_addItem()
+    {
+        $this->membershipCommand?->assertModel();
+        parent::post_addItem();
+        $this->membershipCommand?->assertModel();
+    }
+
+    public function post_updateItem($history = 1)
+    {
+        $this->membershipCommand?->assertModel();
+        parent::post_updateItem($history);
+        $this->membershipCommand?->assertModel();
+    }
+
+    public function post_deleteFromDB()
+    {
+        $this->membershipCommand?->assertModel();
+        parent::post_deleteFromDB();
+        $this->membershipCommand?->assertModel();
+    }
+
+    private function mutateMembership(callable $operation, bool $removing = false): mixed
+    {
+        global $DB;
+
+        $previous = $this->membershipCommand;
+        return (new VlanMembershipService($DB))->mutate($this, function (VlanMembershipCommand $command) use ($operation, $previous): mixed {
+            $this->membershipCommand = $command;
+            try {
+                return $operation();
+            } finally {
+                $this->membershipCommand = $previous;
+            }
+        }, $removing);
+    }
+
+    private function hasMembershipMapping(): bool
+    {
+        return (EntityRegistry::tables()[static::getTable()] ?? null) === NetworkPortVlan::class;
+    }
+
+    public static function membershipsForPort($port): array
+    {
+        global $DB;
+
+        return (new VlanMembershipService($DB))->membershipsForPort((int)$port);
+    }
 
 
     /**
@@ -65,11 +216,18 @@ class NetworkPort_Vlan extends CommonDBRelation
     **/
     public function unassignVlan($portID, $vlanID)
     {
-
-        $this->getFromDBByCrit([
+        if ($this->hasMembershipMapping()) {
+            return $this->mutateMembership(function () use ($portID, $vlanID) {
+                $identity = $this->membershipCommand->selectRemovalPair((int)$portID, (int)$vlanID);
+                return $identity === null ? false : parent::delete(['id' => $identity]);
+            }, removing: true);
+        }
+        if (!$this->getFromDBByCrit([
            'networkports_id' => $portID,
            'vlans_id'        => $vlanID
-        ]);
+        ])) {
+            return false;
+        }
 
         return $this->delete($this->fields);
     }
@@ -104,23 +262,7 @@ class NetworkPort_Vlan extends CommonDBRelation
         $canedit = $port->canEdit($ID);
         $rand    = mt_rand();
 
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'glpi_networkports_vlans.id as assocID',
-              'glpi_networkports_vlans.tagged',
-              'glpi_vlans.*'
-           ],
-           'FROM'      => 'glpi_networkports_vlans',
-           'LEFT JOIN' => [
-              'glpi_vlans'   => [
-                 'ON' => [
-                    'glpi_networkports_vlans'  => 'vlans_id',
-                    'glpi_vlans'               => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => ['networkports_id' => $ID]
-        ]);
+        $iterator = new RowIterator((new VlanMembershipService($DB))->forPort((int)$ID));
         $number = count($iterator);
 
         $vlans  = [];
@@ -223,23 +365,7 @@ class NetworkPort_Vlan extends CommonDBRelation
         $canedit = $vlan->canEdit($ID);
         $rand    = mt_rand();
 
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'glpi_networkports_vlans.id as assocID',
-              'glpi_networkports_vlans.tagged',
-              'glpi_networkports.*'
-           ],
-           'FROM'      => 'glpi_networkports_vlans',
-           'LEFT JOIN' => [
-              'glpi_networkports'   => [
-                 'ON' => [
-                    'glpi_networkports_vlans'  => 'networkports_id',
-                    'glpi_networkports'        => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => ['vlans_id' => $ID]
-        ]);
+        $iterator = new RowIterator((new VlanMembershipService($DB))->forVlan((int)$ID));
         $number = count($iterator);
 
         $vlans  = [];
@@ -311,11 +437,7 @@ class NetworkPort_Vlan extends CommonDBRelation
         global $DB;
 
         $vlans = [];
-        $iterator = $DB->request([
-           'SELECT' => 'vlans_id',
-           'FROM'   => 'glpi_networkports_vlans',
-           'WHERE'  => ['networkports_id' => $portID]
-        ]);
+        $iterator = new RowIterator((new VlanMembershipService($DB))->membershipsForPort((int)$portID));
 
         while ($data = $iterator->next()) {
             $vlans[$data['vlans_id']] = $data['vlans_id'];
@@ -333,18 +455,12 @@ class NetworkPort_Vlan extends CommonDBRelation
             switch ($item->getType()) {
                 case 'NetworkPort':
                     if ($_SESSION['glpishow_count_on_tabs']) {
-                        $nb = countElementsInTable(
-                            $this->getTable(),
-                            ["networkports_id" => $item->getID()]
-                        );
+                        $nb = (new VlanMembershipService($GLOBALS['DB']))->countForPort((int)$item->getID());
                     }
                     return self::createTabEntry(Vlan::getTypeName(), $nb);
                 case 'Vlan':
                     if ($_SESSION['glpishow_count_on_tabs']) {
-                        $nb = countElementsInTable(
-                            $this->getTable(),
-                            ["vlans_id" => $item->getID()]
-                        );
+                        $nb = (new VlanMembershipService($GLOBALS['DB']))->countForVlan((int)$item->getID());
                     }
                     return self::createTabEntry(NetworkPort::getTypeName(), $nb);
             }

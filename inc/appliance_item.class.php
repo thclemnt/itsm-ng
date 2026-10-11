@@ -34,9 +34,19 @@ if (!defined('GLPI_ROOT')) {
  * along with GLPI. If not, see <http://www.gnu.org/licenses/>.
  * ---------------------------------------------------------------------
  **/
+use Doctrine\ORM\EntityManager;
+use Glpi\Features\Clonable;
+use itsmng\Database\ApplianceOwnerReadOperation;
+use itsmng\Database\DropdownChoiceContext;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\EntityScopeReadOperation;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ApplianceAssetRepository;
+use itsmng\Database\RowIterator;
+
 class Appliance_Item extends CommonDBRelation
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     public static $itemtype_1 = 'Appliance';
     public static $items_id_1 = 'appliances_id';
@@ -127,12 +137,13 @@ class Appliance_Item extends CommonDBRelation
         }
         $entity_restrict_js = json_encode(array_values($entity_restrict));
 
-        $items = $DB->request([
-            'FROM' => self::getTable(),
-            'WHERE' => [
-                self::$items_id_1 => $ID
-            ]
-        ]);
+        $items = [];
+        foreach (Appliance::getTypes() as $kind) {
+            foreach (self::getTypeItems($ID, $kind) as $row) {
+                $items[$row['linkid']] = ['id' => $row['linkid'], 'itemtype' => $kind, 'items_id' => $row['id']];
+            }
+        }
+        ksort($items);
 
         Session::initNavigateListItems(
             self::getType(),
@@ -151,6 +162,12 @@ class Appliance_Item extends CommonDBRelation
             foreach ($itemtypes as $itemtype) {
                 $options[$itemtype] = $itemtype::getTypeName(1);
             }
+
+            $dropdownChoiceTokens = [];
+            foreach (array_keys(array_unique($options)) as $kind) {
+                $dropdownChoiceTokens[$kind] = DropdownChoiceContext::token($kind, ['entity_restrict' => array_values($entity_restrict)]);
+            }
+            $dropdownChoiceTokens = json_encode($dropdownChoiceTokens, JSON_THROW_ON_ERROR);
 
             $form = [
                 'action' => Toolbox::getItemTypeFormURL(__CLASS__),
@@ -191,6 +208,7 @@ class Appliance_Item extends CommonDBRelation
                                     url: "$CFG_GLPI[root_doc]/ajax/getDropdownValue.php",
                                     data: {
                                                     itemtype: selectedType,
+                                       _idor_token: ({$dropdownChoiceTokens})[selectedType],
                                        display_emptychoice: 1,
                                                     entity_restrict: entityRestrict,
                                     },
@@ -226,8 +244,6 @@ class Appliance_Item extends CommonDBRelation
             renderTwigForm($form);
         }
 
-        $items = iterator_to_array($items);
-
         $fields = [
             __('Itemtype'),
             _n('Item', 'Items', 1),
@@ -258,6 +274,7 @@ class Appliance_Item extends CommonDBRelation
                 $item->getLink(),
                 ($item->fields['serial'] ?? ""),
                 ($item->fields['otherserial'] ?? ""),
+                Appliance_Item_Relation::showListForApplianceItem($row['id'], $canedit),
             ];
             $massive_action[] = sprintf('item[%s][%s]', self::class, $row['id']);
         }
@@ -267,6 +284,7 @@ class Appliance_Item extends CommonDBRelation
             'values' => $values,
             'massive_action' => $massive_action,
         ]);
+        echo Appliance_Item_Relation::getListJSForApplianceItem($appliance, $canedit);
     }
 
     /**
@@ -388,17 +406,72 @@ class Appliance_Item extends CommonDBRelation
             'values' => $values,
             'massive_action' => $massive_action,
         ]);
+        echo Appliance_Item_Relation::getListJSForApplianceItem($item, $canedit);
     }
 
 
     public function prepareInputForAdd($input)
     {
-        return $this->prepareInput($input);
+        global $DB;
+        $input = $this->validateLifecycleEndpoints($input);
+        if ($input !== false && (new ApplianceAssetRepository(Orm::create($DB)))
+            ->hasAsset((int)$input['appliances_id'], $input['itemtype'], (int)$input['items_id'])) {
+            return false;
+        }
+        return $input;
     }
 
     public function prepareInputForUpdate($input)
     {
-        return $this->prepareInput($input);
+        return $this->validateLifecycleEndpoints($input);
+    }
+
+    public static function getSQLCriteriaToSearchForItem($itemtype, $items_id)
+    {
+        $selection = EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'][$itemtype] ?? null;
+        $conditions = [];
+        if ($itemtype === static::$itemtype_1) {
+            $conditions[] = [static::$items_id_1 => $items_id];
+        }
+        if ($selection !== null) {
+            $conditions[] = [$selection['column'] => $items_id];
+        }
+        return $conditions ? ['SELECT' => 'id', 'FROM' => static::getTable(), 'WHERE' => ['OR' => $conditions]] : null;
+    }
+
+    public static function getItemsAssociationRequest($itemtype, $items_id)
+    {
+        global $DB;
+        return new RowIterator(
+            (new ApplianceAssetRepository(Orm::create($DB)))->assetRelationships($itemtype, (int)$items_id)
+        );
+    }
+
+    public static function getOppositeByTypeAndID($itemtype, $items_id, &$relations_id = null)
+    {
+        $rows = static::getItemsAssociationRequest($itemtype, $items_id);
+        if (count($rows) !== 1) {
+            return false;
+        }
+        $row = $rows->next();
+        $role = $row['is_1'] ? 2 : 1;
+        $opposite = getItemForItemtype($row['itemtype_' . $role]);
+        if (!$opposite || !$opposite->getFromDB($row['items_id_' . $role])) {
+            return false;
+        }
+        if ($relations_id !== null) {
+            $relations_id = $row['id'];
+        }
+        return $opposite;
+    }
+
+    private static function subjectCriteria(CommonDBTM $item): array
+    {
+        $criteria = $item->maybeTemplate() ? ['is_template' => false] : [];
+        if ($item->isEntityAssign()) {
+            $criteria += getEntitiesRestrictCriteria($item->getTable(), '', '', 'auto');
+        }
+        return $criteria;
     }
 
     /**
@@ -408,7 +481,7 @@ class Appliance_Item extends CommonDBRelation
      *
      * @return array
      */
-    private function prepareInput($input)
+    protected function validateLifecycleEndpoints(array $input): array|false
     {
         $error_detected = [];
 
@@ -427,7 +500,7 @@ class Appliance_Item extends CommonDBRelation
         }
         if (
             ($this->isNewItem() && (!isset($input[self::$items_id_1]) || empty($input[self::$items_id_1])))
-            || (isset($input[self::$items_id_1]) && empty($input[self::$items_id_1]))
+            || (array_key_exists(self::$items_id_1, $input) && empty($input[self::$items_id_1]))
         ) {
             $error_detected[] = __('An appliance is required');
         }
@@ -446,20 +519,65 @@ class Appliance_Item extends CommonDBRelation
         return $input;
     }
 
+    /** Count session-visible subjects; the actual tab/view caller guards appliance access. */
     public static function countForMainItem(CommonDBTM $item, $extra_types_where = [])
     {
+        global $DB;
+        $repository = new ApplianceAssetRepository(Orm::create($DB));
         $types = Appliance::getTypes();
-        $clause = [];
-        if (count($types)) {
-            $clause = ['itemtype' => $types];
-        } else {
-            $clause = [new \QueryExpression('true = false')];
+        $count = 0;
+        foreach ($repository->assetKinds((int)$item->getID(), $extra_types_where) as $row) {
+            if (!in_array($row['itemtype'], $types, true)) {
+                continue;
+            }
+            $subject = getItemForItemtype($row['itemtype']);
+            $count += $repository->assetCount((int)$item->getID(), $row['itemtype'], self::subjectCriteria($subject));
         }
-        $extra_types_where = array_merge(
-            $extra_types_where,
-            $clause
+        return $count;
+    }
+
+    public static function getTypeItems($items_id, $itemtype)
+    {
+        global $DB;
+        $subject = getItemForItemtype($itemtype);
+        $rows = [];
+        if ($subject && $subject->canView()) {
+            $rows = (new ApplianceAssetRepository(Orm::create($DB)))
+                ->assets((int)$items_id, $itemtype, self::subjectCriteria($subject), $subject::getNameField());
+        }
+        return new RowIterator($rows);
+    }
+
+    public static function getDistinctTypes($items_id, $extra_where = [])
+    {
+        global $DB;
+        return new RowIterator(
+            (new ApplianceAssetRepository(Orm::create($DB)))->assetKinds((int)$items_id, $extra_where)
         );
-        return parent::countForMainItem($item, $extra_types_where);
+    }
+
+
+
+    public static function getListForItem(CommonDBTM $item)
+    {
+        global $DB;
+        $criteria = Session::isCron() ? [] : getEntitiesRestrictCriteria(Appliance::getTable(), '', '', 'auto');
+        return new RowIterator(
+            (new ApplianceAssetRepository(Orm::create($DB)))
+                ->owners($item->getType(), (int)$item->getID(), $criteria)
+        );
+    }
+
+    public static function countForItem(CommonDBTM $item)
+    {
+        global $DB;
+        $scope = Session::isCron() ? null : (new EntityScopeReadOperation())->restriction(Appliance::getTable(), '', '', 'auto');
+        $criteria = $scope?->wrappedCriteria() ?? [];
+        $connection = $DB->getDoctrineConnection();
+        return Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $item, $criteria, $scope): int {
+            return (new ApplianceOwnerReadOperation($connection, $manager))
+                ->ownerCount($item->getType(), (int)$item->getID(), $criteria, $scope);
+        });
     }
 
     public function getForbiddenStandardMassiveAction()

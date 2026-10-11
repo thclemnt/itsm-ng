@@ -45,12 +45,15 @@ use CommonGLPI;
 use CommonITILObject;
 use Config;
 use Contract;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Document;
 use Dropdown;
 use Glpi\Exception\ForgetPasswordException;
 use Glpi\Exception\PasswordTooWeakException;
 use Html;
 use Infocom;
+use InvalidArgumentException;
+use Item_DeviceHardDrive;
 use Item_Devices;
 use Log;
 use Michelf\MarkdownExtra;
@@ -58,7 +61,6 @@ use NetworkEquipment;
 use NetworkPort;
 use Notepad;
 use Problem;
-use QueryExpression;
 use SavedSearch;
 use Search;
 use Session;
@@ -66,6 +68,16 @@ use Software;
 use Ticket;
 use Toolbox;
 use User;
+use itsmng\Database\BooleanValue;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ApiCollectionRepository;
+use itsmng\Database\Repository\NetworkNameRepository;
+use itsmng\Database\Repository\SoftwareInstallationRepository;
+use itsmng\Database\Repository\TicketCollectionRepository;
+use itsmng\Database\Repository\TicketVisibility;
+use itsmng\Database\Repository\UserRepository;
+use itsmng\Database\UnsupportedCriteria;
 
 abstract class API extends CommonGLPI
 {
@@ -651,11 +663,12 @@ abstract class API extends CommonGLPI
             $fields['_devices'] = $all_devices;
         }
 
-        // retrieve computer disks
+        // Filesystem rows retain their historical eligibility via the derived
+        // physical-device affinity; this does not declare Disk subject ownership.
         if (
             isset($params['with_disks'])
             && $params['with_disks']
-            && in_array($itemtype, $CFG_GLPI['itemdeviceharddrive_types'])
+            && in_array($itemtype, Item_DeviceHardDrive::itemAffinity(), true)
         ) {
             // build query to retrive filesystems
             $fs_iterator = $DB->request([
@@ -696,43 +709,8 @@ abstract class API extends CommonGLPI
             if (!Software::canView()) {
                 $fields['_softwares'] = $this->arrayRightError();
             } else {
-                $soft_iterator = $DB->request([
-                   'SELECT'    => [
-                      'glpi_softwares.softwarecategories_id',
-                      'glpi_softwares.id AS softwares_id',
-                      'glpi_softwareversions.id AS softwareversions_id',
-                      'glpi_items_softwareversions.is_dynamic',
-                      'glpi_softwareversions.states_id',
-                      'glpi_softwares.is_valid'
-                   ],
-                   'FROM'      => 'glpi_items_softwareversions',
-                   'LEFT JOIN' => [
-                      'glpi_softwareversions' => [
-                         'ON' => [
-                            'glpi_items_softwareversions' => 'softwareversions_id',
-                            'glpi_softwareversions'       => 'id'
-                         ]
-                      ],
-                      'glpi_softwares'        => [
-                         'ON' => [
-                            'glpi_softwareversions' => 'softwares_id',
-                            'glpi_softwares'        => 'id'
-                         ]
-                      ]
-                   ],
-                   'WHERE'     => [
-                      'glpi_items_softwareversions.items_id'   => $id,
-                      'glpi_items_softwareversions.itemtype'   => $itemtype,
-                      'glpi_items_softwareversions.is_deleted' => 0
-                   ],
-                   'ORDERBY'   => [
-                      'glpi_softwares.name',
-                      'glpi_softwareversions.name'
-                   ]
-                ]);
-                while ($data = $soft_iterator->next()) {
-                    $fields['_softwares'][] = $data;
-                }
+                $fields['_softwares'] = (new SoftwareInstallationRepository(Orm::create($DB)))
+                    ->apiForSubject($itemtype, (int)$id);
             }
         }
 
@@ -819,126 +797,32 @@ abstract class API extends CommonGLPI
                     ]);
 
                     while ($data = $netp_iterator->next()) {
-                        if (isset($data['netport_id'])) {
-                            // append network name
-                            $concat_expr = new QueryExpression(
-                                "GROUP_CONCAT(CONCAT(" . $DB->quoteName('ipadr.id') . ", " . $DB->quoteValue(Search::SHORTSEP) . " , " . $DB->quoteName('ipadr.name') . ")
-                        SEPARATOR " . $DB->quoteValue(Search::LONGSEP) . ") AS " . $DB->quoteName('ipadresses')
-                            );
-                            $netn_iterator = $DB->request([
-                               'SELECT'    => [
-                                  $concat_expr,
-                                  'netn.id AS networknames_id',
-                                  'netn.name AS networkname',
-                                  'netn.fqdns_id',
-                                  'fqdn.name AS fqdn_name',
-                                  'fqdn.fqdn'
-                               ],
-                               'FROM'      => [
-                                  'glpi_networknames AS netn'
-                               ],
-                               'LEFT JOIN' => [
-                                  'glpi_ipaddresses AS ipadr'               => [
-                                     'ON' => [
-                                        'ipadr'  => 'items_id',
-                                        'netn'   => 'id',
-                                        [
-                                           'AND' => ['ipadr.itemtype' => 'NetworkName']
-                                        ]
-                                     ]
-                                  ],
-                                  'glpi_fqdns AS fqdn'                      => [
-                                     'ON' => [
-                                        'fqdn'   => 'id',
-                                        'netn'   => 'fqdns_id'
-                                     ]
-                                  ],
-                                  'glpi_ipaddresses_ipnetworks AS ipadnet'  => [
-                                     'ON' => [
-                                        'ipadnet'   => 'ipaddresses_id',
-                                        'ipadr'     => 'id'
-                                     ]
-                                  ],
-                                  'glpi_ipnetworks AS ipnet'                => [
-                                     'ON' => [
-                                        'ipnet'     => 'id',
-                                        'ipadnet'   => 'ipnetworks_id'
-                                     ]
-                                  ]
-                               ],
-                               'WHERE'     => [
-                                  'netn.itemtype'   => 'NetworkPort',
-                                  'netn.items_id'   => $data['netport_id']
-                               ],
-                               'GROUPBY'   => [
-                                  'netn.id',
-                                  'netn.name',
-                                  'netn.fqdns_id',
-                                  'fqdn.name',
-                                  'fqdn.fqdn'
-                               ]
-                            ]);
-
-                            if (count($netn_iterator)) {
-                                $data_netn = $netn_iterator->next();
-
-                                $raw_ipadresses = explode(Search::LONGSEP, (string) $data_netn['ipadresses']);
-                                $ipadresses = [];
-                                foreach ($raw_ipadresses as $ipadress) {
-                                    $ipadress = explode(Search::SHORTSEP, $ipadress);
-
-                                    //find ip network attached to these ip
-                                    $ipnetworks = [];
-                                    $ipnet_iterator = $DB->request([
-                                       'SELECT'       => [
-                                          'ipnet.id',
-                                          'ipnet.completename',
-                                          'ipnet.name',
-                                          'ipnet.address',
-                                          'ipnet.netmask',
-                                          'ipnet.gateway',
-                                          'ipnet.ipnetworks_id',
-                                          'ipnet.comment'
-                                       ],
-                                       'FROM'         => 'glpi_ipnetworks AS ipnet',
-                                       'INNER JOIN'   => [
-                                          'glpi_ipaddresses_ipnetworks AS ipadnet' => [
-                                             'ON' => [
-                                                'ipadnet'   => 'ipnetworks_id',
-                                                'ipnet'     => 'id'
-                                             ]
-                                          ]
-                                       ],
-                                       'WHERE'        => [
-                                          'ipadnet.ipaddresses_id'  => $ipadress[0]
-                                       ]
-                                    ]);
-                                    while ($data_ipnet = $ipnet_iterator->next()) {
-                                        $ipnetworks[] = $data_ipnet;
-                                    }
-
-                                    $ipadresses[] = [
-                                       'id'        => $ipadress[0],
-                                       'name'      => $ipadress[1],
-                                       'IPNetwork' => $ipnetworks
-                                    ];
-                                }
-
-                                $data['NetworkName'] = [
-                                   'id'         => $data_netn['networknames_id'],
-                                   'name'       => $data_netn['networkname'],
-                                   'fqdns_id'   => $data_netn['fqdns_id'],
-                                   'FQDN'       => [
-                                      'id'   => $data_netn['fqdns_id'],
-                                      'name' => $data_netn['fqdn_name'],
-                                      'fqdn' => $data_netn['fqdn']
-                                   ],
-                                   'IPAddress' => $ipadresses
-                                ];
-                            }
-                        }
-
                         $fields['_networkports'][$networkport_type][] = $data;
+                    }
+                }
+                $ports = [];
+                foreach ($fields['_networkports'] as $instantiations) {
+                    foreach ($instantiations as $port) {
+                        if (isset($port['netport_id'])) {
+                            $ports[] = (int)$port['netport_id'];
+                        }
+                    }
+                }
+                if ($ports !== []) {
+                    $em = Orm::create($DB);
+                    try {
+                        $names = (new NetworkNameRepository($em))->apiDetailsForPorts($ports);
+                        foreach ($fields['_networkports'] as &$instantiations) {
+                            foreach ($instantiations as &$port) {
+                                if (isset($port['netport_id'], $names[(int)$port['netport_id']])) {
+                                    $port['NetworkName'] = $names[(int)$port['netport_id']];
+                                }
+                            }
+                            unset($port);
+                        }
+                        unset($instantiations);
+                    } finally {
+                        $em->clear();
                     }
                 }
             }
@@ -1226,7 +1110,7 @@ abstract class API extends CommonGLPI
      * - 'is_deleted'       (default: false): show trashbin. Optionnal
      * - 'add_keys_names'   (default: []): insert raw name(s) for given itemtype(s) and fkey(s)
      * @param integer $totalcount output parameter who receive the total count of the query resulat.
-     *                            As this function paginate results (with a mysql LIMIT),
+     *                            As this function paginates results,
      *                            we can have the full range. (default 0)
      *
      * @return array collection of fields
@@ -1264,6 +1148,9 @@ abstract class API extends CommonGLPI
         if (isset($params['range']) > 0) {
             if (preg_match("/^[0-9]+-[0-9]+\$/", (string) $params['range'])) {
                 $range = explode("-", (string) $params['range']);
+                if ((int)$range[1] < (int)$range[0]) {
+                    $this->returnError('range end must be greater than or equal to start');
+                }
                 $params['start']      = $range[0];
                 $params['list_limit'] = $range[1] - $range[0] + 1;
                 $params['range']      = $range;
@@ -1285,22 +1172,8 @@ abstract class API extends CommonGLPI
             $this->returnError("sort param is not a field of $table");
         }
 
-        //specific case for restriction
-        $already_linked_table = [];
-        $join = Search::addDefaultJoin($itemtype, $table, $already_linked_table);
-        $where = Search::addDefaultWhere($itemtype);
-        if ($where == '') {
-            $where = "1=1 ";
-        }
-        if ($item->maybeDeleted()) {
-            $where .= "AND " . $DB->quoteName("$table.is_deleted") . " = " . (int)$params['is_deleted'];
-        }
-
-        // add filter for a parent itemtype
-        if (
-            isset($this->parameters['parent_itemtype'])
-            && isset($this->parameters['parent_id'])
-        ) {
+        $parent_item = null;
+        if (isset($this->parameters['parent_itemtype'], $this->parameters['parent_id'])) {
             // check parent itemtype
             if (
                 !Toolbox::isCommonDBTM($this->parameters['parent_itemtype'])
@@ -1313,9 +1186,6 @@ abstract class API extends CommonGLPI
                 );
             }
 
-            $fk_parent = getForeignKeyFieldForItemType($this->parameters['parent_itemtype']);
-            $fk_child = getForeignKeyFieldForItemType($itemtype);
-
             // check parent rights
             $parent_item = new $this->parameters['parent_itemtype']();
             if (!$parent_item->getFromDB($this->parameters['parent_id'])) {
@@ -1325,106 +1195,249 @@ abstract class API extends CommonGLPI
                 return $this->messageRightError();
             }
 
-            // filter with parents fields
-            if (isset($item->fields[$fk_parent])) {
-                $where .= " AND " . $DB->quoteName("$table.$fk_parent") . " = " . (int)$this->parameters['parent_id'];
-            } elseif (
-                isset($item->fields['itemtype'])
-                    && isset($item->fields['items_id'])
-            ) {
-                $where .= " AND " . $DB->quoteName("$table.itemtype") . " = " . $DB->quoteValue($this->parameters['parent_itemtype']) . "
-                       AND " . $DB->quoteName("$table.items_id") . " = " . (int)$this->parameters['parent_id'];
-            } elseif (isset($parent_item->fields[$fk_child])) {
-                $parentTable = getTableForItemType($this->parameters['parent_itemtype']);
-                $join .= " LEFT JOIN " . $DB->quoteName($parentTable) . " ON " . $DB->quoteName("$parentTable.$fk_child") . " = " . $DB->quoteName("$table.id");
-                $where .= " AND " . $DB->quoteName("$parentTable.id") . " = " . (int)$this->parameters['parent_id'];
-            } elseif (
-                isset($parent_item->fields['itemtype'])
-                    && isset($parent_item->fields['items_id'])
-            ) {
-                $parentTable = getTableForItemType($this->parameters['parent_itemtype']);
-                $join .= " LEFT JOIN " . $DB->quoteName($parentTable) . " ON " . $DB->quoteName("itemtype") . "=" . $DB->quoteValue($itemtype) . " AND " . $DB->quoteName("$parentTable.items_id") . " = " . $DB->quoteName("$table.id");
-                $where .= " AND " . $DB->quoteName("$parentTable.id") . " = " . (int)$this->parameters['parent_id'];
-            }
         }
-
-        // filter by searchText parameter
-        if (is_array($params['searchText'])) {
-            if (array_keys($params['searchText']) == ['all']) {
-                $labelfield = "name";
-                if ($item instanceof CommonDevice) {
-                    $labelfield = "designation";
-                } elseif ($item instanceof Item_Devices) {
-                    $labelfield = "itemtype";
-                }
-                $search_value                      = $params['searchText']['all'];
-                $params['searchText'][$labelfield] = $search_value;
-                if ($DB->fieldExists($table, 'comment')) {
-                    $params['searchText']['comment'] = $search_value;
-                }
-            }
-
-            // make text search
-            foreach ($params['searchText'] as $filter_field => $filter_value) {
-                if (!empty($filter_value)) {
-                    $search_value = Search::makeTextSearch($DB->escape($filter_value));
-                    $where .= " AND (" . $DB->quoteName("$table.$filter_field") . " $search_value)";
-                }
-            }
-        }
-
-        // filter with entity
-        if ($item->getType() == 'Entity') {
-            $where .= " AND (" . getEntitiesRestrictRequest("", $itemtype::getTable()) . ")";
-        } elseif (
-            $item->isEntityAssign()
-            // some CommonDBChild classes may not have entities_id fields and isEntityAssign still return true (like ITILTemplateMandatoryField)
-            && array_key_exists('entities_id', $item->fields)
-        ) {
-            $where .= " AND (" . getEntitiesRestrictRequest(
-                "",
-                $itemtype::getTable(),
-                '',
-                $_SESSION['glpiactiveentities'],
-                $item->maybeRecursive(),
-                true
-            );
-
-            if ($item instanceof SavedSearch) {
-                $where .= " OR " . $itemtype::getTable() . ".is_private = 1";
-            }
-
-            $where .= ")";
-        }
-
-        // Check if we need to add raw names later on
         $add_keys_names = count($params['add_keys_names']) > 0;
+        if ($item instanceof Ticket) {
+            $em = Orm::create($DB);
+            try {
+                $parent = $parent_item === null ? null : [
+                    'table' => $parent_item::getTable(),
+                    'id' => (int)$this->parameters['parent_id'],
+                ];
+                $page = (new TicketCollectionRepository($em))->page(
+                    TicketVisibility::fromSession(),
+                    $params,
+                    $parent
+                );
+                $found = $page['rows'];
+                $totalcount = $page['total'];
+            } catch (InvalidArgumentException | UnsupportedCriteria $error) {
+                $this->returnError($error->getMessage());
+            } finally {
+                $em->clear();
+            }
+        } elseif ($itemtype === User::class
+            && ($parent_item === null || isset(EntityRegistry::tables()[$parent_item::getTable()]))
+        ) {
+            $em = Orm::create($DB);
+            try {
+                $entities = $_SESSION['glpiactiveentities'] ?? [0];
+                $scope = $entities !== [] && (Session::canViewAllEntities() || !empty($_SESSION['glpishowallentities'])) ? null : [
+                    'entities' => $entities,
+                    'ancestors' => $_SESSION['glpiparententities'] ?? [],
+                ];
+                $parent = $parent_item === null ? null : [
+                    'table' => $parent_item::getTable(),
+                    'id' => (int)$this->parameters['parent_id'],
+                    'foreignKey' => getForeignKeyFieldForItemType($this->parameters['parent_itemtype']),
+                    'userForeignKey' => getForeignKeyFieldForItemType($itemtype),
+                    'kind' => $itemtype,
+                ];
+                $page = (new UserRepository($em))->apiPage($params, $scope, $parent);
+                $found = $page['rows'];
+                $totalcount = $page['total'];
+            } catch (InvalidArgumentException | UnsupportedCriteria $error) {
+                return $this->returnError($error->getMessage());
+            } finally {
+                $em->clear();
+            }
+        } else {
+            //specific case for restriction
+            $already_linked_table = [];
+            $join = Search::addDefaultJoin($itemtype, $table, $already_linked_table);
+            $where = Search::addDefaultWhere($itemtype);
+            $hasDefaultRestriction = $join !== '' || trim((string)$where) !== '';
+            $mappedCriteria = [];
+            $mappedParent = null;
+            if ($where == '') {
+                $where = "1=1 ";
+            }
+            if ($item->maybeDeleted()) {
+                $deleted = (int)$params['is_deleted'];
+                if (EntityRegistry::isBoolean($table, 'is_deleted')) {
+                    try {
+                        $deleted = BooleanValue::normalize($params['is_deleted'], false, 'is_deleted');
+                    } catch (InvalidArgumentException $error) {
+                        return $this->returnError($error->getMessage());
+                    }
+                    $mappedCriteria['is_deleted'] = $deleted;
+                    $deleted = $DB->getDoctrineConnection()->getDatabasePlatform()->convertBooleansToDatabaseValue($deleted);
+                    $deleted = $DB->quoteValue($deleted);
+                }
+                $mappedCriteria['is_deleted'] ??= (int)$params['is_deleted'];
+                $where .= "AND " . $DB->quoteName("$table.is_deleted") . " = " . $deleted;
+            }
 
-        // build query
-        $query = "SELECT DISTINCT " . $DB->quoteName("$table.id") . ",  " . $DB->quoteName("$table.*") . "
-                FROM " . $DB->quoteName($table) . "
-                $join
-                WHERE $where
-                ORDER BY " . $DB->quoteName($params['sort']) . " " . $params['order'] . "
-                LIMIT " . (int)$params['start'] . ", " . (int)$params['list_limit'];
-        if ($result = $DB->query($query)) {
-            while ($data = $DB->fetchAssoc($result)) {
-                if ($add_keys_names) {
-                    // Insert raw names into the data row
-                    $data["_keys_names"] = $this->getFriendlyNames(
-                        $data,
-                        $params,
-                        $itemtype
-                    );
+            // add filter for a parent itemtype
+            if (
+                isset($this->parameters['parent_itemtype'])
+                && isset($this->parameters['parent_id'])
+            ) {
+                $fk_parent = getForeignKeyFieldForItemType($this->parameters['parent_itemtype']);
+                $fk_child = getForeignKeyFieldForItemType($itemtype);
+
+                // filter with parents fields
+                if (isset($item->fields[$fk_parent])) {
+                    $mappedParent = ['direction' => 'child', 'foreignKey' => $fk_parent];
+                    $where .= " AND " . $DB->quoteName("$table.$fk_parent") . " = " . (int)$this->parameters['parent_id'];
+                } elseif (
+                    isset($item->fields['itemtype'])
+                        && isset($item->fields['items_id'])
+                ) {
+                    $mappedParent = ['direction' => 'child-kind', 'kind' => $this->parameters['parent_itemtype']];
+                    $where .= " AND " . $DB->quoteName("$table.itemtype") . " = " . $DB->quoteValue($this->parameters['parent_itemtype']) . "
+                           AND " . $DB->quoteName("$table.items_id") . " = " . (int)$this->parameters['parent_id'];
+                } elseif (isset($parent_item->fields[$fk_child])) {
+                    $mappedParent = ['direction' => 'parent', 'foreignKey' => $fk_child];
+                    $parentTable = getTableForItemType($this->parameters['parent_itemtype']);
+                    $join .= " LEFT JOIN " . $DB->quoteName($parentTable) . " ON " . $DB->quoteName("$parentTable.$fk_child") . " = " . $DB->quoteName("$table.id");
+                    $where .= " AND " . $DB->quoteName("$parentTable.id") . " = " . (int)$this->parameters['parent_id'];
+                } elseif (
+                    isset($parent_item->fields['itemtype'])
+                        && isset($parent_item->fields['items_id'])
+                ) {
+                    $mappedParent = ['direction' => 'parent-kind', 'kind' => $itemtype];
+                    $parentTable = getTableForItemType($this->parameters['parent_itemtype']);
+                    $join .= " LEFT JOIN " . $DB->quoteName($parentTable) . " ON " . $DB->quoteName("itemtype") . "=" . $DB->quoteValue($itemtype) . " AND " . $DB->quoteName("$parentTable.items_id") . " = " . $DB->quoteName("$table.id");
+                    $where .= " AND " . $DB->quoteName("$parentTable.id") . " = " . (int)$this->parameters['parent_id'];
+                }
+                if ($mappedParent !== null) {
+                    $mappedParent += ['table' => $parentTable ?? '', 'id' => (int)$this->parameters['parent_id']];
+                }
+            }
+
+            // filter by searchText parameter
+            if (is_array($params['searchText'])) {
+                if (array_keys($params['searchText']) == ['all']) {
+                    $labelfield = "name";
+                    if ($item instanceof CommonDevice) {
+                        $labelfield = "designation";
+                    } elseif ($item instanceof Item_Devices) {
+                        $labelfield = "itemtype";
+                    }
+                    $search_value                      = $params['searchText']['all'];
+                    $params['searchText'][$labelfield] = $search_value;
+                    if ($DB->fieldExists($table, 'comment')) {
+                        $params['searchText']['comment'] = $search_value;
+                    }
+                    unset($params['searchText']['all']);
                 }
 
-                $found[] = $data;
+                // make text search
+                foreach ($params['searchText'] as $filter_field => $filter_value) {
+                    if (!empty($filter_value)) {
+                        $search_value = Search::makeTextSearch($DB->escape($filter_value));
+                        $field = $DB->quoteName("$table.$filter_field");
+                        if ($DB->getDoctrineConnection()->getDatabasePlatform() instanceof PostgreSQLPlatform) {
+                            // API searchText is textual even when a selected field is an owning identifier.
+                            $field = "CAST($field AS TEXT)";
+                        }
+                        $where .= " AND ($field $search_value)";
+                    }
+                }
             }
-        }
 
-        // get result full row counts
-        $count_query = "SELECT COUNT(*) FROM {$DB->quoteName($table)} $join WHERE $where";
-        $totalcount = $DB->query($count_query)->fetch_row()[0];
+            // Keep overridable scope decisions at their original boundary. They
+            // may construct parent models and dispatch item_empty callbacks.
+            $ownsScope = false;
+            $scopeEntities = null;
+            $scopeTable = null;
+            $recursive = false;
+            $isEntity = $item->getType() == 'Entity';
+            if ($isEntity) {
+                $where .= " AND (" . getEntitiesRestrictRequest("", $itemtype::getTable()) . ")";
+            } elseif (
+                $item->isEntityAssign()
+                // some CommonDBChild classes may not have entities_id fields and isEntityAssign still return true (like ITILTemplateMandatoryField)
+                && ($ownsScope = array_key_exists('entities_id', $item->fields))
+            ) {
+                $where .= " AND (" . getEntitiesRestrictRequest(
+                    "",
+                    ($scopeTable = $itemtype::getTable()),
+                    '',
+                    ($scopeEntities = $_SESSION['glpiactiveentities']),
+                    ($recursive = $item->maybeRecursive()),
+                    true
+                );
+
+                if ($item instanceof SavedSearch) {
+                    $where .= " OR " . $itemtype::getTable() . ".is_private = 1";
+                }
+
+                $where .= ")";
+            }
+
+            $page = null;
+            // Use the route's actual physical columns and captured scope, not
+            // configuration/cache key presence or the public model's class name.
+            // Registered plugin types retain their existing execution contract.
+            if (!$hasDefaultRestriction && !$isEntity
+                && !isPluginItemType($itemtype)
+                && isset(EntityRegistry::tables()[$table])
+                && (!$ownsScope || $table === $scopeTable)
+                && (!$ownsScope || (!$recursive
+                    && is_array($scopeEntities)
+                    && array_filter($scopeEntities, static fn ($id) =>
+                        !is_int($id) && !(is_string($id) && ctype_digit($id))) === []))
+            ) {
+                $scope = $ownsScope ? getEntitiesRestrictCriteria(
+                    $scopeTable,
+                    '',
+                    $scopeEntities,
+                    $recursive,
+                    true
+                ) : [];
+                if ($ownsScope && $item instanceof SavedSearch) {
+                    $scope = ['OR' => [$scope, ['is_private' => true]]];
+                }
+                $em = Orm::create($DB);
+                try {
+                    $page = (new ApiCollectionRepository($em))->page(
+                        $table,
+                        $params,
+                        $scope,
+                        $mappedCriteria,
+                        $mappedParent
+                    );
+                } catch (\Doctrine\DBAL\Exception $error) {
+                    return $this->returnError(__('Unable to retrieve the requested items.'), 500, "ERROR_SQL", false);
+                } finally {
+                    $em->clear();
+                }
+            }
+            if ($page !== null) {
+                $found = $page['rows'];
+                $totalcount = $page['total'];
+            } else {
+                // build query
+                $query = "SELECT DISTINCT " . $DB->quoteName("$table.id") . ",  " . $DB->quoteName("$table.*") . "
+                        FROM " . $DB->quoteName($table) . "
+                        $join
+                        WHERE $where
+                        ORDER BY " . $DB->quoteName($params['sort']) . " " . $params['order'];
+                $query = $DB->getDoctrineConnection()->getDatabasePlatform()->modifyLimitQuery(
+                    $query,
+                    (int)$params['list_limit'],
+                    (int)$params['start']
+                );
+                $result = $DB->query($query);
+                if ($result === false) {
+                    return $this->returnError(__('Unable to retrieve the requested items.'), 500, "ERROR_SQL", false);
+                }
+                while ($data = $DB->fetchAssoc($result)) {
+                    $found[] = $data;
+                }
+
+                // get result full row counts
+                $count_query = "SELECT COUNT(*) FROM {$DB->quoteName($table)} $join WHERE $where";
+                $count_result = $DB->query($count_query);
+                if ($count_result === false) {
+                    return $this->returnError(__('Unable to retrieve the requested items.'), 500, "ERROR_SQL", false);
+                }
+                $totalcount = $DB->fetchRow($count_result)[0];
+            }
+
+        }
 
         if ($params['range'][0] > $totalcount) {
             $this->returnError(
@@ -1435,6 +1448,9 @@ abstract class API extends CommonGLPI
         }
 
         foreach ($found as &$fields) {
+            if ($add_keys_names) {
+                $fields['_keys_names'] = $this->getFriendlyNames($fields, $params, $itemtype);
+            }
             // only keep id in field list
             if ($params['only_id']) {
                 $fields = ['id' => $fields['id']];
@@ -2696,19 +2712,8 @@ abstract class API extends CommonGLPI
             $hclasses[] = "NetworkPort";
         }
         if (in_array($itemtype, $CFG_GLPI["itemdevices_types"])) {
-            //$hclasses[] = "Item_Devices";
-            foreach ($CFG_GLPI['device_types'] as $device_type) {
-                if (
-                    (($device_type == "DeviceMemory")
-                     && !in_array($itemtype, $CFG_GLPI["itemdevicememory_types"]))
-                    || (($device_type == "DevicePowerSupply")
-                        && !in_array($itemtype, $CFG_GLPI["itemdevicepowersupply_types"]))
-                    || (($device_type == "DeviceNetworkCard")
-                        && !in_array($itemtype, $CFG_GLPI["itemdevicenetworkcard_types"]))
-                ) {
-                    continue;
-                }
-                $hclasses[] = "Item_" . $device_type;
+            foreach (Item_Devices::getItemAffinities($itemtype) as $component) {
+                $hclasses[] = $component;
             }
         }
 

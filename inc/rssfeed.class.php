@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\SharedContentRepository;
+use itsmng\Database\SharedContentAccess;
 use itsmng\Timezone;
 use Glpi\Toolbox\URL;
 use SimplePie\SimplePie;
@@ -89,7 +92,7 @@ class RSSFeed extends CommonDBVisible implements ExtraVisibilityCriteria
     {
 
         // Is my rssfeed or is in visibility
-        return (($this->fields['users_id'] == Session::getLoginUserID())
+        return (((int)Session::getLoginUserID() > 0 && $this->fields['users_id'] == Session::getLoginUserID())
             || (Session::haveRight('rssfeed_public', READ)
             && $this->haveVisibilityAccess()));
     }
@@ -98,14 +101,14 @@ class RSSFeed extends CommonDBVisible implements ExtraVisibilityCriteria
     public function canCreateItem()
     {
         // Is my rssfeed
-        return ($this->fields['users_id'] == Session::getLoginUserID());
+        return (int)Session::getLoginUserID() > 0 && $this->fields['users_id'] == Session::getLoginUserID();
     }
 
 
     public function canUpdateItem()
     {
 
-        return (($this->fields['users_id'] == Session::getLoginUserID())
+        return (((int)Session::getLoginUserID() > 0 && $this->fields['users_id'] == Session::getLoginUserID())
             || (Session::haveRight('rssfeed_public', UPDATE)
             && $this->haveVisibilityAccess()));
     }
@@ -139,7 +142,7 @@ class RSSFeed extends CommonDBVisible implements ExtraVisibilityCriteria
     public function canPurgeItem()
     {
 
-        return (($this->fields['users_id'] == Session::getLoginUserID())
+        return (((int)Session::getLoginUserID() > 0 && $this->fields['users_id'] == Session::getLoginUserID())
             || (Session::haveRight(self::$rightname, PURGE)
             && $this->haveVisibilityAccess()));
     }
@@ -204,7 +207,7 @@ class RSSFeed extends CommonDBVisible implements ExtraVisibilityCriteria
         unset($criteria['WHERE']);
         $criteria['FROM'] = self::getTable();
 
-        $it = new \DBmysqlIterator(null);
+        $it = new DBmysqlIterator(null);
         $it->buildQuery($criteria);
         $sql = $it->getSql();
         $sql = str_replace(
@@ -230,7 +233,7 @@ class RSSFeed extends CommonDBVisible implements ExtraVisibilityCriteria
         unset($criteria['LEFT JOIN']);
         $criteria['FROM'] = self::getTable();
 
-        $it = new \DBmysqlIterator(null);
+        $it = new DBmysqlIterator(null);
         $it->buildQuery($criteria);
         $sql = $it->getSql();
         $sql = preg_replace('/.*WHERE /', '', $sql);
@@ -249,10 +252,10 @@ class RSSFeed extends CommonDBVisible implements ExtraVisibilityCriteria
      */
     public static function getVisibilityCriteria(bool $forceall = false): array
     {
-        $where = [self::getTable() . '.users_id' => Session::getLoginUserID()];
+        $where = [self::getTable() . '.users_id' => ((int)Session::getLoginUserID() > 0 ? Session::getLoginUserID() : -1)];
         $join = [];
 
-        if (!self::canView()) {
+        if (!Session::haveRight(self::$rightname, READ)) {
             return [
                 'LEFT JOIN' => $join,
                 'WHERE'     => $where
@@ -270,8 +273,8 @@ class RSSFeed extends CommonDBVisible implements ExtraVisibilityCriteria
 
         $where = [
             'OR' => [
-                self::getTable() . '.users_id'   => Session::getLoginUserID(),
-                'glpi_rssfeeds_users.users_id'   => Session::getLoginUserID()
+                self::getTable() . '.users_id'   => ((int)Session::getLoginUserID() > 0 ? Session::getLoginUserID() : -1),
+                'glpi_rssfeeds_users.users_id'   => ((int)Session::getLoginUserID() > 0 ? Session::getLoginUserID() : -1)
             ]
         ];
         $orwhere = [];
@@ -296,7 +299,7 @@ class RSSFeed extends CommonDBVisible implements ExtraVisibilityCriteria
                 ? $_SESSION["glpigroups"]
                 : [-1],
                 'OR' => [
-                    'glpi_groups_rssfeeds.entities_id' => ['<', '0'],
+                    'glpi_groups_rssfeeds.entities_id' => null,
                 ] + $restrict
             ];
         }
@@ -316,12 +319,12 @@ class RSSFeed extends CommonDBVisible implements ExtraVisibilityCriteria
         }
 
         if (isset($_SESSION["glpiactiveprofile"]) && isset($_SESSION["glpiactiveprofile"]['id'])) {
-            $restrict = getEntitiesRestrictCriteria('glpi_entities_rssfeeds', '', '', true);
+            $restrict = getEntitiesRestrictCriteria('glpi_profiles_rssfeeds', '', '', true);
             if (!count($restrict)) {
                 $restrict = [true];
             }
             $ors = [
-                'glpi_profiles_rssfeeds.entities_id' => ['<', '0'],
+                'glpi_profiles_rssfeeds.entities_id' => null,
                 $restrict
             ];
 
@@ -844,8 +847,6 @@ class RSSFeed extends CommonDBVisible implements ExtraVisibilityCriteria
     {
 
         $feed = new SimplePie();
-        //$feed->set_cache_location(GLPI_RSS_DIR);
-        $feed->set_cache(new Psr\SimpleCache\CacheInterface());
         $feed->enable_cache(false);
         $feed->set_feed_url($this->fields['url']);
         $feed->init();
@@ -934,53 +935,25 @@ class RSSFeed extends CommonDBVisible implements ExtraVisibilityCriteria
     {
         global $DB, $CFG_GLPI;
 
-        $users_id             = Session::getLoginUserID();
-
-        $table = self::getTable();
-        $criteria = [
-            'SELECT'   => "$table.*",
-            'DISTINCT' => true,
-            'FROM'     => $table,
-            'ORDER'    => "$table.name"
-        ];
-
-        if ($personal) {
-            /// Personal notes only for central view
-            if (Session::getCurrentInterface() == 'helpdesk') {
-                return false;
-            }
-
-            $criteria['WHERE']["$table.users_id"] = $users_id;
-            $criteria['WHERE']["$table.is_active"] = 1;
-
-            $titre = "<a href='" . $CFG_GLPI["root_doc"] . "/front/rssfeed.php'>" .
-                _n('Personal RSS feed', 'Personal RSS feeds', Session::getPluralNumber()) . "</a>";
-        } else {
-            // Show public rssfeeds / not mines : need to have access to public rssfeeds
-            if (!self::canView()) {
-                return false;
-            }
-
-            $criteria = $criteria + self::getVisibilityCriteria();
-
-            // Only personal on central so do not keep it
-            if (Session::getCurrentInterface() == 'central') {
-                $criteria['WHERE']["$table.users_id"] = ['<>', $users_id];
-            }
-
-            if (Session::getCurrentInterface() == 'central') {
-                $titre = "<a href=\"" . $CFG_GLPI["root_doc"] . "/front/rssfeed.php\">" .
-                    _n('Public RSS feed', 'Public RSS feeds', Session::getPluralNumber()) . "</a>";
-            } else {
-                $titre = _n('Public RSS feed', 'Public RSS feeds', Session::getPluralNumber());
-            }
+        $central = Session::getCurrentInterface() != 'helpdesk';
+        if (($personal && !$central) || (!$personal && !self::canView())) {
+            return false;
         }
+        $label = $personal ? _n('Personal RSS feed', 'Personal RSS feeds', Session::getPluralNumber()) : _n('Public RSS feed', 'Public RSS feeds', Session::getPluralNumber());
+        $titre = $central ? "<a href='" . $CFG_GLPI['root_doc'] . '/front/rssfeed.php' . "'>" . $label . '</a>' : $label;
+        $access = SharedContentAccess::current(Session::haveRight(self::$rightname, READ));
+        $rows = (new SharedContentRepository(Orm::create($DB)))->listing(
+            'rssfeed',
+            $access,
+            $personal,
+            Session::getCurrentInterface() == 'central',
+            new DateTimeImmutable()
+        );
+        $nb = count($rows);
 
-        $iterator = $DB->request($criteria);
-        $nb = count($iterator);
         $items   = [];
         $rssfeed = new self();
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             if ($rssfeed->getFromDB($data['id'])) {
                 // Force fetching feeds
                 if ($feed = self::getRSSFeed($data['url'], $data['refresh_rate'])) {

@@ -31,6 +31,16 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\ComponentCountReadOperation;
+use itsmng\Database\DeletionCancelled;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Mapping\LegacyInput;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\ComponentRepository;
+use itsmng\Domain\ComponentDefinitionChange;
+use itsmng\Domain\ComponentDefinitionReplacement;
+
 /**
  * @since 0.84
  */
@@ -72,6 +82,106 @@ class Item_Devices extends CommonDBRelation
     public static $undisclosedFields      = [];
 
     public static $mustBeAttached_2 = false; // Mandatory to display creation form
+
+    private ?ComponentDefinitionChange $definitionChange = null;
+
+    /** Invoked only by the actual definition owner's replacement lifecycle. */
+    final public function replaceDefinition(ComponentDefinitionReplacement $command, array $input, string $column): bool
+    {
+        if ($this->definitionChange !== null) {
+            return false;
+        }
+        $change = $command->bind($this, $input, $column);
+        $this->definitionChange = $change;
+        try {
+            return OwnershipUpdateUnit::run(
+                $GLOBALS['DB'],
+                $this,
+                $change->stored,
+                fn (): bool => $this->update($change->input($input)) && $change->verify($this)
+            );
+        } finally {
+            $this->definitionChange = null;
+        }
+    }
+
+    public function update(array $input, $history = 1, $options = [])
+    {
+        $change = $this->definitionChange;
+        if ($change === null) {
+            return parent::update($input, $history, $options);
+        }
+        if (!$change->enter($this)) {
+            return false;
+        }
+        try {
+            return parent::update($input, $history, $options);
+        } finally {
+            $change->leave();
+        }
+    }
+
+    public function getFromDB($ID)
+    {
+        if ($this->definitionChange === null) {
+            return parent::getFromDB($ID);
+        }
+        if (filter_var($ID, FILTER_VALIDATE_INT) === false
+            || ($row = $this->definitionChange->load($this, (int)$ID)) === null) {
+            return false;
+        }
+        $this->fields = $row;
+        $this->post_getFromDB();
+        // A real hydration callback may cancel or substitute the selected row.
+        return $this->fields === $row && $this->definitionChange->load($this, (int)$ID) === $row;
+    }
+
+    public function checkAttachedItemChangesAllowed(array $input, array $fields)
+    {
+        if ($this->definitionChange !== null) {
+            return $this->definitionChange->authorize($this, $input);
+        }
+        return parent::checkAttachedItemChangesAllowed($input, $fields);
+    }
+
+    protected function didPersistLifecycleUpdate(): void
+    {
+        $this->definitionChange?->didPersist($this);
+    }
+
+    protected function assertLifecycleUpdateContext(bool $persisted): void
+    {
+        if ($this->definitionChange === null) {
+            return;
+        }
+        $this->definitionChange->assertActive();
+        if ($persisted && !$this->definitionChange->verify($this)) {
+            throw new DeletionCancelled('The component replacement callback changed its delegated write.');
+        }
+    }
+
+    protected function executePreparedUpdate(callable $operation, array $storedFields): bool
+    {
+        if ($this->definitionChange === null) {
+            return parent::executePreparedUpdate($operation, $storedFields);
+        }
+        // The original new-item CREATE branch has no relation item_can hook.
+        // Retain the actual old-role DELETE/PURGE restrictions on its stored row.
+        foreach ([DELETE, PURGE] as $right) {
+            $probe = clone $this;
+            $probe->fields = $this->definitionChange->stored;
+            if (!$probe->retainItemPermission($right) || !is_array($probe->input)
+                || $probe->fields !== $this->definitionChange->stored
+                || !$this->definitionChange->authorize($probe, $probe->input)
+                || !$this->definitionChange->ready($this)) {
+                return false;
+            }
+        }
+        if (!$this->definitionChange->ready($this)) {
+            return false;
+        }
+        return $operation() && $this->definitionChange->verify($this);
+    }
 
     protected function computeFriendlyName()
     {
@@ -243,19 +353,25 @@ class Item_Devices extends CommonDBRelation
         ];
 
         foreach ($device_types as $device_type) {
-            if (isset($CFG_GLPI['item' . strtolower((string) $device_type) . '_types'])) {
-                $itemtypes = $CFG_GLPI['item' . strtolower((string) $device_type) . '_types'];
-                if ($itemtypes == '*' || in_array($itemtype, $itemtypes)) {
-                    if (method_exists($device_type, 'rawSearchOptionsToAdd')) {
-                        $options = array_merge(
-                            $options,
-                            $device_type::rawSearchOptionsToAdd(
-                                $itemtype,
-                                $main_joinparams
-                            )
-                        );
-                    }
-                }
+            $item_device = method_exists($device_type, 'getItem_DeviceType') ? $device_type::getItem_DeviceType() : null;
+            $reference = is_string($item_device) && is_subclass_of($item_device, self::class)
+                ? (EntityRegistry::discriminatedReferences($item_device::getTable())['items_id'] ?? null)
+                : null;
+            // Mapped owners declare affinity on their properties. Unmapped
+            // plugin/core families retain their existing explicit configuration.
+            $itemtypes = $reference !== null
+                ? $item_device::itemAffinity()
+                : ($CFG_GLPI['item' . strtolower((string) $device_type) . '_types'] ?? []);
+            $concerns_item = $itemtypes === '*' || (is_array($itemtypes)
+                && (in_array('*', $itemtypes, true) || in_array($itemtype, $itemtypes, true)));
+            if ($concerns_item && method_exists($device_type, 'rawSearchOptionsToAdd')) {
+                $options = array_merge(
+                    $options,
+                    $device_type::rawSearchOptionsToAdd(
+                        $itemtype,
+                        $main_joinparams
+                    )
+                );
             }
         }
 
@@ -425,6 +541,10 @@ class Item_Devices extends CommonDBRelation
     {
         global $CFG_GLPI;
 
+        $reference = EntityRegistry::discriminatedReferences(static::getTable())['items_id'] ?? null;
+        if ($reference !== null && !isset($reference['fallback_column'])) {
+            return array_keys($reference['selections']);
+        }
         $conf_param = str_replace('_', '', strtolower(static::class)) . '_types';
         if (isset($CFG_GLPI[$conf_param])) {
             return $CFG_GLPI[$conf_param];
@@ -507,9 +627,9 @@ class Item_Devices extends CommonDBRelation
 
         $itemtypes = $CFG_GLPI['itemdevices_types'];
 
-        $conf_param = str_replace('_', '', strtolower(static::class)) . '_types';
-        if (isset($CFG_GLPI[$conf_param]) && !in_array('*', $CFG_GLPI[$conf_param])) {
-            $itemtypes = array_intersect($itemtypes, $CFG_GLPI[$conf_param]);
+        $affinity = static::class === self::class ? ['*'] : static::itemAffinity();
+        if (!in_array('*', $affinity)) {
+            $itemtypes = array_intersect($itemtypes, $affinity);
         }
 
         return $itemtypes;
@@ -543,25 +663,14 @@ class Item_Devices extends CommonDBRelation
      **/
     public static function getItemsAssociatedTo($itemtype, $items_id)
     {
-        global $DB;
-
         $res = [];
         foreach (self::getItemAffinities($itemtype) as $link_type) {
-            $table = $link_type::getTable();
-            $iterator = $DB->request([
-               'SELECT' => 'id',
-               'FROM'   => $table,
-               'WHERE'  => [
-                  'itemtype'  => $itemtype,
-                  'items_id'  => $items_id
-               ]
-            ]);
-
-            while ($row = $iterator->next()) {
-                $input = Toolbox::addslashes_deep($row);
+            $link = new $link_type();
+            foreach ($link->findIds(['itemtype' => $itemtype, 'items_id' => $items_id]) as $id) {
                 $item = new $link_type();
-                $item->getFromDB($input['id']);
-                $res[] = $item;
+                if ($item->getFromDB($id)) {
+                    $res[] = $item;
+                }
             }
         }
         return $res;
@@ -574,23 +683,20 @@ class Item_Devices extends CommonDBRelation
      **/
     public static function cloneItem($itemtype, $oldid, $newid)
     {
-        global $DB;
-
         Toolbox::deprecated('Use clone');
         foreach (self::getItemAffinities($itemtype) as $link_type) {
-            $table = $link_type::getTable();
-            $olds = $DB->request([
-               'FROM'   => $table,
-               'WHERE'  => [
-                  'itemtype'  => $itemtype,
-                  'items_id'  => $oldid
-               ]
-            ]);
-
-            while ($data = $olds->next()) {
+            $olds = (new $link_type())->find(['itemtype' => $itemtype, 'items_id' => $oldid]);
+            foreach ($olds as $data) {
                 $link = new $link_type();
                 unset($data['id']);
-                $data['items_id']     = $newid;
+                $entity = EntityRegistry::tables()[$link_type::getTable()] ?? null;
+                if ($entity !== null && is_a($entity, LegacyInput::class, true) && method_exists($entity, 'withReference')) {
+                    $reference = EntityRegistry::discriminatedReferences($link_type::getTable())['items_id'] ?? null;
+                    $kind = isset($reference['fallback_column']) ? $data[$reference['discriminator']] : $itemtype;
+                    $data = $entity::withReference($data, $kind, (int)$newid);
+                } else {
+                    $data['items_id'] = $newid;
+                }
                 $data['_itemtype']    = $itemtype;
                 $data['_no_history']  = true;
                 $data                 = Toolbox::addslashes_deep($data);
@@ -603,20 +709,52 @@ class Item_Devices extends CommonDBRelation
 
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
     {
+        global $DB;
 
         if ($item->canView()) {
             $nb = 0;
             if (in_array($item->getType(), self::getConcernedItems())) {
                 if ($_SESSION['glpishow_count_on_tabs']) {
-                    foreach (self::getItemAffinities($item->getType()) as $link_type) {
-                        $nb   += countElementsInTable(
-                            $link_type::getTable(),
-                            [
-                              'items_id'   => $item->getID(),
-                              'itemtype'   => $item->getType(),
-                              'is_deleted' => 0
-                            ]
-                        );
+                    $affinities = self::getItemAffinities($item->getType());
+                    $mapped = EntityRegistry::legacyTables();
+                    $batch = isset($mapped[$item::class]);
+                    $tables = [];
+                    foreach ($affinities as $link_type) {
+                        // Declared public models have no custom table dispatch.
+                        // Extensions retain their original calls and routing.
+                        if (!$batch || !isset($mapped[$link_type])) {
+                            $batch = false;
+                            break;
+                        }
+                        $table = $link_type::getTable();
+                        if ($mapped[$link_type] !== $table) {
+                            $batch = false;
+                            break;
+                        }
+                        $tables[] = $table;
+                    }
+                    if ($batch && $tables) {
+                        $counts = new ComponentCountReadOperation($DB->getDoctrineConnection());
+                        try {
+                            $nb = $counts->countForAsset(
+                                $tables,
+                                $item->getType(),
+                                (int)$item->getID(),
+                            );
+                        } finally {
+                            $counts->close();
+                        }
+                    } else {
+                        foreach ($affinities as $link_type) {
+                            $nb += countElementsInTable(
+                                $link_type::getTable(),
+                                [
+                                    'items_id' => $item->getID(),
+                                    'itemtype' => $item->getType(),
+                                    'is_deleted' => 0,
+                                ],
+                            );
+                        }
                     }
                 }
                 return self::createTabEntry(
@@ -655,7 +793,7 @@ class Item_Devices extends CommonDBRelation
 
     public static function showForItem(CommonGLPI $item, $withtemplate = 0)
     {
-        global $CFG_GLPI, $DB;
+        global $CFG_GLPI;
 
         $is_device = ($item instanceof CommonDevice);
 
@@ -824,50 +962,7 @@ class Item_Devices extends CommonDBRelation
 
         foreach (self::getItemAffinities($item->getType()) as $link_type) {
             $link = getItemForItemtype($link_type);
-            $table = $link->getTable();
-            $criteria = [
-               'SELECT' => "$table.*",
-               'FROM'   => $table
-            ];
-            if ($is_device) {
-                $fk = 'items_id';
-
-                // Entity restrict
-                $criteria['WHERE'] = [
-                   $link->getDeviceForeignKey()  => $item->getID(),
-                   "$table.itemtype"            => $peer_type,
-                   "$table.is_deleted"          => 0
-                ];
-                $criteria['ORDERBY'] = [
-                   "$table.itemtype",
-                   "$table.$fk"
-                ];
-                if (!empty($peer_type)) {
-                    $criteria['LEFT JOIN'] = [
-                       getTableForItemType($peer_type) => [
-                          'ON' => [
-                             $table                          => 'items_id',
-                             getTableForItemType($peer_type)  => 'id', [
-                                'AND' => [
-                                   "$table.itemtype"   => $peer_type
-                                ]
-                             ]
-                          ]
-                       ]
-                    ];
-                    $criteria['WHERE'] = $criteria['WHERE'] + getEntitiesRestrictCriteria(getTableForItemType($peer_type));
-                }
-            } else {
-                $fk = $link->getDeviceForeignKey();
-
-                $criteria['WHERE'] = [
-                   'itemtype'     => $item->getType(),
-                   'items_id'     => $item->getID(),
-                   'is_deleted'   => 0
-                ];
-                $criteria['ORDERBY'] = $fk;
-            }
-            $datas = iterator_to_array($DB->request($criteria));
+            $datas = $link->getTableGroupRows($item, $peer_type ?? null);
             if (count($datas)) {
                 $massiveActionContainerId = 'mass' . __CLASS__ . rand();
                 if ($canedit) {
@@ -919,6 +1014,39 @@ class Item_Devices extends CommonDBRelation
     public static function getDeviceForeignKey()
     {
         return getForeignKeyFieldForTable(getTableForItemType(static::getDeviceType()));
+    }
+
+    /** Mapped component rows, retaining custom plugin query extensions. */
+    public function getTableGroupRows($item, $peer_type = null): array
+    {
+        global $DB;
+
+        $table = $this->getTable();
+        $peerTable = $peer_type ? getTableForItemType($peer_type) : null;
+        $customCriteria = (new ReflectionMethod($this, 'getTableGroupCriteria'))->getDeclaringClass()->getName() !== self::class;
+        if ($customCriteria || !isset(EntityRegistry::tables()[$table])
+            || ($peerTable && !isset(EntityRegistry::tables()[$peerTable]))) {
+            return iterator_to_array($DB->request($this->getTableGroupCriteria($item, $peer_type)));
+        }
+        if (!$item instanceof CommonDevice) {
+            return array_values($this->find([
+                'itemtype' => $item->getType(), 'items_id' => $item->getID(), 'is_deleted' => 0,
+            ], $this->getDeviceForeignKey()));
+        }
+        $entities = $peerTable ? Session::getActiveEntityScope() : null;
+        $em = Orm::create($DB);
+        try {
+            return (new ComponentRepository($em))->forDevice(
+                $table,
+                $this->getDeviceForeignKey(),
+                (int)$item->getID(),
+                $peer_type,
+                $peerTable,
+                $entities
+            );
+        } finally {
+            $em->clear();
+        }
     }
 
     public function getTableGroupCriteria($item, $peer_type = null)
@@ -999,8 +1127,6 @@ class Item_Devices extends CommonDBRelation
         ?HTMLTableSuperHeader $delete_column = null,
         ?HTMLTableSuperHeader $dynamic_column = null
     ) {
-        global $DB;
-
         $is_device = ($item instanceof CommonDevice);
 
         if ($is_device) {
@@ -1107,7 +1233,6 @@ class Item_Devices extends CommonDBRelation
             );
         }
 
-        $criteria = $this->getTableGroupCriteria($item, $peer_type);
         $fk = $item instanceof CommonDevice ? 'items_id' : $this->getDeviceForeignKey();
 
         if (!empty($peer_type)) {
@@ -1117,8 +1242,7 @@ class Item_Devices extends CommonDBRelation
             $peer = null;
         }
 
-        $iterator = $DB->request($criteria);
-        while ($link = $iterator->next()) {
+        foreach ($this->getTableGroupRows($item, $peer_type) as $link) {
             Session::addToNavigateListItems(static::getType(), $link["id"]);
             $this->getFromDB($link['id']);
             $current_row  = $table_group->createRow();
@@ -1212,25 +1336,14 @@ class Item_Devices extends CommonDBRelation
 
             $content = [];
             // The order is to be sure that specific documents appear first
-            $doc_iterator = $DB->request([
-               'SELECT' => 'documents_id',
-               'FROM'   => 'glpi_documents_items',
-               'WHERE'  => [
-                  'OR' => [
-                     [
-                        'itemtype'  => $this->getType(),
-                        'items_id'  => $link['id']
-                     ],
-                     [
-                        'itemtype'  => $this->getDeviceType(),
-                        'items_id'  => $link[$this->getDeviceForeignKey()]
-                     ]
-                  ]
-               ],
-               'ORDER'  => 'itemtype'
-            ]);
+            $documents = (new Document_Item())->find([
+                'OR' => [
+                    ['itemtype' => $this->getType(), 'items_id' => $link['id']],
+                    ['itemtype' => $this->getDeviceType(), 'items_id' => $link[$this->getDeviceForeignKey()]],
+                ],
+            ], 'itemtype');
             $document = new Document();
-            while ($document_link = $doc_iterator->next()) {
+            foreach ($documents as $document_link) {
                 if ($document->can($document_link['documents_id'], READ)) {
                     $content[] = $document->getLink();
                 }
@@ -1496,17 +1609,26 @@ class Item_Devices extends CommonDBRelation
             $link = getItemForItemtype($link_type);
             if ($link) {
                 if ($unaffect) {
-                    $DB->update(
-                        $link->getTable(),
-                        [
-                          'items_id'  => 0,
-                          'itemtype'  => ''
-                        ],
-                        [
-                          'items_id'  => $items_id,
-                          'itemtype'  => $itemtype
-                        ]
-                    );
+                    if (isset(EntityRegistry::tables()[$link->getTable()])) {
+                        $em = Orm::create($DB);
+                        try {
+                            (new ComponentRepository($em))->detach($link->getTable(), $itemtype, (int)$items_id);
+                        } finally {
+                            $em->clear();
+                        }
+                    } else {
+                        $DB->update(
+                            $link->getTable(),
+                            [
+                              'items_id'  => 0,
+                              'itemtype'  => ''
+                            ],
+                            [
+                              'items_id'  => $items_id,
+                              'itemtype'  => $itemtype
+                            ]
+                        );
+                    }
                 } else {
                     $link->cleanDBOnItemDelete($itemtype, $items_id);
                 }
@@ -1617,6 +1739,40 @@ class Item_Devices extends CommonDBRelation
         renderTwigForm($form, '', $this->fields);
 
         return true;
+    }
+
+    /** Validate the final selected subject after ordinary preparation and hooks. */
+    protected function executePreparedAdd(callable $operation, array $priorState): mixed
+    {
+        global $DB;
+
+        $em = Orm::create($DB);
+        try {
+            if (!(new ComponentRepository($em))->hasSelectedSubject($this->getTable(), $this->fields)) {
+                return false;
+            }
+        } finally {
+            $em->clear();
+        }
+        return parent::executePreparedAdd($operation, $priorState);
+    }
+
+    public function addNeededInfoToInput($input)
+    {
+        $owner = EntityRegistry::entityScopeOwner($this->getTable());
+        if ($owner === null) {
+            return parent::addNeededInfoToInput($input);
+        }
+        if ($this->tryEntityForwarding() && !isset($input['entities_id'])) {
+            $values = array_replace($this->fields, $input);
+            $parent = getItemForItemtype(getItemTypeForTable($owner['target']));
+            if (!$parent || !$parent->getFromDB($values[$owner['column']] ?? 0)) {
+                return false;
+            }
+            $input['entities_id'] = $parent->getEntityID();
+            $input['is_recursive'] = (int)$parent->isRecursive();
+        }
+        return $input;
     }
 
     public function prepareInputForAdd($input)

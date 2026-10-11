@@ -31,7 +31,35 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\LockMode;
+use Doctrine\ORM\EntityManager;
 use Glpi\Event;
+use itsmng\Database\BooleanValue;
+use itsmng\Database\CloneInput;
+use itsmng\Database\CurrentReadUnavailable;
+use itsmng\Database\DeletionCancelled;
+use itsmng\Database\DeletionDecision;
+use itsmng\Database\DeletionOutcome;
+use itsmng\Database\DeletionUnit;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\ForeignKeys;
+use itsmng\Database\LegacyValues;
+use itsmng\Database\LifecycleModelJournal;
+use itsmng\Database\MappedReads;
+use itsmng\Database\MappedStorage;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\MutationCleanupFailure;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\DeletionRepository;
+use itsmng\Database\Repository\FieldUnicityRepository;
+use itsmng\Database\Repository\HistoryRepository;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\RelationshipLifecycleRepository;
+use itsmng\Database\TransactionOwnership;
+use itsmng\Database\TransactionOwnershipMismatch;
+use itsmng\Database\UnsupportedCriteria;
 use itsmng\Timezone;
 
 if (!defined('GLPI_ROOT')) {
@@ -44,6 +72,12 @@ if (!defined('GLPI_ROOT')) {
 #[AllowDynamicProperties]
 class CommonDBTM extends CommonGLPI
 {
+    /** Explicit imports share the add lifecycle without interpreting an ID as a clone. */
+    private ?int $assignedIdentifier = null;
+
+    /** Current-read policy belongs to one exact model and selected mapped row. */
+    private ?array $currentRead = null;
+
     /**
      * Data fields of the Item.
      *
@@ -263,6 +297,54 @@ class CommonDBTM extends CommonGLPI
         return sprintf('%s.%s', $tablename, $field);
     }
 
+    /** Load one selected mapped row with a current write lock in the supplied caller frame. */
+    final public function getFromDBForUpdate($ID, Connection $connection): bool
+    {
+        global $DB;
+
+        if ((!is_int($ID) && !is_string($ID)) || filter_var($ID, FILTER_VALIDATE_INT) === false) {
+            return false;
+        }
+        TransactionOwnership::assertManaged($connection);
+        $writer = $DB;
+        if ($writer->getDoctrineConnection() !== $connection
+            || !isset(EntityRegistry::tables()[$this->getTable()])) {
+            throw new CurrentReadUnavailable('Current model loads require their supplied mapped writer.');
+        }
+        $scope = $connection->captureManagedTransactionScope();
+        $level = $connection->getTransactionNestingLevel();
+        $previous = $this->currentRead;
+        $this->currentRead = ['owner' => spl_object_id($this), 'table' => $this->getTable(),
+            'index' => $this->getIndexName(), 'id' => (int)$ID, 'connection' => $connection, 'consumed' => false];
+        $result = false;
+        $consumed = false;
+        $failure = null;
+        try {
+            $result = (bool)$this->getFromDB($ID);
+            $consumed = $this->currentRead['consumed'];
+        } catch (Throwable $error) {
+            $failure = $error;
+        } finally {
+            $this->currentRead = $previous;
+        }
+        try {
+            $scope->assertActive();
+            if ($connection->getTransactionNestingLevel() !== $level || $writer !== ($GLOBALS['DB'] ?? null)
+                || $writer->getDoctrineConnection() !== $connection) {
+                throw new TransactionOwnershipMismatch('The current model load replaced its supplied writer or frame.');
+            }
+        } catch (Throwable $cleanup) {
+            $failure = $failure === null ? $cleanup : new MutationCleanupFailure($failure, $cleanup, true);
+        }
+        if ($failure !== null) {
+            throw $failure;
+        }
+        if ($result && !$consumed) {
+            throw new CurrentReadUnavailable('A custom mutation load must delegate its selected row to the mapped current-read boundary.');
+        }
+        return $result;
+    }
+
     /**
      * Retrieve an item from the database
      *
@@ -276,8 +358,48 @@ class CommonDBTM extends CommonGLPI
         // Make new database object and fill variables
 
         // != 0 because 0 is consider as empty
-        if (strlen($ID) == 0) {
+        if ($ID === null || strlen($ID) == 0) {
             return false;
+        }
+
+        if (isset(EntityRegistry::tables()[$this->getTable()])) {
+            $lock = LockMode::NONE;
+            if ($this->currentRead !== null && $this->currentRead['owner'] === spl_object_id($this)
+                && $this->currentRead['table'] === $this->getTable() && $this->currentRead['index'] === $this->getIndexName()
+                && $this->currentRead['id'] === (int)Toolbox::cleanInteger($ID)) {
+                if ($DB->getDoctrineConnection() !== $this->currentRead['connection']) {
+                    throw new TransactionOwnershipMismatch('The selected model read changed its supplied connection.');
+                }
+                $lock = LockMode::PESSIMISTIC_WRITE;
+            }
+            if ($lock === LockMode::NONE) {
+                $row = Orm::readRecord($DB, $this->getTable(), $this->getIndexName(), (int)Toolbox::cleanInteger($ID));
+            } else {
+                $manager = Orm::create($DB);
+                try {
+                    if ($lock === LockMode::PESSIMISTIC_WRITE
+                        && $manager->getConnection() !== $this->currentRead['connection']) {
+                        throw new TransactionOwnershipMismatch('The selected model manager changed its supplied connection.');
+                    }
+                    $row = (new RecordRepository($manager))->find(
+                        $this->getTable(),
+                        $this->getIndexName(),
+                        (int)Toolbox::cleanInteger($ID),
+                        $lock
+                    );
+                } finally {
+                    $manager->clear();
+                }
+            }
+            if ($row === null) {
+                return false;
+            }
+            if ($lock === LockMode::PESSIMISTIC_WRITE) {
+                $this->currentRead['consumed'] = true;
+            }
+            $this->fields = $row;
+            $this->post_getFromDB();
+            return true;
         }
 
         $iterator = $DB->request([
@@ -357,6 +479,20 @@ class CommonDBTM extends CommonGLPI
     {
         global $DB;
 
+        try {
+            $rows = MappedReads::matching($DB, $this->getTable(), $crit, limit: 2);
+            if (count($rows) === 1) {
+                return $this->getFromDB($rows[0][$this->getIndexName()]);
+            }
+            if (count($rows) > 1) {
+                $count = MappedReads::countMatching($DB, $this->getTable(), $crit);
+                trigger_error(sprintf('getFromDBByCrit expects to get one result, %s found.', $count), E_USER_WARNING);
+            }
+            return false;
+        } catch (UnsupportedCriteria $unsupported) {
+            // SQL expressions and plugin tables still need dedicated mapped queries.
+        }
+
         $crit = ['SELECT' => 'id',
                  'FROM'   => $this->getTable(),
                  'WHERE'  => $crit];
@@ -402,6 +538,35 @@ class CommonDBTM extends CommonGLPI
            'COUNT' => '',
            'GROUPBY' => '',
         ]);
+        $simpleKeys = ['WHERE', 'ORDER', 'ORDERBY', 'LIMIT', 'START'];
+        if (!array_diff(array_keys($request), $simpleKeys) && is_array($request['WHERE'] ?? [])) {
+            try {
+                $requestedLimit = is_numeric($request['LIMIT'] ?? null) && (int)$request['LIMIT'] > 0 ? (int)$request['LIMIT'] : null;
+                $limit = $requestedLimit === null ? 2 : min(2, $requestedLimit);
+                $offset = $requestedLimit === null ? 0 : max(0, (int)($request['START'] ?? 0));
+                $rows = MappedReads::matching(
+                    $DB,
+                    $this->getTable(),
+                    $request['WHERE'] ?? [],
+                    $request['ORDER'] ?? $request['ORDERBY'] ?? [],
+                    $limit,
+                    $offset
+                );
+                if (count($rows) === 1) {
+                    $this->fields = $rows[0];
+                    $this->post_getFromDB();
+                    return true;
+                }
+                if (count($rows) > 1) {
+                    $count = max(0, MappedReads::countMatching($DB, $this->getTable(), $request['WHERE'] ?? []) - $offset);
+                    $count = $requestedLimit === null ? $count : min($count, $requestedLimit);
+                    Toolbox::logWarning(sprintf('getFromDBByRequest expects to get one result, %s found!', $count));
+                }
+                return false;
+            } catch (UnsupportedCriteria $unsupported) {
+                // Remaining SQL constructs use the existing path until mapped.
+            }
+        }
         $request['FROM'] = $this->getTable();
         $request['SELECT'] = $this->getTable() . '.*';
 
@@ -474,6 +639,13 @@ class CommonDBTM extends CommonGLPI
     {
         global $DB;
 
+        try {
+            $rows = MappedReads::matching($DB, $this->getTable(), $condition, $order, $limit === null ? null : (int)$limit);
+            return array_column($rows, null, 'id');
+        } catch (UnsupportedCriteria $unsupported) {
+            // Remaining SQL constructs use the existing path until mapped.
+        }
+
         $criteria = [
            'FROM'   => $this->getTable()
         ];
@@ -525,12 +697,15 @@ class CommonDBTM extends CommonGLPI
 
         //make an empty database object
         $table = $this->getTable();
+        if (empty($table)) {
+            return false;
+        }
 
-        if (
-            !empty($table) &&
-            ($fields = $DB->listFields($table))
-        ) {
-            foreach (array_keys($fields) as $key) {
+        $columns = MappedStorage::supports($table)
+            ? EntityRegistry::columnNames($table)
+            : array_keys($DB->listFields($table) ?: []);
+        if ($columns) {
+            foreach ($columns as $key) {
                 $this->fields[$key] = "";
             }
         } else {
@@ -581,20 +756,53 @@ class CommonDBTM extends CommonGLPI
      * @param string[] $updates   fields to update
      * @param string[] $oldvalues array of old values of the updated fields
      *
-     * @return void
+     * @return boolean true on success
     **/
     public function updateInDB($updates, $oldvalues = [])
     {
         global $DB;
 
-        foreach ($updates as $field) {
-            if (isset($this->fields[$field])) {
-                $DB->update(
-                    $this->getTable(),
-                    [$field => $this->fields[$field]],
-                    ['id' => $this->fields['id']]
+        $writer = $DB;
+        OwnershipUpdateUnit::assertWriter($writer);
+
+        $mapped = MappedStorage::supports($this->getTable());
+        OwnershipUpdateUnit::assertWriter($writer);
+        $changedColumns = [];
+        if ($mapped) {
+            $values = [];
+            foreach ($updates as $field) {
+                if (array_key_exists($field, $this->fields)) {
+                    $values[$field] = $this->fields[$field];
+                }
+            }
+            if ($values) {
+                $producer = new MappedStorage($DB);
+                $table = $this->getTable();
+                OwnershipUpdateUnit::assertWriter($writer);
+                $changedColumns = $producer->update(
+                    $table,
+                    (int)$this->fields['id'],
+                    $values
                 );
-                if ($DB->affectedRows() == 0) {
+                OwnershipUpdateUnit::assertWriter($writer);
+            }
+        }
+
+        foreach ($updates as $field) {
+            if (array_key_exists($field, $this->fields)) {
+                if ($mapped) {
+                    $changed = in_array($field, $changedColumns, true);
+                } else {
+                    $producer = $DB;
+                    $table = $this->getTable();
+                    OwnershipUpdateUnit::assertWriter($writer);
+                    if (!$producer->update($table, [$field => $this->fields[$field]], ['id' => $this->fields['id']])) {
+                        return false;
+                    }
+                    OwnershipUpdateUnit::assertWriter($writer);
+                    $changed = $DB->affectedRows() > 0;
+                }
+                if (!$changed) {
                     if (isset($oldvalues[$field])) {
                         unset($oldvalues[$field]);
                     }
@@ -608,8 +816,11 @@ class CommonDBTM extends CommonGLPI
         }
 
         if (count($oldvalues)) {
+            // History callbacks can mutate the model; reload the persisted source.
+            $updatedId = $this->getID();
+            OwnershipUpdateUnit::assertWriter($writer);
             Log::constructHistory($this, $oldvalues, $this->fields);
-            $this->getFromDB($this->fields['id']);
+            $this->getFromDB($updatedId);
         }
 
         return true;
@@ -624,6 +835,9 @@ class CommonDBTM extends CommonGLPI
     public function addToDB()
     {
         global $DB;
+
+        $writer = $DB;
+        OwnershipUpdateUnit::assertWriter($writer);
 
         if (isset($this->fields['id']) && $this->isNewID($this->fields['id'])) {
             unset($this->fields['id']);
@@ -640,7 +854,21 @@ class CommonDBTM extends CommonGLPI
                 $params[$key] = $value;
             }
 
-            $result = $DB->insert($this->getTable(), $params);
+            $mapped = MappedStorage::supports($this->getTable());
+            OwnershipUpdateUnit::assertWriter($writer);
+            if ($mapped) {
+                $producer = new MappedStorage($DB);
+                $table = $this->getTable();
+                OwnershipUpdateUnit::assertWriter($writer);
+                $this->fields['id'] = $producer->insert($table, $params);
+                $result = true;
+            } else {
+                $producer = $DB;
+                $table = $this->getTable();
+                OwnershipUpdateUnit::assertWriter($writer);
+                $result = $producer->insert($table, $params);
+            }
+            OwnershipUpdateUnit::assertWriter($writer);
             if ($result) {
                 if (
                     !isset($this->fields['id'])
@@ -650,9 +878,15 @@ class CommonDBTM extends CommonGLPI
                     $this->fields['id'] = $DB->insertId();
                 }
 
-                $this->getFromDB($this->fields['id']);
+                // Persistence owns this scalar identity before read callbacks
+                // can change the public model or perform another insertion.
+                $createdId = $this->fields['id'];
+                // Public reads use the declared index, which can differ from
+                // the physical identity returned by the insert producer.
+                $this->getFromDB($this->getID());
+                OwnershipUpdateUnit::assertWriter($writer);
 
-                return $this->fields['id'];
+                return $createdId;
             }
         }
         return false;
@@ -668,6 +902,9 @@ class CommonDBTM extends CommonGLPI
     {
         global $DB;
 
+        $writer = $DB;
+        OwnershipUpdateUnit::assertWriter($writer);
+
         if ($this->maybeDeleted()) {
             $params = ['is_deleted' => 0];
             // Auto set date_mod if exsist
@@ -675,7 +912,22 @@ class CommonDBTM extends CommonGLPI
                 $params['date_mod'] = $_SESSION["glpi_currenttime"];
             }
 
-            if ($DB->update($this->getTable(), $params, ['id' => $this->fields['id']])) {
+            $mapped = MappedStorage::supports($this->getTable());
+            OwnershipUpdateUnit::assertWriter($writer);
+            if ($mapped) {
+                $producer = new MappedStorage($DB);
+                $table = $this->getTable();
+                OwnershipUpdateUnit::assertWriter($writer);
+                $producer->update($table, (int)$this->fields['id'], $params);
+                OwnershipUpdateUnit::assertWriter($writer);
+                return true;
+            }
+            $producer = $DB;
+            $table = $this->getTable();
+            OwnershipUpdateUnit::assertWriter($writer);
+            $result = $producer->update($table, $params, ['id' => $this->fields['id']]);
+            OwnershipUpdateUnit::assertWriter($writer);
+            if ($result) {
                 return true;
             }
         }
@@ -695,28 +947,63 @@ class CommonDBTM extends CommonGLPI
     {
         global $DB;
 
-        if (
-            ($force == 1)
+        $writer = $DB;
+        OwnershipUpdateUnit::assertWriter($writer);
+
+        $connection = $writer->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($writer, $connection);
+        $scope = DeletionUnit::isActive($connection)
+            ? $connection->captureManagedTransactionScope() : null;
+        $identity = $this->fields['id'];
+        $publicIdentity = $this->getID();
+        OwnershipUpdateUnit::assertWriter($writer);
+        $assertWriter = function () use ($writer, $connection, $scope, $identity, $publicIdentity): void {
+            $scope?->assertActive();
+            if ($writer !== ($GLOBALS['DB'] ?? null) || $writer->getDoctrineConnection() !== $connection) {
+                throw new TransactionOwnershipMismatch('The deletion callback replaced its supplied writer.');
+            }
+            if (($this->fields['id'] ?? null) !== $identity || $this->getID() !== $publicIdentity) {
+                throw new DeletionCancelled('The deletion callback replaced its selected owner.');
+            }
+            OwnershipUpdateUnit::assertWriter($writer);
+        };
+
+        $purge = ($force == 1)
             || !$this->maybeDeleted()
             || ($this->useDeletedToLockIfDynamic()
-                && !$this->isDynamic())
-        ) {
+                && !$this->isDynamic());
+        OwnershipUpdateUnit::assertWriter($writer);
+        if ($purge) {
             $this->cleanDBonPurge();
+            $assertWriter();
             if ($this instanceof CommonDropdown) {
                 $this->cleanTranslations();
+                $assertWriter();
             }
             $this->cleanHistory();
+            $assertWriter();
             $this->cleanRelationData();
+            $assertWriter();
             $this->cleanRelationTable();
+            $assertWriter();
 
-            $result = $DB->delete(
-                $this->getTable(),
-                [
-                  'id' => $this->fields['id']
-                ]
-            );
+            $mapped = MappedStorage::supports($this->getTable());
+            OwnershipUpdateUnit::assertWriter($writer);
+            if ($mapped) {
+                $producer = new MappedStorage($DB);
+                $table = $this->getTable();
+                OwnershipUpdateUnit::assertWriter($writer);
+                $result = $producer->delete($table, (int)$this->fields['id']);
+            } else {
+                $producer = $DB;
+                $table = $this->getTable();
+                OwnershipUpdateUnit::assertWriter($writer);
+                $result = $producer->delete($table, ['id' => $this->fields['id']]);
+            }
+            OwnershipUpdateUnit::assertWriter($writer);
             if ($result) {
                 $this->post_deleteFromDB();
+                $assertWriter();
                 return true;
             }
         } else {
@@ -726,16 +1013,24 @@ class CommonDBTM extends CommonGLPI
                 $toadd['date_mod'] = $_SESSION["glpi_currenttime"];
             }
 
-            $result = $DB->update(
-                $this->getTable(),
-                [
-                  'is_deleted' => 1
-                ] + $toadd,
-                [
-                  'id' => $this->fields['id']
-                ]
-            );
+            $params = ['is_deleted' => 1] + $toadd;
+            $mapped = MappedStorage::supports($this->getTable());
+            OwnershipUpdateUnit::assertWriter($writer);
+            if ($mapped) {
+                $producer = new MappedStorage($DB);
+                $table = $this->getTable();
+                OwnershipUpdateUnit::assertWriter($writer);
+                $producer->update($table, (int)$this->fields['id'], $params);
+                $result = true;
+            } else {
+                $producer = $DB;
+                $table = $this->getTable();
+                OwnershipUpdateUnit::assertWriter($writer);
+                $result = $producer->update($table, $params, ['id' => $this->fields['id']]);
+            }
+            OwnershipUpdateUnit::assertWriter($writer);
             $this->cleanDBonMarkDeleted();
+            $assertWriter();
 
             if ($result) {
                 return true;
@@ -756,13 +1051,8 @@ class CommonDBTM extends CommonGLPI
         global $DB;
 
         if ($this->dohistory) {
-            $DB->delete(
-                'glpi_logs',
-                [
-                  'itemtype'  => $this->getType(),
-                  'items_id'  => $this->fields['id']
-                ]
-            );
+            (new HistoryRepository(Orm::create($DB)))
+                ->deleteForItem($this->getType(), (int)$this->getID());
         }
     }
 
@@ -777,41 +1067,50 @@ class CommonDBTM extends CommonGLPI
     {
         global $DB, $CFG_GLPI;
 
-        $RELATION = getDbRelations();
-        if (isset($RELATION[$this->getTable()])) {
-            $newval = (isset($this->input['_replace_by']) ? $this->input['_replace_by'] : 0);
+        $newval = $this->input['_replace_by'] ?? 0;
+        $physicalReplacement = $newval;
+        if ($this->getIndexName() !== 'id' && $newval) {
+            $replacement = getItemForItemtype($this->getType());
+            if (!$replacement || !$replacement->getFromDB($newval)) {
+                throw new InvalidArgumentException('Unknown replacement for ' . $this->getType());
+            }
+            $physicalReplacement = $replacement->fields['id'];
+        }
+        $lifecycle = new RelationshipLifecycleRepository(Orm::create($DB));
+        $index = static function (string $table): ?string {
+            $model = getItemForItemtype(getItemTypeForTable($table));
+            return $model ? $model->getIndexName() : null;
+        };
+        foreach ($lifecycle->replacements($this->getTable(), (int)$this->fields['id'], (int)$this->getID(), $this->getType(), $index) as $selection) {
+            foreach ($selection['ids'] as $id) {
+                $related = getItemForItemtype(getItemTypeForTable($selection['table']));
+                DeletionUnit::requireSuccess($DB->getDoctrineConnection(), $this->updateReplacementRelation($related, [$selection['index'] => $id, $selection['column'] => $selection['physical'] ? $physicalReplacement : $newval, '_disablenotif' => true], $selection['column']));
+            }
+        }
 
-            foreach ($RELATION[$this->getTable()] as $tablename => $field) {
-                if ($tablename[0] != '_') {
-                    $itemtype = getItemTypeForTable($tablename);
-
-                    // Code factorization : we transform the singleton to an array
-                    if (!is_array($field)) {
-                        $field = [$field];
-                    }
-
-                    foreach ($field as $f) {
-                        $result = $DB->request(
-                            [
-                              'FROM'  => $tablename,
-                              'WHERE' => [$f => $this->getID()],
-                            ]
-                        );
-                        foreach ($result as $data) {
-                            // Be carefull : we must use getIndexName because self::update rely on that !
-                            if ($object = getItemForItemtype($itemtype)) {
-                                $idName = $object->getIndexName();
-                                // And we must ensure that the index name is not the same as the field
-                                // we try to modify. Otherwise we will loose this element because all
-                                // will be set to $newval ...
-                                if ($idName != $f) {
-                                    $object->update([$idName          => $data[$idName],
-                                                     $f               => $newval,
-                                                     '_disablenotif'  => true]); // Disable notifs
-                                }
-                            }
-                        }
-                    }
+        // Plugin links retain their actual model schema and public update lifecycle.
+        foreach (Plugin::getDatabaseRelations()[$this->getTable()] ?? [] as $table => $columns) {
+            if (str_starts_with($table, '_')) {
+                continue;
+            }
+            $model = getItemForItemtype(getItemTypeForTable($table));
+            if (!$model) {
+                continue;
+            }
+            $columns = (array)$columns;
+            $paired = in_array('itemtype', $columns, true);
+            foreach ($paired ? ['items_id'] : $columns as $column) {
+                if ($column === $model->getIndexName()) {
+                    continue;
+                }
+                $physical = (ForeignKeys::relations()[$table][$column] ?? null) === $this->getTable();
+                $criteria = [$column => $physical ? $this->fields['id'] : $this->getID()];
+                if ($paired) {
+                    $criteria['itemtype'] = $this->getType();
+                }
+                foreach ($lifecycle->declaredIdentifiers($table, $model->getIndexName(), $criteria) as $id) {
+                    $related = getItemForItemtype($model->getType());
+                    DeletionUnit::requireSuccess($DB->getDoctrineConnection(), $this->updateReplacementRelation($related, [$model->getIndexName() => $id, $column => $physical ? $physicalReplacement : $newval, '_disablenotif' => true], $column));
                 }
             }
         }
@@ -821,16 +1120,8 @@ class CommonDBTM extends CommonGLPI
             $job         = new Ticket();
             $itemsticket = new Item_Ticket();
 
-            $iterator = $DB->request([
-               'FROM'   => 'glpi_items_tickets',
-               'WHERE'  => [
-                  'items_id'  => $this->getID(),
-                  'itemtype'  => $this->getType()
-               ]
-            ]);
-
-            while ($data = $iterator->next()) {
-                $cnt = countElementsInTable('glpi_items_tickets', ['tickets_id' => $data['tickets_id']]);
+            foreach ($itemsticket->find(['items_id' => $this->getID(), 'itemtype' => $this->getType()]) as $data) {
+                $cnt = MappedReads::countMatching($DB, 'glpi_items_tickets', ['tickets_id' => $data['tickets_id']]);
                 $itemsticket->delete(["id" => $data["id"]]);
                 if ($cnt == 1 && !$CFG_GLPI["keep_tickets_on_delete"]) {
                     $job->delete(["id" => $data["tickets_id"]]);
@@ -839,6 +1130,12 @@ class CommonDBTM extends CommonGLPI
         }
     }
 
+
+    /** The owning parent may delegate a narrowly typed child replacement. */
+    protected function updateReplacementRelation(CommonDBTM $related, array $input, string $column): bool
+    {
+        return (bool)$related->update($input);
+    }
 
     /**
      * Actions done after the DELETE of the item in the database
@@ -918,6 +1215,10 @@ class CommonDBTM extends CommonGLPI
     {
         global $CFG_GLPI, $DB;
 
+        if (isset(EntityRegistry::discriminatedReferences(ObjectLock::getTable())['items_id']['selections'][$this->getType()])) {
+            (new ObjectLock())->deleteByCriteria(['itemtype' => $this->getType(), 'items_id' => $this->getID()]);
+        }
+
         // If this type have INFOCOM, clean one associated to purged item
         if (Infocom::canApplyOn($this)) {
             $infocom = new Infocom();
@@ -950,6 +1251,21 @@ class CommonDBTM extends CommonGLPI
         if (in_array($this->getType(), $CFG_GLPI['contract_types'])) {
             $ci = new Contract_Item();
             $ci->cleanDBonItemDelete($this->getType(), $this->fields['id']);
+        }
+
+        if (isset(EntityRegistry::discriminatedReferences(Certificate_Item::getTable())['items_id']['selections'][$this->getType()])) {
+            (new Certificate_Item())->cleanDBonItemDelete($this->getType(), $this->getID());
+        }
+
+        if (isset(EntityRegistry::discriminatedReferences(Item_Project::getTable())['items_id']['selections'][$this->getType()])) {
+            (new Item_Project())->cleanDBonItemDelete($this->getType(), $this->getID());
+        }
+
+        if (isset(EntityRegistry::discriminatedReferences(Appliance_Item::getTable())['items_id']['selections'][$this->getType()])) {
+            (new Appliance_Item())->cleanDBonItemDelete($this->getType(), $this->getID());
+        }
+        if (isset(EntityRegistry::discriminatedReferences(Appliance_Item_Relation::getTable())['items_id']['selections'][$this->getType()])) {
+            (new Appliance_Item_Relation())->cleanDBonItemDelete($this->getType(), $this->getID());
         }
 
         // If this type have DOCUMENT, clean one associated to purged item
@@ -1014,16 +1330,17 @@ class CommonDBTM extends CommonGLPI
             ]);
         }
 
-        if (in_array($this->getType(), $CFG_GLPI['software_types'])) {
-            $this->deleteChildrenAndRelationsFromDb([
-               Item_SoftwareVersion::class
-            ]);
+        // Both assignment families declare their owning subjects locally. A
+        // non-Computer purge must run licence validity/history hooks as well.
+        foreach ([Item_SoftwareVersion::class, Item_SoftwareLicense::class] as $assignment) {
+            $subjects = EntityRegistry::discriminatedReferences($assignment::getTable())['items_id']['selections'];
+            if (isset($subjects[$this->getType()])) {
+                $this->deleteChildrenAndRelationsFromDb([$assignment]);
+            }
         }
 
         if (in_array($this->getType(), $CFG_GLPI['kanban_types'])) {
-            $this->deleteChildrenAndRelationsFromDb([
-               Item_Kanban::class
-            ]);
+            (new Item_Kanban())->cleanForParent($this);
         }
 
         if (in_array($this->getType(), $CFG_GLPI['domain_types'])) {
@@ -1129,6 +1446,27 @@ class CommonDBTM extends CommonGLPI
      *
      * @return integer the new ID of the added item (or false if fail)
     **/
+    public function addWithAssignedIdentifier(int $identifier, array $input, $options = [], $history = true)
+    {
+        if ($identifier <= 0 || (array_key_exists('id', $input) && filter_var($input['id'], FILTER_VALIDATE_INT) !== $identifier)
+            || array_key_exists('_oldID', $input) || array_key_exists('clone', $input)) {
+            throw new InvalidArgumentException('Assigned-ID creation requires a positive matching ID and no clone parameters.');
+        }
+        if ($this->assignedIdentifier !== null) {
+            throw new LogicException('Assigned-ID creation is already active on this model.');
+        }
+        if ($this->getFromDB($identifier)) {
+            throw new RuntimeException('Assigned-ID collision: ' . $this->getTable() . '.' . $identifier);
+        }
+        $this->assignedIdentifier = $identifier;
+        try {
+            $input['id'] = $identifier;
+            return $this->add($input, $options, $history);
+        } finally {
+            $this->assignedIdentifier = null;
+        }
+    }
+
     public function add(array $input, $options = [], $history = true)
     {
         global $DB, $CFG_GLPI;
@@ -1137,8 +1475,11 @@ class CommonDBTM extends CommonGLPI
             return false;
         }
 
+        $this->captureLifecycleWriter($DB);
+        $priorState = LifecycleModelJournal::state($this);
+
         // This means we are not adding a cloned object
-        if (!isset($input['clone'])) {
+        if ($this->assignedIdentifier === null && !isset($input['clone'])) {
             // This means we are asked to clone the object (old way). This will clone the clone method
             // that will set the clone parameter to true
             if (isset($input['_oldID'])) {
@@ -1172,6 +1513,7 @@ class CommonDBTM extends CommonGLPI
         // Call the plugin hook - $this->input can be altered
         // This hook get the data from the form, not yet altered
         Plugin::doHook("pre_item_add", $this);
+        OwnershipUpdateUnit::assertWriter($DB);
 
         if ($this->input && is_array($this->input)) {
             if (isset($this->input['add'])) {
@@ -1179,13 +1521,18 @@ class CommonDBTM extends CommonGLPI
                 unset($this->input['add']);
             }
 
-            $this->input = $this->prepareInputForAdd($this->input);
+            $this->input = $this->normalizeLifecycleInput($this->input);
+            if ($this->input !== false) {
+                $this->input = $this->prepareInputForAdd($this->input);
+                OwnershipUpdateUnit::assertWriter($DB);
+            }
         }
 
         if ($this->input && is_array($this->input)) {
             // Call the plugin hook - $this->input can be altered
             // This hook get the data altered by the object method
             Plugin::doHook("post_prepareadd", $this);
+            OwnershipUpdateUnit::assertWriter($DB);
         }
 
         if ($this->input && is_array($this->input)) {
@@ -1194,11 +1541,18 @@ class CommonDBTM extends CommonGLPI
         }
 
         //Process business rules for assets
-        $this->assetBusinessRules(\RuleAsset::ONADD);
+        $this->assetBusinessRules(RuleAsset::ONADD);
+        OwnershipUpdateUnit::assertWriter($DB);
+
+        if ($this->input && is_array($this->input)) {
+            $this->input = $this->normalizeLifecycleInput($this->input);
+        }
 
         if ($this->input && is_array($this->input)) {
             $this->fields = [];
-            $table_fields = $DB->listFields($this->getTable());
+            $table_fields = MappedStorage::supports($this->getTable())
+                ? array_fill_keys(EntityRegistry::columnNames($this->getTable()), true)
+                : $DB->listFields($this->getTable());
 
             // fill array for add
             foreach (array_keys($this->input) as $key) {
@@ -1211,75 +1565,113 @@ class CommonDBTM extends CommonGLPI
             }
 
             // Auto set date_creation if exsist
-            if (isset($table_fields['date_creation']) && !isset($this->input['date_creation'])) {
+            if (isset($table_fields['date_creation']) && !array_key_exists('date_creation', $this->input)) {
                 $this->fields['date_creation'] = $_SESSION["glpi_currenttime"];
             }
 
             // Auto set date_mod if exsist
-            if (isset($table_fields['date_mod']) && !isset($this->input['date_mod'])) {
+            if (isset($table_fields['date_mod']) && !array_key_exists('date_mod', $this->input)) {
                 $this->fields['date_mod'] = $_SESSION["glpi_currenttime"];
             }
 
+            if ($this->assignedIdentifier !== null && (filter_var($this->fields['id'] ?? null, FILTER_VALIDATE_INT) !== $this->assignedIdentifier
+                || array_key_exists('_oldID', $this->input) || array_key_exists('clone', $this->input))) {
+                throw new RuntimeException('An add hook or business rule changed the assigned identity.');
+            }
             if ($this->checkUnicity(true, $options)) {
-                if ($this->addToDB() !== false) {
-                    $this->post_addItem();
-                    $this->addMessageOnAddAction();
-
-                    if ($this->dohistory && $history) {
-                        $changes = [
-                           0,
-                           '',
-                           '',
-                        ];
-                        Log::history(
-                            $this->fields["id"],
-                            $this->getType(),
-                            $changes,
-                            0,
-                            Log::HISTORY_CREATE_ITEM
-                        );
-                    }
-
-                    // Auto create infocoms
-                    if (
-                        isset($CFG_GLPI["auto_create_infocoms"]) && $CFG_GLPI["auto_create_infocoms"]
-                        && (!isset($input['clone']) || !$input['clone'])
-                        && Infocom::canApplyOn($this)
-                    ) {
-                        $ic = new Infocom();
-                        if (!$ic->getFromDBforDevice($this->getType(), $this->fields['id'])) {
-                            $ic->add(['itemtype' => $this->getType(),
-                                      'items_id' => $this->fields['id']]);
-                        }
-                    }
-
-                    // If itemtype is in infocomtype and if states_id field is filled
-                    // and item is not a template
-                    if (
-                        Infocom::canApplyOn($this)
-                        && isset($this->input['states_id'])
-                                 && (!isset($this->input['is_template'])
-                                     || !$this->input['is_template'])
-                    ) {
-                        //Check if we have to automatical fill dates
-                        Infocom::manageDateOnStatusChange($this);
-                    }
-                    Plugin::doHook("item_add", $this);
-
-                    // As add have suceed, clean the old input value
-                    if (isset($this->input['_add'])) {
-                        $this->clearSavedInput();
-                    }
-                    if ($this->notificationqueueonaction) {
-                        QueuedNotification::forceSendFor($this->getType(), $this->fields['id']);
-                    }
-                    return $this->fields['id'];
-                }
+                return $this->executePreparedAdd(
+                    fn () => $this->completeLifecycleAdd($input, $history),
+                    $priorState
+                );
             }
         }
 
         return false;
     }
+
+    /** Model-owned prepared persistence; default models retain their lifecycle. */
+    protected function executePreparedAdd(callable $operation, array $priorState): mixed
+    {
+        OwnershipUpdateUnit::assertWriter($GLOBALS['DB']);
+        return $operation();
+    }
+
+    /**
+     * Capture the selected writer before loading/preparation/plugin callbacks.
+     * Default models retain their existing lifecycle. An owning model may keep
+     * this capability privately and check it at its existing validation seams.
+     * This hook neither authorizes a command nor begins a transaction.
+     */
+    protected function captureLifecycleWriter(DBAdapter $writer): void
+    {
+        OwnershipUpdateUnit::assertWriter($writer);
+    }
+
+    private function completeLifecycleAdd(array $input, $history)
+    {
+        global $CFG_GLPI, $DB;
+
+        if (($createdId = $this->addToDB()) !== false) {
+            OwnershipUpdateUnit::assertWriter($DB);
+            $this->post_addItem();
+            OwnershipUpdateUnit::assertWriter($DB);
+            $this->addMessageOnAddAction();
+            OwnershipUpdateUnit::assertWriter($DB);
+
+            if ($this->dohistory && $history) {
+                $changes = [
+                   0,
+                   '',
+                   '',
+                ];
+                Log::history(
+                    $this->fields["id"],
+                    $this->getType(),
+                    $changes,
+                    0,
+                    Log::HISTORY_CREATE_ITEM
+                );
+            }
+
+            // Auto create infocoms
+            if (
+                isset($CFG_GLPI["auto_create_infocoms"]) && $CFG_GLPI["auto_create_infocoms"]
+                && (!isset($input['clone']) || !$input['clone'])
+                && Infocom::canApplyOn($this)
+            ) {
+                $ic = new Infocom();
+                if (!$ic->getFromDBforDevice($this->getType(), $this->fields['id'])) {
+                    $ic->add(['itemtype' => $this->getType(),
+                              'items_id' => $this->fields['id']]);
+                }
+            }
+
+            // If itemtype is in infocomtype and if states_id field is filled
+            // and item is not a template
+            if (
+                Infocom::canApplyOn($this)
+                && isset($this->input['states_id'])
+                         && (!isset($this->input['is_template'])
+                             || !$this->input['is_template'])
+            ) {
+                //Check if we have to automatical fill dates
+                Infocom::manageDateOnStatusChange($this);
+            }
+            Plugin::doHook("item_add", $this);
+            OwnershipUpdateUnit::assertWriter($DB);
+
+            // As add have suceed, clean the old input value
+            if (isset($this->input['_add'])) {
+                $this->clearSavedInput();
+            }
+            if ($this->notificationqueueonaction) {
+                QueuedNotification::forceSendFor($this->getType(), $this->fields['id']);
+            }
+            return $createdId;
+        }
+        return false;
+    }
+
 
     /**
      * Clone the current item multiple times
@@ -1335,9 +1727,14 @@ class CommonDBTM extends CommonGLPI
             return false;
         }
         $new_item = new static();
-        $input = Toolbox::addslashes_deep($this->fields);
-        foreach ($override_input as $key => $value) {
-            $input[$key] = $value;
+        try {
+            $input = CloneInput::merge(
+                static::getTable(),
+                Toolbox::addslashes_deep($this->fields),
+                $override_input
+            );
+        } catch (InvalidArgumentException) {
+            return false;
         }
         $input = $new_item->prepareInputForClone($input);
         if (isset($input['id'])) {
@@ -1356,8 +1753,10 @@ class CommonDBTM extends CommonGLPI
 
         $input['clone'] = true;
         $newID = $new_item->add($input, [], $history);
-        // If the item needs post clone (recursive cloning for example)
-        $new_item->post_clone($this, $history);
+        // A refused creation has no destination for dependent clone operations.
+        if ($newID !== false) {
+            $new_item->post_clone($this, $history);
+        }
         return $newID;
     }
 
@@ -1613,6 +2012,7 @@ class CommonDBTM extends CommonGLPI
             return false;
         }
 
+        $this->captureLifecycleWriter($DB);
         if (!array_key_exists(static::getIndexName(), $input)) {
             return false;
         }
@@ -1620,6 +2020,10 @@ class CommonDBTM extends CommonGLPI
         if (!$this->getFromDB($input[static::getIndexName()])) {
             return false;
         }
+        OwnershipUpdateUnit::assertWriter($DB);
+
+        $storedFields = $this->fields;
+        LifecycleModelJournal::capture($DB->getDoctrineConnection(), $this);
 
         // Store input in the object to be available in all sub-method / hook
         $this->input = $input;
@@ -1637,8 +2041,15 @@ class CommonDBTM extends CommonGLPI
 
         // Plugin hook - $this->input can be altered
         Plugin::doHook("pre_item_update", $this);
+        $this->assertLifecycleUpdateContext(false);
         if ($this->input && is_array($this->input)) {
-            $this->input = $this->prepareInputForUpdate($this->input);
+            $this->input = $this->normalizeLifecycleInput($this->input);
+            if ($this->input !== false) {
+                $this->input = $this->authorizeLifecycleUpdate($this->input);
+            }
+            if ($this->input !== false) {
+                $this->input = $this->prepareInputForUpdate($this->input);
+            }
 
             if (isset($this->input['update'])) {
                 $this->input['_update'] = $this->input['update'];
@@ -1648,7 +2059,15 @@ class CommonDBTM extends CommonGLPI
         }
 
         //Process business rules for assets
-        $this->assetBusinessRules(\RuleAsset::ONUPDATE);
+        $this->assetBusinessRules(RuleAsset::ONUPDATE);
+        OwnershipUpdateUnit::assertWriter($DB);
+
+        if ($this->input && is_array($this->input)) {
+            $this->input = $this->normalizeLifecycleInput($this->input);
+            if ($this->input !== false) {
+                $this->input = $this->authorizeLifecycleUpdate($this->input);
+            }
+        }
 
         // Valid input for update
         if ($this->checkUnicity(false, $options)) {
@@ -1658,11 +2077,20 @@ class CommonDBTM extends CommonGLPI
                 $this->updates   = [];
                 $this->oldvalues = [];
 
+                $table = $this->getTable();
+                $booleanFields = EntityRegistry::booleanFields($table);
+                $fieldTypes = array_diff_key(
+                    EntityRegistry::fieldTypes($table),
+                    array_fill_keys(EntityRegistry::readOnlyColumns($table), true)
+                );
                 foreach (array_keys($this->input) as $key) {
                     if (array_key_exists($key, $this->fields)) {
+                        $textField = LegacyValues::isTextType($fieldTypes[$key] ?? null);
                         // Prevent history for date statement (for date for example)
                         if (
-                            is_null($this->fields[$key])
+                            !array_key_exists($key, $booleanFields)
+                            && !$textField
+                            && is_null($this->fields[$key])
                             && ($this->input[$key] == 'NULL')
                         ) {
                             $this->fields[$key] = 'NULL';
@@ -1670,7 +2098,19 @@ class CommonDBTM extends CommonGLPI
                         // Compare item
                         $ischanged = true;
                         $searchopt = $this->getSearchOptionByField('field', $key, $this->getTable());
-                        if (isset($searchopt['datatype'])) {
+                        if (array_key_exists($key, $booleanFields)) {
+                            // An inherited NULL preference is distinct from
+                            // explicit false, even under PHP's loose equality.
+                            $ischanged = ($this->fields[$key] === null) !== ($this->input[$key] === null)
+                                || ($this->fields[$key] !== null && (bool)$this->fields[$key] !== (bool)$this->input[$key]);
+                        } elseif ($textField) {
+                            // SQL NULL and an empty or literal NULL string are distinct text values.
+                            $ischanged = ($this->fields[$key] === null) !== ($this->input[$key] === null)
+                                || ($this->fields[$key] !== null && $this->input[$key] !== null && @strcmp(
+                                    (string) $DB->escape($this->fields[$key]),
+                                    (string) $this->input[$key]
+                                ) != 0);
+                        } elseif (isset($searchopt['datatype'])) {
                             switch ($searchopt['datatype']) {
                                 case 'string':
                                 case 'text':
@@ -1721,58 +2161,22 @@ class CommonDBTM extends CommonGLPI
                         }
                     }
                     $this->pre_updateInDB();
-
-                    if (count($this->updates)) {
-                        if (
-                            $this->updateInDB(
-                                $this->updates,
-                                ($this->dohistory && $history ? $this->oldvalues
-                                                                            : [])
-                            )
-                        ) {
-                            $this->addMessageOnUpdateAction();
-                            Plugin::doHook("item_update", $this);
-
-                            // As update have suceed, clean the old input value
-                            if (isset($this->input['_update'])) {
-                                $this->clearSavedInput();
-                            }
-
-                            //Fill forward_entity_to array with itemtypes coming from plugins
-                            if (isset(self::$plugins_forward_entity[$this->getType()])) {
-                                foreach (self::$plugins_forward_entity[$this->getType()] as $itemtype) {
-                                    static::$forward_entity_to[] = $itemtype;
-                                }
-                            }
-                            // forward entity information if needed
-                            if (
-                                count(static::$forward_entity_to)
-                                && (in_array("entities_id", $this->updates)
-                                    || in_array("is_recursive", $this->updates))
-                            ) {
-                                $this->forwardEntityInformations();
-                            }
-
-                            // If itemtype is in infocomtype and if states_id field is filled
-                            // and item not a template
-                            if (
-                                Infocom::canApplyOn($this)
-                                && in_array('states_id', $this->updates)
-                                && ($this->getField('is_template') != NOT_AVAILABLE)
-                            ) {
-                                //Check if we have to automatical fill dates
-                                Infocom::manageDateOnStatusChange($this, false);
-                            }
-                        }
-                    }
                 }
-                $this->post_updateItem($history);
-
-                if ($this->notificationqueueonaction) {
-                    QueuedNotification::forceSendFor($this->getType(), $this->fields['id']);
+                // Every accepted prepared model needs its final owning-field
+                // view, including an unchanged input. Date modification and
+                // pre_updateInDB still belong only to actual prepared writes.
+                if (!$this->hasLifecycleOperationIdentity($storedFields)
+                    || !$this->finalizeLifecycleUpdate($storedFields)
+                    || !$this->hasLifecycleOperationIdentity($storedFields)) {
+                    $this->fields = $storedFields;
+                    $this->updates = [];
+                    $this->oldvalues = [];
+                    return false;
                 }
-
-                return true;
+                return $this->executePreparedUpdate(
+                    fn () => $this->completeOwnedLifecycleUpdate($history, $storedFields),
+                    $storedFields
+                );
             }
         }
 
@@ -1780,15 +2184,124 @@ class CommonDBTM extends CommonGLPI
     }
 
 
-    /**
-     * Forward entity information to linked items
-     *
-     * @return void
-    **/
-    protected function forwardEntityInformations()
+
+    /** A typed owning command may require continuity after actual callbacks. */
+    /** Marks the real writer producer boundary before public completion hooks. */
+    protected function didPersistLifecycleUpdate(): void
+    {
+    }
+
+    protected function assertLifecycleUpdateContext(bool $persisted): void
+    {
+        OwnershipUpdateUnit::assertWriter($GLOBALS['DB']);
+    }
+
+    protected function executePreparedUpdate(callable $operation, array $storedFields): bool
+    {
+        OwnershipUpdateUnit::assertWriter($GLOBALS['DB']);
+        return $operation();
+    }
+
+    private function completeOwnedLifecycleUpdate($history, array $storedFields): bool
     {
         global $DB;
 
+        if ($this->requiresOwnershipForwarding()) {
+            return OwnershipUpdateUnit::run($DB, $this, $storedFields, function () use ($DB, $history, $storedFields): bool {
+                OwnershipUpdateUnit::assertTransactionalStorage($DB, $this->getTable());
+                foreach (array_merge(static::$forward_entity_to, self::$plugins_forward_entity[$this->getType()] ?? []) as $type) {
+                    OwnershipUpdateUnit::assertTransactionalStorage($DB, $type::getTable());
+                }
+                return $this->completeLifecycleUpdate($history, $storedFields);
+            }, guardWriter: true);
+        }
+        return $this->completeLifecycleUpdate($history, $storedFields);
+    }
+
+
+    private function requiresOwnershipForwarding(): bool
+    {
+        return (count(static::$forward_entity_to) || !empty(self::$plugins_forward_entity[$this->getType()]))
+            && (in_array('entities_id', $this->updates, true) || in_array('is_recursive', $this->updates, true));
+    }
+
+    private function completeLifecycleUpdate($history, array $storedFields): bool
+    {
+        $forwardOwnership = $this->requiresOwnershipForwarding();
+        if (count($this->updates)) {
+            if (
+                $this->updateInDB(
+                    $this->updates,
+                    ($this->dohistory && $history ? $this->oldvalues
+                                                                : [])
+                )
+            ) {
+                $this->didPersistLifecycleUpdate();
+                $this->addMessageOnUpdateAction();
+                Plugin::doHook("item_update", $this);
+                $this->assertLifecycleUpdateContext(true);
+
+                // As update have suceed, clean the old input value
+                if (isset($this->input['_update'])) {
+                    $this->clearSavedInput();
+                }
+
+                //Fill forward_entity_to array with itemtypes coming from plugins
+                if (isset(self::$plugins_forward_entity[$this->getType()])) {
+                    foreach (self::$plugins_forward_entity[$this->getType()] as $itemtype) {
+                        static::$forward_entity_to[] = $itemtype;
+                    }
+                }
+                // forward entity information if needed
+                if ($forwardOwnership && !$this->forwardEntityInformations()) {
+                    return false;
+                }
+
+                // If itemtype is in infocomtype and if states_id field is filled
+                // and item not a template
+                if (
+                    Infocom::canApplyOn($this)
+                    && in_array('states_id', $this->updates)
+                    && ($this->getField('is_template') != NOT_AVAILABLE)
+                ) {
+                    //Check if we have to automatical fill dates
+                    Infocom::manageDateOnStatusChange($this, false);
+                }
+            } else {
+                // A refused writer is not a completed lifecycle update.
+                // Keep attempted input for form diagnostics, but retain
+                // the stored model rather than its unpersisted values.
+                $this->fields = $storedFields;
+                $this->updates = [];
+                $this->oldvalues = [];
+                return false;
+            }
+        }
+        $this->post_updateItem($history);
+        $this->assertLifecycleUpdateContext(true);
+        if ($this->notificationqueueonaction) {
+            QueuedNotification::forceSendFor($this->getType(), $this->fields['id']);
+        }
+        return true;
+    }
+
+    /**
+     * Pure model-owned coherence check before transfer dependencies are changed.
+     * Trusted transfer callers enforce actor authorization at their entry point.
+     * Models can refuse the proposed ownership without mutating prepared input.
+     */
+    public function validateEntityTransfer(int $destination): void
+    {
+    }
+
+
+    /**
+     * Forward entity information to linked items
+     *
+     * @return boolean true when every required child accepts its update
+    **/
+    protected function forwardEntityInformations()
+    {
         if (!isset($this->fields['id']) || !($this->fields['id'] >= 0)) {
             return false;
         }
@@ -1796,10 +2309,6 @@ class CommonDBTM extends CommonGLPI
         if (count(static::$forward_entity_to)) {
             foreach (static::$forward_entity_to as $type) {
                 $item  = new $type();
-                $query = [
-                   'SELECT' => ['id'],
-                   'FROM'   => $item->getTable()
-                ];
 
                 $OR = [];
                 if ($item->isField('itemtype')) {
@@ -1811,7 +2320,6 @@ class CommonDBTM extends CommonGLPI
                 if ($item->isField($this->getForeignKeyField())) {
                     $OR[] = [$this->getForeignKeyField() => $this->getID()];
                 }
-                $query['WHERE'][] = ['OR' => $OR];
 
                 $input = [
                    'entities_id'  => $this->getEntityID(),
@@ -1821,14 +2329,21 @@ class CommonDBTM extends CommonGLPI
                     $input['is_recursive'] = $this->isRecursive();
                 }
 
-                $iterator = $DB->request($query);
-                while ($data = $iterator->next()) {
-                    $input['id'] = $data['id'];
-                    // No history for such update
-                    $item->update($input, 0);
+                foreach ($item->findIds(['OR' => $OR]) as $id) {
+                    $input['id'] = $id;
+                    if (!$item->getFromDB($id)) {
+                        return false;
+                    }
+                    LifecycleModelJournal::capture($GLOBALS['DB']->getDoctrineConnection(), $item);
+                    // No history for such update, but refusal is still required.
+                    $result = $item->update($input, 0);
+                    if ($result !== true && $result !== 1) {
+                        return false;
+                    }
                 }
             }
         }
+        return true;
     }
 
 
@@ -1893,6 +2408,60 @@ class CommonDBTM extends CommonGLPI
         return $input;
     }
 
+    /** Shared lifecycle boundary runs even when a model overrides its preparation. */
+    protected function normalizeLifecycleInput(array $input): array|false
+    {
+        try {
+            return BooleanValue::normalizeLegacyInput($this->getTable(), $input);
+        } catch (InvalidArgumentException $error) {
+            Session::addMessageAfterRedirect($error->getMessage(), false, ERROR);
+            return false;
+        }
+    }
+
+    protected function authorizeLifecycleUpdate(array $input): array|false
+    {
+        return $input;
+    }
+
+    /** Recheck the values that will actually be stored after the last model callback. */
+    protected function finalizeLifecycleUpdate(array $storedFields): bool
+    {
+        $writes = array_intersect_key($this->fields, array_fill_keys($this->updates, true));
+        try {
+            $writes = BooleanValue::normalizeLegacyInput($this->getTable(), $writes);
+        } catch (InvalidArgumentException $error) {
+            Session::addMessageAfterRedirect($error->getMessage(), false, ERROR);
+            return false;
+        }
+        foreach ($writes as $column => $value) {
+            $this->fields[$column] = $value;
+        }
+        foreach (EntityRegistry::booleanFields($this->getTable()) as $column => $nullable) {
+            if (!array_key_exists($column, $writes) && array_key_exists($column, $storedFields)) {
+                $this->fields[$column] = $storedFields[$column];
+            }
+            if (is_array($this->input) && array_key_exists($column, $this->input) && array_key_exists($column, $this->fields)) {
+                $this->input[$column] = $this->fields[$column];
+            }
+        }
+        return true;
+    }
+
+    /** Public lookup keys and the physical writer ID must identify the loaded operation. */
+    private function hasLifecycleOperationIdentity(array $storedFields): bool
+    {
+        foreach (array_unique(['id', static::getIndexName()]) as $column) {
+            if (array_key_exists($column, $storedFields)
+                && (!array_key_exists($column, $this->fields)
+                    || ($this->fields[$column] === null) !== ($storedFields[$column] === null)
+                    || $this->fields[$column] != $storedFields[$column])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
 
     /**
      * Actions done after the UPDATE of the item in the database
@@ -1932,9 +2501,81 @@ class CommonDBTM extends CommonGLPI
         if ($DB->isSlave()) {
             return false;
         }
+        LifecycleModelJournal::capture($DB->getDoctrineConnection(), $this);
+        if (!MappedStorage::supports($this->getTable())) {
+            return $this->deleteLifecycle($input, $force, $history) === DeletionOutcome::Deleted;
+        }
+        $state = get_object_vars($this);
+        $session = $_SESSION;
+        $restore = function () use ($state, $session): void {
+            foreach (array_diff(array_keys(get_object_vars($this)), array_keys($state)) as $property) {
+                unset($this->$property);
+            }
+            foreach ($state as $property => $value) {
+                $this->$property = $value;
+            }
+            $feedback = $_SESSION['MESSAGE_AFTER_REDIRECT'] ?? [];
+            $_SESSION = $session;
+            // A refused operation must not announce success, but its explicit
+            // diagnostic feedback remains useful to the authorized caller.
+            foreach ([WARNING, ERROR] as $type) {
+                foreach (array_diff($feedback[$type] ?? [], $session['MESSAGE_AFTER_REDIRECT'][$type] ?? []) as $message) {
+                    $_SESSION['MESSAGE_AFTER_REDIRECT'][$type][] = $message;
+                }
+            }
+        };
+        $connection = $DB->getDoctrineConnection();
+        $operation = function () use ($DB, $connection, $input, $force, $history): DeletionOutcome {
+            $manager = Orm::create($DB);
+            try {
+                $valid = (new DeletionRepository($manager))->validate($this, $input);
+            } finally {
+                $manager->clear();
+            }
+            if ($DB !== ($GLOBALS['DB'] ?? null) || $DB->getDoctrineConnection() !== $connection) {
+                throw new TransactionOwnershipMismatch('The deletion callback replaced its supplied writer.');
+            }
+            if (!$valid) {
+                return DeletionOutcome::Cancelled;
+            }
+            $outcome = $this->deleteLifecycle($input, $force, $history, true);
+            if ($DB !== ($GLOBALS['DB'] ?? null) || $DB->getDoctrineConnection() !== $connection) {
+                throw new TransactionOwnershipMismatch('The deletion callback replaced its supplied writer.');
+            }
+            return $outcome;
+        };
+        $result = DeletionUnit::run(
+            $connection,
+            fn (): DeletionOutcome => OwnershipUpdateUnit::withWriterGuard($DB, $connection, $operation),
+            $restore
+        );
+        // SMTP/chat delivery occurs only after this unit physically commits.
+        $result->deliverNotifications();
+        return $result->outcome === DeletionOutcome::Deleted;
+    }
 
-        if (!$this->getFromDB($input[static::getIndexName()])) {
-            return false;
+    /** Structured account detachment distinguishes committed work from cancellation. */
+    public function deletionDecision(): DeletionDecision
+    {
+        return $this->pre_deleteItem()
+            ? DeletionDecision::Proceed
+            : DeletionDecision::Cancelled;
+    }
+
+    private function deleteLifecycle(array $input, $force, $history, bool $loaded = false): DeletionOutcome
+    {
+        global $DB;
+
+        if ($DB->isSlave()) {
+            return DeletionOutcome::Cancelled;
+        }
+
+        $writer = $DB;
+        $deleteConnection = $writer->getDoctrineConnection();
+        $deleteScope = $loaded ? $DB->getDoctrineConnection()->captureManagedTransactionScope() : null;
+
+        if (!$loaded && !$this->getFromDB($input[static::getIndexName()])) {
+            return DeletionOutcome::Cancelled;
         }
 
         // Force purge for templates / may not to be deleted / not dynamic lockable items
@@ -1971,6 +2612,30 @@ class CommonDBTM extends CommonGLPI
             $this->input['_no_history'] = !$history;
         }
 
+        $physicalIdentity = $this->fields['id'];
+        $publicIdentity = $this->getID();
+        $suppliedIdentities = array_intersect_key($input, array_flip(['id', $this->getIndexName()]));
+        $sourceUnchanged = function () use ($physicalIdentity, $publicIdentity, $suppliedIdentities, $writer, $deleteConnection, $deleteScope): bool {
+            $deleteScope?->assertActive();
+            if ($writer !== ($GLOBALS['DB'] ?? null) || $writer->getDoctrineConnection() !== $deleteConnection) {
+                throw new TransactionOwnershipMismatch('The deletion callback replaced its supplied writer.');
+            }
+            if (!is_array($this->input)
+                || !isset($this->fields['id'], $this->fields[$this->getIndexName()], $this->input[$this->getIndexName()])
+                || (string)$this->fields['id'] !== (string)$physicalIdentity
+                || (string)$this->getID() !== (string)$publicIdentity) {
+                return false;
+            }
+            foreach ($suppliedIdentities as $column => $identity) {
+                $value = $this->input[$column] ?? null;
+                if ((!is_int($value) && !is_string($value)) || filter_var($value, FILTER_VALIDATE_INT) === false
+                    || (int)$value !== (int)$identity) {
+                    return false;
+                }
+            }
+            return true;
+        };
+
         // Purge
         if ($force) {
             Plugin::doHook("pre_item_purge", $this);
@@ -1980,15 +2645,47 @@ class CommonDBTM extends CommonGLPI
 
         if (!is_array($this->input)) {
             // $input clear by a hook to cancel delete
-            return false;
+            return DeletionOutcome::Cancelled;
         }
 
-        if ($this->pre_deleteItem()) {
+        // Hooks may rewrite a replacement, but cannot introduce an invalid
+        // owning target after the initial preflight and before cleanup.
+        if (MappedStorage::supports($this->getTable())) {
+            if (!$sourceUnchanged()) {
+                return DeletionOutcome::Cancelled;
+            }
+            $manager = Orm::create($DB);
+            try {
+                if (!(new DeletionRepository($manager))->validateReplacement($this, $this->input)) {
+                    return DeletionOutcome::Cancelled;
+                }
+            } finally {
+                $manager->clear();
+            }
+        }
+
+        $decision = $this->deletionDecision();
+        if (MappedStorage::supports($this->getTable()) && !$sourceUnchanged()) {
+            return DeletionOutcome::Cancelled;
+        }
+        if ($decision === DeletionDecision::ScopedDetachment) {
+            return DeletionOutcome::ScopedDetachment;
+        }
+        if ($decision === DeletionDecision::Proceed) {
             if ($this->deleteFromDB($force)) {
+                if (!$sourceUnchanged()) {
+                    return DeletionOutcome::Cancelled;
+                }
                 if ($force) {
                     $this->addMessageOnPurgeAction();
                     $this->post_purgeItem();
+                    if (!$sourceUnchanged()) {
+                        return DeletionOutcome::Cancelled;
+                    }
                     Plugin::doHook("item_purge", $this);
+                    if (!$sourceUnchanged()) {
+                        return DeletionOutcome::Cancelled;
+                    }
                     Impact::clean($this);
                 } else {
                     $this->addMessageOnDeleteAction();
@@ -2016,17 +2713,25 @@ class CommonDBTM extends CommonGLPI
                         );
                     }
                     $this->post_deleteItem();
-
+                    if (!$sourceUnchanged()) {
+                        return DeletionOutcome::Cancelled;
+                    }
                     Plugin::doHook("item_delete", $this);
+                    if (!$sourceUnchanged()) {
+                        return DeletionOutcome::Cancelled;
+                    }
+                }
+                if (!$sourceUnchanged()) {
+                    return DeletionOutcome::Cancelled;
                 }
                 if ($this->notificationqueueonaction) {
                     QueuedNotification::forceSendFor($this->getType(), $this->fields['id']);
                 }
 
-                return true;
+                return DeletionOutcome::Deleted;
             }
         }
-        return false;
+        return DeletionOutcome::Cancelled;
     }
 
 
@@ -2165,6 +2870,9 @@ class CommonDBTM extends CommonGLPI
             return false;
         }
 
+        $storedFields = $this->fields;
+        LifecycleModelJournal::capture($GLOBALS['DB']->getDoctrineConnection(), $this);
+
         if (isset($input['restore'])) {
             $input['_restore'] = $input['restore'];
             unset($input['restore']);
@@ -2181,6 +2889,16 @@ class CommonDBTM extends CommonGLPI
             return false;
         }
 
+        return $this->executePreparedRestore(fn () => $this->completeLifecycleRestore($history), $storedFields);
+    }
+
+    protected function executePreparedRestore(callable $operation, array $storedFields): bool
+    {
+        return $operation();
+    }
+
+    private function completeLifecycleRestore($history): bool
+    {
         if ($this->restoreInDB()) {
             $this->addMessageOnRestoreAction();
 
@@ -2434,144 +3152,11 @@ class CommonDBTM extends CommonGLPI
 
         $entities = getAncestorsOf('glpi_entities', $this->fields['entities_id']);
         $entities[] = $this->fields['entities_id'];
-        $RELATION  = getDbRelations();
-
-        if ($this instanceof CommonTreeDropdown) {
-            $f = getForeignKeyFieldForTable($this->getTable());
-
-            if (
-                countElementsInTable(
-                    $this->getTable(),
-                    [ $f => $ID, 'NOT' => [ 'entities_id' => $entities ]]
-                ) > 0
-            ) {
-                return false;
-            }
-        }
-
-        if (isset($RELATION[$this->getTable()])) {
-            foreach ($RELATION[$this->getTable()] as $tablename => $field) {
-                if ($tablename[0] != '_') {
-                    $itemtype = getItemTypeForTable($tablename);
-                    $item     = new $itemtype();
-
-                    if ($item->isEntityAssign()) {
-                        // 1->N Relation
-                        if (is_array($field)) {
-                            foreach ($field as $f) {
-                                if (
-                                    countElementsInTable(
-                                        $tablename,
-                                        [ $f => $ID, 'NOT' => [ 'entities_id' => $entities ]]
-                                    ) > 0
-                                ) {
-                                    return false;
-                                }
-                            }
-                        } else {
-                            if (
-                                countElementsInTable(
-                                    $tablename,
-                                    [ $field => $ID, 'NOT' => [ 'entities_id' => $entities ]]
-                                ) > 0
-                            ) {
-                                return false;
-                            }
-                        }
-                    } else {
-                        foreach ($RELATION as $othertable => $rel) {
-                            // Search for a N->N Relation with devices
-                            if (
-                                ($othertable == "_virtual_device")
-                                && isset($rel[$tablename])
-                            ) {
-                                $devfield  = $rel[$tablename][0]; // items_id...
-                                $typefield = $rel[$tablename][1]; // itemtype...
-
-                                $iterator = $DB->request([
-                                   'SELECT'          => $typefield,
-                                   'DISTINCT'        => true,
-                                   'FROM'            => $tablename,
-                                   'WHERE'           => [$field => $ID]
-                                ]);
-
-                                // Search linked device of each type
-                                while ($data = $iterator->next()) {
-                                    $itemtype  = $data[$typefield];
-                                    $itemtable = getTableForItemType($itemtype);
-                                    $item      = new $itemtype();
-
-                                    if ($item->isEntityAssign()) {
-                                        if (
-                                            countElementsInTable(
-                                                [$tablename, $itemtable],
-                                                ["$tablename.$field"     => $ID,
-                                                                   "$tablename.$typefield" => $itemtype,
-                                                                   'FKEY' => [$tablename => $devfield, $itemtable => 'id'],
-                                                                   'NOT'  => [$itemtable . '.entities_id' => $entities ]]
-                                            ) > '0'
-                                        ) {
-                                            return false;
-                                        }
-                                    }
-                                }
-                            } elseif (
-                                ($othertable != $this->getTable())
-                                     && isset($rel[$tablename])
-                            ) {
-                                // Search for another N->N Relation
-                                $itemtype = getItemTypeForTable($othertable);
-                                $item     = new $itemtype();
-
-                                if ($item->isEntityAssign()) {
-                                    if (is_array($rel[$tablename])) {
-                                        foreach ($rel[$tablename] as $otherfield) {
-                                            if (
-                                                countElementsInTable(
-                                                    [$tablename, $othertable],
-                                                    ["$tablename.$field" => $ID,
-                                                                      'FKEY' => [$tablename => $otherfield, $othertable => 'id'],
-                                                                      'NOT'  => [$othertable . '.entities_id' => $entities ]]
-                                                ) > '0'
-                                            ) {
-                                                return false;
-                                            }
-                                        }
-                                    } else {
-                                        $otherfield = $rel[$tablename];
-                                        if (
-                                            countElementsInTable(
-                                                [$tablename, $othertable],
-                                                ["$tablename.$field" => $ID,
-                                                                  'FKEY' => [$tablename => $otherfield, $othertable => 'id'],
-                                                                  'NOT'  => [ $othertable . '.entities_id' => $entities ]]
-                                            ) > '0'
-                                        ) {
-                                            return false;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Doc links to this item
-        if (
-            ($this->getType() > 0)
-            && countElementsInTable(
-                ['glpi_documents_items', 'glpi_documents'],
-                ['glpi_documents_items.items_id' => $ID,
-                                     'glpi_documents_items.itemtype' => $this->getType(),
-                                     'FKEY' => ['glpi_documents_items' => 'documents_id','glpi_documents' => 'id'],
-                                     'NOT'  => ['glpi_documents.entities_id' => $entities]]
-            ) > '0'
-        ) {
+        $lifecycle = new RelationshipLifecycleRepository(Orm::create($DB));
+        if ($lifecycle->hasOutsideEntities($this->getTable(), (int)$ID, (int)$this->getID(), $this->getType(), $entities)
+            || $lifecycle->hasDeclaredOutsideEntities($this->getTable(), Plugin::getDatabaseRelations(), (int)$this->getID(), $this->getType(), $entities)) {
             return false;
         }
-        // TODO : do we need to check all relations in $RELATION["_virtual_device"] for this item
 
         // check connections of a computer
         $connectcomputer = $CFG_GLPI["directconnect_types"];
@@ -3107,6 +3692,18 @@ class CommonDBTM extends CommonGLPI
     }
 
 
+    /** Keep the ordinary restrictive item_can hook for an owning-role command. */
+    protected function retainItemPermission($right): bool
+    {
+        $this->right = $right;
+        Plugin::doHook("item_can", $this);
+        if ($this->right !== $right) {
+            return false;
+        }
+        unset($this->right);
+        return true;
+    }
+
     /**
      * Check right on an item
      *
@@ -3129,6 +3726,10 @@ class CommonDBTM extends CommonGLPI
             }
 
             if (is_array($input)) {
+                $input = $this->normalizeLifecycleInput($input);
+                if ($input === false) {
+                    return false;
+                }
                 $input = $this->addNeededInfoToInput($input);
                 // Copy input field to allow getEntityID() to work
                 // from entites_id field or from parent item ref
@@ -3139,6 +3740,10 @@ class CommonDBTM extends CommonGLPI
                 }
                 // Store to be available for others functions
                 $this->input = $input;
+            }
+
+            if (!$this->retainItemPermission($right)) {
+                return false;
             }
 
             if (
@@ -3157,13 +3762,9 @@ class CommonDBTM extends CommonGLPI
             }
         }
 
-        /* Hook to restrict user right on current item @since 9.2 */
-        $this->right = $right;
-        Plugin::doHook("item_can", $this);
-        if ($this->right !== $right) {
+        if (!$this->retainItemPermission($right)) {
             return false;
         }
-        unset($this->right);
 
         switch ($right) {
             case READ:
@@ -3277,7 +3878,11 @@ class CommonDBTM extends CommonGLPI
     **/
     public function checkEntity($recursive = false)
     {
-
+        if (EntityRegistry::hasPolicy($this->getTable(), 'entities_id', ReferenceKind::GlobalScope)
+            && array_key_exists('entities_id', $this->fields) && $this->fields['entities_id'] === null) {
+            // Global entity scope still requires the model's ordinary global rights.
+            return true;
+        }
         // Is an item assign to an entity
         if ($this->isEntityAssign()) {
             // Can be recursive check
@@ -3797,6 +4402,12 @@ class CommonDBTM extends CommonGLPI
         return 'name';
     }
 
+    /** Fields consumed by Dropdown::getDropdownName, including its optional tooltip. */
+    public function getDropdownNameFields(bool $tooltip = true): array
+    {
+        return [$this->getNameField(), 'comment'];
+    }
+
 
     /**
      * @since 0.84
@@ -3823,7 +4434,7 @@ class CommonDBTM extends CommonGLPI
     **/
     public function getRawName()
     {
-        \Toolbox::deprecated('Use CommonDBTM::getFriendlyName()');
+        Toolbox::deprecated('Use CommonDBTM::getFriendlyName()');
 
         return $this->getFriendlyName();
     }
@@ -4005,7 +4616,7 @@ class CommonDBTM extends CommonGLPI
                 $missingFields[] = 'name';
             }
             if (count($missingFields) > 0) {
-                throw new \Exception(
+                throw new Exception(
                     vsprintf(
                         'Invalid search option in "%1$s": missing "%2$s" field(s). %3$s',
                         [
@@ -4111,7 +4722,7 @@ class CommonDBTM extends CommonGLPI
 
         foreach ($classname::$method_name($itemtype) as $opt) {
             if (!isset($opt['id'])) {
-                throw new \Exception(get_called_class() . ': invalid search option! ' . print_r($opt, true));
+                throw new Exception(get_called_class() . ': invalid search option! ' . print_r($opt, true));
             }
             $optid = $opt['id'];
             unset($opt['id']);
@@ -4225,7 +4836,7 @@ class CommonDBTM extends CommonGLPI
 
         if (Infocom::canApplyOn($this)) {
             $ic = new Infocom();
-            if ($ic->getFromDBforDevice($this->getType(), $this->fields['id'])) {
+            if ($ic->isActivatedForDevice($this->getType(), $this->fields['id'])) {
                 $excluded[] = 'Infocom:activate';
             }
         }
@@ -4723,19 +5334,36 @@ class CommonDBTM extends CommonGLPI
                         if ($fields['is_recursive']) {
                             $entities = getSonsOf('glpi_entities', $fields['entities_id']);
                         }
-                        $where[] = getEntitiesRestrictCriteria($this->getTable(), '', $entities);
+                        $configuredValues = $where;
+                        $entityRestriction = getEntitiesRestrictCriteria($this->getTable(), '', $entities);
+                        $where[] = $entityRestriction;
 
                         $tmp = clone $this;
-                        if ($tmp->maybeTemplate()) {
+                        $excludeTemplates = $tmp->maybeTemplate();
+                        if ($excludeTemplates) {
                             $where['is_template'] = 0;
                         }
 
                         //If update, exclude ID of the current object
+                        $currentExclusion = null;
                         if (!$add) {
-                            $where['NOT'] = [$this->getTable() . '.id' => $this->input['id']];
+                            $currentExclusion = [$this->getTable() . '.id' => $this->input['id']];
+                            $where['NOT'] = $currentExclusion;
                         }
 
-                        if (countElementsInTable($this->getTable(), $where) > 0) {
+                        $table = $this->getTable();
+                        $database = $GLOBALS['DB'];
+                        if (isset(EntityRegistry::tables()[$table])) {
+                            $count = Orm::read($database, static fn (EntityManager $manager) =>
+                                (new FieldUnicityRepository($manager))->candidateCount($table, $configuredValues, $entityRestriction, (bool) $excludeTemplates, $currentExclusion));
+                            if ($count === null) {
+                                $row = $database->request($table, $where + ['COUNT' => 'cpt'])->next();
+                                $count = $row ? (int) $row['cpt'] : 0;
+                            }
+                        } else {
+                            $count = countElementsInTable($table, $where);
+                        }
+                        if ($count > 0) {
                             if (
                                 $p['unicity_error_message']
                                 || $p['add_event_on_duplicate']
@@ -4745,7 +5373,18 @@ class CommonDBTM extends CommonGLPI
                                     $message[$field] = $this->input[$field];
                                 }
 
-                                $doubles      = getAllDataFromTable($this->getTable(), $where);
+                                $table = $this->getTable();
+                                $database = $GLOBALS['DB'];
+                                $doubles = isset(EntityRegistry::tables()[$table])
+                                    ? Orm::read($database, static fn (EntityManager $manager) =>
+                                        (new FieldUnicityRepository($manager))->candidateRows($table, $configuredValues, $entityRestriction, (bool) $excludeTemplates, $currentExclusion))
+                                    : null;
+                                if ($doubles === null) {
+                                    $doubles = [];
+                                    foreach ($database->request($table, $where) as $row) {
+                                        $doubles[$row['id']] = $row;
+                                    }
+                                }
                                 $message_text = $this->getUnicityErrorMessage($message, $fields, $doubles);
                                 if ($p['unicity_error_message']) {
                                     if (!$fields['action_refuse']) {
@@ -4816,16 +5455,35 @@ class CommonDBTM extends CommonGLPI
 
         $ok = false;
         if (is_array($crit) && (count($crit) > 0)) {
-            $crit['FIELDS'] = [$this::getTable() => 'id'];
+            try {
+                $ids = MappedReads::identifiers($DB, $this->getTable(), $this->getIndexName(), $crit);
+            } catch (UnsupportedCriteria $unsupported) {
+                // Legacy request options and plugin tables still use their existing query.
+                $crit['FIELDS'] = [$this::getTable() => static::getIndexName()];
+                $ids = array_column(iterator_to_array($DB->request($this->getTable(), $crit)), $this->getIndexName());
+            }
             $ok = true;
-            $iterator = $DB->request($this->getTable(), $crit);
-            foreach ($iterator as $row) {
-                if (!$this->delete($row, $force, $history)) {
+            foreach ($ids as $id) {
+                if (!$this->delete([$this->getIndexName() => $id], $force, $history)) {
                     $ok = false;
                 }
             }
         }
         return $ok;
+    }
+
+    /** Select only lifecycle identifiers without hydrating complete records. */
+    protected function findIds(array $criteria): array
+    {
+        global $DB;
+
+        try {
+            return MappedReads::identifiers($DB, $this->getTable(), $this->getIndexName(), $criteria);
+        } catch (UnsupportedCriteria $unsupported) {
+            return array_column(iterator_to_array($DB->request([
+                'SELECT' => $this->getIndexName(), 'FROM' => $this->getTable(), 'WHERE' => $criteria,
+            ])), $this->getIndexName());
+        }
     }
 
 

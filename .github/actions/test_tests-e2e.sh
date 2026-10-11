@@ -1,4 +1,5 @@
-#!/bin/bash -e
+#!/bin/bash
+set -euo pipefail
 
 for required_file in tests/config/config_db.php tests/config/glpicrypt.key; do
   if [[ ! -f "$required_file" ]]; then
@@ -18,7 +19,7 @@ mkdir -p tests/files/_playwright
 
 SERVER_READY=false
 for _ in $(seq 1 30); do
-  if node -e "fetch(process.argv[1]).then(response => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))" "$PLAYWRIGHT_BASE_URL/index.php"; then
+  if curl --fail --silent --show-error --location --max-time 2 "$PLAYWRIGHT_BASE_URL/index.php" > /dev/null; then
     SERVER_READY=true
     break
   fi

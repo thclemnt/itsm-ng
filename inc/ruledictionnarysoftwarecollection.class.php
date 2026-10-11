@@ -35,6 +35,11 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\SoftwareDictionaryRepository;
+use itsmng\Database\Repository\SoftwareRepository;
+use itsmng\Domain\SoftwareAssignmentCancelled;
+
 class RuleDictionnarySoftwareCollection extends RuleCollection
 {
     // From RuleCollection
@@ -123,45 +128,12 @@ class RuleDictionnarySoftwareCollection extends RuleCollection
         $i  = $offset;
 
         if (count($items) == 0) {
-            //Select all the differents software
-            $criteria = [
-               'SELECT'          => [
-                  'glpi_softwares.name',
-                  'glpi_manufacturers.name AS manufacturer',
-                  'glpi_softwares.manufacturers_id AS manufacturers_id',
-                  'glpi_softwares.entities_id AS entities_id',
-                  'glpi_softwares.is_helpdesk_visible AS helpdesk',
-                  'glpi_softwares.softwarecategories_id AS softwarecategories_id',
-               ],
-               'DISTINCT'        => true,
-               'FROM'            => 'glpi_softwares',
-               'LEFT JOIN'       => [
-                  'glpi_manufacturers' => [
-                     'ON' => [
-                        'glpi_manufacturers' => 'id',
-                        'glpi_softwares'     => 'manufacturers_id'
-                     ]
-                  ]
-               ],
-               'WHERE'           => [
-                  // Do not replay on trashbin and templates
-                  'glpi_softwares.is_deleted'   => 0,
-                  'glpi_softwares.is_template'  => 0
-               ]
-            ];
+            $repository = new SoftwareDictionaryRepository(Orm::create($DB));
+            $manufacturer = !empty($params['manufacturer']) ? (int)$params['manufacturer'] : null;
+            $nb = max((int)$offset, $repository->groupCount($manufacturer));
+            $step = (($nb > 1000) ? 50 : (($nb > 20) ? max(1, floor(max(0, $nb - $offset) / 20)) : 1));
 
-            if (isset($params['manufacturer']) && $params['manufacturer']) {
-                $criteria['WHERE']['glpi_softwares.manufacturers_id'] = $params['manufacturer'];
-            }
-            if ($offset) {
-                $criteria['START'] = (int)$offset;
-            }
-
-            $iterator = $DB->request($criteria);
-            $nb   = count($iterator) + $offset;
-            $step = (($nb > 1000) ? 50 : (($nb > 20) ? floor(count($iterator) / 20) : 1));
-
-            while ($input = $iterator->next()) {
+            foreach ($repository->replayGroups($manufacturer, (int)$offset) as $input) {
                 if (!($i % $step)) {
                     if (isCommandLine()) {
                         printf(
@@ -196,22 +168,10 @@ class RuleDictionnarySoftwareCollection extends RuleCollection
                     || (isset($res_rule['softwarecategories_id'])
                         && ($res_rule['softwarecategories_id'] != $input['softwarecategories_id']))
                 ) {
-                    $IDs = [];
                     //Find all the softwares in the database with the same name and manufacturer
-                    $same_iterator = $DB->request([
-                       'SELECT' => 'id',
-                       'FROM'   => 'glpi_softwares',
-                       'WHERE'  => [
-                          'name'               => addslashes((string) $input['name']),
-                          'manufacturers_id'   => $input['manufacturers_id']
-                       ]
-                    ]);
+                    $IDs = $repository->matchingSoftware($input['name'], $input['manufacturers_id'] === null ? null : (int)$input['manufacturers_id']);
 
-                    if (count($same_iterator)) {
-                        //Store all the software's IDs in an array
-                        while ($result = $same_iterator->next()) {
-                            $IDs[] = $result["id"];
-                        }
+                    if ($IDs) {
                         //Replay dictionnary on all the softwares
                         $this->replayDictionnaryOnSoftwaresByID($IDs, $res_rule);
                     }
@@ -259,30 +219,9 @@ class RuleDictionnarySoftwareCollection extends RuleCollection
         $delete_ids = [];
 
         foreach ($IDs as $ID) {
-            $iterator = $DB->request([
-               'SELECT'    => [
-                  'gs.id',
-                  'gs.name AS name',
-                  'gs.entities_id AS entities_id',
-                  'gm.name AS manufacturer'
-               ],
-               'FROM'      => 'glpi_softwares AS gs',
-               'LEFT JOIN' => [
-                  'glpi_manufacturers AS gm' => [
-                     'ON' => [
-                        'gs'  => 'manufacturers_id',
-                        'gm'  => 'id'
-                     ]
-                  ]
-               ],
-               'WHERE'     => [
-                  'gs.is_template'  => 0,
-                  'gs.id'           => $ID
-               ]
-            ]);
+            $soft = (new SoftwareDictionaryRepository(Orm::create($DB)))->replaySoftware((int)$ID);
 
-            if (count($iterator)) {
-                $soft = $iterator->next();
+            if ($soft !== null) {
                 //For each software
                 $this->replayDictionnaryOnOneSoftware(
                     $new_softs,
@@ -377,7 +316,10 @@ class RuleDictionnarySoftwareCollection extends RuleCollection
                 $new_software_id = $new_softs[$entity][$new_name];
             }
             // Move licenses to new software
-            $this->moveLicenses($ID, $new_software_id);
+            SoftwareAssignmentCancelled::requireSuccess(
+                $this->moveLicenses($ID, $new_software_id),
+                'Dictionary licence ownership move'
+            );
         } else {
             $new_software_id = $ID;
             $res_rule["id"]  = $ID;
@@ -397,12 +339,7 @@ class RuleDictionnarySoftwareCollection extends RuleCollection
         }
 
         //Get all the different versions for a software
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_softwareversions',
-           'WHERE'  => ['softwares_id' => $ID]
-        ]);
-
-        while ($version = $iterator->next()) {
+        foreach ((new SoftwareRepository(Orm::create($DB)))->versions((int)$ID) as $version) {
             $input["version"] = addslashes((string) $version["name"]);
             $old_version_name = $input["version"];
 
@@ -411,7 +348,7 @@ class RuleDictionnarySoftwareCollection extends RuleCollection
             } elseif (isset($res_rule["version"]) && $res_rule["version"] != '') {
                 $new_version_name = $res_rule["version"];
             } else {
-                $new_version_name = $version["name"];
+                $new_version_name = $version["name"] === null ? null : addslashes((string)$version["name"]);
             }
             if (
                 ($ID != $new_software_id)
@@ -442,31 +379,9 @@ class RuleDictionnarySoftwareCollection extends RuleCollection
         if (count($soft_ids) > 0) {
             //Try to delete all the software that are not used anymore
             // (which means that don't have version associated anymore)
-            $iterator = $DB->request([
-               'SELECT'    => [
-                  'glpi_softwares.id',
-                  'COUNT' => 'glpi_softwareversions.softwares_id AS cpt'
-               ],
-               'FROM'      => 'glpi_softwares',
-               'LEFT JOIN' => [
-                  'glpi_softwareversions' => [
-                     'ON' => [
-                        'glpi_softwareversions' => 'softwares_id',
-                        'glpi_softwares'        => 'id'
-                     ]
-                  ]
-               ],
-               'WHERE'     => [
-                  'glpi_softwares.id'  => $soft_ids,
-                  'is_deleted'         => 0
-               ],
-               'GROUPBY'   => 'glpi_softwares.id',
-               'HAVING'    => ['cpt' => 0]
-            ]);
-
             $software = new Software();
-            while ($soft = $iterator->next()) {
-                $software->putInTrash($soft["id"], __('Software deleted by ITSM-NG dictionary rules'));
+            foreach ((new SoftwareDictionaryRepository(Orm::create($DB)))->unusedSoftware($soft_ids) as $id) {
+                $software->putInTrash($id, __('Software deleted by ITSM-NG dictionary rules'));
             }
         }
     }
@@ -487,92 +402,12 @@ class RuleDictionnarySoftwareCollection extends RuleCollection
     {
         global $DB;
 
-        $new_versionID = $this->versionExists($new_software_id, $new_version);
-
-        // Do something if it is not the same version
-        if ($new_versionID != $version_id) {
-            //A version does not exist : update existing one
-            if ($new_versionID == -1) {
-                //Transfer versions from old software to new software for a specific version
-                $DB->update(
-                    'glpi_softwareversions',
-                    [
-                      'name'         => $new_version,
-                      'softwares_id' => $new_software_id
-                    ],
-                    [
-                      'id' => $version_id
-                    ]
-                );
-            } else {
-                // Delete software can be in double after update
-                $item_softwareversion_table = Item_SoftwareVersion::getTable();
-                $iterator = $DB->request([
-                   'SELECT'    => ['gcs_2.*'],
-                   'FROM'      => $item_softwareversion_table,
-                   'LEFT JOIN' => [
-                      "{$item_softwareversion_table} AS gcs_2" => [
-                         'FKEY'   => [
-                            'gcs_2'                       => 'items_id',
-                            $item_softwareversion_table   => 'items_id', [
-                               'AND' => [
-                                  'gcs_2.itemtype' => $item_softwareversion_table . '.itemtype'
-                               ]
-                            ]
-                         ]
-                      ]
-                   ],
-                   'WHERE'     => [
-                      "{$item_softwareversion_table}.softwareversions_id"   => $new_versionID,
-                      'gcs_2.softwareversions_id'                           => $version_id
-                   ]
-                ]);
-                while ($data = $iterator->next()) {
-                    $DB->delete(
-                        'glpi_items_softwareversions',
-                        [
-                          'id' => $data['id']
-                        ]
-                    );
-                }
-
-                //Change ID of the version in glpi_items_softwareversions
-                $DB->update(
-                    $item_softwareversion_table,
-                    [
-                      'softwareversions_id' => $new_versionID
-                    ],
-                    [
-                      'softwareversions_id' => $version_id
-                    ]
-                );
-
-                // Update licenses version link
-                $DB->update(
-                    'glpi_softwarelicenses',
-                    [
-                      'softwareversions_id_buy' => $new_versionID
-                    ],
-                    [
-                      'softwareversions_id_buy' => $version_id
-                    ]
-                );
-
-                $DB->update(
-                    'glpi_softwarelicenses',
-                    [
-                      'softwareversions_id_use' => $new_versionID
-                    ],
-                    [
-                      'softwareversions_id_use' => $version_id
-                    ]
-                );
-
-                //Delete old version
-                $old_version = new SoftwareVersion();
-                $old_version->delete(["id" => $version_id]);
-            }
-        }
+        (new SoftwareRepository(Orm::create($DB)))->moveDictionaryVersion(
+            (int)$new_software_id,
+            (int)$version_id,
+            $new_version === null ? null : stripslashes((string)$new_version),
+            static fn (int $id): bool => (new SoftwareVersion())->delete(['id' => $id])
+        );
     }
 
 
@@ -587,27 +422,7 @@ class RuleDictionnarySoftwareCollection extends RuleCollection
     {
         global $DB;
 
-        //Return false if one of the 2 softwares doesn't exists
-        if (
-            !countElementsInTable('glpi_softwares', ['id' => $old_software_id])
-            || !countElementsInTable('glpi_softwares', ['id' => $new_software_id])
-        ) {
-            return false;
-        }
-
-        //Transfer licenses to new software if needed
-        if ($old_software_id != $new_software_id) {
-            $DB->update(
-                'glpi_softwarelicenses',
-                [
-                  'softwares_id' => $new_software_id
-                ],
-                [
-                  'softwares_id' => $old_software_id
-                ]
-            );
-        }
-        return true;
+        return (new SoftwareDictionaryRepository(Orm::create($DB)))->moveLicenses((int)$old_software_id, (int)$new_software_id);
     }
 
 
@@ -621,18 +436,10 @@ class RuleDictionnarySoftwareCollection extends RuleCollection
     {
         global $DB;
 
-        //Check if the version exists
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_softwareversions',
-           'WHERE'  => [
-              'softwares_id' => $software_id,
-              'name'         => $version
-           ]
-        ]);
-        if (count($iterator)) {
-            $current = $iterator->next();
-            return $current['id'];
-        }
-        return -1;
+        return (new SoftwareDictionaryRepository(Orm::create($DB)))->versionId(
+            (int)$software_id,
+            $version === null ? null : stripslashes((string)$version)
+        );
     }
+
 }

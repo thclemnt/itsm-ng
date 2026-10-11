@@ -31,7 +31,18 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Event;
+use itsmng\Database\DropdownChoiceContext;
+use itsmng\Database\Entity\DocumentItem;
+use itsmng\Database\Entity\ITILFollowup as ITILFollowupEntity;
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILOriginRepository;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\TicketAssetRepository;
+use itsmng\Database\Repository\TicketAutomaticActionRepository;
+use itsmng\Database\RowIterator;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -684,7 +695,7 @@ class Ticket extends CommonITILObject
                         $nb = countElementsInTable(
                             ['glpi_tickets', 'glpi_tickets_users'],
                             [
-                              'glpi_tickets_users.tickets_id'  => new \QueryExpression(DB::quoteName('glpi_tickets.id')),
+                              'glpi_tickets_users.tickets_id'  => new QueryExpression(DB::quoteName('glpi_tickets.id')),
                               'glpi_tickets_users.users_id'    => $item->getID(),
                               'glpi_tickets_users.type'        => CommonITILActor::REQUESTER
                             ] + getEntitiesRestrictCriteria(self::getTable())
@@ -696,7 +707,7 @@ class Ticket extends CommonITILObject
                         $nb = countElementsInTable(
                             ['glpi_tickets', 'glpi_suppliers_tickets'],
                             [
-                              'glpi_suppliers_tickets.tickets_id'    => new \QueryExpression(DB::quoteName('glpi_tickets.id')),
+                              'glpi_suppliers_tickets.tickets_id'    => new QueryExpression(DB::quoteName('glpi_tickets.id')),
                               'glpi_suppliers_tickets.suppliers_id'  => $item->getID()
                             ] + getEntitiesRestrictCriteria(self::getTable())
                         );
@@ -729,7 +740,7 @@ class Ticket extends CommonITILObject
                         $nb = countElementsInTable(
                             ['glpi_tickets', 'glpi_groups_tickets'],
                             [
-                              'glpi_groups_tickets.tickets_id' => new \QueryExpression(DB::quoteName('glpi_tickets.id')),
+                              'glpi_groups_tickets.tickets_id' => new QueryExpression(DB::quoteName('glpi_tickets.id')),
                               'glpi_groups_tickets.groups_id'  => $item->getID(),
                               'glpi_groups_tickets.type'       => CommonITILActor::REQUESTER
                             ] + getEntitiesRestrictCriteria(self::getTable())
@@ -797,15 +808,14 @@ class Ticket extends CommonITILObject
             case __CLASS__:
                 $ong    = [];
 
-                $timeline    = $item->getTimelineItems();
-                $nb_elements = count($timeline);
+                $nb_elements = $item->getTimelineItemCount();
                 $ong[1]      = __("Processing ticket") . " <sup class='tab_nb'>$nb_elements</sup>";
 
                 // enquete si statut clos
                 $satisfaction = new TicketSatisfaction();
                 if (
-                    $satisfaction->getFromDB($item->getID())
-                    && $item->fields['status'] == $_SESSION['CLOSED']
+                    $item->fields['status'] == $_SESSION['CLOSED']
+                    && $satisfaction->getFromDB($item->getID())
                 ) {
                     $ong[3] = __('Satisfaction');
                 }
@@ -939,6 +949,10 @@ class Ticket extends CommonITILObject
 
     public function cleanDBonPurge()
     {
+        global $DB;
+
+        (new ITILOriginRepository(Orm::create($DB)))
+            ->reassignTicket((int)$this->getID(), empty($this->input['_replace_by']) ? null : (int)$this->input['_replace_by']);
 
         // OlaLevel_Ticket does not extends CommonDBConnexity
         $olaLevel_ticket = new OlaLevel_Ticket();
@@ -2392,46 +2406,9 @@ class Ticket extends CommonITILObject
     {
         global $DB;
 
-        $result = [];
+        return (new TicketAssetRepository(Orm::create($DB)))
+            ->activeOrRecent((string)$itemtype, (int)$items_id, array_merge($this->getClosedStatusArray(), $this->getSolvedStatusArray()), (int)$days);
 
-        $iterator = $DB->request([
-           'FROM'      => $this->getTable(),
-           'LEFT JOIN' => [
-              'glpi_items_tickets' => [
-                 'ON' => [
-                    'glpi_items_tickets' => 'tickets_id',
-                    $this->getTable()    => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_items_tickets.items_id' => $items_id,
-              'glpi_items_tickets.itemtype' => $itemtype,
-              'OR'                          => [
-                 [
-                    'NOT' => [
-                       $this->getTable() . '.status' => array_merge(
-                           $this->getClosedStatusArray(),
-                           $this->getSolvedStatusArray()
-                       )
-                    ]
-                 ],
-                 [
-                  'NOT' => [$this->getTable() . '.solvedate' => null],
-                  new \QueryExpression(
-                      "ADDDATE(" . $DB->quoteName($this->getTable()) .
-                        "." . $DB->quoteName('solvedate') . ", INTERVAL $days DAY) > NOW()"
-                  )
-                 ]
-              ]
-           ]
-        ]);
-
-        while ($tick = $iterator->next()) {
-            $result[$tick['id']] = $tick['name'];
-        }
-
-        return $result;
     }
 
 
@@ -2449,29 +2426,9 @@ class Ticket extends CommonITILObject
     {
         global $DB;
 
-        $result = $DB->request([
-           'COUNT'     => 'cpt',
-           'FROM'      => $this->getTable(),
-           'LEFT JOIN' => [
-              'glpi_items_tickets' => [
-                 'ON' => [
-                    'glpi_items_tickets' => 'tickets_id',
-                    $this->getTable()    => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_items_tickets.itemtype' => $itemtype,
-              'glpi_items_tickets.items_id' => $items_id,
-              'NOT'                         => [
-                 $this->getTable() . '.status' => array_merge(
-                     $this->getSolvedStatusArray(),
-                     $this->getClosedStatusArray()
-                 )
-              ]
-           ]
-        ])->next();
-        return $result['cpt'];
+        return (new TicketAssetRepository(Orm::create($DB)))
+            ->activeCount((string)$itemtype, (int)$items_id, array_merge($this->getSolvedStatusArray(), $this->getClosedStatusArray()));
+
     }
 
     /**
@@ -2483,40 +2440,17 @@ class Ticket extends CommonITILObject
      * @param integer $items_id    ID of the Item
      * @param string $type         Type of the tickets (incident or request)
      *
-     * @return DBmysqlIterator
+     * @return RowIterator
      */
     public function getActiveTicketsForItem($itemtype, $items_id, $type)
     {
         global $DB;
 
-        return $DB->request([
-           'SELECT'    => [
-              $this->getTable() . '.id',
-              $this->getTable() . '.name',
-              $this->getTable() . '.priority',
-           ],
-           'FROM'      => $this->getTable(),
-           'LEFT JOIN' => [
-              'glpi_items_tickets' => [
-                 'ON' => [
-                    'glpi_items_tickets' => 'tickets_id',
-                    $this->getTable()    => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_items_tickets.itemtype'    => $itemtype,
-              'glpi_items_tickets.items_id'    => $items_id,
-              $this->getTable() . '.is_deleted' => 0,
-              $this->getTable() . '.type'      => $type,
-              'NOT'                         => [
-                 $this->getTable() . '.status' => array_merge(
-                     $this->getSolvedStatusArray(),
-                     $this->getClosedStatusArray()
-                 )
-              ]
-           ]
-        ]);
+        $rows = Orm::read($DB, fn (EntityManager $manager): array =>
+            (new TicketAssetRepository($manager))
+                ->active((string)$itemtype, (int)$items_id, array_merge($this->getSolvedStatusArray(), $this->getClosedStatusArray()), (int)$type));
+        return new RowIterator($rows);
+
     }
 
     /**
@@ -2534,33 +2468,9 @@ class Ticket extends CommonITILObject
     {
         global $DB;
 
-        $result = $DB->request([
-           'COUNT'     => 'cpt',
-           'FROM'      => $this->getTable(),
-           'LEFT JOIN' => [
-              'glpi_items_tickets' => [
-                 'ON' => [
-                    'glpi_items_tickets' => 'tickets_id',
-                    $this->getTable()    => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_items_tickets.itemtype' => $itemtype,
-              'glpi_items_tickets.items_id' => $items_id,
-              $this->getTable() . '.status' => array_merge(
-                  $this->getSolvedStatusArray(),
-                  $this->getClosedStatusArray()
-              ),
-              new \QueryExpression(
-                  "ADDDATE(" . $DB->quoteName($this->getTable() . ".solvedate") . ", INTERVAL $days DAY) > NOW()"
-              ),
-              'NOT'                         => [
-                 $this->getTable() . '.solvedate' => null
-              ]
-           ]
-        ])->next();
-        return $result['cpt'];
+        return (new TicketAssetRepository(Orm::create($DB)))
+            ->recentlyFinishedCount((string)$itemtype, (int)$items_id, array_merge($this->getSolvedStatusArray(), $this->getClosedStatusArray()), (int)$days);
+
     }
 
 
@@ -3038,36 +2948,27 @@ class Ticket extends CommonITILObject
            'computation'        => self::generateSLAOLAComputation('internal_time_to_own')
         ];
 
-        $max_date = '99999999';
+        $max_date = $DB->quoteValue('9999-12-31 23:59:59');
+        $escalations = [];
+        foreach (['time_to_own', 'internal_time_to_own', 'time_to_resolve', 'internal_time_to_resolve'] as $deadline) {
+            $condition = str_ends_with($deadline, '_own')
+                ? $DB->quoteName('TABLE.takeintoaccount_delay_stat') . ' <= 0'
+                : $DB->quoteName('TABLE.solvedate') . ' IS NULL';
+            $escalations[] = 'COALESCE(CASE WHEN ' . $condition . ' THEN '
+                . $DB->quoteName('TABLE.' . $deadline) . ' END, ' . $max_date . ')';
+        }
         $tab[] = [
            'id'                 => '188',
            'table'              => $this->getTable(),
            'field'              => 'next_escalation_level',
+           'computationaggregate' => false,
            'name'               => __('Next escalation level'),
            'datatype'           => 'date',
            'usehaving'          => true,
            'maybefuture'        => true,
            'massiveaction'      => false,
-           // Get least value from TTO/TTR fields:
-           // - use TTO fields only if ticket not already taken into account,
-           // - use TTR fields only if ticket not already solved,
-           // - replace NULL or not kept values with 99999999 to be sure that they will not be returned by the LEAST function,
-           // - replace 99999999 by empty string to keep only valid values.
-           'computation'        => "REPLACE(
-            LEAST(
-               IF(" . $DB->quoteName('TABLE.takeintoaccount_delay_stat') . " <= 0,
-                  COALESCE(" . $DB->quoteName('TABLE.time_to_own') . ", $max_date),
-                  $max_date),
-               IF(" . $DB->quoteName('TABLE.takeintoaccount_delay_stat') . " <= 0,
-                  COALESCE(" . $DB->quoteName('TABLE.internal_time_to_own') . ", $max_date),
-                  $max_date),
-               IF(" . $DB->quoteName('TABLE.solvedate') . " IS NULL,
-                  COALESCE(" . $DB->quoteName('TABLE.time_to_resolve') . ", $max_date),
-                  $max_date),
-               IF(" . $DB->quoteName('TABLE.solvedate') . " IS NULL,
-                  COALESCE(" . $DB->quoteName('TABLE.internal_time_to_resolve') . ", $max_date),
-                  $max_date)
-            ), $max_date, '')"
+           // Keep datetime types throughout; NULL denotes no pending deadline.
+           'computation'        => 'NULLIF(LEAST(' . implode(', ', $escalations) . '), ' . $max_date . ')'
         ];
 
         $tab[] = [
@@ -3654,6 +3555,22 @@ class Ticket extends CommonITILObject
         }
     }
 
+    /** Present the current ordinal status view without rereading it for each cell. */
+    public static function getStatusPresentationFromCatalogue($status, array $catalogue): array
+    {
+        // The optimized path belongs to the concrete core formatter. New callers
+        // using a subclass retain its existing presentation overrides.
+        if (static::class !== self::class) {
+            return ['label' => static::getStatus($status), 'icon' => static::getStatusIcon($status)];
+        }
+        $label = $catalogue['name_translate'][$status] ?? $status;
+        $class = static::getStatusClassFromKey(static::getStatusKeyFromCatalogue($status, $catalogue));
+        return [
+            'label' => $label,
+            'icon' => static::formatStatusIcon($class, $label, $catalogue['color'][$status] ?? 'Default'),
+        ];
+    }
+
     /**
      * get the Ticket status list sorted by weight
      *
@@ -3669,10 +3586,7 @@ class Ticket extends CommonITILObject
         global $DB;
         $done = 0;
 
-        $criteria = "SELECT * FROM glpi_specialstatuses";
-        $iterators = $DB->request($criteria);
-
-        while ($data = $iterators->next()) {
+        foreach (MappedReads::matching($DB, 'glpi_specialstatuses', [], ['id']) as $data) {
             $do_sort[] = $data['weight'];
             $status_db[] = $data;
         }
@@ -3770,38 +3684,20 @@ class Ticket extends CommonITILObject
         global $DB;
 
         $totalcost = 0;
-
-        $iterator = $DB->request([
-           'SELECT'    => 'glpi_ticketcosts.*',
-           'FROM'      => 'glpi_ticketcosts',
-           'LEFT JOIN' => [
-              'glpi_items_tickets' => [
-                 'ON' => [
-                    'glpi_items_tickets' => 'tickets_id',
-                    'glpi_ticketcosts'   => 'tickets_id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_items_tickets.itemtype' => get_class($item),
-              'glpi_items_tickets.items_id' => $item->getField('id'),
-              'OR'                          => [
-                 'glpi_ticketcosts.cost_time'     => ['>', 0],
-                 'glpi_ticketcosts.cost_fixed'    => ['>', 0],
-                 'glpi_ticketcosts.cost_material' => ['>', 0]
-              ]
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
-            $totalcost += TicketCost::computeTotalCost(
-                $data["actiontime"],
-                $data["cost_time"],
-                $data["cost_fixed"],
-                $data["cost_material"]
-            );
+        $costs = Orm::readPrepared(
+            $DB,
+            static fn (): array => (static fn (string $type, int $id): array => [$type, $id])(
+                $item->getType(),
+                (int)$item->getID()
+            ),
+            static fn (EntityManager $manager, array $arguments): array =>
+                (new TicketAssetRepository($manager))->costs(...$arguments)
+        );
+        foreach ($costs as $data) {
+            $totalcost += TicketCost::computeTotalCost($data['actiontime'], $data['cost_time'], $data['cost_fixed'], $data['cost_material']);
         }
         return $totalcost;
+
     }
 
 
@@ -4345,35 +4241,37 @@ class Ticket extends CommonITILObject
             }
         }
 
-        $user_index = $params['_user_index'] ?? 0;
+        $user_index = max(0, (int)($params['_user_index'] ?? 0));
         $current_value = 0;
         if (isset($params['_users_id_observer']) && is_array($params['_users_id_observer'])) {
             $current_value = $params['_users_id_observer'][$user_index] ?? 0;
         }
 
-        try {
-            global $DB;
-            $query = "SELECT u.id, u.name, u.realname, u.firstname 
-                      FROM glpi_users u 
-                      WHERE u.is_active = 1 
-                      AND u.is_deleted = 0 
-                      ORDER BY u.realname, u.firstname
-                      LIMIT 100";
-
-            $result = $DB->query($query);
-            $users = [];
-            $users[0] = "-- " . __('Select') . " --";
-
-            while ($row = $result->fetch_assoc()) {
+        $users = [0 => "-- " . __('Select') . " --"];
+        // AJAX options must not widen the session's permitted entity set.
+        $entity = filter_var($params['entities_id'], FILTER_VALIDATE_INT);
+        if ($entity !== false && Session::haveAccessToEntity($entity)) {
+            $rows = User::getSqlSearchResult(
+                false,
+                $params['_right'],
+                $entity,
+                0,
+                [],
+                '',
+                0,
+                100,
+                0,
+                0,
+                [],
+                true
+            );
+            foreach ($rows as $row) {
                 $display_name = trim($row['realname'] . ' ' . $row['firstname']);
                 if (empty($display_name)) {
                     $display_name = $row['name'];
                 }
                 $users[$row['id']] = $display_name . " (" . $row['name'] . ")";
             }
-
-        } catch (Exception $e) {
-            $users = [0 => "-- " . __('Select') . " --"];
         }
 
         echo "<div class='observer-container' style='margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9;'>";
@@ -4579,9 +4477,25 @@ class Ticket extends CommonITILObject
 
             if ($actor['use_notification']) {
                 $email = $actor['alternative_email'];
-                $actorObj = new $actorType();
-                if (empty($email) && $actorObj->getFromDB($actor[$actorType == User::class ? 'users_id' : 'suppliers_id'])) {
-                    $email = $actorType == User::class ? $actorObj->getDefaultEmail() : $actorObj->fields['email'];
+                if (in_array($actorType, [User::class, Supplier::class], true)) {
+                    $id = $actor[$actorType === User::class ? 'users_id' : 'suppliers_id'];
+                    if (empty($email) && $id !== null && strlen($id) !== 0) {
+                        $repository = $this->actorDisplayRepository();
+                        $id = (int)Toolbox::cleanInteger($id);
+                        if ($actorType === User::class) {
+                            $email = $repository->userDefaultEmail($id) ?? $email;
+                        } else {
+                            $current = $repository->supplierDisplayData($id);
+                            if ($current !== null) {
+                                $email = $current['email'];
+                            }
+                        }
+                    }
+                } else {
+                    $actorObj = new $actorType();
+                    if (empty($email) && $actorObj->getFromDB($actor['suppliers_id'])) {
+                        $email = $actorObj->fields['email'];
+                    }
                 }
                 $text .= sprintf(__('%1$s: %2$s'), _n('Email', 'Emails', 1), $email);
                 if (!NotificationMailing::isUserAddressValid($email)) {
@@ -5440,6 +5354,13 @@ class Ticket extends CommonITILObject
 
         $formUrl = $this->getFormURL();
         $reopenLabel = __('Reopen');
+        $ticketChoiceRequest = [
+            'itemtype' => 'Ticket',
+            'display_emptychoice' => true,
+            'entity_restrict' => Session::getActiveEntity(),
+            'recursive' => Session::getIsActiveEntityRecursive(),
+        ];
+        $ticketChoiceRequest['_idor_token'] = DropdownChoiceContext::token('Ticket', $ticketChoiceRequest);
         $form = [
            'action' => $formUrl,
            'itemtype' => $display_save_btn ? self::class : null,
@@ -5736,6 +5657,7 @@ class Ticket extends CommonITILObject
                   ],
                   _n('Linked ticket', 'Linked tickets', Session::getPluralNumber()) => [
                      'type' => 'ticketSelect',
+                     'choice_request' => $ticketChoiceRequest,
                      'name' => '_link',
                      'relations' => [
                         Ticket_Ticket::LINK_TO => __('Linked to'),
@@ -6000,9 +5922,12 @@ class Ticket extends CommonITILObject
                       'glpi_tickets.status'   => $_SESSION['CLOSED'],
                       ['OR'                   => [
                          'glpi_entities.inquest_duration' => 0,
-                         new \QueryExpression(
-                             'DATEDIFF(ADDDATE(' . $DB->quoteName('glpi_ticketsatisfactions.date_begin') .
-                               ', INTERVAL ' . $DB->quoteName('glpi_entities.inquest_duration')  . ' DAY), CURDATE()) > 0'
+                         new QueryExpression(
+                             'CAST(' . $DB->expressions()->dateAdd(
+                                 $DB->quoteName('glpi_ticketsatisfactions.date_begin'),
+                                 $DB->quoteName('glpi_entities.inquest_duration'),
+                                 'DAY'
+                             ) . ' AS DATE) > CURRENT_DATE'
                          )
                       ]],
                       'glpi_ticketsatisfactions.date_answered'  => null
@@ -6825,7 +6750,7 @@ class Ticket extends CommonITILObject
                        'glpi_tickets.users_id_recipient'   => Session::getLoginUserID(),
                        [
                           'AND' => [
-                             'glpi_tickets_users.tickets_id'  => new \QueryExpression('glpi_tickets.id'),
+                             'glpi_tickets_users.tickets_id'  => new QueryExpression('glpi_tickets.id'),
                              'glpi_tickets_users.users_id'    => Session::getLoginUserID()
                           ]
                        ]
@@ -7244,26 +7169,16 @@ class Ticket extends CommonITILObject
         // Recherche des entit??s
         $tot = 0;
 
-        $entities = $DB->request(
-            [
-              'SELECT' => 'id',
-              'FROM'   => Entity::getTable(),
-            ]
-        );
-        foreach ($entities as $entity) {
-            $delay  = Entity::getUsedConfig('autoclose_delay', $entity['id'], '', Entity::CONFIG_NEVER);
+        $candidates = new TicketAutomaticActionRepository(Orm::create($DB));
+        $entities = (new RecordRepository(Orm::create($DB)))
+            ->identifiers(Entity::getTable(), 'id', [], ['id ASC']);
+        foreach ($entities as $entityId) {
+            $delay  = Entity::getUsedConfig('autoclose_delay', $entityId, '', Entity::CONFIG_NEVER);
             if ($delay >= 0) {
-                $criteria = [
-                   'FROM'   => self::getTable(),
-                   'WHERE'  => [
-                      'entities_id'  => $entity['id'],
-                      'status'       => $_SESSION['SOLVED'],
-                      'is_deleted'   => 0
-                   ]
-                ];
+                $cutoff = null;
 
                 if ($delay > 0) {
-                    $calendars_id = Entity::getUsedConfig('calendars_id', $entity['id']);
+                    $calendars_id = Entity::getUsedConfig('calendars_id', $entityId);
                     $calendar = new Calendar();
                     if ($calendars_id && $calendar->getFromDB($calendars_id) && $calendar->hasAWorkingDay()) {
                         $end_date = $calendar->computeEndDate(
@@ -7272,20 +7187,15 @@ class Ticket extends CommonITILObject
                             0,
                             true
                         );
-                        $criteria['WHERE']['solvedate'] = ['<=', $end_date];
-                    } else {
-                        // no calendar, remove all days
-                        $criteria['WHERE'][] = new \QueryExpression(
-                            "ADDDATE(" . $DB->quoteName('solvedate') . ", INTERVAL $delay DAY) < NOW()"
-                        );
+                        $cutoff = new DateTimeImmutable($end_date);
                     }
                 }
 
                 $nb = 0;
-                $iterator = $DB->request($criteria);
-                while ($tick = $iterator->next()) {
+                $ids = $candidates->closeCandidates($entityId, (int)$_SESSION['SOLVED'], (int)$delay, $cutoff);
+                foreach ($ids as $id) {
                     $ticket->update([
-                       'id'           => $tick['id'],
+                       'id'           => $id,
                        'status'       => $_SESSION['CLOSED'],
                        '_auto_update' => true
                     ]);
@@ -7295,7 +7205,7 @@ class Ticket extends CommonITILObject
                 if ($nb) {
                     $tot += $nb;
                     $task->addVolume($nb);
-                    $task->log(Dropdown::getDropdownName('glpi_entities', $entity['id']) . " : $nb");
+                    $task->log(Dropdown::getDropdownName('glpi_entities', $entityId) . " : $nb");
                 }
             }
         }
@@ -7320,25 +7230,15 @@ class Ticket extends CommonITILObject
         }
         // Recherche des entit??s
         $tot = 0;
+        $manager = Orm::create($DB);
+        $candidates = new TicketAutomaticActionRepository($manager);
         foreach (Entity::getEntitiesToNotify('notclosed_delay') as $entity => $value) {
-            $iterator = $DB->request([
-               'FROM'   => self::getTable(),
-               'WHERE'  => [
-                  'entities_id'  => $entity,
-                  'is_deleted'   => 0,
-                  'status'       => [
-                     $_SESSION['INCOMING'],
-                     $_SESSION['ASSIGNED'],
-                     $_SESSION['PLANNED'],
-                     $_SESSION['WAITING']
-                  ],
-                  'closedate'    => null,
-                  new QueryExpression("ADDDATE(" . $DB->quoteName('date') . ", INTERVAL $value DAY) < NOW()")
-               ]
-            ]);
-            $tickets = [];
-            while ($tick = $iterator->next()) {
-                $tickets[] = $tick;
+            try {
+                $tickets = $candidates->overdue((int)$entity, [
+                    $_SESSION['INCOMING'], $_SESSION['ASSIGNED'], $_SESSION['PLANNED'], $_SESSION['WAITING'],
+                ], (int)$value);
+            } finally {
+                $manager->clear();
             }
 
             if (!empty($tickets)) {
@@ -7389,12 +7289,14 @@ class Ticket extends CommonITILObject
             $tabentities[0] = $rate;
         }
 
-        foreach ($DB->request('glpi_entities') as $entity) {
-            $rate   = Entity::getUsedConfig('inquest_config', $entity['id'], 'inquest_rate');
-            $parent = Entity::getUsedConfig('inquest_config', $entity['id'], 'entities_id');
+        $candidates = new TicketAutomaticActionRepository(Orm::create($DB));
+        $entities = (new RecordRepository(Orm::create($DB)))
+            ->identifiers(Entity::getTable(), 'id', [], ['id ASC']);
+        foreach ($entities as $entityId) {
+            $rate   = Entity::getUsedConfig('inquest_config', $entityId, 'inquest_rate');
 
             if ($rate > 0) {
-                $tabentities[$entity['id']] = $rate;
+                $tabentities[$entityId] = $rate;
             }
         }
 
@@ -7405,44 +7307,18 @@ class Ticket extends CommonITILObject
             $type          = Entity::getUsedConfig('inquest_config', $entity);
             $max_closedate = Entity::getUsedConfig('inquest_config', $entity, 'max_closedate');
 
-            $table = self::getTable();
-            $iterator = $DB->request([
-               'SELECT'    => [
-                  "$table.id",
-                  "$table.closedate",
-                  "$table.entities_id"
-               ],
-               'FROM'      => $table,
-               'LEFT JOIN' => [
-                  'glpi_ticketsatisfactions' => [
-                     'ON' => [
-                        'glpi_ticketsatisfactions' => 'tickets_id',
-                        'glpi_tickets'             => 'id'
-                     ]
-                  ],
-                  'glpi_entities'            => [
-                     'ON' => [
-                        'glpi_tickets'    => 'entities_id',
-                        'glpi_entities'   => 'id'
-                     ]
-                  ]
-               ],
-               'WHERE'     => [
-                  "$table.entities_id"          => $entity,
-                  "$table.is_deleted"           => 0,
-                  "$table.status"               => $_SESSION['CLOSED'],
-                  "$table.closedate"            => ['>', $max_closedate],
-                  new QueryExpression("ADDDATE(" . $DB->quoteName("$table.closedate") . ", INTERVAL $delay DAY) <= NOW()"),
-                  new QueryExpression("ADDDATE(" . $DB->quoteName("glpi_entities.max_closedate") . ", INTERVAL $duration DAY) <= NOW()"),
-                  "glpi_ticketsatisfactions.id" => null
-               ],
-               'ORDERBY'   => 'closedate ASC'
-            ]);
+            $rows = $candidates->surveyCandidates(
+                (int)$entity,
+                (int)$_SESSION['CLOSED'],
+                $max_closedate ? new DateTimeImmutable($max_closedate) : null,
+                (int)$delay,
+                (int)$duration
+            );
 
             $nb            = 0;
             $max_closedate = '';
 
-            while ($tick = $iterator->next()) {
+            foreach ($rows as $tick) {
                 $max_closedate = $tick['closedate'];
                 if (mt_rand(1, 100) <= $rate) {
                     if (
@@ -7508,36 +7384,20 @@ class Ticket extends CommonITILObject
         //search entities
         $tot = 0;
 
-        $entities = $DB->request(
-            [
-              'SELECT' => 'id',
-              'FROM'   => Entity::getTable(),
-            ]
-        );
+        $candidates = new TicketAutomaticActionRepository(Orm::create($DB));
+        $entities = (new RecordRepository(Orm::create($DB)))
+            ->identifiers(Entity::getTable(), 'id', [], ['id ASC']);
 
-        foreach ($entities as $entity) {
-            $delay  = Entity::getUsedConfig('autopurge_delay', $entity['id'], '', Entity::CONFIG_NEVER);
+        foreach ($entities as $entityId) {
+            $delay  = Entity::getUsedConfig('autopurge_delay', $entityId, '', Entity::CONFIG_NEVER);
             if ($delay >= 0) {
-                $criteria = [
-                   'FROM'   => $ticket->getTable(),
-                   'WHERE'  => [
-                      'entities_id'  => $entity['id'],
-                      'status'       => $ticket->getClosedStatusArray(),
-                   ]
-                ];
-
-                if ($delay > 0) {
-                    // remove all days
-                    $criteria['WHERE'][] = new \QueryExpression("ADDDATE(`closedate`, INTERVAL " . $delay . " DAY) < NOW()");
-                }
-
-                $iterator = $DB->request($criteria);
+                $ids = $candidates->purgeCandidates($entityId, $ticket->getClosedStatusArray(), (int)$delay);
                 $nb = 0;
 
-                foreach ($iterator as $tick) {
+                foreach ($ids as $id) {
                     $ticket->delete(
                         [
-                          'id'           => $tick['id'],
+                          'id'           => $id,
                           '_auto_update' => true
                         ],
                         true
@@ -7548,7 +7408,7 @@ class Ticket extends CommonITILObject
                 if ($nb) {
                     $tot += $nb;
                     $task->addVolume($nb);
-                    $task->log(Dropdown::getDropdownName('glpi_entities', $entity['id']) . " : $nb");
+                    $task->log(Dropdown::getDropdownName('glpi_entities', $entityId) . " : $nb");
                 }
             }
         }
@@ -7704,9 +7564,9 @@ class Ticket extends CommonITILObject
         if (isset($this->fields['slas_id_ttr']) && $this->fields['slas_id_ttr'] > 0) {
             $sla = new SLA();
             if ($sla->getFromDB($this->fields['slas_id_ttr'])) {
-                // not -1: calendar of the entity
-                if ($sla->getField('calendars_id') >= 0) {
-                    return $sla->getField('calendars_id');
+                // A fixed or always-open SLM calendar overrides entity inheritance.
+                if (!$sla->usesTicketCalendar()) {
+                    return (int)$sla->getField('calendars_id');
                 }
             }
         }
@@ -8101,7 +7961,7 @@ class Ticket extends CommonITILObject
                 if ($merge_target->canUpdateItem() && $ticket->can($id, DELETE)) {
                     if (!$ticket->getFromDB($id)) {
                         //Cannot retrieve ticket. Abort/fail the merge
-                        throw new \RuntimeException(sprintf(__('Failed to load ticket %d'), $id), 1);
+                        throw new RuntimeException(sprintf(__('Failed to load ticket %d'), $id), 1);
                     }
                     //Build followup from the original ticket
                     $input = [
@@ -8116,7 +7976,7 @@ class Ticket extends CommonITILObject
                     ];
                     if (!$fup->add($input)) {
                         //Cannot add followup. Abort/fail the merge
-                        throw new \RuntimeException(sprintf(__('Failed to add followup to ticket %d'), $merge_target_id), 1);
+                        throw new RuntimeException(sprintf(__('Failed to add followup to ticket %d'), $merge_target_id), 1);
                     }
                     if (in_array('ITILFollowup', $p['linktypes'])) {
                         // Copy any followups to the ticket
@@ -8125,20 +7985,20 @@ class Ticket extends CommonITILObject
                            'itemtype' => 'Ticket'
                         ]);
                         foreach ($tomerge as $fup2) {
-                            $fup2['items_id'] = $merge_target_id;
+                            $fup2 = ITILFollowupEntity::withReference($fup2, 'Ticket', (int)$merge_target_id);
                             $fup2['sourceitems_id'] = $id;
                             $fup2['content'] = $DB->escape($fup2['content']);
                             unset($fup2['id']);
                             if (!$fup->add($fup2)) {
                                 // Cannot add followup. Abort/fail the merge
-                                throw new \RuntimeException(sprintf(__('Failed to add followup to ticket %d'), $merge_target_id), 1);
+                                throw new RuntimeException(sprintf(__('Failed to add followup to ticket %d'), $merge_target_id), 1);
                             }
                         }
                     }
                     if (in_array('TicketTask', $p['linktypes'])) {
                         $merge_tmp = ['tickets_id' => $merge_target_id];
                         if (!$task->can(-1, CREATE, $merge_tmp)) {
-                            throw new \RuntimeException(sprintf(__('Not enough rights to merge tickets %d and %d'), $merge_target_id, $id), 2);
+                            throw new RuntimeException(sprintf(__('Not enough rights to merge tickets %d and %d'), $merge_target_id, $id), 2);
                         }
                         // Copy any tasks to the ticket
                         $tomerge = $task->find([
@@ -8152,19 +8012,19 @@ class Ticket extends CommonITILObject
                             unset($task2['uuid']);
                             if (!$task->add($task2)) {
                                 //Cannot add followup. Abort/fail the merge
-                                throw new \RuntimeException(sprintf(__('Failed to add task to ticket %d'), $merge_target_id), 1);
+                                throw new RuntimeException(sprintf(__('Failed to add task to ticket %d'), $merge_target_id), 1);
                             }
                         }
                     }
                     if (in_array('Document', $p['linktypes'])) {
                         if (!$merge_target->canAddItem('Document')) {
-                            throw new \RuntimeException(sprintf(__('Not enough rights to merge tickets %d and %d'), $merge_target_id, $id), 2);
+                            throw new RuntimeException(sprintf(__('Not enough rights to merge tickets %d and %d'), $merge_target_id, $id), 2);
                         }
                         $tomerge = $document_item->find([
                            'itemtype' => 'Ticket',
                            'items_id' => $id,
                            'NOT' => [
-                              'documents_id' => new \QuerySubQuery([
+                              'documents_id' => new QuerySubQuery([
                                  'SELECT' => 'documents_id',
                                  'FROM'   => $document_item->getTable(),
                                  'WHERE'  => [
@@ -8176,11 +8036,11 @@ class Ticket extends CommonITILObject
                         ]);
 
                         foreach ($tomerge as $document_item2) {
-                            $document_item2['items_id'] = $merge_target_id;
+                            $document_item2 = DocumentItem::withReference($document_item2, 'Ticket', (int)$merge_target_id);
                             unset($document_item2['id']);
                             if (!$document_item->add($document_item2)) {
                                 //Cannot add document. Abort/fail the merge
-                                throw new \RuntimeException(sprintf(__('Failed to add document to ticket %d'), $merge_target_id), 1);
+                                throw new RuntimeException(sprintf(__('Failed to add document to ticket %d'), $merge_target_id), 1);
                             }
                         }
                     }
@@ -8210,7 +8070,7 @@ class Ticket extends CommonITILObject
                         ]);
                         if (!$tt->add($linkparams)) {
                             //Cannot link tickets. Abort/fail the merge
-                            throw new \RuntimeException(sprintf(__('Failed to link tickets %d and %d'), $merge_target_id, $id), 1);
+                            throw new RuntimeException(sprintf(__('Failed to link tickets %d and %d'), $merge_target_id, $id), 1);
                         }
                     }
                     if (isset($p['append_actors'])) {
@@ -8304,7 +8164,7 @@ class Ticket extends CommonITILObject
                     }
                     //Delete this ticket
                     if (!$ticket->delete(['id' => $id, '_disablenotif' => true])) {
-                        throw new \RuntimeException(sprintf(__('Failed to delete ticket %d'), $id), 1);
+                        throw new RuntimeException(sprintf(__('Failed to delete ticket %d'), $id), 1);
                     }
                     if (!$p['full_transaction'] && !$in_transaction) {
                         $DB->commit();
@@ -8323,9 +8183,9 @@ class Ticket extends CommonITILObject
                         )
                     );
                 } else {
-                    throw new \RuntimeException(sprintf(__('Not enough rights to merge tickets %d and %d'), $merge_target_id, $id), 2);
+                    throw new RuntimeException(sprintf(__('Not enough rights to merge tickets %d and %d'), $merge_target_id, $id), 2);
                 }
-            } catch (\RuntimeException $e) {
+            } catch (RuntimeException $e) {
                 if ($e->getCode() < 1 || $e->getCode() > 2) {
                     $status[$id] = 1;
                 } else {

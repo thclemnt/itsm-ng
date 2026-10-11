@@ -1,0 +1,283 @@
+{
+  "source": "ROOT-owned actual TEMP PostgreSQL captures; no application tables changed",
+  "engines": {
+    "pg14": {
+      "server_version_num": "140024",
+      "operators": [
+        {"oid": "15", "name": "=", "left_type": "23", "right_type": "20", "function_oid": "852", "function_namespace": "pg_catalog"},
+        {"oid": "36", "name": "<>", "left_type": "23", "right_type": "20", "function_oid": "853", "function_namespace": "pg_catalog"},
+        {"oid": "76", "name": ">", "left_type": "23", "right_type": "20", "function_oid": "855", "function_namespace": "pg_catalog"},
+        {"oid": "82", "name": ">=", "left_type": "23", "right_type": "20", "function_oid": "857", "function_namespace": "pg_catalog"},
+        {"oid": "94", "name": "=", "left_type": "21", "right_type": "21", "function_oid": "63", "function_namespace": "pg_catalog"},
+        {"oid": "96", "name": "=", "left_type": "23", "right_type": "23", "function_oid": "65", "function_namespace": "pg_catalog"},
+        {"oid": "98", "name": "=", "left_type": "25", "right_type": "25", "function_oid": "67", "function_namespace": "pg_catalog"},
+        {"oid": "410", "name": "=", "left_type": "20", "right_type": "20", "function_oid": "467", "function_namespace": "pg_catalog"},
+        {"oid": "411", "name": "<>", "left_type": "20", "right_type": "20", "function_oid": "468", "function_namespace": "pg_catalog"},
+        {"oid": "413", "name": ">", "left_type": "20", "right_type": "20", "function_oid": "470", "function_namespace": "pg_catalog"},
+        {"oid": "415", "name": ">=", "left_type": "20", "right_type": "20", "function_oid": "472", "function_namespace": "pg_catalog"},
+        {"oid": "416", "name": "=", "left_type": "20", "right_type": "23", "function_oid": "474", "function_namespace": "pg_catalog"},
+        {"oid": "417", "name": "<>", "left_type": "20", "right_type": "23", "function_oid": "475", "function_namespace": "pg_catalog"},
+        {"oid": "419", "name": ">", "left_type": "20", "right_type": "23", "function_oid": "477", "function_namespace": "pg_catalog"},
+        {"oid": "430", "name": ">=", "left_type": "20", "right_type": "23", "function_oid": "479", "function_namespace": "pg_catalog"},
+        {"oid": "518", "name": "<>", "left_type": "23", "right_type": "23", "function_oid": "144", "function_namespace": "pg_catalog"},
+        {"oid": "519", "name": "<>", "left_type": "21", "right_type": "21", "function_oid": "145", "function_namespace": "pg_catalog"},
+        {"oid": "520", "name": ">", "left_type": "21", "right_type": "21", "function_oid": "146", "function_namespace": "pg_catalog"},
+        {"oid": "521", "name": ">", "left_type": "23", "right_type": "23", "function_oid": "147", "function_namespace": "pg_catalog"},
+        {"oid": "524", "name": ">=", "left_type": "21", "right_type": "21", "function_oid": "151", "function_namespace": "pg_catalog"},
+        {"oid": "525", "name": ">=", "left_type": "23", "right_type": "23", "function_oid": "150", "function_namespace": "pg_catalog"},
+        {"oid": "531", "name": "<>", "left_type": "25", "right_type": "25", "function_oid": "157", "function_namespace": "pg_catalog"},
+        {"oid": "532", "name": "=", "left_type": "21", "right_type": "23", "function_oid": "158", "function_namespace": "pg_catalog"},
+        {"oid": "533", "name": "=", "left_type": "23", "right_type": "21", "function_oid": "159", "function_namespace": "pg_catalog"},
+        {"oid": "536", "name": ">", "left_type": "21", "right_type": "23", "function_oid": "162", "function_namespace": "pg_catalog"},
+        {"oid": "537", "name": ">", "left_type": "23", "right_type": "21", "function_oid": "163", "function_namespace": "pg_catalog"},
+        {"oid": "538", "name": "<>", "left_type": "21", "right_type": "23", "function_oid": "164", "function_namespace": "pg_catalog"},
+        {"oid": "539", "name": "<>", "left_type": "23", "right_type": "21", "function_oid": "165", "function_namespace": "pg_catalog"},
+        {"oid": "542", "name": ">=", "left_type": "21", "right_type": "23", "function_oid": "168", "function_namespace": "pg_catalog"},
+        {"oid": "543", "name": ">=", "left_type": "23", "right_type": "21", "function_oid": "169", "function_namespace": "pg_catalog"},
+        {"oid": "666", "name": ">", "left_type": "25", "right_type": "25", "function_oid": "742", "function_namespace": "pg_catalog"},
+        {"oid": "667", "name": ">=", "left_type": "25", "right_type": "25", "function_oid": "743", "function_namespace": "pg_catalog"},
+        {"oid": "1862", "name": "=", "left_type": "21", "right_type": "20", "function_oid": "1850", "function_namespace": "pg_catalog"},
+        {"oid": "1863", "name": "<>", "left_type": "21", "right_type": "20", "function_oid": "1851", "function_namespace": "pg_catalog"},
+        {"oid": "1865", "name": ">", "left_type": "21", "right_type": "20", "function_oid": "1853", "function_namespace": "pg_catalog"},
+        {"oid": "1867", "name": ">=", "left_type": "21", "right_type": "20", "function_oid": "1855", "function_namespace": "pg_catalog"},
+        {"oid": "1868", "name": "=", "left_type": "20", "right_type": "21", "function_oid": "1856", "function_namespace": "pg_catalog"},
+        {"oid": "1869", "name": "<>", "left_type": "20", "right_type": "21", "function_oid": "1857", "function_namespace": "pg_catalog"},
+        {"oid": "1871", "name": ">", "left_type": "20", "right_type": "21", "function_oid": "1859", "function_namespace": "pg_catalog"},
+        {"oid": "1873", "name": ">=", "left_type": "20", "right_type": "21", "function_oid": "1861", "function_namespace": "pg_catalog"}
+      ],
+      "reference_text_coercion": {"text": "25", "bigint": "20", "binary": true, "integer": "23", "varchar": "1043", "smallint": "21"},
+      "stages": {
+        "bigint-stored": {
+          "checks": ["checks_0"],
+          "columns": {"id": "columns_0", "items_id": "columns_1", "itemtype": "columns_2", "networkports_id": "columns_3", "opaque_parent_id": "columns_4"},
+          "table_name": "itsm_nn_shape_probe",
+          "foreign_keys": ["foreign_keys_0"]
+        },
+        "bigint-generated": {
+          "checks": ["checks_0"],
+          "columns": {"id": "columns_0", "items_id": "columns_5", "itemtype": "columns_2", "networkports_id": "columns_3", "opaque_parent_id": "columns_4"},
+          "table_name": "itsm_nn_shape_probe",
+          "foreign_keys": ["foreign_keys_0"]
+        },
+        "integer-stored": {
+          "checks": ["checks_1"],
+          "columns": {"id": "columns_0", "items_id": "columns_6", "itemtype": "columns_2", "networkports_id": "columns_7", "opaque_parent_id": "columns_8"},
+          "table_name": "itsm_nn_shape_probe",
+          "foreign_keys": null
+        },
+        "integer-widened-stored": {
+          "checks": ["checks_2"],
+          "columns": {"id": "columns_0", "items_id": "columns_6", "itemtype": "columns_2", "networkports_id": "columns_3", "opaque_parent_id": "columns_9"},
+          "table_name": "itsm_nn_shape_probe",
+          "foreign_keys": null
+        },
+        "integer-generated": {
+          "checks": ["checks_2"],
+          "columns": {"id": "columns_0", "items_id": "columns_5", "itemtype": "columns_2", "networkports_id": "columns_3", "opaque_parent_id": "columns_9"},
+          "table_name": "itsm_nn_shape_probe",
+          "foreign_keys": null
+        }
+      },
+      "observations": [
+        {
+          "stage": "populated-logical-values",
+          "values": [
+            {"id": 1, "items_id": 1, "itemtype": "NetworkPort", "networkports_id": 1, "opaque_parent_id": null},
+            {"id": 2, "items_id": 0, "itemtype": "NetworkPort", "networkports_id": null, "opaque_parent_id": null},
+            {"id": 3, "items_id": 0, "itemtype": "", "networkports_id": null, "opaque_parent_id": 0},
+            {"id": 4, "items_id": -8, "itemtype": "PluginExample", "networkports_id": null, "opaque_parent_id": -8},
+            {"id": 5, "items_id": 1, "itemtype": "networkport", "networkports_id": null, "opaque_parent_id": 1},
+            {"id": 6, "items_id": 2, "itemtype": "AliasNetworkPort", "networkports_id": null, "opaque_parent_id": 2}
+          ]
+        },
+        {"stage": "rejected-negative"},
+        {"stage": "rejected-orphan"},
+        {"stage": "rejected-unknown-owned"},
+        {"stage": "rejected-both-slots"},
+        {"closed": true, "owner_absent": true, "probe_absent": true}
+      ],
+      "integer_to_bigint_cast": {"method": "f", "context": "i", "volatility": "i", "result_type": "20", "returns_set": false, "source_type": "23", "target_type": "20", "function_oid": "481", "function_name": "int8", "argument_types": "23", "function_namespace": "pg_catalog", "server_version_num": "140024"},
+      "boolean": "16",
+      "operator_result": {"result_type": "16", "returns_set": false},
+      "column_facts": {
+        "columns_0": {"nullable": false, "type_oid": "20", "generated": "", "type_name": "bigint", "expression": null, "native_nodes": null, "collation_oid": "0", "deterministic": null, "type_modifier": "-1", "attribute_number": "1"},
+        "columns_1": {"nullable": false, "type_oid": "20", "generated": "", "type_name": "bigint", "expression": "0", "native_nodes": "{FUNCEXPR :funcid 481 :funcresulttype 20 :funcretset false :funcvariadic false :funcformat 2 :funccollid 0 :inputcollid 0 :args ({CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 220 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location -1}", "collation_oid": "0", "deterministic": null, "type_modifier": "-1", "attribute_number": "5"},
+        "columns_2": {"nullable": false, "type_oid": "1043", "generated": "", "type_name": "character varying(100)", "expression": "''::character varying", "native_nodes": "{FUNCEXPR :funcid 669 :funcresulttype 1043 :funcretset false :funcvariadic false :funcformat 2 :funccollid 100 :inputcollid 100 :args ({CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 101 :constvalue 4 [ 16 0 0 0 ]} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location -1 :constvalue 4 [ 104 0 0 0 0 0 0 0 ]} {CONST :consttype 16 :consttypmod -1 :constcollid 0 :constlen 1 :constbyval true :constisnull false :location -1 :constvalue 1 [ 0 0 0 0 0 0 0 0 ]}) :location -1}", "collation_oid": "100", "deterministic": true, "type_modifier": "104", "attribute_number": "2"},
+        "columns_3": {"nullable": true, "type_oid": "20", "generated": "", "type_name": "bigint", "expression": null, "native_nodes": null, "collation_oid": "0", "deterministic": null, "type_modifier": "-1", "attribute_number": "3"},
+        "columns_4": {"nullable": true, "type_oid": "20", "generated": "", "type_name": "bigint", "expression": "0", "native_nodes": "{FUNCEXPR :funcid 481 :funcresulttype 20 :funcretset false :funcvariadic false :funcformat 2 :funccollid 0 :inputcollid 0 :args ({CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 184 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location -1}", "collation_oid": "0", "deterministic": null, "type_modifier": "-1", "attribute_number": "4"},
+        "columns_5": {"nullable": true, "type_oid": "20", "generated": "s", "type_name": "bigint", "expression": "\nCASE\n    WHEN ((itemtype)::text = 'NetworkPort'::text) THEN COALESCE(networkports_id, (0)::bigint)\n    ELSE opaque_parent_id\nEND", "native_nodes": "{CASE :casetype 20 :casecollid 0 :arg <> :args ({WHEN :expr {OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 104 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 2 :location 90} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 103 :constvalue 15 [ 60 0 0 0 78 101 116 119 111 114 107 80 111 114 116 ]}) :location 99} :result {COALESCE :coalescetype 20 :coalescecollid 0 :args ({VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 3 :location 132} {FUNCEXPR :funcid 481 :funcresulttype 20 :funcretset false :funcvariadic false :funcformat 2 :funccollid 0 :inputcollid 0 :args ({CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 148 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location -1}) :location 123} :location 85}) :defresult {VAR :varno 1 :varattno 4 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 4 :location 156} :location 80}", "collation_oid": "0", "deterministic": null, "type_modifier": "-1", "attribute_number": "6"},
+        "columns_6": {"nullable": false, "type_oid": "20", "generated": "", "type_name": "bigint", "expression": "0", "native_nodes": "{FUNCEXPR :funcid 481 :funcresulttype 20 :funcretset false :funcvariadic false :funcformat 2 :funccollid 0 :inputcollid 0 :args ({CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 222 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location -1}", "collation_oid": "0", "deterministic": null, "type_modifier": "-1", "attribute_number": "5"},
+        "columns_7": {"nullable": true, "type_oid": "23", "generated": "", "type_name": "integer", "expression": null, "native_nodes": null, "collation_oid": "0", "deterministic": null, "type_modifier": "-1", "attribute_number": "3"},
+        "columns_8": {"nullable": true, "type_oid": "23", "generated": "", "type_name": "integer", "expression": "0", "native_nodes": "{CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 186 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}", "collation_oid": "0", "deterministic": null, "type_modifier": "-1", "attribute_number": "4"},
+        "columns_9": {"nullable": true, "type_oid": "20", "generated": "", "type_name": "bigint", "expression": "0", "native_nodes": "{FUNCEXPR :funcid 481 :funcresulttype 20 :funcretset false :funcvariadic false :funcformat 2 :funccollid 0 :inputcollid 0 :args ({CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location -1 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location -1}", "collation_oid": "0", "deterministic": null, "type_modifier": "-1", "attribute_number": "4"}
+      },
+      "check_facts": {
+        "checks_0": {
+          "clause": "((((itemtype)::text = 'NetworkPort'::text) AND ((networkports_id IS NULL) OR (networkports_id > 0)) AND (opaque_parent_id IS NULL)) OR (((itemtype)::text <> 'NetworkPort'::text) AND (networkports_id IS NULL) AND (opaque_parent_id IS NOT NULL)))",
+          "enforced": "true",
+          "validated": true,
+          "constraint": "glpi_networknames_parent_kind",
+          "native_nodes": "{BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 104 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 2 :location 85} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 98 :constvalue 15 [ 60 0 0 0 78 101 116 119 111 114 107 80 111 114 116 ]}) :location 94} {BOOLEXPR :boolop or :args ({NULLTEST :arg {VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 3 :location 118} :nulltesttype 0 :argisrow false :location 134} {OPEXPR :opno 419 :opfuncid 477 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 3 :location 145} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 163 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location 161}) :location 142} {NULLTEST :arg {VAR :varno 1 :varattno 4 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 4 :location 170} :nulltesttype 0 :argisrow false :location 187}) :location 113} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 104 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 2 :location 200} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 217 :constvalue 15 [ 60 0 0 0 78 101 116 119 111 114 107 80 111 114 116 ]}) :location 209} {NULLTEST :arg {VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 3 :location 236} :nulltesttype 0 :argisrow false :location 252} {NULLTEST :arg {VAR :varno 1 :varattno 4 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 4 :location 264} :nulltesttype 1 :argisrow false :location 281}) :location 232}) :location 196}",
+          "checked_columns": ["itemtype", "networkports_id", "opaque_parent_id"]
+        },
+        "checks_1": {
+          "clause": "((((itemtype)::text = 'NetworkPort'::text) AND ((networkports_id IS NULL) OR (networkports_id > 0)) AND (opaque_parent_id IS NULL)) OR (((itemtype)::text <> 'NetworkPort'::text) AND (networkports_id IS NULL) AND (opaque_parent_id IS NOT NULL)))",
+          "enforced": "true",
+          "validated": true,
+          "constraint": "glpi_networknames_parent_kind",
+          "native_nodes": "{BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 104 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 2 :location 85} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 98 :constvalue 15 [ 60 0 0 0 78 101 116 119 111 114 107 80 111 114 116 ]}) :location 94} {BOOLEXPR :boolop or :args ({NULLTEST :arg {VAR :varno 1 :varattno 3 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 3 :location 118} :nulltesttype 0 :argisrow false :location 134} {OPEXPR :opno 521 :opfuncid 147 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 3 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 3 :location 145} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 163 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location 161}) :location 142} {NULLTEST :arg {VAR :varno 1 :varattno 4 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 4 :location 170} :nulltesttype 0 :argisrow false :location 187}) :location 113} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 104 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 2 :location 200} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 217 :constvalue 15 [ 60 0 0 0 78 101 116 119 111 114 107 80 111 114 116 ]}) :location 209} {NULLTEST :arg {VAR :varno 1 :varattno 3 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 3 :location 236} :nulltesttype 0 :argisrow false :location 252} {NULLTEST :arg {VAR :varno 1 :varattno 4 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 4 :location 264} :nulltesttype 1 :argisrow false :location 281}) :location 232}) :location 196}",
+          "checked_columns": ["itemtype", "networkports_id", "opaque_parent_id"]
+        },
+        "checks_2": {
+          "clause": "((((itemtype)::text = 'NetworkPort'::text) AND ((networkports_id IS NULL) OR (networkports_id > 0)) AND (opaque_parent_id IS NULL)) OR (((itemtype)::text <> 'NetworkPort'::text) AND (networkports_id IS NULL) AND (opaque_parent_id IS NOT NULL)))",
+          "enforced": "true",
+          "validated": true,
+          "constraint": "glpi_networknames_parent_kind",
+          "native_nodes": "{BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 104 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 2 :location 98} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 107} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 116 :constvalue 15 [ 60 0 0 0 78 101 116 119 111 114 107 80 111 114 116 ]}) :location 114} {BOOLEXPR :boolop or :args ({NULLTEST :arg {VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 3 :location 143} :nulltesttype 0 :argisrow false :location 159} {OPEXPR :opno 419 :opfuncid 477 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 3 :location 172} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 190 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location 188}) :location 168} {NULLTEST :arg {VAR :varno 1 :varattno 4 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 4 :location 199} :nulltesttype 0 :argisrow false :location 216}) :location 137} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 104 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 2 :location 232} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 241} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 251 :constvalue 15 [ 60 0 0 0 78 101 116 119 111 114 107 80 111 114 116 ]}) :location 248} {NULLTEST :arg {VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 3 :location 277} :nulltesttype 0 :argisrow false :location 293} {NULLTEST :arg {VAR :varno 1 :varattno 4 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 4 :location 307} :nulltesttype 1 :argisrow false :location 324}) :location 272}) :location 226}",
+          "checked_columns": ["itemtype", "networkports_id", "opaque_parent_id"]
+        }
+      },
+      "foreign_key_facts": {
+        "foreign_keys_0": {"enforced": "true", "validated": true, "constraint": "itsm_nn_owner_fk", "deferrable": false, "definition": "FOREIGN KEY (networkports_id) REFERENCES itsm_nn_owner_probe(id) ON DELETE RESTRICT", "target_oid": "87535", "target_table": "itsm_nn_owner_probe", "delete_action": "r", "target_schema": "pg_temp_3", "update_action": "a", "initially_deferred": false}
+      }
+    },
+    "pg18": {
+      "server_version_num": "180006",
+      "operators": [
+        {"oid": "15", "name": "=", "left_type": "23", "right_type": "20", "function_oid": "852", "function_namespace": "pg_catalog"},
+        {"oid": "36", "name": "<>", "left_type": "23", "right_type": "20", "function_oid": "853", "function_namespace": "pg_catalog"},
+        {"oid": "76", "name": ">", "left_type": "23", "right_type": "20", "function_oid": "855", "function_namespace": "pg_catalog"},
+        {"oid": "82", "name": ">=", "left_type": "23", "right_type": "20", "function_oid": "857", "function_namespace": "pg_catalog"},
+        {"oid": "94", "name": "=", "left_type": "21", "right_type": "21", "function_oid": "63", "function_namespace": "pg_catalog"},
+        {"oid": "96", "name": "=", "left_type": "23", "right_type": "23", "function_oid": "65", "function_namespace": "pg_catalog"},
+        {"oid": "98", "name": "=", "left_type": "25", "right_type": "25", "function_oid": "67", "function_namespace": "pg_catalog"},
+        {"oid": "410", "name": "=", "left_type": "20", "right_type": "20", "function_oid": "467", "function_namespace": "pg_catalog"},
+        {"oid": "411", "name": "<>", "left_type": "20", "right_type": "20", "function_oid": "468", "function_namespace": "pg_catalog"},
+        {"oid": "413", "name": ">", "left_type": "20", "right_type": "20", "function_oid": "470", "function_namespace": "pg_catalog"},
+        {"oid": "415", "name": ">=", "left_type": "20", "right_type": "20", "function_oid": "472", "function_namespace": "pg_catalog"},
+        {"oid": "416", "name": "=", "left_type": "20", "right_type": "23", "function_oid": "474", "function_namespace": "pg_catalog"},
+        {"oid": "417", "name": "<>", "left_type": "20", "right_type": "23", "function_oid": "475", "function_namespace": "pg_catalog"},
+        {"oid": "419", "name": ">", "left_type": "20", "right_type": "23", "function_oid": "477", "function_namespace": "pg_catalog"},
+        {"oid": "430", "name": ">=", "left_type": "20", "right_type": "23", "function_oid": "479", "function_namespace": "pg_catalog"},
+        {"oid": "518", "name": "<>", "left_type": "23", "right_type": "23", "function_oid": "144", "function_namespace": "pg_catalog"},
+        {"oid": "519", "name": "<>", "left_type": "21", "right_type": "21", "function_oid": "145", "function_namespace": "pg_catalog"},
+        {"oid": "520", "name": ">", "left_type": "21", "right_type": "21", "function_oid": "146", "function_namespace": "pg_catalog"},
+        {"oid": "521", "name": ">", "left_type": "23", "right_type": "23", "function_oid": "147", "function_namespace": "pg_catalog"},
+        {"oid": "524", "name": ">=", "left_type": "21", "right_type": "21", "function_oid": "151", "function_namespace": "pg_catalog"},
+        {"oid": "525", "name": ">=", "left_type": "23", "right_type": "23", "function_oid": "150", "function_namespace": "pg_catalog"},
+        {"oid": "531", "name": "<>", "left_type": "25", "right_type": "25", "function_oid": "157", "function_namespace": "pg_catalog"},
+        {"oid": "532", "name": "=", "left_type": "21", "right_type": "23", "function_oid": "158", "function_namespace": "pg_catalog"},
+        {"oid": "533", "name": "=", "left_type": "23", "right_type": "21", "function_oid": "159", "function_namespace": "pg_catalog"},
+        {"oid": "536", "name": ">", "left_type": "21", "right_type": "23", "function_oid": "162", "function_namespace": "pg_catalog"},
+        {"oid": "537", "name": ">", "left_type": "23", "right_type": "21", "function_oid": "163", "function_namespace": "pg_catalog"},
+        {"oid": "538", "name": "<>", "left_type": "21", "right_type": "23", "function_oid": "164", "function_namespace": "pg_catalog"},
+        {"oid": "539", "name": "<>", "left_type": "23", "right_type": "21", "function_oid": "165", "function_namespace": "pg_catalog"},
+        {"oid": "542", "name": ">=", "left_type": "21", "right_type": "23", "function_oid": "168", "function_namespace": "pg_catalog"},
+        {"oid": "543", "name": ">=", "left_type": "23", "right_type": "21", "function_oid": "169", "function_namespace": "pg_catalog"},
+        {"oid": "666", "name": ">", "left_type": "25", "right_type": "25", "function_oid": "742", "function_namespace": "pg_catalog"},
+        {"oid": "667", "name": ">=", "left_type": "25", "right_type": "25", "function_oid": "743", "function_namespace": "pg_catalog"},
+        {"oid": "1862", "name": "=", "left_type": "21", "right_type": "20", "function_oid": "1850", "function_namespace": "pg_catalog"},
+        {"oid": "1863", "name": "<>", "left_type": "21", "right_type": "20", "function_oid": "1851", "function_namespace": "pg_catalog"},
+        {"oid": "1865", "name": ">", "left_type": "21", "right_type": "20", "function_oid": "1853", "function_namespace": "pg_catalog"},
+        {"oid": "1867", "name": ">=", "left_type": "21", "right_type": "20", "function_oid": "1855", "function_namespace": "pg_catalog"},
+        {"oid": "1868", "name": "=", "left_type": "20", "right_type": "21", "function_oid": "1856", "function_namespace": "pg_catalog"},
+        {"oid": "1869", "name": "<>", "left_type": "20", "right_type": "21", "function_oid": "1857", "function_namespace": "pg_catalog"},
+        {"oid": "1871", "name": ">", "left_type": "20", "right_type": "21", "function_oid": "1859", "function_namespace": "pg_catalog"},
+        {"oid": "1873", "name": ">=", "left_type": "20", "right_type": "21", "function_oid": "1861", "function_namespace": "pg_catalog"}
+      ],
+      "reference_text_coercion": {"text": "25", "bigint": "20", "binary": true, "integer": "23", "varchar": "1043", "smallint": "21"},
+      "stages": {
+        "bigint-stored": {
+          "checks": ["checks_0"],
+          "columns": {"id": "columns_0", "items_id": "columns_1", "itemtype": "columns_2", "networkports_id": "columns_3", "opaque_parent_id": "columns_4"},
+          "table_name": "itsm_nn_shape_probe",
+          "foreign_keys": ["foreign_keys_0"]
+        },
+        "bigint-generated": {
+          "checks": ["checks_0"],
+          "columns": {"id": "columns_0", "items_id": "columns_5", "itemtype": "columns_2", "networkports_id": "columns_3", "opaque_parent_id": "columns_4"},
+          "table_name": "itsm_nn_shape_probe",
+          "foreign_keys": ["foreign_keys_0"]
+        },
+        "integer-stored": {
+          "checks": ["checks_1"],
+          "columns": {"id": "columns_0", "items_id": "columns_1", "itemtype": "columns_2", "networkports_id": "columns_6", "opaque_parent_id": "columns_7"},
+          "table_name": "itsm_nn_shape_probe",
+          "foreign_keys": null
+        },
+        "integer-widened-stored": {
+          "checks": ["checks_2"],
+          "columns": {"id": "columns_0", "items_id": "columns_1", "itemtype": "columns_2", "networkports_id": "columns_3", "opaque_parent_id": "columns_4"},
+          "table_name": "itsm_nn_shape_probe",
+          "foreign_keys": null
+        },
+        "integer-generated": {
+          "checks": ["checks_2"],
+          "columns": {"id": "columns_0", "items_id": "columns_5", "itemtype": "columns_2", "networkports_id": "columns_3", "opaque_parent_id": "columns_4"},
+          "table_name": "itsm_nn_shape_probe",
+          "foreign_keys": null
+        }
+      },
+      "observations": [
+        {
+          "stage": "populated-logical-values",
+          "values": [
+            {"id": 1, "items_id": 1, "itemtype": "NetworkPort", "networkports_id": 1, "opaque_parent_id": null},
+            {"id": 2, "items_id": 0, "itemtype": "NetworkPort", "networkports_id": null, "opaque_parent_id": null},
+            {"id": 3, "items_id": 0, "itemtype": "", "networkports_id": null, "opaque_parent_id": 0},
+            {"id": 4, "items_id": -8, "itemtype": "PluginExample", "networkports_id": null, "opaque_parent_id": -8},
+            {"id": 5, "items_id": 1, "itemtype": "networkport", "networkports_id": null, "opaque_parent_id": 1},
+            {"id": 6, "items_id": 2, "itemtype": "AliasNetworkPort", "networkports_id": null, "opaque_parent_id": 2}
+          ]
+        },
+        {"stage": "rejected-negative"},
+        {"stage": "rejected-orphan"},
+        {"stage": "rejected-unknown-owned"},
+        {"stage": "rejected-both-slots"},
+        {"closed": true, "owner_absent": true, "probe_absent": true}
+      ],
+      "integer_to_bigint_cast": {"method": "f", "context": "i", "volatility": "i", "result_type": "20", "returns_set": false, "source_type": "23", "target_type": "20", "function_oid": "481", "function_name": "int8", "argument_types": "23", "function_namespace": "pg_catalog", "server_version_num": "180006"},
+      "boolean": "16",
+      "operator_result": {"result_type": "16", "returns_set": false},
+      "column_facts": {
+        "columns_0": {"nullable": false, "type_oid": "20", "generated": "", "type_name": "bigint", "expression": null, "native_nodes": null, "collation_oid": "0", "deterministic": null, "type_modifier": "-1", "attribute_number": "1"},
+        "columns_1": {"nullable": false, "type_oid": "20", "generated": "", "type_name": "bigint", "expression": "0", "native_nodes": "{FUNCEXPR :funcid 481 :funcresulttype 20 :funcretset false :funcvariadic false :funcformat 2 :funccollid 0 :inputcollid 0 :args ({CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location -1 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location -1}", "collation_oid": "0", "deterministic": null, "type_modifier": "-1", "attribute_number": "5"},
+        "columns_2": {"nullable": false, "type_oid": "1043", "generated": "", "type_name": "character varying(100)", "expression": "''::character varying", "native_nodes": "{FUNCEXPR :funcid 669 :funcresulttype 1043 :funcretset false :funcvariadic false :funcformat 2 :funccollid 100 :inputcollid 100 :args ({CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 4 [ 16 0 0 0 ]} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location -1 :constvalue 4 [ 104 0 0 0 0 0 0 0 ]} {CONST :consttype 16 :consttypmod -1 :constcollid 0 :constlen 1 :constbyval true :constisnull false :location -1 :constvalue 1 [ 0 0 0 0 0 0 0 0 ]}) :location -1}", "collation_oid": "100", "deterministic": true, "type_modifier": "104", "attribute_number": "2"},
+        "columns_3": {"nullable": true, "type_oid": "20", "generated": "", "type_name": "bigint", "expression": null, "native_nodes": null, "collation_oid": "0", "deterministic": null, "type_modifier": "-1", "attribute_number": "3"},
+        "columns_4": {"nullable": true, "type_oid": "20", "generated": "", "type_name": "bigint", "expression": "0", "native_nodes": "{FUNCEXPR :funcid 481 :funcresulttype 20 :funcretset false :funcvariadic false :funcformat 2 :funccollid 0 :inputcollid 0 :args ({CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location -1 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location -1}", "collation_oid": "0", "deterministic": null, "type_modifier": "-1", "attribute_number": "4"},
+        "columns_5": {"nullable": true, "type_oid": "20", "generated": "s", "type_name": "bigint", "expression": "\nCASE\n    WHEN ((itemtype)::text = 'NetworkPort'::text) THEN COALESCE(networkports_id, (0)::bigint)\n    ELSE opaque_parent_id\nEND", "native_nodes": "{CASEEXPR :casetype 20 :casecollid 0 :arg <> :args ({CASEWHEN :expr {OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 104 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 2 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 15 [ 60 0 0 0 78 101 116 119 111 114 107 80 111 114 116 ]}) :location -1} :result {COALESCEEXPR :coalescetype 20 :coalescecollid 0 :args ({VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 3 :location -1} {FUNCEXPR :funcid 481 :funcresulttype 20 :funcretset false :funcvariadic false :funcformat 2 :funccollid 0 :inputcollid 0 :args ({CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location -1 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location -1}) :location -1} :location -1}) :defresult {VAR :varno 1 :varattno 4 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 4 :location -1} :location -1}", "collation_oid": "0", "deterministic": null, "type_modifier": "-1", "attribute_number": "6"},
+        "columns_6": {"nullable": true, "type_oid": "23", "generated": "", "type_name": "integer", "expression": null, "native_nodes": null, "collation_oid": "0", "deterministic": null, "type_modifier": "-1", "attribute_number": "3"},
+        "columns_7": {"nullable": true, "type_oid": "23", "generated": "", "type_name": "integer", "expression": "0", "native_nodes": "{CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location -1 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}", "collation_oid": "0", "deterministic": null, "type_modifier": "-1", "attribute_number": "4"}
+      },
+      "check_facts": {
+        "checks_0": {
+          "clause": "((((itemtype)::text = 'NetworkPort'::text) AND ((networkports_id IS NULL) OR (networkports_id > 0)) AND (opaque_parent_id IS NULL)) OR (((itemtype)::text <> 'NetworkPort'::text) AND (networkports_id IS NULL) AND (opaque_parent_id IS NOT NULL)))",
+          "enforced": "true",
+          "validated": true,
+          "constraint": "glpi_networknames_parent_kind",
+          "native_nodes": "{BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 104 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 2 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 15 [ 60 0 0 0 78 101 116 119 111 114 107 80 111 114 116 ]}) :location -1} {BOOLEXPR :boolop or :args ({NULLTEST :arg {VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 3 :location -1} :nulltesttype 0 :argisrow false :location -1} {OPEXPR :opno 419 :opfuncid 477 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 3 :location -1} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location -1 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location -1}) :location -1} {NULLTEST :arg {VAR :varno 1 :varattno 4 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 4 :location -1} :nulltesttype 0 :argisrow false :location -1}) :location -1} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 104 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 2 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 15 [ 60 0 0 0 78 101 116 119 111 114 107 80 111 114 116 ]}) :location -1} {NULLTEST :arg {VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 3 :location -1} :nulltesttype 0 :argisrow false :location -1} {NULLTEST :arg {VAR :varno 1 :varattno 4 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 4 :location -1} :nulltesttype 1 :argisrow false :location -1}) :location -1}) :location -1}",
+          "checked_columns": ["itemtype", "networkports_id", "opaque_parent_id"]
+        },
+        "checks_1": {
+          "clause": "((((itemtype)::text = 'NetworkPort'::text) AND ((networkports_id IS NULL) OR (networkports_id > 0)) AND (opaque_parent_id IS NULL)) OR (((itemtype)::text <> 'NetworkPort'::text) AND (networkports_id IS NULL) AND (opaque_parent_id IS NOT NULL)))",
+          "enforced": "true",
+          "validated": true,
+          "constraint": "glpi_networknames_parent_kind",
+          "native_nodes": "{BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 104 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 2 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 15 [ 60 0 0 0 78 101 116 119 111 114 107 80 111 114 116 ]}) :location -1} {BOOLEXPR :boolop or :args ({NULLTEST :arg {VAR :varno 1 :varattno 3 :vartype 23 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 3 :location -1} :nulltesttype 0 :argisrow false :location -1} {OPEXPR :opno 521 :opfuncid 147 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 3 :vartype 23 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 3 :location -1} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location -1 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location -1}) :location -1} {NULLTEST :arg {VAR :varno 1 :varattno 4 :vartype 23 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 4 :location -1} :nulltesttype 0 :argisrow false :location -1}) :location -1} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 104 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 2 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 15 [ 60 0 0 0 78 101 116 119 111 114 107 80 111 114 116 ]}) :location -1} {NULLTEST :arg {VAR :varno 1 :varattno 3 :vartype 23 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 3 :location -1} :nulltesttype 0 :argisrow false :location -1} {NULLTEST :arg {VAR :varno 1 :varattno 4 :vartype 23 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 4 :location -1} :nulltesttype 1 :argisrow false :location -1}) :location -1}) :location -1}",
+          "checked_columns": ["itemtype", "networkports_id", "opaque_parent_id"]
+        },
+        "checks_2": {
+          "clause": "((((itemtype)::text = 'NetworkPort'::text) AND ((networkports_id IS NULL) OR (networkports_id > 0)) AND (opaque_parent_id IS NULL)) OR (((itemtype)::text <> 'NetworkPort'::text) AND (networkports_id IS NULL) AND (opaque_parent_id IS NOT NULL)))",
+          "enforced": "true",
+          "validated": true,
+          "constraint": "glpi_networknames_parent_kind",
+          "native_nodes": "{BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 104 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 2 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 15 [ 60 0 0 0 78 101 116 119 111 114 107 80 111 114 116 ]}) :location -1} {BOOLEXPR :boolop or :args ({NULLTEST :arg {VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 3 :location -1} :nulltesttype 0 :argisrow false :location -1} {OPEXPR :opno 419 :opfuncid 477 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 3 :location -1} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location -1 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location -1}) :location -1} {NULLTEST :arg {VAR :varno 1 :varattno 4 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 4 :location -1} :nulltesttype 0 :argisrow false :location -1}) :location -1} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 104 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 2 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 15 [ 60 0 0 0 78 101 116 119 111 114 107 80 111 114 116 ]}) :location -1} {NULLTEST :arg {VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 3 :location -1} :nulltesttype 0 :argisrow false :location -1} {NULLTEST :arg {VAR :varno 1 :varattno 4 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 4 :location -1} :nulltesttype 1 :argisrow false :location -1}) :location -1}) :location -1}",
+          "checked_columns": ["itemtype", "networkports_id", "opaque_parent_id"]
+        }
+      },
+      "foreign_key_facts": {
+        "foreign_keys_0": {"enforced": "true", "validated": true, "constraint": "itsm_nn_owner_fk", "deferrable": false, "definition": "FOREIGN KEY (networkports_id) REFERENCES itsm_nn_owner_probe(id) ON DELETE RESTRICT", "target_oid": "133580", "target_table": "itsm_nn_owner_probe", "delete_action": "r", "target_schema": "pg_temp_11", "update_action": "a", "initially_deferred": false}
+      }
+    }
+  }
+}

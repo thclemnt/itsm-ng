@@ -31,6 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NotificationRecipientRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -535,15 +541,19 @@ class NotificationTarget extends CommonDBChild
             $username = $data['name'];
         }
         if (isset($data['users_id']) && ($data['users_id'] > 0)) {
-            $user = new User();
+            $user = $this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): ?array => $recipients->admissionData(
+                    (int)Toolbox::cleanInteger($data['users_id'])
+                )
+            );
             if (
-                !$user->getFromDB($data['users_id'])
-                || ($user->getField('is_deleted') == 1)
-                || ($user->getField('is_active') == 0)
-                || (!is_null($user->getField('begin_date'))
-                     && ($user->getField('begin_date') > $_SESSION["glpi_currenttime"]))
-                || (!is_null($user->getField('end_date'))
-                     && ($user->getField('end_date') < $_SESSION["glpi_currenttime"]))
+                $user === null
+                || ($user['is_deleted'] == 1)
+                || ($user['is_active'] == 0)
+                || (!is_null($user['begin_date'])
+                     && ($user['begin_date'] > $_SESSION["glpi_currenttime"]))
+                || (!is_null($user['end_date'])
+                     && ($user['end_date'] < $_SESSION["glpi_currenttime"]))
             ) {
                 // unknown, deleted or disabled user
                 return false;
@@ -562,9 +572,9 @@ class NotificationTarget extends CommonDBChild
             if (empty($username)) {
                 $username = formatUserName(
                     0,
-                    $user->getField('name'),
-                    $user->getField('realname'),
-                    $user->getField('firstname'),
+                    $user['name'],
+                    $user['realname'],
+                    $user['firstname'],
                     0,
                     0,
                     true
@@ -573,17 +583,17 @@ class NotificationTarget extends CommonDBChild
             // It is a GLPI user :
             $notificationoption['usertype'] = self::GLPI_USER;
             if (
-                $user->fields['authtype'] == Auth::LDAP
-                || Auth::isAlternateAuth($user->fields['authtype'])
-                || (($user->fields['authtype'] == Auth::NOT_YET_AUTHENTIFIED)
+                $user['authtype'] == Auth::LDAP
+                || Auth::isAlternateAuth($user['authtype'])
+                || (($user['authtype'] == Auth::NOT_YET_AUTHENTIFIED)
                     && Auth::isAlternateAuth(Auth::checkAlternateAuthSystems()))
             ) {
                 $notificationoption['usertype'] = self::EXTERNAL_USER;
             }
 
             // retrieve timezone of the user if exists
-            if (!empty($user->fields['timezone']) && 'null' !== strtolower((string) $user->fields['timezone'])) {
-                $notificationoption['timezone'] = $user->fields['timezone'];
+            if (!empty($user['timezone']) && 'null' !== strtolower((string) $user['timezone'])) {
+                $notificationoption['timezone'] = $user['timezone'];
             }
         }
 
@@ -689,15 +699,20 @@ class NotificationTarget extends CommonDBChild
      */
     public function addItemAuthor()
     {
-        $user = new User();
-        if (
-            $this->obj->isField('users_id')
-            && $user->getFromDB($this->obj->getField('users_id'))
-        ) {
-            $this->addToRecipientsList([
-               'language' => $user->getField('language'),
-               'users_id' => $user->getField('id')
-            ]);
+        if (!$this->obj->isField('users_id')) {
+            return;
+        }
+        $id = $this->obj->getField('users_id');
+        if ($id === null || strlen($id) === 0) {
+            return;
+        }
+        $user = $this->readRecipients(
+            fn (NotificationRecipientRepository $recipients): ?array => $recipients->guestLanguage(
+                (int)Toolbox::cleanInteger($id)
+            )
+        );
+        if ($user !== null) {
+            $this->addToRecipientsList($user);
         }
     }
 
@@ -796,42 +811,13 @@ class NotificationTarget extends CommonDBChild
     {
         global $DB;
 
-        // members/managers of the group allowed on object entity
-        // filter group with 'is_assign' (attribute can be unset after notification)
-        $criteria = $this->getDistinctUserCriteria() + $this->getProfileJoinCriteria();
-        $criteria['FROM'] = Group_User::getTable();
-        $criteria['INNER JOIN'] = array_merge(
-            [
-              User::getTable() => [
-                 'ON' => [
-                    Group_User::getTable()  => 'users_id',
-                    User::getTable()        => 'id'
-                 ]
-              ],
-              Group::getTable() => [
-                 'ON' => [
-                    Group_User::getTable()  => 'groups_id',
-                    Group::getTable()       => 'id'
-                 ]
-              ]
-            ],
-            $criteria['INNER JOIN']
-        );
-        $criteria['WHERE'] = array_merge(
-            $criteria['WHERE'],
-            [
-              Group_User::getTable() . '.groups_id'  => $group_id,
-              Group::getTable() . '.is_notify'       => 1,
-            ]
-        );
-
-        if ($manager == 1) {
-            $criteria['WHERE']['glpi_groups_users.is_manager'] = 1;
-        } elseif ($manager == 2) {
-            $criteria['WHERE']['glpi_groups_users.is_manager'] = 0;
-        }
-
-        $iterator = $DB->request($criteria);
+        $iterator = new RowIterator($this->readRecipients(
+            fn (NotificationRecipientRepository $recipients): array => $recipients->groupUsers(
+                (int)$group_id,
+                (int)$manager,
+                $this->getProfileJoinCriteria()
+            )
+        ));
         while ($data = $iterator->next()) {
             $this->addToRecipientsList($data);
         }
@@ -864,6 +850,14 @@ class NotificationTarget extends CommonDBChild
            ],
            'DISTINCT'        => true,
         ];
+    }
+
+    /** Materialize recipient data before delivery callbacks can change the next read. */
+    protected function readRecipients(callable $read): mixed
+    {
+        global $DB;
+        return Orm::read($DB, static fn (EntityManager $manager): mixed =>
+            $read(new NotificationRecipientRepository($manager)));
     }
 
 
@@ -915,7 +909,7 @@ class NotificationTarget extends CommonDBChild
     {
         global $DB;
 
-        foreach ($DB->request('glpi_profiles') as $data) {
+        foreach (MappedReads::matching($DB, 'glpi_profiles') as $data) {
             $this->addTarget(
                 $data["id"],
                 sprintf(__('%1$s: %2$s'), Profile::getTypeName(1), $data["name"]),
@@ -933,15 +927,12 @@ class NotificationTarget extends CommonDBChild
         global $DB;
 
         // Filter groups which can be notified and have members (as notifications are sent to members)
-        $iterator = $DB->request([
-           'SELECT' => ['id', 'name'],
-           'FROM'   => Group::getTable(),
-           'WHERE'  => [
-              'is_usergroup' => 1,
-              'is_notify'    => 1
-           ] + getEntitiesRestrictCriteria('glpi_groups', 'entities_id', $entity, true),
-           'ORDER'  => 'name'
-        ]);
+        $iterator = new RowIterator(MappedReads::matching(
+            $DB,
+            Group::getTable(),
+            ['is_usergroup' => true, 'is_notify' => true] + getEntitiesRestrictCriteria('glpi_groups', 'entities_id', $entity, true),
+            'name'
+        ));
 
         while ($data = $iterator->next()) {
             //Add group
@@ -1060,11 +1051,12 @@ class NotificationTarget extends CommonDBChild
         }
 
         if (!empty($id)) {
-            //Look for the user by his id
-            $criteria = $this->getDistinctUserCriteria() + $this->getProfileJoinCriteria();
-            $criteria['FROM'] = User::getTable();
-            $criteria['WHERE'][User::getTable() . '.id'] = $id;
-            $iterator = $DB->request($criteria);
+            $iterator = new RowIterator($this->readRecipients(
+                fn (NotificationRecipientRepository $recipients): array => $recipients->users(
+                    $id,
+                    $this->getProfileJoinCriteria()
+                )
+            ));
 
             while ($data = $iterator->next()) {
                 //Add the user email and language in the notified users list
@@ -1124,12 +1116,12 @@ class NotificationTarget extends CommonDBChild
     {
         global $DB;
 
-        $criteria = $this->getDistinctUserCriteria() + $this->getProfileJoinCriteria();
-        $criteria['FIELDS'][] = Profile_User::getTable() . '.entities_id AS entity';
-        $criteria['FROM'] = User::getTable();
-        $criteria['WHERE'][Profile_User::getTable() . '.profiles_id'] = $profiles_id;
-
-        $iterator = $DB->request($criteria);
+        $iterator = new RowIterator($this->readRecipients(
+            fn (NotificationRecipientRepository $recipients): array => $recipients->profileUsers(
+                (int)$profiles_id,
+                $this->getProfileJoinCriteria()
+            )
+        ));
         while ($data = $iterator->next()) {
             $this->addToRecipientsList($data);
         }
@@ -1489,26 +1481,11 @@ class NotificationTarget extends CommonDBChild
     {
         global $DB;
 
-        $count = $DB->request([
-           'COUNT'        => 'cpt',
-           'FROM'         => self::getTable(),
-           'INNER JOIN'   => [
-              Notification::getTable()   => [
-                 'ON'  => [
-                    Notification::getTable()   => 'id',
-                    self::getTable()           => 'notifications_id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              'type'      => [
-                 Notification::SUPERVISOR_GROUP_TYPE,
-                 Notification::GROUP_TYPE
-              ],
-              'items_id'  => $group->getID()
-           ] + getEntitiesRestrictCriteria(Notification::getTable(), '', '', true)
-        ])->next();
-        return $count['cpt'];
+        return Orm::read($DB, static fn (EntityManager $manager): int =>
+            (new NotificationRecipientRepository($manager))->countForGroup(
+                (int)$group->getID(),
+                getEntitiesRestrictCriteria(Notification::getTable(), '', '', true)
+            ));
     }
 
 
@@ -1529,25 +1506,11 @@ class NotificationTarget extends CommonDBChild
             return false;
         }
 
-        $iterator = $DB->request([
-           'SELECT'       => [Notification::getTable() . '.id'],
-           'FROM'         => self::getTable(),
-           'INNER JOIN'   => [
-              Notification::getTable() => [
-                 'ON' => [
-                    self::getTable()           => 'notifications_id',
-                    Notification::getTable()   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              'type'      => [
-                 Notification::SUPERVISOR_GROUP_TYPE,
-                 Notification::GROUP_TYPE
-              ],
-              'items_id'  => $group->getID()
-           ] + getEntitiesRestrictCriteria(Notification::getTable(), '', '', true)
-        ]);
+        $iterator = new RowIterator(Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new NotificationRecipientRepository($manager))->notificationsForGroup(
+                (int)$group->getID(),
+                getEntitiesRestrictCriteria(Notification::getTable(), '', '', true)
+            )));
 
         echo "<table class='tab_cadre_fixe' aria-label='notification Method'>";
 

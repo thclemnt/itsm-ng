@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\ReferenceValues;
+use itsmng\Database\Repository\OperatingSystemAssignmentRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -44,5 +48,21 @@ class OperatingSystemArchitecture extends CommonDropdown
     public static function getTypeName($nb = 0)
     {
         return _n('Operating system architecture', 'Operating system architectures', $nb);
+    }
+
+    public function pre_deleteItem()
+    {
+        global $DB;
+
+        if (!parent::pre_deleteItem()) {
+            return false;
+        }
+        $replacement = ReferenceValues::normalizeLegacy('glpi_items_operatingsystems', ['operatingsystemarchitectures_id' => $this->input['_replace_by'] ?? 0])['operatingsystemarchitectures_id'];
+        $assignments = new OperatingSystemAssignmentRepository(Orm::create($DB));
+        if ($assignments->wouldMergeArchitectures((int)$this->getID(), $replacement === null ? null : (int)$replacement)) {
+            Session::addMessageAfterRedirect(__('Cannot remove this operating system architecture: it would merge distinct inventory assignments. Choose a different replacement.'), false, ERROR);
+            return false;
+        }
+        return true;
     }
 }

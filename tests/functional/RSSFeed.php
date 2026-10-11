@@ -34,6 +34,14 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\ORM\Events;
+use Group_RSSFeed;
+use Profile_RSSFeed;
+use ReflectionProperty;
+use itsmng\Database\Entity\RSSFeed as RSSFeedEntity;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\SharedContentRepository;
+use RSSFeed as RSSFeedModel;
 
 class RSSFeed extends DbTestCase
 {
@@ -140,6 +148,21 @@ class RSSFeed extends DbTestCase
         ]);
     }
 
+    public function testShowDiscoveredFeedsHandlesUnreadableFeed(): void
+    {
+        $rssfeed = new RSSFeedModel();
+        $rssfeed->fields['url'] = 'file:///nonexistent/rssfeed.xml';
+
+        ob_start();
+        try {
+            $result = $rssfeed->showDiscoveredFeeds();
+        } finally {
+            ob_end_clean();
+        }
+
+        $this->boolean($result)->isFalse();
+    }
+
     public function testPrepareInputForAddKeepsCurrentUserAsOwner()
     {
         $this->login();
@@ -153,6 +176,109 @@ class RSSFeed extends DbTestCase
         $this->array($prepared)
            ->hasKey('users_id')
            ->integer['users_id']->isIdenticalTo(\Session::getLoginUserID());
+
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $this->integer((int)$rssfeed->add([
+            'url' => $prepared['url'], 'comment' => 'Audience ownership fixture',
+        ]))->isGreaterThan(0);
+        $feedId = (int)$rssfeed->getID();
+        $otherFeed = new RSSFeedModel();
+        $this->integer((int)$otherFeed->add([
+            'url' => $prepared['url'], 'comment' => 'Other audience ownership fixture',
+        ]))->isGreaterThan(0);
+        $otherFeedId = (int)$otherFeed->getID();
+        $group = $this->createItem('Group', ['name' => 'RSS group ' . $this->getUniqueString(), 'entities_id' => 0]);
+        $profile = $this->createItem('Profile', ['name' => 'RSS profile ' . $this->getUniqueString()]);
+        $external = Orm::create($DB);
+        $retained = $external->find(RSSFeedEntity::class, $feedId);
+        $retainedComment = $retained->comment;
+        try {
+            foreach ([
+                [Group_RSSFeed::class, 'groups_id', 'getGroups', 'groups', (int)$group->getID()],
+                [Profile_RSSFeed::class, 'profiles_id', 'getProfiles', 'profiles', (int)$profile->getID()],
+            ] as [$class, $key, $read, $property, $audienceId]) {
+                $link = $this->createItem($class, [
+                    'rssfeeds_id' => $feedId, $key => $audienceId, 'entities_id' => 0, 'is_recursive' => 0,
+                ]);
+                $table = $class::getTable();
+                $linkId = (int)$link->getID();
+                $this->integer($connection->update($table, ['entities_id' => null], ['id' => $linkId]))->isIdenticalTo(1);
+                $this->integer($connection->insert($table, [
+                    'rssfeeds_id' => $feedId, $key => $audienceId, 'entities_id' => 0, 'is_recursive' => 1,
+                ]))->isIdenticalTo(1);
+                $rows = $class::$read((string)$feedId);
+                $this->array(array_keys($rows))->isIdenticalTo([$audienceId]);
+                $this->array($rows[$audienceId])->hasSize(2);
+                $this->integer((int)$rows[$audienceId][0]['id'])->isIdenticalTo($linkId);
+                $this->integer((int)$rows[$audienceId][1]['id'])->isGreaterThan($linkId);
+                foreach ($rows[$audienceId] as $index => $row) {
+                    $columns = array_keys($row);
+                    sort($columns);
+                    $expectedColumns = ['id', 'rssfeeds_id', $key, 'entities_id', 'is_recursive'];
+                    sort($expectedColumns);
+                    $this->array($columns)->isIdenticalTo($expectedColumns);
+                    $this->integer((int)$row['rssfeeds_id'])->isIdenticalTo($feedId);
+                    $this->integer((int)$row[$key])->isIdenticalTo($audienceId);
+                    $this->integer((int)$row['is_recursive'])->isIdenticalTo($index);
+                }
+                $this->variable($rows[$audienceId][0]['entities_id'])->isNull();
+                $this->integer((int)$rows[$audienceId][1]['entities_id'])->isIdenticalTo(0);
+                $this->array($class::$read([$feedId]))->isIdenticalTo($rows);
+                $this->array($class::$read(PHP_INT_MAX))->isEmpty();
+                $this->array($class::$read(null))->isEmpty();
+                $this->array($class::$read('NULL'))->isEmpty();
+                $this->boolean($rssfeed->getFromDB($feedId))->isTrue();
+                $this->array((new ReflectionProperty(RSSFeedModel::class, $property))->getValue($rssfeed))->isIdenticalTo($rows);
+
+                // A new read observes legacy writes; an already returned snapshot does not change.
+                $this->array($class::$read(0))->isEmpty();
+                $this->integer($connection->update($table, ['is_recursive' => 1, 'rssfeeds_id' => $otherFeedId], ['id' => $linkId]))->isIdenticalTo(1);
+                try {
+                    $this->array($class::$read($feedId)[$audienceId])->hasSize(1);
+                    $movedRows = $class::$read($otherFeedId);
+                    $this->array($movedRows[$audienceId])->hasSize(1);
+                    $this->integer((int)$movedRows[$audienceId][0]['id'])->isIdenticalTo($linkId);
+                    $this->integer((int)$movedRows[$audienceId][0]['rssfeeds_id'])->isIdenticalTo($otherFeedId);
+                    $this->array($class::$read(0))->isEmpty();
+                    $this->array($class::$read(null))->isEmpty();
+                    $this->array($class::$read('null'))->isEmpty();
+                    $this->integer((int)$rows[$audienceId][0]['is_recursive'])->isIdenticalTo(0);
+                } finally {
+                    $this->integer($connection->update($table, ['rssfeeds_id' => $feedId], ['id' => $linkId]))->isIdenticalTo(1);
+                }
+                $this->array($class::$read($otherFeedId))->isEmpty();
+                $fresh = $class::$read($feedId);
+                $this->integer((int)$fresh[$audienceId][0]['is_recursive'])->isIdenticalTo(1);
+                $this->boolean($link->delete(['id' => $linkId], true))->isTrue();
+                $this->array($class::$read($feedId)[$audienceId])->hasSize(1);
+                $this->boolean($external->contains($retained))->isTrue();
+                $this->string($retained->comment)->isIdenticalTo($retainedComment);
+            }
+
+            // Supplied-manager repositories retain their existing post-load dispatch and live entities.
+            $listener = new class () {
+                public int $loads = 0;
+                public function postLoad(): void
+                {
+                    ++$this->loads;
+                }
+            };
+            $external->getEventManager()->addEventListener([Events::postLoad], $listener);
+            $repository = new SharedContentRepository($external);
+            $this->array($repository->rssfeedGroups($feedId))->isIdenticalTo(Group_RSSFeed::getGroups($feedId));
+            $this->array($repository->rssfeedProfiles($feedId))->isIdenticalTo(Profile_RSSFeed::getProfiles($feedId));
+            $this->integer($listener->loads)->isGreaterThanOrEqualTo(2);
+            $this->boolean($external->contains($retained))->isTrue();
+
+            $this->boolean($otherFeed->delete(['id' => $otherFeedId], true))->isTrue();
+            $this->boolean($rssfeed->delete(['id' => $feedId], true))->isTrue();
+            $this->array(Group_RSSFeed::getGroups($feedId))->isEmpty();
+            $this->array(Profile_RSSFeed::getProfiles($feedId))->isEmpty();
+            $this->boolean($external->contains($retained))->isTrue();
+        } finally {
+            $external->clear();
+        }
     }
 
     public function testPrepareInputForAddLoadsFeedMetadata()

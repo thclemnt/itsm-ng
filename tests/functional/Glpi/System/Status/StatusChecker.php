@@ -36,8 +36,13 @@ namespace tests\units\Glpi\System\Status;
 use AuthLDAP;
 use AuthMail;
 use CronTask;
+use DateTime;
+use DateTimeImmutable;
+use DateTimeZone;
 use DbTestCase;
 use Glpi\System\Status\StatusChecker as GlpiStatusChecker;
+use itsmng\Database\Entity\CronTask as CronTaskEntity;
+use itsmng\Database\Orm;
 
 class StatusChecker extends DbTestCase
 {
@@ -97,6 +102,53 @@ class StatusChecker extends DbTestCase
         // Check filesystem and session_dir are OK
         $this->string($status['filesystem']['status'])->isEqualTo(GlpiStatusChecker::STATUS_OK);
         $this->string($status['filesystem']['session_dir']['status'])->isEqualTo(GlpiStatusChecker::STATUS_OK);
+    }
+
+    public function testCronTaskStatusRetainsCallerFrame()
+    {
+        global $DB;
+
+        $connection = $DB->getDoctrineConnection();
+        $depth = $connection->getTransactionNestingLevel();
+        $this->integer($depth)->isGreaterThan(0);
+        $em = Orm::create($DB);
+        $em->createQuery('UPDATE ' . CronTaskEntity::class . ' t SET t.state = :waiting')
+            ->setParameter('waiting', CronTask::STATE_WAITING)->execute();
+        $prefix = 'Status overdue ' . bin2hex(random_bytes(6));
+        $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+        foreach ([
+            ['Ticket', 'duplicate', 60, $now->modify('-1 day'), CronTask::STATE_RUNNING],
+            ['Problem', 'duplicate', 86400, $now->modify('-1 day'), CronTask::STATE_RUNNING],
+            ['CronTask', 'never run', 60, null, CronTask::STATE_RUNNING],
+            ['CronTask', 'future', 60, $now->modify('+1 day'), CronTask::STATE_RUNNING],
+            ['CronTask', 'waiting', 60, $now->modify('-1 day'), CronTask::STATE_WAITING],
+            ['CronTask', 'disabled', 60, $now->modify('-1 day'), CronTask::STATE_DISABLE],
+        ] as [$type, $name, $frequency, $lastrun, $state]) {
+            $task = new CronTaskEntity();
+            $task->itemtype = $type;
+            $task->name = $prefix . ' ' . $name;
+            $task->frequency = $frequency;
+            $task->lastrun = $lastrun === null ? null : DateTime::createFromImmutable($lastrun);
+            $task->state = $state;
+            $em->persist($task);
+        }
+        $em->flush();
+        $savedClock = $_SESSION['glpi_currenttime'];
+        try {
+            $_SESSION['glpi_currenttime'] = '1999-01-01 00:00:00';
+            $status = GlpiStatusChecker::getCronTaskStatus();
+            $this->array($status)->isEqualTo(['status' => GlpiStatusChecker::STATUS_PROBLEM,
+                'stuck' => [$prefix . ' duplicate', $prefix . ' duplicate']]);
+            $this->array(GlpiStatusChecker::getCronTaskStatus(false))->isEqualTo($status);
+            $this->variable($DB->getDoctrineConnection())->isIdenticalTo($connection);
+            $this->integer($connection->getTransactionNestingLevel())->isEqualTo($depth);
+            $DB->assertManagedTransaction();
+            // A real query proves the health read did not leave a PostgreSQL frame aborted.
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_crontasks'))
+                ->isGreaterThanOrEqualTo(6);
+        } finally {
+            $_SESSION['glpi_currenttime'] = $savedClock;
+        }
     }
 
     public function testBadStatus()

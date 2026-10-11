@@ -1,0 +1,66 @@
+{
+    "provenance": {
+        "source_commit": "53cf6297473bc31400a0777ff905bd79f1e65698",
+        "purpose": "Frozen PowerSupply stock-or-asset subject adoption; historical replay never inspects current entity metadata.",
+        "subject_policy_source": "inc/define.php itemdevicepowersupply_types; inc/item_devices.class.php stock and public relation callers"
+    },
+    "table": "glpi_items_devicepowersupplies",
+    "targets": {
+        "Computer": {
+            "producer_target": "computers",
+            "target": "glpi_computers",
+            "column": "computers_id",
+            "nullable": true,
+            "constraint": "fk_items_devicepowersupplies_computers_id"
+        },
+        "NetworkEquipment": {
+            "producer_target": "networkequipments",
+            "target": "glpi_networkequipments",
+            "column": "networkequipments_id",
+            "nullable": true,
+            "constraint": "fk_items_devicepowersupplies_networkequipments_id"
+        },
+        "Enclosure": {
+            "producer_target": "enclosures",
+            "target": "glpi_enclosures",
+            "column": "enclosures_id",
+            "nullable": true,
+            "constraint": "fk_items_devicepowersupplies_enclosures_id"
+        }
+    },
+    "allows_empty_reference": true,
+    "minimum_selected_id": 1,
+    "canonical_stock_kind": null,
+    "legacy_stock_identity": 0,
+    "booleans": [
+        "is_deleted",
+        "is_dynamic",
+        "is_recursive"
+    ],
+    "references": {
+        "devicepowersupplies_id": {
+            "target": "glpi_devicepowersupplies",
+            "policy": "required",
+            "nullable": false,
+            "constraint": "fk_items_devicepowersupplies_devicepowersupplies_id"
+        },
+        "entities_id": {
+            "target": "glpi_entities",
+            "policy": "root",
+            "nullable": false,
+            "constraint": "fk_items_devicepowersupplies_entities_id"
+        },
+        "locations_id": {
+            "target": "glpi_locations",
+            "policy": "empty",
+            "nullable": true,
+            "constraint": "fk_items_devicepowersupplies_locations_id"
+        },
+        "states_id": {
+            "target": "glpi_states",
+            "policy": "empty",
+            "nullable": true,
+            "constraint": "fk_items_devicepowersupplies_states_id"
+        }
+    }
+}

@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Repository\ComponentDefinitionRepository;
+use itsmng\Domain\ComponentDefinitionReplacement;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -168,6 +171,53 @@ abstract class CommonDevice extends CommonDropdown
         ];
     }
 
+    private ?ComponentDefinitionReplacement $definitionReplacement = null;
+
+    public function deleteFromDB($force = 0)
+    {
+        if (empty($this->input['_replace_by'])) {
+            return parent::deleteFromDB($force);
+        }
+        $family = getItemForItemtype(static::getItem_DeviceType());
+        if (!$family instanceof Item_Devices
+            || !ComponentDefinitionRepository::supportsFamily($family, $this->getTable())) {
+            return parent::deleteFromDB($force);
+        }
+        // The ordinary deletion lifecycle owns caller authorization. Its
+        // validated definition replacement delegates no asset editing rights.
+        $previous = $this->definitionReplacement;
+        $command = ComponentDefinitionReplacement::forPurge($GLOBALS['DB'], $this);
+        $this->definitionReplacement = $command;
+        try {
+            return parent::deleteFromDB($force);
+        } finally {
+            $command->release();
+            $this->definitionReplacement = $previous;
+        }
+    }
+
+    protected function updateReplacementRelation(CommonDBTM $related, array $input, string $column): bool
+    {
+        if ($this->definitionReplacement !== null && $related instanceof Item_Devices
+            && $related::getDeviceType() === $this->getType()
+            && ComponentDefinitionRepository::supportsFamily($related, $this->getTable(), $column)) {
+            return $related->replaceDefinition($this->definitionReplacement, $input, $column);
+        }
+        return parent::updateReplacementRelation($related, $input, $column);
+    }
+
+    public function cleanDBonPurge()
+    {
+        parent::cleanDBonPurge();
+        // Replacement is handled by cleanRelationData after this hook.
+        if (empty($this->input['_replace_by'])) {
+            $link = getItemForItemtype(static::getItem_DeviceType());
+            if ($link) {
+                $link->cleanDBonItemDelete($this->getType(), $this->getID());
+            }
+        }
+    }
+
     /**
      * Can I change recursive flag to false
      * check if there is "linked" object in another entity
@@ -180,8 +230,6 @@ abstract class CommonDevice extends CommonDropdown
     **/
     public function canUnrecurs()
     {
-        global $DB;
-
         $ID = $this->fields['id'];
         if (
             ($ID < 0)
@@ -197,37 +245,15 @@ abstract class CommonDevice extends CommonDropdown
 
         // RELATION : device -> item_device -> item
         $linktype  = static::getItem_DeviceType();
-        $linktable = getTableForItemType($linktype);
-
-        $result = $DB->request(
-            [
-              'SELECT'    => [
-                 'itemtype',
-                 new QueryExpression('GROUP_CONCAT(DISTINCT ' . DBmysql::quoteName('items_id') . ') AS ids'),
-              ],
-              'FROM'      => $linktable,
-              'WHERE'     => [
-                 $this->getForeignKeyField() => $ID,
-              ],
-              'GROUPBY'   => [
-                 'itemtype',
-              ]
-            ]
-        );
-
-        foreach ($result as $data) {
-            if (!empty($data["itemtype"])) {
-                $itemtable = getTableForItemType($data["itemtype"]);
-                if ($item = getItemForItemtype($data["itemtype"])) {
-                    // For each itemtype which are entity dependant
-                    if ($item->isEntityAssign()) {
-                        if (
-                            countElementsInTable($itemtable, ['id'  => $data["ids"],
-                                                              'NOT' => ['entities_id' => $entities ]]) > 0
-                        ) {
-                            return false;
-                        }
-                    }
+        $links = new $linktype();
+        $linked = [];
+        foreach ($links->find([$this->getForeignKeyField() => $ID]) as $row) {
+            $linked[$row['itemtype']][$row['items_id']] = (int)$row['items_id'];
+        }
+        foreach ($linked as $type => $ids) {
+            if ($type && ($item = getItemForItemtype($type)) && $item->isEntityAssign()) {
+                if (countElementsInTable($item->getTable(), ['id' => array_values($ids), 'NOT' => ['entities_id' => $entities]]) > 0) {
+                    return false;
                 }
             }
         }
@@ -460,8 +486,6 @@ abstract class CommonDevice extends CommonDropdown
     **/
     public function import(array $input)
     {
-        global $DB;
-
         if (!isset($input['designation']) || empty($input['designation'])) {
             return 0;
         }
@@ -485,15 +509,9 @@ abstract class CommonDevice extends CommonDropdown
             }
         }
 
-        $iterator = $DB->request([
-           'SELECT' => ['id'],
-           'FROM'   => $this->getTable(),
-           'WHERE'  => $where
-        ]);
-
-        if (count($iterator) > 0) {
-            $line = $iterator->next();
-            return $line['id'];
+        $matches = $this->find($where, 'id', 1);
+        if ($matches) {
+            return array_key_first($matches);
         }
 
         return $this->add($input);

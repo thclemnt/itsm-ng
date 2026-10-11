@@ -33,6 +33,8 @@
 
 namespace Glpi\Api\Deprecated;
 
+use ReflectionClass;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -52,7 +54,7 @@ trait CommonDeprecatedTrait
      */
     private function getDeprecatedClass(): string
     {
-        return (new \ReflectionClass(static::class))->getShortName();
+        return (new ReflectionClass(static::class))->getShortName();
     }
 
     /**
@@ -182,11 +184,11 @@ trait CommonDeprecatedTrait
     public function deleteField(&$fields, string $name)
     {
         if (is_object($fields)) {
-            if (isset($fields->$name)) {
+            if (property_exists($fields, $name)) {
                 unset($fields->$name);
             }
         } elseif (is_array($fields)) {
-            if (isset($fields[$name])) {
+            if (array_key_exists($name, $fields)) {
                 unset($fields[$name]);
             }
         }

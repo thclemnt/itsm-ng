@@ -19,13 +19,9 @@
               'ajax': {
                   'url': root_doc ~ '/ajax/getDropdownValue.php',
                   'type': 'POST',
-                  'data': {
-                      'itemtype': 'Ticket',
-                      'display_emptychoice': true,
-                      'entity_restrict': currentEntity,
-                      'recursive': currentRecursive,
+                  'data': attributes.choice_request|merge({
                       'used': attributes.used ?? [],
-                  },
+                  }),
               },
               'arial-label': 'Ticket Selector'|trans
           }

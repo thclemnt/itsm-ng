@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CostRepository;
 use itsmng\Timezone;
 
 if (!defined('GLPI_ROOT')) {
@@ -202,6 +205,15 @@ abstract class CommonITILCost extends CommonDBChild
     }
 
 
+    /** Canonical duration expression retained by legacy joined search paths. */
+    final public static function durationSearchComputation(DBAdapter $db): string
+    {
+        return '(1.0 * SUM(' . $db->quoteName('TABLE.actiontime') . ') * COUNT(DISTINCT ' .
+            $db->quoteName('TABLE.id') . ')) / NULLIF(COUNT(' .
+            $db->quoteName('TABLE.id') . '), 0)';
+    }
+
+
     public static function rawSearchOptionsToAdd()
     {
         global $DB;
@@ -266,7 +278,8 @@ abstract class CommonITILCost extends CommonDBChild
            'massiveaction'      => false,
            'joinparams'         => [
               'jointype'           => 'child'
-           ]
+           ],
+           'computation'        => static::durationSearchComputation($DB)
         ];
 
         $tab[] = [
@@ -353,7 +366,7 @@ abstract class CommonITILCost extends CommonDBChild
 
 
     /**
-     * Get total actiNULL        11400   0.0000  0.0000  0.0000  on time used on costs for an item
+     * Get total action time used on costs for an item
      *
      * @param $items_id        integer  ID of the item
     **/
@@ -361,6 +374,14 @@ abstract class CommonITILCost extends CommonDBChild
     {
         global $DB;
 
+        if (CostRepository::supports(static::getType())) {
+            return Orm::read(
+                $DB,
+                static fn (EntityManager $manager): ?int => (new CostRepository($manager))
+                    ->actionTime(static::getType(), (int)$items_id),
+                clearCustomManager: true
+            );
+        }
         $result = $DB->request([
            'SELECT' => ['SUM' => 'actiontime AS sumtime'],
            'FROM'   => $this->getTable(),
@@ -377,19 +398,8 @@ abstract class CommonITILCost extends CommonDBChild
     **/
     public function getLastCostForItem($items_id)
     {
-        global $DB;
-
-        $result = $DB->request([
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [
-              static::$items_id => $items_id
-           ],
-           'ORDER'  => [
-              'end_date DESC',
-              'id DESC'
-           ]
-        ])->next();
-        return $result;
+        $rows = static::costRows(static::getType(), (int)$items_id, true);
+        return $rows ? reset($rows) : null;
     }
 
 
@@ -550,13 +560,7 @@ abstract class CommonITILCost extends CommonDBChild
             $alltickets = ProjectTask::getAllTicketsForProject($ID);
             $items_ids = (count($alltickets) ? $alltickets : 0);
         }
-        $iterator = $DB->request([
-           'FROM'   => static::getTable(),
-           'WHERE'  => [
-              static::$items_id   => $items_ids
-           ],
-           'ORDER'  => 'begin_date'
-        ]);
+        $iterator = static::costRows(static::getType(), $items_ids);
 
         $rand   = mt_rand();
 
@@ -625,7 +629,7 @@ abstract class CommonITILCost extends CommonDBChild
         ];
         $values = [];
         $massive_action = [];
-        while ($data = $iterator->next()) {
+        foreach ($iterator as $data) {
             $newValue = [];
             $name = (empty($data['name']) ? sprintf(
                 __('%1$s (%2$s)'),
@@ -725,19 +729,7 @@ abstract class CommonITILCost extends CommonDBChild
     **/
     public static function getCostsSummary($type, $ID)
     {
-        global $DB;
-
-        $result = $DB->request(
-            [
-              'FROM'      => getTableForItemType($type),
-              'WHERE'     => [
-                 static::$items_id      => $ID,
-              ],
-              'ORDER'     => [
-                 'begin_date'
-              ],
-            ]
-        );
+        $result = static::costRows($type, (int)$ID);
 
         $tab = ['totalcost'   => 0,
                     'actiontime'   => 0,
@@ -764,6 +756,22 @@ abstract class CommonITILCost extends CommonDBChild
         return $tab;
     }
 
+
+    /** Mapped core history; plugin models retain their registered find implementation. */
+    private static function costRows(string $type, int|array $parents, bool $last = false): array
+    {
+        global $DB;
+
+        if (!CostRepository::supports($type)) {
+            $item = getItemForItemtype($type);
+            return $item->find([static::$items_id => $parents], $last ? ['end_date DESC', 'id DESC'] : ['begin_date'], $last ? 1 : null);
+        }
+        return Orm::read(
+            $DB,
+            static fn (EntityManager $manager): array => (new CostRepository($manager))->rows($type, $parents, $last),
+            clearCustomManager: true
+        );
+    }
 
     /**
      * Computer total cost of a item

@@ -1,5 +1,12 @@
 <?php
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Entity\ItemOperatingSystem;
+use itsmng\Database\Orm;
+use itsmng\Database\ReferenceValues;
+use itsmng\Database\Repository\OperatingSystemAssignmentRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access directly to this file");
 }
@@ -41,6 +48,8 @@ class Item_OperatingSystem extends CommonDBRelation
     public static $itemtype_2 = 'itemtype';
     public static $items_id_2 = 'items_id';
     public static $checkItem_1_Rights = self::DONT_CHECK_ITEM_RIGHTS;
+    // Ignoring dropdown rights must not turn READ on the owning asset into UPDATE.
+    public static $checkAlwaysBothItems = true;
 
 
     public static function getTypeName($nb = 0)
@@ -75,61 +84,22 @@ class Item_OperatingSystem extends CommonDBRelation
      * @param string     $sort  Field to sort on
      * @param string     $order Sort order
      *
-     * @return DBmysqlIterator
+     * @return array
      */
-    public static function getFromItem(CommonDBTM $item, $sort = null, $order = null): DBmysqlIterator
+    public static function getFromItem(CommonDBTM $item, $sort = null, $order = null): array
     {
         global $DB;
 
-        if ($sort === null) {
-            $sort = "glpi_items_operatingsystems.id";
-        }
-        if ($order === null) {
-            $order = 'ASC';
-        }
-
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'glpi_items_operatingsystems.id AS assocID',
-              'glpi_operatingsystems.name',
-              'glpi_operatingsystemversions.name AS version',
-              'glpi_operatingsystemarchitectures.name AS architecture',
-              'glpi_operatingsystemservicepacks.name AS servicepack'
-           ],
-           'FROM'      => 'glpi_items_operatingsystems',
-           'LEFT JOIN' => [
-              'glpi_operatingsystems'             => [
-                 'ON' => [
-                    'glpi_items_operatingsystems' => 'operatingsystems_id',
-                    'glpi_operatingsystems'       => 'id'
-                 ]
-              ],
-              'glpi_operatingsystemservicepacks'  => [
-                 'ON' => [
-                    'glpi_items_operatingsystems'       => 'operatingsystemservicepacks_id',
-                    'glpi_operatingsystemservicepacks'  => 'id'
-                 ]
-              ],
-              'glpi_operatingsystemarchitectures' => [
-                 'ON' => [
-                    'glpi_items_operatingsystems'       => 'operatingsystemarchitectures_id',
-                    'glpi_operatingsystemarchitectures' => 'id'
-                 ]
-              ],
-              'glpi_operatingsystemversions'      => [
-                 'ON' => [
-                    'glpi_items_operatingsystems'    => 'operatingsystemversions_id',
-                    'glpi_operatingsystemversions'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_items_operatingsystems.itemtype' => $item->getType(),
-              'glpi_items_operatingsystems.items_id' => $item->getID()
-           ],
-           'ORDERBY'   => "$sort $order"
-        ]);
-        return $iterator;
+        return Orm::readPrepared(
+            $DB,
+            static function () use ($item, $sort, $order): array {
+                // Retain the repository's weak argument conversion after all four expressions.
+                $arguments = static fn (string $kind, int $id, string $sort, string $order): array => [$kind, $id, $sort, $order];
+                return $arguments($item->getType(), (int)$item->getID(), (string)($sort ?? 'glpi_items_operatingsystems.id'), (string)($order ?? 'ASC'));
+            },
+            static fn (EntityManager $manager, array $arguments): array =>
+                (new OperatingSystemAssignmentRepository($manager))->forSubject(...$arguments)
+        );
     }
 
     /**
@@ -162,7 +132,7 @@ class Item_OperatingSystem extends CommonDBRelation
         }
 
         if (
-            (isset($_GET["sort"]) && !empty($_GET["sort"]))
+            isset($_GET["sort"])
             && isset($columns[$_GET["sort"]])
         ) {
             $sort = $_GET["sort"];
@@ -179,7 +149,7 @@ class Item_OperatingSystem extends CommonDBRelation
         $i      = 0;
 
         $os = [];
-        while ($data = $iterator->next()) {
+        foreach ($iterator as $data) {
             $os[$data['assocID']] = $data;
         }
 
@@ -424,23 +394,11 @@ class Item_OperatingSystem extends CommonDBRelation
      */
     public static function cloneItem($itemtype, $oldid, $newid, $newitemtype = '')
     {
-        global $DB;
-
         Toolbox::deprecated('Use clone');
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'itemtype'  => $itemtype,
-              'items_id'  => $oldid
-           ]
-        ]);
-
-        while ($row = $iterator->next()) {
+        $rows = (new self())->find(['itemtype' => $itemtype, 'items_id' => $oldid]);
+        foreach ($rows as $row) {
             $input             = Toolbox::addslashes_deep($row);
-            $input['items_id'] = $newid;
-            if (!empty($newitemtype)) {
-                $input['itemtype'] = $newitemtype;
-            }
+            $input = ItemOperatingSystem::withReference($input, $newitemtype ?: $itemtype, (int)$newid);
             unset($input["id"]);
             unset($input["date_mod"]);
             unset($input["date_creation"]);
@@ -783,12 +741,71 @@ class Item_OperatingSystem extends CommonDBRelation
         parent::processMassiveActionsForOneItemtype($ma, $item, $ids);
     }
 
-    public function prepareInputForAdd($input)
+    /** Derive the selected subject and entity cache from its actual persisted owner. */
+    protected function validateLifecycleEndpoints(array $input): array|false
     {
-        $item = getItemForItemtype($input['itemtype']);
-        $item->getFromDB($input['items_id']);
-        $input['entities_id'] = $item->fields['entities_id'];
-        $input['is_recursive'] = $item->fields['is_recursive'];
+        return $this->prepareSubjectInput($input, true);
+    }
+
+    private function prepareSubjectInput(array $input, bool $updating): array|false
+    {
+        global $DB;
+
+        $selections = EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'];
+        $kind = array_key_exists('itemtype', $input) ? $input['itemtype'] : ($updating ? ($this->fields['itemtype'] ?? null) : null);
+        if (!is_string($kind) || !isset($selections[$kind])) {
+            return false;
+        }
+        $column = $selections[$kind]['column'];
+        $input['itemtype'] = $kind;
+        if (!array_key_exists($column, $input) && !array_key_exists('items_id', $input)) {
+            $input['items_id'] = $updating ? ($this->fields['items_id'] ?? null) : null;
+        }
+        try {
+            $input = (new ItemOperatingSystem())->normalizeInput($input);
+        } catch (InvalidArgumentException) {
+            return false;
+        }
+        $input['items_id'] = $input[$column];
+        $item = getItemForItemtype($kind);
+        if (!$item || !$item->getFromDB($input['items_id'])) {
+            return false;
+        }
+        // This cache supports CommonDBRelation authorization. It cannot be
+        // replaced independently of the asset that owns the assignment.
+        $input['entities_id'] = $item->getEntityID();
+        $input['is_recursive'] = (int)$item->isRecursive();
+        $components = [];
+        foreach (['operatingsystems_id', 'operatingsystemarchitectures_id'] as $component) {
+            $components[$component] = array_key_exists($component, $input) ? $input[$component] : ($updating ? ($this->fields[$component] ?? null) : null);
+        }
+        $components = ReferenceValues::normalizeLegacy(static::getTable(), $components);
+        $repository = new OperatingSystemAssignmentRepository(Orm::create($DB));
+        if ($repository->hasAssignment(
+            $kind,
+            (int)$input['items_id'],
+            $components['operatingsystems_id'] === null ? null : (int)$components['operatingsystems_id'],
+            $components['operatingsystemarchitectures_id'] === null ? null : (int)$components['operatingsystemarchitectures_id'],
+            $updating ? (int)$this->getID() : null
+        )) {
+            Session::addMessageAfterRedirect(__('An operating system with this architecture is already assigned to this item.'), false, ERROR);
+            return false;
+        }
         return $input;
     }
+
+    public function prepareInputForAdd($input)
+    {
+        $input = $this->prepareSubjectInput($input, false);
+        return $input === false ? false : parent::prepareInputForAdd($input);
+    }
+
+    public function prepareInputForUpdate($input)
+    {
+        $input = $this->validateLifecycleEndpoints($input);
+        // Canonical subject changes must also reach existing parent-right and
+        // history checks through their derived legacy identity.
+        return $input === false ? false : parent::prepareInputForUpdate($input);
+    }
+
 }

@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RegisteredIDRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -49,6 +53,20 @@ class RegisteredID extends CommonDBChild
     public static $items_id        = 'items_id';
     public $dohistory              = true;
 
+    /** Fixed registered-identifier form values; the arbitrary Twig selection helper remains separate. */
+    public static function getFormOptions(string $itemtype, $items_id): array
+    {
+        global $DB;
+        $table = getTableForItemType('RegisteredID');
+        $database = $DB;
+        // Legacy SQL-null sentinels are recognized before object string conversion.
+        $identity = $items_id === null || (is_string($items_id) && strtolower($items_id) === 'null')
+            ? null : (is_int($items_id) ? $items_id : (is_bool($items_id) ? (int)$items_id : (string)$items_id));
+        return Orm::read(
+            $database,
+            static fn (EntityManager $manager): array => (new RegisteredIDRepository($manager))->formOptions($table, $itemtype, $identity)
+        );
+    }
 
     public static function getRegisteredIDTypes()
     {

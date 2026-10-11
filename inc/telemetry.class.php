@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -102,7 +104,7 @@ class Telemetry extends CommonGLPI
         }
 
         if ($CFG_GLPI['use_notifications']) {
-            foreach (array_keys(\Notification_NotificationTemplate::getModes()) as $mode) {
+            foreach (array_keys(Notification_NotificationTemplate::getModes()) as $mode) {
                 if ($CFG_GLPI['notifications_' . $mode]) {
                     $glpi['usage']['notifications'][] = $mode;
                 }
@@ -123,18 +125,22 @@ class Telemetry extends CommonGLPI
 
         $dbinfos = $DB->getInfo();
 
-        $size_res = $DB->request([
-           'SELECT' => new \QueryExpression("ROUND(SUM(data_length + index_length) / 1024 / 1024, 1) AS dbsize"),
-           'FROM'   => 'information_schema.tables',
-           'WHERE'  => ['table_schema' => $DB->dbdefault]
-        ])->next();
+        $connection = $DB->getDoctrineConnection();
+        if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
+            $size = $connection->fetchOne('SELECT ROUND(pg_database_size(current_database()) / 1048576.0, 1)');
+        } else {
+            $size = $connection->fetchOne(
+                'SELECT ROUND(COALESCE(SUM(data_length + index_length), 0) / 1048576, 1) FROM information_schema.tables WHERE table_schema = ?',
+                [$DB->dbdefault]
+            );
+        }
 
         $db = [
            'engine'    => $dbinfos['Server Software'],
            'version'   => $hide_sensitive_data ? 'REDACTED' : $dbinfos['Server Version'],
-           'size'      => $size_res['dbsize'],
+           'size'      => (string)$size,
            'log_size'  => '',
-           'sql_mode'  => $dbinfos['Server SQL Mode']
+           'sql_mode'  => $dbinfos['Server SQL Mode'] ?? ''
         ];
 
         return $db;

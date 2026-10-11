@@ -31,7 +31,14 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\ORM\EntityManager;
 use Glpi\Event;
+use itsmng\Database\KnowledgeBaseAccess;
+use itsmng\Database\Orm;
+use itsmng\Database\Query\KnowledgeBaseFullText;
+use itsmng\Database\Repository\KnowledgeBaseRepository;
+use itsmng\Database\Repository\RecordRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -129,7 +136,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
 
     public function canViewItem()
     {
-        if ($this->fields['users_id'] == Session::getLoginUserID()) {
+        if (Session::getLoginUserID() && $this->fields['users_id'] == Session::getLoginUserID()) {
             return true;
         }
         if (Session::haveRight(self::$rightname, self::KNOWBASEADMIN)) {
@@ -149,7 +156,8 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
     {
         // Personal knowbase or visibility and write access
         return (Session::haveRight(self::$rightname, self::KNOWBASEADMIN)
-                || (Session::getCurrentInterface() == "central"
+                || (Session::getLoginUserID()
+                    && Session::getCurrentInterface() == "central"
                     && $this->fields['users_id'] == Session::getLoginUserID())
                 || ((($this->fields["is_faq"] && Session::haveRight(self::$rightname, self::PUBLISHFAQ))
                      || (!$this->fields["is_faq"]
@@ -480,7 +488,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         unset($criteria['WHERE']);
         $criteria['FROM'] = self::getTable();
 
-        $it = new \DBmysqlIterator(null);
+        $it = new DBmysqlIterator(null);
         $it->buildQuery($criteria);
         $sql = $it->getSql();
         $sql = str_replace(
@@ -509,7 +517,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         unset($criteria['LEFT JOIN']);
         $criteria['FROM'] = self::getTable();
 
-        $it = new \DBmysqlIterator(null);
+        $it = new DBmysqlIterator(null);
         $it->buildQuery($criteria);
         $sql = $it->getSql();
         $sql = str_replace(
@@ -609,9 +617,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                 ];
             }
         } else {
-            $where = [
-               0
-            ];
+            $where = [new QueryExpression('1 = 0')];
         }
         // Groups
         if ($forceall || $has_session_groups) {
@@ -622,7 +628,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                                                              ? $_SESSION["glpigroups"]
                                                              : [-1],
                    'OR' => [
-                      'glpi_groups_knowbaseitems.entities_id' => ['<', '0'],
+                      'glpi_groups_knowbaseitems.entities_id' => null,
                    ] + $restrict
                 ];
             }
@@ -634,7 +640,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                 $where['OR'][] = [
                    'glpi_knowbaseitems_profiles.profiles_id' => $_SESSION["glpiactiveprofile"]['id'],
                    'OR' => [
-                      'glpi_knowbaseitems_profiles.entities_id' => ['<', '0'],
+                      'glpi_knowbaseitems_profiles.entities_id' => null,
                       getEntitiesRestrictCriteria('glpi_knowbaseitems_profiles', '', '', true, true)
                    ]
                 ];
@@ -1000,15 +1006,8 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
     {
         global $DB;
 
-        $DB->update(
-            $this->getTable(),
-            [
-              'is_faq' => 1
-            ],
-            [
-              'id' => $this->fields['id']
-            ]
-        );
+        (new KnowledgeBaseRepository(Orm::create($DB)))
+            ->publish((int)$this->getID());
     }
 
     /**
@@ -1020,16 +1019,8 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
     {
         global $DB;
 
-        //update counter view
-        $DB->update(
-            'glpi_knowbaseitems',
-            [
-              'view'   => new \QueryExpression($DB->quoteName('view') . ' + 1')
-            ],
-            [
-              'id' => $this->getID()
-            ]
-        );
+        (new KnowledgeBaseRepository(Orm::create($DB)))
+            ->incrementViews((int)$this->getID());
     }
 
 
@@ -1370,18 +1361,36 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
             KnowbaseItemTranslation::isKbTranslationActive()
             && (countElementsInTable('glpi_knowbaseitemtranslations') > 0)
         ) {
-            $criteria['LEFT JOIN']['glpi_knowbaseitemtranslations'] = [
-               'ON'  => [
-                  'glpi_knowbaseitems'             => 'id',
-                  'glpi_knowbaseitemtranslations'  => 'knowbaseitems_id', [
-                     'AND'                            => [
-                        'glpi_knowbaseitemtranslations.language' => $_SESSION['glpilanguage']
-                     ]
-                  ]
-               ]
-            ];
+            $translationJoin = static function (
+                ?callable $eligible = null,
+                ?string $articleMatch = null,
+                ?callable $translatedMatch = null
+            ) use ($DB): array {
+                $earlier = $DB->quoteName('earlier_translation');
+                $prior = 'SELECT 1 FROM ' . $DB->quoteName('glpi_knowbaseitemtranslations')
+                    . ' ' . $earlier . ' WHERE ' . $earlier . '.' . $DB->quoteName('knowbaseitems_id')
+                    . ' = ' . $DB->quoteName('glpi_knowbaseitems.id') . ' AND '
+                    . $earlier . '.' . $DB->quoteName('language') . ' = ' . $DB->quote($_SESSION['glpilanguage'])
+                    . ' AND ' . $earlier . '.' . $DB->quoteName('id') . ' < ' . $DB->quoteName('glpi_knowbaseitemtranslations.id');
+                $condition = 'NOT EXISTS (' . $prior
+                    . ($eligible === null ? '' : ' AND (' . $eligible('earlier_translation') . ')') . ')';
+                if ($articleMatch !== null) {
+                    // Native MATCH belongs in the query block owning its table.
+                    $condition = '(CASE WHEN (' . $articleMatch . ') THEN 1 ELSE 0 END = 0 OR NOT EXISTS (' . $prior . '))'
+                        . ' AND NOT EXISTS (' . $prior . ' AND (' . $translatedMatch('earlier_translation') . '))';
+                }
+                $conditions = ['glpi_knowbaseitemtranslations.language' => $_SESSION['glpilanguage'],
+                    new QueryExpression($condition)];
+                if ($eligible !== null) {
+                    $conditions[] = new QueryExpression('(' . $eligible('glpi_knowbaseitemtranslations') . ')');
+                }
+                return ['ON' => ['glpi_knowbaseitems' => 'id',
+                    'glpi_knowbaseitemtranslations' => 'knowbaseitems_id', ['AND' => $conditions]]];
+            };
+            $criteria['LEFT JOIN']['glpi_knowbaseitemtranslations'] = $translationJoin();
             $criteria['SELECT'][] = 'glpi_knowbaseitemtranslations.name AS transname';
             $criteria['SELECT'][] = 'glpi_knowbaseitemtranslations.answer AS transanswer';
+            $criteria['GROUPBY'][] = 'glpi_knowbaseitemtranslations.id';
         }
 
         // a search with $contains
@@ -1410,60 +1419,47 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                 if (strlen((string) $params["contains"]) > 0) {
                     $search  = Toolbox::unclean_cross_side_scripting_deep($params["contains"]);
 
-                    // Replace all non word characters with spaces (see: https://stackoverflow.com/a/26537463)
-                    $search_wilcard = preg_replace('/[^\p{L}\p{N}_]+/u', ' ', $search);
+                    $platform = $DB->getDoctrineConnection()->getDatabasePlatform();
+                    $search_wilcard = KnowledgeBaseRepository::fullTextQuery($search, $platform);
 
-                    // Remove last space to avoid illegal syntax with " *"
-                    $search_wilcard = trim($search_wilcard);
-
-                    // Merge spaces since we are using them to split the string later
-                    $search_wilcard = preg_replace('!\s+!', ' ', $search_wilcard);
-
-                    $search_wilcard = explode(' ', (string) $search_wilcard);
-                    $search_wilcard = (implode('* ', $search_wilcard) . '*');
-
-                    $addscore = [];
-                    if (
-                        KnowbaseItemTranslation::isKbTranslationActive()
-                        && (countElementsInTable('glpi_knowbaseitemtranslations') > 0)
-                    ) {
-                        $addscore = [
-                           'glpi_knowbaseitemtranslations.name',
-                           'glpi_knowbaseitemtranslations.answer'
-                        ];
-                    }
-
-                    $expr = "(MATCH(" . $DB->quoteName('glpi_knowbaseitems.name') . ", " . $DB->quoteName('glpi_knowbaseitems.answer') . ")
-                           AGAINST(" . $DB->quote($search_wilcard) . " IN BOOLEAN MODE)";
-
-                    if (!empty($addscore)) {
-                        foreach ($addscore as $addscore_field) {
-                            $expr .= " + MATCH(" . $DB->quoteName($addscore_field) . ")
-                                        AGAINST(" . $DB->quote($search_wilcard) . " IN BOOLEAN MODE)";
+                    $translated = isset($translationJoin);
+                    // Compatibility criteria share the bound ORM dialect renderer.
+                    $columns = [$DB->quoteName('glpi_knowbaseitems.name'), $DB->quoteName('glpi_knowbaseitems.answer')];
+                    $term = $DB->quote($search_wilcard);
+                    $coreMatch = $search_wilcard === '' ? '1 = 0'
+                        : KnowledgeBaseFullText::sql($platform, $columns, $term);
+                    $score = $search_wilcard === '' ? '0'
+                        : KnowledgeBaseFullText::sql($platform, $columns, $term, true);
+                    $ors = [new QueryExpression($coreMatch)];
+                    $eligibleTranslation = null;
+                    $fullTextArticleMatch = null;
+                    $fullTextTranslationMatch = null;
+                    if ($translated && $search_wilcard !== '') {
+                        $translationMatch = static fn (string $alias): string =>
+                            KnowledgeBaseFullText::sql($platform, [$DB->quoteName($alias . '.name')], $term)
+                            . ' OR ' . KnowledgeBaseFullText::sql($platform, [$DB->quoteName($alias . '.answer')], $term);
+                        $translationScope = $DB->quoteName('matching_translation.knowbaseitems_id') . ' = '
+                            . $DB->quoteName('glpi_knowbaseitems.id') . ' AND ' . $DB->quoteName('matching_translation.language')
+                            . ' = ' . $DB->quote($_SESSION['glpilanguage']);
+                        $translationFrom = $DB->quoteName('glpi_knowbaseitemtranslations') . ' ' . $DB->quoteName('matching_translation');
+                        $ors[] = new QueryExpression('EXISTS (SELECT 1 FROM ' . $translationFrom . ' WHERE '
+                            . $translationScope . ' AND (' . $translationMatch('matching_translation') . '))');
+                        $translationScores = [];
+                        foreach (['name', 'answer'] as $field) {
+                            $translationScores[] = 'COALESCE(' . KnowledgeBaseFullText::sql(
+                                $platform,
+                                [$DB->quoteName('matching_translation.' . $field)],
+                                $term,
+                                true
+                            ) . ', 0)';
                         }
+                        $score .= ' + COALESCE((SELECT MAX(' . implode(' + ', $translationScores) . ') FROM '
+                            . $translationFrom . ' WHERE ' . $translationScope . '), 0)';
+                        $eligibleTranslation = static fn (string $alias): string => $coreMatch . ' OR ' . $translationMatch($alias);
+                        $fullTextArticleMatch = $coreMatch;
+                        $fullTextTranslationMatch = $translationMatch;
                     }
-                    $expr .= " ) AS SCORE ";
-                    $criteria['SELECT'][] = new QueryExpression($expr);
-
-                    $ors = [
-                       new QueryExpression(
-                           "MATCH(" . $DB->quoteName('glpi_knowbaseitems.name') . ",
-                        " . $DB->quoteName('glpi_knowbaseitems.answer') . ")
-                        AGAINST(" . $DB->quote($search_wilcard) . " IN BOOLEAN MODE)"
-                       )
-                    ];
-
-                    if (!empty($addscore)) {
-                        foreach ($addscore as $addscore_field) {
-                            $ors[] = [
-                               'NOT' => [$addscore_field => null],
-                               new QueryExpression(
-                                   "MATCH(" . $DB->quoteName($addscore_field) . ")
-                              AGAINST(" . $DB->quote($search_wilcard) . " IN BOOLEAN MODE)"
-                               )
-                            ];
-                        }
-                    }
+                    $criteria['SELECT'][] = new QueryExpression('(' . $score . ') AS ' . $DB->quoteName('SCORE'));
 
                     $search_where =  $criteria['WHERE']; // Visibility restrict criteria
 
@@ -1498,32 +1494,40 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                     $numrows_search = $search_iterator->next()['cpt'];
 
                     if ($numrows_search <= 0) {// not result this fulltext try with alternate search
-                        $search1 = [/* 1 */   '/\\\"/',
-                                         /* 2 */   "/\+/",
-                                         /* 3 */   "/\*/",
-                                         /* 4 */   "/~/",
-                                         /* 5 */   "/</",
-                                         /* 6 */   "/>/",
-                                         /* 7 */   "/\(/",
-                                         /* 8 */   "/\)/",
-                                         /* 9 */   "/\-/"];
-                        $contains = preg_replace($search1, "", (string) $params["contains"]);
-                        $ors = [
-                           ["glpi_knowbaseitems.name"     => ['LIKE', Search::makeTextSearchValue($contains)]],
-                           ["glpi_knowbaseitems.answer"   => ['LIKE', Search::makeTextSearchValue($contains)]]
-                        ];
-                        if (
-                            KnowbaseItemTranslation::isKbTranslationActive()
-                            && (countElementsInTable('glpi_knowbaseitemtranslations') > 0)
-                        ) {
-                            $ors[] = ["glpi_knowbaseitemtranslations.name"   => ['LIKE', Search::makeTextSearchValue($contains)]];
-                            $ors[] = ["glpi_knowbaseitemtranslations.answer" => ['LIKE', Search::makeTextSearchValue($contains)]];
+                        $fullTextArticleMatch = null;
+                        $fullTextTranslationMatch = null;
+                        $patterns = KnowledgeBaseRepository::fallbackPatterns($search);
+                        $operator = $platform instanceof PostgreSQLPlatform ? ' ILIKE ' : ' LIKE ';
+                        $textMatch = static function (string $alias) use ($DB, $patterns, $operator): string {
+                            $likes = [];
+                            foreach ($patterns as $pattern) {
+                                foreach (['name', 'answer'] as $field) {
+                                    $likes[] = $DB->quoteName($alias . '.' . $field) . $operator . $DB->quote($pattern) . " ESCAPE '!'";
+                                }
+                            }
+                            return $likes === [] ? '1 = 0' : implode(' OR ', $likes);
+                        };
+                        $ors = [new QueryExpression($textMatch('glpi_knowbaseitems'))];
+                        if ($translated) {
+                            $ors[] = new QueryExpression('EXISTS (SELECT 1 FROM ' . $DB->quoteName('glpi_knowbaseitemtranslations')
+                                . ' ' . $DB->quoteName('fallback_translation') . ' WHERE '
+                                . $DB->quoteName('fallback_translation.knowbaseitems_id') . ' = ' . $DB->quoteName('glpi_knowbaseitems.id')
+                                . ' AND ' . $DB->quoteName('fallback_translation.language') . ' = ' . $DB->quote($_SESSION['glpilanguage'])
+                                . ' AND (' . $textMatch('fallback_translation') . '))');
+                            $eligibleTranslation = static fn (string $alias): string => $textMatch('glpi_knowbaseitems') . ' OR ' . $textMatch($alias);
                         }
                         $criteria['WHERE'][] = ['OR' => $ors];
                         // Add visibility date
                         $criteria['WHERE'][] = $visibility_crit;
                     } else {
                         $criteria['WHERE'] = $search_where;
+                    }
+                    if ($translated) {
+                        $criteria['LEFT JOIN']['glpi_knowbaseitemtranslations'] = $translationJoin(
+                            $eligibleTranslation,
+                            $fullTextArticleMatch,
+                            $fullTextTranslationMatch
+                        );
                     }
                 }
                 break;
@@ -1608,11 +1612,17 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
             $params["start"] = 0;
         }
 
-        $criteria = self::getListRequest($params, $type);
-
-        $main_iterator = $DBread->request($criteria);
-        $rows = count($main_iterator);
-        $numrows = $rows;
+        $list_limit = (int)$_SESSION['glpilist_limit'];
+        $page = (new KnowledgeBaseRepository(Orm::create($DBread)))
+            ->listPage(KnowledgeBaseAccess::current(), [
+                'type' => $type, 'contains' => (string)$params['contains'],
+                'category' => (int)$params['knowbaseitemcategories_id'], 'faq' => (bool)$params['faq'],
+                'language' => KnowbaseItemTranslation::isKbTranslationActive() ? $_SESSION['glpilanguage'] : null,
+                'offset' => isset($_GET['export_all']) ? 0 : (int)$params['start'],
+                'limit' => isset($_GET['export_all']) ? null : $list_limit,
+            ]);
+        $rows = $page['total'];
+        $numrows = count($page['rows']);
 
         // Get it from database
         $KbCategory = new KnowbaseItemCategory();
@@ -1627,20 +1637,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         // force using getSearchUrl on list icon (when viewing a single article)
         $_SESSION['glpilisturl']['KnowbaseItem'] = '';
 
-        $list_limit = $_SESSION['glpilist_limit'];
-
         $showwriter = in_array($type, ['myunpublished', 'allunpublished', 'allmy']);
-
-        // Limit the result, if no limit applies, use prior result
-        if (
-            ($rows > $list_limit)
-            && !isset($_GET['export_all'])
-        ) {
-            $criteria['START'] = (int)$params['start'];
-            $criteria['LIMIT'] = (int)$list_limit;
-            $main_iterator = $DBread->request($criteria);
-            $numrows = count($main_iterator);
-        }
 
         if ($numrows > 0) {
             // Set display type for export if define
@@ -1703,15 +1700,13 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
 
             // Num of the row (1=header_line)
             $row_num = 1;
-            while ($data = $main_iterator->next()) {
+            foreach ($page['rows'] as $data) {
                 Session::addToNavigateListItems('KnowbaseItem', $data["id"]);
                 // Column num
                 $item_num = 1;
                 echo Search::showNewLine($output_type, ($row_num - 1) % 2);
                 $row_num++;
 
-                $item = new self();
-                $item->getFromDB($data["id"]);
                 $name   = $data["name"];
                 $answer = $data["answer"];
                 // Manage translations
@@ -2128,6 +2123,9 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
 
     public function pre_updateInDB()
     {
+        if (!array_intersect($this->updates, ['name', 'answer'])) {
+            return;
+        }
         $revision = new KnowbaseItem_Revision();
         $kb = new KnowbaseItem();
         $kb->getFromDB($this->getID());
@@ -2234,16 +2232,15 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
             $kbi = new self();
         }
 
-        $ids = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['knowbaseitemcategories_id' => $category_id],
-        ]);
-
-        // Get array of ids
-        $ids = array_map(function ($row) {
-            return $row['id'];
-        }, iterator_to_array($ids, false));
+        $ids = Orm::readPrepared(
+            $DB,
+            static function () use ($category_id): array {
+                $arguments = static fn (string $table, mixed $category): array => [$table, $category];
+                return $arguments(self::getTable(), $category_id);
+            },
+            static fn (EntityManager $manager, array $arguments): array =>
+                (new KnowledgeBaseRepository($manager))->categoryIdentifiers(...$arguments)
+        );
 
         // Filter on canViewItem
         $ids = array_filter($ids, function ($id) use ($kbi) {

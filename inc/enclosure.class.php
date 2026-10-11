@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\Clonable;
+use Glpi\Features\DCBreadcrumb;
+use itsmng\Database\MappedReads;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -40,8 +44,8 @@ if (!defined('GLPI_ROOT')) {
 **/
 class Enclosure extends CommonDBTM
 {
-    use Glpi\Features\DCBreadcrumb;
-    use Glpi\Features\Clonable;
+    use DCBreadcrumb;
+    use Clonable;
 
     // From CommonDBTM
     public $dohistory                   = true;
@@ -318,15 +322,10 @@ class Enclosure extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'FROM'   => Item_Enclosure::getTable(),
-           'WHERE'  => [
-              'enclosures_id' => $this->getID()
-           ]
-        ]);
+        $rows = MappedReads::matching($DB, Item_Enclosure::getTable(), ['enclosures_id' => $this->getID()]);
 
         $filled = [];
-        while ($row = $iterator->next()) {
+        foreach ($rows as $row) {
             if (
                 empty($itemtype) || empty($items_id)
                 || $itemtype != $row['itemtype'] || $items_id != $row['items_id']
@@ -344,6 +343,12 @@ class Enclosure extends CommonDBTM
             [
               Item_Enclosure::class,
             ]
+        );
+
+        Item_Devices::cleanItemDeviceDBOnItemDelete(
+            $this->getType(),
+            $this->fields['id'],
+            (!empty($this->input['keep_devices']))
         );
     }
 

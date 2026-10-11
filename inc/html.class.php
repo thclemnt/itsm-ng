@@ -31,9 +31,14 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Cache\SimpleCache;
 use Glpi\Toolbox\URL;
 use ScssPhp\ScssPhp\Compiler;
+use ScssPhp\ScssPhp\OutputStyle;
+use ScssPhp\ScssPhp\ValueConverter;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\UserRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -142,17 +147,26 @@ class Html
             return false;
         }
 
-        $result = $DB->request([
-            'SELECT' => 'compact_mode_ui',
-            'FROM'   => 'glpi_users',
-            'WHERE'  => ['id' => $_SESSION['glpiID']],
-        ]);
-
-        $value = $result->next()['compact_mode_ui'] ?? 0;
+        $value = self::interfacePreference(
+            $_SESSION['glpiID'],
+            static fn (UserRepository $users, ?int $user): ?bool => $users->compactMode($user)
+        ) ?? 0;
         $enabled = filter_var($value, FILTER_VALIDATE_BOOLEAN);
         $_SESSION['itsm_compact_mode'] = $enabled;
 
         return $enabled;
+    }
+
+    /** Read only this account's projected preference, outside rendering and plugin callbacks. */
+    private static function interfacePreference(mixed $user, callable $read): mixed
+    {
+        global $DB;
+        return Orm::readPrepared(
+            $DB,
+            static fn (): ?int => $user === null || $user === 'NULL' || $user === 'null'
+                ? null : (int)$user,
+            static fn (EntityManager $manager, ?int $id): mixed => $read(new UserRepository($manager), $id)
+        );
     }
 
     /**
@@ -292,8 +306,8 @@ class Html
         }
 
         try {
-            $date = new \DateTime($time);
-        } catch (\Exception $e) {
+            $date = new DateTime($time);
+        } catch (Exception $e) {
             Toolbox::logWarning("Invalid date $time!");
             Session::addMessageAfterRedirect(
                 sprintf(
@@ -920,10 +934,10 @@ class Html
     public static function displayDebugInfos($with_session = true, $ajax = false)
     {
         global $CFG_GLPI, $DEBUG_SQL, $SQL_TOTAL_REQUEST, $DEBUG_AUTOLOAD;
-        $GLPI_CACHE = Config::getCache('cache_db');
 
         // Only for debug mode so not need to be translated
         if ($_SESSION['glpi_use_mode'] == Session::DEBUG_MODE) { // mode debug
+            $GLPI_CACHE = Config::getCache('cache_db');
             $rand = mt_rand();
             echo "<div class='debug " . ($ajax ? "debug_ajax" : "") . "' bg-primary>";
             if (!$ajax) {
@@ -1580,7 +1594,7 @@ class Html
         }
 
         // Custom CSS for active entity
-        if ($DB instanceof DBmysql && $DB->connected) {
+        if ($DB instanceof DBAdapter && $DB->connected) {
             $entity = new Entity();
             if (isset($_SESSION['glpiactive_entity'])) {
                 // Apply active entity styles
@@ -1651,11 +1665,14 @@ JAVASCRIPT
      */
     public static function accessibilityHeader()
     {
-        $user = new User();
-        $user->getFromDB(Session::getLoginUserID());
+        global $DB;
         if (Session::haveRight("accessibility", READ)) {
-            $factor = $user->fields["access_zoom_level"];
-            $font = $user->fields["access_font"];
+            $font = Orm::readPrepared(
+                $DB,
+                static fn (): int => (int)Session::getLoginUserID(),
+                static fn (EntityManager $manager, int $user): ?string =>
+                    (new UserRepository($manager))->accessibilityFont($user)
+            );
             switch ($font) {
                 case "OpenDyslexic":
                     echo '<link href="http://fonts.cdnfonts.com/css/opendyslexic" rel="stylesheet">';     // Use CDNFonts for webfont delivery
@@ -1921,22 +1938,16 @@ JAVASCRIPT
             $twig_vars["can_update"] = true;
         }
 
-        $twig_vars['menu_position'] = $DB->request(
-            [
-                   'SELECT' => 'menu_position',
-                   'FROM'   => 'glpi_users',
-                   'WHERE'  => ['id' => $_SESSION["glpiID"]]
-               ]
-        )->next()['menu_position'] ?? 'menu-left';
+        $twig_vars['menu_position'] = self::interfacePreference(
+            $_SESSION['glpiID'],
+            static fn (UserRepository $users, ?int $user): ?string => $users->menuPosition($user)
+        ) ?? 'menu-left';
 
         if (isset($_SESSION['glpiID'])) {
-            $twig_vars['menu_favorite_on'] = $DB->request(
-                [
-                        'SELECT' => 'menu_favorite_on',
-                        'FROM'   => 'glpi_users',
-                        'WHERE'  => ['id' => $_SESSION["glpiID"]]
-                     ]
-            )->next()['menu_favorite_on'] ?? '1';
+            $twig_vars['menu_favorite_on'] = self::interfacePreference(
+                $_SESSION['glpiID'],
+                static fn (UserRepository $users, ?int $user): ?string => $users->favoritesEnabled($user)
+            ) ?? '1';
             $twig_vars['menu_favorite_on'] = filter_var($twig_vars['menu_favorite_on'], FILTER_VALIDATE_BOOLEAN);
         }
 
@@ -1979,9 +1990,6 @@ JAVASCRIPT
 
 
         $twig_vars['profileSelect'] = $mainMenu['args']['profileSelect'] ?? '';
-
-        $user = new User();
-        $user->getFromDB(Session::getLoginUserID());
 
         $twig_vars['username'] = getUserName(Session::getLoginUserID());
         $twig_vars['main_menu']['args']['access'] = Session::getCurrentInterface();
@@ -2040,10 +2048,10 @@ JAVASCRIPT
         $twig_vars["maintenance_mode"] = $CFG_GLPI['maintenance_mode'];
 
         require_once GLPI_ROOT . "/src/twig/twig.class.php";
-        $twig = Twig::load(GLPI_ROOT . "/templates", false, true);
+        $twig = Twig::load(GLPI_ROOT . "/templates", true, true);
         try {
             echo $twig->render('footer.twig', $twig_vars);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             echo $e->getMessage();
         }
         self::displayDebugInfos();
@@ -2197,6 +2205,24 @@ JAVASCRIPT
     public static function helpFooter()
     {
         self::footer();
+    }
+
+
+    /** Database-free maintenance page for installation and pending migrations. */
+    public static function maintenanceHeader(string $title): void
+    {
+        header('Content-Type: text/html; charset=UTF-8');
+        self::header_nocache();
+        echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">';
+        echo '<title>ITSM-NG - ' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</title>';
+        echo self::css('public/lib/base.css');
+        echo '</head><body><main class="container" role="main">';
+    }
+
+    public static function maintenanceFooter(): void
+    {
+        echo '</main></body></html>';
+        closeDBConnections();
     }
 
 
@@ -7277,22 +7303,16 @@ JAVASCRIPT;
         $already_used_shortcut = ['1'];
 
         if (isset($_SESSION['glpiID'])) {
-            $menu_favorites = $DB->request(
-                [
-                   'SELECT' => 'menu_favorite',
-                   'FROM'   => 'glpi_users',
-                   'WHERE'  => ['id' => $_SESSION["glpiID"]]
-                ]
+            $menu_favorites = self::interfacePreference(
+                $_SESSION['glpiID'],
+                static fn (UserRepository $users, ?int $user): ?string => $users->favoriteMenuItems($user)
             );
-            $menu_favorites = json_decode($menu_favorites->next()['menu_favorite'] ?? '{}', true);
-            $menu_collapse = $DB->request(
-                [
-                 'SELECT' => 'menu_open',
-                 'FROM'   => 'glpi_users',
-                 'WHERE'  => ['id' => $_SESSION["glpiID"]]
-                ]
+            $menu_favorites = json_decode($menu_favorites ?? '{}', true);
+            $menu_collapse = self::interfacePreference(
+                $_SESSION['glpiID'],
+                static fn (UserRepository $users, ?int $user): ?string => $users->openMenuSections($user)
             );
-            $menu_collapse = json_decode($menu_collapse->next()['menu_open'] ?? '[]', true);
+            $menu_collapse = json_decode($menu_collapse ?? '[]', true);
         } else {
             $menu_favorites = [];
             $menu_collapse = [];
@@ -7434,13 +7454,10 @@ JAVASCRIPT;
         "option" => $option, "sector" => $sector];
         $twig_vars['links'] = $links;
 
-        $twig_vars['menu_small'] = $DB->request(
-            [
-                    'SELECT' => 'menu_small',
-                    'FROM'   => 'glpi_users',
-                    'WHERE'  => ['id' => $_SESSION["glpiID"]]
-                 ]
-        )->next()['menu_small'] ?? 'false';
+        $twig_vars['menu_small'] = self::interfacePreference(
+            $_SESSION['glpiID'],
+            static fn (UserRepository $users, ?int $user): ?string => $users->smallMenu($user)
+        ) ?? 'false';
         $twig_vars['menu_small'] = filter_var($twig_vars['menu_small'], FILTER_VALIDATE_BOOLEAN);
         $twig_vars['compact_mode_ui'] = self::useCompactMode();
 
@@ -7517,7 +7534,7 @@ JAVASCRIPT;
      *
      * @param array $args Arguments. May contain:
      *                      - v: version to append (will default to GLPI_VERSION)
-     *                      - debug: if present, will not use Crunched formatter
+     *                      - debug: if present, embed an inline source map
      *                      - file: filerepresentation  to load
      *                      - reload: force reload and recache
      *                      - nocache: do not use nor update cache
@@ -7533,17 +7550,8 @@ JAVASCRIPT;
 
         $variant = $args['variant'] ?? null;
 
-        $scss = new Compiler();
-        $scss->setFormatter('ScssPhp\ScssPhp\Formatter\Crunched');
         if (isset($args['debug'])) {
             $ckey .= '_sourcemap';
-            $scss->setSourceMap(Compiler::SOURCE_MAP_INLINE);
-            $scss->setSourceMapOptions(
-                [
-                  'sourceMapBasepath' => GLPI_ROOT . '/',
-                  'sourceRoot'        => $CFG_GLPI['root_doc'] . '/',
-                ]
-            );
         }
 
         $file = isset($args['file']) ? $args['file'] : 'css/styles';
@@ -7551,9 +7559,6 @@ JAVASCRIPT;
         $ckey .= '_' . $file;
         if ($variant !== null && $variant !== '') {
             $ckey .= '_' . $variant;
-            $scss->setVariables([
-                'itsm-compact-mode' => $variant === 'compact',
-            ]);
         }
 
         if (!Toolbox::endsWith($file, '.scss')) {
@@ -7603,12 +7608,27 @@ JAVASCRIPT;
             $GLPI_CACHE->set($fckey, $file_hash);
         }
 
-        $scss->addImportPath(GLPI_ROOT);
-
         if ($GLPI_CACHE->has($ckey) && !isset($args['reload']) && !isset($args['nocache'])) {
             $css = $GLPI_CACHE->get($ckey);
         } else {
-            $css = $scss->compile($import);
+            $scss = new Compiler();
+            $scss->setOutputStyle(OutputStyle::COMPRESSED);
+            if (isset($args['debug'])) {
+                $scss->setSourceMap(Compiler::SOURCE_MAP_INLINE);
+                $scss->setSourceMapOptions(
+                    [
+                      'sourceMapBasepath' => GLPI_ROOT . '/',
+                      'sourceRoot'        => $CFG_GLPI['root_doc'] . '/',
+                    ]
+                );
+            }
+            if ($variant !== null && $variant !== '') {
+                $scss->replaceVariables([
+                    'itsm-compact-mode' => ValueConverter::fromPhp($variant === 'compact'),
+                ]);
+            }
+            $scss->addImportPath(GLPI_ROOT);
+            $css = $scss->compileString($import)->getCss();
             if (!isset($args['nocache'])) {
                 $GLPI_CACHE->set($ckey, $css);
             }

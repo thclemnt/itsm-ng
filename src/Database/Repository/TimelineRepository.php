@@ -1,0 +1,183 @@
+<?php
+
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+namespace itsmng\Database\Repository;
+
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Query\QueryBuilder;
+use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Mapping\ClassMetadata;
+use itsmng\Database\Entity\ITILFollowup;
+use itsmng\Database\Expressions;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\ReferenceValues;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\RecordCriteria;
+
+/** Counts the event identities used by CommonITILObject's timeline. */
+final class TimelineRepository
+{
+    public function __construct(private EntityManager $em)
+    {
+    }
+
+    /** Requester edit/delete gates count private activity too; public totals exclude every private author. */
+    public function subjectActivityCount(string $kind, int|string|null $item, bool $publicOnly): int|string|null
+    {
+        $metadata = $this->em->getClassMetadata(ITILFollowup::class);
+        if (
+            $metadata->getTableName() !== 'glpi_itilfollowups'
+            || $metadata->getColumnName('itemtype') !== 'itemtype'
+            || $metadata->getColumnName('items_id') !== 'items_id'
+            || ($publicOnly && $metadata->getColumnName('is_private') !== 'is_private')
+        ) {
+            return null;
+        }
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $query = $connection->createQueryBuilder()->select('COUNT(*)')
+            ->from($quote->getTableName($metadata, $platform), 'r')
+            ->where('r.' . $quote->getColumnName('itemtype', $metadata, $platform) . ' = '
+                . Type::getType($metadata->getTypeOfField('itemtype'))->convertToDatabaseValueSQL(':kind', $platform))
+            ->setParameter('kind', $kind, $metadata->getTypeOfField('itemtype'));
+        $column = 'r.' . $quote->getColumnName('items_id', $metadata, $platform);
+        if ($item === null || (is_string($item) && strtolower($item) === 'null')) {
+            $query->andWhere($column . ' IS NULL');
+        } else {
+            $query->andWhere($column . ' = '
+                . Type::getType($metadata->getTypeOfField('items_id'))->convertToDatabaseValueSQL(':parent', $platform))
+                ->setParameter('parent', $item, $metadata->getTypeOfField('items_id'));
+        }
+        if ($publicOnly) {
+            $query->andWhere('r.' . $quote->getColumnName('is_private', $metadata, $platform) . ' = '
+                . Type::getType($metadata->getTypeOfField('is_private'))->convertToDatabaseValueSQL(':private', $platform))
+                ->setParameter('private', false, $metadata->getTypeOfField('is_private'));
+        }
+        $count = $query->executeQuery()->fetchOne();
+        return $platform instanceof PostgreSQLPlatform ? (int)$count : $count;
+    }
+
+    /** The discriminator columns retain the original RecordCriteria scalar types. */
+    public function nativeSubjectCount(ClassMetadata $metadata, string $kind, mixed $item, bool $restricted = false, mixed $author = null): int
+    {
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $query = $connection->createQueryBuilder()->select('COUNT(r.' . $quote->getColumnName('id', $metadata, $platform) . ')')
+            ->from($quote->getTableName($metadata, $platform), 'r');
+        $position = 0;
+        // Restricted followups bind visibility before discriminator/item, as before.
+        if ($restricted) {
+            $query->andWhere($this->visibility($query, $metadata, $author, $position));
+        }
+        foreach (['itemtype' => $kind, 'items_id' => $item] as $field => $value) {
+            $query->andWhere($this->comparison(
+                $query,
+                'r.' . $quote->getColumnName($field, $metadata, $platform),
+                $value,
+                $metadata->getTypeOfField($field),
+                $position
+            ));
+        }
+        return (int)$query->executeQuery()->fetchOne();
+    }
+
+    public function nativeTaskCount(ClassMetadata $metadata, string $parent, mixed $item, bool $restricted, mixed $author): int
+    {
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $query = $connection->createQueryBuilder()->select('COUNT(r.' . $quote->getColumnName('id', $metadata, $platform) . ')')
+            ->from($quote->getTableName($metadata, $platform), 'r');
+        $position = 0;
+        $mapping = $metadata->associationMappings[$parent];
+        $query->where($this->comparison(
+            $query,
+            'r.' . $quote->getJoinColumnName($mapping->joinColumns[0], $metadata, $platform),
+            $item,
+            Types::INTEGER,
+            $position
+        ));
+        if ($restricted) {
+            $query->andWhere($this->visibility($query, $metadata, $author, $position));
+        }
+        return (int)$query->executeQuery()->fetchOne();
+    }
+
+    private function visibility(QueryBuilder $query, ClassMetadata $metadata, mixed $author, int &$position): string
+    {
+        $platform = $this->em->getConnection()->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $public = $this->comparison($query, 'r.' . $quote->getColumnName('is_private', $metadata, $platform), false, Types::BOOLEAN, $position);
+        $mapping = $metadata->associationMappings['author'];
+        $join = $mapping->joinColumns[0];
+        $column = 'r.' . $quote->getJoinColumnName($join, $metadata, $platform);
+        // The renderer's helpdesk author0 denotes an empty optional reference.
+        $owned = EntityRegistry::hasPolicy($metadata->getTableName(), $join->name, ReferenceKind::EmptySelection)
+            && ReferenceValues::isEmptySelection($author)
+            ? $column . ' IS NULL'
+            : $this->comparison($query, $column, $author, Types::INTEGER, $position);
+        return '(' . $public . ' OR ' . $owned . ')';
+    }
+
+    /** Fixed scalar operands only; arbitrary legacy predicates remain in RecordCriteria. */
+    private function comparison(QueryBuilder $query, string $column, mixed $value, string $type, int &$position): string
+    {
+        if ($value === null || (is_string($value) && strtolower($value) === 'null')) {
+            return $column . ' IS NULL';
+        }
+        $value = match ($type) {
+            Types::BOOLEAN => (bool)(int)$value,
+            Types::INTEGER, Types::SMALLINT => (int)$value,
+            default => (string)$value,
+        };
+        $query->setParameter($position++, $value, $type);
+        return $column . ' = ' . Type::getType($type)->convertToDatabaseValueSQL('?', $this->em->getConnection()->getDatabasePlatform());
+    }
+
+    /** Same event-key aggregate on metadata already owned by the timeline operation. */
+    public function nativeValidationCount(ClassMetadata $metadata, string $parent, mixed $item): int
+    {
+        $connection = $this->em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quote = $this->em->getConfiguration()->getQuoteStrategy();
+        $column = static fn (string $field): string => 'r.' . $quote->getColumnName($field, $metadata, $platform);
+        $id = $column('id');
+        $answered = $column('validation_date');
+        $submitted = $column('submission_date');
+        // These paths occur inside COUNT/CASE/temporal functions in DQL, so
+        // mapped field output converters do not wrap them.
+        $calendar = new Expressions($platform);
+        $count = 'COUNT(' . $id . ') + COALESCE(SUM(CASE WHEN ' . $answered . ' IS NOT NULL AND ('
+            . $submitted . ' IS NULL OR ' . $calendar->temporalText($answered, 'datetime') . ' <> '
+            . $calendar->temporalText($submitted, 'datetime') . ') THEN 1 ELSE 0 END), 0)';
+        $join = $metadata->associationMappings[$parent]->joinColumns[0];
+        $subject = 'r.' . $quote->getJoinColumnName($join, $metadata, $platform);
+        $params = $types = [];
+        if ($item === null || (is_string($item) && strtolower($item) === 'null')) {
+            $where = $subject . ' IS NULL';
+        } else {
+            $where = $subject . ' = ' . Type::getType(Types::INTEGER)->convertToDatabaseValueSQL('?', $platform);
+            $params = [(int)$item];
+            $types = [Types::INTEGER];
+        }
+        // Keep executeQuery dispatch and SingleScalarHydrator's native final int cast.
+        return (int)$connection->executeQuery('SELECT ' . $count . ' FROM '
+            . $quote->getTableName($metadata, $platform) . ' r WHERE ' . $where, $params, $types)->fetchOne();
+    }
+
+    public function countValidations(string $table, array $criteria): int
+    {
+        $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
+        // An answer at the submission timestamp replaces that event's key.
+        $query = $this->em->createQueryBuilder()
+            ->select("COUNT(r.id) + COALESCE(SUM(CASE WHEN r.validation_date IS NOT NULL AND (r.submission_date IS NULL OR TEMPORAL_TEXT(r.validation_date, 'datetime') <> TEMPORAL_TEXT(r.submission_date, 'datetime')) THEN 1 ELSE 0 END), 0)")
+            ->from($metadata->name, 'r');
+        $query->where((new RecordCriteria($query, $metadata))->where($criteria));
+        return (int)$query->getQuery()->getSingleScalarResult();
+    }
+}

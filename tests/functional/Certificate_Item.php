@@ -34,6 +34,8 @@
 namespace tests\units;
 
 use DbTestCase;
+use itsmng\Database\Orm;
+use ReflectionProperty;
 
 /* Test for inc/certificate_item.class.php */
 
@@ -154,5 +156,33 @@ class Certificate_Item extends DbTestCase
         )->message->contains('Cannot use getListForItemParams() for a Certificate');
 
         $this->integer($this->testedInstance->countForMainItem($cert))->isIdenticalTo(2);
+        $connection = $GLOBALS['DB']->getDoctrineConnection();
+        $connection->insert('glpi_certificates_items', [
+            'certificates_id' => $cid1, 'itemtype' => 'Computer', 'computers_id' => $computer->getID(),
+        ]);
+        $session = $_SESSION;
+        try {
+            // Lifecycle enumeration remains unscoped and collapses repeated item types.
+            $_SESSION['glpiactiveentities'] = [];
+            $this->array(iterator_to_array($this->testedInstance->getDistinctTypes($cid1)))
+                ->isIdenticalTo($expected);
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $before = $factories->getValue();
+            $this->array(iterator_to_array($this->testedInstance->getDistinctTypes((string)$cid1)))
+                ->isIdenticalTo($expected);
+            $this->array(iterator_to_array($this->testedInstance->getDistinctTypes($cid1, ['itemtype' => 'Computer'])))
+                ->isIdenticalTo([['itemtype' => 'Computer']]);
+            $this->array(iterator_to_array($this->testedInstance->getDistinctTypes($cid1, ['itemtype' => 'MissingItemtype'])))
+                ->isEmpty();
+            $this->array(iterator_to_array($this->testedInstance->getDistinctTypes(null)))->isEmpty();
+            $this->array(iterator_to_array($this->testedInstance->getDistinctTypes(0)))->isEmpty();
+            $connection->delete('glpi_certificates_items', ['certificates_id' => $cid1, 'itemtype' => 'Printer']);
+            $this->array(iterator_to_array($this->testedInstance->getDistinctTypes($cid1)))
+                ->isIdenticalTo([['itemtype' => 'Computer']]);
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+        } finally {
+            $_SESSION = $session;
+        }
+
     }
 }

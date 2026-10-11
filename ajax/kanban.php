@@ -101,6 +101,9 @@ $checkParams = function ($required) {
     }
 };
 
+// ORM-bound Kanban state needs HTML sanitizing without SQL pre-escaping.
+$kanban_state_input = Toolbox::clean_cross_side_scripting_deep($_UPOST ?? []);
+
 // Action Processing
 if (($_POST['action'] ?? null) == 'update') {
     $checkParams(['column_field', 'column_value']);
@@ -141,29 +144,29 @@ if (($_POST['action'] ?? null) == 'update') {
         Item_Kanban::moveCard(
             $_POST['kanban']['itemtype'],
             $_POST['kanban']['items_id'],
-            $_POST['card'],
-            $_POST['column'],
+            $kanban_state_input['card'],
+            $kanban_state_input['column'],
             $_POST['position']
         );
     }
 } elseif (($_POST['action'] ?? null) == 'show_column') {
     $checkParams(['column', 'kanban']);
-    Item_Kanban::showColumn($_POST['kanban']['itemtype'], $_POST['kanban']['items_id'], $_POST['column']);
+    Item_Kanban::showColumn($_POST['kanban']['itemtype'], $_POST['kanban']['items_id'], $kanban_state_input['column']);
 } elseif (($_POST['action'] ?? null) == 'hide_column') {
     $checkParams(['column', 'kanban']);
-    Item_Kanban::hideColumn($_POST['kanban']['itemtype'], $_POST['kanban']['items_id'], $_POST['column']);
+    Item_Kanban::hideColumn($_POST['kanban']['itemtype'], $_POST['kanban']['items_id'], $kanban_state_input['column']);
 } elseif (($_POST['action'] ?? null) == 'collapse_column') {
     $checkParams(['column', 'kanban']);
-    Item_Kanban::collapseColumn($_POST['kanban']['itemtype'], $_POST['kanban']['items_id'], $_POST['column']);
+    Item_Kanban::collapseColumn($_POST['kanban']['itemtype'], $_POST['kanban']['items_id'], $kanban_state_input['column']);
 } elseif (($_POST['action'] ?? null) == 'expand_column') {
     $checkParams(['column', 'kanban']);
-    Item_Kanban::expandColumn($_POST['kanban']['itemtype'], $_POST['kanban']['items_id'], $_POST['column']);
+    Item_Kanban::expandColumn($_POST['kanban']['itemtype'], $_POST['kanban']['items_id'], $kanban_state_input['column']);
 } elseif (($_POST['action'] ?? null) == 'move_column') {
     $checkParams(['column', 'kanban', 'position']);
     Item_Kanban::moveColumn(
         $_POST['kanban']['itemtype'],
         $_POST['kanban']['items_id'],
-        $_POST['column'],
+        $kanban_state_input['column'],
         $_POST['position']
     );
 } elseif ($_REQUEST['action'] == 'refresh') {
@@ -212,7 +215,7 @@ if (($_POST['action'] ?? null) == 'update') {
     echo json_encode($column);
 } elseif (($_POST['action'] ?? null) == 'save_column_state') {
     $checkParams(['items_id', 'state']);
-    Item_Kanban::saveStateForItem($_POST['itemtype'], $_POST['items_id'], $_POST['state']);
+    Item_Kanban::saveStateForItem($_POST['itemtype'], $_POST['items_id'], $kanban_state_input['state']);
 } elseif ($_REQUEST['action'] == 'load_column_state') {
     $checkParams(['items_id', 'last_load']);
     header("Content-Type: application/json; charset=UTF-8", true);

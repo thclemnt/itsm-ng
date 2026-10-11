@@ -151,8 +151,6 @@ class FQDN extends CommonDropdown
     **/
     public static function getFQDNIDByFQDN($fqdn, $wildcard_search = false)
     {
-        global $DB;
-
         if (empty($fqdn)) {
             return 0;
         }
@@ -169,16 +167,7 @@ class FQDN extends CommonDropdown
             $relation = $fqdn;
         }
 
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['fqdn' => $relation]
-        ]);
-
-        $fqdns_id_list = [];
-        while ($line = $iterator->next()) {
-            $fqdns_id_list[] = $line['id'];
-        }
+        $fqdns_id_list = (new self())->findIds(['fqdn' => $relation]);
 
         if (!$wildcard_search) {
             if (count($fqdns_id_list) != 1) {

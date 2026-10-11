@@ -35,10 +35,416 @@
 
 namespace tests\units;
 
+use Computer;
 use DbTestCase;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\ParameterType;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Query\QueryBuilder;
+use Doctrine\DBAL\Result;
+use Doctrine\DBAL\Types\BooleanType;
+use Doctrine\DBAL\Types\IntegerType;
+use Doctrine\DBAL\Types\StringType;
+use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Events;
+use Link_Itemtype;
+use itsmng\Database\Entity\Link as LinkRecord;
+use itsmng\Database\Entity\LinkItemtype as LinkItemtypeRecord;
+use itsmng\Database\EntityRestriction;
+use itsmng\Database\EntityScopeReadOperation;
+use itsmng\Database\LinkCountReadOperation;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\LinkRepository;
+use Link as LinkModel;
+use mock\DBmysql as AdapterProbe;
+use Session;
+use ReflectionProperty;
+use Domain;
+use Domain_Item;
+use NetworkEquipment;
+use Monitor;
+use NetworkPort;
 
 class Link extends DbTestCase
 {
+    public function testLinkItemtypesStayCurrentWithoutClearingCallerState(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $external = null;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $link = $this->createItem(LinkModel::class, [
+                'name' => $this->getUniqueString(), 'link' => 'https://example.test/[ID]',
+                'entities_id' => (int)$_SESSION['glpiactive_entity'], 'is_recursive' => 1,
+            ]);
+            $first = $this->createItem(Link_Itemtype::class, ['links_id' => $link->getID(), 'itemtype' => 'Monitor']);
+            $second = $this->createItem(Link_Itemtype::class, ['links_id' => $link->getID(), 'itemtype' => 'Computer']);
+            $external = Orm::create($DB);
+            $retained = $external->find(LinkItemtypeRecord::class, (int)$second->getID());
+            $retained->itemtype = 'PendingCallerValue';
+            $connection = $DB->getDoctrineConnection();
+            $connection->insert('glpi_links_itemtypes', ['links_id' => $link->getID(), 'itemtype' => 'PluginMissingEndpoint']);
+            $_SESSION['glpishow_count_on_tabs'] = true;
+            $_SESSION['glpiactiveprofile']['link'] = READ;
+            $tab = new Link_Itemtype();
+            $expectedTab = static fn (int $count): string => Link_Itemtype::createTabEntry(
+                _n('Associated item type', 'Associated item types', Session::getPluralNumber()),
+                $count
+            );
+            $this->string($tab->getTabNameForItem($link))->isIdenticalTo($expectedTab(3));
+            $rows = $this->renderLocalTableRows(static fn () => Link_Itemtype::showForLink($link));
+            $this->array($rows)->isIdenticalTo([[Computer::getTypeName(1)], [Monitor::getTypeName(1)]]);
+            $connection->update('glpi_links_itemtypes', ['itemtype' => 'NetworkEquipment'], ['id' => $second->getID()]);
+            $fresh = $this->renderLocalTableRows(static fn () => Link_Itemtype::showForLink($link));
+            $this->array($fresh)->isIdenticalTo([[Monitor::getTypeName(1)], [NetworkEquipment::getTypeName(1)]]);
+            $this->array($rows)->isIdenticalTo([[Computer::getTypeName(1)], [Monitor::getTypeName(1)]]);
+            $this->boolean($external->contains($retained))->isTrue();
+            $this->string($retained->itemtype)->isIdenticalTo('PendingCallerValue');
+            $connection->withApplicationEntityManager(function (EntityManager $outer) use ($link, $second, $tab, $expectedTab): void {
+                $managed = $outer->find(LinkItemtypeRecord::class, (int)$second->getID());
+                $managed->itemtype = 'UnflushedOuterValue';
+                $this->string($tab->getTabNameForItem($link))->isIdenticalTo($expectedTab(3));
+                $this->array($this->renderLocalTableRows(static fn () => Link_Itemtype::showForLink($link)))
+                    ->isIdenticalTo([[Monitor::getTypeName(1)], [NetworkEquipment::getTypeName(1)]]);
+                $this->boolean($outer->contains($managed))->isTrue();
+                $this->string($managed->itemtype)->isIdenticalTo('UnflushedOuterValue');
+            });
+            $connection->delete('glpi_links_itemtypes', ['id' => $first->getID()]);
+            $this->string($tab->getTabNameForItem($link))->isIdenticalTo($expectedTab(2));
+            $this->array($this->renderLocalTableRows(static fn () => Link_Itemtype::showForLink($link)))
+                ->isIdenticalTo([[NetworkEquipment::getTypeName(1)]]);
+            $_SESSION['glpiactiveprofile']['link'] = 0;
+            $this->output(static fn () => Link_Itemtype::showForLink($link))->isEmpty();
+            $_SESSION['glpiactiveprofile']['link'] = READ;
+            $_SESSION['glpishow_count_on_tabs'] = false;
+            $this->string($tab->getTabNameForItem($link))->isIdenticalTo($expectedTab(0));
+        } finally {
+            $external?->clear();
+            $_SESSION = $session;
+        }
+    }
+
+    public function testDisplayLinksRespectItemTypeAndEntityScope(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $parent = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
+        $sibling = (int)getItemByTypeName('Entity', '_test_child_2', true);
+        $computer = $this->createItem(Computer::class, ['name' => '_link_projection', 'entities_id' => $child]);
+        $links = [];
+        foreach ([
+            ['A inherited', $parent, 1, 'Computer'],
+            ['B direct', $child, 0, 'Computer'],
+            ['A inherited', $child, 0, 'Computer'],
+            ['Hidden parent', $parent, 0, 'Computer'],
+            ['Hidden sibling', $sibling, 1, 'Computer'],
+            ['Wrong type', $child, 0, 'Monitor'],
+        ] as [$name, $entity, $recursive, $type]) {
+            $link = $this->createItem(LinkModel::class, [
+                'name' => $name, 'entities_id' => $entity, 'is_recursive' => $recursive,
+                'link' => 'https://example.test/[ID]', 'data' => '', 'open_window' => 0,
+            ]);
+            $this->createItem(Link_Itemtype::class, ['links_id' => $link->getID(), 'itemtype' => $type]);
+            $links[] = (int)$link->getID();
+        }
+
+        $rows = array_values(array_filter(
+            LinkModel::getLinksDataForItem($computer),
+            static fn (array $row): bool => in_array($row['id'], $links, true)
+        ));
+        $this->array(array_column($rows, 'id'))->isIdenticalTo([$links[0], $links[2], $links[1]]);
+        foreach ($rows as $row) {
+            $this->array(array_keys($row))->isIdenticalTo(['id', 'name', 'link', 'data', 'open_window']);
+            $this->integer($row['open_window'])->isIdenticalTo(0);
+        }
+        $rendered = LinkModel::getAllLinksFor($computer, $rows[0]);
+        $this->array($rendered)->hasSize(1);
+        $this->string($rendered[0])->contains('https://example.test/' . $computer->getID())->notContains("target='_blank'");
+        $connection = $DB->getDoctrineConnection();
+        $manager = Orm::create($DB);
+        $repository = new LinkRepository($manager);
+        $criteria = getEntitiesRestrictCriteria('glpi_links', '', $child, true);
+        $expected = $repository->countForItem('Computer', $criteria);
+        $this->integer($expected)->isGreaterThanOrEqualTo(3);
+        $probe = new LinkCountConnectionProbe($connection);
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new AdapterProbe();
+        $this->calling($adapter)->getDoctrineConnection = $probe;
+        $this->calling($adapter)->getProvider = $DB->getProvider();
+        $originalAdapter = $DB;
+        $originalSession = $_SESSION;
+        try {
+            $_SESSION['glpishow_count_on_tabs'] = true;
+            // Warm both entity-scope and count metadata on the selected canonical manager.
+            $tab = new LinkModel();
+            $this->string($tab->getTabNameForItem($computer))
+                ->isIdenticalTo(LinkModel::createTabEntry(LinkModel::getTypeName(Session::getPluralNumber()), $expected));
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $beforeCount = $factories->getValue();
+            $connection->update('glpi_links', ['is_recursive' => false], ['id' => $links[0]], ['is_recursive' => Types::BOOLEAN]);
+            $this->string($tab->getTabNameForItem($computer))
+                ->isIdenticalTo(LinkModel::createTabEntry(LinkModel::getTypeName(Session::getPluralNumber()), $expected - 1));
+            $connection->update('glpi_links', ['is_recursive' => true], ['id' => $links[0]], ['is_recursive' => Types::BOOLEAN]);
+            $this->string($tab->getTabNameForItem($computer))
+                ->isIdenticalTo(LinkModel::createTabEntry(LinkModel::getTypeName(Session::getPluralNumber()), $expected));
+            $this->integer($factories->getValue() - $beforeCount)->isIdenticalTo(0, 'Fresh scoped tab counts reuse the warmed manager');
+            $DB = $adapter;
+            $this->string((new LinkModel())->getTabNameForItem($computer))
+                ->isIdenticalTo(LinkModel::createTabEntry(LinkModel::getTypeName(Session::getPluralNumber()), $expected));
+            $counts = array_filter($probe->builders, static fn (QueryBuilder $query): bool =>
+                str_contains(str_replace(['`', '"'], '', $query->getSQL()), 'FROM glpi_links r'));
+            $this->array($counts)->hasSize(1);
+            $DB = $originalAdapter;
+
+            $scope = (new EntityScopeReadOperation())->restriction('glpi_links', '', $child, true);
+            $this->array($scope->wrappedCriteria())->isIdenticalTo($criteria);
+            $beforeCustom = $factories->getValue();
+            $reader = new LinkCountReadOperation($probe);
+            $this->integer($factories->getValue() - $beforeCustom)->isIdenticalTo(1, 'A supplied custom connection retains its independent manager');
+            $integer = Type::getType('integer');
+            $boolean = Type::getType('boolean');
+            $string = Type::getType('string');
+            try {
+                $this->integer($reader->countForItem('Computer', $scope))->isIdenticalTo($expected);
+                $this->object($probe->getNativeConnection())->isIdenticalTo($connection->getNativeConnection());
+                $connection->update('glpi_links', ['is_recursive' => false], ['id' => $links[0]], ['is_recursive' => 'boolean', 'id' => 'bigint']);
+                $this->integer($reader->countForItem('Computer', $scope))->isIdenticalTo($expected - 1);
+                $this->integer($repository->countForItem('Computer', $criteria))->isIdenticalTo($expected - 1);
+                $connection->update('glpi_links', ['is_recursive' => true], ['id' => $links[0]], ['is_recursive' => 'boolean', 'id' => 'bigint']);
+                foreach ([0, [0], []] as $entities) {
+                    $root = (new EntityScopeReadOperation())->restriction('glpi_links', '', $entities, true);
+                    $this->integer($reader->countForItem('Computer', $root))
+                        ->isIdenticalTo($repository->countForItem('Computer', $root->wrappedCriteria()));
+                    if ($entities === []) {
+                        $this->integer($reader->countForItem('Computer', $root))->isIdenticalTo(0);
+                    }
+                }
+                // Externally supplied predicates retain the ordinary repository path.
+                $custom = new EntityRestriction(['id' => $links[0]], 'glpi_links', 'id', false, null);
+                $before = count($probe->builders);
+                $this->integer($reader->countForItem('Computer', $custom))->isIdenticalTo(1);
+                $this->integer(count($probe->builders))->isIdenticalTo($before);
+                Type::overrideType('string', new class () extends StringType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return "CASE WHEN " . $sqlExpr . " = '' THEN 'not-an-item-type' ELSE 'not-an-item-type' END";
+                    }
+                });
+                $probe->queries = [];
+                $this->integer($reader->countForItem('Computer', $scope))->isIdenticalTo($expected);
+                $this->integer($repository->countForItem('Computer', $criteria))->isIdenticalTo($expected);
+                $this->object($probe->queries[0]['types'][0])->isIdenticalTo(ParameterType::STRING);
+                Type::overrideType('string', $string);
+                Type::overrideType('integer', new class () extends IntegerType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return '(' . $sqlExpr . ' - 1000000)';
+                    }
+                });
+                $this->integer($reader->countForItem('Computer', $scope))->isIdenticalTo(0);
+                $this->integer($repository->countForItem('Computer', $criteria))->isIdenticalTo(0);
+                Type::overrideType('integer', $integer);
+                Type::overrideType('boolean', new class () extends BooleanType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return 'CASE WHEN ' . $sqlExpr . ' = TRUE THEN FALSE ELSE TRUE END';
+                    }
+                });
+                $this->integer($reader->countForItem('Computer', $scope))
+                    ->isIdenticalTo($repository->countForItem('Computer', $criteria));
+            } finally {
+                Type::overrideType('integer', $integer);
+                Type::overrideType('boolean', $boolean);
+                Type::overrideType('string', $string);
+                $reader->close();
+            }
+            $lateRoute = new class () extends Computer {
+                public static int $typeCalls = 0;
+                public static $callback;
+                public static function getType()
+                {
+                    if (++self::$typeCalls === 2) {
+                        (self::$callback)();
+                    }
+                    return 'Computer';
+                }
+            };
+            $lateRoute->fields = $computer->fields;
+            $lateRoute::$callback = static function () use ($originalAdapter): void {
+                $GLOBALS['DB'] = $originalAdapter;
+            };
+            $DB = $adapter;
+            $probe->builders = [];
+            try {
+                $this->string((new LinkModel())->getTabNameForItem($lateRoute))
+                    ->isIdenticalTo(LinkModel::createTabEntry(LinkModel::getTypeName(Session::getPluralNumber()), $expected));
+                $this->object($DB)->isIdenticalTo($originalAdapter);
+                $this->array(array_filter($probe->builders, static fn (QueryBuilder $query): bool =>
+                    str_contains(str_replace(['`', '"'], '', $query->getSQL()), 'FROM glpi_links r')))->hasSize(1);
+            } finally {
+                $lateRoute::$callback = null;
+                $DB = $originalAdapter;
+            }
+            $DB = $adapter;
+            $probe->builders = [];
+            $_SESSION['glpishow_count_on_tabs'] = false;
+            $this->string((new LinkModel())->getTabNameForItem($computer))
+                ->isIdenticalTo(LinkModel::createTabEntry(LinkModel::getTypeName(Session::getPluralNumber()), 0));
+            $_SESSION['glpishow_count_on_tabs'] = true;
+            $_SESSION['glpiactiveprofile']['link'] = 0;
+            $this->string((new LinkModel())->getTabNameForItem($computer))->isEmpty();
+            $this->array($probe->builders)->isEmpty();
+            $_SESSION = $originalSession;
+            $DB = $originalAdapter;
+            $events = new EventManager();
+            $extended = new class ($connection, $events) extends LinkCountConnectionProbe {
+                public function __construct(Connection $selected, private EventManager $events)
+                {
+                    parent::__construct($selected);
+                }
+                public function getEventManager(): EventManager
+                {
+                    return $this->events;
+                }
+            };
+            $local = new LinkCountReadOperation($extended);
+            $listener = new class () {
+                public int $calls = 0;
+                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
+                {
+                    if ($event->getClassMetadata()->name === LinkRecord::class) {
+                        ++$this->calls;
+                    }
+                }
+            };
+            $events->addEventListener([Events::loadClassMetadata], $listener);
+            try {
+                $this->integer($local->countForItem('Computer', $scope))->isIdenticalTo($expected);
+                $this->integer($listener->calls)->isIdenticalTo(1);
+                $this->array($extended->builders)->isEmpty();
+            } finally {
+                $local->close();
+            }
+        } finally {
+            $DB = $originalAdapter;
+            $_SESSION = $originalSession;
+            $manager->clear();
+        }
+
+    }
+
+    public function testDisplayLinkProjectionDoesNotHydrateOrDetach(): void
+    {
+        global $DB;
+        $this->login();
+        $link = $this->createItem(LinkModel::class, [
+            'name' => '_link_before', 'link' => 'https://example.test/[ID]',
+            'entities_id' => 0, 'is_recursive' => 1, 'open_window' => 0, 'data' => '',
+        ]);
+        $id = (int)$link->getID();
+        $this->createItem(Link_Itemtype::class, ['links_id' => $id, 'itemtype' => 'Computer']);
+        $em = Orm::create($DB);
+        $repository = new LinkRepository($em);
+        $connection = $em->getConnection();
+        $this->object($connection)->isIdenticalTo($DB->getDoctrineConnection());
+        $listener = new class () {
+            public int $loaded = 0;
+
+            public function postLoad(): void
+            {
+                ++$this->loaded;
+            }
+        };
+        $em->getEventManager()->addEventListener([Events::postLoad], $listener);
+        try {
+            $expected = ['id' => $id, 'name' => '_link_before', 'link' => 'https://example.test/[ID]', 'data' => '', 'open_window' => 0];
+            $this->array($repository->forItem('Computer', ['id' => $id]))->isIdenticalTo([$expected]);
+            $this->integer($listener->loaded)->isIdenticalTo(0);
+            $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+            // Positive control, then keep this caller-owned object managed and unchanged.
+            $managed = $em->find(LinkRecord::class, $id);
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+            $connection->update(
+                'glpi_links',
+                ['name' => "O'Reilly\\link", 'data' => null, 'open_window' => true],
+                ['id' => $id],
+                ['open_window' => Types::BOOLEAN]
+            );
+            $expected['name'] = "O'Reilly\\link";
+            $expected['data'] = null;
+            $expected['open_window'] = 1;
+            $this->array($repository->forItem('Computer', ['id' => $id]))->isIdenticalTo([$expected]);
+            $this->string($managed->name)->isIdenticalTo('_link_before');
+            $this->boolean($em->contains($managed))->isTrue();
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+            $this->array($repository->forItem('Monitor', ['id' => $id]))->isEmpty();
+            $this->array($repository->forItem('Computer', ['id' => -1]))->isEmpty();
+        } finally {
+            $em->getEventManager()->removeEventListener([Events::postLoad], $listener);
+            $em->clear();
+        }
+    }
+
+    public function testTagReadsReuseManagerAndObserveCurrentSelectedConnection(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)Session::getActiveEntity();
+        $computer = $this->createItem(Computer::class, ['name' => '_link_tag_scope', 'entities_id' => $entity]);
+        $equipment = $this->createItem(NetworkEquipment::class, ['name' => '_link_tag_scope', 'entities_id' => $entity]);
+        $domain = $this->createItem(Domain::class, ['name' => 'before.example', 'entities_id' => $computer->getEntityID()]);
+        $this->createItem(Domain_Item::class, ['domains_id' => $domain->getID(), 'itemtype' => Computer::class, 'items_id' => $computer->getID()]);
+        $port = $this->createItem(NetworkPort::class, [
+            'name' => '_link_tag_scope', 'entities_id' => $computer->getEntityID(),
+            'itemtype' => Computer::class, 'items_id' => $computer->getID(), 'mac' => '00:11:22:33:44:55',
+        ]);
+        $connection = $DB->getDoctrineConnection();
+        Orm::withReadConnection($connection, static function (): void {
+        });
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $before = $factories->getValue();
+        $this->array(LinkModel::generateLinkContents('[DOMAIN]', $computer, false))->isIdenticalTo(['before.example']);
+        $this->array(LinkModel::generateLinkContents('[MAC]', $computer, false))
+            ->isIdenticalTo(['mac' . $port->getID() => '00:11:22:33:44:55']);
+        // Empty equipment/IP branches still execute both address queries and the MAC query.
+        $this->array(LinkModel::generateLinkContents('[IP][MAC]', $equipment, false))->isIdenticalTo(['[IP][MAC]']);
+        $connection->update('glpi_domains', ['name' => 'after.example'], ['id' => $domain->getID()]);
+        $connection->update('glpi_networkports', ['mac' => '00:11:22:33:44:66'], ['id' => $port->getID()]);
+        $this->array(LinkModel::generateLinkContents('[DOMAIN]', $computer, false))->isIdenticalTo(['after.example']);
+        $this->array(LinkModel::generateLinkContents('[MAC]', $computer, false))
+            ->isIdenticalTo(['mac' . $port->getID() => '00:11:22:33:44:66']);
+        $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+
+        // A caller-supplied connection keeps independent managers and its selected physical route.
+        $probe = new LinkCountConnectionProbe($connection);
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new AdapterProbe();
+        $this->calling($adapter)->getDoctrineConnection = $probe;
+        $this->calling($adapter)->getProvider = $DB->getProvider();
+        $original = $DB;
+        try {
+            $DB = $adapter;
+            $before = $factories->getValue();
+            $this->array(LinkModel::generateLinkContents('[DOMAIN]', $computer, false))->isIdenticalTo(['after.example']);
+            $connection->update('glpi_domains', ['name' => 'selected.example'], ['id' => $domain->getID()]);
+            $this->array(LinkModel::generateLinkContents('[DOMAIN]', $computer, false))->isIdenticalTo(['selected.example']);
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(2);
+            $this->array($probe->queries)->hasSize(2);
+        } finally {
+            $DB = $original;
+        }
+    }
+
     protected function linkContentProvider(): iterable
     {
         $this->login();
@@ -68,14 +474,14 @@ class Link extends DbTestCase
 
         // Attach domains
         $domain1 = $this->createItem(
-            \Domain::class,
+            Domain::class,
             [
               'name'        => 'domain1.tld',
               'entities_id' => $_SESSION['glpiactive_entity'],
          ]
         );
         $this->createItem(
-            \Domain_Item::class,
+            Domain_Item::class,
             [
               'domains_id' => $domain1->getID(),
               'itemtype'   => \Computer::class,
@@ -83,14 +489,14 @@ class Link extends DbTestCase
          ]
         );
         $domain2 = $this->createItem(
-            \Domain::class,
+            Domain::class,
             [
               'name'        => 'domain2.tld',
               'entities_id' => $_SESSION['glpiactive_entity'],
          ]
         );
         $this->createItem(
-            \Domain_Item::class,
+            Domain_Item::class,
             [
               'domains_id' => $domain2->getID(),
               'itemtype'   => \Computer::class,
@@ -188,5 +594,46 @@ TEXT
         } else {
             $this->array($generated)->isEqualTo($expected);
         }
+    }
+}
+
+
+/** Records real selected-connection queries without opening a second transaction. */
+class LinkCountConnectionProbe extends Connection
+{
+    public array $builders = [];
+    public array $queries = [];
+
+    public function __construct(private Connection $selected)
+    {
+        parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
+    }
+
+    public function getDatabasePlatform(): AbstractPlatform
+    {
+        return $this->selected->getDatabasePlatform();
+    }
+
+    public function getNativeConnection(): mixed
+    {
+        return $this->selected->getNativeConnection();
+    }
+
+    public function isTransactionActive(): bool
+    {
+        return $this->selected->isTransactionActive();
+    }
+
+    public function createQueryBuilder(): QueryBuilder
+    {
+        $query = parent::createQueryBuilder();
+        $this->builders[] = $query;
+        return $query;
+    }
+
+    public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
+    {
+        $this->queries[] = ['sql' => $sql, 'params' => $params, 'types' => $types];
+        return $this->selected->executeQuery($sql, $params, $types, $qcp);
     }
 }

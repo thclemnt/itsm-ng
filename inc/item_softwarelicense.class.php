@@ -31,6 +31,20 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\DropdownChoiceContext;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Entity\ItemSoftwareLicense;
+use itsmng\Database\LifecycleModelJournal;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\SoftwareInstallationRepository;
+use itsmng\Database\Repository\SoftwareRepository;
+use itsmng\Domain\SoftwareAssignmentCancelled;
+use itsmng\Domain\SoftwareAssignmentService;
+use itsmng\Domain\SoftwareLifecycleAdmission;
+use itsmng\Domain\SoftwareMutation;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -40,6 +54,8 @@ if (!defined('GLPI_ROOT')) {
  */
 class Item_SoftwareLicense extends CommonDBRelation
 {
+    use SoftwareLifecycleAdmission;
+
     // From CommonDBRelation
     public static $itemtype_1 = 'itemtype';
     public static $items_id_1 = 'items_id';
@@ -47,20 +63,133 @@ class Item_SoftwareLicense extends CommonDBRelation
     public static $itemtype_2 = 'SoftwareLicense';
     public static $items_id_2 = 'softwarelicenses_id';
 
+    public function canCreateItem()
+    {
+        return $this->hasMappedSubject() && parent::canCreateItem();
+    }
+
+    public function canUpdateItem()
+    {
+        return $this->hasMappedSubject() && parent::canUpdateItem();
+    }
+
+    private function hasMappedSubject(): bool
+    {
+        try {
+            ItemSoftwareLicense::referenceAssociation($this->fields['itemtype'] ?? '');
+            return true;
+        } catch (InvalidArgumentException) {
+            return false;
+        }
+    }
+
+    /** The allocation command owns persistence and both required aggregates. */
+    protected function executePreparedAdd(callable $operation, array $priorState): mixed
+    {
+        global $DB;
+
+        $checkpoint = $priorState;
+        $checkpoint['input'] = $this->input;
+        return (new SoftwareAssignmentService($DB))->mutateAllocation(
+            $this,
+            $checkpoint,
+            fn () => parent::executePreparedAdd($operation, $priorState),
+            'add'
+        );
+    }
+
+    protected function executePreparedUpdate(callable $operation, array $storedFields): bool
+    {
+        global $DB;
+
+        $checkpoint = LifecycleModelJournal::state($this);
+        $checkpoint['fields'] = $storedFields;
+        $checkpoint['updates'] = [];
+        $checkpoint['oldvalues'] = [];
+        return (new SoftwareAssignmentService($DB))->mutateAllocation(
+            $this,
+            $checkpoint,
+            fn () => parent::executePreparedUpdate($operation, $storedFields),
+            'update',
+            function () use ($storedFields): bool {
+                $probe = clone $this;
+                return $probe->finalizeLifecycleUpdate($storedFields) && $probe->fields === $this->fields;
+            }
+        );
+    }
+
+    protected function executePreparedRestore(callable $operation, array $storedFields): bool
+    {
+        global $DB;
+
+        $checkpoint = LifecycleModelJournal::state($this);
+        $checkpoint['fields'] = $storedFields;
+        $checkpoint['updates'] = [];
+        $checkpoint['oldvalues'] = [];
+        return (new SoftwareAssignmentService($DB))->mutateAllocation(
+            $this,
+            $checkpoint,
+            fn () => parent::executePreparedRestore($operation, $storedFields),
+            'restore'
+        );
+    }
+
+    public function delete(array $input, $force = 0, $history = 1)
+    {
+        global $DB;
+
+        $database = $DB;
+        if (!array_key_exists(static::getIndexName(), $input)
+            || !SoftwareMutation::loadForMutation(
+                $database,
+                $this,
+                $input[static::getIndexName()],
+                fn () => $this->admitSoftwareLifecycle()
+            )) {
+            return false;
+        }
+        return (new SoftwareAssignmentService($database))->mutateAllocation(
+            $this,
+            LifecycleModelJournal::state($this),
+            fn () => parent::delete($input, $force, $history),
+            'delete'
+        );
+    }
+
 
     public function post_addItem()
     {
 
-        SoftwareLicense::updateValidityIndicator($this->fields['softwarelicenses_id']);
+        SoftwareAssignmentCancelled::requireSuccess(
+            SoftwareLicense::updateValidityIndicator($this->fields['softwarelicenses_id']),
+            'Allocated licence validity update'
+        );
 
         parent::post_addItem();
+    }
+
+
+    public function post_updateItem($history = 1)
+    {
+        if (array_key_exists('softwarelicenses_id', $this->oldvalues)) {
+            foreach (array_unique([$this->oldvalues['softwarelicenses_id'], $this->fields['softwarelicenses_id']]) as $licence) {
+                SoftwareAssignmentCancelled::requireSuccess(
+                    SoftwareLicense::updateValidityIndicator($licence),
+                    'Reassigned licence validity update'
+                );
+            }
+        }
+        parent::post_updateItem($history);
     }
 
 
     public function post_deleteFromDB()
     {
 
-        SoftwareLicense::updateValidityIndicator($this->fields['softwarelicenses_id']);
+        SoftwareAssignmentCancelled::requireSuccess(
+            SoftwareLicense::updateValidityIndicator($this->fields['softwarelicenses_id']),
+            'Removed allocation licence validity update'
+        );
 
         parent::post_deleteFromDB();
     }
@@ -393,27 +522,17 @@ JAVASCRIPT;
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT'    => ['itemtype'],
-           'DISTINCT'  => true,
-           'FROM'      => self::getTable(__CLASS__),
-           'WHERE'     => [
-              'softwarelicenses_id'   => $softwarelicenses_id
-           ]
-        ]);
-
-        $target_types = [];
-        if ($itemtype !== null) {
-            $target_types = [$itemtype];
-        } else {
-            while ($data = $iterator->next()) {
-                $target_types[] = $data['itemtype'];
-            }
-        }
+        $repository = new SoftwareInstallationRepository(Orm::create($DB));
+        $target_types = $itemtype !== null ? [$itemtype] : $repository->itemTypes(true, (int)$softwarelicenses_id, false);
 
         $count = 0;
         foreach ($target_types as $itemtype) {
             $itemtable = $itemtype::getTable();
+            if (isset(EntityRegistry::tables()[$itemtable])) {
+                $count += $repository->count(true, (int)$softwarelicenses_id, false, $itemtype, $itemtable, $entity === -1 ? [] : getEntitiesRestrictCriteria($itemtable, '', $entity));
+                continue;
+            }
+            // Plugin assets without a mapped entity retain their existing query during migration.
             $request = [
                'FROM'         => 'glpi_items_softwarelicenses',
                'COUNT'        => 'cpt',
@@ -461,34 +580,17 @@ JAVASCRIPT;
     {
         global $DB;
 
-        $license_table = SoftwareLicense::getTable();
-        $item_license_table = self::getTable(__CLASS__);
-
-        $iterator = $DB->request([
-           'SELECT'    => ['itemtype'],
-           'DISTINCT'  => true,
-           'FROM'      => $item_license_table,
-           'LEFT JOIN' => [
-              $license_table => [
-                 'FKEY'   => [
-                    $license_table       => 'id',
-                    $item_license_table  => 'softwarelicenses_id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'softwares_id'   => $softwares_id
-           ]
-        ]);
-
-        $target_types = [];
-        while ($data = $iterator->next()) {
-            $target_types[] = $data['itemtype'];
-        }
+        $repository = new SoftwareInstallationRepository(Orm::create($DB));
+        $target_types = $repository->itemTypes(true, (int)$softwares_id, true);
 
         $count = 0;
         foreach ($target_types as $itemtype) {
             $itemtable = $itemtype::getTable();
+            if (isset(EntityRegistry::tables()[$itemtable])) {
+                $count += $repository->count(true, (int)$softwares_id, true, $itemtype, $itemtable, getEntitiesRestrictCriteria($itemtable));
+                continue;
+            }
+            // Plugin assets without a mapped entity retain their existing query during migration.
             $request = [
                'FROM'         => 'glpi_softwarelicenses',
                'COUNT'        => 'cpt',
@@ -540,8 +642,6 @@ JAVASCRIPT;
         global $DB;
 
         $softwarelicense_id = $license->getField('id');
-        $license_table = SoftwareLicense::getTable();
-        $item_license_table = self::getTable(__CLASS__);
 
         if (!Software::canView() || !$softwarelicense_id) {
             return false;
@@ -555,45 +655,36 @@ JAVASCRIPT;
 
         $tot = 0;
 
-        $iterator = $DB->request([
-           'SELECT' => ['id', 'completename'],
-           'FROM'   => 'glpi_entities',
-           'WHERE'  => getEntitiesRestrictCriteria('glpi_entities'),
-           'ORDER'  => ['completename']
-        ]);
-
-        $tab = "&nbsp;&nbsp;&nbsp;&nbsp;";
-        while ($data = $iterator->next()) {
-            $itemtype_iterator = $DB->request([
-               'SELECT'    => ['itemtype'],
-               'DISTINCT'  => true,
-               'FROM'      => $item_license_table,
-               'LEFT JOIN' => [
-                  $license_table => [
-                     'FKEY'   => [
-                        $license_table       => 'id',
-                        $item_license_table  => 'softwarelicenses_id'
-                     ]
-                  ]
-               ],
-               'WHERE'     => [
-                  $item_license_table . '.softwarelicenses_id'   => $softwarelicense_id
-               ] + getEntitiesRestrictCriteria($license_table, '', $data['id'])
-            ]);
-
-            $target_types = [];
-            while ($type = $itemtype_iterator->next()) {
-                $target_types[] = $type['itemtype'];
-            }
-
-            if (count($target_types)) {
-                echo "<tr class='tab_bg_2'><td colspan='2'>{$data["completename"]}</td></tr>";
-                foreach ($target_types as $itemtype) {
-                    $nb = self::countForLicense($softwarelicense_id, $data['id'], $itemtype);
-                    echo "<tr class='tab_bg_2'><td>$tab$tab{$itemtype::getTypeName()}</td>";
-                    echo "<td class='numeric'>{$nb}</td></tr>\n";
-                    $tot += $nb;
+        $entities = (new RecordRepository(Orm::create($DB)))
+            ->matching('glpi_entities', getEntitiesRestrictCriteria('glpi_entities'), ['completename']);
+        $repository = new SoftwareInstallationRepository(Orm::create($DB));
+        $counts = [];
+        foreach ($repository->itemTypes(true, (int)$softwarelicense_id) as $itemtype) {
+            $table = $itemtype::getTable();
+            if (isset(EntityRegistry::tables()[$table])) {
+                foreach ($repository->countsByEntity(true, (int)$softwarelicense_id, $itemtype, $table, getEntitiesRestrictCriteria($table)) as $entity => $quantity) {
+                    $counts[$entity][$itemtype] = $quantity;
                 }
+            } else {
+                // Preserve the plugin count path until its asset has an ORM mapping.
+                foreach ($entities as $entity) {
+                    $quantity = self::countForLicense($softwarelicense_id, $entity['id'], $itemtype);
+                    if ($quantity > 0) {
+                        $counts[$entity['id']][$itemtype] = $quantity;
+                    }
+                }
+            }
+        }
+        $tab = "&nbsp;&nbsp;&nbsp;&nbsp;";
+        foreach ($entities as $data) {
+            if (empty($counts[$data['id']])) {
+                continue;
+            }
+            echo "<tr class='tab_bg_2'><td colspan='2'>{$data["completename"]}</td></tr>";
+            foreach ($counts[$data['id']] as $itemtype => $nb) {
+                echo "<tr class='tab_bg_2'><td>$tab$tab{$itemtype::getTypeName()}</td>";
+                echo "<td class='numeric'>{$nb}</td></tr>\n";
+                $tot += $nb;
             }
         }
 
@@ -666,6 +757,11 @@ JAVASCRIPT;
                 }
             }
             asort($values);
+            $dropdownChoiceTokens = [];
+            foreach (array_keys($values) as $kind) {
+                $dropdownChoiceTokens[$kind] = DropdownChoiceContext::token($kind, []);
+            }
+            $dropdownChoiceTokens = json_encode($dropdownChoiceTokens, JSON_THROW_ON_ERROR);
             $form = [
                'action' => self::getFormURL(),
                'buttons' => [
@@ -694,11 +790,17 @@ JAVASCRIPT;
                            'col_lg' => 6,
                            'hooks' => [
                               'change' => <<<JS
+                                 const choiceToken = ({$dropdownChoiceTokens})[this.value];
+                                 if (!choiceToken) {
+                                     $('#dropdown_items_id').empty();
+                                     return;
+                                 }
                                  $.ajax({
                                     method: "POST",
                                     url: "$CFG_GLPI[root_doc]/ajax/getDropdownValue.php",
                                     data: {
                                        itemtype: this.value,
+                                       _idor_token: choiceToken,
                                     },
                                     success: function(response) {
                                        const data = response.results;
@@ -730,6 +832,7 @@ JAVASCRIPT;
                                  url: "$CFG_GLPI[root_doc]/ajax/getDropdownValue.php",
                                  data: {
                                     itemtype: $('#dropdown_itemtype').val(),
+                                    _idor_token: ({$dropdownChoiceTokens})[$('#dropdown_itemtype').val()],
                                  },
                                  success: function(response) {
                                     const data = response.results;
@@ -1032,45 +1135,8 @@ JAVASCRIPT;
     {
         global $DB;
 
-        $lic = [];
-        $item_license_table = self::getTable(__CLASS__);
-
-        $iterator = $DB->request([
-           'SELECT'       => [
-              'glpi_softwarelicenses.*',
-              'glpi_softwarelicensetypes.name AS type'
-           ],
-           'FROM'         => 'glpi_softwarelicenses',
-           'INNER JOIN'   => [
-              $item_license_table  => [
-                 'FKEY'   => [
-                    $item_license_table     => 'softwarelicenses_id',
-                    'glpi_softwarelicenses' => 'id'
-                 ]
-              ]
-           ],
-           'LEFT JOIN'    => [
-              'glpi_softwarelicensetypes'   => [
-                 'FKEY'   => [
-                    'glpi_softwarelicenses'       => 'softwarelicensetypes_id',
-                    'glpi_softwarelicensetypes'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              $item_license_table . '.itemtype'  => $itemtype,
-              $item_license_table . '.items_id'  => $items_id,
-              'OR'                                => [
-                 'glpi_softwarelicenses.softwareversions_id_use' => $softwareversions_id,
-                 'glpi_softwarelicenses.softwareversions_id_buy' => $softwareversions_id
-              ]
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
-            $lic[$data['id']] = $data;
-        }
-        return $lic;
+        return (new SoftwareInstallationRepository(Orm::create($DB)))
+            ->licensesForInstallation($itemtype, (int)$items_id, (int)$softwareversions_id);
     }
 
 
@@ -1107,19 +1173,12 @@ JAVASCRIPT;
         global $DB;
 
         Toolbox::deprecated('Use clone');
-        $iterator = $DB->request([
-           'FROM' => 'glpi_items_softwarelicenses',
-           'WHERE' => [
-              'items_id' => $oldid,
-              'itemtype' => $itemtype
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
+        $rows = (new SoftwareInstallationRepository(Orm::create($DB)))
+            ->assignmentsForClone(true, $itemtype, (int)$oldid);
+        foreach ($rows as $data) {
             $csl = new self();
             unset($data['id']);
-            $data['items_id'] = $newid;
-            $data['itemtype'] = $itemtype;
+            $data = ItemSoftwareLicense::withReference($data, $itemtype, (int)$newid);
             $data['_no_history'] = true;
 
             $csl->add($data);
@@ -1180,13 +1239,13 @@ JAVASCRIPT;
     {
         global $DB;
 
-        $result = $DB->request([
-           'FROM'   => 'glpi_softwarelicenses',
-           'COUNT'  => 'cpt',
-           'WHERE'  => [
-              'softwares_id' => $softwares_id
-           ] + getEntitiesRestrictCriteria('glpi_softwarelicenses')
-        ])->next();
-        return $result['cpt'];
+        $database = $DB;
+        $scope = getEntitiesRestrictCriteria('glpi_softwarelicenses');
+        $software = $softwares_id === null || (is_string($softwares_id) && strtolower($softwares_id) === 'null')
+            ? null : (is_int($softwares_id) ? $softwares_id : (is_bool($softwares_id) ? (int)$softwares_id : (string)$softwares_id));
+        return Orm::read(
+            $database,
+            static fn (EntityManager $manager): int => (new SoftwareRepository($manager))->licenseCount($software, $scope)
+        );
     }
 }

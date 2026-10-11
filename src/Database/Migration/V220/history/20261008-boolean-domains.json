@@ -1,0 +1,3569 @@
+{
+    "source": "Entity property boolean declarations at e71fc4c8e456cab617798d94d14f6539dfe9431a; frozen once for canonical history",
+    "tables": {
+        "glpi_appliances": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_appliances_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_helpdesk_visible": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_appliances_is_helpdesk_visible_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_appliances_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_appliancetypes": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_appliancetypes_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_authldaps": {
+            "can_support_pagesize": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_authldaps_can_support_pagesize_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_active": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_authldaps_is_active_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_default": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_authldaps_is_default_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "use_dn": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_authldaps_use_dn_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "use_tls": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_authldaps_use_tls_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_authmails": {
+            "is_active": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_authmails_is_active_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_budgets": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_budgets_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_budgets_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_template": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_budgets_is_template_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_businesscriticities": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_businesscriticities_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_calendars": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_calendars_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_calendarsegments": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_calendarsegments_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_cartridgeitems": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_cartridgeitems_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_cartridgeitems_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_certificates": {
+            "is_autosign": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_certificates_is_autosign_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_certificates_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_certificates_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_template": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_certificates_is_template_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_certificatetypes": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_certificatetypes_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_changecosts": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_changecosts_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_changes": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_changes_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_changes_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_changes_suppliers": {
+            "use_notification": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_changes_suppliers_use_notification_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_changes_users": {
+            "use_notification": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_changes_users_use_notification_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_changetasks": {
+            "is_private": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_changetasks_is_private_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_changetemplates": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_changetemplates_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_changevalidations": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_changevalidations_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_clusters": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_clusters_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_clusters_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_clustertypes": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_clustertypes_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_computerantiviruses": {
+            "is_active": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_computerantiviruses_is_active_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_computerantiviruses_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_computerantiviruses_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_uptodate": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_computerantiviruses_is_uptodate_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_computermodels": {
+            "is_half_rack": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_computermodels_is_half_rack_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_computers": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_computers_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_computers_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_computers_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_template": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_computers_is_template_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_computers_items": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_computers_items_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_computers_items_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_computervirtualmachines": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_computervirtualmachines_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_computervirtualmachines_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_consumableitems": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_consumableitems_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_consumableitems_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_contacts": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_contacts_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_contacts_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_contractcosts": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_contractcosts_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_contracts": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_contracts_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_contracts_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_template": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_contracts_is_template_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "use_monday": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_contracts_use_monday_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "use_saturday": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_contracts_use_saturday_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_datacenters": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_datacenters_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_datacenters_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_dcrooms": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_dcrooms_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_dcrooms_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_devicebatteries": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_devicebatteries_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_devicecases": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_devicecases_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_devicecontrols": {
+            "is_raid": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_devicecontrols_is_raid_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_devicecontrols_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_devicedrives": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_devicedrives_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_writer": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_devicedrives_is_writer_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_devicefirmwares": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_devicefirmwares_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_devicegenerics": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_devicegenerics_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_devicegraphiccards": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_devicegraphiccards_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_deviceharddrives": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_deviceharddrives_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_devicememories": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_devicememories_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_devicemotherboards": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_devicemotherboards_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_devicenetworkcards": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_devicenetworkcards_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_devicepcis": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_devicepcis_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_devicepowersupplies": {
+            "is_atx": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_devicepowersupplies_is_atx_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_devicepowersupplies_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_deviceprocessors": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_deviceprocessors_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_devicesensors": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_devicesensors_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_devicesimcards": {
+            "allow_voip": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_devicesimcards_allow_voip_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_devicesimcards_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_devicesoundcards": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_devicesoundcards_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_documents": {
+            "is_blacklisted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_documents_is_blacklisted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_documents_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_documents_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_documents_items": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_documents_items_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_documenttypes": {
+            "is_uploadable": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_documenttypes_is_uploadable_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_domainrecords": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_domainrecords_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_domainrecords_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_domainrecordtypes": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_domainrecordtypes_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_domainrelations": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_domainrelations_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_domains": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_domains_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_helpdesk_visible": {
+                "nullable": false,
+                "baseline": false,
+                "check": "glpi_domains_is_helpdesk_visible_boolean",
+                "conversion_version": "20261006_domain_supplier_helpdesk_rights",
+                "creation_version": "20261006_domain_supplier_helpdesk_rights",
+                "nullability_version": "20261006_domain_supplier_helpdesk_rights"
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_domains_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_domaintypes": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_domaintypes_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_enclosuremodels": {
+            "is_half_rack": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_enclosuremodels_is_half_rack_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_enclosures": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_enclosures_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_enclosures_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_template": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_enclosures_is_template_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_entities_knowbaseitems": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_entities_knowbaseitems_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_entities_reminders": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_entities_reminders_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_entities_rssfeeds": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_entities_rssfeeds_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_fieldblacklists": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_fieldblacklists_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_fieldunicities": {
+            "action_notify": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_fieldunicities_action_notify_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "action_refuse": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_fieldunicities_action_refuse_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_active": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_fieldunicities_is_active_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_fieldunicities_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_fqdns": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_fqdns_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_groups": {
+            "is_assign": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_groups_is_assign_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_itemgroup": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_groups_is_itemgroup_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_manager": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_groups_is_manager_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_notify": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_groups_is_notify_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_groups_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_requester": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_groups_is_requester_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_task": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_groups_is_task_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_usergroup": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_groups_is_usergroup_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_watcher": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_groups_is_watcher_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_groups_knowbaseitems": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_groups_knowbaseitems_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_groups_reminders": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_groups_reminders_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_groups_rssfeeds": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_groups_rssfeeds_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_groups_users": {
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_groups_users_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_manager": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_groups_users_is_manager_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_userdelegate": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_groups_users_is_userdelegate_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_holidays": {
+            "is_perpetual": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_holidays_is_perpetual_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_holidays_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_impactcontexts": {
+            "show_depends": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_impactcontexts_show_depends_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "show_impact": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_impactcontexts_show_impact_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_impactitems": {
+            "is_slave": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_impactitems_is_slave_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_infocoms": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_infocoms_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_ipaddresses": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_ipaddresses_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_ipaddresses_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_ipnetworks": {
+            "addressable": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_ipnetworks_addressable_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_ipnetworks_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_devicebatteries": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicebatteries_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicebatteries_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicebatteries_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_devicecases": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicecases_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicecases_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicecases_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_devicecontrols": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicecontrols_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicecontrols_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicecontrols_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_devicedrives": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicedrives_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicedrives_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicedrives_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_devicefirmwares": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicefirmwares_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicefirmwares_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicefirmwares_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_devicegenerics": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicegenerics_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicegenerics_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicegenerics_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_devicegraphiccards": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicegraphiccards_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicegraphiccards_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicegraphiccards_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_deviceharddrives": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_deviceharddrives_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_deviceharddrives_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_deviceharddrives_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_devicememories": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicememories_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicememories_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicememories_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_devicemotherboards": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicemotherboards_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicemotherboards_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicemotherboards_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_devicenetworkcards": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicenetworkcards_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicenetworkcards_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicenetworkcards_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_devicepcis": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicepcis_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicepcis_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicepcis_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_devicepowersupplies": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicepowersupplies_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicepowersupplies_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicepowersupplies_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_deviceprocessors": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_deviceprocessors_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_deviceprocessors_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_deviceprocessors_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_devicesensors": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicesensors_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicesensors_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicesensors_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_devicesimcards": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicesimcards_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicesimcards_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicesimcards_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_devicesoundcards": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicesoundcards_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicesoundcards_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_devicesoundcards_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_disks": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_disks_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_disks_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_operatingsystems": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_operatingsystems_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_operatingsystems_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_operatingsystems_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_racks": {
+            "is_reserved": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_racks_is_reserved_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_softwarelicenses": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_softwarelicenses_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_softwarelicenses_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_items_softwareversions": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_softwareversions_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_deleted_item": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_softwareversions_is_deleted_item_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_softwareversions_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_template_item": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_items_softwareversions_is_template_item_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_itilcategories": {
+            "is_change": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_itilcategories_is_change_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_helpdeskvisible": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_itilcategories_is_helpdeskvisible_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_incident": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_itilcategories_is_incident_boolean",
+                "conversion_version": "20261004_category_boolean_flags",
+                "creation_version": null,
+                "nullability_version": "20261004_category_boolean_flags"
+            },
+            "is_problem": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_itilcategories_is_problem_boolean",
+                "conversion_version": "20261004_category_boolean_flags",
+                "creation_version": null,
+                "nullability_version": "20261004_category_boolean_flags"
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_itilcategories_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_request": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_itilcategories_is_request_boolean",
+                "conversion_version": "20261004_category_boolean_flags",
+                "creation_version": null,
+                "nullability_version": "20261004_category_boolean_flags"
+            }
+        },
+        "glpi_itilfollowups": {
+            "is_private": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_itilfollowups_is_private_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_knowbaseitemcategories": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_knowbaseitemcategories_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_knowbaseitems": {
+            "is_faq": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_knowbaseitems_is_faq_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_knowbaseitems_profiles": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_knowbaseitems_profiles_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_links": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_links_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "open_window": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_links_open_window_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_locations": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_locations_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_mailcollectors": {
+            "add_cc_to_observer": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_mailcollectors_add_cc_to_observer_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "collect_only_unread": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_mailcollectors_collect_only_unread_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_active": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_mailcollectors_is_active_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "use_mail_date": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_mailcollectors_use_mail_date_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_monitormodels": {
+            "is_half_rack": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_monitormodels_is_half_rack_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_monitors": {
+            "have_bnc": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_monitors_have_bnc_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "have_displayport": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_monitors_have_displayport_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "have_dvi": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_monitors_have_dvi_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "have_hdmi": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_monitors_have_hdmi_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "have_micro": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_monitors_have_micro_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "have_pivot": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_monitors_have_pivot_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "have_speaker": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_monitors_have_speaker_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "have_subd": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_monitors_have_subd_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_monitors_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_monitors_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_global": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_monitors_is_global_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_monitors_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_template": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_monitors_is_template_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_networkequipmentmodels": {
+            "is_half_rack": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_networkequipmentmodels_is_half_rack_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_networkequipments": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_networkequipments_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_networkequipments_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_networkequipments_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_template": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_networkequipments_is_template_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_networknames": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_networknames_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_networknames_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_networkports": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_networkports_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_networkports_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_networkports_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_networkports_vlans": {
+            "tagged": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_networkports_vlans_tagged_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_notifications": {
+            "allow_response": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_notifications_allow_response_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_active": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_notifications_is_active_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_notifications_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_oidc_config": {
+            "is_activate": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_oidc_config_is_activate_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_forced": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_oidc_config_is_forced_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "sso_link_users": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_oidc_config_sso_link_users_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_oidc_users": {
+            "update": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_oidc_users_update_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_olalevels": {
+            "is_active": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_olalevels_is_active_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_olalevels_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_olas": {
+            "end_of_working_day": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_olas_end_of_working_day_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_olas_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_passivedcequipmentmodels": {
+            "is_half_rack": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_passivedcequipmentmodels_is_half_rack_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_passivedcequipments": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_passivedcequipments_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_passivedcequipments_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_template": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_passivedcequipments_is_template_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_pdumodels": {
+            "is_half_rack": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_pdumodels_is_half_rack_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_rackable": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_pdumodels_is_rackable_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_pdus": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_pdus_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_pdus_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_template": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_pdus_is_template_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_pdutypes": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_pdutypes_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_peripheralmodels": {
+            "is_half_rack": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_peripheralmodels_is_half_rack_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_peripherals": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_peripherals_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_peripherals_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_global": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_peripherals_is_global_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_peripherals_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_template": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_peripherals_is_template_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_phones": {
+            "have_headset": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_phones_have_headset_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "have_hp": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_phones_have_hp_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_phones_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_phones_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_global": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_phones_is_global_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_phones_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_template": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_phones_is_template_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_printers": {
+            "have_ethernet": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_printers_have_ethernet_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "have_parallel": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_printers_have_parallel_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "have_serial": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_printers_have_serial_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "have_usb": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_printers_have_usb_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "have_wifi": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_printers_have_wifi_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_printers_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_printers_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_global": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_printers_is_global_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_printers_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_template": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_printers_is_template_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_problems": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_problems_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_problems_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_problems_suppliers": {
+            "use_notification": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_problems_suppliers_use_notification_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_problems_users": {
+            "use_notification": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_problems_users_use_notification_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_problemtasks": {
+            "is_private": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_problemtasks_is_private_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_problemtemplates": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_problemtemplates_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_profiles": {
+            "create_ticket_on_login": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_profiles_create_ticket_on_login_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_default": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_profiles_is_default_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_profiles_reminders": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_profiles_reminders_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_profiles_rssfeeds": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_profiles_rssfeeds_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_profiles_users": {
+            "is_default_profile": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_profiles_users_is_default_profile_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_profiles_users_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_profiles_users_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_projectcosts": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_projectcosts_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_projects": {
+            "auto_percent_done": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_projects_auto_percent_done_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_projects_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_projects_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_template": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_projects_is_template_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "show_on_global_gantt": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_projects_show_on_global_gantt_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_projectstates": {
+            "is_finished": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_projectstates_is_finished_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_projecttasks": {
+            "auto_percent_done": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_projecttasks_auto_percent_done_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_milestone": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_projecttasks_is_milestone_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_projecttasks_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_template": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_projecttasks_is_template_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_projecttasktemplates": {
+            "is_milestone": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_projecttasktemplates_is_milestone_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_projecttasktemplates_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_queuedchats": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_queuedchats_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_queuednotifications": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_queuednotifications_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_racks": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_racks_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_racks_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_template": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_racks_is_template_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_racktypes": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_racktypes_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_reminders": {
+            "is_planned": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_reminders_is_planned_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_requesttypes": {
+            "is_followup_default": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_requesttypes_is_followup_default_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_helpdesk_default": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_requesttypes_is_helpdesk_default_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_mail_default": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_requesttypes_is_mail_default_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_mailfollowup_default": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_requesttypes_is_mailfollowup_default_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_reservationitems": {
+            "is_active": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_reservationitems_is_active_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_reservationitems_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_reservationitems_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_rssfeeds": {
+            "have_error": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_rssfeeds_have_error_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_active": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_rssfeeds_is_active_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_rules": {
+            "is_active": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_rules_is_active_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_rules_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_savedsearches": {
+            "is_private": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_savedsearches_is_private_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_savedsearches_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_savedsearches_alerts": {
+            "is_active": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_savedsearches_alerts_is_active_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_slalevels": {
+            "is_active": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_slalevels_is_active_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_slalevels_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_slas": {
+            "end_of_working_day": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_slas_end_of_working_day_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_slas_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_slms": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_slms_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "use_ticket_calendar": {
+                "nullable": false,
+                "baseline": false,
+                "check": "glpi_slms_use_ticket_calendar_boolean",
+                "conversion_version": null,
+                "creation_version": "20261001_legacy_to_orm_bigint",
+                "nullability_version": null
+            }
+        },
+        "glpi_softwarelicenses": {
+            "allow_overquota": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_softwarelicenses_allow_overquota_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_softwarelicenses_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_helpdesk_visible": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_softwarelicenses_is_helpdesk_visible_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_softwarelicenses_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_template": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_softwarelicenses_is_template_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_valid": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_softwarelicenses_is_valid_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_softwarelicensetypes": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_softwarelicensetypes_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_softwares": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_softwares_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_helpdesk_visible": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_softwares_is_helpdesk_visible_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_softwares_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_template": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_softwares_is_template_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_update": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_softwares_is_update_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_valid": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_softwares_is_valid_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_softwareversions": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_softwareversions_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_solutiontemplates": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_solutiontemplates_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_solutiontypes": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_solutiontypes_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_states": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_states_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_visible_appliance": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_states_is_visible_appliance_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_visible_certificate": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_states_is_visible_certificate_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_visible_cluster": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_states_is_visible_cluster_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_visible_computer": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_states_is_visible_computer_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_visible_contract": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_states_is_visible_contract_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_visible_enclosure": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_states_is_visible_enclosure_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_visible_line": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_states_is_visible_line_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_visible_monitor": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_states_is_visible_monitor_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_visible_networkequipment": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_states_is_visible_networkequipment_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_visible_passivedcequipment": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_states_is_visible_passivedcequipment_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_visible_pdu": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_states_is_visible_pdu_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_visible_peripheral": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_states_is_visible_peripheral_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_visible_phone": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_states_is_visible_phone_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_visible_printer": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_states_is_visible_printer_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_visible_rack": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_states_is_visible_rack_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_visible_softwarelicense": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_states_is_visible_softwarelicense_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_visible_softwareversion": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_states_is_visible_softwareversion_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_suppliers": {
+            "is_active": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_suppliers_is_active_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_suppliers_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_suppliers_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_suppliers_tickets": {
+            "use_notification": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_suppliers_tickets_use_notification_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_taskcategories": {
+            "is_active": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_taskcategories_is_active_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_helpdeskvisible": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_taskcategories_is_helpdeskvisible_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_taskcategories_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_tasktemplates": {
+            "is_private": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_tasktemplates_is_private_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_tasktemplates_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_ticketrecurrents": {
+            "is_active": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_ticketrecurrents_is_active_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_ticketrecurrents_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_tickets": {
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_tickets_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_tickets_users": {
+            "use_notification": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_tickets_users_use_notification_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_tickettasks": {
+            "is_private": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_tickettasks_is_private_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_tickettemplates": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_tickettemplates_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_useremails": {
+            "is_default": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_useremails_is_default_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_dynamic": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_useremails_is_dynamic_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_users": {
+            "access_shortcuts": {
+                "nullable": true,
+                "baseline": true,
+                "check": "glpi_users_access_shortcuts_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "compact_mode_ui": {
+                "nullable": true,
+                "baseline": true,
+                "check": "glpi_users_compact_mode_ui_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "followup_private": {
+                "nullable": true,
+                "baseline": true,
+                "check": "glpi_users_followup_private_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "highcontrast_css": {
+                "nullable": true,
+                "baseline": true,
+                "check": "glpi_users_highcontrast_css_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_active": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_users_is_active_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_deleted": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_users_is_deleted_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_deleted_ldap": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_users_is_deleted_ldap_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "is_ids_visible": {
+                "nullable": true,
+                "baseline": true,
+                "check": "glpi_users_is_ids_visible_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "keep_devices_when_purging_item": {
+                "nullable": true,
+                "baseline": true,
+                "check": "glpi_users_keep_devices_when_purging_item_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "lock_directunlock_notification": {
+                "nullable": true,
+                "baseline": true,
+                "check": "glpi_users_lock_directunlock_notification_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "notification_to_myself": {
+                "nullable": true,
+                "baseline": true,
+                "check": "glpi_users_notification_to_myself_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "show_count_on_tabs": {
+                "nullable": true,
+                "baseline": true,
+                "check": "glpi_users_show_count_on_tabs_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "task_private": {
+                "nullable": true,
+                "baseline": true,
+                "check": "glpi_users_task_private_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            },
+            "use_flat_dropdowntree": {
+                "nullable": true,
+                "baseline": true,
+                "check": "glpi_users_use_flat_dropdowntree_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_vlans": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_vlans_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        },
+        "glpi_wifinetworks": {
+            "is_recursive": {
+                "nullable": false,
+                "baseline": true,
+                "check": "glpi_wifinetworks_is_recursive_boolean",
+                "conversion_version": "20261002_postgres_boolean_flags",
+                "creation_version": null,
+                "nullability_version": null
+            }
+        }
+    }
+}

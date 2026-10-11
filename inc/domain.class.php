@@ -32,6 +32,9 @@
  */
 
 use Glpi\Toolbox\URL;
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DomainRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -69,17 +72,95 @@ class Domain extends CommonDropdown
 
         $record = new DomainRecord();
 
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => $record->getTable(),
-           'WHERE'  => [
-              'domains_id'   => $this->fields['id']
-           ]
-        ]);
-        while ($row = $iterator->next()) {
+        $ids = MappedReads::identifiers($DB, $record->getTable(), 'id', ['domains_id' => $this->fields['id']]);
+        foreach ($ids as $id) {
+            $row = ['id' => $id];
             $row['_linked_purge'] = 1; //flag call when we remove a record from a domain
             $record->delete($row, true);
         }
+    }
+
+    public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
+    {
+        if (!$item instanceof Supplier || $withtemplate || !Session::haveRight('domain', READ)
+            || !$item->can($item->getID(), READ)) {
+            return '';
+        }
+        return !empty($_SESSION['glpishow_count_on_tabs'])
+            ? self::createTabEntry(self::getTypeName(2), self::countForSupplier($item))
+            : self::getTypeName(2);
+    }
+
+    public static function displayTabContentForItem(CommonGLPI $item, $tabnum = 1, $withtemplate = 0)
+    {
+        return $item instanceof Supplier && !$withtemplate ? self::showForSupplier($item) : false;
+    }
+
+    /** Direct commercial ownership is separate from the financial supplier on Infocom. */
+    public static function supplierDomains(Supplier $supplier): array
+    {
+        global $DB;
+
+        if ($supplier->isNewItem() || !Session::haveRight('domain', READ) || !$supplier->can($supplier->getID(), READ)) {
+            return [];
+        }
+        $em = Orm::create($DB);
+        try {
+            return (new DomainRepository($em))->forSupplier(
+                (int)$supplier->getID(),
+                getEntitiesRestrictCriteria(self::getTable(), '', '', true)
+            );
+        } finally {
+            $em->close();
+        }
+    }
+
+    public static function countForSupplier(Supplier $supplier): int
+    {
+        global $DB;
+
+        if ($supplier->isNewItem() || !Session::haveRight('domain', READ) || !$supplier->can($supplier->getID(), READ)) {
+            return 0;
+        }
+        $em = Orm::create($DB);
+        try {
+            return (new DomainRepository($em))->countForSupplier(
+                (int)$supplier->getID(),
+                getEntitiesRestrictCriteria(self::getTable(), '', '', true)
+            );
+        } finally {
+            $em->close();
+        }
+    }
+
+    public static function showForSupplier(Supplier $supplier): bool
+    {
+        if ($supplier->isNewItem() || !Session::haveRight('domain', READ) || !$supplier->can($supplier->getID(), READ)) {
+            return false;
+        }
+        $rows = self::supplierDomains($supplier);
+        $fields = [__('Name'), Entity::getTypeName(1), __('Group in charge'), __('Technician in charge'), DomainType::getTypeName(1), __('Creation date'), __('Expiration date')];
+        $values = [];
+        $escape = static fn (?string $value): string => htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
+        Session::initNavigateListItems(self::class, sprintf(__('%1$s = %2$s'), Supplier::getTypeName(1), $supplier->getName()));
+        foreach ($rows as $row) {
+            Session::addToNavigateListItems(self::class, $row['id']);
+            $values[] = [
+                "<a href='" . $escape(self::getFormURLWithID($row['id'])) . "'>" . $escape($row['name']) . '</a>',
+                $escape($row['entity_name']),
+                $escape($row['group_name']),
+                $escape($row['technician_name']),
+                $escape($row['type_name']),
+                $escape(Html::convDateTime($row['date_creation'])),
+                $row['date_expiration'] === null ? __('Does not expire') : $escape(Html::convDateTime($row['date_expiration'])),
+            ];
+        }
+        renderTwigTemplate('table.twig', [
+            'id' => 'tableForSupplierDomains',
+            'fields' => $fields,
+            'values' => $values,
+        ]);
+        return true;
     }
 
     public function rawSearchOptions()
@@ -115,6 +196,23 @@ class Domain extends CommonDropdown
            'linkfield'          => 'users_id_tech',
            'name'               => __('Technician in charge'),
            'datatype'           => 'dropdown'
+        ];
+
+        $tab[] = [
+           'id'                 => '4',
+           'table'              => 'glpi_suppliers',
+           'field'              => 'name',
+           'linkfield'          => 'suppliers_id',
+           'name'               => Supplier::getTypeName(1),
+           'datatype'           => 'dropdown'
+        ];
+
+        $tab[] = [
+           'id'                 => '11',
+           'table'              => $this->getTable(),
+           'field'              => 'is_helpdesk_visible',
+           'name'               => __('Associable to a ticket'),
+           'datatype'           => 'bool'
         ];
 
         $tab[] = [
@@ -289,8 +387,22 @@ class Domain extends CommonDropdown
         return $ong;
     }
 
-    private function prepareInput($input)
+    private function prepareInput($input, bool $updating = false)
     {
+        global $DB;
+
+        $em = Orm::create($DB);
+        try {
+            (new DomainRepository($em))->assertCommercialSupplierAssignment(
+                $input,
+                $updating && !$this->isNewItem() ? (int)$this->getID() : null
+            );
+        } catch (InvalidArgumentException $error) {
+            Session::addMessageAfterRedirect($error->getMessage(), ERROR, true);
+            return false;
+        } finally {
+            $em->close();
+        }
         if (isset($input['date_creation']) && empty($input['date_creation'])) {
             $input['date_creation'] = 'NULL';
         }
@@ -301,6 +413,22 @@ class Domain extends CommonDropdown
         return $input;
     }
 
+    /** Pure coherence preflight used before the transfer coordinator changes auxiliaries. */
+    public function validateEntityTransfer(int $destination): void
+    {
+        global $DB;
+
+        $em = Orm::create($DB);
+        try {
+            (new DomainRepository($em))->assertCommercialSupplierAssignment(
+                ['entities_id' => $destination],
+                (int)$this->getID()
+            );
+        } finally {
+            $em->close();
+        }
+    }
+
     public function prepareInputForAdd($input)
     {
         return $this->prepareInput($input);
@@ -308,7 +436,7 @@ class Domain extends CommonDropdown
 
     public function prepareInputForUpdate($input)
     {
-        return $this->prepareInput($input);
+        return $this->prepareInput($input, true);
     }
 
     public function showForm($ID, $options = [])
@@ -346,6 +474,18 @@ class Domain extends CommonDropdown
                        'itemtype' => Group::class,
                        'value' => $this->fields['groups_id_tech'] ?? '',
                        'actions' => getItemActionButtons(['info', 'add'], "Group"),
+                    ],
+                    Supplier::getTypeName(1) => [
+                       'name' => 'suppliers_id',
+                       'type' => 'select',
+                       'itemtype' => Supplier::class,
+                       'value' => $this->fields['suppliers_id'] ?? 0,
+                       'actions' => getItemActionButtons(['info', 'add'], Supplier::class),
+                    ],
+                    __('Associable to a ticket') => [
+                       'name' => 'is_helpdesk_visible',
+                       'type' => 'checkbox',
+                       'value' => $this->fields['is_helpdesk_visible'] ?? true,
                     ],
                     __('Others') => [
                        'name' => 'others',
@@ -421,13 +561,9 @@ class Domain extends CommonDropdown
             $where['NOT'] = ['id' => $p['used']];
         }
 
-        $iterator = $DB->request([
-           'FROM'      => self::getTable(),
-           'WHERE'     => $where
-        ]);
-
+        $rows = MappedReads::matching($DB, self::getTable(), $where);
         $values = [0 => Dropdown::EMPTY_VALUE];
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             $values[$data['id']] = $data['name'];
         }
 
@@ -596,20 +732,16 @@ class Domain extends CommonDropdown
      *
      * @return array
      */
-    public static function expiredDomainsCriteria($entities_id): array
+    public static function expiredDomainsCriteria($entities_id, ?DateTimeImmutable $today = null): array
     {
-        global $DB;
-
-        $delay = Entity::getUsedConfig('send_domains_alert_expired_delay', $entities_id);
+        $delay = max(0, (int)Entity::getUsedConfig('send_domains_alert_expired_delay', $entities_id));
+        $today = ($today ?? new DateTimeImmutable('today'))->setTime(0, 0);
         return [
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'NOT' => ['date_expiration' => null],
-              'entities_id'  => $entities_id,
-              'is_deleted'   => 0,
-              new QueryExpression("DATEDIFF(CURDATE(), " . $DB->quoteName('date_expiration') . ") > $delay"),
-              new QueryExpression("DATEDIFF(CURDATE(), " . $DB->quoteName('date_expiration') . ") > 0")
-           ]
+            'FROM' => self::getTable(),
+            'WHERE' => [
+                'entities_id' => $entities_id, 'is_deleted' => false,
+                'date_expiration' => ['<', $today->modify('-' . $delay . ' days')->format('Y-m-d H:i:s')],
+            ],
         ];
     }
 
@@ -620,20 +752,17 @@ class Domain extends CommonDropdown
      *
      * @return array
      */
-    public static function closeExpiriesDomainsCriteria($entities_id): array
+    public static function closeExpiriesDomainsCriteria($entities_id, ?DateTimeImmutable $today = null): array
     {
-        global $DB;
-
-        $delay = Entity::getUsedConfig('send_domains_alert_close_expiries_delay', $entities_id);
+        $delay = (int)Entity::getUsedConfig('send_domains_alert_close_expiries_delay', $entities_id);
+        $today = ($today ?? new DateTimeImmutable('today'))->setTime(0, 0);
         return [
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'NOT' => ['date_expiration' => null],
-              'entities_id'  => $entities_id,
-              'is_deleted'   => 0,
-              new QueryExpression("DATEDIFF(CURDATE(), " . $DB->quoteName('date_expiration') . ") > -$delay"),
-              new QueryExpression("DATEDIFF(CURDATE(), " . $DB->quoteName('date_expiration') . ") < 0")
-           ]
+            'FROM' => self::getTable(),
+            'WHERE' => [
+                'entities_id' => $entities_id, 'is_deleted' => false,
+                'date_expiration' => ['>=', $today->modify('+1 day')->format('Y-m-d H:i:s')],
+                ['date_expiration' => ['<', $today->modify(sprintf('%+d days', $delay))->format('Y-m-d H:i:s')]],
+            ],
         ];
     }
 
@@ -670,8 +799,8 @@ class Domain extends CommonDropdown
 
             foreach ($querys as $type => $query) {
                 $domain_infos[$type] = [];
-                $iterator = $DB->request($query);
-                while ($data = $iterator->next()) {
+                $rows = MappedReads::matching($DB, self::getTable(), $query['WHERE']);
+                foreach ($rows as $data) {
                     $message                        = $data["name"] . ": " .
                        Html::convDate($data["date_expiration"]) . "<br>\n";
                     $domain_infos[$type][$entity][] = $data;
@@ -768,20 +897,13 @@ class Domain extends CommonDropdown
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'id'              => $used,
-              'domaintypes_id'  => $domaintype
-           ]
-        ]);
-
-        $used = [];
-        while ($data = $iterator->next()) {
-            $used[$data['id']] = $data['id'];
+        if (!$used) {
+            return [];
         }
-        return $used;
+        $ids = MappedReads::identifiers($DB, self::getTable(), 'id', [
+            'id' => $used, 'domaintypes_id' => $domaintype,
+        ]);
+        return array_combine($ids, $ids);
     }
 
     public static function getAdditionalMenuLinks()

@@ -37,6 +37,10 @@
  * @since 0.84
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\IPAddressRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -54,6 +58,21 @@ if (!defined('GLPI_ROOT')) {
 **/
 class IPAddress extends CommonDBChild
 {
+    /** Fixed address labels for a parent's form; no visibility/deletion filter is added. */
+    public static function getFormOptions(string $itemtype, $items_id, string $name = '_ipaddresses'): array
+    {
+        global $DB;
+        $table = getTableForItemType('IpAddress');
+        $database = $DB;
+        $identity = $items_id === null || (is_string($items_id) && strtolower($items_id) === 'null')
+            ? null : (is_int($items_id) ? $items_id : (is_bool($items_id) ? (int)$items_id : (string)$items_id));
+        $rows = Orm::read(
+            $database,
+            static fn (EntityManager $manager): array => (new IPAddressRepository($manager))->formRows($table, $itemtype, $identity)
+        );
+        return array_map(static fn (array $row): array => ['id' => $row['id'], $name => $row['name']], $rows);
+    }
+
     // From CommonDBChild
     public static $itemtype       = 'itemtype';
     public static $items_id       = 'items_id';
@@ -106,6 +125,20 @@ class IPAddress extends CommonDBChild
     }
 
 
+    /** An address clone keeps its value; normal add validation and uniqueness still apply. */
+    public function prepareInputForClone($input)
+    {
+        $field = static::getNameField();
+        if (!array_key_exists($field, $input)) {
+            return parent::prepareInputForClone($input);
+        }
+        $address = $input[$field];
+        unset($input[$field]);
+        $input = parent::prepareInputForClone($input);
+        $input[$field] = $address;
+        return $input;
+    }
+
     public static function getTypeName($nb = 0)
     {
         return _n('IP address', 'IP addresses', $nb);
@@ -141,7 +174,7 @@ class IPAddress extends CommonDBChild
             }
         }
         if (isset($input['itemtype']) && isset($input['items_id'])) {
-            $input['mainitemtype'] = 'NULL';
+            $input['mainitemtype'] = null;
             $input['mainitems_id'] = 0;
             if ($input['itemtype'] == 'NetworkName') {
                 $name = new NetworkName();
@@ -974,20 +1007,16 @@ class IPAddress extends CommonDBChild
             return [];
         }
 
-        $criteria = [
-           'SELECT' => 'gip.id',
-           'FROM'   => 'glpi_ipaddresses AS gip',
-           'WHERE'  => ['gip.version' => $address->version]
-        ];
-        $startIndex = (($address->version == 4) ? 3 : 1);
+        $version = $address->version;
         $binaryIP = $address->getBinary();
-        for ($i = $startIndex; $i < 4; ++$i) {
-            $criteria['WHERE']["gip.binary_$i"] = $binaryIP[$i];
-        }
-        $iterator = $DB->request($criteria);
+        $identifiers = Orm::read(
+            $DB,
+            static fn (EntityManager $em): array =>
+                (new IPAddressRepository($em))->identifiersForParsedAddress($version, $binaryIP)
+        );
         $addressesWithItems = [];
-        while ($result = $iterator->next()) {
-            if ($address->getFromDB($result['id'])) {
+        foreach ($identifiers as $identifier) {
+            if ($address->getFromDB($identifier)) {
                 $addressesWithItems[] = array_merge(
                     array_reverse($address->recursivelyGetItems()),
                     [clone $address]
@@ -1192,7 +1221,7 @@ class IPAddress extends CommonDBChild
                    'NAME.id AS name_id',
                    'PORT.id AS port_id',
                    'ITEM.id AS item_id',
-                   new \QueryExpression("'$itemtype' AS " . $DB->quoteName('item_type'))
+                   new QueryExpression("'$itemtype' AS " . $DB->quoteName('item_type'))
                 ]);
                 $criteria['INNER JOIN'] = $criteria['INNER JOIN'] + [
                    'glpi_networknames AS NAME'   => [
@@ -1229,8 +1258,8 @@ class IPAddress extends CommonDBChild
             $criteria['SELECT'] = array_merge($criteria['SELECT'], [
                'NAME.id AS name_id',
                'PORT.id AS port_id',
-               new \QueryExpression('NULL AS ' . $DB->quoteName('item_id')),
-               new \QueryExpression("NULL AS " . $DB->quoteName('item_type')),
+               new QueryExpression('NULL AS ' . $DB->quoteName('item_id')),
+               new QueryExpression("NULL AS " . $DB->quoteName('item_type')),
             ]);
             $criteria['INNER JOIN'] = $criteria['INNER JOIN'] + [
                'glpi_networknames AS NAME'   => [
@@ -1261,9 +1290,9 @@ class IPAddress extends CommonDBChild
             $criteria = $main_criteria;
             $criteria['SELECT'] = array_merge($criteria['SELECT'], [
                'NAME.id AS name_id',
-               new \QueryExpression("NULL AS " . $DB->quoteName('port_id')),
-               new \QueryExpression('NULL AS ' . $DB->quoteName('item_id')),
-               new \QueryExpression("NULL AS " . $DB->quoteName('item_type'))
+               new QueryExpression("NULL AS " . $DB->quoteName('port_id')),
+               new QueryExpression('NULL AS ' . $DB->quoteName('item_id')),
+               new QueryExpression("NULL AS " . $DB->quoteName('item_type'))
             ]);
             $criteria['INNER JOIN'] = $criteria['INNER JOIN'] + [
                'glpi_networknames AS NAME'   => [
@@ -1281,15 +1310,15 @@ class IPAddress extends CommonDBChild
 
             $criteria = $main_criteria;
             $criteria['SELECT'] = array_merge($criteria['SELECT'], [
-               new \QueryExpression("NULL AS name_id"),
-               new \QueryExpression("NULL AS port_id"),
-               new \QueryExpression('NULL AS item_id'),
-               new \QueryExpression("NULL AS item_type")
+               new QueryExpression("NULL AS name_id"),
+               new QueryExpression("NULL AS port_id"),
+               new QueryExpression('NULL AS item_id'),
+               new QueryExpression("NULL AS item_type")
             ]);
             $criteria['INNER JOIN']['glpi_ipaddresses AS ADDR']['ON'][0]['AND']['ADDR.itemtype'] = ['!=', 'NetworkName'];
             $queries[] = $criteria;
 
-            $union = new \QueryUnion($queries);
+            $union = new QueryUnion($queries);
             $criteria = [
                'FROM'   => $union,
             ];

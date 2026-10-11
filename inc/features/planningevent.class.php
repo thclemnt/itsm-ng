@@ -39,13 +39,13 @@ if (!defined('GLPI_ROOT')) {
 
 use RRule\RRule;
 use RRule\RSet;
+use Ramsey\Uuid\Uuid;
 use Session;
 use Toolbox;
 use Planning;
 use PlanningRecall;
 use CommonDBVisible;
 use Group_User;
-use QueryExpression;
 use PlanningEventCategory;
 use Html;
 use DateTime;
@@ -56,12 +56,14 @@ use CommonITILTask;
 use User;
 use DateInterval;
 use Entity;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\PlanningRepository;
 
 trait PlanningEvent
 {
     public function post_getEmpty()
     {
-        if (isset($this->fields["users_id"])) {
+        if (array_key_exists("users_id", $this->fields)) {
             $this->fields["users_id"] = Session::getLoginUserID();
         }
 
@@ -125,15 +127,10 @@ trait PlanningEvent
             $input['users_id'] = Session::getLoginUserID();
         }
 
-        // manage guests
-        if (isset($input['users_id_guests']) && is_array($input['users_id_guests'])) {
-            $input['users_id_guests'] = exportArrayToDB($input['users_id_guests']);
-        }
-
         Toolbox::manageBeginAndEndPlanDates($input['plan']);
 
         if (!isset($input['uuid'])) {
-            $input['uuid'] = \Ramsey\Uuid\Uuid::uuid4();
+            $input['uuid'] = Uuid::uuid4();
         }
 
         $input["name"] = trim((string) $input["name"]);
@@ -180,14 +177,6 @@ trait PlanningEvent
 
     public function prepareInputForUpdate($input)
     {
-        // manage guests
-        if (isset($input['users_id_guests']) && is_array($input['users_id_guests'])) {
-            $input['users_id_guests'] = exportArrayToDB($input['users_id_guests']);
-
-            // avoid warning on update method (string comparison with old value)
-            $this->fields['users_id_guests'] = exportArrayToDB($input['users_id_guests']);
-        }
-
         Toolbox::manageBeginAndEndPlanDates($input['plan']);
 
         if (isset($input['_planningrecall'])) {
@@ -396,10 +385,11 @@ trait PlanningEvent
 
         $events    = [];
         $event_obj = new static();
+        $event_obj->getEmpty();
         $itemtype  = $event_obj->getType();
         $item_fk   = getForeignKeyFieldForItemType($itemtype);
         $table     = self::getTable();
-        $has_bg    = $DB->fieldExists($table, 'background');
+        $has_bg    = array_key_exists('background', $event_obj->fields);
 
         if (
             !isset($options['begin']) || $options['begin'] == 'NULL'
@@ -439,6 +429,8 @@ trait PlanningEvent
                 $whogroup = $_SESSION['glpigroups'];
             } elseif ($who > 0) {
                 $whogroup = array_column(Group_User::getUserGroups($who), 'id');
+            } else {
+                $whogroup = [];
             }
         }
 
@@ -447,22 +439,22 @@ trait PlanningEvent
             $nreadpriv = ["$table.users_id" => $who];
 
             // guests accounts
-            if ($DB->fieldExists($table, 'users_id_guests')) {
+            if (array_key_exists('users_id_guests', $event_obj->fields)) {
                 $nreadpriv = ['OR' => [
                    "$table.users_id" => $who,
-                   "$table.users_id_guests" => ['LIKE', '%"' . $who . '"%'],
+                   'glpi_planningexternaleventguests.users_id' => $who,
                 ]];
             }
         }
 
-        if ($whogroup > 0) {
+        if (is_array($whogroup) ? count($whogroup) > 0 : $whogroup > 0) {
             if ($itemtype == 'Reminder') {
                 $ngrouppriv = ["glpi_groups_reminders.groups_id" => $whogroup];
             } else {
                 $ngrouppriv = [$itemtype::getTableField('groups_id') => $whogroup];
             }
             if (!empty($nreadpriv)) {
-                $nreadpriv['OR'] = [$nreadpriv, $ngrouppriv];
+                $nreadpriv = ['OR' => [$nreadpriv, $ngrouppriv]];
             } else {
                 $nreadpriv = $ngrouppriv;
             }
@@ -490,7 +482,7 @@ trait PlanningEvent
            'end'   => ['>', $begin]
         ] + [$NASSIGN]; // "encapsulate" nassign to prevent OR overriding
 
-        if ($DB->fieldExists($table, 'is_planned')) {
+        if (array_key_exists('is_planned', $event_obj->fields)) {
             $WHERE["$table.is_planned"] = 1;
         }
 
@@ -504,14 +496,13 @@ trait PlanningEvent
                   'state'  => Planning::TODO,
                   'AND'    => [
                      'state'  => Planning::INFO,
-                     'end'    => ['>', new QueryExpression('NOW()')]
+                     'end'    => ['>', date('Y-m-d H:i:s')]
                   ]
                ]
             ];
         }
 
-        $event_obj->getEmpty();
-        if (isset($event_obj->fields['rrule'])) {
+        if (array_key_exists('rrule', $event_obj->fields)) {
             unset($WHERE['end']);
             $WHERE[] = [
                'OR' => [
@@ -529,10 +520,10 @@ trait PlanningEvent
            'ORDER'           => 'begin'
         ] + $visibility_criteria;
 
-        if (isset($event_obj->fields['planningeventcategories_id'])) {
+        if (array_key_exists('planningeventcategories_id', $event_obj->fields)) {
             $c_table = PlanningEventCategory::getTable();
             $criteria['SELECT'][] = "$c_table.color AS cat_color";
-            $criteria['JOIN'] = [
+            $criteria['LEFT JOIN'] = [
                $c_table => [
                   'FKEY' => [
                      $c_table => 'id',
@@ -542,18 +533,20 @@ trait PlanningEvent
             ];
         }
 
-        $iterator = $DB->request($criteria);
+        $iterator = $itemtype === 'PlanningExternalEvent'
+            ? (new PlanningRepository(Orm::create($DB)))->externalEvents($WHERE)
+            : $DB->request($criteria);
 
         $events_toadd = [];
 
         if (count($iterator)) {
-            while ($data = $iterator->next()) {
+            foreach ($iterator as $data) {
                 if ($event_obj->getFromDB($data["id"]) && $event_obj->canViewItem()) {
                     $key = $data["begin"] .
                            "$$" . $itemtype .
                            "$$" . $data["id"] .
                            "$$" . $who .
-                           "$$" . $whogroup;
+                           "$$" . (is_array($whogroup) ? implode(',', $whogroup) : $whogroup);
                     if (isset($options['from_group_users'])) {
                         $key .= "_gu";
                     }
@@ -887,7 +880,7 @@ trait PlanningEvent
      * @param array  $rrule    RRule field value
      * @param string $dtstart  Start of first occurence
      *
-     * @return \RRule\RSet
+     * @return RSet
      */
     public static function getRsetFromRRuleField(array $rrule, $dtstart): RSet
     {
@@ -1019,7 +1012,7 @@ trait PlanningEvent
             ];
         }
 
-        if (isset($this->fields['users_id'])) {
+        if (array_key_exists('users_id', $this->fields)) {
             $tab[] = [
                'id'            => '70',
                'table'         => User::getTable(),
@@ -1033,10 +1026,18 @@ trait PlanningEvent
         if (isset($this->fields['users_id_guests'])) {
             $tab[] = [
                'id'            => '12',
-               'table'         => self::getTable(),
-               'field'         => 'users_id_guests',
+               'table'         => User::getTable(),
+               'field'         => 'name',
                'name'          => __('Guests'),
-               'datatype'      => 'text',
+               'datatype'      => 'itemlink',
+               'forcegroupby'  => true,
+               'massiveaction' => false,
+               'joinparams'    => [
+                   'beforejoin' => [
+                       'table' => 'glpi_planningexternaleventguests',
+                       'joinparams' => ['jointype' => 'child'],
+                   ],
+               ],
             ];
         }
 

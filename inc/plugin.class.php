@@ -1178,7 +1178,7 @@ class Plugin extends CommonDBTM
                 foreach ($entities as $entID => $val) {
                     if ($do_recursive) {
                         // Non recursive ones
-                        $sub_query = new \QuerySubQuery([
+                        $sub_query = new QuerySubQuery([
                            'SELECT' => 'id',
                            'FROM'   => $itemtable,
                            'WHERE'  => [
@@ -1201,7 +1201,7 @@ class Plugin extends CommonDBTM
                         );
 
                         // Recursive ones
-                        $sub_query = new \QuerySubQuery([
+                        $sub_query = new QuerySubQuery([
                            'SELECT' => 'id',
                            'FROM'   => $itemtable,
                            'WHERE'  => [
@@ -1223,7 +1223,7 @@ class Plugin extends CommonDBTM
                             "update entities_id and is_recursive=1 in glpi_infocoms for $name"
                         );
                     } else {
-                        $sub_query = new \QuerySubQuery([
+                        $sub_query = new QuerySubQuery([
                            'SELECT' => 'id',
                            'FROM'   => $itemtable,
                            'WHERE'  => [
@@ -1324,7 +1324,7 @@ class Plugin extends CommonDBTM
 
         foreach ($mapping as $orig => $fixed) {
             if (isset($attrib[$orig])) {
-                \Toolbox::deprecated(
+                Toolbox::deprecated(
                     sprintf(
                         '%1$s type is deprecated, use %2$s instead.',
                         $orig,
@@ -1658,7 +1658,7 @@ class Plugin extends CommonDBTM
                 $tmp = $function($itemtype);
                 foreach ($tmp as $opt) {
                     if (!isset($opt['id'])) {
-                        throw new \Exception($itemtype . ': invalid search option! ' . print_r($opt, true));
+                        throw new Exception($itemtype . ': invalid search option! ' . print_r($opt, true));
                     }
                     $optid = $opt['id'];
                     unset($opt['id']);
@@ -1777,7 +1777,7 @@ class Plugin extends CommonDBTM
                 );
                 break;
             default:
-                throw new \RuntimeException("messageMissing type $type is unknown!");
+                throw new RuntimeException("messageMissing type $type is unknown!");
         }
     }
 

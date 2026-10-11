@@ -72,17 +72,6 @@ if (isset($_GET['checkavailability'])) {
             $_GET['is_recursive'] ?? null
         );
         if ($user) {
-            if (isset($_GET['entities_id']) && isset($_GET['is_recursive'])) {
-                // load entities & profiles
-                // needed to pass canViewItem() in populatePlanning functions in case of ical export
-                $_SESSION["glpidefault_entity"]  = $user->fields['entities_id'];
-                Session::initEntityProfiles($user->getID());
-                if (isset($_SESSION['glpiprofiles'][$user->fields['profiles_id']])) {
-                    Session::changeProfile($user->fields['profiles_id']);
-                } else {
-                    Session::changeProfile(key($_SESSION['glpiprofiles']));
-                }
-            }
             //// check if the request is valid: rights on uID / gID
             // First check mine : user then groups
             $ismine = false;

@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\DCBreadcrumb;
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\PlacementRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -40,7 +45,7 @@ if (!defined('GLPI_ROOT')) {
  **/
 class Rack extends CommonDBTM
 {
-    use Glpi\Features\DCBreadcrumb;
+    use DCBreadcrumb;
 
     public const FRONT    = 0;
     public const REAR     = 1;
@@ -544,13 +549,7 @@ class Rack extends CommonDBTM
         }
         $canedit = $room->canEdit($room_id);
 
-        $racks = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'dcrooms_id'   => $room->getID(),
-              'is_deleted'   => 0
-           ]
-        ]);
+        $racks = MappedReads::matching($DB, self::getTable(), ['dcrooms_id' => $room->getID(), 'is_deleted' => false]);
 
         Session::initNavigateListItems(
             self::getType(),
@@ -568,7 +567,6 @@ class Rack extends CommonDBTM
         echo "<i id='sviewgraph' class='pointer fa fa-th-large selected' title='" . __('View graphical representation') . "'></i>";
         echo "</div>";
 
-        $racks = iterator_to_array($racks);
         echo "<div id='viewlist'>";
 
         $rack = new self();
@@ -937,7 +935,8 @@ JAVASCRIPT;
             return $input;
         }
 
-        if ($input['position'] == 0) {
+        $position = $input['position'] ?? $this->fields['position'] ?? 0;
+        if ($position == 0) {
             return $input;
             Session::addMessageAfterRedirect(
                 __('Position must be set'),
@@ -949,7 +948,7 @@ JAVASCRIPT;
 
         $where = [
            'dcrooms_id'   => $input['dcrooms_id'],
-           'position'     => $input['position'],
+           'position'     => $position,
            'is_deleted'   => false
         ];
 
@@ -983,30 +982,36 @@ JAVASCRIPT;
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'FROM'   => Item_Rack::getTable(),
-           'WHERE'  => [
-              'racks_id'   => $this->getID()
-           ]
-        ]);
+        $manager = Orm::create($DB);
+        try {
+            $iterator = (new PlacementRepository($manager))->rackOccupancy((int)$this->getID());
+        } finally {
+            $manager->clear();
+        }
 
         $filled = [];
-        while ($row = $iterator->next()) {
-            $item = new $row['itemtype']();
-            if (!$item->getFromDB($row['items_id'])) {
-                continue;
-            }
+        foreach ($iterator as $row) {
             $units = 1;
-            $width = 1;
             $depth = 1;
-            if ($item->fields[strtolower($item->getType()) . 'models_id'] != 0) {
-                $model_class = $item->getType() . 'Model';
-                $modelsfield = strtolower($item->getType()) . 'models_id';
-                $model = new $model_class();
-                if ($model->getFromDB($item->fields[$modelsfield])) {
-                    $units = $model->fields['required_units'];
-                    $depth = $model->fields['depth'];
-                    $width = $model->fields['is_half_rack'] == 0 ? 1 : 0.5;
+            if (array_key_exists('dimensions', $row)) {
+                if ($row['dimensions'] === null) {
+                    continue;
+                }
+                $units = $row['dimensions']['required_units'];
+                $depth = $row['dimensions']['depth'];
+            } else {
+                $item = new $row['itemtype']();
+                if (!$item->getFromDB($row['items_id'])) {
+                    continue;
+                }
+                if ($item->fields[strtolower($item->getType()) . 'models_id'] != 0) {
+                    $model_class = $item->getType() . 'Model';
+                    $modelsfield = strtolower($item->getType()) . 'models_id';
+                    $model = new $model_class();
+                    if ($model->getFromDB($item->fields[$modelsfield])) {
+                        $units = $model->fields['required_units'];
+                        $depth = $model->fields['depth'];
+                    }
                 }
             }
             $position = $row['position'];

@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\DropdownChoiceContext;
+use itsmng\Database\MappedReads;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -99,6 +102,13 @@ class Item_Problem extends CommonItilObject_Item
         $number = count($types_iterator);
 
         if ($canedit) {
+            $options = array_unique($problem->getAllTypesForHelpdesk());
+            $dropdownChoiceTokens = [];
+            foreach (array_keys($options) as $kind) {
+                $dropdownChoiceTokens[$kind] = DropdownChoiceContext::token($kind, []);
+            }
+            $dropdownChoiceTokens = json_encode($dropdownChoiceTokens, JSON_THROW_ON_ERROR);
+
             $form = [
                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
                'buttons' => [
@@ -122,15 +132,21 @@ class Item_Problem extends CommonItilObject_Item
                            'type' => 'select',
                            'id' => 'dropdown_itemtype',
                            'name' => 'itemtype',
-                           'values' => [Dropdown::EMPTY_VALUE] + array_unique($problem->getAllTypesForHelpdesk()),
+                           'values' => [Dropdown::EMPTY_VALUE] + $options,
                            'col_lg' => 6,
                            'hooks' => [
                               'change' => <<<JS
+                                 const choiceToken = ({$dropdownChoiceTokens})[this.value];
+                                 if (!choiceToken) {
+                                     $('#dropdown_items_id').empty();
+                                     return;
+                                 }
                               $.ajax({
                                     method: "POST",
                                     url: "$CFG_GLPI[root_doc]/ajax/getDropdownValue.php",
                                     data: {
                                        itemtype: this.value,
+                                       _idor_token: choiceToken,
                                        display_emptychoice: 1,
                                     },
                                     success: function(response) {
@@ -246,14 +262,9 @@ class Item_Problem extends CommonItilObject_Item
                 case 'Supplier':
                     if ($_SESSION['glpishow_count_on_tabs']) {
                         $from = $item->getType() == 'Group' ? 'glpi_groups_problems' : 'glpi_problems_' . strtolower($item->getType() . 's');
-                        $result = $DB->request([
-                           'COUNT'  => 'cpt',
-                           'FROM'   => $from,
-                           'WHERE'  => [
-                              $item->getForeignKeyField()   => $item->fields['id']
-                           ]
-                        ])->next();
-                        $nb = $result['cpt'];
+                        $nb = MappedReads::countMatching($DB, $from, [
+                            $item->getForeignKeyField() => $item->fields['id'],
+                        ]);
                     }
                     return self::createTabEntry(Problem::getTypeName(Session::getPluralNumber()), $nb);
 

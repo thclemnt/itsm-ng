@@ -32,6 +32,10 @@
  */
 
 use Glpi\Event;
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\SharedContentRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -337,9 +341,12 @@ class ReminderTranslation extends CommonDBChild
     public static function getNumberOfTranslationsForItem($item)
     {
 
-        return countElementsInTable(
-            getTableForItemType(__CLASS__),
-            ['reminders_id' => $item->getID()]
+        global $DB;
+        return Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$item->getID(),
+            static fn (EntityManager $manager, int $id): int =>
+                (new RecordRepository($manager))->countMatching('glpi_remindertranslations', ['reminders_id' => $id])
         );
     }
 
@@ -355,16 +362,11 @@ class ReminderTranslation extends CommonDBChild
     {
         global $DB;
 
-        $tab = [];
-
-        $iterator = $DB->request([
-           'FROM'   => getTableForItemType(__CLASS__),
-           'WHERE'  => ['reminders_id' => $item->getID()]
-        ]);
-
-        while ($data = $iterator->next()) {
-            $tab[$data['language']] = $data['language'];
-        }
-        return $tab;
+        return Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$item->getID(),
+            static fn (EntityManager $manager, int $id): array =>
+                (new SharedContentRepository($manager))->translatedLanguages($id)
+        );
     }
 }

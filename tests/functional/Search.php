@@ -33,13 +33,59 @@
 
 namespace tests\units;
 
+use Appliance;
+use Appliance_Item;
+use Change;
+use Change_Item;
+use ChangeCost;
 use CommonDBTM;
+use CommonITILActor;
+use Computer;
+use Config;
 use DbTestCase;
+use DisplayPreference;
+use Doctrine\DBAL\Types\BigIntType;
+use Doctrine\DBAL\Types\BooleanType;
+use Doctrine\DBAL\Types\DecimalType;
+use Doctrine\DBAL\Types\FloatType;
+use Doctrine\DBAL\Types\IntegerType;
+use Doctrine\DBAL\Types\SmallIntType;
+use Doctrine\ORM\EntityManager;
+use Dropdown;
+use Entity;
+use Item_Disk;
+use itsmng\Database\Entity\User as OrmUser;
+use itsmng\Database\Orm;
+use itsmng\Search\Output\LegacyOutput;
+use itsmng\Search\Provider\CriteriaBuilder;
+use itsmng\Search\Provider\FieldReference;
+use itsmng\Search\Provider\JoinBuilder;
+use itsmng\Search\Provider\ProjectionBuilder;
+use itsmng\Search\Provider\SelectList;
+use itsmng\Search\Provider\UnionMember;
+use itsmng\Search\SearchOption;
+use NetworkEquipment;
+use Plugin;
+use Profile;
+use Profile_User;
+use QueryExpression;
+use ReflectionProperty;
+use ReservationItem;
+use Search as LegacySearch;
+use SearchSortPluginFixture;
+use Session;
+use Software;
+use Ticket;
+use User;
+
+use function getEntitiesRestrictRequest;
 
 /* Test for inc/search.class.php */
 
 class Search extends DbTestCase
 {
+    private array $criterionColumns = [];
+
     private function doSearch($itemtype, $params, array $forcedisplay = [])
     {
         global $DEBUG_SQL;
@@ -56,14 +102,14 @@ class Search extends DbTestCase
 
         // force session in debug mode (to store & retrieve sql errors)
         $glpi_use_mode             = $_SESSION['glpi_use_mode'];
-        $_SESSION['glpi_use_mode'] = \Session::DEBUG_MODE;
+        $_SESSION['glpi_use_mode'] = Session::DEBUG_MODE;
 
         // don't compute last request from session
         $params['reset'] = 'reset';
 
         // do search
-        $params = \Search::manageParams($itemtype, $params);
-        $data   = \Search::getDatas($itemtype, $params, $forcedisplay);
+        $params = LegacySearch::manageParams($itemtype, $params);
+        $data   = LegacySearch::getDatas($itemtype, $params, $forcedisplay);
 
         // append existing errors to returned data
         $data['last_errors'] = [];
@@ -76,12 +122,847 @@ class Search extends DbTestCase
         $_SESSION['glpi_use_mode'] = $glpi_use_mode;
 
         // do not store this search from session
-        \Search::resetSaveSearch();
+        LegacySearch::resetSaveSearch();
 
         $this->checkSearchResult($data);
 
         return $data;
     }
+
+    public function testPluginColumnRetainsItsSortAndJoinHooks(): void
+    {
+        global $DB, $CFG_GLPI;
+
+        require_once __DIR__ . '/../fixtures/pluginsearchsort.php';
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $session = $_SESSION;
+        $configuration = $CFG_GLPI;
+        $options = LegacySearch::$search;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $marker = 'Plugin sort ' . $this->getUniqueString();
+        $option = 9842;
+        try {
+            $ids = [];
+            foreach (['A', 'Z'] as $serial) {
+                $computer = new Computer();
+                $this->integer($ids[$serial] = $computer->add([
+                    'name' => $marker . ' ' . $serial,
+                    'serial' => $serial,
+                    'entities_id' => $_SESSION['glpiactive_entity'],
+                ]))->isGreaterThan(0);
+            }
+            $plugins->setValue(null, [...$active, 'searchsort']);
+            SearchOption::getOptions('Computer');
+            LegacySearch::$search['Computer'][$option] = [
+                'table' => 'glpi_plugin_searchsort_values', 'field' => 'serial',
+                'name' => 'Plugin serial', 'datatype' => 'string',
+                'linkfield' => 'computers_id', 'joinparams' => [],
+            ];
+            // Typed expressions run through the full native compiler on both providers.
+            // Legacy SQL projection strings remain a supported MySQL-only contract.
+            foreach ($DB->getProvider() === 'mysql' ? [false, true] : [false] as $raw) {
+                SearchSortPluginFixture::$rawProjection = $raw;
+                $CFG_GLPI['disable_two_phase_search'] = false;
+                foreach ([0 => 'Z', 1 => 'A'] as $start => $serial) {
+                    SearchSortPluginFixture::$orders = [];
+                    SearchSortPluginFixture::$joins = [];
+                    $data = $this->doSearch('Computer', [
+                        'sort' => $option, 'order' => 'ASC', 'start' => $start, 'list_limit' => 1,
+                        'criteria' => [['field' => 1, 'searchtype' => 'contains', 'value' => $marker]],
+                    ], [1, $option]);
+                    $this->array(array_map('intval', array_keys($data['data']['items'])))
+                        ->isIdenticalTo([$ids[$serial]]);
+                    $this->integer((int)$data['data']['totalcount'])->isIdenticalTo(2);
+                    $this->string($data['data']['rows'][$start]['raw']['ITEM_Computer_' . $option])
+                        ->isIdenticalTo($serial);
+                    $this->array(SearchSortPluginFixture::$orders)
+                        ->isIdenticalTo([['Computer', $option, 'ASC', 'Computer_' . $option]]);
+                    $this->array(SearchSortPluginFixture::$joins)
+                        ->isIdenticalTo([['Computer', 'glpi_computers', 'glpi_plugin_searchsort_values', 'computers_id']]);
+                }
+            }
+        } finally {
+            SearchSortPluginFixture::$rawProjection = false;
+            SearchSortPluginFixture::$orders = [];
+            SearchSortPluginFixture::$joins = [];
+            $plugins->setValue(null, $active);
+            LegacySearch::$search = $options;
+            $CFG_GLPI = $configuration;
+            $_SESSION = $session;
+        }
+    }
+
+    public function testConfigSearchKeepsEveryActivePluginContextInBothPlans(): void
+    {
+        global $DB, $CFG_GLPI;
+        $this->login();
+        $this->boolean((bool)Config::canView())->isTrue();
+        $session = $_SESSION;
+        $configuration = $CFG_GLPI;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $marker = 'Search context ' . $this->getUniqueString();
+        $contexts = ['core', 'search_context_first', 'search_context_second', 'search_context_inactive'];
+        $ids = [];
+        try {
+            foreach ($contexts as $context) {
+                $this->boolean($DB->insert('glpi_configs', [
+                    'context' => $context, 'name' => $marker, 'value' => $marker . ' ' . $context,
+                ]))->isTrue();
+                $ids[$context] = (int)$DB->getDoctrineConnection()->fetchOne(
+                    'SELECT id FROM glpi_configs WHERE context = ? AND name = ?',
+                    [$context, $marker]
+                );
+                $this->integer($ids[$context])->isGreaterThan(0);
+            }
+            // The active list is the existing Plugin owner, not a replacement search policy.
+            foreach ([[], ['search_context_first'], ['search_context_first', 'search_context_second'],
+                [3 => 'search_context_first', 8 => 'search_context_second']] as $enabled) {
+                $plugins->setValue(null, $enabled);
+                $expected = [$ids['core']];
+                foreach ($enabled as $context) {
+                    $expected[] = $ids[$context];
+                }
+                sort($expected);
+                foreach ([false, true] as $legacy) {
+                    $CFG_GLPI['disable_two_phase_search'] = $legacy;
+                    $data = $this->doSearch('Config', [
+                        'start' => 0, 'list_limit' => 20,
+                        'criteria' => [['field' => 1, 'searchtype' => 'contains', 'value' => $marker]],
+                    ], [1]);
+                    $this->boolean(!empty($data['sql']['two_phase']))->isIdenticalTo(!$legacy);
+                    $actual = array_map('intval', array_keys($data['data']['items']));
+                    sort($actual);
+                    $this->array($actual)->isIdenticalTo($expected);
+                    $this->integer((int)$data['data']['totalcount'])->isIdenticalTo(count($expected));
+                    foreach ($ids as $context => $id) {
+                        $config = new Config();
+                        $this->boolean($config->getFromDB($id))->isTrue();
+                        $this->boolean($config->canViewItem())->isIdenticalTo(in_array($id, $expected, true));
+                    }
+                }
+            }
+        } finally {
+            $plugins->setValue(null, $active);
+            $CFG_GLPI = $configuration;
+            $_SESSION = $session;
+        }
+    }
+
+    public function testUserAssignmentSearchDisplaysBothDirectionsAndKeepsEntityCriteria(): void
+    {
+        global $DB, $CFG_GLPI;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $session = $_SESSION;
+        $cut = $CFG_GLPI['cut'];
+        $root = (int)Session::getActiveEntity();
+        $prefix = 'Search assignments ' . $this->getUniqueString();
+        try {
+            $user = $this->createItem(User::class, ['name' => $prefix . ' visible', 'entities_id' => $root]);
+            $hidden = $this->createItem(User::class, ['name' => $prefix . ' outside', 'entities_id' => $root]);
+            $this->boolean($DB->delete('glpi_profiles_users', ['users_id' => [(int)$user->getID(), (int)$hidden->getID()]]))->isTrue();
+            $profiles = [];
+            for ($i = 0; $i < 2; ++$i) {
+                $profiles[] = $this->createItem(Profile::class, ['name' => $prefix . ' role ' . $i]);
+            }
+            $entities = [];
+            $expected = [20 => [], 80 => []];
+            foreach (['', ' (R)', ' (D)', ' (R, D)'] as $flags => $suffix) {
+                $entity = $this->createItem(Entity::class, ['name' => $prefix . ' entity ' . $flags, 'entities_id' => $root]);
+                $entities[] = (int)$entity->getID();
+                $profile = $profiles[$flags % 2];
+                $this->createItem(Profile_User::class, [
+                    'users_id' => $user->getID(), 'profiles_id' => $profile->getID(),
+                    'entities_id' => $entity->getID(), 'is_recursive' => $flags & 1, 'is_dynamic' => ($flags >> 1) & 1,
+                ]);
+                $profileName = Dropdown::getDropdownName('glpi_profiles', $profile->getID());
+                $entityName = Dropdown::getDropdownName('glpi_entities', $entity->getID());
+                $suffix = str_replace(['R', 'D'], [__('R'), __('D')], $suffix);
+                $expected[20][] = sprintf(__('%1$s - %2$s'), $profileName, $entityName) . $suffix;
+                // This direction uses the packed raw entity name; the reverse uses Dropdown's display name.
+                $expected[80][] = sprintf(__('%1$s - %2$s'), $entity->fields['completename'], $profileName) . $suffix;
+            }
+            $this->createItem(Profile_User::class, [
+                'users_id' => $hidden->getID(), 'profiles_id' => $profiles[0]->getID(),
+                'entities_id' => $entities[3], 'is_recursive' => 0,
+            ]);
+            $this->setEntity($root, true); // Refresh the real active-entity snapshot after owned child creation.
+            $params = ['start' => 0, 'criteria' => [
+                ['field' => 1, 'searchtype' => 'contains', 'value' => $user->fields['name']],
+            ]];
+            $data = $this->doSearch('User', $params, [20, 80]);
+            $this->array(array_map('intval', array_keys($data['data']['items'])))->isIdenticalTo([(int)$user->getID()]);
+            $row = $data['data']['rows'][0];
+            foreach ([20, 80] as $option) {
+                $display = LegacyOutput::giveItem('User', $option, $row);
+                $this->string($row['User_' . $option]['displayname'])->isIdenticalTo($display);
+                $lines = explode(LegacySearch::LBBR, $display);
+                sort($lines);
+                sort($expected[$option]);
+                $this->array($lines)->isIdenticalTo($expected[$option]);
+                // Duplicate packed assignments and empty names must not add output lines.
+                $duplicates = $row;
+                $field = 'User_' . $option;
+                $duplicates[$field][$duplicates[$field]['count']++] = $row[$field][0];
+                $duplicates[$field][$duplicates[$field]['count']++] = ['name' => null];
+                $this->string(LegacyOutput::giveItem('User', $option, $duplicates))->isIdenticalTo($display);
+                $CFG_GLPI['cut'] = PHP_INT_MAX;
+                $column = 0;
+                $html = LegacySearch::showItem(LegacySearch::HTML_OUTPUT, $display, $column, 1);
+                $this->string($html)->contains(str_replace(LegacySearch::LBBR, '<br>', $display));
+                $column = 0;
+                $_SESSION['glpicsv_delimiter'] = ';';
+                $csv = LegacySearch::showItem(LegacySearch::CSV_OUTPUT, $display, $column, 1);
+                $this->string($csv)->startWith('"')->endWith('";');
+                foreach ($profiles as $profile) {
+                    $this->string($csv)->contains($profile->fields['name']);
+                }
+            }
+            $this->setEntity($entities[0], false);
+            $this->boolean(Session::haveAccessToEntity($entities[0]))->isTrue();
+            $this->boolean(Session::haveAccessToEntity($entities[3]))->isFalse();
+            // CLI deliberately bypasses canViewAllEntities; test the real entity
+            // criterion here without claiming an HTTP session-ACL result.
+            $params['criteria'][0] = ['field' => 1, 'searchtype' => 'contains', 'value' => $prefix];
+            $params['criteria'][] = ['link' => 'AND', 'field' => 80, 'searchtype' => 'equals', 'value' => $entities[0]];
+            $restricted = $this->doSearch('User', $params, [20, 80]);
+            $this->array(array_map('intval', array_keys($restricted['data']['items'])))->isIdenticalTo([(int)$user->getID()]);
+            foreach ($profiles as $profile) {
+                // A Profile's own name is not a User assignment label.
+                $profileData = $this->doSearch('Profile', ['criteria' => [
+                    ['field' => 1, 'searchtype' => 'contains', 'value' => $profile->fields['name']],
+                ]], [1]);
+                $this->integer((int)$profileData['data']['count'])->isIdenticalTo(1);
+                $display = LegacyOutput::giveItem('Profile', 1, $profileData['data']['rows'][0]);
+                $this->string($display)->contains($profile->fields['name'])->notContains(' - ');
+            }
+        } finally {
+            $CFG_GLPI['cut'] = $cut;
+            $_SESSION = $session;
+        }
+    }
+
+    public function testTicketStatusCataloguePresentation(): void
+    {
+        global $DB;
+        $this->login();
+        $catalogue = Ticket::getAllStatusArray(true, true);
+        $customStatus = (int)$_SESSION['INCOMING'];
+        $this->boolean($DB->update('glpi_specialstatuses', [
+            'name' => 'Custom catalogue status', 'color' => '#123abc',
+        ], ['id' => $catalogue['id'][$customStatus]]))->isTrue();
+        $catalogue = Ticket::getAllStatusArray(true, true);
+        foreach ([...array_keys($catalogue['name_translate']), PHP_INT_MAX] as $status) {
+            $presentation = Ticket::getStatusPresentationFromCatalogue($status, $catalogue);
+            $this->variable($presentation['label'])->isIdenticalTo(Ticket::getStatus($status));
+            $this->string($presentation['icon'])->isIdenticalTo(Ticket::getStatusIcon($status));
+        }
+        $custom = Ticket::getStatusPresentationFromCatalogue($customStatus, $catalogue);
+        $this->string($custom['label'])->isIdenticalTo('Custom catalogue status');
+        $this->string($custom['icon'])->contains("style='color:#123abc'");
+        // Catalogue labels are already translated; formatting must not translate them again.
+        $catalogue['name_translate'][$customStatus] = 'Translated catalogue label';
+        $translated = Ticket::getStatusPresentationFromCatalogue($customStatus, $catalogue);
+        $this->string($translated['label'])->isIdenticalTo('Translated catalogue label');
+        $this->string($translated['icon'])->contains("title='Translated catalogue label'");
+        $subclass = new class () extends Ticket {
+            public static function getStatus($status)
+            {
+                return 'Subclass label';
+            }
+            public static function getStatusIcon($status)
+            {
+                return '<i>Subclass icon</i>';
+            }
+        };
+        $this->array($subclass::getStatusPresentationFromCatalogue($customStatus, $catalogue))
+            ->isIdenticalTo(['label' => 'Subclass label', 'icon' => '<i>Subclass icon</i>']);
+    }
+
+    public function testSearchTicketStatusCatalogueScope(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)Session::getActiveEntity();
+        $name = 'Catalogue scope ' . $this->getUniqueString();
+        $ticket = new Ticket();
+        for ($i = 0; $i < 2; $i++) {
+            $id = (int)$ticket->add([
+                'name' => $name . ' ' . $i, 'content' => $name, 'entities_id' => $entity,
+                '_users_id_requester' => Session::getLoginUserID(),
+            ]);
+            $this->integer($id)->isGreaterThan(0);
+            $this->boolean($ticket->getFromDB($id))->isTrue();
+            $this->integer((int)$ticket->getEntityID())->isIdenticalTo($entity);
+            $this->boolean($ticket->canViewItem())->isTrue();
+        }
+        $params = [
+            'is_deleted' => 0, 'start' => 0, 'search' => 'Search',
+            'criteria' => [['field' => 1, 'searchtype' => 'contains', 'value' => $name]],
+        ];
+        $before = $this->doSearch('Ticket', $params, [12]);
+        $this->integer($before['data']['count'])->isIdenticalTo(2);
+        foreach ($before['data']['rows'] as $row) {
+            $this->string($row['Ticket_12']['displayname'])->isIdenticalTo(
+                LegacyOutput::giveItem('Ticket', 12, $row)
+            );
+        }
+        $status = $before['data']['rows'][0]['Ticket_12'][0]['name'];
+        $catalogue = Ticket::getAllStatusArray(true, true);
+        $this->boolean($DB->update('glpi_specialstatuses', [
+            'name' => 'Changed catalogue status', 'color' => '#abc123',
+        ], ['id' => $catalogue['id'][$status]]))->isTrue();
+        // A second formatting pass on the same request observes current writes.
+        $after = $this->doSearch('Ticket', $params, [12]);
+        $this->integer($after['data']['count'])->isIdenticalTo(2);
+        foreach ($after['data']['rows'] as $row) {
+            $this->string($row['Ticket_12']['displayname'])
+                ->isIdenticalTo(LegacyOutput::giveItem('Ticket', 12, $row))
+                ->contains('Changed catalogue status')->contains("style='color:#abc123'");
+        }
+    }
+
+    public function testCostDurationIsNumericInMainAndMetaSearch(): void
+    {
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)Session::getActiveEntity();
+        $prefix = 'Cost duration ' . $this->getUniqueString();
+        $appliance = new Appliance();
+        $applianceId = (int)$appliance->add(['name' => $prefix, 'entities_id' => $entity]);
+        $this->integer($applianceId)->isGreaterThan(0);
+        $change = new Change();
+        $changeId = (int)$change->add(['name' => $prefix, 'content' => $prefix, 'entities_id' => $entity]);
+        $this->integer($changeId)->isGreaterThan(0);
+        $this->boolean($change->can($changeId, READ))->isTrue();
+        $link = new Change_Item();
+        $this->integer((int)$link->add([
+            'changes_id' => $changeId, 'itemtype' => 'Appliance', 'items_id' => $applianceId,
+        ]))->isGreaterThan(0);
+        $cost = new ChangeCost();
+        // Equal durations are separate costs, not values to deduplicate.
+        $costIds = [];
+        foreach ([1800, 1800, 0] as $i => $seconds) {
+            $id = (int)$cost->add([
+                'changes_id' => $changeId, 'name' => $prefix . ' ' . $i,
+                'actiontime' => $seconds, 'cost_time' => 0, 'cost_fixed' => 0, 'cost_material' => 0,
+            ]);
+            $this->integer($id)->isGreaterThan(0);
+            $costIds[] = $id;
+        }
+        foreach ([3600, 3601, 1] as $total) {
+            if ($total === 3601) {
+                $this->boolean($cost->update(['id' => $costIds[1], 'actiontime' => 1801]))->isTrue();
+            }
+            if ($total === 1) {
+                // Multiplication must precede division: (1 / 3) * 3 is lossy.
+                $this->boolean($cost->update(['id' => $costIds[0], 'actiontime' => 1]))->isTrue();
+                $this->boolean($cost->update(['id' => $costIds[1], 'actiontime' => 0]))->isTrue();
+            }
+            foreach (['Change', 'Appliance'] as $type) {
+                foreach ([(string)$total => 1, '>' . ($total - 1) => 1, '1800' => 0] as $duration => $expected) {
+                    $criterion = ['field' => 49, 'searchtype' => 'contains', 'value' => (string)$duration];
+                    if ($type === 'Appliance') {
+                        $criterion += ['meta' => true, 'itemtype' => 'Change', 'link' => 'AND'];
+                    }
+                    $data = $this->doSearch($type, [
+                        'is_deleted' => 0, 'start' => 0, 'criteria' => [
+                            ['field' => 1, 'searchtype' => 'contains', 'value' => $prefix], $criterion,
+                        ],
+                    ], $type === 'Change' ? [49] : []);
+                    $this->integer($data['data']['count'])->isIdenticalTo($expected);
+                    if ($expected) {
+                        $this->array(array_keys($data['data']['items']))
+                            ->isIdenticalTo([$type === 'Change' ? $changeId : $applianceId]);
+                    }
+                }
+            }
+        }
+    }
+
+
+    public function testRootCostPredicatesPreserveNullNegationScopesAndPaging(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)Session::getActiveEntity();
+        $prefix = 'Root cost predicate ' . $this->getUniqueString();
+        $ids = ['Change' => [], 'Appliance' => []];
+        foreach (['missing' => null, 'zero' => 0, 'positive' => 20, 'outside' => 900] as $label => $seconds) {
+            $change = new Change();
+            $id = (int)$change->add([
+                'name' => $prefix . ' ' . $label, 'content' => $prefix,
+                'entities_id' => $label === 'outside' ? 0 : $entity,
+            ]);
+            $this->integer($id)->isGreaterThan(0);
+            $ids['Change'][$label] = $id;
+            if ($seconds !== null) {
+                $cost = new ChangeCost();
+                $this->integer((int)$cost->add([
+                    'changes_id' => $id, 'name' => $prefix . ' ' . $label,
+                    'actiontime' => $seconds, 'cost_time' => 0, 'cost_fixed' => 0, 'cost_material' => 0,
+                ]))->isGreaterThan(0);
+            }
+            if ($label === 'outside') {
+                // The visible asset also has a cost owner outside the active scope.
+                $assetId = $ids['Appliance']['positive'];
+            } else {
+                $this->boolean($change->can($id, READ))->isTrue();
+                $asset = new Appliance();
+                $assetId = (int)$asset->add(['name' => $prefix . ' ' . $label, 'entities_id' => $entity]);
+                $this->integer($assetId)->isGreaterThan(0);
+                $ids['Appliance'][$label] = $assetId;
+            }
+            $relation = new Change_Item();
+            $this->integer((int)$relation->add([
+                'changes_id' => $id, 'itemtype' => 'Appliance', 'items_id' => $assetId,
+            ]))->isGreaterThan(0);
+        }
+        foreach (['Change', 'Appliance'] as $type) {
+            $leaf = static function (string $value, string $search = 'contains', string $link = 'AND') use ($type): array {
+                $criterion = ['field' => 49, 'searchtype' => $search, 'value' => $value, 'link' => $link];
+                return $type === 'Appliance' ? $criterion + ['meta' => true, 'itemtype' => 'Change'] : $criterion;
+            };
+            foreach ([
+                [[$leaf('0')], ['zero']],
+                [[$leaf('NULL')], ['missing']],
+                [[$leaf('0', 'notcontains')], ['missing', 'positive']],
+                [[$leaf('NULL', 'notcontains')], ['zero', 'positive']],
+                [[$leaf('>0', 'contains', 'AND NOT')], ['missing', 'zero']],
+                [[$leaf('0'), $leaf('NULL', 'contains', 'OR')], ['missing', 'zero']],
+                [[$leaf('>0')], ['positive']],
+                [[$leaf('>500')], []],
+                // Text matching must cast the whole numeric scalar on PG,
+                // just as the old HAVING-alias path did, including NULLs.
+                [[$leaf('not-a-number')], []],
+                [[$leaf('not-a-number', 'notcontains')], ['missing', 'zero', 'positive']],
+                [[$leaf('^2')], ['positive']],
+                [[$leaf('^2', 'notcontains')], ['missing', 'zero']],
+                [[$leaf('^$')], ['missing']],
+                [[$leaf('^$', 'notcontains')], ['zero', 'positive']],
+            ] as [$criteria, $labels]) {
+                $data = $this->doSearch($type, [
+                    'is_deleted' => 0, 'start' => 0, 'criteria' => [
+                        ['field' => 1, 'searchtype' => 'contains', 'value' => $prefix],
+                        ['link' => 'AND', 'criteria' => $criteria],
+                    ],
+                ]);
+                $this->integer($data['data']['count'])->isIdenticalTo(count($labels));
+                $expected = array_map(static fn (string $label): int => $ids[$type][$label], $labels);
+                $actual = array_map('intval', array_keys($data['data']['items']));
+                sort($expected);
+                sort($actual);
+                $this->array($actual)->isIdenticalTo($expected);
+                // This is the optimized predicate, not passing through the old
+                // all-root HAVING set while merely matching the same results.
+                $this->string($data['sql']['search'])->contains('cost_duration')->notContains('criterion_values');
+            }
+        }
+        foreach (['ASC' => ['missing', 'zero', 'positive'], 'DESC' => ['positive', 'zero', 'missing']] as $order => $labels) {
+            foreach ($labels as $start => $label) {
+                $page = $this->doSearch('Change', [
+                    'is_deleted' => 0, 'start' => $start, 'list_limit' => 1, 'sort' => 49, 'order' => $order,
+                    'criteria' => [['field' => 1, 'searchtype' => 'contains', 'value' => $prefix]],
+                ], [49]);
+                $this->integer($page['data']['totalcount'])->isIdenticalTo(3);
+                $this->array(array_keys($page['data']['items']))->isIdenticalTo([$ids['Change'][$label]]);
+            }
+        }
+
+        // A join-free custom aggregate is not automatically a root predicate.
+        $unowned = (new SelectList())->add('SUM(1)', 'value', true)->withoutFieldJoin();
+        $this->variable($unowned->rootScalar('value'))->isNull();
+        $this->variable(CriteriaBuilder::rootScalarHaving(
+            'PluginCostprobeItem',
+            49,
+            'contains',
+            '0',
+            '0'
+        ))->isNull();
+    }
+
+
+    public function testUnionReusesUnrelatedHooksByCriterionOccurrence(): void
+    {
+        $this->login();
+        $probe = new class () extends Computer {
+            public static int $calls = 0;
+            public static function getTable($classname = null)
+            {
+                return Computer::getTable();
+            }
+            public static function addWhere($link, $not, $itemtype, $id, $searchtype, $value)
+            {
+                $call = ++self::$calls;
+                return " {$link} ({$call} = {$call}) ";
+            }
+        };
+        $type = $probe::class;
+        $leaf = ['meta' => true, 'itemtype' => $type, 'field' => 1,
+            'searchtype' => 'contains', 'value' => 'same', 'link' => 'AND'];
+        $criteria = [
+            ['criteria' => [$leaf, $leaf], 'link' => 'AND'],
+            ['field' => 6, 'searchtype' => 'contains', 'value' => 'inventory', 'link' => 'AND'],
+        ];
+        $data = ['itemtype' => 'ReservationItem'];
+        $options = SearchOption::getOptions('ReservationItem');
+        $predicates = [];
+        try {
+            $original = CriteriaBuilder::constructCriteriaSQL(
+                $criteria,
+                $data,
+                $options,
+                false,
+                null,
+                $predicates
+            );
+            $this->integer($probe::$calls)->isIdenticalTo(2);
+            $this->string($original)->contains('(1 = 1)')->contains('(2 = 2)');
+            foreach ([new Computer(), new Software()] as $asset) {
+                $member = new UnionMember('reservation_types', $asset);
+                $sql = CriteriaBuilder::constructCriteriaSQL(
+                    $criteria,
+                    $data,
+                    $options,
+                    false,
+                    $member,
+                    $predicates
+                );
+                $this->integer($probe::$calls)->isIdenticalTo(2);
+                // Identical leaves retain their distinct original hook results.
+                $this->string($sql)->contains('(1 = 1)')->contains('(2 = 2)');
+            }
+        } finally {
+            unset(LegacySearch::$search[$type]);
+        }
+    }
+
+
+    public function testReservationUnionUsesOwnedInventoryFields(): void
+    {
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)Session::getActiveEntity();
+        $prefix = 'Reservation inventory ' . $this->getUniqueString();
+        $inventory = 'inventory-' . $this->getUniqueString();
+        $reservationIds = [];
+        foreach (['Computer', 'Software'] as $type) {
+            $asset = new $type();
+            $input = ['name' => $prefix . ' ' . $type, 'entities_id' => $entity];
+            if ($type === 'Computer') {
+                $input['otherserial'] = $inventory;
+            }
+            $id = (int)$asset->add($input);
+            $this->integer($id)->isGreaterThan(0);
+            $this->boolean($asset->can($id, READ))->isTrue();
+            $reservation = new ReservationItem();
+            $reservationId = (int)$reservation->add([
+                'itemtype' => $type, 'items_id' => $id, 'entities_id' => $entity, 'is_active' => 1,
+            ]);
+            $this->integer($reservationId)->isGreaterThan(0);
+            $reservationIds[$type] = $reservationId;
+        }
+        $base = ['field' => 1, 'searchtype' => 'contains', 'value' => $prefix];
+        foreach ([
+            [null, ['Computer', 'Software']],
+            [['field' => 6, 'searchtype' => 'contains', 'value' => $inventory], ['Computer']],
+            [['field' => 6, 'searchtype' => 'notcontains', 'value' => $inventory], ['Software']],
+            [['field' => 6, 'searchtype' => 'contains', 'value' => 'NULL'], ['Software']],
+            [['field' => 6, 'searchtype' => 'contains', 'value' => '^$'], []],
+        ] as [$inventoryCriterion, $expectedTypes]) {
+            $criteria = [$base];
+            if ($inventoryCriterion !== null) {
+                // Exercise the same explicit member resolution inside groups.
+                $criteria[] = ['link' => 'AND', 'criteria' => [$inventoryCriterion]];
+            }
+            $data = $this->doSearch('ReservationItem', [
+                'is_deleted' => 0, 'start' => 0, 'criteria' => $criteria,
+            ], [1, 6]);
+            $this->integer($data['data']['count'])->isIdenticalTo(count($expectedTypes));
+            $actualTypes = [];
+            foreach ($data['data']['rows'] as $row) {
+                $actualTypes[] = $row['TYPE'];
+                $this->integer((int)$row['refID'])->isIdenticalTo($reservationIds[$row['TYPE']]);
+                if ($row['TYPE'] === 'Software') {
+                    $this->string($row['ReservationItem_6']['displayname'])->isIdenticalTo('');
+                } else {
+                    $this->string($row['ReservationItem_6']['displayname'])->contains($inventory);
+                }
+            }
+            sort($actualTypes);
+            $this->array($actualTypes)->isIdenticalTo($expectedTypes);
+        }
+    }
+
+
+    public function testVolumeCapacityFiltersIndividualValuesInMainAndMetaSearch(): void
+    {
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)Session::getActiveEntity();
+        $prefix = 'Volume capacity ' . $this->getUniqueString();
+        $computer = new Computer();
+        $computerId = (int)$computer->add(['name' => $prefix, 'entities_id' => $entity]);
+        $this->integer($computerId)->isGreaterThan(0);
+        $this->boolean($computer->can($computerId, READ))->isTrue();
+        $appliance = new Appliance();
+        $applianceId = (int)$appliance->add(['name' => $prefix, 'entities_id' => $entity]);
+        $this->integer($applianceId)->isGreaterThan(0);
+        $this->boolean($appliance->can($applianceId, READ))->isTrue();
+        $link = new Appliance_Item();
+        $this->integer((int)$link->add([
+            'appliances_id' => $applianceId, 'itemtype' => 'Computer', 'items_id' => $computerId,
+        ]))->isGreaterThan(0);
+        $disk = new Item_Disk();
+        foreach ([0, 1000, 4000] as $index => $size) {
+            $this->integer((int)$disk->add([
+                'itemtype' => 'Computer', 'items_id' => $computerId, 'entities_id' => $entity,
+                'name' => $prefix . ' ' . $index, 'mountpoint' => '/' . $index,
+                'totalsize' => $size, 'freesize' => $size === 0 ? 0 : 100,
+            ]))->isGreaterThan(0);
+        }
+        foreach (['Computer', 'Appliance'] as $type) {
+            foreach ([
+                [150, '>3500', 1], [150, '>4500', 0], [150, '4000', 1], [150, '9000', 0],
+                [152, 'NULL', 1],
+            ] as [$field, $value, $expected]) {
+                $criterion = ['field' => $field, 'searchtype' => 'contains', 'value' => $value];
+                if ($type === 'Appliance') {
+                    $criterion += ['meta' => true, 'itemtype' => 'Computer', 'link' => 'AND'];
+                }
+                $data = $this->doSearch($type, [
+                    'is_deleted' => 0, 'start' => 0, 'criteria' => [
+                        ['field' => 1, 'searchtype' => 'contains', 'value' => $prefix], $criterion,
+                    ],
+                ], $type === 'Computer' ? [150] : []);
+                $this->integer($data['data']['count'])->isIdenticalTo($expected);
+                if ($expected) {
+                    $this->array(array_keys($data['data']['items']))
+                        ->isIdenticalTo([$type === 'Computer' ? $computerId : $applianceId]);
+                    if ($type === 'Computer') {
+                        $values = $data['data']['rows'][0]['Computer_150'];
+                        $sizes = [];
+                        for ($index = 0; $index < $values['count']; $index++) {
+                            $sizes[] = (int)$values[$index]['name'];
+                        }
+                        sort($sizes);
+                        $this->array($sizes)->isIdenticalTo([0, 1000, 4000]);
+                    }
+                }
+            }
+        }
+    }
+
+
+    public function testVolumeNegativeCriteriaKeepNullAndEmptyOwnersDistinct(): void
+    {
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)Session::getActiveEntity();
+        $prefix = 'Volume negatives ' . $this->getUniqueString();
+        $owners = [];
+        foreach (['mixed' => [0, 1000, 4000], 'known' => [1000, 4000], 'zero' => [0], 'empty' => []] as $kind => $sizes) {
+            $computer = new Computer();
+            $computerId = (int)$computer->add(['name' => $prefix . ' ' . $kind, 'entities_id' => $entity]);
+            $this->integer($computerId)->isGreaterThan(0);
+            $this->boolean($computer->can($computerId, READ))->isTrue();
+            $appliance = new Appliance();
+            $applianceId = (int)$appliance->add(['name' => $prefix . ' ' . $kind, 'entities_id' => $entity]);
+            $this->integer($applianceId)->isGreaterThan(0);
+            $this->boolean($appliance->can($applianceId, READ))->isTrue();
+            $link = new Appliance_Item();
+            $this->integer((int)$link->add([
+                'appliances_id' => $applianceId, 'itemtype' => 'Computer', 'items_id' => $computerId,
+            ]))->isGreaterThan(0);
+            $owners['Computer'][$kind] = $computerId;
+            $owners['Appliance'][$kind] = $applianceId;
+            foreach ($sizes as $index => $size) {
+                $disk = new Item_Disk();
+                $this->integer((int)$disk->add([
+                    'itemtype' => 'Computer', 'items_id' => $computerId, 'entities_id' => $entity,
+                    'name' => $prefix . ' ' . $kind . ' ' . $index, 'mountpoint' => '/' . $index,
+                    'totalsize' => $size, 'freesize' => $size === 0 ? 0 : 100,
+                ]))->isGreaterThan(0);
+            }
+        }
+        // Direct/fallback callers have not normalized notequals like the
+        // two-phase planner does. Both negative operators must reject NULL.
+        foreach (['notequals', 'notcontains'] as $operator) {
+            $predicate = CriteriaBuilder::addWhere('', false, 'Computer', 150, $operator, 'NULL');
+            $this->string($predicate)->contains(' IS NOT NULL');
+        }
+        foreach (['Computer', 'Appliance'] as $type) {
+            foreach ([
+                [150, 'contains', '>3500', 'AND', ['mixed', 'known']],
+                [150, 'notcontains', '>3500', 'AND', ['empty', 'zero']],
+                [150, 'contains', '>3500', 'AND NOT', ['empty', 'zero']],
+                [150, 'notcontains', '>4500', 'AND', ['empty', 'known', 'mixed', 'zero']],
+                [150, 'contains', 'NULL', 'AND', ['empty']],
+                [150, 'notcontains', 'NULL', 'AND', ['known', 'mixed', 'zero']],
+                [152, 'contains', 'NULL', 'AND', ['empty', 'mixed', 'zero']],
+                [152, 'notcontains', 'NULL', 'AND', ['known']],
+            ] as [$field, $searchtype, $value, $link, $kinds]) {
+                $criterion = ['field' => $field, 'searchtype' => $searchtype, 'value' => $value, 'link' => $link];
+                if ($type === 'Appliance') {
+                    $criterion += ['meta' => true, 'itemtype' => 'Computer'];
+                }
+                $data = $this->doSearch($type, [
+                    'is_deleted' => 0, 'start' => 0, 'criteria' => [
+                        ['field' => 1, 'searchtype' => 'contains', 'value' => $prefix], $criterion,
+                    ],
+                ]);
+                $expected = array_map(fn (string $kind) => $owners[$type][$kind], $kinds);
+                $actual = array_keys($data['data']['items']);
+                sort($expected);
+                sort($actual);
+                $this->integer($data['data']['count'])->isIdenticalTo(count($expected));
+                $this->array($actual)->isIdenticalTo($expected);
+            }
+        }
+    }
+
+
+    public function testMetaCostDurationKeepsEachCostIdentityAcrossActorFanout(): void
+    {
+        global $DB;
+
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)Session::getActiveEntity();
+        $prefix = 'Cost identities ' . $this->getUniqueString();
+        $users = [
+            (int)getItemByTypeName('User', 'itsm', true),
+            (int)getItemByTypeName('User', 'tech', true),
+        ];
+        foreach ($users as $user) {
+            $this->integer($user)->isGreaterThan(0);
+        }
+        $appliance = new Appliance();
+        $applianceId = (int)$appliance->add(['name' => $prefix, 'entities_id' => $entity]);
+        $this->integer($applianceId)->isGreaterThan(0);
+        $this->boolean($appliance->can($applianceId, READ))->isTrue();
+        $changes = [];
+        foreach ([10, 100] as $index => $seconds) {
+            $change = new Change();
+            $changeId = (int)$change->add([
+                'name' => $prefix . ' ' . $index, 'content' => $prefix, 'entities_id' => $entity,
+                '_users_id_requester' => array_slice($users, 0, $index + 1),
+            ]);
+            $this->integer($changeId)->isGreaterThan(0);
+            $changes[] = $changeId;
+            $this->boolean($change->can($changeId, READ))->isTrue();
+            $this->integer(countElementsInTable('glpi_changes_users', [
+                'changes_id' => $changeId, 'type' => CommonITILActor::REQUESTER,
+            ]))->isIdenticalTo($index + 1);
+            $link = new Change_Item();
+            $this->integer((int)$link->add([
+                'changes_id' => $changeId, 'itemtype' => 'Appliance', 'items_id' => $applianceId,
+            ]))->isGreaterThan(0);
+            $cost = new ChangeCost();
+            $this->integer((int)$cost->add([
+                'changes_id' => $changeId, 'name' => $prefix . ' cost ' . $index,
+                'actiontime' => $seconds, 'cost_time' => 0, 'cost_fixed' => 0, 'cost_material' => 0,
+            ]))->isGreaterThan(0);
+            $this->integer($cost->getTotalActionTimeForItem($changeId))->isIdenticalTo($seconds);
+        }
+        $params = [
+            'is_deleted' => 0, 'start' => 0, 'criteria' => [
+                ['field' => 1, 'searchtype' => 'contains', 'value' => $prefix],
+                ['meta' => true, 'itemtype' => 'Change', 'field' => 49, 'searchtype' => 'contains',
+                    'value' => '110', 'link' => 'AND'],
+                ['meta' => true, 'itemtype' => 'Change', 'field' => 4, 'searchtype' => 'equals',
+                    'value' => (string)$users[0], 'link' => 'AND'],
+            ],
+        ];
+        $data = $this->doSearch('Appliance', $params);
+        $this->integer($data['data']['count'])->isIdenticalTo(1);
+        $this->array(array_keys($data['data']['items']))->isIdenticalTo([$applianceId]);
+        $this->float((float)$data['data']['rows'][0]['Change_49'][0]['name'])->isIdenticalTo(110.0);
+
+        // The retained legacy path evaluates a conjunction against joined
+        // parents. It must keep that meaning, unlike independent ID criteria.
+        $fallback = $params;
+        $fallback['criteria'][1]['value'] = '100';
+        $fallback['criteria'][2]['value'] = (string)$users[1];
+        $this->integer($this->doSearch('Appliance', $fallback)['data']['count'])->isIdenticalTo(0);
+        $fallback['disable_two_phase_search'] = true;
+        $joined = LegacySearch::prepareDatasForSearch('Appliance', $fallback);
+        LegacySearch::constructSQL($joined);
+        $this->string($joined['sql']['search'])->notContains('cost_duration');
+        if ($DB->getProvider() !== 'pgsql') {
+            // The retained MySQL joined path owns its HAVING aliases; it is
+            // not the PostgreSQL-independent criteria planner being repaired.
+            $joined = $this->doSearch('Appliance', $fallback);
+            $this->integer($joined['data']['count'])->isIdenticalTo(1);
+            $this->array(array_keys($joined['data']['items']))->isIdenticalTo([$applianceId]);
+            $this->float((float)$joined['data']['rows'][0]['Change_49'][0]['name'])->isIdenticalTo(100.0);
+        }
+
+        // Plugins can customize a computation without replacing the owning
+        // relation. Only the canonical duration expression may be optimized.
+        $options = & SearchOption::getOptions('Change');
+        $canonical = $options[49]['computation'];
+        try {
+            $options[49]['computation'] = '(2 * SUM(' . $DB->quoteName('TABLE.actiontime') . '))';
+            $projection = ProjectionBuilder::fields('Change', 49);
+            $reference = new FieldReference('Change', $options[49]);
+            $this->string($projection->get('ITEM_Change_49')->sql)->isIdenticalTo(
+                '(2 * SUM(' . $DB->quoteName($reference->alias . '.actiontime') . '))'
+            );
+            $this->boolean($projection->requiresFieldJoin())->isTrue();
+            $this->variable($projection->rootScalar('ITEM_Change_49'))->isNull();
+        } finally {
+            $options[49]['computation'] = $canonical;
+        }
+
+        // An old fanout result must not become an eligible total either.
+        $params['criteria'][1]['value'] = '140';
+        $this->integer($this->doSearch('Appliance', $params)['data']['count'])->isIdenticalTo(0);
+
+        // Equal durations are distinct costs; SUM(DISTINCT actiontime) would
+        // silently lose the second ten-second row.
+        $duplicateDuration = new ChangeCost();
+        $this->integer((int)$duplicateDuration->add([
+            'changes_id' => $changes[0], 'name' => $prefix . ' second ten seconds',
+            'actiontime' => 10, 'cost_time' => 0, 'cost_fixed' => 0, 'cost_material' => 0,
+        ]))->isGreaterThan(0);
+        $this->integer($duplicateDuration->getTotalActionTimeForItem($changes[0]))->isIdenticalTo(20);
+        $params['criteria'][1]['value'] = '120';
+        $data = $this->doSearch('Appliance', $params);
+        $this->integer($data['data']['count'])->isIdenticalTo(1);
+        $this->array(array_keys($data['data']['items']))->isIdenticalTo([$applianceId]);
+        $this->float((float)$data['data']['rows'][0]['Change_49'][0]['name'])->isIdenticalTo(120.0);
+
+        // Main-parent sorting and filtering use the same total before paging.
+        foreach (['ASC' => $changes, 'DESC' => array_reverse($changes)] as $order => $expected) {
+            $data = $this->doSearch('Change', [
+                'is_deleted' => 0, 'start' => 0, 'sort' => 49, 'order' => $order,
+                'criteria' => [
+                    ['field' => 1, 'searchtype' => 'contains', 'value' => $prefix],
+                    ['field' => 49, 'searchtype' => 'contains', 'value' => '>0'],
+                ],
+            ]);
+            $this->integer($data['data']['count'])->isIdenticalTo(2);
+            $this->array(array_keys($data['data']['items']))->isIdenticalTo($expected);
+            foreach ($expected as $start => $id) {
+                $page = $this->doSearch('Change', [
+                    'is_deleted' => 0, 'start' => $start, 'list_limit' => 1, 'sort' => 49, 'order' => $order,
+                    'criteria' => [
+                        ['field' => 1, 'searchtype' => 'contains', 'value' => $prefix],
+                        ['field' => 49, 'searchtype' => 'contains', 'value' => '>0'],
+                    ],
+                ]);
+                $this->integer($page['data']['totalcount'])->isIdenticalTo(2);
+                $this->array(array_keys($page['data']['items']))->isIdenticalTo([$id]);
+            }
+        }
+    }
+
 
     public function testMetaComputerOS()
     {
@@ -104,14 +985,14 @@ class Search extends DbTestCase
            ."LEFT\s*JOIN\s*`glpi_items_operatingsystems`\s*AS\s*`glpi_items_operatingsystems_OperatingSystem`\s*"
            ."ON\s*\(`glpi_items_operatingsystems_OperatingSystem`\.`items_id`\s*=\s*`glpi_computers`\.`id`\s*"
            ."AND `glpi_items_operatingsystems_OperatingSystem`\.`itemtype`\s*=\s*'Computer'\s*"
-           ."AND `glpi_items_operatingsystems_OperatingSystem`\.`is_deleted`\s*=\s*0\s*\)\s*"
+           ."AND `glpi_items_operatingsystems_OperatingSystem`\.`is_deleted`\s*=\s*'0'\s*\)\s*"
            ."LEFT\s*JOIN\s*`glpi_operatingsystems`\s*"
            ."ON\s*\(`glpi_items_operatingsystems_OperatingSystem`\.`operatingsystems_id`\s*=\s*`glpi_operatingsystems`\.`id`\s*\)"
            ."/im");
 
         //try to match WHERE clause
         $this->string($data['sql']['search'])
-           ->matches("/(\(`glpi_operatingsystems`\.`name`\s*LIKE\s*'%windows%'\s*\)\s*\))/im");
+           ->matches('/\(' . $this->textSearchPattern('`glpi_operatingsystems`.`name`', '%windows%') . '\s*\)/im');
     }
 
 
@@ -140,12 +1021,14 @@ class Search extends DbTestCase
               . 'LEFT JOIN\s*`glpi_items_softwareversions`\s*AS\s*`glpi_items_softwareversions_[^`]+_Software`\s*ON\s*\('
               . '`glpi_items_softwareversions_[^`]+_Software`\.`items_id`\s*=\s*`glpi_computers`.`id`'
               . '\s*AND\s*`glpi_items_softwareversions_[^`]+_Software`\.`itemtype`\s*=\s*\'Computer\''
-              . '\s*AND\s*`glpi_items_softwareversions_[^`]+_Software`\.`is_deleted`\s*=\s*0'
+              . '\s*AND\s*`glpi_items_softwareversions_[^`]+_Software`\.`is_deleted`\s*=\s*\'0\''
               . '\)/im');
     }
 
     public function testSoftwareLinkedToAnyComputer()
     {
+        global $DB;
+
         $search_params = [
            'is_deleted'   => 0,
            'start'        => 0,
@@ -170,7 +1053,9 @@ class Search extends DbTestCase
         $data = $this->doSearch('Software', $search_params);
 
         $this->string($data['sql']['search'])
-           ->matches("/HAVING\s*\(`ITEM_Computer_2`\s+IS\s+NOT\s+NULL\s*\)/");
+           ->contains($this->providerQuotedSQL("NOT (`glpi_softwares`.`id` IN ("))
+           ->contains(($DB->getProvider() === 'pgsql'
+                ? 'CAST(`glpi_computers`.`id` AS text)' : '`glpi_computers`.`id`') . ' IS NULL');
     }
 
     public function testMetaComputerUser()
@@ -392,22 +1277,24 @@ class Search extends DbTestCase
            ->matches('/LEFT JOIN\s*`glpi_softwares`\s*ON\s*\(`glpi_softwareversions_Software`\.`softwares_id`\s*=\s*`glpi_softwares`\.`id`\)/im')
            ->matches('/LEFT JOIN\s*`glpi_infocoms`\s*AS\s*`glpi_infocoms_Budget`\s*ON\s*\(`glpi_computers`\.`id`\s*=\s*`glpi_infocoms_Budget`\.`items_id`\s*AND\s*`glpi_infocoms_Budget`.`itemtype`\s*=\s*\'Computer\'\)/im')
            ->matches('/LEFT JOIN\s*`glpi_budgets`\s*ON\s*\(`glpi_infocoms_Budget`\.`budgets_id`\s*=\s*`glpi_budgets`\.`id`/im')
-           ->matches('/LEFT JOIN\s*`glpi_computers_items`\s*AS `glpi_computers_items_Printer`\s*ON\s*\(`glpi_computers_items_Printer`\.`computers_id`\s*=\s*`glpi_computers`\.`id`\s*AND\s*`glpi_computers_items_Printer`.`itemtype`\s*=\s*\'Printer\'\s*AND\s*`glpi_computers_items_Printer`.`is_deleted`\s*=\s*0\)/im')
+           ->matches('/LEFT JOIN\s*`glpi_computers_items`\s*AS `glpi_computers_items_Printer`\s*ON\s*\(`glpi_computers_items_Printer`\.`computers_id`\s*=\s*`glpi_computers`\.`id`\s*AND\s*`glpi_computers_items_Printer`.`itemtype`\s*=\s*\'Printer\'\s*AND\s*`glpi_computers_items_Printer`.`is_deleted`\s*=\s*\'0\'\)/im')
            ->matches('/LEFT JOIN\s*`glpi_printers`\s*ON\s*\(`glpi_computers_items_Printer`\.`items_id`\s*=\s*`glpi_printers`\.`id`/im')
            // match where parts
-           ->contains("`glpi_computers`.`is_deleted` = 0")
-           ->contains("AND `glpi_computers`.`is_template` = 0")
-           ->contains("`glpi_computers`.`entities_id` IN ('1', '2', '3')")
-           ->contains("OR (`glpi_computers`.`is_recursive`='1'".
-                      " AND `glpi_computers`.`entities_id` IN (0))")
-           ->contains("`glpi_computers`.`name`  LIKE '%test%'")
-           ->contains("AND (`glpi_softwares`.`id` = '10784')")
-           ->contains("OR (`glpi_computers`.`id`  LIKE '%test2%'")
-           ->contains("AND (`glpi_locations`.`id` = '11')")
+           ->contains($this->providerQuotedSQL("`glpi_computers`.`is_deleted` = '0'"))
+           ->contains($this->providerQuotedSQL("AND `glpi_computers`.`is_template` = '0'"))
+           ->contains($this->providerQuotedSQL("`glpi_computers`.`entities_id` IN ('1', '2', '3')"))
+           ->contains($this->providerQuotedSQL("OR (`glpi_computers`.`is_recursive`='1'".
+                      " AND `glpi_computers`.`entities_id` IN (0))"))
+           ->matches('/' . $this->textSearchPattern('`glpi_computers`.`name`', '%test%') . '/im')
+           ->contains("(`glpi_softwares`.`id` = '10784')")
+           ->matches('/\(' . $this->textSearchPattern('`glpi_computers`.`id`', '%test2%') . '/im')
+           ->contains("(`glpi_locations`.`id` = '11')")
            ->contains("(`glpi_users`.`id` = '2')")
-           ->contains("OR (`glpi_users`.`id` = '3')")
+           ->contains("(`glpi_users`.`id` = '3')")
            // match having
-           ->matches("/HAVING\s*\(`ITEM_Budget_2`\s+<>\s+5\)\s+AND\s+\(\(`ITEM_Printer_1`\s+NOT LIKE\s+'%HP%'\s+OR\s+`ITEM_Printer_1`\s+IS NULL\)\s*\)/");
+           ->contains($this->providerQuotedSQL("NOT (`glpi_computers`.`id` IN ("))
+           ->contains("`glpi_budgets`.`id` = 5")
+           ->matches('/' . $this->textSearchPattern('`glpi_printers`.`name`', '%HP%') . '/im');
     }
 
     public function testViewCriterion()
@@ -428,20 +1315,20 @@ class Search extends DbTestCase
         ]);
 
         $this->string($data['sql']['search'])
-           ->contains("`glpi_computers`.`is_deleted` = 0")
-           ->contains("AND `glpi_computers`.`is_template` = 0")
-           ->contains("`glpi_computers`.`entities_id` IN ('1', '2', '3')")
-           ->contains("OR (`glpi_computers`.`is_recursive`='1'".
-                      " AND `glpi_computers`.`entities_id` IN (0))")
-           ->matches("/`glpi_computers`\.`name`  LIKE '%test%'/")
-           ->matches("/OR\s*\(`glpi_entities`\.`completename`\s*LIKE '%test%'\s*\)/")
-           ->matches("/OR\s*\(`glpi_states`\.`completename`\s*LIKE '%test%'\s*\)/")
-           ->matches("/OR\s*\(`glpi_manufacturers`\.`name`\s*LIKE '%test%'\s*\)/")
-           ->matches("/OR\s*\(`glpi_computers`\.`serial`\s*LIKE '%test%'\s*\)/")
-           ->matches("/OR\s*\(`glpi_computertypes`\.`name`\s*LIKE '%test%'\s*\)/")
-           ->matches("/OR\s*\(`glpi_computermodels`\.`name`\s*LIKE '%test%'\s*\)/")
-           ->matches("/OR\s*\(`glpi_locations`\.`completename`\s*LIKE '%test%'\s*\)/")
-           ->matches("/OR\s*\(CONVERT\(`glpi_computers`\.`date_mod` USING utf8\)\s*LIKE '%test%'\s*\)\)/");
+           ->contains("`glpi_computers`.`is_deleted` = '0'")
+           ->contains("AND `glpi_computers`.`is_template` = '0'")
+           ->contains($this->providerQuotedSQL("`glpi_computers`.`entities_id` IN ('1', '2', '3')"))
+           ->contains($this->providerQuotedSQL("OR (`glpi_computers`.`is_recursive`='1'".
+                      " AND `glpi_computers`.`entities_id` IN (0))"))
+           ->matches("/" . $this->textSearchPattern('`glpi_computers`.`name`', '%test%') . "/")
+           ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_entities`.`completename`', '%test%') . "\s*\)/")
+           ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_states`.`completename`', '%test%') . "\s*\)/")
+           ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_manufacturers`.`name`', '%test%') . "\s*\)/")
+           ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_computers`.`serial`', '%test%') . "\s*\)/")
+           ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_computertypes`.`name`', '%test%') . "\s*\)/")
+           ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_computermodels`.`name`', '%test%') . "\s*\)/")
+           ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_locations`.`completename`', '%test%') . "\s*\)/")
+           ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_computers`.`date_mod`', '%test%') . "\s*\)\)/");
     }
 
     public function testSearchOnRelationTable()
@@ -462,7 +1349,7 @@ class Search extends DbTestCase
         ]);
 
         $this->string($data['sql']['search'])
-           ->contains("`glpi_changes`.`id` AS `ITEM_Change_Ticket_3`")
+           ->contains($this->providerQuotedSQL("MIN(`glpi_changes`.`id`) AS `ITEM_Change_Ticket_3`"))
            ->contains("`glpi_changes_tickets`.`changes_id` = `glpi_changes`.`id`")
            ->contains("`glpi_changes`.`id` = '1'");
     }
@@ -497,6 +1384,46 @@ class Search extends DbTestCase
         $this->integer($data['data']['totalcount'])->isIdenticalTo(1);
     }
 
+    public function testNetworkEquipmentMemoryUsesTextSearch(): void
+    {
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $prefix = 'Memory label ' . bin2hex(random_bytes(6));
+        $ids = [];
+        foreach (['8 GiB', '128', '', null, '1280'] as $index => $memory) {
+            $equipment = new NetworkEquipment();
+            $id = $equipment->add([
+                'name' => $prefix . ' ' . $index,
+                'entities_id' => $entity,
+                'ram' => $memory,
+            ]);
+            $this->integer($id)->isGreaterThan(0);
+            $this->boolean($equipment->can($id, READ))->isTrue();
+            $this->variable($equipment->fields['ram'])->isIdenticalTo($memory);
+            $ids[] = $id;
+        }
+        $this->string(SearchOption::getOptions('NetworkEquipment')[14]['datatype'])
+            ->isIdenticalTo('string');
+        foreach ([
+            ['contains', 'GiB', [$ids[0]]],
+            ['contains', '128', [$ids[1], $ids[4]]],
+            ['equals', '128', [$ids[1]]],
+            ['contains', '^$', [$ids[3]]],
+            ['contains', 'NULL', [$ids[2], $ids[3]]],
+        ] as [$operator, $value, $expected]) {
+            $data = $this->doSearch('NetworkEquipment', [
+                'is_deleted' => 0, 'start' => 0, 'sort' => 2, 'order' => 'ASC',
+                'criteria' => [
+                    ['field' => 1, 'searchtype' => 'contains', 'value' => '^' . $prefix],
+                    ['link' => 'AND', 'field' => 14, 'searchtype' => $operator, 'value' => $value],
+                ],
+            ]);
+            $this->array(array_keys($data['data']['items']))->isIdenticalTo($expected);
+            $this->integer($data['data']['totalcount'])->isIdenticalTo(count($expected));
+        }
+    }
+
     /**
      * This test will add all searchoptions in each itemtype and check if the
      * search give a SQL error
@@ -505,13 +1432,14 @@ class Search extends DbTestCase
      */
     public function testSearchOptions()
     {
+        $this->login();
         $classes = $this->getSearchableClasses();
         foreach ($classes as $class) {
             if (!in_array($class, ['Accessibility', 'Oidc', 'SpecialStatus'])) {
                 $item = new $class();
 
                 //load all options; so rawSearchOptionsToAdd to be tested
-                $options = \Search::getCleanedOptions($item->getType());
+                $options = LegacySearch::getCleanedOptions($item->getType());
 
                 $multi_criteria = [];
                 foreach ($options as $key => $data) {
@@ -556,7 +1484,7 @@ class Search extends DbTestCase
      */
     public function testSearchAllMeta()
     {
-
+        $this->login();
         $classes = $this->getSearchableClasses();
 
         // extract metacriteria
@@ -564,7 +1492,7 @@ class Search extends DbTestCase
         foreach ($classes as $class) {
             $itemtype = $class::getType();
             $itemtype_criteria[$itemtype] = [];
-            $metaList = \Search::getMetaItemtypeAvailable($itemtype);
+            $metaList = LegacySearch::getMetaItemtypeAvailable($itemtype);
             foreach ($metaList as $metaitemtype) {
                 $item = getItemForItemtype($metaitemtype);
                 foreach ($item->searchOptions() as $key => $data) {
@@ -636,7 +1564,7 @@ class Search extends DbTestCase
         if ((array_key_exists('nosearch', $so_data) && $so_data['nosearch'])) {
             return null;
         }
-        $actions = \Search::getActionsFor($item->getType(), $so_key);
+        $actions = LegacySearch::getActionsFor($item->getType(), $so_key);
         $searchtype = array_keys($actions)[0];
 
         switch ($so_data['datatype'] ?? null) {
@@ -658,8 +1586,23 @@ class Search extends DbTestCase
                 break;
             default:
                 if (array_key_exists('table', $so_data) && array_key_exists('field', $so_data)) {
-                    $field = $DB->tableExists($so_data['table']) ? $DB->getField($so_data['table'], $so_data['field']) : null;
-                    if (preg_match('/int(\(\d+\))?$/', $field['Type'] ?? '')) {
+                    $table = $so_data['table'];
+                    if (!array_key_exists($table, $this->criterionColumns)) {
+                        $this->criterionColumns[$table] = $DB->tableExists($table)
+                            ? $DB->getDoctrineConnection()->createSchemaManager()->listTableColumns($table)
+                            : [];
+                    }
+                    $type = isset($this->criterionColumns[$table][$so_data['field']])
+                        ? $this->criterionColumns[$table][$so_data['field']]->getType()
+                        : null;
+                    // Use the actual core or plugin column type, independent of
+                    // provider-specific names such as MySQL int / PostgreSQL integer.
+                    if ($type instanceof IntegerType
+                        || $type instanceof SmallIntType
+                        || $type instanceof BigIntType
+                        || $type instanceof BooleanType
+                        || $type instanceof FloatType
+                        || $type instanceof DecimalType) {
                         $val = 1;
                         break;
                     }
@@ -737,7 +1680,7 @@ class Search extends DbTestCase
 
     public function testDateBeforeOrNot()
     {
-        $date_actions = \Search::getActionsFor('Ticket', 15);
+        $date_actions = LegacySearch::getActionsFor('Ticket', 15);
         unset($date_actions['searchopt']);
         $this->array($date_actions)->isIdenticalTo([
            'equals'      => __('is'),
@@ -748,7 +1691,7 @@ class Search extends DbTestCase
            'notcontains' => __('not contains'),
         ]);
 
-        $numeric_actions = \Search::getActionsFor('Ticket', 2);
+        $numeric_actions = LegacySearch::getActionsFor('Ticket', 2);
         $this->array($numeric_actions)->notHasKeys(['lessthan', 'morethan']);
 
         //tickets created since one week
@@ -792,21 +1735,23 @@ class Search extends DbTestCase
 
     public function testDateAddHaving()
     {
-        $before = \Search::addHaving(' AND ', 0, 'Ticket', 16, 'lessthan', '2999-01-01');
+        global $DB;
+
+        $before = LegacySearch::addHaving(' AND ', 0, 'Ticket', 16, 'lessthan', '2999-01-01');
         $this->string($before)
-           ->contains('`ITEM_Ticket_16` <')
+           ->contains($DB->quoteName('ITEM_Ticket_16') . ' <')
            ->contains("'2999-01-01");
 
-        $after = \Search::addHaving(' AND ', 0, 'Ticket', 16, 'morethan', '1970-01-01');
+        $after = LegacySearch::addHaving(' AND ', 0, 'Ticket', 16, 'morethan', '1970-01-01');
         $this->string($after)
-           ->contains('`ITEM_Ticket_16` >')
+           ->contains($DB->quoteName('ITEM_Ticket_16') . ' >')
            ->contains("'1970-01-01");
     }
 
     public function testDateSearchValueInputUsesRelativeDates()
     {
         $ticket = new \Ticket();
-        $searchopt = \Search::getOptions('Ticket');
+        $searchopt = LegacySearch::getOptions('Ticket');
 
         $opening_date_input = $ticket->getValueToSelect(
             $searchopt[15],
@@ -834,10 +1779,10 @@ class Search extends DbTestCase
     public function testGroupSearchValueInputContainsMyGroups()
     {
         foreach (['Ticket', 'Computer'] as $itemtype) {
-            $searchopt = \Search::getOptions($itemtype);
+            $searchopt = LegacySearch::getOptions($itemtype);
 
             ob_start();
-            \Search::displaySearchoptionValue([
+            LegacySearch::displaySearchoptionValue([
                'searchtype' => 'equals',
                'searchopt'  => $searchopt[71],
                'value'      => '',
@@ -878,7 +1823,7 @@ class Search extends DbTestCase
         $this->login();
         $uid =  getItemByTypeName('User', TU_USER, true);
 
-        $search = \Search::manageParams('Ticket', ['reset' => 1], false, false);
+        $search = LegacySearch::manageParams('Ticket', ['reset' => 1], false, false);
         $this->array(
             $search
         )->isEqualTo(['reset'        => 1,
@@ -919,7 +1864,7 @@ class Search extends DbTestCase
                                   ])
         )->isTrue();
 
-        $search = \Search::manageParams('Ticket', ['reset' => 1], true, false);
+        $search = LegacySearch::manageParams('Ticket', ['reset' => 1], true, false);
         $this->array(
             $search
         )->isEqualTo(['reset'        => 1,
@@ -939,7 +1884,7 @@ class Search extends DbTestCase
                      ]);
 
         // let's test for Computers
-        $search = \Search::manageParams('Computer', ['reset' => 1], false, false);
+        $search = LegacySearch::manageParams('Computer', ['reset' => 1], false, false);
         $this->array(
             $search
         )->isEqualTo(['reset'        => 1,
@@ -982,7 +1927,7 @@ class Search extends DbTestCase
                                   ])
         )->isTrue();
 
-        $search = \Search::manageParams('Computer', ['reset' => 1], true, false);
+        $search = LegacySearch::manageParams('Computer', ['reset' => 1], true, false);
         $this->array(
             $search
         )->isEqualTo(['reset'        => 1,
@@ -1026,10 +1971,10 @@ class Search extends DbTestCase
      */
     public function testAddSelect($provider)
     {
-        $sql_select = \Search::addSelect($provider['itemtype'], $provider['ID']);
+        $sql_select = LegacySearch::addSelect($provider['itemtype'], $provider['ID']);
 
         $this->string($this->cleanSQL($sql_select))
-           ->isEqualTo($this->cleanSQL($provider['sql']));
+           ->isEqualTo($this->cleanSQL($this->providerQuotedSQL($provider['sql'])));
     }
 
     public function addLeftJoinProvider()
@@ -1090,7 +2035,7 @@ class Search extends DbTestCase
     {
         $already_link_tables = [];
 
-        $sql_join = \Search::addLeftJoin(
+        $sql_join = LegacySearch::addLeftJoin(
             $lj_provider['itemtype'],
             getTableForItemType($lj_provider['itemtype']),
             $already_link_tables,
@@ -1104,6 +2049,26 @@ class Search extends DbTestCase
 
         $this->string($this->cleanSQL($sql_join))
              ->isEqualTo($this->cleanSQL($lj_provider['sql']));
+    }
+
+    /** Quote an expected native-dialect fragment without changing the actual SQL. */
+    private function providerQuotedSQL(string $expected): string
+    {
+        global $DB;
+
+        return preg_replace_callback('/`([^`]+)`/', static fn (array $identifier): string =>
+            $DB->quoteName($identifier[1]), $expected);
+    }
+
+    /** Keep the provider's exact text cast/operator and the expected wildcard value. */
+    private function textSearchPattern(string $field, string $value): string
+    {
+        global $DB;
+
+        $postgres = $DB->getProvider() === 'pgsql';
+        $expression = $postgres ? 'CAST(' . $field . ' AS text)' : $field;
+        return preg_quote($expression, '/') . '\s+' . ($postgres ? 'ILIKE' : 'LIKE')
+            . '\s+' . preg_quote("'" . $value . "'", '/');
     }
 
     private function cleanSQL($sql)
@@ -1189,9 +2154,9 @@ class Search extends DbTestCase
         $this->login('tech', 'tech');
 
         // do search and check presence of the created problem
-        $data = \Search::prepareDatasForSearch('Problem', ['reset' => 'reset']);
-        \Search::constructSQL($data);
-        \Search::constructData($data);
+        $data = LegacySearch::prepareDatasForSearch('Problem', ['reset' => 'reset']);
+        LegacySearch::constructSQL($data);
+        LegacySearch::constructData($data);
 
         $this->integer($data['data']['totalcount'])->isEqualTo(1);
         $this->array($data)
@@ -1242,9 +2207,9 @@ class Search extends DbTestCase
         $this->login('tech', 'tech');
 
         // do search and check presence of the created Change
-        $data = \Search::prepareDatasForSearch('Change', ['reset' => 'reset']);
-        \Search::constructSQL($data);
-        \Search::constructData($data);
+        $data = LegacySearch::prepareDatasForSearch('Change', ['reset' => 'reset']);
+        LegacySearch::constructSQL($data);
+        LegacySearch::constructData($data);
 
         $this->integer($data['data']['totalcount'])->isEqualTo(1);
         $this->array($data)
@@ -1350,7 +2315,7 @@ class Search extends DbTestCase
      */
     public function testIsInfocomOption($index, $expected)
     {
-        $this->boolean(\Search::isInfocomOption('Computer', $index))->isIdenticalTo($expected);
+        $this->boolean(LegacySearch::isInfocomOption('Computer', $index))->isIdenticalTo($expected);
     }
 
     protected function makeTextSearchValueProvider()
@@ -1382,7 +2347,7 @@ class Search extends DbTestCase
      */
     public function testMakeTextSearchValue($value, $expected)
     {
-        $this->variable(\Search::makeTextSearchValue($value))->isIdenticalTo($expected);
+        $this->variable(LegacySearch::makeTextSearchValue($value))->isIdenticalTo($expected);
     }
 
     public function providerAddWhere()
@@ -1416,7 +2381,7 @@ class Search extends DbTestCase
      */
     public function testAddWhere($link, $nott, $itemtype, $ID, $searchtype, $val, $meta, $expected)
     {
-        $output = \Search::addWhere($link, $nott, $itemtype, $ID, $searchtype, $val, $meta);
+        $output = LegacySearch::addWhere($link, $nott, $itemtype, $ID, $searchtype, $val, $meta);
         $this->string($output)->isEqualTo($expected);
 
         if ($meta) {
@@ -1442,6 +2407,7 @@ class Search extends DbTestCase
 
     public function testSearchWGroups()
     {
+        global $DB;
         $this->login();
         $this->setEntity('_test_root_entity', true);
 
@@ -1458,10 +2424,78 @@ class Search extends DbTestCase
         $displaypref = new \DisplayPreference();
         $input = [
               'itemtype'  => 'Computer',
-              'users_id'  => \Session::getLoginUserID(),
+              'users_id'  => Session::getLoginUserID(),
               'num'       => 49, //Computer groups_id_tech SO
         ];
         $this->integer((int)$displaypref->add($input))->isGreaterThan(0);
+
+        $owner = (int)Session::getLoginUserID();
+        $connection = $DB->getDoctrineConnection();
+        $columns = DisplayPreference::getForTypeUser('Computer', $owner);
+        $this->array($columns)->contains(49);
+        $independent = Orm::create($DB);
+        $pendingUser = $independent->find(OrmUser::class, $owner);
+        $pendingUser->firstname = 'Pending independent preference reader';
+        $searchOptions = LegacySearch::getCleanedOptions('Computer');
+        $personalRows = $this->renderLocalTableRows(static fn () => $displaypref->showFormPerso('/front/displaypreference.form.php', 'Computer'));
+        $this->array(array_column($personalRows, 'name'))->contains($searchOptions[49]['name']);
+        $globalRows = $this->renderLocalTableRows(static fn () => $displaypref->showFormGlobal('/front/displaypreference.form.php', 'Computer'));
+        $this->array(array_column($globalRows, 'name'))->contains($searchOptions[1]['name']);
+        $this->output(static fn () => DisplayPreference::showForUser($owner))
+            ->contains('<td>' . Computer::getTypeName(1) . "</td><td class='numeric'>" . count($columns) . '</td>');
+        $rank = (int)$displaypref->getField('rank');
+        $prepared = $displaypref->prepareInputForAdd($input);
+        $this->integer($prepared['rank'])->isIdenticalTo($rank + 1);
+        // Weak string conversion is public input preparation, before the active read scope.
+        $type = new class ($this, $DB) {
+            public function __construct(private $test, private $database)
+            {
+            }
+            public function __toString(): string
+            {
+                Orm::read($this->database, function (EntityManager $manager): void {
+                    $this->test->boolean($manager->getConnection()->ownsApplicationEntityManager($manager))->isTrue();
+                });
+                return 'Computer';
+            }
+        };
+        $this->array(DisplayPreference::getForTypeUser($type, $owner))->isIdenticalTo($columns);
+        $this->integer($displaypref->prepareInputForAdd(['itemtype' => $type, 'users_id' => $owner])['rank'])->isIdenticalTo($rank + 1);
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeFactories = $factories->getValue();
+        for ($repeat = 0; $repeat < 3; ++$repeat) {
+            $this->array(DisplayPreference::getForTypeUser('Computer', $owner))->isIdenticalTo($columns);
+        }
+        $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+        Orm::withReadConnection($connection, function (?EntityManager $outer) use ($connection, $owner, $columns, $factories, $displaypref, $searchOptions, $independent, $pendingUser): void {
+            $sentinel = $outer->find(OrmUser::class, $owner);
+            $this->object($sentinel)->isInstanceOf(OrmUser::class);
+            $beforeNested = $factories->getValue();
+            $this->array(DisplayPreference::getForTypeUser('Computer', $owner))->isIdenticalTo($columns);
+            $this->integer($factories->getValue() - $beforeNested)->isIdenticalTo(1);
+            $this->boolean($connection->ownsApplicationEntityManager($outer))->isTrue();
+            $this->boolean($outer->contains($sentinel))->isTrue();
+            $storedFirstname = $connection->fetchOne('SELECT firstname FROM glpi_users WHERE id=?', [$owner]);
+            $sentinel->firstname = 'Pending preference reader';
+            $rows = $this->renderLocalTableRows(static fn () => $displaypref->showFormPerso('/front/displaypreference.form.php', 'Computer'));
+            $this->array(array_column($rows, 'name'))->contains($searchOptions[49]['name']);
+            $this->boolean($outer->contains($sentinel))->isTrue();
+            $this->string($sentinel->firstname)->isIdenticalTo('Pending preference reader');
+            $this->boolean($independent->contains($pendingUser))->isTrue();
+            $this->string($pendingUser->firstname)->isIdenticalTo('Pending independent preference reader');
+            $this->variable($connection->fetchOne('SELECT firstname FROM glpi_users WHERE id=?', [$owner]))->isIdenticalTo($storedFirstname);
+        });
+        $preferenceId = (int)$displaypref->getID();
+        try {
+            $this->boolean($DB->update('glpi_displaypreferences', ['num' => 987654321], ['id' => $preferenceId]))->isTrue();
+            $changed = array_map(static fn ($num) => $num === 49 ? 987654321 : $num, $columns);
+            $this->array(DisplayPreference::getForTypeUser('Computer', $owner))->isIdenticalTo($changed);
+            $rows = $this->renderLocalTableRows(static fn () => $displaypref->showFormPerso('/front/displaypreference.form.php', 'Computer'));
+            $this->array(array_column($rows, 'name'))->notContains($searchOptions[49]['name']);
+        } finally {
+            $DB->update('glpi_displaypreferences', ['num' => 49], ['id' => $preferenceId]);
+        }
+        $this->array(DisplayPreference::getForTypeUser('Computer', $owner))->isIdenticalTo($columns);
 
         $data = $this->doSearch('Computer', $search_params);
 
@@ -1505,19 +2539,21 @@ class Search extends DbTestCase
            ->contains("LEFT JOIN `glpi_users`  AS `glpi_users_users_id_recipient`")
 
            // Check that SELECT criteria applies on corresponding table alias
-           ->contains("`glpi_users_users_id_lastupdater`.`realname` AS `ITEM_Ticket_64_realname`")
-           ->contains("`glpi_users_users_id_recipient`.`realname` AS `ITEM_Ticket_22_realname`")
+           ->contains($this->providerQuotedSQL("MIN(`glpi_users_users_id_lastupdater`.`realname`) AS `ITEM_Ticket_64_realname`"))
+           ->contains($this->providerQuotedSQL("MIN(`glpi_users_users_id_recipient`.`realname`) AS `ITEM_Ticket_22_realname`"))
 
            // Check that WHERE criteria applies on corresponding table alias
            ->contains("`glpi_users_users_id_lastupdater`.`id` = '{$user_tech_id}'")
            ->contains("`glpi_users_users_id_recipient`.`id` = '{$user_normal_id}'")
 
            // Check that ORDER applies on corresponding table alias
-           ->contains("`glpi_users_users_id_recipient`.`name` ASC");
+           ->contains($this->providerQuotedSQL("MIN(`glpi_users_users_id_recipient`.`name`) AS `__sort_2`"));
     }
 
     public function testSearchAllAssets()
     {
+        global $DB;
+
         $data = $this->doSearch('AllAssets', [
            'reset'      => 'reset',
            'is_deleted' => 0,
@@ -1533,9 +2569,18 @@ class Search extends DbTestCase
            ]
         ]);
 
+        $this->integer(count($data['data']['rows']))->isGreaterThan(0);
+        foreach ($data['data']['rows'] as $row) {
+            // The renderer selects the subtype using this exact result alias;
+            // PostgreSQL must not fold it to a lower-case, unknown item type.
+            $this->array($row['raw'])->hasKey('TYPE');
+            $this->string($row['TYPE'])->isIdenticalTo($row['raw']['TYPE']);
+            $this->boolean(is_a($row['TYPE'], CommonDBTM::class, true))->isTrue();
+        }
         $this->string($data['sql']['search'])
-           ->matches("/OR\s*\(`glpi_entities`\.`completename`\s*LIKE '%test%'\s*\)/")
-           ->matches("/OR\s*\(`glpi_states`\.`completename`\s*LIKE '%test%'\s*\)/");
+           ->contains(' AS ' . $DB->quoteName('TYPE'))
+           ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_entities`.`completename`', '%test%') . "\s*\)/")
+           ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_states`.`completename`', '%test%') . "\s*\)/");
 
         $types = [
            \Computer::getTable(),
@@ -1548,12 +2593,12 @@ class Search extends DbTestCase
 
         foreach ($types as $type) {
             $this->string($data['sql']['search'])
-               ->contains("`$type`.`is_deleted` = 0")
-               ->contains("AND `$type`.`is_template` = 0")
-               ->contains("`$type`.`entities_id` IN ('1', '2', '3')")
-               ->contains("OR (`$type`.`is_recursive`='1'".
-                           " AND `$type`.`entities_id` IN (0))")
-               ->matches("/`$type`\.`name`  LIKE '%test%'/");
+               ->contains("`$type`.`is_deleted` = '0'")
+               ->contains("AND `$type`.`is_template` = '0'")
+               ->contains($this->providerQuotedSQL("`$type`.`entities_id` IN ('1', '2', '3')"))
+               ->contains($this->providerQuotedSQL("OR (`$type`.`is_recursive`='1'".
+                           " AND `$type`.`entities_id` IN (0))"))
+               ->matches("/" . $this->textSearchPattern($DB->quoteName($type . '.name'), '%test%') . "/");
         }
     }
 
@@ -1570,15 +2615,17 @@ class Search extends DbTestCase
         $data = $this->doSearch('SearchTest\\Computer', $search_params);
 
         $this->string($data['sql']['search'])
-           ->contains("`glpi_computers`.`name` AS `ITEM_SearchTest\Computer_1`")
-           ->contains("`glpi_computers`.`id` AS `ITEM_SearchTest\Computer_1_id`")
-           ->contains("ORDER BY `ITEM_SearchTest\Computer_1` ASC");
+           ->contains($this->providerQuotedSQL("MIN(`glpi_computers`.`name`) AS `ITEM_SearchTest\Computer_1`"))
+           ->contains($this->providerQuotedSQL("MIN(`glpi_computers`.`id`) AS `ITEM_SearchTest\Computer_1_id`"))
+           ->contains($this->providerQuotedSQL("MIN(`__search_page`.`__sort`) ASC, `glpi_computers`.`id` ASC"));
     }
 
     public function testGroupParamAfterMeta()
     {
-        // Try to run this query without warnings
-        $this->doSearch('Ticket', [
+        $this->login();
+        $computerOptions = SearchOption::getOptions('Computer');
+        $ticketOptions = SearchOption::getOptions('Ticket');
+        $params = [
            'reset'      => 'reset',
            'is_deleted' => 0,
            'start'      => 0,
@@ -1610,7 +2657,59 @@ class Search extends DbTestCase
                  ]
               ]
            ]
-        ]);
+        ];
+
+        // Rendering both WHERE and HAVING must leave each item's options intact,
+        // including when a grouped main-item criterion follows a meta criterion.
+        foreach ([$params['criteria'], array_reverse($params['criteria'])] as $criteria) {
+            $params['criteria'] = $criteria;
+            $data = $this->doSearch('Ticket', $params);
+            $this->array(SearchOption::getOptions('Computer'))
+                ->isIdenticalTo($computerOptions);
+            $this->array(SearchOption::getOptions('Ticket'))
+                ->isIdenticalTo($ticketOptions);
+            $this->string($data['sql']['search'])
+                ->notContains('`glpi_tickets_name_Computer`');
+        }
+    }
+
+    public function testJoinConditionOwnsQuotedAliases()
+    {
+        global $DB;
+
+        $this->login();
+        $conditions = [
+            'AND NEWTABLE.id = REFTABLE.entities_id',
+            'AND `NEWTABLE`.`id` = `REFTABLE`.`entities_id`',
+            'AND "NEWTABLE".`id` = "REFTABLE".`entities_id`',
+            getEntitiesRestrictRequest('AND', 'NEWTABLE', 'id', [$_SESSION['glpiactive_entity']]),
+            [
+                new QueryExpression('AND 1 = 1'),
+                'NEWTABLE.id' => new QueryExpression($DB->quoteName('REFTABLE.entities_id')),
+            ],
+        ];
+        foreach ($conditions as $condition) {
+            $links = [];
+            $join = JoinBuilder::addLeftJoin(
+                'Computer',
+                'glpi_computers',
+                $links,
+                'glpi_entities',
+                'entities_id',
+                0,
+                0,
+                ['condition' => $condition]
+            );
+            $alias = $DB->quoteName($links[0]);
+            $this->string($join)
+                ->contains($alias . '.')
+                ->notContains('NEWTABLE')
+                ->notContains('REFTABLE');
+            // Compile and execute the actual public join on the current provider;
+            // accepting a mixed quoted alias in a string assertion is insufficient.
+            $result = $DB->query('SELECT COUNT(*) FROM `glpi_computers` ' . $join);
+            $this->boolean($result === false)->isFalse();
+        }
     }
 
     /**

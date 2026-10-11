@@ -1,9 +1,11 @@
 <?php
 
+use Symfony\Component\Filesystem\Filesystem;
 use Twig\Environment;
 use Twig\Extension\DebugExtension;
 use Twig\Extra\String\StringExtension;
 use Twig\Loader\FilesystemLoader;
+use Twig\Markup;
 use Twig\TwigFilter;
 
 // Basic configuration to use TWIG
@@ -16,7 +18,8 @@ class Twig
 
         $loader = new FilesystemLoader($path);
         $twig = new Environment($loader, [
-            'cache' => $cache ? './cache' : false,
+            'cache' => $cache ? GLPI_CACHE_DIR . '/twig' : false,
+            'auto_reload' => true,
             'debug' => $debug,
         ]);
         self::load_filters($twig);
@@ -30,6 +33,12 @@ class Twig
         return $twig;
     }
 
+    /** Remove compiled templates; rendered content and session globals are never cached. */
+    public static function clearCache(): void
+    {
+        (new Filesystem())->remove(GLPI_CACHE_DIR . '/twig');
+    }
+
     public static function load_filters($twig)
     {
         $twig->addFilter(new TwigFilter('trans', '__'));
@@ -37,7 +46,7 @@ class Twig
             ob_start();
             dump($variable);
             $output =  ob_get_clean();
-            return new \Twig\Markup($output, 'UTF-8');
+            return new Markup($output, 'UTF-8');
         }));
 
         $twig->addFilter(new TwigFilter('transd', function ($string, $domain) {

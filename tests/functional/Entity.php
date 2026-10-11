@@ -33,13 +33,76 @@
 
 namespace tests\units;
 
+use Calendar;
+use Closure;
 use DbTestCase;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Platforms\MySQLPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Result;
+use Doctrine\DBAL\Types\StringType;
+use Doctrine\DBAL\Types\TextType;
+use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use Doctrine\ORM\Events;
+use Doctrine\ORM\NoResultException;
+use Entity as LegacyEntity;
 use Profile_User;
+use ReflectionProperty;
+use RuntimeException;
+use Throwable;
+use Toolbox;
+use ValueError;
+use itsmng\Database\Entity\Entity as EntityRecord;
+use itsmng\Database\MutationRollbackFailure;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\Repository\EntityConfigurationRepository;
+use mock\DBmysql;
 
 /* Test for inc/entity.class.php */
 
 class Entity extends DbTestCase
 {
+    public function testReplacementDeletionPreservesCurrentInheritedReferenceSemantics(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $connection = $DB->getDoctrineConnection();
+            $scope = $connection->captureManagedTransactionScope();
+            $level = $connection->getTransactionNestingLevel();
+            foreach ([[], ['authldaps_id' => -2], ['calendars_id' => 0], ['entities_id_software' => -10]] as $settings) {
+                $source = $this->createItem(LegacyEntity::class, ['name' => 'current-entity-source-' . $this->getUniqueString(),
+                    'entities_id' => 0] + $settings);
+                $target = $this->createItem(LegacyEntity::class, ['name' => 'current-entity-target-' . $this->getUniqueString(),
+                    'entities_id' => 0] + $settings);
+                $sourceId = (int)$source->getID();
+                $targetId = (int)$target->getID();
+                $before = $target->fields;
+                $this->integer((int)$source->fields['authldaps_id'])->isIdenticalTo(isset($settings['authldaps_id']) ? -2 : 0);
+                $this->integer((int)$source->fields['calendars_id'])->isIdenticalTo(isset($settings['calendars_id']) ? 0 : -2);
+                $this->integer((int)$source->fields['entities_id_software'])->isIdenticalTo(isset($settings['entities_id_software']) ? -10 : -2);
+                $this->boolean($source->delete(['id' => $sourceId, '_replace_by' => $targetId,
+                    '_no_message' => 1, '_no_history' => 1], true, false))
+                    ->isTrue('Canonical null references and valid inherited/empty sentinels describe the same current owner');
+                $this->boolean($source->getFromDB($sourceId))->isFalse();
+                $this->boolean($target->getFromDB($targetId))->isTrue();
+                $this->array($target->fields)->isIdenticalTo($before, 'Replacement configuration is preserved');
+                $scope->assertActive();
+                $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+            }
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
     protected $cached_methods = [
        'testChangeEntityParentCached'
     ];
@@ -138,13 +201,12 @@ class Entity extends DbTestCase
      * Run getSonsOf tests
      *
      * @param boolean $cache Is cache enabled?
-     * @param boolean $hit   Do we expect a cache hit? (ie. data already exists)
      *
      * @return void
      */
-    public function runChangeEntityParent($cache = false, $hit = false)
+    public function runChangeEntityParent($cache = false)
     {
-        global $GLPI_CACHE;
+        global $DB, $GLPI_CACHE;
 
         $this->login();
         $ent0 = getItemByTypeName('Entity', '_test_root_entity', true);
@@ -154,24 +216,36 @@ class Entity extends DbTestCase
         $sckey_ent1 = 'sons_cache_glpi_entities_' . $ent1;
         $sckey_ent2 = 'sons_cache_glpi_entities_' . $ent2;
 
+        $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
+        $predicted = (int)$DB->getDoctrineConnection()->fetchOne('SELECT COALESCE(MAX(id), 0) + 1 FROM glpi_entities');
+        $privateKey = 'ancestors_cache_glpi_entities_' . $predicted;
+        $stale = [$ent2 => $ent2];
+        if ($cache === true) {
+            $this->boolean(Toolbox::useCache())->isTrue();
+            $GLPI_CACHE->set($privateKey, $stale);
+            $this->boolean($GLPI_CACHE->has($privateKey))->isTrue();
+            $this->array($GLPI_CACHE->get($privateKey))->isIdenticalTo($stale);
+        }
+
         $entity = new \Entity();
         $new_id = (int)$entity->add([
            'name'         => 'Sub child entity',
            'entities_id'  => $ent1
         ]);
         $this->integer($new_id)->isGreaterThan(0);
+        $this->integer($new_id)->isIdenticalTo($predicted);
         $ackey_new_id = 'ancestors_cache_glpi_entities_' . $new_id;
 
         $expected = [0 => 0, $ent0 => $ent0, $ent1 => $ent1];
         if ($cache === true) {
-            $this->array($GLPI_CACHE->get($ackey_new_id))->isIdenticalTo($expected);
+            $this->boolean(!$GLPI_CACHE->has($ackey_new_id) || $GLPI_CACHE->get($ackey_new_id) === $stale)->isTrue();
         }
 
         $ancestors = getAncestorsOf('glpi_entities', $new_id);
         $this->array($ancestors)->isIdenticalTo($expected);
 
-        if ($cache === true && $hit === false) {
-            $this->array($GLPI_CACHE->get($ackey_new_id))->isIdenticalTo($expected);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($ackey_new_id))->isFalse();
         }
 
         $expected = [$ent1 => $ent1, $new_id => $new_id];
@@ -179,8 +253,8 @@ class Entity extends DbTestCase
         $sons = getSonsOf('glpi_entities', $ent1);
         $this->array($sons)->isIdenticalTo($expected);
 
-        if ($cache === true && $hit === false) {
-            $this->array($GLPI_CACHE->get($sckey_ent1))->isIdenticalTo($expected);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($sckey_ent1))->isFalse();
         }
 
         //change parent entity
@@ -191,33 +265,71 @@ class Entity extends DbTestCase
          ])
         )->isTrue();
 
-        $expected = [0 => 0, $ent0 => $ent0, $ent2 => $ent2];
         if ($cache === true) {
-            $this->array($GLPI_CACHE->get($ackey_new_id))->isIdenticalTo($expected);
+            $GLPI_CACHE->set($ackey_new_id, [0 => 0, $ent0 => $ent0, $ent1 => $ent1]);
+            $this->boolean($GLPI_CACHE->has($ackey_new_id))->isTrue();
+            $this->array($GLPI_CACHE->get($ackey_new_id))->isIdenticalTo([0 => 0, $ent0 => $ent0, $ent1 => $ent1]);
         }
+        $expected = [0 => 0, $ent0 => $ent0, $ent2 => $ent2];
 
         $ancestors = getAncestorsOf('glpi_entities', $new_id);
         $this->array($ancestors)->isIdenticalTo($expected);
 
-        if ($cache === true && $hit === false) {
-            $this->array($GLPI_CACHE->get($ackey_new_id))->isIdenticalTo($expected);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($ackey_new_id))->isFalse();
         }
 
         $expected = [$ent1 => $ent1];
         $sons = getSonsOf('glpi_entities', $ent1);
         $this->array($sons)->isIdenticalTo($expected);
 
-        if ($cache === true && $hit === false) {
-            $this->array($GLPI_CACHE->get($sckey_ent1))->isIdenticalTo($expected);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($sckey_ent1))->isFalse();
         }
 
         $expected = [$ent2 => $ent2, $new_id => $new_id];
         $sons = getSonsOf('glpi_entities', $ent2);
         $this->array($sons)->isIdenticalTo($expected);
 
-        if ($cache === true && $hit === false) {
-            $this->array($GLPI_CACHE->get($sckey_ent2))->isIdenticalTo($expected);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($sckey_ent2))->isFalse();
         }
+
+        $connection = $DB->getDoctrineConnection();
+        $outerDepth = $connection->getTransactionNestingLevel();
+        $frame = OwnedMutationFrame::begin($connection);
+        $primary = null;
+        try {
+            $this->boolean($entity->update(['id' => $new_id, 'entities_id' => $ent1]))->isTrue();
+            $this->array(getAncestorsOf('glpi_entities', $new_id))->isIdenticalTo([0 => 0, $ent0 => $ent0, $ent1 => $ent1]);
+            $this->array(getSonsOf('glpi_entities', $ent1))->isIdenticalTo([$ent1 => $ent1, $new_id => $new_id]);
+            $this->array(getSonsOf('glpi_entities', $ent2))->isIdenticalTo([$ent2 => $ent2]);
+            $frame->assertActive();
+            if ($cache === true) {
+                $this->boolean($GLPI_CACHE->has($ackey_new_id))->isFalse();
+                $this->boolean($GLPI_CACHE->has($sckey_ent1))->isFalse();
+                $this->boolean($GLPI_CACHE->has($sckey_ent2))->isFalse();
+            }
+        } catch (Throwable $error) {
+            $primary = $error;
+        }
+        try {
+            $frame->rollBack();
+        } catch (Throwable $cleanup) {
+            if ($primary !== null) {
+                throw new MutationRollbackFailure($primary, $cleanup);
+            }
+            throw $cleanup;
+        }
+        if ($primary !== null) {
+            throw $primary;
+        }
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($outerDepth);
+        $this->boolean($entity->getFromDB($new_id))->isTrue();
+        $this->integer($entity->fields['entities_id'])->isIdenticalTo($ent2);
+        $this->array(getAncestorsOf('glpi_entities', $new_id))->isIdenticalTo([0 => 0, $ent0 => $ent0, $ent2 => $ent2]);
+        $this->array(getSonsOf('glpi_entities', $ent1))->isIdenticalTo([$ent1 => $ent1]);
+        $this->array(getSonsOf('glpi_entities', $ent2))->isIdenticalTo([$ent2 => $ent2, $new_id => $new_id]);
 
         //clean new entity
         $this->boolean(
@@ -260,7 +372,7 @@ class Entity extends DbTestCase
             [true]
         );
         $this->runChangeEntityParent();
-        //reset cache (checking for expected defaults) then run a second time: db cache must be set
+        // Preserve default tree results and repeat without durable cache publication.
         $this->checkParentsSonsAreReset();
         $this->runChangeEntityParent();
     }
@@ -271,10 +383,10 @@ class Entity extends DbTestCase
     public function testChangeEntityParentCached()
     {
         //run with cache
-        //first run: no cache hit expected
+        // Cold private reads must not publish shared cache.
         $this->runChangeEntityParent(true);
-        //reset cache (checking for expected defaults) then run a second time: cache hit expected
-        //second run: cache hit expected
+        // Preserve default tree results and repeat without private cache publication.
+        // Repeated private reads must not publish shared cache.
         $this->checkParentsSonsAreReset();
         $this->runChangeEntityParent(true);
     }
@@ -376,6 +488,284 @@ class Entity extends DbTestCase
 
     }
 
+
+    public function testEntityIdentifierLookups(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
+        $sibling = (int)getItemByTypeName('Entity', '_test_child_2', true);
+
+        // Warm the ordinary reader before measuring the sixteen public lookups below.
+        LegacyEntity::getEntityIDByTag('_identifier_reader_warmup');
+        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeFactories = $factories->getValue();
+
+        foreach ([
+            'ldap_dn' => 'getEntityIDByDN',
+            'tag' => 'getEntityIDByTag',
+            'mail_domain' => 'getEntityIDByDomain',
+            'completename' => 'getEntityIDByCompletename',
+        ] as $field => $method) {
+            $value = "_identifier_" . $field . "_O'Reilly\\branch_%";
+            $this->integer(LegacyEntity::$method(addslashes($value)))->isIdenticalTo(-1);
+            $connection->update('glpi_entities', [$field => $value], ['id' => $child]);
+            $this->integer(LegacyEntity::$method(addslashes($value)))->isIdenticalTo($child);
+            // A second exact match is ambiguous, not an arbitrary first result.
+            $connection->update('glpi_entities', [$field => $value], ['id' => $sibling]);
+            $this->integer(LegacyEntity::$method(addslashes($value)))->isIdenticalTo(-1);
+            $connection->update('glpi_entities', [$field => $value . '_root'], ['id' => 0]);
+            $this->integer(LegacyEntity::$method(addslashes($value . '_root')))->isIdenticalTo(0);
+        }
+        $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);
+    }
+
+    public function testEntityIdentifierNullAndEmptyValues(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
+        $sibling = (int)getItemByTypeName('Entity', '_test_child_2', true);
+        // Own the null population; DbTestCase rolls back these fixture changes.
+        $connection->executeStatement('UPDATE glpi_entities SET tag = ?', ['_identifier_non_null']);
+        $this->integer(LegacyEntity::getEntityIDByTag(null))->isIdenticalTo(-1);
+        $connection->update('glpi_entities', ['tag' => null], ['id' => $child]);
+        foreach ([null, 'NULL', 'null', 'NuLl'] as $value) {
+            $this->integer(LegacyEntity::getEntityIDByTag($value))->isIdenticalTo($child);
+        }
+        $connection->update('glpi_entities', ['tag' => null], ['id' => $sibling]);
+        $this->integer(LegacyEntity::getEntityIDByTag(null))->isIdenticalTo(-1);
+        $connection->update('glpi_entities', ['tag' => ''], ['id' => $child]);
+        $this->integer(LegacyEntity::getEntityIDByTag(''))->isIdenticalTo($child);
+        $this->integer(LegacyEntity::getEntityIDByTag(null))->isIdenticalTo($sibling);
+    }
+
+    public function testEntityIdentifierProjectionPreservesManagedState(): void
+    {
+        global $DB;
+        $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
+        $em = Orm::create($DB);
+        $connection = $em->getConnection();
+        $this->object($connection)->isIdenticalTo($DB->getDoctrineConnection());
+        $connection->update('glpi_entities', ['tag' => '_identifier_before'], ['id' => $child]);
+        $listener = new class () {
+            public int $loaded = 0;
+
+            public function postLoad(): void
+            {
+                ++$this->loaded;
+            }
+        };
+        $em->getEventManager()->addEventListener([Events::postLoad], $listener);
+        try {
+            $settings = new EntityConfigurationRepository($em);
+            $this->integer($settings->uniqueIdentifier('tag', '_identifier_before'))->isIdenticalTo($child);
+            $this->integer($listener->loaded)->isIdenticalTo(0);
+            $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+
+            $managed = $em->find(EntityRecord::class, $child);
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+            $connection->update('glpi_entities', ['tag' => '_identifier_after'], ['id' => $child]);
+            // Read current database values without refreshing or detaching another caller's object.
+            $this->integer($settings->uniqueIdentifier('tag', '_identifier_before'))->isIdenticalTo(-1);
+            $this->integer($settings->uniqueIdentifier('tag', '_identifier_after'))->isIdenticalTo($child);
+            $this->integer(LegacyEntity::getEntityIDByTag('_identifier_after'))->isIdenticalTo($child);
+            $this->string($managed->tag)->isIdenticalTo('_identifier_before');
+            $this->boolean($em->contains($managed))->isTrue();
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+        } finally {
+            $em->getEventManager()->removeEventListener([Events::postLoad], $listener);
+            $em->clear();
+        }
+    }
+
+    public function testGetUsedConfigProjectionValues(): void
+    {
+        global $DB;
+        $parent = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
+        $this->boolean($DB->update('glpi_entities', [
+            'admin_email' => 'parent@example.test', 'comment' => 'Parent setting',
+        ], ['id' => $parent]))->isTrue();
+        $this->boolean($DB->update('glpi_entities', [
+            'admin_email' => '', 'comment' => null, 'max_closedate' => '2026-02-03 04:05:06',
+            'calendars_id' => null, 'calendar_mode' => 'inherit',
+        ], ['id' => $child]))->isTrue();
+        $em = Orm::create($DB);
+        $settings = new EntityConfigurationRepository($em);
+        $read = $this->configurationReader($settings);
+        $this->string($read('admin_email', $child, 'comment', 'fallback'))
+            ->isIdenticalTo('Parent setting');
+        // A numeric default considers an empty string explicit; a string default inherits it.
+        $this->variable($read('admin_email', $child, 'comment', -2))->isNull();
+        $this->integer($read('id', $child, 'id', -2))->isIdenticalTo($child);
+        $this->integer($read('id', $child, 'entities_id', -2))->isIdenticalTo($parent);
+        $this->string($read('id', $child, 'max_closedate', -2))
+            ->isIdenticalTo('2026-02-03 04:05:06');
+        $this->string($read('id', $child, 'calendar_mode', -2))->isIdenticalTo('inherit');
+        $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+
+        // Reusing the repository must see writes on its supplied connection, including NULL.
+        $this->boolean($DB->update('glpi_entities', ['admin_email' => 'child@example.test'], ['id' => $child]))->isTrue();
+        $this->variable($read('admin_email', $child, 'comment', 'fallback'))->isNull();
+        $this->boolean($DB->update('glpi_entities', ['comment' => 'Changed setting'], ['id' => $child]))->isTrue();
+        $this->string($read('admin_email', $child, 'comment', 'fallback'))
+            ->isIdenticalTo('Changed setting');
+        $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+
+        $connection = $DB->getDoctrineConnection();
+        $probe = new EntityConfigurationReadProbe($connection);
+        $this->mockGenerator->orphanize('__construct');
+        $adapter = new DBmysql();
+        $this->calling($adapter)->getDoctrineConnection = $probe;
+        $original = $DB;
+        $counter = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $registry = Type::getTypeRegistry();
+        $text = $registry->get(Types::TEXT);
+        try {
+            $DB = $adapter;
+            $before = $counter->getValue();
+            $this->string(LegacyEntity::getUsedConfig('admin_email', $child, 'comment', 'fallback'))->isIdenticalTo('Changed setting');
+            $this->integer($counter->getValue() - $before)->isIdenticalTo(0);
+            $this->array($probe->ids)->isIdenticalTo([$child]);
+            $original->update('glpi_entities', ['admin_email' => ''], ['id' => $child]);
+            $probe->ids = [];
+            $this->string(LegacyEntity::getUsedConfig('admin_email', $child, 'comment', 'fallback'))->isIdenticalTo('Parent setting');
+            $this->array($probe->ids)->isIdenticalTo([$child, $parent]);
+            $registry->override(Types::TEXT, new EntityConfigurationTextType());
+            $this->string($read('admin_email', $child, 'comment', 'fallback'))->isIdenticalTo('PARENT SETTING|php');
+            $registry->override(Types::TEXT, new EntityConfigurationNoResultType());
+            $this->string($read('admin_email', $child, 'comment', 'fallback'))->isIdenticalTo('fallback');
+            $registry->override(Types::TEXT, new EntityConfigurationFailureType());
+            $this->exception(static fn () => $settings->usedConfiguration('admin_email', $child, 'comment', 'fallback'))
+                ->isInstanceOf(RuntimeException::class)->hasMessage('Configuration conversion failed');
+            $this->exception(static fn () => LegacyEntity::getUsedConfig('admin_email', $child, 'comment', 'fallback'))
+                ->isInstanceOf(RuntimeException::class)->hasMessage('Configuration conversion failed');
+            $registry->override(Types::TEXT, new EntityConfigurationTextType());
+
+
+            // A supplied manager's local field edits are never replaced by canonical type facts.
+            $em->getClassMetadata(EntityRecord::class)->fieldMappings['comment']->type = 'string';
+            $this->string($settings->usedConfiguration('admin_email', $child, 'comment', 'fallback'))->isIdenticalTo('Parent setting');
+
+            $listenerConnection = new EntityConfigurationListenerProbe($connection);
+            $listener = new class () {
+                public int $loads = 0;
+                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
+                {
+                    if ($event->getClassMetadata()->name === EntityRecord::class) {
+                        ++$this->loads;
+                        $event->getClassMetadata()->fieldMappings['comment']->type = 'string';
+                    }
+                }
+            };
+            $listenerConnection->getEventManager()->addEventListener(Events::loadClassMetadata, $listener);
+            $this->calling($adapter)->getDoctrineConnection = $listenerConnection;
+            $this->string(LegacyEntity::getUsedConfig('admin_email', $child, 'comment', 'fallback'))->isIdenticalTo('Parent setting');
+            $this->integer($listener->loads)->isIdenticalTo(1);
+            $this->array($listenerConnection->ids)->isIdenticalTo([$child, $parent]);
+
+            $this->calling($adapter)->getDoctrineConnection = new EntityConfigurationPlatformProbe($connection);
+            $before = $counter->getValue();
+            $this->string(LegacyEntity::getUsedConfig('admin_email', $child, 'comment', 'fallback'))->isIdenticalTo('PARENT SETTING|php');
+            $this->integer($counter->getValue() - $before)->isIdenticalTo(0);
+        } finally {
+            $DB = $original;
+            $registry->override(Types::TEXT, $text);
+        }
+    }
+
+    public function testGetUsedConfigProjectionReferences(): void
+    {
+        global $DB;
+        $parent = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
+        $calendar = new Calendar();
+        $calendarId = (int)$calendar->add(['name' => 'Configuration projection ' . $this->getUniqueString()]);
+        $this->integer($calendarId)->isGreaterThan(0);
+        $this->boolean($DB->update('glpi_entities', [
+            'calendars_id' => $calendarId, 'calendar_mode' => 'explicit',
+            'entities_id_software' => 0, 'software_entity_mode' => 'explicit',
+        ], ['id' => $parent]))->isTrue();
+        $this->boolean($DB->update('glpi_entities', [
+            'calendars_id' => null, 'calendar_mode' => 'inherit',
+            'entities_id_software' => null, 'software_entity_mode' => 'unchanged',
+        ], ['id' => $child]))->isTrue();
+        $em = Orm::create($DB);
+        $settings = new EntityConfigurationRepository($em);
+        $read = $this->configurationReader($settings);
+        $this->integer($read('calendars_id', $child, 'calendars_id', -2))
+            ->isIdenticalTo($calendarId);
+        $this->integer($read('entities_id_software', $child, 'entities_id_software', -2))
+            ->isIdenticalTo(-10);
+        // Both the gate and value need their own mode when they are different references.
+        $this->integer($read('calendars_id', $child, 'entities_id_software', -2))
+            ->isIdenticalTo(0);
+        $this->integer($read('entities_id_software', $child, 'calendars_id', -2))
+            ->isIdenticalTo(-2);
+        $this->boolean($DB->update('glpi_entities', [
+            'calendars_id' => null, 'calendar_mode' => 'explicit',
+            'entities_id_software' => 0, 'software_entity_mode' => 'explicit',
+        ], ['id' => $child]))->isTrue();
+        $this->integer($read('calendars_id', $child, 'calendars_id', -2))->isIdenticalTo(0);
+        $this->integer($read('entities_id_software', $child, 'entities_id_software', -2))
+            ->isIdenticalTo(0);
+        $this->string($read('id', $child, 'calendar_mode', -2))->isIdenticalTo('explicit');
+        $registry = Type::getTypeRegistry();
+        $string = $registry->get(Types::STRING);
+        try {
+            $registry->override(Types::STRING, new EntityConfigurationInvalidModeType());
+            $this->exception(static fn () => $settings->usedConfiguration('id', $child, 'calendar_mode', -2))
+                ->isInstanceOf(ValueError::class);
+            $this->exception(static fn () => LegacyEntity::getUsedConfig('id', $child, 'calendar_mode', -2))
+                ->isInstanceOf(ValueError::class);
+        } finally {
+            $registry->override(Types::STRING, $string);
+        }
+
+        $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+    }
+
+    public function testGetUsedConfigProjectionMissingAndCycles(): void
+    {
+        global $DB;
+        $parent = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
+        $em = Orm::create($DB);
+        $settings = new EntityConfigurationRepository($em);
+        $read = $this->configurationReader($settings);
+        foreach ([-1, PHP_INT_MAX, 0, $child] as $id) {
+            $this->string($read('unknown_setting', $id, 'comment', 'fallback'))
+                ->isIdenticalTo('fallback');
+        }
+        $this->string($read('id', $child, 'unknown_setting', 'fallback'))
+            ->isIdenticalTo('fallback');
+        $this->string($read('id', $child, 'name) FROM invalid', 'fallback'))
+            ->isIdenticalTo('fallback');
+        $this->variable($read('id', 0, 'entities_id', -2))->isNull();
+        $this->integer($read('id', 0, 'id', -2))->isIdenticalTo(0);
+        $this->string($read('id', 0, 'id', 'fallback'))->isIdenticalTo('fallback');
+        // Valid foreign keys can still form a cycle. Missing fields must not bypass its diagnostic.
+        $this->boolean($DB->update('glpi_entities', ['entities_id' => $child], ['id' => $parent]))->isTrue();
+        try {
+            $this->exception(static fn () => LegacyEntity::getUsedConfig('unknown_setting', $child, 'comment', 'fallback'))
+                ->isInstanceOf(RuntimeException::class)->hasMessage('Cyclic entity configuration inheritance');
+            $this->exception(static fn () => $read('unknown_setting', $child, 'comment', 'fallback'))
+                ->isInstanceOf(RuntimeException::class)->hasMessage('Cyclic entity configuration inheritance');
+        } finally {
+            $this->boolean($DB->update('glpi_entities', ['entities_id' => 0], ['id' => $parent]))->isTrue();
+        }
+        $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+    }
+
+    private function configurationReader(EntityConfigurationRepository $settings): Closure
+    {
+        return function (string $reference, int $entity, string $value, mixed $default) use ($settings): mixed {
+            $expected = $settings->usedConfiguration($reference, $entity, $value, $default);
+            $this->variable(LegacyEntity::getUsedConfig($reference, $entity, $value, $default))->isIdenticalTo($expected);
+            return $expected;
+        };
+    }
 
     protected function customCssProvider()
     {
@@ -545,5 +935,91 @@ class Entity extends DbTestCase
         $this->integer(getItemByTypeName('Entity', 'test clone entity (copy 2)', true))->isGreaterThan(0);
         $this->integer(getItemByTypeName('Entity', 'test clone entity (copy 3)', true))->isGreaterThan(0);
         $this->integer(getItemByTypeName('Entity', 'test clone entity (copy 4)', true))->isGreaterThan(0);
+    }
+}
+
+/** Keep fixture reads on the existing transaction while observing the selected route. */
+class EntityConfigurationReadProbe extends Connection
+{
+    public array $ids = [];
+
+    public function __construct(private readonly Connection $selected)
+    {
+        parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
+    }
+
+    public function getDatabasePlatform(): AbstractPlatform
+    {
+        return $this->selected->getDatabasePlatform();
+    }
+
+    public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
+    {
+        $this->ids[] = (int)reset($params);
+        return $this->selected->executeQuery($sql, $params, $types, $qcp);
+    }
+}
+
+class EntityConfigurationListenerProbe extends EntityConfigurationReadProbe
+{
+    private ?EventManager $events = null;
+
+    public function getEventManager(): EventManager
+    {
+        return $this->events ??= new EventManager();
+    }
+}
+
+class EntityConfigurationPlatformProbe extends EntityConfigurationReadProbe
+{
+    public function getDatabasePlatform(): AbstractPlatform
+    {
+        return parent::getDatabasePlatform() instanceof PostgreSQLPlatform
+            ? new EntityConfigurationPostgreSQLPlatform() : new EntityConfigurationMySQLPlatform();
+    }
+}
+
+class EntityConfigurationPostgreSQLPlatform extends PostgreSQLPlatform
+{
+}
+
+class EntityConfigurationMySQLPlatform extends MySQLPlatform
+{
+}
+
+class EntityConfigurationTextType extends TextType
+{
+    public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+    {
+        return 'UPPER(' . $sqlExpr . ')';
+    }
+
+    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
+    {
+        return $value === null ? null : $value . '|php';
+    }
+}
+
+class EntityConfigurationInvalidModeType extends StringType
+{
+    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
+    {
+        return $value === 'explicit' ? 'invalid-mode' : $value;
+    }
+}
+
+class EntityConfigurationNoResultType extends TextType
+{
+    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
+    {
+        throw new NoResultException();
+    }
+}
+
+class EntityConfigurationFailureType extends TextType
+{
+    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
+    {
+        throw new RuntimeException('Configuration conversion failed');
     }
 }

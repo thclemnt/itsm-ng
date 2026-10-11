@@ -31,6 +31,14 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\DeletionUnit;
+use itsmng\Database\LegacyValues;
+use itsmng\Database\MappedStorage;
+use itsmng\Database\Orm;
+use itsmng\Database\UnsupportedCriteria;
+use itsmng\Database\Repository\TreeRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -133,7 +141,7 @@ abstract class CommonTreeDropdown extends CommonDropdown
             $input['name'] = addslashes((string) $this->fields['name']);
         }
         // leading/ending space will break findID/import
-        $input['name'] = trim((string) $input['name']);
+        $input['name'] = trim((string) ($input['name'] ?? ''));
 
         if (
             isset($input[$this->getForeignKeyField()])
@@ -168,7 +176,6 @@ abstract class CommonTreeDropdown extends CommonDropdown
     public function pre_deleteItem()
     {
         global $DB;
-
         // Not set in case of massive delete : use parent
         if (isset($this->input['_replace_by']) && $this->input['_replace_by']) {
             $parent = $this->input['_replace_by'];
@@ -179,17 +186,10 @@ abstract class CommonTreeDropdown extends CommonDropdown
         $this->cleanParentsSons();
         $tmp  = clone $this;
 
-        $result = $DB->request(
-            [
-              'SELECT' => 'id',
-              'FROM'   => $this->getTable(),
-              'WHERE'  => [$this->getForeignKeyField() => $this->fields['id']]
-            ]
-        );
+        $result = $this->getTreeRows(['id'], [$this->getForeignKeyField() => $this->fields['id']]);
 
         foreach ($result as $data) {
-            $data[$this->getForeignKeyField()] = $parent;
-            $tmp->update($data);
+            DeletionUnit::requireSuccess($DB->getDoctrineConnection(), (bool)$tmp->update(['id' => $data['id'], $this->getForeignKeyField() => $parent]));
         }
 
         return true;
@@ -200,7 +200,7 @@ abstract class CommonTreeDropdown extends CommonDropdown
     {
         global $GLPI_CACHE;
 
-        if (isset($input[$this->getForeignKeyField()])) {
+        if (array_key_exists($this->getForeignKeyField(), $input)) {
             // Can't move a parent under a child
             if (
                 in_array(
@@ -223,6 +223,10 @@ abstract class CommonTreeDropdown extends CommonDropdown
 
         // Name changes => update its completename (and its level : side effect ...)
         if ((isset($input['name'])) && ($input['name'] != $this->fields['name'])) {
+            $parentField = $this->getForeignKeyField();
+            if (!array_key_exists($parentField, $input)) {
+                $input[$parentField] = $this->fields[$parentField];
+            }
             return $this->adaptTreeFieldsFromUpdateOrAdd($input);
         }
         return $input;
@@ -236,7 +240,7 @@ abstract class CommonTreeDropdown extends CommonDropdown
     **/
     public function regenerateTreeUnderID($ID, $updateName, $changeParent)
     {
-        global $DB, $GLPI_CACHE;
+        global $GLPI_CACHE;
 
         //drop from sons cache when needed
         if ($changeParent && Toolbox::useCache()) {
@@ -254,16 +258,11 @@ abstract class CommonTreeDropdown extends CommonDropdown
                 $nextNodeLevel = 1;
             }
 
-            $query = [
-               'SELECT' => ['id', 'name'],
-               'FROM'   => $this->getTable(),
-               'WHERE'  => [$this->getForeignKeyField() => $ID]
-            ];
             if (Session::haveTranslations($this->getType(), 'completename')) {
                 DropdownTranslation::regenerateAllCompletenameTranslationsFor($this->getType(), $ID);
             }
 
-            foreach ($DB->request($query) as $data) {
+            foreach ($this->getTreeRows(['id', 'name'], [$this->getForeignKeyField() => $ID]) as $data) {
                 $update = [];
 
                 if ($updateName || $changeParent) {
@@ -279,15 +278,11 @@ abstract class CommonTreeDropdown extends CommonDropdown
 
                 if ($changeParent) {
                     // We have to reset the ancestors as only these changes (ie : not the children).
-                    $update['ancestors_cache'] = 'NULL';
+                    $update['ancestors_cache'] = null;
                     // And we must update the level of the current node ...
                     $update['level'] = $nextNodeLevel;
                 }
-                $DB->update(
-                    $this->getTable(),
-                    $update,
-                    ['id' => $data['id']]
-                );
+                $this->updateDerivedTreeFields([$data['id']], $update);
                 // Translations :
                 if (Session::haveTranslations($this->getType(), 'completename')) {
                     DropdownTranslation::regenerateAllCompletenameTranslationsFor($this->getType(), $data['id']);
@@ -299,6 +294,39 @@ abstract class CommonTreeDropdown extends CommonDropdown
     }
 
 
+    private function getTreeRows(array $fields, array $criteria): array
+    {
+        global $DB;
+
+        if (MappedStorage::supports($this->getTable())) {
+            return (new TreeRepository(Orm::create($DB)))
+                ->rows($this->getTable(), $fields, $criteria);
+        }
+        return $this->find($criteria);
+    }
+
+    /** Persist derived values without triggering another tree regeneration. */
+    private function updateDerivedTreeFields(array $ids, array $values): void
+    {
+        global $DB;
+
+        // Some trees, including licenses, have no persistent ancestry caches.
+        foreach (['sons_cache', 'ancestors_cache'] as $cacheField) {
+            if (!$this->isField($cacheField)) {
+                unset($values[$cacheField]);
+            }
+        }
+        if (!$values) {
+            return;
+        }
+        if (MappedStorage::supports($this->getTable())) {
+            (new TreeRepository(Orm::create($DB)))
+                ->updateLegacyDerived($this->getTable(), $ids, $values);
+        } else {
+            $DB->update($this->getTable(), $values, ['id' => $ids]);
+        }
+    }
+
     /**
      * Clean sons of all parents from caches
      *
@@ -309,7 +337,7 @@ abstract class CommonTreeDropdown extends CommonDropdown
      */
     protected function cleanParentsSons($id = null, $cache = true)
     {
-        global $DB, $GLPI_CACHE;
+        global $GLPI_CACHE;
 
         if ($id === null) {
             $id = $this->getID();
@@ -323,32 +351,14 @@ abstract class CommonTreeDropdown extends CommonDropdown
             return;
         }
 
-        $DB->update(
-            $this->getTable(),
-            [
-              'sons_cache' => 'NULL'
-            ],
-            [
-              'id' => $ancestors
-            ]
-        );
+        $this->updateDerivedTreeFields(array_values($ancestors), ['sons_cache' => null]);
 
         //drop from sons cache when needed
         if ($cache && Toolbox::useCache()) {
             foreach ($ancestors as $ancestor) {
                 $ckey = 'sons_cache_' . $this->getTable() . '_' . $ancestor;
-                if ($GLPI_CACHE->has($ckey)) {
-                    $sons = $GLPI_CACHE->get($ckey);
-                    if (isset($sons[$this->getID()])) {
-                        unset($sons[$this->getID()]);
-                        $GLPI_CACHE->set($ckey, $sons);
-                    }
-                } else {
-                    // If cache key does not exists in current context (UI using APCu), it may exists
-                    // in another context (CLI using filesystem). So we force deletion of cache in all contexts
-                    // to be sure to not use a stale value.
-                    $GLPI_CACHE->delete($ckey);
-                }
+                // A subtree move changes every descendant's membership, not just this ID.
+                $GLPI_CACHE->delete($ckey);
             }
         }
     }
@@ -361,13 +371,19 @@ abstract class CommonTreeDropdown extends CommonDropdown
      */
     protected function addSonInParents()
     {
-        global $GLPI_CACHE;
+        global $DB, $GLPI_CACHE;
 
         //add sons cache when needed
         if (Toolbox::useCache()) {
             $ancestors = getAncestorsOf($this->getTable(), $this->getID());
             foreach ($ancestors as $ancestor) {
                 $ckey = 'sons_cache_' . $this->getTable() . '_' . $ancestor;
+                $connection = $DB->getDoctrineConnection();
+                if ($connection->isTransactionActive() || DeletionUnit::isActive($connection)) {
+                    // Never publish a transaction-local hierarchy outside the database.
+                    $GLPI_CACHE->delete($ckey);
+                    continue;
+                }
                 if ($GLPI_CACHE->has($ckey)) {
                     $sons = $GLPI_CACHE->get($ckey);
                     if (!isset($sons[$this->getID()])) {
@@ -533,8 +549,6 @@ abstract class CommonTreeDropdown extends CommonDropdown
      */
     public function showChildren()
     {
-        global $DB;
-
         $ID            = $this->getID();
         $this->check($ID, READ);
         $fields = array_filter(
@@ -605,13 +619,7 @@ abstract class CommonTreeDropdown extends CommonDropdown
 
         $fk   = $this->getForeignKeyField();
 
-        $result = iterator_to_array($DB->request(
-            [
-              'FROM'  => $this->getTable(),
-              'WHERE' => [$fk => $ID],
-              'ORDER' => 'name',
-            ]
-        ));
+        $result = $this->find([$fk => $ID], ['name', 'id']);
 
         $values = [];
         foreach ($result as $data) {
@@ -892,8 +900,6 @@ abstract class CommonTreeDropdown extends CommonDropdown
 
     public function findID(array &$input)
     {
-        global $DB;
-
         if (isset($input['completename'])) {
             // Clean data
             $input['completename'] = self::cleanTreeText($input['completename']);
@@ -916,9 +922,9 @@ abstract class CommonTreeDropdown extends CommonDropdown
                 );
             }
             // Check twin :
-            $iterator = $DB->request($criteria);
+            $iterator = $this->findTreeIdentity($criteria['WHERE'], 'completename', $criteria['FROM']);
             if (count($iterator)) {
-                $result = $iterator->next();
+                $result = reset($iterator);
                 return $result['id'];
             }
         } elseif (isset($input['name']) && !empty($input['name'])) {
@@ -941,13 +947,49 @@ abstract class CommonTreeDropdown extends CommonDropdown
                 );
             }
             // Check twin :
-            $iterator = $DB->request($criteria);
+            $iterator = is_string($input['name'])
+                && (!isset($input[$fk]) || is_scalar($input[$fk]))
+                ? $this->findTreeIdentity($criteria['WHERE'], 'name', $criteria['FROM'])
+                : $this->find($criteria['WHERE'], ['id'], 1);
             if (count($iterator)) {
-                $result = $iterator->next();
+                $result = reset($iterator);
                 return $result['id'];
             }
         }
         return -1;
+    }
+
+
+    /**
+     * Typed import identities own literal text; generic find keeps its query language.
+     * Subclasses customize import lookup here rather than intercepting public find.
+     * The default hook requires a stable mapped table; dynamic routes override this hook.
+     */
+    protected function findTreeIdentity(array $criteria, string $column, string $table): array
+    {
+        global $DB;
+
+        if (!MappedStorage::supports($table)) {
+            return $this->find($criteria, ['id'], 1);
+        }
+        // Match find's captured adapter before its final virtual table callback.
+        $database = $DB;
+        $admittedTable = $table;
+        $table = $this->getTable();
+        if ($table !== $admittedTable || !MappedStorage::supports($table)) {
+            throw new UnsupportedCriteria('Tree identity requires a stable mapped table; override findTreeIdentity for dynamic routes.');
+        }
+        $rows = Orm::read(
+            $database,
+            static fn (EntityManager $manager): array => (new TreeRepository($manager))->identityRows(
+                $table,
+                $column,
+                LegacyValues::decodeString($criteria[$column]),
+                array_diff_key($criteria, [$column => true])
+            ),
+            clearCustomManager: true
+        );
+        return array_column($rows, null, 'id');
     }
 
 
@@ -998,6 +1040,10 @@ abstract class CommonTreeDropdown extends CommonDropdown
             }
 
             $parent = parent::import($tmp);
+            if ($parent <= 0) {
+                // A refused ancestor cannot become the next node's root.
+                return $parent;
+            }
         }
         return $parent;
     }

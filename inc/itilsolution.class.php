@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\MappedReads;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -88,7 +90,7 @@ class ITILSolution extends CommonDBChild
 
     public function canUpdateItem()
     {
-        return $this->item->maySolve();
+        return $this->item !== null && $this->item->can($this->item->getID(), READ) && $this->item->maySolve();
     }
 
     public static function canCreate()
@@ -100,13 +102,12 @@ class ITILSolution extends CommonDBChild
     public function canCreateItem()
     {
         $item = new $this->fields['itemtype']();
-        $item->getFromDB($this->fields['items_id']);
-        return $item->canSolve();
+        return $item->can($this->fields['items_id'], READ) && $item->canSolve();
     }
 
     public function canEdit($ID)
     {
-        return $this->item->maySolve();
+        return $this->item !== null && $this->item->can($this->item->getID(), READ) && $this->item->maySolve();
     }
 
     public function post_getFromDB()
@@ -287,15 +288,11 @@ class ITILSolution extends CommonDBChild
      */
     public static function countFor($itemtype, $items_id)
     {
-        return countElementsInTable(
-            self::getTable(),
-            [
-              'WHERE' => [
-                 'itemtype'  => $itemtype,
-                 'items_id'  => $items_id
-              ]
-            ]
-        );
+        global $DB;
+        return MappedReads::countMatching($DB, self::getTable(), [
+            'itemtype' => $itemtype,
+            'items_id' => $items_id,
+        ]);
     }
 
     public function prepareInputForAdd($input)
@@ -410,8 +407,8 @@ class ITILSolution extends CommonDBChild
         if (!isset($this->fields['itemtype'])) {
             return false;
         }
-        $input["_job"] = new $this->fields['itemtype']();
-        if (!$input["_job"]->getFromDB($this->fields["items_id"])) {
+        $input = $this->validateLifecycleEndpoints($input);
+        if ($input === false) {
             return false;
         }
 
@@ -425,8 +422,17 @@ class ITILSolution extends CommonDBChild
         return $input;
     }
 
+    protected function validateLifecycleEndpoints(array $input): array|false
+    {
+        $kind = $input['itemtype'] ?? $this->fields['itemtype'];
+        $input['_job'] = new $kind();
+        return $input['_job']->getFromDB($input['items_id'] ?? $this->fields['items_id']) ? $input : false;
+    }
+
     public function post_updateItem($history = 1)
     {
+        // Permission caches must reflect the stored owner even without history.
+        $this->post_getFromDB();
         // Replace inline pictures
         $options = [
            'force_update' => true,

@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Jumbojett\OpenIDConnectClient;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\OidcRepository;
+
 /**
  * @since 0.85
  */
@@ -98,20 +102,12 @@ if (isset($_SESSION["noAUTO"]) || isset($_GET['noAUTO'])) {
 
 if (isset($_SESSION["itsm_is_oidc"]) && $_SESSION["itsm_is_oidc"] == 1) {
     //Get config from DB and use it to setup oidc
-    $criteria = "SELECT * FROM glpi_oidc_config";
-    $iterators = $DB->request($criteria);
-    foreach ($iterators as $iterator) {
-        $oidc_db['Provider'] = $iterator['Provider'];
-        $oidc_db['ClientID'] = $iterator['ClientID'];
-        $oidc_db['ClientSecret'] = Toolbox::sodiumDecrypt($iterator['ClientSecret']);
-        $oidc_db['scope'] = explode(',', addslashes((string) $iterator['scope']));
-        $oidc_db['logout'] = empty($iterator['logout']) ? null : $iterator['logout'];
-        $oidc_db['proxy'] = $iterator['proxy'];
-        $oidc_db['cert'] = $iterator['cert'];
-    }
-
-    if (isset($oidc_db)) {
-        $oidc = new Jumbojett\OpenIDConnectClient($oidc_db['Provider'], $oidc_db['ClientID'], $oidc_db['ClientSecret']);
+    $oidc_db = (new OidcRepository(Orm::create($DB)))->configuration();
+    if (!empty($oidc_db['Provider'])) {
+        $oidc_db['ClientSecret'] = Toolbox::sodiumDecrypt((string)$oidc_db['ClientSecret']);
+        $oidc_db['scope'] = explode(',', addslashes((string)$oidc_db['scope']));
+        $oidc_db['logout'] = $oidc_db['logout'] ?: null;
+        $oidc = new OpenIDConnectClient($oidc_db['Provider'], $oidc_db['ClientID'], $oidc_db['ClientSecret']);
         if (is_array($oidc_db['scope'])) {
             $oidc->addScope($oidc_db['scope']);
         }

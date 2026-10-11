@@ -38,11 +38,11 @@ if (!defined('GLPI_ROOT')) {
 }
 
 use Psr\SimpleCache\CacheInterface;
-use Laminas\Cache\Psr\SimpleCache\SimpleCacheDecorator;
-use Laminas\Cache\Storage\StorageInterface;
 
-class SimpleCache extends SimpleCacheDecorator implements CacheInterface
+class SimpleCache implements CacheInterface
 {
+    private CacheInterface $cache;
+
     /**
      * Determines if footprints must be checked.
      *
@@ -64,22 +64,26 @@ class SimpleCache extends SimpleCacheDecorator implements CacheInterface
      */
     private $footprint_fallback_storage = [];
 
-    public function __construct(StorageInterface $storage, $cache_dir, $check_footprints = true)
+    /** Decoding only: every lookup still reads and locks the current footprint file. */
+    private ?string $decodedFootprintContents = null;
+    private array $decodedFootprints = [];
+
+    public function __construct(CacheInterface $storage, $cache_dir, $check_footprints = true, string $namespace = '')
     {
-        parent::__construct($storage);
+        $this->cache = $storage;
 
         $this->check_footprints = $check_footprints;
         if ($this->check_footprints) {
-            $this->footprint_file = $cache_dir . '/' . $storage->getOptions()->getNamespace() . '.json';
+            $this->footprint_file = $cache_dir . '/' . $namespace . '.json';
             $this->checkFootprintFileIntegrity();
         }
     }
 
-    public function get($key, $default = null)
+    public function get($key, $default = null): mixed
     {
         $normalized_key = $this->getNormalizedKey($key);
 
-        $cached_value = parent::get($normalized_key, $default);
+        $cached_value = $this->cache->get($normalized_key, $default) ?? $default;
 
         if (!$this->check_footprints) {
             return $cached_value;
@@ -93,7 +97,7 @@ class SimpleCache extends SimpleCacheDecorator implements CacheInterface
         return $cached_value;
     }
 
-    public function set($key, $value, $ttl = null)
+    public function set($key, $value, $ttl = null): bool
     {
         $normalized_key = $this->getNormalizedKey($key);
 
@@ -101,10 +105,10 @@ class SimpleCache extends SimpleCacheDecorator implements CacheInterface
             $this->setFootprint($key, $value);
         }
 
-        return parent::set($normalized_key, $value, $ttl);
+        return $this->cache->set($normalized_key, $value, $ttl);
     }
 
-    public function delete($key)
+    public function delete($key): bool
     {
         $normalized_key = $this->getNormalizedKey($key);
 
@@ -112,23 +116,29 @@ class SimpleCache extends SimpleCacheDecorator implements CacheInterface
             $this->setFootprint($key, null);
         }
 
-        return parent::delete($normalized_key);
+        return $this->cache->delete($normalized_key);
     }
 
-    public function clear()
+    public function clear(): bool
     {
         if ($this->check_footprints) {
             $this->setAllCachedFootprints([]);
         }
 
-        return parent::clear();
+        return $this->cache->clear();
     }
 
-    public function getMultiple($keys, $default = null)
+    public function getMultiple(iterable $keys, $default = null): array
     {
+        $keys = is_array($keys) ? $keys : iterator_to_array($keys, false);
+
         $normalized_keys = array_map($this->getNormalizedKey(...), $keys);
 
-        $cached_values = parent::getMultiple($normalized_keys, $default);
+        $cached_values = $this->cache->getMultiple($normalized_keys, $default);
+        $cached_values = is_array($cached_values) ? $cached_values : iterator_to_array($cached_values);
+        foreach ($normalized_keys as $normalized_key) {
+            $cached_values[$normalized_key] ??= $default;
+        }
         $footprints = $this->check_footprints ? $this->getMultipleCachedFootprints($keys) : [];
 
         $result = [];
@@ -145,8 +155,10 @@ class SimpleCache extends SimpleCacheDecorator implements CacheInterface
         return $result;
     }
 
-    public function setMultiple($values, $ttl = null)
+    public function setMultiple(iterable $values, $ttl = null): bool
     {
+        $values = is_array($values) ? $values : iterator_to_array($values);
+
         if ($this->check_footprints) {
             $this->setMultipleFootprints($values);
         }
@@ -157,11 +169,13 @@ class SimpleCache extends SimpleCacheDecorator implements CacheInterface
             $values_with_normalized_keys[$normalized_key] = $value;
         }
 
-        return parent::setMultiple($values_with_normalized_keys, $ttl);
+        return $this->cache->setMultiple($values_with_normalized_keys, $ttl);
     }
 
-    public function deleteMultiple($keys)
+    public function deleteMultiple(iterable $keys): bool
     {
+        $keys = is_array($keys) ? $keys : iterator_to_array($keys, false);
+
         $normalized_keys = array_map($this->getNormalizedKey(...), $keys);
 
         if ($this->check_footprints) {
@@ -169,14 +183,14 @@ class SimpleCache extends SimpleCacheDecorator implements CacheInterface
             $this->setMultipleFootprints($values);
         }
 
-        return parent::deleteMultiple($normalized_keys);
+        return $this->cache->deleteMultiple($normalized_keys);
     }
 
-    public function has($key)
+    public function has($key): bool
     {
         $normalized_key = $this->getNormalizedKey($key);
 
-        if (!parent::has($normalized_key)) {
+        if (!$this->cache->has($normalized_key)) {
             return false;
         }
 
@@ -185,7 +199,7 @@ class SimpleCache extends SimpleCacheDecorator implements CacheInterface
         }
 
         // Cache value is not usable if stale, consider it has not existing.
-        return $this->getCachedFootprint($key) === $this->computeFootprint(parent::get($normalized_key));
+        return $this->getCachedFootprint($key) === $this->computeFootprint($this->cache->get($normalized_key));
     }
 
     /**
@@ -370,6 +384,12 @@ class SimpleCache extends SimpleCacheDecorator implements CacheInterface
         if (null !== $this->footprint_file) {
             $file_contents = $this->getFootprintFileContents();
 
+            if ($this->decodedFootprintContents !== null && $file_contents === $this->decodedFootprintContents) {
+                return $this->decodedFootprints;
+            }
+            $this->decodedFootprintContents = null;
+            $this->decodedFootprints = [];
+
             $footprints = !empty($file_contents) ? json_decode($file_contents, true) : null;
 
             if (json_last_error() !== JSON_ERROR_NONE || !is_array($footprints)) {
@@ -377,6 +397,12 @@ class SimpleCache extends SimpleCacheDecorator implements CacheInterface
                 // launch integrity tests again to trigger warnings and fix file contents.
                 $this->checkFootprintFileIntegrity();
                 return [];
+            }
+
+            // Bound retained decoding state; larger files keep the ordinary read/decode path.
+            if (strlen($file_contents) <= 1048576) {
+                $this->decodedFootprintContents = $file_contents;
+                $this->decodedFootprints = $footprints;
             }
 
             return $footprints;
@@ -396,14 +422,6 @@ class SimpleCache extends SimpleCacheDecorator implements CacheInterface
     private function setAllCachedFootprints($footprints)
     {
         if (null !== $this->footprint_file) {
-            // Remove null values to prevent storage of deleted footprints
-            array_filter(
-                $footprints,
-                function ($val) {
-                    return null !== $val;
-                }
-            );
-
             $json = json_encode($footprints, JSON_PRETTY_PRINT);
 
             $handle = fopen($this->footprint_file, 'c');

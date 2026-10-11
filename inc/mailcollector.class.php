@@ -35,6 +35,9 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use Laminas\Mail\Storage\Exception\InvalidArgumentException as MailStorageInvalidArgumentException;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\MailCollectorRepository;
 use itsmng\MailServer;
 use LitEmoji\LitEmoji;
 use Laminas\Mail\Address;
@@ -280,7 +283,7 @@ class MailCollector extends CommonDBTM
     /**
      * Display recursively a folder and its children
      *
-     * @param \Laminas\Mail\Storage\Folder $folder   Current folder
+     * @param Storage\Folder $folder   Current folder
      * @param string                       $input_id Input ID
      *
      * @return void
@@ -439,16 +442,8 @@ class MailCollector extends CommonDBTM
     {
         global $DB;
 
-        $query = [
-           'FROM'   => NotImportedEmail::getTable(),
-           'WHERE'  => [
-              'id' => $emails_ids,
-           ],
-           'ORDER'  => 'mailcollectors_id'
-        ];
-
         $todelete = [];
-        foreach ($DB->request($query) as $data) {
+        foreach ((new MailCollectorRepository(Orm::create($DB)))->rejectedEmails($emails_ids) as $data) {
             $todelete[$data['mailcollectors_id']][$data['messageid']] = $data;
         }
 
@@ -613,7 +608,7 @@ class MailCollector extends CommonDBTM
                     try {
                         $this->fetch_emails++;
                         $messages[$this->storage->getUniqueId($this->storage->key())] = $this->storage->current();
-                    } catch (\Exception $e) {
+                    } catch (Exception $e) {
                         $GLPI->getErrorHandler()->handleException($e);
                         Toolbox::logInFile(
                             'mailgate',
@@ -854,12 +849,12 @@ class MailCollector extends CommonDBTM
      * Builds and returns the main structure of the ticket to be created
      *
      * @param string                        $uid     UID of the message
-     * @param \Laminas\Mail\Storage\Message $message  Messge
+     * @param Message $message  Messge
      * @param array                         $options  Possible options
      *
      * @return array ticket fields
      */
-    public function buildTicket($uid, \Laminas\Mail\Storage\Message $message, $options = [])
+    public function buildTicket($uid, Message $message, $options = [])
     {
         global $CFG_GLPI;
 
@@ -970,7 +965,7 @@ class MailCollector extends CommonDBTM
 
         try {
             $subject = $message->getHeader('subject')->getFieldValue();
-        } catch (Laminas\Mail\Storage\Exception\InvalidArgumentException $e) {
+        } catch (MailStorageInvalidArgumentException $e) {
             $subject = null;
         }
         $tkt['_message']  = $message;
@@ -1002,10 +997,11 @@ class MailCollector extends CommonDBTM
             $job = new Ticket();
             $tu  = new Ticket_User();
             $st  = new Supplier_Ticket();
+            $ticket_exists = $job->getFromDB($tkt['tickets_id']);
 
             // Check if ticket  exists and users_id exists in GLPI
             if (
-                $job->getFromDB($tkt['tickets_id'])
+                $ticket_exists
                 && ($job->fields['status'] != CommonITILObject::CLOSED)
                 && ($CFG_GLPI['use_anonymous_followups']
                     || ($tkt['_users_id_requester'] > 0)
@@ -1050,8 +1046,11 @@ class MailCollector extends CommonDBTM
                     );
                 }
             } else {
-                // => to handle link in Ticket->post_addItem()
-                $tkt['_linkedto'] = $tkt['tickets_id'];
+                // Existing closed/ineligible tickets can still be linked to a
+                // new ticket. A stale subject number cannot own a relation.
+                if ($ticket_exists) {
+                    $tkt['_linkedto'] = $tkt['tickets_id'];
+                }
                 unset($tkt['tickets_id']);
             }
         }
@@ -1161,7 +1160,7 @@ class MailCollector extends CommonDBTM
 
         // Wrap content for blacklisted items
         $itemstoclean = [];
-        foreach ($DB->request('glpi_blacklistedmailcontents') as $data) {
+        foreach ((new MailCollectorRepository(Orm::create($DB)))->blacklistedContents() as $data) {
             $toclean = trim((string) $data['content']);
             if (!empty($toclean)) {
                 $itemstoclean[] = str_replace(["\r\n", "\n", "\r"], $br_marker, $toclean);
@@ -1258,7 +1257,7 @@ class MailCollector extends CommonDBTM
         try {
             $storage = Toolbox::getMailServerStorageInstance($config['type'], $params);
             if ($storage === null) {
-                throw new \Exception(sprintf(__('Unsupported mail server type:%s.'), $config['type']));
+                throw new Exception(sprintf(__('Unsupported mail server type:%s.'), $config['type']));
             }
             $this->storage = $storage;
             if ($this->fields['errors'] > 0) {
@@ -1267,7 +1266,7 @@ class MailCollector extends CommonDBTM
                    'errors' => 0
                 ]);
             }
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $this->update([
                'id'     => $this->getID(),
                'errors' => ($this->fields['errors'] + 1)
@@ -1281,11 +1280,11 @@ class MailCollector extends CommonDBTM
     /**
      * Get extra headers
      *
-     * @param \Laminas\Mail\Storage\Message $message Message
+     * @param Message $message Message
      *
      * @return array
     **/
-    public function getAdditionnalHeaders(\Laminas\Mail\Storage\Message $message)
+    public function getAdditionnalHeaders(Message $message)
     {
         $head   = [];
         $headers = $message->getHeaders();
@@ -1316,7 +1315,7 @@ class MailCollector extends CommonDBTM
     /**
      * Get full headers infos from particular mail
      *
-     * @param \Laminas\Mail\Storage\Message $message Message
+     * @param Message $message Message
      *
      * @return array Associative array with following keys
      *                subject   => Subject of Mail
@@ -1326,7 +1325,7 @@ class MailCollector extends CommonDBTM
      *                from      => From address of mail
      *                fromName  => Form Name of Mail
     **/
-    public function getHeaders(\Laminas\Mail\Storage\Message $message)
+    public function getHeaders(Message $message)
     {
 
         $sender_email = $this->getEmailFromHeader($message, 'from');
@@ -1362,7 +1361,7 @@ class MailCollector extends CommonDBTM
         // secu on subject setting
         try {
             $subject = $message->getHeader('subject')->getFieldValue();
-        } catch (Laminas\Mail\Storage\Exception\InvalidArgumentException $e) {
+        } catch (MailStorageInvalidArgumentException $e) {
             $subject = '';
         }
 
@@ -1413,7 +1412,7 @@ class MailCollector extends CommonDBTM
      * Recursivly get attached documents
      * Result is stored in $this->files
      *
-     * @param \Laminas\Mail\Storage\Part $part     Message part
+     * @param Storage\Part $part     Message part
      * @param string                     $path     Temporary path
      * @param integer                    $maxsize  Maximum size of document to be retrieved
      * @param string                     $subject  Message subject
@@ -1421,7 +1420,7 @@ class MailCollector extends CommonDBTM
      *
      * @return void
     **/
-    private function getRecursiveAttached(\Laminas\Mail\Storage\Part $part, $path, $maxsize, $subject, $subpart = "")
+    private function getRecursiveAttached(Storage\Part $part, $path, $maxsize, $subject, $subpart = "")
     {
         if ($part->isMultipart()) {
             $index = 0;
@@ -1581,13 +1580,13 @@ class MailCollector extends CommonDBTM
     /**
      * Get attached documents in a mail
      *
-     * @param \Laminas\Mail\Storage\Message $message  Message
+     * @param Message $message  Message
      * @param string                        $path     Temporary path
      * @param integer                       $maxsize  Maximaum size of document to be retrieved
      *
      * @return array containing extracted filenames in file/_tmp
     **/
-    public function getAttached(\Laminas\Mail\Storage\Message $message, $path, $maxsize)
+    public function getAttached(Message $message, $path, $maxsize)
     {
         $this->files     = [];
         $this->altfiles  = [];
@@ -1595,7 +1594,7 @@ class MailCollector extends CommonDBTM
 
         try {
             $subject = $message->getHeader('subject')->getFieldValue();
-        } catch (Laminas\Mail\Storage\Exception\InvalidArgumentException $e) {
+        } catch (MailStorageInvalidArgumentException $e) {
             $subject = null;
         }
 
@@ -1608,9 +1607,9 @@ class MailCollector extends CommonDBTM
     /**
      * Get The actual mail content from this mail
      *
-     * @param \Laminas\Mail\Storage\Message $message Message
+     * @param Message $message Message
     **/
-    public function getBody(\Laminas\Mail\Storage\Message $message)
+    public function getBody(Message $message)
     {
         $content = null;
 
@@ -1662,7 +1661,7 @@ class MailCollector extends CommonDBTM
             try {
                 $this->storage->moveMessage($this->storage->getNumberByUniqueId($uid), $name);
                 return true;
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 // raise an error and fallback to delete
                 trigger_error(
                     sprintf(
@@ -1691,20 +1690,17 @@ class MailCollector extends CommonDBTM
         global $DB;
 
         NotImportedEmail::deleteLog();
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_mailcollectors',
-           'WHERE'  => ['is_active' => 1]
-        ]);
+        $collectors = (new MailCollectorRepository(Orm::create($DB)))->collectors(activeOnly: true);
 
         $max = $task->fields['param'];
 
-        if (count($iterator) > 0) {
+        if (count($collectors) > 0) {
             $mc = new self();
 
-            while (
-                ($max > 0)
-                     && ($data = $iterator->next())
-            ) {
+            foreach ($collectors as $data) {
+                if ($max <= 0) {
+                    break;
+                }
                 $mc->maxfetch_emails = $max;
 
                 $task->log("Collect mails from " . $data["name"] . " (" . $data["host"] . ")\n");
@@ -1759,18 +1755,8 @@ class MailCollector extends CommonDBTM
         }
         $cron_status   = 0;
 
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_mailcollectors',
-           'WHERE'  => [
-              'errors'    => ['>', 0],
-              'is_active' => 1
-           ]
-        ]);
-
-        $items = [];
-        while ($data = $iterator->next()) {
-            $items[$data['id']]  = $data;
-        }
+        $rows = (new MailCollectorRepository(Orm::create($DB)))->collectors(activeOnly: true, errorsOnly: true);
+        $items = array_column($rows, null, 'id');
 
         if (count($items)) {
             if (NotificationEvent::raiseEvent('error', new self(), ['items' => $items])) {
@@ -1821,7 +1807,7 @@ class MailCollector extends CommonDBTM
         echo "<tr class='tab_bg_2'><th>Mails receivers</th></tr>\n";
         echo "<tr class='tab_bg_1'><td><pre>\n&nbsp;\n";
 
-        foreach ($DB->request('glpi_mailcollectors') as $mc) {
+        foreach ((new MailCollectorRepository(Orm::create($DB)))->collectors() as $mc) {
             $msg  = "Name: '" . $mc['name'] . "'";
             $msg .= " Active: " . ($mc['is_active'] ? "Yes" : "No");
             echo wordwrap($msg . "\n", $width, "\n\t\t");
@@ -1898,18 +1884,7 @@ class MailCollector extends CommonDBTM
     {
         global $DB;
 
-        $criteria = [
-           'COUNT'  => 'cpt',
-           'FROM'   => 'glpi_mailcollectors'
-        ];
-
-        if (true === $active) {
-            $criteria['WHERE'] = ['is_active' => 1];
-        }
-
-        $result = $DB->request($criteria)->next();
-
-        return (int)$result['cpt'];
+        return (new MailCollectorRepository(Orm::create($DB)))->countCollectors($active === true);
     }
 
     /**
@@ -2091,11 +2066,11 @@ class MailCollector extends CommonDBTM
     /**
      * Retrieve properly decoded content
      *
-     * @param \Laminas\Mail\Storage\Message $part Message Part
+     * @param Message $part Message Part
      *
      * @return string
      */
-    public function getDecodedContent(\Laminas\Mail\Storage\Part $part)
+    public function getDecodedContent(Storage\Part $part)
     {
         $contents = $part->getContent();
 

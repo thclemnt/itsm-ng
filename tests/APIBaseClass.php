@@ -32,6 +32,7 @@
  */
 
 use atoum\atoum;
+use itsmng\Database\MutationCleanupFailure;
 
 abstract class APIBaseClass extends atoum
 {
@@ -39,6 +40,7 @@ abstract class APIBaseClass extends atoum
     protected $http_client;
     protected $base_uri = "";
     protected $last_error;
+    private array $ownedComputers = [];
 
     abstract protected function query(
         $resource = "",
@@ -48,7 +50,55 @@ abstract class APIBaseClass extends atoum
 
     public function beforeTestMethod($method)
     {
+        $this->ownedComputers = [];
         $this->initSessionCredentials();
+    }
+
+    public function afterTestMethod($method)
+    {
+        $errors = [];
+        foreach ($this->ownedComputers as $name => $id) {
+            try {
+                $computer = new Computer();
+                // Resolve only this invocation's marker if an HTTP assertion failed
+                // before its response ID was available to the caller.
+                $rows = $id === null ? $computer->find(['name' => $name]) : [['id' => $id]];
+                foreach ($rows as $row) {
+                    if (!$computer->getFromDB($row['id'])) {
+                        continue; // A test may already have exercised public purge.
+                    }
+                    $this->string($computer->fields['name'])->isIdenticalTo($name);
+                    $this->query('deleteItems', [
+                        'itemtype' => 'Computer',
+                        'id' => $computer->getID(),
+                        'verb' => 'DELETE',
+                        'headers' => ['Session-Token' => $this->session_token],
+                        'query' => ['force_purge' => true],
+                    ]);
+                    $this->boolean($computer->getFromDB($row['id']))->isFalse();
+                }
+            } catch (Throwable $error) {
+                $errors[] = $error;
+            }
+        }
+        $this->ownedComputers = [];
+        if ($errors !== []) {
+            throw new RuntimeException('Failed to clean ' . count($errors) . ' owned API computer fixture(s).', 0, $errors[0]);
+        }
+    }
+
+    private function reserveComputerFixture(string $prefix): string
+    {
+        $name = $prefix . bin2hex(random_bytes(12));
+        $this->ownedComputers[$name] = null;
+        return $name;
+    }
+
+    private function trackComputerFixture(string $name, mixed $id): void
+    {
+        if (!is_bool($id) && filter_var($id, FILTER_VALIDATE_INT) !== false && (int)$id > 0) {
+            $this->ownedComputers[$name] = (int)$id;
+        }
     }
 
     abstract public function initSessionCredentials();
@@ -573,14 +623,17 @@ abstract class APIBaseClass extends atoum
      */
     protected function createComputer()
     {
+        $name = $this->reserveComputerFixture('My single computer ');
         $data = $this->query(
             'createItems',
             ['verb'     => 'POST',
                               'itemtype' => 'Computer',
                               'headers'  => ['Session-Token' => $this->session_token],
-                              'json'     => ['input' => ['name' => "My single computer "]]],
+                              'json'     => ['input' => ['name' => $name]]],
             201
         );
+
+        $this->trackComputerFixture($name, $data['id'] ?? null);
 
         $this->variable($data)
            ->isNotFalse();
@@ -688,6 +741,10 @@ abstract class APIBaseClass extends atoum
      */
     public function testCreateItems()
     {
+        $names = [];
+        foreach ([2, 3, 4] as $number) {
+            $names[] = $this->reserveComputerFixture('My computer ' . $number . ' ');
+        }
         $data = $this->query(
             'createItems',
             ['verb'     => 'POST',
@@ -695,13 +752,17 @@ abstract class APIBaseClass extends atoum
                               'headers'  => ['Session-Token' => $this->session_token],
                               'json'     => [
                                  'input' => [[
-                                    'name' => "My computer 2"
+                                    'name' => $names[0]
                                  ],[
-                                    'name' => "My computer 3"
+                                    'name' => $names[1]
                                  ],[
-                                    'name' => "My computer 4"]]]],
+                                    'name' => $names[2]]]]],
             201
         );
+
+        foreach ($names as $index => $name) {
+            $this->trackComputerFixture($name, $data[$index]['id'] ?? null);
+        }
 
         $this->variable($data)->isNotFalse();
 
@@ -1531,130 +1592,235 @@ abstract class APIBaseClass extends atoum
     {
         global $CFG_GLPI;
 
-        $user = getItemByTypeName('User', TU_USER);
-        $email = $user->getDefaultEmail();
+        $config_names = ['use_notifications', 'notifications_mailing'];
+        $saved_config = Config::getConfigurationValues('core', $config_names);
+        $saved_runtime_config = array_intersect_key($CFG_GLPI, array_flip($config_names));
+        $this->array($saved_config)->hasKeys($config_names);
+        $this->array($saved_runtime_config)->hasKeys($config_names);
 
-        // Check that the POST method is not allowed
-        $res = $this->query(
-            'lostPassword',
-            ['verb'    => 'POST',
-                            ],
-            400,
-            'ERROR'
-        );
+        // Register the recovery identity before HTTP can insert and then fail an assertion.
+        $nonce = bin2hex(random_bytes(12));
+        $name = '_api_lost_password_' . $nonce;
+        $email = 'lost-password-' . $nonce . '@localhost.local';
+        $headers = ['Session-Token' => $this->session_token];
+        $user = new User();
+        $queue = new QueuedNotification();
+        $queue_filter = [
+            'itemtype' => User::class,
+            'mode' => Notification_NotificationTemplate::MODE_MAIL,
+            'recipient' => $email,
+        ];
+        // Preserve any preexisting IDs even if a stale row shares this recipient.
+        $queue_before = array_keys($queue->find($queue_filter));
+        $failure = null;
+        $creation_attempted = false;
 
-        // Check that the GET method is not allowed
-        $res = $this->query(
-            'lostPassword',
-            ['verb'    => 'GET',
-                            ],
-            400,
-            'ERROR'
-        );
+        try {
+            $this->array($user->find(['name' => $name]))->isEmpty();
+            $creation_attempted = true;
+            $created = $this->query('createItems', [
+                'itemtype' => 'User',
+                'verb' => 'POST',
+                'headers' => $headers,
+                'json' => ['input' => [
+                    'name' => $name,
+                    'entities_id' => getItemByTypeName('Entity', '_test_root_entity', true),
+                    '_entities_id' => getItemByTypeName('Entity', '_test_root_entity', true),
+                    '_profiles_id' => 4,
+                    '_is_recursive' => 1,
+                    'is_active' => 1,
+                    'authtype' => Auth::DB_GLPI,
+                    'password' => TU_PASS,
+                    'password2' => TU_PASS,
+                    '_useremails' => [$email],
+                    '_default_email' => 0,
+                ]],
+            ], 201);
+            $this->integer($created['id'])->isGreaterThan(0);
+            $this->boolean($user->getFromDB($created['id']))->isTrue();
+            $this->string($user->fields['name'])->isIdenticalTo($name);
+            $this->string($user->getDefaultEmail())->isIdenticalTo($email);
+            $queue_filter['items_id'] = $user->getID();
 
-        // Check that the DELETE method is not allowed
-        $res = $this->query(
-            'lostPassword',
-            ['verb'    => 'DELETE',
-                            ],
-            400,
-            'ERROR'
-        );
+            // Check that the POST method is not allowed
+            $res = $this->query(
+                'lostPassword',
+                ['verb'    => 'POST',
+                                ],
+                400,
+                'ERROR'
+            );
 
-        $this->array($CFG_GLPI)
-           ->variable['use_notifications']->isEqualTo(0)
-           ->variable['notifications_mailing']->isEqualTo(0);
+            // Check that the GET method is not allowed
+            $res = $this->query(
+                'lostPassword',
+                ['verb'    => 'GET',
+                                ],
+                400,
+                'ERROR'
+            );
 
-        // Check that disabled notifications prevent password changes
-        $res = $this->query(
-            'lostPassword',
-            ['verb'    => 'PUT',
-                             'json'    => [
-                              'email'  => $email
-                             ]
-                            ],
-            400,
-            'ERROR'
-        );
+            // Check that the DELETE method is not allowed
+            $res = $this->query(
+                'lostPassword',
+                ['verb'    => 'DELETE',
+                                ],
+                400,
+                'ERROR'
+            );
 
-        // Enable notifications
-        Config::setConfigurationValues('core', [
-           'use_notifications' => '1',
-           'notifications_mailing' => '1'
-        ]);
+            $this->array($CFG_GLPI)
+               ->variable['use_notifications']->isEqualTo(0)
+               ->variable['notifications_mailing']->isEqualTo(0);
 
-        // Test an unknown email, query will succeed to avoid exposing whether or
-        // not the email actually exist in our database but there will be a
-        // warning in the server logs
-        $this->query('lostPassword', [
-           'verb'    => 'PUT',
-           'json'    => [
-              'email'  => 'nonexistent@localhost.local'
-           ],
-           'server_errors' => [
-              "Failed to find a single user for 'nonexistent@localhost.local', 0 user(s) found."
-           ]
-        ], 200);
+            // Check that disabled notifications prevent password changes
+            $res = $this->query(
+                'lostPassword',
+                ['verb'    => 'PUT',
+                                 'json'    => [
+                                  'email'  => $email
+                                 ]
+                                ],
+                400,
+                'ERROR'
+            );
 
-        // Test a valid email is accepted
-        $res = $this->query(
-            'lostPassword',
-            ['verb'    => 'PATCH',
-                             'json'    => [
-                              'email'  => $email
-                             ]
-                            ],
-            200
-        );
-        // get the password recovery token
-        $user = getItemByTypeName('User', TU_USER);
-        $token = $user->getField('password_forget_token');
+            // Enable notifications
+            Config::setConfigurationValues('core', [
+               'use_notifications' => '1',
+               'notifications_mailing' => '1'
+            ]);
 
-        // Test reset password with a bad token
-        $res = $this->query(
-            'lostPassword',
-            ['verb'    => 'PUT',
-                             'json'    => [
-                              'password_forget_token' => $token . 'bad',
-                              'password'              => 'NewPassword',
-                             ]
-                            ],
-            400,
-            'ERROR'
-        );
+            // Test an unknown email, query will succeed to avoid exposing whether or
+            // not the email actually exist in our database but there will be a
+            // warning in the server logs
+            $this->query('lostPassword', [
+               'verb'    => 'PUT',
+               'json'    => [
+                  'email'  => 'nonexistent@localhost.local'
+               ],
+               'server_errors' => [
+                  "Failed to find a single user for 'nonexistent@localhost.local', 0 user(s) found."
+               ]
+            ], 200);
 
-        // Test reset password with the good token
-        $res = $this->query(
-            'lostPassword',
-            ['verb'    => 'PATCH',
-                           'json'    => [
-                            'password_forget_token' => $token,
-                            'password'              => 'NewPassword',
-                           ]
-                          ],
-            200
-        );
+            // Test a valid email is accepted
+            $res = $this->query(
+                'lostPassword',
+                ['verb'    => 'PATCH',
+                                 'json'    => [
+                                  'email'  => $email
+                                 ]
+                                ],
+                200
+            );
+            // get the password recovery token
+            $this->boolean($user->getFromDB($user->getID()))->isTrue();
+            $token = $user->getField('password_forget_token');
 
-        // Refresh the in-memory instance of user and get the password
-        $user->getFromDB($user->getID());
-        $newHash = $user->getField('password');
+            // Test reset password with a bad token
+            $res = $this->query(
+                'lostPassword',
+                ['verb'    => 'PUT',
+                                 'json'    => [
+                                  'password_forget_token' => $token . 'bad',
+                                  'password'              => 'NewPassword',
+                                 ]
+                                ],
+                400,
+                'ERROR'
+            );
 
-        // Restore the initial password in the DB
-        $updateSuccess = $user->update([
-              'id'        => $user->getID(),
-              'password'  => TU_PASS,
-              'password2' => TU_PASS
-        ]);
-        $this->variable($updateSuccess)->isNotFalse('password update failed');
+            // Test reset password with the good token
+            $res = $this->query(
+                'lostPassword',
+                ['verb'    => 'PATCH',
+                               'json'    => [
+                                'password_forget_token' => $token,
+                                'password'              => 'NewPassword',
+                               ]
+                              ],
+                200
+            );
 
-        // Test the new password was saved
-        $this->variable(\Auth::checkPassword('NewPassword', $newHash))->isNotFalse();
+            // Refresh the in-memory instance of user and get the password
+            $user->getFromDB($user->getID());
+            $newHash = $user->getField('password');
 
-        //diable notifications
-        Config::setConfigurationValues('core', [
-           'use_notifications' => '0',
-           'notifications_mailing' => '0'
-        ]);
+            // Restore the owned fixture's initial password in the DB
+            $updateSuccess = $user->update([
+                  'id'        => $user->getID(),
+                  'password'  => TU_PASS,
+                  'password2' => TU_PASS
+            ]);
+            $this->variable($updateSuccess)->isNotFalse('password update failed');
+
+            // Test the new password was saved
+            $this->variable(Auth::checkPassword('NewPassword', $newHash))->isNotFalse();
+        } catch (Throwable $error) {
+            $failure = $error;
+        } finally {
+            $record_cleanup = static function (Throwable $error) use (&$failure): void {
+                $failure = $failure === null ? $error
+                    : new MutationCleanupFailure($failure, $error);
+            };
+            try {
+                Config::setConfigurationValues('core', $saved_config);
+            } catch (Throwable $error) {
+                $record_cleanup($error);
+            } finally {
+                foreach ($saved_runtime_config as $key => $value) {
+                    $CFG_GLPI[$key] = $value;
+                }
+            }
+
+            $owned_id = null;
+            try {
+                // Recover by the unique name even when createItems() hid its inserted ID.
+                // Never use a response ID alone as authority to purge an account.
+                if ($creation_attempted && $user->getFromDBByCrit(['name' => $name])) {
+                    $owned_id = $user->getID();
+                    $this->integer($owned_id)->isGreaterThan(0);
+                }
+            } catch (Throwable $error) {
+                $owned_id = null;
+                $record_cleanup($error);
+            }
+            if ($owned_id !== null) {
+                try {
+                    $queue_filter['items_id'] = $owned_id;
+                    $queue_after = $queue->find($queue_filter);
+                    foreach (array_diff_key($queue_after, array_flip($queue_before)) as $row) {
+                        try {
+                            $this->boolean($queue->delete(['id' => $row['id']], true))->isTrue();
+                        } catch (Throwable $error) {
+                            $record_cleanup($error);
+                        }
+                    }
+                    $this->integer(count(array_diff_key(
+                        $queue->find($queue_filter),
+                        array_flip($queue_before)
+                    )))->isIdenticalTo(0);
+                } catch (Throwable $error) {
+                    $record_cleanup($error);
+                }
+                try {
+                    $this->query('deleteItems', [
+                        'itemtype' => 'User',
+                        'id' => $owned_id,
+                        'verb' => 'DELETE',
+                        'headers' => $headers,
+                        'query' => ['force_purge' => true],
+                    ]);
+                    $this->boolean($user->getFromDB($owned_id))->isFalse();
+                } catch (Throwable $error) {
+                    $record_cleanup($error);
+                }
+            }
+        }
+        if ($failure !== null) {
+            throw $failure;
+        }
     }
 
     /**

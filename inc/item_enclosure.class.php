@@ -1,5 +1,9 @@
 <?php
 
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\PlacementRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access directly to this file");
 }
@@ -84,12 +88,7 @@ class Item_Enclosure extends CommonDBRelation
         }
         $canedit = $enclosure->canEdit($ID);
 
-        $items = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'enclosures_id' => $enclosure->getID()
-           ]
-        ]);
+        $items = MappedReads::matching($DB, self::getTable(), ['enclosures_id' => $enclosure->getID()]);
 
         Session::initNavigateListItems(
             self::getType(),
@@ -116,7 +115,6 @@ class Item_Enclosure extends CommonDBRelation
             echo "</div>";
         }
 
-        $items = iterator_to_array($items);
 
         if (!count($items)) {
             echo "<table class='tab_cadre_fixe' aria-label='No Item Found'><tr><th>" . __('No item found') . "</th></tr>";
@@ -202,25 +200,7 @@ class Item_Enclosure extends CommonDBRelation
             ]
         );
 
-        //get all used items
-        $used = [];
-        $iterator = $DB->request([
-           'FROM'   => $this->getTable()
-        ]);
-        while ($row = $iterator->next()) {
-            $used [$row['itemtype']][] = $row['items_id'];
-        }
-
-        // get used items by racks
-        $iterator = $DB->request([
-           'FROM'  => Item_Rack::getTable(),
-           'WHERE' => [
-              'is_reserved' => 0
-           ]
-        ]);
-        while ($row = $iterator->next()) {
-            $used [$row['itemtype']][] = $row['items_id'];
-        }
+        $used = (new PlacementRepository(Orm::create($DB)))->enclosureSelection();
 
         Ajax::updateItemOnSelectEvent(
             "dropdown_itemtype$rand",
@@ -290,12 +270,12 @@ class Item_Enclosure extends CommonDBRelation
 
     public function prepareInputForAdd($input)
     {
-        return $this->prepareInput($input);
+        return $this->validateLifecycleEndpoints($input);
     }
 
     public function prepareInputForUpdate($input)
     {
-        return $this->prepareInput($input);
+        return $this->validateLifecycleEndpoints($input);
     }
 
     /**
@@ -305,7 +285,7 @@ class Item_Enclosure extends CommonDBRelation
      *
      * @return array
      */
-    private function prepareInput($input)
+    protected function validateLifecycleEndpoints(array $input): array|false
     {
         $error_detected = [];
 

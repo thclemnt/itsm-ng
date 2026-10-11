@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CalendarRepository;
+use itsmng\Database\Repository\RecordRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -80,33 +84,14 @@ class Calendar_Holiday extends CommonDBRelation
 
         $rand    = mt_rand();
 
-        $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_calendars_holidays.id AS linkid',
-              'glpi_holidays.*'
-           ],
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_calendars_holidays',
-           'LEFT JOIN'       => [
-              'glpi_holidays'   => [
-                 'ON' => [
-                    'glpi_calendars_holidays'  => 'holidays_id',
-                    'glpi_holidays'            => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => [
-              'glpi_calendars_holidays.calendars_id' => $ID
-           ],
-           'ORDERBY'         => 'glpi_holidays.name'
-        ]);
-
-        $numrows = count($iterator);
+        $links = (new CalendarRepository(Orm::create($DB)))
+            ->closures((int)$ID);
+        $numrows = count($links);
         $holidays = [];
         $used     = [];
-        while ($data = $iterator->next()) {
-            $holidays[$data['id']] = $data;
-            $used[$data['id']]     = $data['id'];
+        foreach ($links as $link) {
+            $holidays[$link->holidays->id] = $link;
+            $used[$link->holidays->id] = $link->holidays->id;
         }
 
         if ($canedit) {
@@ -164,14 +149,15 @@ class Calendar_Holiday extends CommonDBRelation
         ];
         $values = [];
         $massive_action = [];
-        foreach ($holidays as $data) {
+        foreach ($holidays as $link) {
+            $holiday = $link->holidays;
             $values[] = [
-               '<a href="' . Toolbox::getItemTypeFormURL('Holiday') . "?id=" . $data['id'] . '">' . $data["name"] . '</a>',
-               Html::convDate($data["begin_date"]),
-               Html::convDate($data["end_date"]),
-               Dropdown::getYesNo($data["is_perpetual"]),
+               '<a href="' . Toolbox::getItemTypeFormURL('Holiday') . "?id=" . $holiday->id . '">' . $holiday->name . '</a>',
+               Html::convDate($holiday->begin_date?->format('Y-m-d')),
+               Html::convDate($holiday->end_date?->format('Y-m-d')),
+               Dropdown::getYesNo($holiday->is_perpetual),
             ];
-            $massive_action[] = sprintf('item[%s][%s]', __CLASS__, $data['linkid']);
+            $massive_action[] = sprintf('item[%s][%s]', __CLASS__, $link->id);
         }
 
         renderTwigTemplate('table.twig', [
@@ -195,16 +181,12 @@ class Calendar_Holiday extends CommonDBRelation
         global $DB;
 
         Toolbox::deprecated('Use clone');
-        $result = $DB->request(
-            [
-              'FROM'   => self::getTable(),
-              'WHERE'  => [
-                 'calendars_id' => $oldid,
-              ]
-            ]
-        );
+        $em = Orm::create($DB);
+        $links = (new CalendarRepository($em))->closures((int)$oldid);
+        $records = new RecordRepository($em);
 
-        foreach ($result as $data) {
+        foreach ($links as $link) {
+            $data = $records->toRow($link);
             $ch                   = new self();
             unset($data['id']);
             $data['calendars_id'] = $newid;

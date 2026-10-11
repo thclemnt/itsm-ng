@@ -31,6 +31,14 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Entity\ITILSolution as ITILSolutionEntity;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\RowIterator;
+use itsmng\Database\Repository\TicketLinkReadRepository;
+use itsmng\Database\Repository\TicketRelationshipRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -161,15 +169,26 @@ class Ticket_Ticket extends CommonDBRelation
             return false;
         }
 
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'OR'  => [
-                 'tickets_id_1' => $ID,
-                 'tickets_id_2' => $ID
-              ]
-           ]
-        ]);
+        $database = $DB;
+        $table = self::getTable();
+        if (
+            $table === 'glpi_tickets_tickets'
+            && (is_int($ID) || (is_string($ID) && ctype_digit($ID)))
+        ) {
+            $connection = $database->getDoctrineConnection();
+            OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+            $iterator = new RowIterator((new TicketLinkReadRepository($connection))->linkedIdentities($ID));
+        } else {
+            $iterator = $database->request([
+                'FROM' => $table,
+                'WHERE' => [
+                    'OR' => [
+                        'tickets_id_1' => $ID,
+                        'tickets_id_2' => $ID,
+                    ],
+                ],
+            ]);
+        }
         $tickets = [];
 
         while ($data = $iterator->next()) {
@@ -413,26 +432,12 @@ class Ticket_Ticket extends CommonDBRelation
     {
         global $DB;
 
-        $result = $DB->request([
-           'COUNT'        => 'cpt',
-           'FROM'         => $this->getTable() . ' AS links',
-           'INNER JOIN'   => [
-              Ticket::getTable() . ' AS tickets' => [
-                 'ON' => [
-                    'links'     => 'tickets_id_1',
-                    'tickets'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              'links.link'         => self::SON_OF,
-              'links.tickets_id_2' => $pid,
-              'NOT'                => [
-                 'tickets.status'  => Ticket::getClosedStatusArray() + Ticket::getSolvedStatusArray()
-              ]
-           ]
-        ])->next();
-        return (int)$result['cpt'];
+        $database = $DB;
+        $parent = $pid === null || (is_string($pid) && strtolower($pid) === 'null') ? null : (int)$pid;
+        // Preserve the existing union: solved children still count until closed.
+        $excluded = Ticket::getClosedStatusArray() + Ticket::getSolvedStatusArray();
+        return Orm::read($database, static fn (EntityManager $manager): int =>
+            (new TicketRelationshipRepository($manager))->countOpenChildren($parent, $excluded));
     }
 
 
@@ -489,7 +494,7 @@ class Ticket_Ticket extends CommonDBRelation
             unset($solution_data['date_mod']);
 
             foreach ($tickets as $data) {
-                $solution_data['items_id'] = $data['tickets_id'];
+                $solution_data = ITILSolutionEntity::withSubject($solution_data, 'Ticket', (int)$data['tickets_id']);
                 $solution_data['_linked_ticket'] = true;
                 $new_solution = new ITILSolution();
                 $new_solution->add(Toolbox::addslashes_deep($solution_data));

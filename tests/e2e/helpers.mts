@@ -1,7 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, type APIRequestContext, type APIResponse, type Locator, type Page } from '@playwright/test';
+import { expect, test as baseTest, type APIRequestContext, type APIResponse, type Locator, type Page } from '@playwright/test';
 
 export interface SeedTicketOptions {
   withTaskState?: 'todo' | 'done';
@@ -20,10 +21,165 @@ export interface SeedTicketResult {
 
 export type ActorPanelRole = 'requester' | 'observer' | 'assign';
 
-interface ApiSession {
+export interface ApiSession {
   apiUrl: string;
   sessionToken: string;
   userId: number;
+}
+
+interface RichTextUploadReceipt {
+  filename: string;
+  prefix: string;
+  tag: string;
+}
+
+/** Each test owns exact names before sending requests, including responses that fail to return IDs. */
+export class TicketFixtures {
+  private readonly tickets = new Map<string, Set<number>>();
+  private readonly uploads: RichTextUploadReceipt[] = [];
+
+  constructor(private readonly request: APIRequestContext) {}
+
+  ownTicket(name: string, id?: number): void {
+    const ids = this.tickets.get(name) ?? new Set<number>();
+    if (id !== undefined) ids.add(id);
+    this.tickets.set(name, ids);
+  }
+
+  ownUpload(receipt: RichTextUploadReceipt): void {
+    this.uploads.push(receipt);
+  }
+
+  async cleanup(): Promise<unknown[]> {
+    const errors: unknown[] = [];
+    if (!this.tickets.size && !this.uploads.length) return errors;
+    let session: ApiSession;
+    try { session = await initApiSession(this.request); }
+    catch (error) { return [error]; }
+    try {
+      for (const [name, ids] of this.tickets) {
+        try {
+          for (const row of await collection(this.request, session, 'Ticket/', { 'searchText[name]': name })) {
+            if (row.name === name) ids.add(ownedId(row.id, 'Ticket'));
+          }
+        } catch (error) { errors.push(error); }
+        for (const id of ids) {
+          try {
+            const ticket = await getItem<{ name: string }>(this.request, session, 'Ticket', id);
+            expect(ticket.name, 'Only the exact owned ticket may be purged').toBe(name);
+            const children: Array<[string, number]> = [];
+            for (const type of ['TicketTask', 'ITILFollowup', 'Ticket_User', 'Document_Item']) {
+              try {
+                for (const row of await collection(this.request, session, `Ticket/${id}/${type}/`)) {
+                  children.push([type, ownedId(row.id, type)]);
+                  if (type === 'ITILFollowup') {
+                    for (const link of await collection(this.request, session, `ITILFollowup/${row.id}/Document_Item/`)) {
+                      children.push(['Document_Item', ownedId(link.id, 'Document_Item')]);
+                    }
+                  }
+                }
+              } catch (error) { errors.push(error); }
+            }
+            // Public Ticket purge invokes task/followup/actor/link hooks; documents have a separate owner below.
+            await purgeItem(this.request, session, 'Ticket', id);
+            for (const [type, child] of children) {
+              try { await expectItemMissing(this.request, session, type, child); }
+              catch (error) { errors.push(error); }
+            }
+          } catch (error) { errors.push(error); }
+        }
+      }
+      for (const upload of this.uploads) {
+        const ids = new Set<number>();
+        try {
+          for (const row of await collection(this.request, session, 'Document/', { 'searchText[tag]': upload.tag })) {
+            if (row.tag === upload.tag) ids.add(ownedId(row.id, 'Document'));
+          }
+          if (!ids.size) {
+            // Unsaved uploads and content-deduplicated attachments still own this exact temporary file.
+            // Document's public upload path consumes it; its purge preserves files referenced by other documents.
+            try {
+              ids.add(await createItem(this.request, session, 'Document', {
+                name: `E2E upload ${upload.tag}`, tag: upload.tag,
+                _filename: [upload.filename], _prefix_filename: [upload.prefix], _only_if_upload_succeed: true,
+              }));
+            } catch (error) {
+              errors.push(error);
+              // Recover a committed document if its creation response failed after the file moved.
+              for (const row of await collection(this.request, session, 'Document/', { 'searchText[tag]': upload.tag })) {
+                if (row.tag === upload.tag) ids.add(ownedId(row.id, 'Document'));
+              }
+            }
+          }
+        } catch (error) { errors.push(error); }
+        for (const id of ids) {
+          try {
+            const document = await getItem<{ tag: string }>(this.request, session, 'Document', id);
+            expect(document.tag, 'A linked shared document is never an upload cleanup target').toBe(upload.tag);
+            await purgeItem(this.request, session, 'Document', id);
+          } catch (error) { errors.push(error); }
+        }
+      }
+    } finally {
+      try { await closeApiSession(this.request, session); }
+      catch (error) { errors.push(error); }
+    }
+    return errors;
+  }
+}
+
+export const test = baseTest.extend<{ ticketFixtures: TicketFixtures }>({
+  ticketFixtures: [async ({ request }, use, testInfo) => {
+    const owner = new TicketFixtures(request);
+    try { await use(owner); }
+    finally {
+      const errors = await owner.cleanup();
+      if (errors.length) {
+        // Playwright retains the original assertion failure; include it with every teardown failure too.
+        throw new AggregateError([...testInfo.errors, ...errors], 'Ticket browser flow or owned cleanup failed');
+      }
+    }
+  }, { auto: true }],
+});
+
+function ownedId(value: unknown, type: string): number {
+  const id = Number(value);
+  if (!Number.isSafeInteger(id) || id <= 0) throw new Error(`Invalid owned ${type} ID: ${String(value)}`);
+  return id;
+}
+
+function apiHeaders(session: ApiSession): Record<string, string> {
+  return { 'App-Token': getAppToken(), 'Session-Token': session.sessionToken };
+}
+
+async function collection(
+  request: APIRequestContext, session: ApiSession, resource: string, params: Record<string, string> = {}
+): Promise<Array<Record<string, unknown>>> {
+  const rows: Array<Record<string, unknown>> = [];
+  for (let start = 0; ; start += 100) {
+    const response = await request.get(`${session.apiUrl}${resource}`, {
+      headers: apiHeaders(session), params: { ...params, range: `${start}-${start + 99}` },
+    });
+    const page = getCollectionItems(await parseJsonResponse<unknown>(response, `Reading owned ${resource}`));
+    rows.push(...page);
+    const total = Number(response.headers()['content-range']?.split('/')[1]);
+    if (page.length < 100 || (Number.isFinite(total) && rows.length >= total)) return rows;
+  }
+}
+
+async function expectItemMissing(request: APIRequestContext, session: ApiSession, type: string, id: number): Promise<void> {
+  const response = await request.get(`${session.apiUrl}${type}/${id}`, { headers: apiHeaders(session) });
+  expect(response.status(), `Owned ${type}#${id} must be gone after public purge`).toBe(404);
+  const body = await response.json() as unknown[];
+  expect(body[0]).toBe('ERROR_ITEM_NOT_FOUND');
+}
+
+async function purgeItem(request: APIRequestContext, session: ApiSession, type: string, id: number): Promise<void> {
+  const response = await request.delete(`${session.apiUrl}${type}/${id}`, {
+    headers: apiHeaders(session), params: { force_purge: true },
+  });
+  expect(response.status(), `Public purge of owned ${type}#${id}`).toBe(200);
+  await expectItemMissing(request, session, type, id);
 }
 
 interface RichTextContext {
@@ -87,7 +243,7 @@ async function parseJsonResponse<T>(response: APIResponse, context: string): Pro
   }
 }
 
-async function initApiSession(request: APIRequestContext): Promise<ApiSession> {
+export async function initApiSession(request: APIRequestContext): Promise<ApiSession> {
   const apiUrl = getApiUrl(request);
   const appToken = getAppToken();
   const credentials = Buffer.from('itsm:itsm').toString('base64');
@@ -116,7 +272,7 @@ async function initApiSession(request: APIRequestContext): Promise<ApiSession> {
   return { apiUrl, sessionToken: data.session_token, userId };
 }
 
-async function closeApiSession(request: APIRequestContext, session: ApiSession): Promise<void> {
+export async function closeApiSession(request: APIRequestContext, session: ApiSession): Promise<void> {
   const response = await request.get(`${session.apiUrl}killSession`, {
     headers: {
       'App-Token': getAppToken(),
@@ -130,7 +286,7 @@ async function closeApiSession(request: APIRequestContext, session: ApiSession):
   }
 }
 
-async function createItem(
+export async function createItem(
   request: APIRequestContext,
   session: ApiSession,
   itemtype: string,
@@ -155,7 +311,7 @@ async function createItem(
   return Number(data.id);
 }
 
-async function getItem<T>(
+export async function getItem<T>(
   request: APIRequestContext,
   session: ApiSession,
   itemtype: string,
@@ -171,13 +327,16 @@ async function getItem<T>(
   return parseJsonResponse<T>(response, `Fetching ${itemtype}#${id}`);
 }
 
-export async function seedTicket(request: APIRequestContext, options: SeedTicketOptions = {}): Promise<SeedTicketResult> {
+export async function seedTicket(request: APIRequestContext, owner: TicketFixtures, options: SeedTicketOptions = {}): Promise<SeedTicketResult> {
   const session = await initApiSession(request);
+  let primary: unknown;
+  let failed = false;
 
   try {
-    const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+    const suffix = randomUUID();
     const ticketName = `E2E Ticket ${suffix}`;
     const ticketContent = `Seeded ticket description ${suffix}`;
+    owner.ownTicket(ticketName);
     const ticketId = await createItem(request, session, 'Ticket', {
       name: ticketName,
       content: ticketContent,
@@ -186,6 +345,7 @@ export async function seedTicket(request: APIRequestContext, options: SeedTicket
       _users_id_assign: session.userId,
     });
 
+    owner.ownTicket(ticketName, ticketId);
     const result: SeedTicketResult = {
       ticketId,
       ticketName,
@@ -214,8 +374,16 @@ export async function seedTicket(request: APIRequestContext, options: SeedTicket
     }
 
     return result;
+  } catch (error) {
+    primary = error;
+    failed = true;
+    throw error;
   } finally {
-    await closeApiSession(request, session);
+    try { await closeApiSession(request, session); }
+    catch (error) {
+      if (failed) throw new AggregateError([primary, error], 'Ticket seed and API session shutdown failed');
+      throw error;
+    }
   }
 }
 
@@ -375,7 +543,7 @@ export async function fillRichTextForm(form: Locator, content: string): Promise<
   );
 }
 
-export async function uploadRichTextFixture(form: Locator, fixtureRelativePath: string): Promise<void> {
+export async function uploadRichTextFixture(form: Locator, fixtureRelativePath: string, owner: TicketFixtures): Promise<void> {
   const fixturePath = resolveRepoPath(fixtureRelativePath);
   const fileBuffer = await readFile(fixturePath);
   const { editorId, page } = await getRichTextContext(form);
@@ -439,13 +607,15 @@ export async function uploadRichTextFixture(form: Locator, fixtureRelativePath: 
   );
 
   const uploadResponse = await uploadResponsePromise;
-  expect(uploadResponse.ok()).toBeTruthy();
-
   const uploadPayload = await uploadResponse.json() as {
     filename?: string;
     prefix?: string;
     tag?: string;
   };
+  if (typeof uploadPayload.filename === 'string' && typeof uploadPayload.prefix === 'string' && typeof uploadPayload.tag === 'string') {
+    owner.ownUpload(uploadPayload as RichTextUploadReceipt);
+  }
+  expect(uploadResponse.ok()).toBeTruthy();
   expect(typeof uploadPayload.filename).toBe('string');
   expect(typeof uploadPayload.prefix).toBe('string');
   expect(typeof uploadPayload.tag).toBe('string');

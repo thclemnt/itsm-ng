@@ -1336,13 +1336,13 @@ class Item_Ticket extends CommonItilObject_Item
 
         $itemtypes = ['Computer', 'Monitor', 'NetworkEquipment', 'Peripheral', 'Phone', 'Printer'];
 
-        $union = new \QueryUnion();
+        $union = new QueryUnion();
         foreach ($itemtypes as $type) {
             $table = getTableForItemType($type);
             $union->addQuery([
                'SELECT' => [
                   'id',
-                  new \QueryExpression("$type AS " . $DB->quoteName('itemtype')),
+                  new QueryExpression("$type AS " . $DB->quoteName('itemtype')),
                   "name"
                ],
                'FROM'   => $table,
@@ -1397,6 +1397,8 @@ class Item_Ticket extends CommonItilObject_Item
                 Dropdown::showSelectItemFromItemtypes(['items_id_name'   => 'items_id',
                                                        'itemtype_name'   => 'item_itemtype',
                                                        'itemtypes'       => $CFG_GLPI['ticket_types'],
+                                                       'condition'      => static fn (CommonDBTM $item): array => in_array($item->getType(), $CFG_GLPI['helpdesk_visible_types'], true)
+                                                           ? ['is_helpdesk_visible' => true] : [],
                                                        'checkright'      => true,
                                                        'entity_restrict' => $_SESSION['glpiactive_entity']
                                                       ]);

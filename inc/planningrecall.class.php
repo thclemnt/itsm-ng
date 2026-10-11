@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\PlanningRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -57,7 +60,7 @@ class PlanningRecall extends CommonDBChild
 
     public function canCreateItem()
     {
-        return $this->fields['users_id'] == Session::getLoginUserID();
+        return (int)Session::getLoginUserID() > 0 && $this->fields['users_id'] == Session::getLoginUserID();
     }
 
 
@@ -229,20 +232,9 @@ class PlanningRecall extends CommonDBChild
             unset($_SESSION['glpiplanningreminder_isavailable']);
         }
 
-        //nedds DB::update() to support SQL functions to get migrated
-        $result = $DB->update(
-            'glpi_planningrecalls',
-            [
-              'when'   => new \QueryExpression(
-                  "DATE_SUB('$begin', INTERVAL " . $DB->quoteName('before_time') . " SECOND)"
-              ),
-            ],
-            [
-              'itemtype'  => $itemtype,
-              'items_id'  => $items_id
-            ]
-        );
-        return $result;
+        (new PlanningRepository(Orm::create($DB)))
+            ->rescheduleRecalls((string)$itemtype, (int)$items_id, new DateTimeImmutable($begin));
+        return true;
     }
 
 
@@ -397,31 +389,11 @@ class PlanningRecall extends CommonDBChild
         }
 
         $cron_status = 0;
-        $iterator = $DB->request([
-           'SELECT'    => 'glpi_planningrecalls.*',
-           'FROM'      => 'glpi_planningrecalls',
-           'LEFT JOIN' => [
-              'glpi_alerts'  => [
-                 'ON' => [
-                    'glpi_planningrecalls'  => 'id',
-                    'glpi_alerts'           => 'items_id', [
-                       'AND' => [
-                          'glpi_alerts.itemtype'  => 'PlanningRecall',
-                          'glpi_alerts.type'      => Alert::ACTION
-                       ]
-                    ]
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'NOT'                         => ['glpi_planningrecalls.when' => null],
-              'glpi_planningrecalls.when'   => ['<', new \QueryExpression('NOW()')],
-              'glpi_alerts.date'            => null
-           ]
-        ]);
+        $recalls = (new PlanningRepository(Orm::create($DB)))
+            ->dueRecalls(new DateTimeImmutable());
 
         $pr = new self();
-        while ($data = $iterator->next()) {
+        foreach ($recalls as $data) {
             if ($pr->getFromDB($data['id']) && $pr->getItem()) {
                 $options = [];
 
@@ -430,7 +402,7 @@ class PlanningRecall extends CommonDBChild
                 //               -> ChangeTask ->  Change which have entity notion
                 //               -> ProblemTask -> Problem which have entity notion
                 $itemToNotify = $pr->getItem();
-                if ($itemToNotify instanceof \CommonITILTask) {
+                if ($itemToNotify instanceof CommonITILTask) {
                     $linkedItem = $itemToNotify->getItem();
                     if ($linkedItem && $linkedItem->isEntityAssign()) {
                         $options['entities_id'] = $linkedItem->getEntityID();

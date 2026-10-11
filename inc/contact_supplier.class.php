@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ContactRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -45,6 +49,36 @@ class Contact_Supplier extends CommonDBRelation
     public static $items_id_2 = 'suppliers_id';
 
 
+
+    private static function relatedItems(CommonDBTM $item): array
+    {
+        global $DB;
+        return Orm::readPrepared(
+            $DB,
+            static fn (): array => [(int)$item->getID(), $item instanceof Contact, self::relatedScope($item)],
+            static fn (EntityManager $em, array $prepared): array =>
+                (new ContactRepository($em))->related($prepared[0], $prepared[1], $prepared[2])
+        );
+    }
+
+    private static function relatedScope(CommonDBTM $item): ?array
+    {
+        if (!$item instanceof Contact && !$item instanceof Supplier) {
+            throw new InvalidArgumentException('Contact relations require a contact or supplier.');
+        }
+        return Session::isCron() ? null : getEntitiesRestrictCriteria($item instanceof Contact ? Supplier::getTable() : Contact::getTable(), '', '', 'auto');
+    }
+
+    public static function countForItem(CommonDBTM $item)
+    {
+        global $DB;
+        return Orm::readPrepared(
+            $DB,
+            static fn (): array => [(int)$item->getID(), $item instanceof Contact, self::relatedScope($item)],
+            static fn (EntityManager $em, array $prepared): int =>
+                (new ContactRepository($em))->countRelated($prepared[0], $prepared[1], $prepared[2])
+        );
+    }
 
     public static function getTypeName($nb = 0)
     {
@@ -115,12 +149,12 @@ class Contact_Supplier extends CommonDBRelation
 
         $canedit = $contact->can($instID, UPDATE);
 
-        $iterator = self::getListForItem($contact);
+        $iterator = self::relatedItems($contact);
         $number = count($iterator);
 
         $suppliers = [];
         $used = [];
-        while ($data = $iterator->next()) {
+        foreach ($iterator as $data) {
             $suppliers[$data['linkid']] = $data;
             $used[$data['id']] = $data['id'];
         }
@@ -255,13 +289,12 @@ class Contact_Supplier extends CommonDBRelation
         $canedit = $supplier->can($instID, UPDATE);
         $rand = mt_rand();
 
-        $iterator = self::getListForItem($supplier);
+        $iterator = self::relatedItems($supplier);
         $number = count($iterator);
 
         $contacts = [];
-        $options = getItemByEntity(Contact::class, $supplier->fields['entities_id']);
-        while ($data = $iterator->next()) {
-            unset($options[$data['id']]);
+        $options = getItemByEntity(Contact::class, $supplier->fields['entities_id'], [], array_column($iterator, 'id'));
+        foreach ($iterator as $data) {
             $contacts[$data['linkid']] = $data;
         };
 

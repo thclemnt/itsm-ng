@@ -33,14 +33,1507 @@
 
 namespace tests\units;
 
+use APIClient;
+use Appliance as ApplianceModel;
+use Calendar;
+use CalendarSegment;
+use Certificate;
+use Certificate_Item;
+use CommonDBConnexity;
+use CommonDBConnexityItemNotFound;
+use CommonDBTM as LegacyCommonDBTM;
+use CommonITILActor;
+use Computer;
+use DBAdapter;
+use DBmysql as LegacyDBmysql;
 use DbTestCase;
-use SoftwareVersion;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Query\QueryBuilder;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Types\BigIntType;
+use Doctrine\DBAL\Types\IntegerType;
+use Doctrine\DBAL\Types\StringType;
+use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\Configuration;
+use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use Doctrine\ORM\Event\PostLoadEventArgs;
+use Doctrine\ORM\Events;
+use Doctrine\ORM\Id\AssignedGenerator;
+use Doctrine\ORM\Internal\Hydration\AbstractHydrator;
+use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\ORM\Query;
+use Doctrine\ORM\Query\Filter\SQLFilter;
+use DomainType;
+use Doctrine\DBAL\TransactionIsolationLevel;
+use Doctrine\ORM\EntityManager;
+use Entity;
+use Fieldblacklist;
+use FieldUnicity;
+use ITILFollowup;
+use Infocom;
+use Item_Disk;
+use Log;
+use NetworkEquipment;
+use NetworkPort as LegacyNetworkPort;
+use NetworkPortAggregate;
+use NetworkPortLocal as LegacyNetworkPortLocal;
+use NetworkPort_Vlan;
+use RuntimeException;
+use SavedSearch;
+use Session;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Ticket;
+use TicketSatisfaction;
+use Toolbox;
+use User;
+use itsmng\Database\CurrentReadUnavailable;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Entity\Computer as ComputerEntity;
+use itsmng\Database\Entity\DomainType as DomainTypeRecord;
+use itsmng\Database\Entity\Entity as EntityRecord;
+use itsmng\Database\Entity\Infocom as InfocomEntity;
+use itsmng\Database\Entity\NetworkPort;
+use itsmng\Database\Entity\NetworkPortLocal;
+use itsmng\Database\Entity\Ticket as TicketEntity;
+use itsmng\Database\InfocomPresenceReadOperation;
+use itsmng\Database\MappedStorage;
+use itsmng\Database\MutationCleanupFailure;
+use itsmng\Database\MySQLConnection;
+use itsmng\Database\PostgresConnection;
+use itsmng\Database\Orm;
+use itsmng\Database\RecordReadOperation;
+use LogicException;
+use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\DeletionRepository;
+use itsmng\Database\Repository\FieldUnicityRepository;
+use itsmng\Database\Repository\InfocomRepository;
+use itsmng\Database\Repository\NetworkPortAggregateRepository;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\RecordWriter;
+use itsmng\Database\TransactionOwnershipMismatch;
+use Plugin;
+use ReflectionProperty;
+use Software;
+use Throwable;
 use TicketTask;
+use mock\DBmysql;
+use tests\fixtures\ScalarReadProbe;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/commondbtm.class.php */
 
 class CommonDBTM extends DbTestCase
 {
+    public function testReplacementDeletionUsesCurrentSourceAndTargetScopes(): void
+    {
+        global $DB;
+        $original = $DB;
+        $originalConnection = $original->getDoctrineConnection();
+        $originalScope = $originalConnection->captureManagedTransactionScope();
+        $originalLevel = $originalConnection->getTransactionNestingLevel();
+        $session = $_SESSION;
+        $mysql = $original->getProvider() !== 'pgsql';
+        $otherEntity = (int)getItemByTypeName('Entity', '_test_child_1', true);
+        $this->integer($otherEntity)->isGreaterThan(0);
+        $reader = $writer = $frame = null;
+        $fixtures = [];
+        $failure = null;
+        $cleanup = static function (callable $operation) use (&$failure): void {
+            try {
+                $operation();
+            } catch (Throwable $error) {
+                $failure = $failure === null ? $error : new MutationCleanupFailure($failure, $error);
+            }
+        };
+        try {
+            $parameters = $originalConnection->getParams();
+            $reader = $mysql ? MySQLConnection::create($parameters)
+                : PostgresConnection::create($parameters);
+            $writer = $mysql ? MySQLConnection::create($parameters)
+                : PostgresConnection::create($parameters);
+            foreach ([$reader, $writer] as $connection) {
+                if ($mysql) {
+                    $connection->executeStatement('SET SESSION innodb_lock_wait_timeout = 5');
+                } else {
+                    $connection->executeStatement("SET SESSION lock_timeout = '5s'");
+                    $connection->executeStatement("SET SESSION statement_timeout = '20s'");
+                }
+            }
+            $reader->setTransactionIsolation($mysql ? TransactionIsolationLevel::REPEATABLE_READ
+                : TransactionIsolationLevel::READ_COMMITTED);
+            $routed = clone $original;
+            (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($routed, $reader);
+            foreach (['source', 'target'] as $changed) {
+                $token = 'delete-current-' . $this->getUniqueString();
+                $fixture = OwnedMutationFrame::run($writer, static function () use ($writer, $token): array {
+                    $manager = new EntityManager($writer, Orm::configuration($writer->getDatabasePlatform()));
+                    try {
+                        $records = [];
+                        foreach (['source', 'target', 'unrelated'] as $name) {
+                            $record = new DomainTypeRecord();
+                            $record->entities = $manager->getReference(EntityRecord::class, 0);
+                            $record->name = $token . '-' . $name;
+                            $manager->persist($record);
+                            $records[$name] = $record;
+                        }
+                        $manager->flush();
+                        return ['name' => $token, 'source' => $records['source']->id, 'target' => $records['target']->id, 'unrelated' => $records['unrelated']->id];
+                    } finally {
+                        $manager->clear();
+                    }
+                });
+                $fixtures[] = $fixture;
+                $frame = OwnedMutationFrame::begin($reader);
+                $snapshot = $reader->fetchAllAssociative(
+                    'SELECT id, entities_id FROM glpi_domaintypes WHERE id IN (?, ?) ORDER BY id',
+                    [$fixture['source'], $fixture['target']]
+                );
+                $this->array(array_map('intval', array_column($snapshot, 'entities_id')))->isIdenticalTo([0, 0]);
+                OwnedMutationFrame::run($writer, static function () use ($writer, $fixture, $changed, $otherEntity): void {
+                    $writer->update(
+                        'glpi_domaintypes',
+                        ['entities_id' => $otherEntity],
+                        ['id' => $fixture[$changed], 'name' => $fixture['name'] . '-' . $changed]
+                    );
+                });
+                $observer = (object)['loads' => [], 'probing' => false, 'probed' => false, 'cloneEntity' => null,
+                    'otherEntity' => null, 'source' => $fixture['source'], 'target' => $fixture['target']];
+                $model = new class ($observer) extends DomainType {
+                    public function __construct(private object $observer)
+                    {
+                    }
+                    public static function getTable($classname = null)
+                    {
+                        return 'glpi_domaintypes';
+                    }
+                    public static function getType()
+                    {
+                        return 'DomainType';
+                    }
+                    public function post_getFromDB()
+                    {
+                        parent::post_getFromDB();
+                        if ($this->observer->probing) {
+                            return;
+                        }
+                        $this->observer->loads[] = ['id' => (int)$this->fields['id'], 'entity' => (int)$this->fields['entities_id']];
+                        // Valid derived fields must survive the authority check.
+                        $this->fields['fixture_derived'] = $this->fields['name'] . ' derived';
+                        if (!$this->observer->probed && (int)$this->fields['id'] === $this->observer->source) {
+                            $this->observer->probed = $this->observer->probing = true;
+                            $fields = $this->fields;
+                            try {
+                                $clone = clone $this;
+                                $clone->getFromDB($this->observer->source);
+                                $this->observer->cloneEntity = (int)$clone->fields['entities_id'];
+                                $this->getFromDB($this->observer->target);
+                                $this->observer->otherEntity = (int)$this->fields['entities_id'];
+                            } finally {
+                                $this->fields = $fields;
+                                $this->observer->probing = false;
+                            }
+                        }
+                    }
+                };
+                $DB = $routed;
+                try {
+                    $this->boolean($model->delete(['id' => $fixture['source'], '_replace_by' => $fixture['target'],
+                        '_no_message' => 1, '_no_history' => 1], true, false))
+                        ->isFalse('Concurrent ' . $changed . ' entity change must refuse the public replacement deletion');
+                } finally {
+                    $DB = $original;
+                }
+                $frame->assertActive();
+                $this->integer($reader->getTransactionNestingLevel())->isIdenticalTo(1);
+                $this->array($observer->loads)->isIdenticalTo([
+                    ['id' => $fixture['source'], 'entity' => $changed === 'source' ? $otherEntity : 0],
+                    ['id' => $fixture['target'], 'entity' => $changed === 'target' ? $otherEntity : 0],
+                ], 'Each public post-load boundary sees its current owning scope once');
+                $this->integer($observer->cloneEntity)->isIdenticalTo(
+                    $mysql ? 0 : ($changed === 'source' ? $otherEntity : 0),
+                    'A clone cannot inherit the original model current-read authority'
+                );
+                $this->integer($observer->otherEntity)->isIdenticalTo(
+                    $mysql ? 0 : ($changed === 'target' ? $otherEntity : 0),
+                    'A nested different identifier remains an ordinary read'
+                );
+                $this->array($_SESSION)->isIdenticalTo($session);
+                $rows = $reader->fetchAllAssociative(
+                    'SELECT id, entities_id FROM glpi_domaintypes WHERE id IN (?, ?) ORDER BY id FOR UPDATE',
+                    [$fixture['source'], $fixture['target']]
+                );
+                $this->array(array_map('intval', array_column($rows, 'id')))->isIdenticalTo([$fixture['source'], $fixture['target']]);
+                $this->array(array_map('intval', array_column($rows, 'entities_id')))->isIdenticalTo(
+                    $changed === 'source' ? [$otherEntity, 0] : [0, $otherEntity]
+                );
+                // The explicit policy is operation-scoped, even after refusal.
+                $DB = $routed;
+                try {
+                    $this->boolean($model->getFromDB($fixture[$changed]))->isTrue();
+                    $this->integer((int)$model->fields['entities_id'])->isIdenticalTo($mysql ? 0 : $otherEntity);
+                } finally {
+                    $DB = $original;
+                }
+                // Two real purge listeners share one selected writer. A later
+                // listener must not persist through a route changed by an earlier one.
+                $hooks = $GLOBALS['PLUGIN_HOOKS'];
+                $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+                $active = $plugins->getValue();
+                $foreignFrame = OwnedMutationFrame::begin($writer);
+                try {
+                    $foreignRoute = clone $original;
+                    (new ReflectionProperty(DBAdapter::class, 'doctrine'))->setValue($foreignRoute, $writer);
+                    $snapshot = static function (Connection $connection): array {
+                        $rows = [];
+                        foreach (['glpi_domaintypes', 'glpi_logs', 'glpi_alerts', 'glpi_queuednotifications'] as $table) {
+                            $rows[$table] = $connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table) . ' ORDER BY id');
+                        }
+                        return $rows;
+                    };
+                    $foreignBefore = $snapshot($writer);
+                    $sourceBefore = $snapshot($reader);
+                    $switched = $listeners = $persisted = 0;
+                    $purged = new DomainType();
+                    $purgedState = get_object_vars($purged);
+                    $DB = $routed;
+                    $this->array((new ReflectionProperty(OwnershipUpdateUnit::class, 'writerGuards'))->getValue())->isEmpty();
+                    $plugins->setValue(null, [...$active, 'deletion_route_fixture', 'deletion_write_fixture']);
+                    $GLOBALS['PLUGIN_HOOKS']['pre_item_purge']['deletion_route_fixture'][DomainType::class] =
+                        static function (DomainType $item) use ($fixture, $foreignRoute, &$switched): void {
+                            if ((int)$item->getID() === $fixture['source']) {
+                                ++$switched;
+                                $GLOBALS['DB'] = $foreignRoute;
+                            }
+                        };
+                    $GLOBALS['PLUGIN_HOOKS']['pre_item_purge']['deletion_write_fixture'][DomainType::class] =
+                        static function (DomainType $item) use ($fixture, &$listeners, &$persisted): void {
+                            if ((int)$item->getID() === $fixture['source']) {
+                                ++$listeners;
+                                $target = new DomainType();
+                                if ($target->update(['id' => $fixture['unrelated'], 'comment' => 'Purge listener write'])) {
+                                    ++$persisted;
+                                }
+                            }
+                        };
+                    $error = null;
+                    try {
+                        $purged->delete(['id' => $fixture['source'], '_no_message' => 1, '_no_history' => 1], true, false);
+                    } catch (Throwable $caught) {
+                        $error = $caught;
+                    } finally {
+                        $DB = $routed;
+                    }
+                    $this->array($snapshot($writer))->isIdenticalTo($foreignBefore, 'Purge callbacks cannot write through an independent physical route');
+                    $this->array($snapshot($reader))->isIdenticalTo($sourceBefore);
+                    $this->object($error)->isInstanceOf(TransactionOwnershipMismatch::class);
+                    $this->array(get_object_vars($purged))->isIdenticalTo($purgedState);
+                    $this->integer($switched)->isIdenticalTo(1);
+                    $this->integer($listeners)->isIdenticalTo(1);
+                    $this->integer($persisted)->isIdenticalTo(0);
+                    $GLOBALS['PLUGIN_HOOKS'] = $hooks;
+                    $plugins->setValue(null, $active);
+                    // The refused operation releases its guard; normal deletion
+                    // and deletion nested under an existing guard still complete.
+                    foreach ([false, true] as $nestedGuard) {
+                        $successFrame = OwnedMutationFrame::begin($reader);
+                        try {
+                            $success = new DomainType();
+                            $operation = static fn (): bool => $success->delete([
+                                'id' => $fixture['source'], '_no_message' => 1, '_no_history' => 1,
+                            ], true, false);
+                            $this->boolean($nestedGuard
+                                ? OwnershipUpdateUnit::withWriterGuard($routed, $reader, $operation)
+                                : $operation())->isTrue();
+                            $this->boolean($reader->fetchOne('SELECT id FROM glpi_domaintypes WHERE id = ?', [$fixture['source']]))->isFalse();
+                            $this->array($snapshot($writer))->isIdenticalTo($foreignBefore);
+                            $successFrame->assertActive();
+                        } finally {
+                            $successFrame->rollBack();
+                        }
+                        $this->array($snapshot($reader))->isIdenticalTo($sourceBefore);
+                    }
+
+                    $frame->assertActive();
+                    $foreignFrame->assertActive();
+                    $this->integer($reader->getTransactionNestingLevel())->isIdenticalTo(1);
+                    $this->integer($writer->getTransactionNestingLevel())->isIdenticalTo(1);
+                    $this->array((new ReflectionProperty(OwnershipUpdateUnit::class, 'writerGuards'))->getValue())->isEmpty();
+                } finally {
+                    $DB = $original;
+                    $GLOBALS['PLUGIN_HOOKS'] = $hooks;
+                    $plugins->setValue(null, $active);
+                    $cleanup(static fn () => $foreignFrame->rollBack());
+                }
+                $frame->rollBack();
+                $frame = null;
+                $this->integer((int)$writer->fetchOne('SELECT entities_id FROM glpi_domaintypes WHERE id = ?', [$fixture[$changed]]))
+                    ->isIdenticalTo($otherEntity, 'Caller rollback preserves the independently committed scope change');
+                $originalScope->assertActive();
+                $this->integer($originalConnection->getTransactionNestingLevel())->isIdenticalTo($originalLevel);
+            }
+        } catch (Throwable $error) {
+            $failure = $error;
+        } finally {
+            $DB = $original;
+            if ($frame !== null) {
+                $cleanup(static fn () => $frame->rollBack());
+            }
+            if ($reader !== null) {
+                $cleanup(static fn () => $reader->close());
+            }
+            if ($writer !== null) {
+                foreach ($fixtures as $fixture) {
+                    $cleanup(static fn () => OwnedMutationFrame::run($writer, static function () use ($writer, $fixture): void {
+                        foreach (['source', 'target', 'unrelated'] as $name) {
+                            if ($writer->fetchOne('SELECT name FROM glpi_domaintypes WHERE id = ?', [$fixture[$name]]) !== $fixture['name'] . '-' . $name) {
+                                throw new LogicException('Refusing cleanup of a missing or unowned domain type');
+                            }
+                        }
+                        foreach (['source', 'target', 'unrelated'] as $name) {
+                            if ($writer->delete('glpi_domaintypes', ['id' => $fixture[$name], 'name' => $fixture['name'] . '-' . $name]) !== 1) {
+                                throw new LogicException('Owned domain type fixture cleanup failed');
+                            }
+                        }
+                    }));
+                }
+                $cleanup(static fn () => $writer->close());
+            }
+        }
+        if ($failure !== null) {
+            throw $failure;
+        }
+        $this->object($DB)->isIdenticalTo($original);
+        $originalScope->assertActive();
+        $this->integer($originalConnection->getTransactionNestingLevel())->isIdenticalTo($originalLevel);
+    }
+
+
+    public function testPrivateScalarReferencesAvoidReloadingTargetMetadata(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity(0, true);
+        $entity = $this->createItem(Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $computer = $this->createItem(Computer::class, ['name' => 'Reference metadata before', 'entities_id' => $entity->getID()]);
+        $connection = $DB->getDoctrineConnection();
+        $cache = new ArrayAdapter(storeSerialized: true);
+        $configuration = static function () use ($connection, $cache): Configuration {
+            $config = Orm::configuration($connection->getDatabasePlatform());
+            $config->setMetadataCache(new ArrayAdapter(storeSerialized: true));
+            $config->setQueryCache($cache);
+            return $config;
+        };
+        $oracle = new EntityManager($connection, $configuration());
+        $metadata = $oracle->getClassMetadata(ComputerEntity::class);
+        // Independent current provider declarations are the reference-type oracle.
+        $declarations = [$metadata->name => $metadata];
+        foreach ($metadata->associationMappings as $mapping) {
+            if ($mapping->isToOneOwningSide()) {
+                $declarations[$mapping->targetEntity] = $oracle->getClassMetadata($mapping->targetEntity);
+            }
+        }
+        $identifiers = [];
+        foreach ($declarations as $class => $declaration) {
+            $property = $declaration->getSingleIdentifierFieldName();
+            $this->boolean($declaration->hasField($property))->isTrue();
+            $identifiers[$class] = ['property' => $property, 'column' => $declaration->getColumnName($property),
+                'type' => $declaration->getTypeOfField($property)];
+        }
+        $read = static function (?array $facts, bool $custom = false) use ($connection, $configuration, $computer): array {
+            $manager = new class ($connection, $configuration()) extends EntityManager {
+                public array $metadataCalls = [];
+                public function getClassMetadata(string $className): ClassMetadata
+                {
+                    $this->metadataCalls[] = $className;
+                    return parent::getClassMetadata($className);
+                }
+            };
+            if ($custom) {
+                $manager->getEventManager()->addEventListener(Events::loadClassMetadata, new class () {
+                    public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
+                    {
+                        if ($event->getClassMetadata()->name === EntityRecord::class) {
+                            $event->getClassMetadata()->fieldMappings['id']->type = 'decimal';
+                        }
+                    }
+                });
+            }
+            try {
+                $row = (new RecordRepository($manager))->scalarRow(
+                    ComputerEntity::class,
+                    (int)$computer->getID(),
+                    $facts,
+                );
+                return [$row, array_keys($manager->getMetadataFactory()->getLoadedMetadata()), $manager->metadataCalls];
+            } finally {
+                $manager->clear();
+            }
+        };
+        try {
+            [$expected, $originalMetadata] = $read(null); // Warm real SQL plan; full metadata is a positive control.
+            $this->integer(count($originalMetadata))->isGreaterThan(1);
+            [$actual, $loaded, $calls] = $read($identifiers);
+            $this->array($actual)->isIdenticalTo($expected);
+            $this->array($loaded)->isIdenticalTo([ComputerEntity::class]);
+            $this->array(array_values(array_unique($calls)))->isIdenticalTo([ComputerEntity::class]);
+            $connection->update('glpi_computers', ['name' => 'Reference metadata after'], ['id' => $computer->getID()]);
+            $this->string($read($identifiers)[0]['name'])->isIdenticalTo('Reference metadata after');
+            [$custom, $customMetadata] = $read(null, true);
+            $this->string($custom['entities_id'])->isIdenticalTo((string)$entity->getID());
+            $this->integer(count($customMetadata))->isGreaterThan(1);
+            // The real private model entrypoint still observes current values and reference IDs.
+            $this->boolean($computer->getFromDB($computer->getID()))->isTrue();
+            $this->string($computer->fields['name'])->isIdenticalTo('Reference metadata after');
+            $this->integer($computer->fields['entities_id'])->isIdenticalTo((int)$entity->getID());
+        } finally {
+            $oracle->clear();
+        }
+    }
+
+    public function testMappedIdentifierReadsCompleteFreshRowsWithoutHydration(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity(0, true);
+        $entity = $this->createItem(Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $computer = $this->createItem(Computer::class, ['name' => 'Before scalar read', 'entities_id' => $entity->getID()]);
+        $user = $this->createItem(User::class, ['name' => $this->getUniqueString()]);
+        $ticket = $this->createItem(Ticket::class, ['name' => $this->getUniqueString(),
+            'content' => 'Complete ticket fields', 'entities_id' => 0, '_disablenotif' => true]);
+        $json = json_encode(['quoted' => 'A "label" / path', 'enabled' => true, 'nested' => [1, null]], JSON_THROW_ON_ERROR);
+        $this->boolean($DB->update('glpi_users', Toolbox::addslashes_deep([
+            'is_active' => false, 'firstname' => null, 'last_login' => '2020-02-03 04:05:06',
+            'access_custom_shortcuts' => $json,
+        ]), ['id' => $user->getID()]))->isTrue();
+        $this->boolean($DB->update('glpi_computers', ['ticket_tco' => '12.3456'], ['id' => $computer->getID()]))->isTrue();
+        $certificate = $this->createItem(Certificate::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity->getID()]);
+        $binding = $this->createItem(Certificate_Item::class, ['certificates_id' => $certificate->getID(),
+            'itemtype' => 'Computer', 'items_id' => $computer->getID()]);
+        $calendar = $this->createItem(Calendar::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $segment = $this->createItem(CalendarSegment::class, ['calendars_id' => $calendar->getID(),
+            'day' => 1, 'begin' => '00:00:00', 'end' => '24:00:00']);
+        $connection = $DB->getDoctrineConnection();
+        // Repeated ordinary model reads share the selected connection's manager.
+        $reloaded = new Computer();
+        $this->boolean($reloaded->getFromDB($computer->getID()))->isTrue();
+        $creations = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $beforeCreations = $creations->getValue();
+        for ($repeat = 0; $repeat < 3; ++$repeat) {
+            $this->boolean($reloaded->getFromDB($computer->getID()))->isTrue();
+            $this->string($reloaded->fields['name'])->isIdenticalTo('Before scalar read');
+        }
+        $this->integer($creations->getValue() - $beforeCreations)->isIdenticalTo(
+            0,
+            'Repeated model reads must not construct another EntityManager on the same application connection'
+        );
+        $frame = OwnedMutationFrame::begin($connection);
+        try {
+            $storage = new MappedStorage($DB);
+            $storage->update('glpi_computers', (int)$computer->getID(), ['name' => 'Scoped ORM write']);
+            $this->boolean($reloaded->getFromDB($computer->getID()))->isTrue();
+            $this->string($reloaded->fields['name'])->isIdenticalTo('Scoped ORM write');
+            $this->integer($connection->update('glpi_computers', ['name' => 'Direct DBAL write'], ['id' => $computer->getID()]))->isIdenticalTo(1);
+            $this->boolean($reloaded->getFromDB($computer->getID()))->isTrue();
+            $this->string($reloaded->fields['name'])->isIdenticalTo('Direct DBAL write');
+            $storage->update('glpi_computers', (int)$computer->getID(), ['comment' => 'Fresh assignment after DBAL']);
+            $this->string($connection->fetchOne('SELECT name FROM glpi_computers WHERE id = ?', [$computer->getID()]))
+                ->isIdenticalTo('Direct DBAL write');
+            $this->integer($creations->getValue() - $beforeCreations)->isIdenticalTo(
+                0,
+                'Sequential mapped writes and reads use the same canonical manager without stale managed rows'
+            );
+        } finally {
+            $frame->rollBack();
+        }
+        $this->boolean($reloaded->getFromDB($computer->getID()))->isTrue();
+        $this->string($reloaded->fields['name'])->isIdenticalTo('Before scalar read');
+
+        $manager = new class ($connection, Orm::configuration($connection->getDatabasePlatform())) extends EntityManager {
+            public array $queries = [];
+            public array $hydrationModes = [];
+            public function newHydrator(string|int $hydrationMode): AbstractHydrator
+            {
+                $this->hydrationModes[] = $hydrationMode;
+                return parent::newHydrator($hydrationMode);
+            }
+            public function createQuery(string $dql = ''): Query
+            {
+                $this->queries[] = $dql;
+                return parent::createQuery($dql);
+            }
+        };
+        $oracle = Orm::create($DB);
+        $records = new RecordRepository($manager);
+        try {
+            foreach ([['glpi_entities', 0], ['glpi_entities', (int)$entity->getID()],
+                ['glpi_tickets', (int)$ticket->getID()], ['glpi_users', (int)$user->getID()],
+                ['glpi_computers', (int)$computer->getID()], ['glpi_certificates_items', (int)$binding->getID()],
+                ['glpi_calendarsegments', (int)$segment->getID()]] as [$table, $id]) {
+                $class = EntityRegistry::tables()[$table];
+                // An independent ordinary entity load retains the previous conversion oracle.
+                $managed = $oracle->getRepository($class)->findOneBy(['id' => $id]);
+                $expected = (new RecordRepository($oracle))->toRow($managed);
+                $row = $records->find($table, 'id', $id);
+                $this->array($row)->isIdenticalTo($expected);
+                $manager->hydrationModes = [];
+                $this->array($records->matching($table, ['id' => $id], ['id']))->isIdenticalTo([$expected]);
+                $this->array($manager->hydrationModes)->isIdenticalTo([Query::HYDRATE_ARRAY]);
+                $this->array($records->matching($table, ['id' => PHP_INT_MAX]))->isEmpty();
+                $connection = $DB->getDoctrineConnection();
+                $physical = $connection->fetchAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table)
+                    . ' WHERE ' . $connection->quoteIdentifier('id') . ' = ?', [$id]);
+                $actualColumns = array_keys($row);
+                $physicalColumns = array_keys($physical);
+                sort($actualColumns);
+                sort($physicalColumns);
+                $this->array($actualColumns)->isIdenticalTo($physicalColumns);
+                $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+                $this->variable($records->find($table, 'id', PHP_INT_MAX))->isNull();
+                $oracle->clear();
+            }
+            $row = $records->find('glpi_users', 'id', (int)$user->getID());
+            $this->integer($row['is_active'])->isIdenticalTo(0);
+            $this->variable($row['firstname'])->isNull();
+            $this->string($row['last_login'])->isIdenticalTo('2020-02-03 04:05:06');
+            $actualShortcuts = json_decode($row['access_custom_shortcuts'], true, 512, JSON_THROW_ON_ERROR);
+            $expectedShortcuts = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+            // Native JSON objects may reorder members; nested arrays retain their order.
+            ksort($actualShortcuts);
+            ksort($expectedShortcuts);
+            $this->array($actualShortcuts)->isIdenticalTo($expectedShortcuts);
+            $this->string($records->find('glpi_computers', 'id', (int)$computer->getID())['ticket_tco'])->isIdenticalTo('12.3456');
+            $this->string($records->find('glpi_entities', 'id', (int)$entity->getID())['ldap_mode'])
+                ->isIdenticalTo($DB->getDoctrineConnection()->fetchOne('SELECT ldap_mode FROM glpi_entities WHERE id = ?', [$entity->getID()]));
+
+            $this->string($records->find('glpi_calendarsegments', 'id', (int)$segment->getID())['end'])->isIdenticalTo('24:00:00');
+            $bindingRow = $records->find('glpi_certificates_items', 'id', (int)$binding->getID());
+            $this->integer((int)$bindingRow['items_id'])->isIdenticalTo((int)$computer->getID());
+            $this->integer((int)$bindingRow['computers_id'])->isIdenticalTo((int)$computer->getID());
+            foreach ($manager->queries as $query) {
+                $this->string($query)->contains(' AS value0')->notContains('SELECT r FROM');
+            }
+
+            $second = $this->createItem(Computer::class, ['name' => 'Second matching row', 'entities_id' => 0]);
+            $ids = [(int)$computer->getID(), (int)$second->getID()];
+            $this->array(array_column($records->matching('glpi_computers', ['id' => $ids], ['id DESC']), 'id'))
+                ->isIdenticalTo(array_reverse($ids));
+            $this->array(array_column($records->matching('glpi_computers', ['id' => $ids], ['id'], 1, 1), 'id'))
+                ->isIdenticalTo([$ids[1]]);
+            $this->array($records->matching('glpi_computers', ['id' => $ids], ['id'], 1, 2))->isEmpty();
+            $this->array(array_column($records->matching('glpi_computers', ['id' => $ids], ['id'], 0, -1), 'id'))
+                ->isIdenticalTo($ids);
+
+            // The explicit repository remains the independent entity-lookup oracle.
+            $indexed = $records->find('glpi_computers', 'entities_id', (int)$entity->getID());
+            $this->integer((int)$indexed['id'])->isIdenticalTo((int)$computer->getID());
+            $expectedIndexed = (new RecordRepository($oracle))->find('glpi_computers', 'entities_id', (int)$entity->getID());
+            $this->array(Orm::readRecord($DB, 'glpi_computers', 'entities_id', (int)$entity->getID()))->isIdenticalTo($expectedIndexed);
+            $beforeIndexed = $creations->getValue();
+            for ($repeat = 0; $repeat < 3; ++$repeat) {
+                $this->array(Orm::readRecord($DB, 'glpi_computers', 'entities_id', (int)$entity->getID()))->isIdenticalTo($expectedIndexed);
+            }
+            $this->integer($creations->getValue() - $beforeIndexed)->isIdenticalTo(
+                0,
+                'Canonical alternate-key reads do not create isolated hydration managers'
+            );
+            $this->variable(Orm::readRecord($DB, 'glpi_computers', 'entities_id', PHP_INT_MAX))->isNull();
+            $integerType = Type::getType('integer');
+            $bigintType = Type::getType('bigint');
+            try {
+                Type::overrideType('integer', new class () extends IntegerType {
+                    public function convertToDatabaseValue(mixed $value, AbstractPlatform $platform): mixed
+                    {
+                        return $value === null ? null : (int)$value + 1000000;
+                    }
+                });
+                // An owning reference uses its target BIGINT, never a generic INTEGER.
+                $this->array(Orm::readRecord($DB, 'glpi_computers', 'entities_id', (int)$entity->getID()))->isIdenticalTo($expectedIndexed);
+                Type::overrideType('integer', $integerType);
+                Type::overrideType('bigint', new class () extends BigIntType {
+                    public function convertToDatabaseValue(mixed $value, AbstractPlatform $platform): mixed
+                    {
+                        return $value === null ? null : (int)$value + 1000000;
+                    }
+                });
+                $oracle->clear();
+                $this->variable((new RecordRepository($oracle))->find('glpi_computers', 'entities_id', (int)$entity->getID()))->isNull();
+                $this->variable(Orm::readRecord($DB, 'glpi_computers', 'entities_id', (int)$entity->getID()))->isNull();
+            } finally {
+                Type::overrideType('integer', $integerType);
+                Type::overrideType('bigint', $bigintType);
+            }
+            $oracle->clear();
+            $expectedBinding = (new RecordRepository($oracle))->find('glpi_certificates_items', 'certificates_id', (int)$certificate->getID());
+            $this->array(Orm::readRecord($DB, 'glpi_certificates_items', 'certificates_id', (int)$certificate->getID()))->isIdenticalTo($expectedBinding);
+            $this->string($expectedBinding['itemtype'])->isIdenticalTo('Computer');
+
+            $connection->update('glpi_computers', ['comment' => 'Alternate current comment'], ['id' => $computer->getID()]);
+            $this->string(Orm::readRecord($DB, 'glpi_computers', 'entities_id', (int)$entity->getID())['comment'])->isIdenticalTo('Alternate current comment');
+            $connection->update('glpi_computers', ['comment' => null], ['id' => $computer->getID()]);
+            $this->variable(Orm::readRecord($DB, 'glpi_computers', 'entities_id', (int)$entity->getID())['comment'])->isNull();
+
+            $managed = $manager->find(ComputerEntity::class, (int)$computer->getID());
+            $this->boolean($DB->update('glpi_computers', ['name' => 'After legacy update'], ['id' => $computer->getID()]))->isTrue();
+            $this->string($records->find('glpi_computers', 'id', (int)$computer->getID())['name'])->isIdenticalTo('After legacy update');
+            $this->string($managed->name)->isIdenticalTo('Before scalar read');
+            $this->boolean($manager->contains($managed))->isTrue();
+            // Hydrated collections retain caller identity; refreshing it is the caller's decision.
+            $manager->hydrationModes = [];
+            $this->string($records->matching('glpi_computers', ['id' => $computer->getID()])[0]['name'])
+                ->isIdenticalTo('Before scalar read');
+            $this->array($manager->hydrationModes)->isIdenticalTo([Query::HYDRATE_OBJECT]);
+            $this->boolean($manager->contains($managed))->isTrue();
+            $this->string($records->matching('glpi_computers', ['id' => $computer->getID()])[0]['name'])
+                ->isIdenticalTo('Before scalar read');
+            $manager->refresh($managed);
+            $this->string($records->matching('glpi_computers', ['id' => $computer->getID()])[0]['name'])
+                ->isIdenticalTo('After legacy update');
+
+            $observed = Orm::create($DB);
+            try {
+                $loads = new class () {
+                    public int $count = 0;
+                    public function postLoad(PostLoadEventArgs $event): void
+                    {
+                        ++$this->count;
+                        if ($event->getObject() instanceof ComputerEntity) {
+                            $event->getObject()->name = 'Listener transformed row';
+                        }
+                    }
+                };
+                $observed->getEventManager()->addEventListener([Events::postLoad], $loads);
+                $transformed = (new RecordRepository($observed))
+                    ->find('glpi_computers', 'id', (int)$computer->getID());
+                $this->string($transformed['name'])->isIdenticalTo('Listener transformed row');
+                $this->integer($loads->count)->isGreaterThan(0);
+                $this->array($observed->getUnitOfWork()->getIdentityMap())->isNotEmpty();
+                $observed->clear();
+                $loads->count = 0;
+                $transformedRows = (new RecordRepository($observed))
+                    ->matching('glpi_computers', ['id' => $computer->getID()]);
+                $this->string($transformedRows[0]['name'])->isIdenticalTo('Listener transformed row');
+                $this->integer($loads->count)->isGreaterThan(0);
+                $observed->clear();
+                $loads->count = 0;
+                $operation = new RecordReadOperation($connection, $observed);
+                $transformed = $operation->row('glpi_computers', 'entities_id', (int)$entity->getID());
+                $this->string($transformed['name'])->isIdenticalTo('Listener transformed row');
+                $this->integer($loads->count)->isGreaterThan(0);
+
+            } finally {
+                $observed->clear();
+            }
+            // Unordered alternate-key lookup may choose either complete matching row.
+            $peer = $this->createItem(Computer::class, ['name' => 'Alternate key peer', 'entities_id' => $entity->getID()]);
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_computers WHERE entities_id = ?', [$entity->getID()]))->isIdenticalTo(2);
+            $oracle->clear();
+            $allowedRows = [];
+            foreach ([(int)$computer->getID(), (int)$peer->getID()] as $candidateId) {
+                $allowedRows[] = (new RecordRepository($oracle))->find('glpi_computers', 'id', $candidateId);
+            }
+            $originalFirst = (new RecordRepository($oracle))->find('glpi_computers', 'entities_id', (int)$entity->getID());
+            $projectedFirst = Orm::readRecord($DB, 'glpi_computers', 'entities_id', (int)$entity->getID());
+            $this->boolean(in_array($originalFirst, $allowedRows, true))->isTrue();
+            $this->boolean(in_array($projectedFirst, $allowedRows, true))->isTrue();
+        } finally {
+            $manager->clear();
+            $oracle->clear();
+        }
+    }
+
+    public function testMappedIdentifierModelReadsKeepFreshTicketHooksActorsAndPermissions(): void
+    {
+        global $DB;
+        $database = $DB;
+        $session = $_SESSION;
+        $oracle = null;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $first = $this->createItem(User::class, ['name' => $this->getUniqueString()]);
+            $second = $this->createItem(User::class, ['name' => $this->getUniqueString()]);
+            $ticket = new Ticket();
+            $this->integer((int)$ticket->add(['name' => $this->getUniqueString(),
+                'content' => 'Before public hook', 'entities_id' => 0,
+                '_users_id_requester' => $first->getID(), '_disablenotif' => true]))->isGreaterThan(0);
+            $id = (int)$ticket->getID();
+            $this->boolean($ticket->getFromDB($id))->isTrue();
+            $this->string($ticket->fields['content'])->isIdenticalTo('Before public hook');
+            $model = new class () extends Ticket {
+                public array $loadedRows = [];
+                public static function getType()
+                {
+                    return 'Ticket';
+                }
+                public static function getTable($classname = null)
+                {
+                    return 'glpi_tickets';
+                }
+                public function post_getFromDB()
+                {
+                    $this->loadedRows[] = $this->fields;
+                    parent::post_getFromDB();
+                    $this->fields['_public_hook'] = count($this->loadedRows);
+                }
+            };
+            $oracle = Orm::create($DB);
+            $expected = (new RecordRepository($oracle))
+                ->toRow($oracle->find(TicketEntity::class, $id));
+            $this->boolean($model->getFromDB($id))->isTrue();
+            $this->array($model->loadedRows)->isIdenticalTo([$expected]);
+            $this->integer($model->fields['_public_hook'])->isIdenticalTo(1);
+            $this->array(array_map('intval', array_column($model->getUsers(CommonITILActor::REQUESTER), 'users_id')))
+                ->contains((int)$first->getID());
+            $this->boolean($model->can($id, READ))->isTrue();
+            $this->boolean($DB->update('glpi_tickets', ['content' => 'After public hook'], ['id' => $id]))->isTrue();
+            $this->boolean($DB->update(
+                'glpi_tickets_users',
+                ['users_id' => $second->getID()],
+                ['tickets_id' => $id, 'users_id' => $first->getID(), 'type' => CommonITILActor::REQUESTER]
+            ))->isTrue();
+            $this->boolean($model->getFromDB($id))->isTrue();
+            $this->integer($model->fields['_public_hook'])->isIdenticalTo(2);
+            $this->string($model->loadedRows[1]['content'])->isIdenticalTo('After public hook');
+            $this->array($model->loadedRows[1])->notHasKey('_public_hook');
+            $this->array(array_map('intval', array_column($model->getUsers(CommonITILActor::REQUESTER), 'users_id')))
+                ->contains((int)$second->getID())->notContains((int)$first->getID());
+            $_SESSION['glpiactiveprofile']['ticket'] = 0;
+            $_SESSION['glpiactiveprofile']['ticketvalidation'] = 0;
+            $this->boolean($model->can($id, READ))->isFalse();
+            $fields = $model->fields;
+            foreach ([null, '', PHP_INT_MAX] as $missing) {
+                $this->boolean($model->getFromDB($missing))->isFalse();
+                $this->array($model->fields)->isIdenticalTo($fields);
+                $this->array($model->loadedRows)->hasSize(2);
+            }
+            $connection = $DB->getDoctrineConnection();
+            $this->mockGenerator->orphanize('__construct');
+            $routed = new DBmysql();
+            $routes = 0;
+            $this->calling($routed)->getDoctrineConnection = static function () use ($connection, &$routes) {
+                ++$routes;
+                return $connection;
+            };
+            $DB = $routed;
+            $this->boolean($model->getFromDB($id))->isTrue();
+            $this->integer($routes)->isGreaterThan(0);
+            $this->integer($model->fields['_public_hook'])->isIdenticalTo(3);
+        } finally {
+            $oracle?->clear();
+            $DB = $database;
+            $_SESSION = $session;
+        }
+    }
+
+    public function testCurrentModelLoadRestoresPolicyAndRefusesUnprovenAuthority(): void
+    {
+        global $DB;
+        $this->login();
+        $source = $this->createItem(DomainType::class, ['name' => 'current-model-' . $this->getUniqueString(), 'entities_id' => 0]);
+        $target = $this->createItem(DomainType::class, ['name' => 'current-model-target-' . $this->getUniqueString(), 'entities_id' => 0]);
+        $connection = $DB->getDoctrineConnection();
+        $scope = $connection->captureManagedTransactionScope();
+        $level = $connection->getTransactionNestingLevel();
+        $policy = new ReflectionProperty(LegacyCommonDBTM::class, 'currentRead');
+        // A public adapter can route factory construction while retaining the
+        // original connection at operation boundaries. Reject before any query.
+        $original = $DB;
+        $alternate = $DB->getProvider() === 'pgsql'
+            ? PostgresConnection::create(['driver' => 'pdo_pgsql', 'serverVersion' => '14.0'])
+            : MySQLConnection::create(['driver' => 'pdo_mysql', 'serverVersion' => '8.0.0']);
+        $routed = new class ($connection, $alternate) extends LegacyDBmysql {
+            public function __construct(private Connection $current, private Connection $alternate)
+            {
+            }
+            public function getDoctrineConnection(): Connection
+            {
+                $caller = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2)[1]['class'] ?? null;
+                return $caller === Orm::class ? $this->alternate : $this->current;
+            }
+        };
+        $observer = (object)['posts' => 0];
+        $model = new class ($observer) extends DomainType {
+            public function __construct(private object $observer)
+            {
+            }
+            public static function getTable($classname = null)
+            {
+                return 'glpi_domaintypes';
+            }
+            public function post_getFromDB()
+            {
+                ++$this->observer->posts;
+            }
+        };
+        $error = null;
+        try {
+            $DB = $routed;
+            try {
+                $model->getFromDBForUpdate($source->getID(), $connection);
+            } catch (Throwable $failure) {
+                $error = $failure;
+            }
+        } finally {
+            $DB = $original;
+        }
+        try {
+            $this->object($error)->isInstanceOf(TransactionOwnershipMismatch::class);
+            $this->integer($observer->posts)->isIdenticalTo(0);
+            $this->boolean($alternate->isConnected())->isFalse('Reject a different manager before it opens a native connection');
+            $this->variable($policy->getValue($model))->isNull();
+            $scope->assertActive();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $alternate->close();
+        }
+        $marker = new RuntimeException('Original public load failure');
+        foreach (['false', 'throw', 'bypass', 'scope', 'recursive', 'throw-replace'] as $mode) {
+            $observed = (object)['calls' => 0, 'posts' => 0, 'mode' => $mode, 'marker' => $marker,
+                'connection' => $connection, 'replacement' => null];
+            $model = new class ($observed) extends DomainType {
+                public function __construct(private object $observed)
+                {
+                }
+                public static function getTable($classname = null)
+                {
+                    return 'glpi_domaintypes';
+                }
+                public static function getType()
+                {
+                    return 'DomainType';
+                }
+                public function getFromDB($id)
+                {
+                    ++$this->observed->calls;
+                    if ($this->observed->mode === 'false') {
+                        return false;
+                    }
+                    if ($this->observed->mode === 'throw-replace') {
+                        $this->observed->connection->rollBack();
+                        $this->observed->replacement = OwnedMutationFrame::begin($this->observed->connection);
+                        throw $this->observed->marker;
+                    }
+                    if ($this->observed->mode === 'throw') {
+                        throw $this->observed->marker;
+                    }
+                    if ($this->observed->mode === 'bypass') {
+                        $this->post_getFromDB();
+                        return true;
+                    }
+                    return parent::getFromDB($id);
+                }
+                public function post_getFromDB()
+                {
+                    ++$this->observed->posts;
+                    parent::post_getFromDB();
+                    if ($this->observed->mode === 'scope') {
+                        $this->fields['entities_id'] = PHP_INT_MAX;
+                    } elseif ($this->observed->mode === 'recursive') {
+                        $this->fields['is_recursive'] = 1;
+                    }
+                }
+            };
+            $model->fields = $source->fields;
+            $error = null;
+            $owned = null;
+            $primary = null;
+            try {
+                if (in_array($mode, ['scope', 'recursive'], true)) {
+                    $this->boolean($model->delete(['id' => $source->getID(), '_replace_by' => $target->getID(),
+                        '_no_message' => 1, '_no_history' => 1], true, false))
+                        ->isFalse('A delegated post-load hook cannot substitute mapped ' . $mode . ' authority');
+                } else {
+                    if ($mode === 'throw-replace') {
+                        $owned = OwnedMutationFrame::begin($connection);
+                    }
+                    try {
+                        $result = $model->getFromDBForUpdate($source->getID(), $connection);
+                    } catch (Throwable $failure) {
+                        $error = $failure;
+                    }
+                    if ($mode === 'false') {
+                        $this->boolean($result)->isFalse();
+                        $this->variable($error)->isNull();
+                    } elseif ($mode === 'throw') {
+                        $this->object($error)->isIdenticalTo($marker);
+                    } elseif ($mode === 'bypass') {
+                        $this->object($error)->isInstanceOf(CurrentReadUnavailable::class);
+                    } else {
+                        $this->object($error)->isInstanceOf(MutationCleanupFailure::class);
+                        $this->object($error->primary)->isIdenticalTo($marker);
+                        $this->object($error->cleanup)->isInstanceOf(TransactionOwnershipMismatch::class);
+                        $this->boolean($error->rollbackUnproven)->isTrue();
+                        $observed->replacement->assertActive();
+                        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level + 1);
+                    }
+                }
+                $this->variable($policy->getValue($model))->isNull($mode . ': private read policy restored');
+                $this->integer($observed->calls)->isIdenticalTo(1, $mode . ': public override invoked once');
+                $this->integer($observed->posts)->isIdenticalTo(in_array($mode, ['bypass', 'scope', 'recursive'], true) ? 1 : 0);
+            } catch (Throwable $failure) {
+                $primary = $failure;
+                throw $failure;
+            } finally {
+                try {
+                    if ($observed->replacement !== null) {
+                        $observed->replacement->rollBack();
+                    } elseif ($owned !== null) {
+                        $owned->rollBack();
+                    }
+                } catch (Throwable $cleanup) {
+                    throw $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
+                }
+            }
+            $scope->assertActive();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+            $this->boolean($source->getFromDB($source->getID()))->isTrue();
+            $this->integer((int)$source->fields['entities_id'])->isIdenticalTo(0);
+            $this->integer((int)$source->fields['is_recursive'])->isIdenticalTo(0);
+        }
+        $computer = $this->createItem(Computer::class, ['name' => 'current-disk-owner-' . $this->getUniqueString(), 'entities_id' => 0]);
+        $dynamic = $this->createItem(Item_Disk::class, ['name' => 'current-dynamic-' . $this->getUniqueString(),
+            'entities_id' => 0, 'itemtype' => 'Computer', 'items_id' => $computer->getID(), 'is_dynamic' => 1]);
+        $this->boolean($dynamic->useDeletedToLockIfDynamic())->isTrue();
+        foreach (['is_dynamic' => 0, 'is_deleted' => 1, 'itemtype' => 'Monitor'] as $column => $value) {
+            $posts = (object)['count' => 0];
+            $model = new class ($posts, $column, $value) extends Item_Disk {
+                public function __construct(private object $posts, private string $column, private mixed $value)
+                {
+                }
+                public static function getTable($classname = null)
+                {
+                    return 'glpi_items_disks';
+                }
+                public static function getType()
+                {
+                    return 'Item_Disk';
+                }
+                public function post_getFromDB()
+                {
+                    ++$this->posts->count;
+                    parent::post_getFromDB();
+                    $this->fields[$this->column] = $this->value;
+                }
+            };
+            $this->boolean($model->delete(['id' => $dynamic->getID(), '_no_message' => 1, '_no_history' => 1], false, false))
+                ->isFalse('A post-load callback cannot substitute current disk ' . $column . ' authority');
+            $this->integer($posts->count)->isIdenticalTo(1);
+            $this->boolean($dynamic->getFromDB($dynamic->getID()))->isTrue();
+            $this->integer((int)$dynamic->fields['is_dynamic'])->isIdenticalTo(1);
+            $this->integer((int)$dynamic->fields['is_deleted'])->isIdenticalTo(0);
+            $this->string($dynamic->fields['itemtype'])->isIdenticalTo('Computer');
+            $scope->assertActive();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        }
+        // Computer's allocation trait retains its ordinary preliminary load;
+        // selected mutation authority must be consumed exactly once afterward.
+        $posts = (object)['ordinary' => 0, 'current' => 0, 'policy' => $policy];
+        $template = new class ($posts) extends Computer {
+            public function __construct(private object $posts)
+            {
+            }
+            public static function getTable($classname = null)
+            {
+                return 'glpi_computers';
+            }
+            public static function getType()
+            {
+                return 'Computer';
+            }
+            public function post_getFromDB()
+            {
+                $policy = $this->posts->policy->getValue($this);
+                $current = $policy !== null && $policy['owner'] === spl_object_id($this) && $policy['consumed'];
+                ++$this->posts->{$current ? 'current' : 'ordinary'};
+                parent::post_getFromDB();
+                $this->fields['is_template'] = 1;
+            }
+        };
+        $this->boolean($template->delete(['id' => $computer->getID(), '_no_message' => 1, '_no_history' => 1], false, false))
+            ->isFalse('A post-load callback cannot turn a current computer into a forced-purge template');
+        $this->integer($posts->ordinary)->isIdenticalTo(1, 'Retain the allocation trait preliminary public load');
+        $this->integer($posts->current)->isIdenticalTo(1, 'Consume selected current authority and public callback exactly once');
+        $this->boolean($computer->getFromDB($computer->getID()))->isTrue();
+        $this->integer((int)$computer->fields['is_template'])->isIdenticalTo(0);
+        $this->integer((int)$computer->fields['is_deleted'])->isIdenticalTo(0);
+        $scope->assertActive();
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        $semanticBoolean = new class () extends DomainType {
+            public static function getTable($classname = null)
+            {
+                return 'glpi_domaintypes';
+            }
+            public static function getType()
+            {
+                return 'DomainType';
+            }
+            public function post_getFromDB()
+            {
+                parent::post_getFromDB();
+                $this->fields['is_recursive'] = false;
+                $this->fields['fixture_derived'] = 'Valid public boolean representation';
+            }
+        };
+        $this->boolean($semanticBoolean->delete(['id' => $source->getID(), '_replace_by' => $target->getID(),
+            '_no_message' => 1, '_no_history' => 1], true, false))
+            ->isTrue('Native false and canonical zero preserve the same current authority and derived hook fields');
+        $scope->assertActive();
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+    }
+
+    public function testSingleItemActivationReadsFreshPresenceAndRetainsEmptyHooks(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+
+        $savedDb = $DB;
+        $savedSession = $_SESSION;
+        $savedHooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $savedPlugins = $plugins->getValue();
+        $manager = null;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $computer = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $id = (int)$computer->getID();
+            $existing = new Infocom();
+            if ($existing->getFromDBforDevice('Computer', $id)) {
+                $this->boolean($existing->delete(['id' => $existing->getID()], true))->isTrue();
+            }
+            $emptyFields = [];
+            $emptyModels = [];
+            $plugins->setValue(null, [...$savedPlugins, 'financial_presence_fixture']);
+            $PLUGIN_HOOKS['item_empty']['financial_presence_fixture'][Infocom::class] =
+                static function (Infocom $model) use (&$emptyFields, &$emptyModels, $computer): void {
+                    $emptyFields[] = $model->fields;
+                    $emptyModels[] = $model;
+                    $model->fields['comment'] = 'Plugin empty default';
+                    $model->fields['items_id'] = 777;
+                    $model->fields['itemtype'] = 'Plugin placeholder';
+                    $computer->fields['id'] = PHP_INT_MAX;
+                };
+            $this->array($computer->getForbiddenSingleMassiveActions())->notContains('Infocom:activate');
+            $this->array($emptyModels)->hasSize(1);
+            $this->string($emptyFields[0]['items_id'])->isIdenticalTo('');
+            $this->string($emptyFields[0]['itemtype'])->isIdenticalTo('');
+            $this->integer((int)$emptyModels[0]->fields['items_id'])->isIdenticalTo($id);
+            $this->string($emptyModels[0]->fields['itemtype'])->isIdenticalTo('Computer');
+            $this->string($emptyModels[0]->fields['comment'])->isIdenticalTo('Plugin empty default');
+            $computer->fields['id'] = $id;
+            $fixtureHooks = $PLUGIN_HOOKS;
+            $PLUGIN_HOOKS = $savedHooks;
+            $financial = $this->createItem(Infocom::class, ['itemtype' => 'Computer', 'items_id' => $id]);
+            $PLUGIN_HOOKS = $fixtureHooks;
+            $emptyFields = [];
+            $emptyModels = [];
+            $_SESSION['glpiactiveprofile']['infocom'] = 0;
+            $this->array($computer->getForbiddenSingleMassiveActions())->contains('Infocom:activate');
+            $this->array($emptyModels)->isEmpty();
+
+            $connection = $DB->getDoctrineConnection();
+            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $before = $factories->getValue();
+            $this->boolean((new Infocom())->isActivatedForDevice('Computer', $id))->isTrue();
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+            $presence = new InfocomPresenceReadOperation($connection);
+            $original = new InfocomRepository(Orm::forConnection($connection));
+            $bigint = Type::getType(Types::BIGINT);
+            $string = Type::getType(Types::STRING);
+            try {
+                $selected = new class () extends BigIntType {
+                    public string $expression = 'NULL';
+                    public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return $this->expression;
+                    }
+                    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): int|string|null
+                    {
+                        throw new LogicException('Presence must retain scalar hydration without PHP value conversion.');
+                    }
+                };
+                Type::overrideType(Types::BIGINT, $selected);
+                foreach (['NULL', '0'] as $value) {
+                    $selected->expression = $value;
+                    $this->boolean($presence->forItem('Computer', $id))->isTrue();
+                    $this->boolean($original->isActivatedFor('Computer', $id))->isTrue();
+                    $this->boolean($presence->forItem('Peripheral', $id))->isFalse();
+                }
+                Type::overrideType(Types::BIGINT, new class () extends BigIntType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return '(' . $sqlExpr . ' * 0 - 1)';
+                    }
+                });
+                $this->boolean($presence->forItem('Computer', $id))->isFalse();
+                $this->boolean($original->isActivatedFor('Computer', $id))->isFalse();
+                Type::overrideType(Types::BIGINT, $bigint);
+                Type::overrideType(Types::STRING, new class () extends StringType {
+                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
+                    {
+                        return $platform->getConcatExpression("'missing-'", $sqlExpr);
+                    }
+                });
+                $this->boolean($presence->forItem('Computer', $id))->isFalse();
+                $this->boolean($original->isActivatedFor('Computer', $id))->isFalse();
+                Type::overrideType(Types::STRING, $string);
+                Type::overrideType(Types::BIGINT, new class () extends BigIntType {
+                    public function convertToDatabaseValue(mixed $value, AbstractPlatform $platform): mixed
+                    {
+                        return -1;
+                    }
+                });
+                $this->boolean($presence->forItem('Computer', $id))->isFalse();
+                $this->boolean($original->isActivatedFor('Computer', $id))->isFalse();
+                Type::overrideType(Types::BIGINT, $bigint);
+                Type::overrideType(Types::STRING, new class () extends StringType {
+                    public function convertToDatabaseValue(mixed $value, AbstractPlatform $platform): mixed
+                    {
+                        return 'missing-' . $value;
+                    }
+                });
+                $this->boolean($presence->forItem('Computer', $id))->isFalse();
+                $this->boolean($original->isActivatedFor('Computer', $id))->isFalse();
+            } finally {
+                Type::overrideType(Types::BIGINT, $bigint);
+                Type::overrideType(Types::STRING, $string);
+            }
+
+            $probe = new class ($connection) extends ScalarReadProbe {
+                public ?EventManager $events = null;
+                public $onPlatform = null;
+                public function getEventManager(): EventManager
+                {
+                    return $this->events ??= new EventManager();
+                }
+                public function getDatabasePlatform(): AbstractPlatform
+                {
+                    if ($this->onPlatform !== null) {
+                        ($this->onPlatform)();
+                    }
+                    return parent::getDatabasePlatform();
+                }
+                public function createQueryBuilder(): QueryBuilder
+                {
+                    throw new LogicException('Presence must not introduce a connection builder callback.');
+                }
+            };
+            $this->boolean(InfocomRepository::projectedPresence(
+                $probe,
+                EntityRegistry::infocomPresenceMapping(),
+                'Computer',
+                $id
+            ))->isTrue();
+            $this->array($probe->queries)->hasSize(1);
+            $this->array($probe->queries[0]['types'])->isIdenticalTo([Types::STRING, Types::BIGINT]);
+            $customPresence = new InfocomPresenceReadOperation($probe);
+            $listener = new class () {
+                public int $loads = 0;
+                public int $clears = 0;
+                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
+                {
+                    if ($event->getClassMetadata()->name === InfocomEntity::class) {
+                        ++$this->loads;
+                        $manager = $event->getEntityManager();
+                        $manager->getConfiguration()->addFilter('deny_presence', InfocomPresenceFilter::class);
+                        $manager->getFilters()->enable('deny_presence');
+                    }
+                }
+                public function onClear(): void
+                {
+                    ++$this->clears;
+                }
+            };
+            $events = $probe->getEventManager();
+            $events->addEventListener([Events::loadClassMetadata, Events::onClear], $listener);
+            try {
+                $this->boolean($customPresence->forItem('Computer', $id))->isFalse();
+                $this->integer($listener->loads)->isGreaterThan(0);
+                unset($customPresence);
+                $this->integer($listener->clears)->isIdenticalTo(0);
+            } finally {
+                $events->removeEventListener([Events::loadClassMetadata, Events::onClear], $listener);
+            }
+            $this->mockGenerator->orphanize('__construct');
+            $captured = new DBmysql();
+            $routes = 0;
+            $this->calling($captured)->getDoctrineConnection = static function () use ($probe, &$routes): Connection {
+                ++$routes;
+                return $probe;
+            };
+            $this->calling($captured)->getProvider = $savedDb->getProvider();
+            $type = new class ($savedDb) {
+                public string $value = 'Peripheral';
+                public function __construct(private DBAdapter $original)
+                {
+                }
+                public function __toString(): string
+                {
+                    $GLOBALS['DB'] = $this->original;
+                    return $this->value;
+                }
+            };
+            $probe->onPlatform = static function () use ($type): void {
+                $type->value = 'Computer';
+            };
+            try {
+                $DB = $captured;
+                $queries = count($probe->queries);
+                $this->boolean((new Infocom())->isActivatedForDevice($type, $id))->isTrue();
+                $this->object($DB)->isIdenticalTo($savedDb);
+                $this->integer($routes)->isIdenticalTo(1);
+                $this->integer(count($probe->queries) - $queries)->isIdenticalTo(1);
+                $queries = count($probe->queries);
+                $changeWriter = false;
+                $this->calling($captured)->getDoctrineConnection = static function () use ($connection, $savedDb, &$changeWriter): Connection {
+                    if ($changeWriter) {
+                        $GLOBALS['DB'] = $savedDb;
+                    }
+                    return $connection;
+                };
+                $DB = $captured;
+                OwnershipUpdateUnit::withWriterGuard($captured, $connection, function () use ($captured, $id, &$changeWriter): void {
+                    $changeWriter = true;
+                    try {
+                        $this->exception(static fn () => (new Infocom())->isActivatedForDevice('Computer', $id))
+                            ->isInstanceOf(TransactionOwnershipMismatch::class);
+                    } finally {
+                        $changeWriter = false;
+                        $GLOBALS['DB'] = $captured;
+                    }
+                });
+                $this->integer(count($probe->queries))->isIdenticalTo($queries);
+            } finally {
+                $DB = $savedDb;
+                $probe->onPlatform = null;
+            }
+
+            $manager = Orm::create($DB);
+            $repository = new InfocomRepository($manager);
+            $loads = new class () {
+                public int $count = 0;
+                public function postLoad(): void
+                {
+                    ++$this->count;
+                }
+            };
+            $manager->getEventManager()->addEventListener([Events::postLoad], $loads);
+            $this->boolean($repository->isActivatedFor('Computer', $id))->isTrue();
+            $this->boolean($repository->isActivatedFor('Peripheral', $id))->isFalse();
+            $this->boolean($repository->isActivatedFor('Computer', PHP_INT_MAX))->isFalse();
+            $this->integer($loads->count)->isIdenticalTo(0);
+            $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+            // The listener is live: ordinary complete model hydration does call it.
+            $managed = $manager->find(InfocomEntity::class, $financial->getID());
+            $this->object($managed)->isInstanceOf(InfocomEntity::class);
+            $this->integer($loads->count)->isIdenticalTo(1);
+            // A legacy write must win even while a stale entity remains managed.
+            $this->boolean($financial->delete(['id' => $financial->getID()], true))->isTrue();
+            $this->boolean($repository->isActivatedFor('Computer', $id))->isFalse();
+            $this->boolean($manager->contains($managed))->isTrue();
+            $this->integer($loads->count)->isIdenticalTo(1);
+
+            // Subclasses retain their complete custom model-loading boundary.
+            $custom = new class () extends Infocom {
+                public array $calls = [];
+                public function getFromDBforDevice($itemtype, $ID)
+                {
+                    $this->calls[] = [$itemtype, $ID];
+                    $this->fields['comment'] = 'Custom loaded fields';
+                    return true;
+                }
+            };
+            $this->boolean($custom->isActivatedForDevice('Computer', $id))->isTrue();
+            $this->array($custom->calls)->isIdenticalTo([['Computer', $id]]);
+            $this->string($custom->fields['comment'])->isIdenticalTo('Custom loaded fields');
+
+            // Resolve the actual current adapter at each caller operation.
+            $this->mockGenerator->orphanize('__construct');
+            $routed = new DBmysql();
+            $routes = 0;
+            $this->calling($routed)->getDoctrineConnection = static function () use ($connection, &$routes) {
+                ++$routes;
+                return $connection;
+            };
+            $DB = $routed;
+            $this->array($computer->getForbiddenSingleMassiveActions())->notContains('Infocom:activate');
+            $this->integer($routes)->isGreaterThan(0);
+        } finally {
+            $manager?->clear();
+            $DB = $savedDb;
+            $_SESSION = $savedSession;
+            $PLUGIN_HOOKS = $savedHooks;
+            $plugins->setValue(null, $savedPlugins);
+        }
+    }
+
+    public function testConnexityPermissionRetainsItsSingleLoadedOwner(): void
+    {
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $ticket = $this->createItem(Ticket::class, ['name' => 'Connexity owner ' . $this->getUniqueString(),
+                'content' => 'Complete parent fields', 'entities_id' => $_SESSION['glpiactive_entity']]);
+            $child = new class () extends ITILFollowup {
+                public int $loads = 0;
+                public mixed $loaded = null;
+                public function getConnexityItem($itemtype, $items_id, $getFromDB = true, $getEmpty = true, $getFromDBOrEmpty = false)
+                {
+                    ++$this->loads;
+                    $this->loaded = parent::getConnexityItem($itemtype, $items_id, $getFromDB, $getEmpty, $getFromDBOrEmpty);
+                    return $this->loaded;
+                }
+            };
+            $child->fields = ['itemtype' => 'Ticket', 'items_id' => $ticket->getID()];
+            $owner = null;
+            $this->boolean($child->canConnexityItem(
+                'canViewItem',
+                'canView',
+                CommonDBConnexity::HAVE_VIEW_RIGHT_ON_ITEM,
+                'itemtype',
+                'items_id',
+                $owner
+            ))->isTrue();
+            $this->integer($child->loads)->isIdenticalTo(1);
+            $this->object($owner)->isIdenticalTo($child->loaded);
+            $this->array($owner->fields)->isIdenticalTo($ticket->fields);
+            // Supplied owners preserve identity and any caller-side field changes.
+            $owner->fields['content'] = 'Supplied owner content';
+            $this->boolean($child->canConnexityItem(
+                'canViewItem',
+                'canView',
+                CommonDBConnexity::HAVE_VIEW_RIGHT_ON_ITEM,
+                'itemtype',
+                'items_id',
+                $owner
+            ))->isTrue();
+            $this->integer($child->loads)->isIdenticalTo(1);
+            $this->string($owner->fields['content'])->isIdenticalTo('Supplied owner content');
+            $_SESSION['glpiactiveprofile']['ticket'] = 0;
+            $_SESSION['glpiactiveprofile']['ticketvalidation'] = 0;
+            $this->boolean(Ticket::canView())->isFalse();
+            $this->boolean($child->canConnexityItem(
+                'canViewItem',
+                'canView',
+                CommonDBConnexity::HAVE_VIEW_RIGHT_ON_ITEM,
+                'itemtype',
+                'items_id',
+                $owner
+            ))->isFalse();
+            $this->integer($child->loads)->isIdenticalTo(1);
+            $owner = null;
+            $child->fields['items_id'] = PHP_INT_MAX;
+            $this->boolean($child->canConnexityItem(
+                'canViewItem',
+                'canView',
+                CommonDBConnexity::DONT_CHECK_ITEM_RIGHTS,
+                'itemtype',
+                'items_id',
+                $owner
+            ))->isFalse();
+            $this->variable($owner)->isNull();
+            $this->integer($child->loads)->isIdenticalTo(2);
+            $child->fields['items_id'] = 0;
+            $this->exception(fn () => $child->canConnexityItem(
+                'canViewItem',
+                'canView',
+                CommonDBConnexity::DONT_CHECK_ITEM_RIGHTS,
+                'itemtype',
+                'items_id'
+            ))->isInstanceOf(CommonDBConnexityItemNotFound::class);
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
+    public function testNewItemPermissionHooksRetainNormalizedInputsAndCannotGrantRights(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+
+        $savedSession = $_SESSION;
+        $savedHooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $savedPlugins = $plugins->getValue();
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $computer = $this->createItem('Computer', ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $port = $this->createItem('NetworkPort', ['name' => $this->getUniqueString(), 'entities_id' => 0,
+                'itemtype' => 'Computer', 'items_id' => $computer->getID()]);
+            $vlan = $this->createItem('Vlan', ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $_SESSION['glpiactiveprofile']['computer'] = READ | CREATE | UPDATE;
+            $_SESSION['glpiactiveprofile']['networking'] = READ | UPDATE;
+            $_SESSION['glpiactiveprofile']['dropdown'] = READ;
+            $connection = $DB->getDoctrineConnection();
+            $rows = static fn (): array => [
+                $connection->fetchAllAssociative('SELECT * FROM glpi_computers ORDER BY id'),
+                $connection->fetchAllAssociative('SELECT * FROM glpi_networkports_vlans ORDER BY id'),
+            ];
+            $before = $rows();
+            $decision = null;
+            $calls = [];
+            $callback = static function (LegacyCommonDBTM $model) use (&$decision, &$calls): void {
+                $calls[] = ['type' => $model::class, 'right' => $model->right, 'fields' => $model->fields, 'input' => $model->input ?? null];
+                if ($decision !== null) {
+                    $model->right = $decision;
+                }
+            };
+            $plugins->setValue(null, [...$savedPlugins, 'new_item_permission_fixture']);
+            foreach ([Computer::class, NetworkPort_Vlan::class, SavedSearch::class] as $type) {
+                $PLUGIN_HOOKS['item_can']['new_item_permission_fixture'][$type] = $callback;
+            }
+            foreach ([
+                [Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]],
+                [NetworkPort_Vlan::class, ['networkports_id' => $port->getID(), 'vlans_id' => $vlan->getID(), 'tagged' => 0]],
+            ] as [$type, $input]) {
+                foreach ([null, false, UPDATE] as $decision) {
+                    $calls = [];
+                    $model = new $type();
+                    $this->boolean($model->can(-1, CREATE, $input))->isIdenticalTo($decision === null);
+                    // An admitted relation also checks its loaded Computer owner.
+                    $this->array($calls)->hasSize($type === NetworkPort_Vlan::class && $decision === null ? 2 : 1);
+                    $this->string($calls[0]['type'])->isIdenticalTo($type);
+                    $this->integer($calls[0]['right'])->isIdenticalTo(CREATE);
+                    $this->array($calls[0]['input'])->isIdenticalTo($input);
+                    if ($type === NetworkPort_Vlan::class && $decision === null) {
+                        $this->string($calls[1]['type'])->isIdenticalTo(Computer::class);
+                        $this->integer($calls[1]['right'])->isIdenticalTo(UPDATE);
+                        $this->integer((int)$calls[1]['fields']['id'])->isIdenticalTo((int)$computer->getID());
+                        $this->variable($calls[1]['input'])->isNull();
+                    }
+                    foreach (array_keys($input) as $field) {
+                        $this->variable($calls[0]['fields'][$field])->isIdenticalTo($input[$field]);
+                    }
+                }
+            }
+            // A hook which leaves the requested right cannot manufacture a
+            // missing global right or a missing loaded-owner operation right.
+            $decision = CREATE;
+            $_SESSION['glpiactiveprofile']['computer'] = READ;
+            $input = ['name' => $this->getUniqueString(), 'entities_id' => 0];
+            $this->boolean((new Computer())->can(-1, CREATE, $input))->isFalse();
+            $input = ['networkports_id' => $port->getID(), 'vlans_id' => $vlan->getID(), 'tagged' => 0];
+            $this->boolean((new NetworkPort_Vlan())->can(-1, CREATE, $input))->isFalse();
+
+            // Restrictive callbacks also precede the new personal-item shortcut.
+            $_SESSION['glpiactiveprofile']['bookmark_public'] = 0;
+            $input = ['name' => $this->getUniqueString(), 'itemtype' => 'Computer',
+                'users_id' => (int)Session::getLoginUserID(), 'is_private' => 1];
+            $decision = false;
+            $this->boolean((new SavedSearch())->can(-1, CREATE, $input))->isFalse();
+            $decision = null;
+            $this->boolean((new SavedSearch())->can(-1, CREATE, $input))->isTrue();
+            $this->array($rows())->isIdenticalTo($before);
+        } finally {
+            $_SESSION = $savedSession;
+            $PLUGIN_HOOKS = $savedHooks;
+            $plugins->setValue(null, $savedPlugins);
+        }
+    }
+
     public function testgetIndexNameOtherThanID()
     {
 
@@ -115,6 +1608,39 @@ class CommonDBTM extends DbTestCase
               'networkports_id' => $port3,
               'networkports_id_list' => [$port2, $port4],
         ]))->isFalse();
+
+        // A replacement key belongs to the public index, while self-replacement
+        // compares the actual locked row. Exercise a deliberate cross collision
+        // using only these new ports and absent, bounded physical fixture IDs.
+        $connection = $GLOBALS['DB']->getDoctrineConnection();
+        $this->integer((int)$connection->fetchOne(
+            'SELECT COUNT(*) FROM glpi_networkportlocals WHERE id IN (?, ?)',
+            [$port2, $port2 + 1]
+        ))->isIdenticalTo(0, 'Custom-index fixtures must never adopt existing rows');
+        $manager = Orm::create($GLOBALS['DB']);
+        try {
+            $metadata = $manager->getClassMetadata(NetworkPortLocal::class);
+            $metadata->setIdGeneratorType(ClassMetadata::GENERATOR_TYPE_NONE);
+            $metadata->setIdGenerator(new AssignedGenerator());
+            foreach ([[$port2, $port1], [$port2 + 1, $port2]] as [$physical, $logical]) {
+                $record = new NetworkPortLocal();
+                $record->id = $physical;
+                $record->networkports_id = $manager->getReference(NetworkPort::class, $logical);
+                $manager->persist($record);
+            }
+            $manager->flush();
+            $source = new LegacyNetworkPortLocal();
+            $this->boolean($source->getFromDB($port1))->isTrue();
+            $this->integer((int)$source->fields['id'])->isIdenticalTo($port2);
+            $this->integer((int)$source->getID())->isIdenticalTo($port1);
+            $repository = new DeletionRepository($manager);
+            $this->boolean($repository->validateReplacement($source, ['_replace_by' => $port2]))
+                ->isTrue('A distinct public key may equal the source physical identity');
+            $this->boolean($repository->validateReplacement($source, ['_replace_by' => $port1]))
+                ->isFalse('Self-replacement remains forbidden when public and physical identities differ');
+        } finally {
+            $manager->clear();
+        }
 
     }
 
@@ -839,6 +2365,218 @@ class CommonDBTM extends DbTestCase
         $this->boolean($entity->can(-1, CREATE, $input))->isFalse("Fail: can create entity in 2.1");
     }
 
+    public function testCustomIndexLifecycleReloadKeepsSourceCallbacksAndPhysicalReturn(): void
+    {
+        $savedSession = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            global $DB;
+            $connection = $DB->getDoctrineConnection();
+            $base = max(
+                (int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) FROM glpi_tickets'),
+                (int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) FROM glpi_ticketsatisfactions')
+            ) + 100;
+            $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            foreach (range(0, 3) as $offset) {
+                $ticket = new Ticket();
+                $this->integer((int)$ticket->addWithAssignedIdentifier($base + $offset, [
+                    'name' => 'Custom index reload ' . $this->getUniqueString(), 'content' => 'Reload ownership fixture',
+                    'entities_id' => $entity, '_disablenotif' => true,
+                ]))->isIdenticalTo($base + $offset);
+            }
+            $connection->insert('glpi_ticketsatisfactions', ['id' => $base + 10, 'tickets_id' => $base,
+                'type' => 1, 'comment' => 'Existing survey']);
+            $peer = $connection->fetchAssociative('SELECT * FROM glpi_ticketsatisfactions WHERE id = ?', [$base + 10]);
+            $model = static function (int $physical): TicketSatisfaction {
+                $item = new class () extends TicketSatisfaction {
+                    public int $insertIdentity;
+                    public ?int $callbackPhysicalIdentity = null;
+                    public ?int $historyLogicalIdentity = null;
+                    public ?array $historyTarget = null;
+                    public array $events = [];
+                    public static function getType()
+                    {
+                        return 'TicketSatisfaction';
+                    }
+                    public static function getTable($classname = null)
+                    {
+                        return 'glpi_ticketsatisfactions';
+                    }
+                    public function addToDB()
+                    {
+                        // Assign only fixture-owned absent physical IDs; execute the real insert/reload.
+                        $this->fields['id'] = $this->insertIdentity;
+                        return parent::addToDB();
+                    }
+                    public function post_getFromDB()
+                    {
+                        parent::post_getFromDB();
+                        $this->events[] = ['reload', (int)$this->fields['id'], (int)$this->getID()];
+                        if ($this->callbackPhysicalIdentity !== null) {
+                            $this->fields['id'] = $this->callbackPhysicalIdentity;
+                        }
+                    }
+                    public function post_addItem()
+                    {
+                        $this->events[] = ['add', (int)$this->fields['id'], (int)$this->getID()];
+                        parent::post_addItem();
+                    }
+                    public function getLogTypeID()
+                    {
+                        $this->events[] = ['history', (int)$this->fields['id'], (int)$this->getID()];
+                        $this->historyTarget = parent::getLogTypeID();
+                        if ($this->historyLogicalIdentity !== null) {
+                            $this->fields['tickets_id'] = $this->historyLogicalIdentity;
+                        }
+                        return $this->historyTarget;
+                    }
+                    public function post_updateItem($history = 1)
+                    {
+                        $this->events[] = ['update', (int)$this->fields['id'], (int)$this->getID()];
+                        parent::post_updateItem($history);
+                    }
+                };
+                $item->insertIdentity = $physical;
+                return $item;
+            };
+            foreach ([[$base, $base + 1, 1], [$base + 11, $base + 2, 0]] as [$physical, $logical, $collision]) {
+                $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_ticketsatisfactions WHERE id = ?', [$physical]))->isIdenticalTo(0);
+                $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_ticketsatisfactions WHERE tickets_id = ?', [$physical]))->isIdenticalTo($collision);
+                $survey = $model($physical);
+                $this->integer((int)$survey->add(['tickets_id' => $logical, 'type' => 1,
+                    'comment' => 'New source survey', '_disablenotif' => true]))->isIdenticalTo($physical);
+                $this->integer((int)$survey->fields['id'])->isIdenticalTo($physical);
+                $this->integer((int)$survey->getID())->isIdenticalTo($logical);
+                $this->array($survey->events)->isIdenticalTo([['reload', $physical, $logical], ['add', $physical, $logical]]);
+                $this->string($survey->fields['comment'])->isIdenticalTo('New source survey');
+                $this->integer((int)$connection->fetchOne(
+                    'SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ? AND linked_action = ?',
+                    ['TicketSatisfaction', $physical, Log::HISTORY_CREATE_ITEM]
+                ))->isIdenticalTo(1);
+                $this->array($connection->fetchAssociative('SELECT * FROM glpi_ticketsatisfactions WHERE id = ?', [$base + 10]))->isIdenticalTo($peer);
+                $survey->events = [];
+                $this->boolean($survey->update(['tickets_id' => $logical, 'satisfaction' => 4,
+                    'comment' => 'Updated source survey', '_disablenotif' => true]))->isTrue();
+                // History observes this survey and records its fields on the parent Ticket.
+                $this->array($survey->events)->isIdenticalTo([
+                    ['reload', $physical, $logical], ['history', $physical, $logical],
+                    ['reload', $physical, $logical], ['update', $physical, $logical],
+                ]);
+                $this->integer((int)$survey->fields['id'])->isIdenticalTo($physical);
+                $this->integer((int)$survey->getID())->isIdenticalTo($logical);
+                $this->string($survey->fields['comment'])->isIdenticalTo('Updated source survey');
+                $this->string($connection->fetchOne('SELECT comment FROM glpi_ticketsatisfactions WHERE id = ?', [$physical]))->isIdenticalTo('Updated source survey');
+                $this->integer((int)$connection->fetchOne(
+                    'SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ? AND linked_action = 0 AND id_search_option = 63 AND old_value = ? AND new_value = ?',
+                    ['Ticket', $logical, 'New source survey', 'Updated source survey']
+                ))->isIdenticalTo(1, 'Survey comments are logged on their source Ticket');
+                $this->array($connection->fetchAssociative('SELECT * FROM glpi_ticketsatisfactions WHERE id = ?', [$base + 10]))->isIdenticalTo($peer);
+                $this->integer((int)$connection->fetchOne(
+                    'SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ? AND linked_action = 0 AND id_search_option IN (62, 63)',
+                    ['Ticket', $base]
+                ))->isIdenticalTo(0, 'Update history never targets the collision peer');
+                // A public history hook may mutate fields to a real peer key or a missing key.
+                $survey->events = [];
+                $survey->historyLogicalIdentity = $collision ? $base : $base + 99;
+                $this->boolean($survey->update(['tickets_id' => $logical, 'satisfaction' => 5,
+                    'comment' => 'Source after history callback', '_disablenotif' => true]))->isTrue();
+                $this->string($survey->historyTarget[0])->isIdenticalTo('Ticket');
+                $this->integer((int)$survey->historyTarget[1])->isIdenticalTo($logical);
+                $this->array($survey->events)->isIdenticalTo([
+                    ['reload', $physical, $logical], ['history', $physical, $logical],
+                    ['reload', $physical, $logical], ['update', $physical, $logical],
+                ]);
+                $this->integer((int)$survey->fields['id'])->isIdenticalTo($physical);
+                $this->integer((int)$survey->getID())->isIdenticalTo($logical);
+                $this->string($survey->fields['comment'])->isIdenticalTo('Source after history callback');
+                $this->string($connection->fetchOne('SELECT comment FROM glpi_ticketsatisfactions WHERE id = ?', [$physical]))->isIdenticalTo('Source after history callback');
+                $this->integer((int)$connection->fetchOne(
+                    'SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ? AND linked_action = 0 AND id_search_option = 63 AND old_value = ? AND new_value = ?',
+                    ['Ticket', $logical, 'Updated source survey', 'Source after history callback']
+                ))->isIdenticalTo(1, 'Survey comments are logged on their source Ticket');
+                $this->integer((int)$connection->fetchOne(
+                    'SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ? AND linked_action = 0 AND id_search_option = 62 AND old_value = ? AND new_value = ?',
+                    ['Ticket', $logical, '4', '5']
+                ))->isIdenticalTo(1, 'Survey ratings retain their source Ticket through the history callback');
+                $this->array($connection->fetchAssociative('SELECT * FROM glpi_ticketsatisfactions WHERE id = ?', [$base + 10]))->isIdenticalTo($peer);
+                $this->integer((int)$connection->fetchOne(
+                    'SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ? AND linked_action = 0 AND id_search_option IN (62, 63)',
+                    ['Ticket', $base]
+                ))->isIdenticalTo(0);
+            }
+            $this->integer((int)$connection->fetchOne(
+                'SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ? AND linked_action = ?',
+                ['TicketSatisfaction', $base + 10, Log::HISTORY_CREATE_ITEM]
+            ))->isIdenticalTo(0, 'The collision peer receives no creation history');
+            // Public callback mutation must not change the producer-owned return value.
+            $survey = $model($base + 12);
+            $survey->fields = ['tickets_id' => $base + 3, 'type' => 1];
+            $survey->callbackPhysicalIdentity = $base + 10;
+            $this->integer((int)$survey->addToDB())->isIdenticalTo($base + 12);
+            $this->array($survey->events)->isIdenticalTo([['reload', $base + 12, $base + 3]]);
+            $this->integer((int)$connection->fetchOne('SELECT tickets_id FROM glpi_ticketsatisfactions WHERE id = ?', [$base + 12]))->isIdenticalTo($base + 3);
+        } finally {
+            $_SESSION = $savedSession;
+        }
+    }
+
+    public function testCustomIndexAggregateAddCannotReplaceCollisionPeerOrigins(): void
+    {
+        $savedSession = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            global $DB;
+            $connection = $DB->getDoctrineConnection();
+            $base = max(
+                (int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) FROM glpi_networkports'),
+                (int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) FROM glpi_networkportaggregates')
+            ) + 100;
+            $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $equipment = $this->createItem(NetworkEquipment::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+            foreach (range(0, 3) as $offset) {
+                $port = new LegacyNetworkPort();
+                $this->integer((int)$port->addWithAssignedIdentifier($base + $offset, ['name' => 'Reload port ' . $offset,
+                    'items_id' => $equipment->getID(), 'itemtype' => 'NetworkEquipment', 'entities_id' => $entity]))->isIdenticalTo($base + $offset);
+            }
+            $manager = Orm::create($DB);
+            try {
+                $writer = new RecordWriter($manager);
+                $this->integer($writer->insert('glpi_networkportaggregates', ['id' => $base + 10, 'networkports_id' => $base]))->isIdenticalTo($base + 10);
+                $origins = new NetworkPortAggregateRepository($manager);
+                $origins->replaceOrigins($base + 10, [$base + 2]);
+                $aggregate = new class () extends NetworkPortAggregate {
+                    public int $insertIdentity;
+                    public static function getType()
+                    {
+                        return 'NetworkPortAggregate';
+                    }
+                    public static function getTable($classname = null)
+                    {
+                        return 'glpi_networkportaggregates';
+                    }
+                    public function addToDB()
+                    {
+                        $this->fields['id'] = $this->insertIdentity;
+                        return parent::addToDB();
+                    }
+                };
+                $aggregate->insertIdentity = $base;
+                $this->integer((int)$aggregate->add(['networkports_id' => $base + 1,
+                    'networkports_id_list' => [$base + 3]]))->isIdenticalTo($base);
+                $this->integer((int)$aggregate->fields['id'])->isIdenticalTo($base);
+                $this->integer((int)$aggregate->getID())->isIdenticalTo($base + 1);
+                $this->array($origins->originIds($base))->isIdenticalTo([$base + 3]);
+                $this->array($origins->originIds($base + 10))->isIdenticalTo([$base + 2], 'Another aggregate keeps its existing origins');
+            } finally {
+                $manager->clear();
+            }
+        } finally {
+            $_SESSION = $savedSession;
+        }
+    }
+
     public function testAdd()
     {
         $computer = new \Computer();
@@ -881,6 +2619,147 @@ class CommonDBTM extends DbTestCase
         $this->string($computer->fields['name'])->isIdenticalTo("Computer01 '");
 
         $_SESSION['glpi_currenttime'] = $bkp_current;
+    }
+
+    public function testConfiguredUnicityKeepsLiteralTextAndBlacklistMembership(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $child = $this->createItem(Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+            $connection = $DB->getDoctrineConnection();
+            // Ordinary fixture rollback restores the previous configuration and blacklist.
+            $connection->delete('glpi_fieldunicities', ['itemtype' => Computer::class]);
+            $connection->delete('glpi_fieldblacklists', ['itemtype' => Computer::class]);
+            $decoy = $this->createItem(Computer::class, ['name' => null, 'entities_id' => $entity]);
+            $outside = $this->createItem(Computer::class, ['name' => 'NULL', 'entities_id' => $child->getID()]);
+            $template = $this->createItem(Computer::class, ['name' => 'NULL', 'entities_id' => $entity, 'is_template' => 1]);
+            $rule = new FieldUnicity();
+            $ruleId = $rule->add([
+                'name' => $this->getUniqueString(), 'itemtype' => Computer::class, 'entities_id' => $entity,
+                '_fields' => ['name'], 'is_active' => 1, 'is_recursive' => 0, 'action_refuse' => 1, 'action_notify' => 0
+            ]);
+            $this->integer($ruleId)->isGreaterThan(0);
+            $this->boolean($rule->getFromDB($ruleId))->isTrue();
+            $this->string($rule->fields['fields'])->isIdenticalTo('name');
+            $literal = new Computer();
+            $id = $literal->add(['name' => 'NULL', 'entities_id' => $entity]);
+            $this->integer($id)->isGreaterThan(0);
+            $this->boolean($literal->getFromDB($id))->isTrue();
+            $this->string($literal->fields['name'])->isIdenticalTo('NULL');
+            $duplicate = new Computer();
+            $this->boolean($duplicate->add(['name' => 'NULL', 'entities_id' => $entity]))->isFalse();
+            $scope = getEntitiesRestrictCriteria('glpi_computers', '', $entity);
+            $rows = Orm::read($DB, static fn (EntityManager $manager) =>
+                (new FieldUnicityRepository($manager))->candidateRows('glpi_computers', ['glpi_computers.name' => 'NULL'], $scope, true, null));
+            $this->array(array_map('intval', array_keys($rows)))->isIdenticalTo([$id]);
+            $this->string($rows[$id]['name'])->isIdenticalTo('NULL');
+            $this->boolean(isset($rows[$decoy->getID()]))->isFalse();
+            $this->boolean(isset($rows[$outside->getID()]))->isFalse();
+            $this->boolean(isset($rows[$template->getID()]))->isFalse();
+
+            $other = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+            $previous = $other->fields['name'];
+            $this->boolean($other->update(['id' => $other->getID(), 'name' => 'NULL']))->isFalse();
+            $this->boolean($other->getFromDB($other->getID()))->isTrue();
+            $this->string($other->fields['name'])->isIdenticalTo($previous);
+            $this->boolean($literal->update(['id' => $id, 'name' => 'NULL', 'comment' => 'self update']))->isTrue();
+            $this->boolean($other->update(['id' => $other->getID(), 'name' => null]))->isTrue();
+            $this->boolean($other->getFromDB($other->getID()))->isTrue();
+            $this->variable($other->fields['name'])->isNull();
+
+            $manager = Orm::create($DB);
+            try {
+                $dirty = $manager->find(ComputerEntity::class, $id);
+                $dirty->comment = 'unflushed independent owner';
+                Orm::read($DB, function (EntityManager $outer) use ($DB, $id, $scope, $manager, $dirty): void {
+                    $live = $outer->find(ComputerEntity::class, $id);
+                    $live->comment = 'unflushed enclosing owner';
+                    $count = Orm::read($DB, static fn (EntityManager $reader) =>
+                        (new FieldUnicityRepository($reader))->candidateCount('glpi_computers', ['glpi_computers.name' => 'NULL'], $scope, true, null));
+                    $this->integer($count)->isIdenticalTo(1);
+                    $this->boolean($outer->contains($live))->isTrue();
+                    $this->string($live->comment)->isIdenticalTo('unflushed enclosing owner');
+                    $this->boolean($manager->contains($dirty))->isTrue();
+                    $this->string($dirty->comment)->isIdenticalTo('unflushed independent owner');
+                });
+            } finally {
+                $manager->clear();
+            }
+
+            $blacklist = $this->createItem(Fieldblacklist::class, [
+                'name' => $this->getUniqueString(), 'itemtype' => Computer::class, 'field' => 'name',
+                'value' => 'NULL', 'entities_id' => $child->getID(), 'is_recursive' => 0
+            ]);
+            $this->boolean(Fieldblacklist::isFieldBlacklisted(Computer::class, $entity, 'name', 'NULL'))->isFalse();
+            $this->boolean($blacklist->update(['id' => $blacklist->getID(), 'entities_id' => $entity]))->isTrue();
+            $this->boolean(Fieldblacklist::isFieldBlacklisted(Computer::class, $entity, 'name', 'NULL'))->isTrue();
+            $accepted = new Computer();
+            $this->integer($accepted->add(['name' => 'NULL', 'entities_id' => $entity]))->isGreaterThan(0);
+            $this->boolean($accepted->getFromDB($accepted->getID()))->isTrue();
+            $this->string($accepted->fields['name'])->isIdenticalTo('NULL');
+            $this->boolean($blacklist->delete(['id' => $blacklist->getID()], true))->isTrue();
+
+            $quoted = Toolbox::addslashes_deep("Quoted ' and \\path");
+            $first = new Computer();
+            $this->integer($first->add(['name' => $quoted, 'entities_id' => $entity]))->isGreaterThan(0);
+            $second = new Computer();
+            $this->boolean($second->add(['name' => $quoted, 'entities_id' => $entity]))->isFalse();
+            $this->boolean($first->update(['id' => $first->getID(), 'name' => $this->getUniqueString()]))->isTrue();
+            $this->integer($second->add(['name' => $quoted, 'entities_id' => $entity]))->isGreaterThan(0);
+            $this->boolean($rule->update(['id' => $rule->getID(), 'is_recursive' => 1]))->isTrue();
+            $this->boolean((new Computer())->add(['name' => 'NULL', 'entities_id' => $child->getID()]))->isFalse();
+            $this->boolean($rule->update(['id' => $rule->getID(), '_fields' => ['serial'], 'is_recursive' => 0]))->isTrue();
+            $lower = new Computer();
+            $lowerId = $lower->add(['name' => $this->getUniqueString(), 'serial' => 'null', 'entities_id' => $entity]);
+            $this->integer($lowerId)->isGreaterThan(0);
+            $this->boolean($lower->getFromDB($lowerId))->isTrue();
+            $this->string($lower->fields['serial'])->isIdenticalTo('null');
+            $this->boolean((new Computer())->add(['name' => $this->getUniqueString(), 'serial' => 'null', 'entities_id' => $entity]))->isFalse();
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
+    public function testMappedTextKeepsLiteralNullAndExplicitClearing(): void
+    {
+        $this->login();
+        global $DB;
+        $computer = new Computer();
+        $id = $computer->add([
+            'name' => 'NULL',
+            'comment' => 'null',
+            'entities_id' => (int)$_SESSION['glpiactive_entity'],
+            'locations_id' => 'NULL',
+            'date_creation' => 'NULL'
+        ]);
+        $this->integer($id)->isGreaterThan(0);
+        $this->boolean($computer->getFromDB($id))->isTrue();
+        $this->string($computer->fields['name'])->isIdenticalTo('NULL');
+        $this->string($computer->fields['comment'])->isIdenticalTo('null');
+        $this->variable($computer->fields['locations_id'])->isNull();
+        $this->variable($computer->fields['date_creation'])->isNull();
+        foreach ([null, 'NULL', '', null, 'null', "Quoted ' and \\path\nline"] as $value) {
+            $this->boolean($computer->update(['id' => $id, 'comment' => Toolbox::addslashes_deep($value)]))->isTrue();
+            $this->boolean($computer->getFromDB($id))->isTrue();
+            $this->variable($computer->fields['comment'])->isIdenticalTo($value);
+            $this->variable($DB->getDoctrineConnection()->fetchOne('SELECT comment FROM glpi_computers WHERE id = ?', [$id]))->isIdenticalTo($value);
+        }
+        $this->boolean($computer->update(['id' => $id, 'comment' => 'null']))->isTrue();
+        $logs = (int)$DB->getDoctrineConnection()->fetchOne('SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ?', ['Computer', $id]);
+        $this->boolean($computer->update(['id' => $id, 'comment' => 'null']))->isTrue();
+        $this->integer((int)$DB->getDoctrineConnection()->fetchOne('SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ?', ['Computer', $id]))->isIdenticalTo($logs);
+
+        $appliance = $this->createItem(ApplianceModel::class, ['name' => 'NULL', 'entities_id' => (int)$_SESSION['glpiactive_entity']]);
+        $this->string($appliance->fields['name'])->isIdenticalTo('NULL');
+        $client = $this->createItem(APIClient::class, ['name' => $this->getUniqueString(), 'ipv6' => '2001:db8::1']);
+        $this->string($client->fields['ipv6'])->isIdenticalTo('2001:db8::1');
+        $this->boolean($client->update(['id' => $client->getID(), 'ipv6' => '']))->isTrue();
+        $this->boolean($client->getFromDB($client->getID()))->isTrue();
+        $this->variable($client->fields['ipv6'])->isNull();
     }
 
     public function testUpdate()
@@ -1100,7 +2979,7 @@ class CommonDBTM extends DbTestCase
               // Case 1: no entites field -> no change
               'data'            => ['test' => "test"],
               'parent_id'       => 999,
-              'parent_itemtype' => SoftwareVersion::class,
+              'parent_itemtype' => Software::class,
               'active_entities' => [],
               'expected'        => ['test' => "test"],
            ],
@@ -1108,7 +2987,7 @@ class CommonDBTM extends DbTestCase
               // Case 2: entity is allowed -> no change
               'data'            => $sv1->fields,
               'parent_id'       => $sv1->fields['softwares_id'],
-              'parent_itemtype' => SoftwareVersion::class,
+              'parent_itemtype' => Software::class,
               'active_entities' => [$sv1->fields['entities_id']],
               'expected'        => $sv1->fields,
            ],
@@ -1116,7 +2995,7 @@ class CommonDBTM extends DbTestCase
               // Case 3: entity is not allowed -> change to parent entity
               'data'            => $sv2->fields, // SV with modified entity
               'parent_id'       => $sv2->fields['softwares_id'],
-              'parent_itemtype' => SoftwareVersion::class,
+              'parent_itemtype' => Software::class,
               'active_entities' => [],
               'expected'        => $sv1->fields, // SV with correct entity
            ],
@@ -1124,7 +3003,7 @@ class CommonDBTM extends DbTestCase
               // Case 4: can't load parent -> no change
               'data'            => $sv3->fields,
               'parent_id'       => -1,
-              'parent_itemtype' => SoftwareVersion::class,
+              'parent_itemtype' => Software::class,
               'active_entities' => [],
               'expected'        => $sv3->fields,
            ],
@@ -1178,5 +3057,14 @@ class CommonDBTM extends DbTestCase
 
         $output = $itemtype::getById($nonExistingId);
         $this->boolean($output)->isFalse();
+    }
+}
+
+
+class InfocomPresenceFilter extends SQLFilter
+{
+    public function addFilterConstraint(ClassMetadata $targetEntity, string $targetTableAlias): string
+    {
+        return $targetEntity->name === InfocomEntity::class ? '1 = 0' : '';
     }
 }

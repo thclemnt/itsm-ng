@@ -31,6 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\ConnexityInput;
+use itsmng\Database\DeletionUnit;
+use itsmng\Database\MappedStorage;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -90,6 +96,103 @@ abstract class CommonDBConnexity extends CommonDBTM
     /// Disable auto forwarding information about entities ?
     public static $disableAutoEntityForwarding   = false;
 
+    final protected function normalizeLifecycleInput(array $input): array|false
+    {
+        $input = parent::normalizeLifecycleInput($input);
+        if ($input === false) {
+            return false;
+        }
+        try {
+            return ConnexityInput::normalize($this, $input);
+        } catch (InvalidArgumentException) {
+            $this->reportInvalidLifecycleEndpointInput($input);
+            return false;
+        }
+    }
+
+    /** Report model-owned diagnostics without admitting an invalid endpoint. */
+    protected function reportInvalidLifecycleEndpointInput(array $input): void
+    {
+    }
+
+    final protected function authorizeLifecycleUpdate(array $input): array|false
+    {
+        if (ConnexityInput::endpoints($this)
+            && !$this->checkAttachedItemChangesAllowed($input, ConnexityInput::fields($this))) {
+            return false;
+        }
+        return $input;
+    }
+
+    final protected function finalizeLifecycleUpdate(array $storedFields): bool
+    {
+        if (!ConnexityInput::endpoints($this)) {
+            return parent::finalizeLifecycleUpdate($storedFields);
+        }
+        $original = clone $this;
+        $original->fields = $storedFields;
+        // Resolve only actual pending writes before merging their derived
+        // projection. A callback can cancel a prepared write or supply a new
+        // owning column without retaining the old read-only generated identity.
+        $writes = array_intersect_key($this->fields, array_fill_keys($this->updates, true));
+        foreach (ConnexityInput::endpoints($this) as $identity => $endpoint) {
+            $kind = array_key_exists($endpoint['discriminator'], $writes)
+                ? $writes[$endpoint['discriminator']] : $storedFields[$endpoint['discriminator']];
+            $column = is_string($kind) || is_int($kind) ? ($endpoint['selections'][$kind]['column'] ?? $endpoint['fallback_column'] ?? null) : null;
+            if ($column !== null && array_key_exists($column, $writes)) {
+                // This projection cannot be written independently of its owner.
+                unset($writes[$identity]);
+            }
+        }
+        $writes = $original->normalizeLifecycleInput($writes);
+        if ($writes === false) {
+            return false;
+        }
+        $values = array_replace($storedFields, $writes);
+        if ($original->authorizeLifecycleUpdate($values) === false) {
+            return false;
+        }
+        $effective = $values;
+        $values = $original->validateLifecycleEndpoints(array_replace($this->input, $effective));
+        if ($values === false) {
+            return false;
+        }
+        $values = $original->normalizeLifecycleInput($values);
+        if ($values === false || $original->authorizeLifecycleUpdate($values) === false) {
+            return false;
+        }
+        $this->retainLifecycleEndpointDecision($original);
+        // Post-update hooks must observe the actual write view, including
+        // cancelled content and model-derived owner context, with no stale
+        // prepared field or history entry left behind.
+        $persisted = array_intersect_key($values, $storedFields);
+        $this->fields = $persisted;
+        $this->updates = [];
+        $this->oldvalues = [];
+        foreach ($persisted as $column => $value) {
+            if ($column !== static::getIndexName()
+                && (($value === null) !== ($storedFields[$column] === null) || $value != $storedFields[$column])) {
+                $this->updates[] = $column;
+                if (!in_array($column, $this->history_blacklist)) {
+                    $this->oldvalues[$column] = $storedFields[$column];
+                }
+            }
+        }
+        $this->input = array_replace($this->input, $values);
+        return true;
+    }
+
+    /** Preserve a model-owned pure decision made by the final validation probe. */
+    protected function retainLifecycleEndpointDecision(CommonDBConnexity $probe): void
+    {
+    }
+
+    /** Read-only endpoint business validation and context binding, without upload preparation. */
+    protected function validateLifecycleEndpoints(array $input): array|false
+    {
+        return $input;
+    }
+
 
     /**
      * Return the SQL request to get all the connexities corresponding to $itemtype[$items_id]
@@ -127,10 +230,15 @@ abstract class CommonDBConnexity extends CommonDBTM
                '_disablenotif'       => true
             ];
 
-            $iterator = $DB->request($criteria);
-            while ($data = $iterator->next()) {
-                $input[$this->getIndexName()] = $data[$this->getIndexName()];
-                $this->delete($input, 1);
+            if (!array_diff(array_keys($criteria), ['SELECT', 'FROM', 'WHERE']) && ($criteria['FROM'] ?? null) === $this->getTable() && is_array($criteria['WHERE'] ?? null)) {
+                $ids = $this->findIds($criteria['WHERE']);
+            } else {
+                // Custom plugin relation queries retain their selection semantics.
+                $ids = array_column(iterator_to_array($DB->request($criteria)), $this->getIndexName());
+            }
+            foreach ($ids as $id) {
+                $input[$this->getIndexName()] = $id;
+                DeletionUnit::requireSuccess($DB->getDoctrineConnection(), (bool)$this->delete($input, 1));
             }
         }
     }
@@ -180,13 +288,24 @@ abstract class CommonDBConnexity extends CommonDBTM
     **/
     public static function getItemsAssociatedTo($itemtype, $items_id)
     {
-        $res = [];
-        $iterator = static::getItemsAssociationRequest($itemtype, $items_id);
+        global $DB;
 
-        while ($row = $iterator->next()) {
-            $input = Toolbox::addslashes_deep($row);
+        $res = [];
+        $criteria = static::getSQLCriteriaToSearchForItem($itemtype, $items_id);
+        if ($criteria === null) {
+            return $res;
+        }
+        if (MappedStorage::supports(static::getTable())
+            && !array_diff(array_keys($criteria), ['SELECT', 'FROM', 'WHERE'])
+            && ($criteria['FROM'] ?? null) === static::getTable() && is_array($criteria['WHERE'] ?? null)) {
+            $ids = (new RecordRepository(Orm::create($DB)))
+                ->identifiers(static::getTable(), static::getIndexName(), $criteria['WHERE']);
+        } else {
+            $ids = array_column(iterator_to_array(static::getItemsAssociationRequest($itemtype, $items_id)), 'id');
+        }
+        foreach ($ids as $id) {
             $item = new static();
-            $item->getFromDB($input['id']);
+            $item->getFromDB($id);
             $res[] = $item;
         }
         return $res;
@@ -315,7 +434,7 @@ abstract class CommonDBConnexity extends CommonDBTM
             unset($new_item->fields);
             if (
                 !$new_item->can(-1, CREATE, $input)
-                 || !$this->can($this->getID(), DELETE)
+                 || ($this->maybeDeleted() && !$this->can($this->getID(), DELETE))
                  || !$this->can($this->getID(), PURGE)
             ) {
                 Session::addMessageAfterRedirect(
@@ -387,8 +506,8 @@ abstract class CommonDBConnexity extends CommonDBTM
 
     /**
      * Factorization of canCreateItem, canViewItem, canUpateItem and canDeleteItem. It checks the
-     * ability to create, view, update or delete the item. If we cannot check the item (none is
-     * existing), then we can do the action of the current connexity
+     * ability to create, view, update or delete the item. If no item exists, the child or
+     * relation decides whether an empty attachment is valid.
      *
      * @param string          $methodItem    the method to check (canCreateItem, canViewItem,
                                              canUpdateItem or canDeleteItem)
@@ -416,26 +535,62 @@ abstract class CommonDBConnexity extends CommonDBTM
 
             // Set value in $item to reuse it on future calls
             if ($connexityItem instanceof CommonDBTM) {
-                $item = $this->getConnexityItem($itemtype, $items_id);
+                $item = $connexityItem;
             }
         }
+        if ($connexityItem === false) {
+            // Skipping endpoint grants does not skip attachment validation. Only
+            // an empty selection belongs to the relation/child's attachment policy.
+            if (!in_array($this->fields[$items_id] ?? null, [null, '', 0, '0'], true)) {
+                return false;
+            }
+            throw new CommonDBConnexityItemNotFound();
+        }
         if ($item_right != self::DONT_CHECK_ITEM_RIGHTS) {
-            if ($connexityItem !== false) {
-                if ($item_right == self::HAVE_VIEW_RIGHT_ON_ITEM) {
-                    $methodNotItem = 'canView';
-                    $methodItem    = 'canViewItem';
-                }
-                // here, we can check item's global rights
-                if (preg_match('/^itemtype/', $itemtype)) {
-                    if (!$connexityItem->$methodNotItem()) {
+            if ($item_right == self::HAVE_VIEW_RIGHT_ON_ITEM) {
+                $methodNotItem = 'canView';
+                $methodItem    = 'canViewItem';
+            }
+            $right = match ($methodNotItem) {
+                'canView' => READ,
+                'canUpdate' => UPDATE,
+                'canCreate' => CREATE,
+                'canDelete' => DELETE,
+                'canPurge' => PURGE,
+                default => null,
+            };
+            // The actual parent hook may restrict this role without adding
+            // CommonDBTM::can()'s private-item grants to the existing policy.
+            if ($right !== null) {
+                $parentFields = $connexityItem->fields;
+                $parentState = get_object_vars($connexityItem);
+                $hasInput = array_key_exists('input', $parentState);
+                $parentInput = $parentState['input'] ?? null;
+                try {
+                    if (!$connexityItem->retainItemPermission($right)
+                        || !array_key_exists('fields', get_object_vars($connexityItem))
+                        || $connexityItem->fields !== $parentFields
+                        || array_key_exists('input', get_object_vars($connexityItem)) !== $hasInput
+                        || ($hasInput && $connexityItem->input !== $parentInput)) {
                         return false;
                     }
+                } finally {
+                    // A restrictive hook cannot substitute the resolved permission subject.
+                    $connexityItem->fields = $parentFields;
+                    if ($hasInput) {
+                        $connexityItem->input = $parentInput;
+                    } else {
+                        unset($connexityItem->input);
+                    }
                 }
-                return $connexityItem->$methodItem();
-            } else {
-                // if we cannot get the parent, then we throw an exception
-                throw new CommonDBConnexityItemNotFound();
             }
+            // here, we can check item's global rights
+            if (preg_match('/^itemtype/', $itemtype)) {
+                if (!$connexityItem->$methodNotItem()) {
+                    return false;
+                }
+            }
+            return $connexityItem->$methodItem();
         }
         return true;
     }
@@ -477,7 +632,7 @@ abstract class CommonDBConnexity extends CommonDBTM
         ];
         $previousItemArray = [];
 
-        if (isset($this->oldvalues[$items_id])) {
+        if (array_key_exists($items_id, $this->oldvalues)) {
             $previousItemArray[$items_id] = $this->oldvalues[$items_id];
         } else {
             $previousItemArray[$items_id] = $this->fields[$items_id];
@@ -485,7 +640,7 @@ abstract class CommonDBConnexity extends CommonDBTM
 
         if (preg_match('/^itemtype/', $itemtype)) {
             $newItemArray[$itemtype] = $this->fields[$itemtype];
-            if (isset($this->oldvalues[$itemtype])) {
+            if (array_key_exists($itemtype, $this->oldvalues)) {
                 $previousItemArray[$itemtype] = $this->oldvalues[$itemtype];
             } else {
                 $previousItemArray[$itemtype] = $this->fields[$itemtype];

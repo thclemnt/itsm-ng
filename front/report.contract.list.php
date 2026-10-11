@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\AssetContractReportRepository;
+use itsmng\Reporting\Criteria;
+
 include('../inc/includes.php');
 
 Session::checkRight("reports", READ);
@@ -45,18 +49,16 @@ $items = $CFG_GLPI["contract_types"];
 echo "<div class='center'>";
 echo "<span class='big b'>" . __('List of the hardware under contract') . "</span><br><br>";
 echo "</div>";
-// Request All
-if (
-    (isset($_POST["item_type"][0]) && ($_POST["item_type"][0] == '0'))
-    || !isset($_POST["item_type"])
-) {
-    $_POST["item_type"] = $items;
-}
+$selectedTypes = Criteria::itemtypes($_POST['item_type'] ?? null, $items);
+$years = Criteria::years($_POST['year'] ?? []);
+$all_criteria = [];
 
-if (isset($_POST["item_type"]) && is_array($_POST["item_type"])) {
-    $query = [];
-    $all_criteria = [];
-    foreach ($_POST["item_type"] as $key => $val) {
+if ($selectedTypes) {
+    foreach ($selectedTypes as $val) {
+        if (AssetContractReportRepository::supports($val)) {
+            continue;
+        }
+        // Unmapped plugin types retain their compatibility query until mapped.
         if (!in_array($val, $items)) {
             continue;
         }
@@ -117,6 +119,7 @@ if (isset($_POST["item_type"]) && is_array($_POST["item_type"])) {
             ($val == 'Project')
               || ($val == 'SoftwareLicense')
         ) {
+            $criteria['SELECT'][] = new QueryExpression("'' AS location");
             if ($val == 'SoftwareLicense') {
                 $criteria['ORDERBY'] = ["entname ASC", "itemname ASC"];
                 $criteria['SELECT'] = array_merge(
@@ -138,12 +141,12 @@ if (isset($_POST["item_type"]) && is_array($_POST["item_type"])) {
                 $criteria['SELECT'][] = "$itemtable.is_deleted AS itemdeleted";
             }
 
-            if (isset($_POST["year"][0]) && ($_POST["year"][0] != 0)) {
+            if ($years) {
                 $ors = [];
-                foreach ($_POST["year"] as $val2) {
-                    $ors[] = new QueryExpression('YEAR(' . $DB->quoteName('glpi_contracts.begin_date') . ') = ' . $DB->quote($val2));
+                foreach ($years as $val2) {
+                    $ors[] = Criteria::year('glpi_contracts.begin_date', $val2);
                     if ($val == 'SoftwareLicense') {
-                        $ors[] = new QueryExpression('YEAR(' . $DB->quoteName('glpi_infocoms.buy_date') . ') = ' . $DB->quote($val2));
+                        $ors[] = Criteria::year('glpi_infocoms.buy_date', $val2);
                     }
                 }
                 if (count($ors)) {
@@ -182,10 +185,11 @@ if (isset($_POST["item_type"]) && is_array($_POST["item_type"])) {
                 $criteria['WHERE'][] = ["$itemtable.is_template" => 0];
             }
 
-            if (isset($_POST["year"][0]) && ($_POST["year"][0] != 0)) {
-                foreach ($_POST["year"] as $val2) {
-                    $ors[] = new QueryExpression('YEAR(' . $DB->quoteName('glpi_infocoms.buy_date') . ') = ' . $DB->quoteValue($val2));
-                    $ors[] = new QueryExpression('YEAR(' . $DB->quoteName('glpi_contracts.begin_date') . ') = ' . $DB->quoteValue($val2));
+            if ($years) {
+                $ors = [];
+                foreach ($years as $val2) {
+                    $ors[] = Criteria::year('glpi_infocoms.buy_date', $val2);
+                    $ors[] = Criteria::year('glpi_contracts.begin_date', $val2);
                 }
                 if (count($ors)) {
                     $criteria['WHERE'][] = ['OR' => $ors];
@@ -198,9 +202,11 @@ if (isset($_POST["item_type"]) && is_array($_POST["item_type"])) {
 
 $display_entity = Session::isMultiEntitiesMode();
 
-if (count($all_criteria)) {
-    foreach ($all_criteria as $key => $criteria) {
-        $iterator = $DB->request($criteria);
+if ($selectedTypes) {
+    foreach ($selectedTypes as $key) {
+        $iterator = AssetContractReportRepository::supports($key)
+            ? (new AssetContractReportRepository(Orm::create($DB)))->rows($key, $years, Criteria::entities(), true)
+            : iterator_to_array($DB->request($all_criteria[$key]));
         if (count($iterator)) {
             $item = new $key();
             echo "<div class='center'><span class='b'>" . $item->getTypeName(1) . "</span></div>";
@@ -217,7 +223,7 @@ if (count($all_criteria)) {
             echo "<th>" . __('Start date') . "</th>";
             echo "<th>" . __('End date') . "</th>";
             echo "</tr>";
-            while ($data = $iterator->next()) {
+            foreach ($iterator as $data) {
                 echo "<tr class='tab_bg_1'>";
                 if ($data['itemname']) {
                     echo "<td> " . $data['itemname'] . " </td>";

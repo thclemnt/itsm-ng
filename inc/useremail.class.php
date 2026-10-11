@@ -31,6 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\UserEmailRepository;
+use itsmng\Database\UserEmailReadOperation;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -96,21 +102,9 @@ class UserEmail extends CommonDBChild
     {
         global $DB;
 
-        // Get default one
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'users_id'     => $users_id,
-           ],
-           'ORDER'  => 'is_default DESC',
-           'LIMIT'  => 1
-        ]);
-
-        while ($row = $iterator->next()) {
-            return $row['email'];
-        }
-
-        return '';
+        $connection = $DB->getDoctrineConnection();
+        return Orm::withReadConnection($connection, static fn (?EntityManager $manager): mixed =>
+            (new UserEmailReadOperation($connection, $manager))->preferred((int)$users_id)['email'] ?? '');
     }
 
 
@@ -125,20 +119,11 @@ class UserEmail extends CommonDBChild
     {
         global $DB;
 
-        $emails = [];
-
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'users_id'     => $users_id,
-           ]
-        ]);
-
-        while ($row = $iterator->next()) {
-            $emails[] = $row['email'];
-        }
-
-        return $emails;
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        return Orm::withReadConnection($connection, static fn (?EntityManager $manager): array =>
+            (new UserEmailRepository($manager ?? Orm::forConnection($connection)))->all((int)$users_id));
     }
 
 
@@ -154,20 +139,11 @@ class UserEmail extends CommonDBChild
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'users_id'  => $users_id,
-              'email'     => $email
-           ],
-           'LIMIT'  => 1
-        ]);
-
-        if (count($iterator)) {
-            return true;
-        }
-
-        return false;
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        return Orm::withReadConnection($connection, static fn (?EntityManager $manager): bool =>
+            (new UserEmailRepository($manager ?? Orm::forConnection($connection)))->contains((int)$users_id, (string)$email));
     }
 
 
@@ -268,13 +244,14 @@ class UserEmail extends CommonDBChild
 
     public function prepareInputForAdd($input)
     {
+        global $DB;
 
         if (!$this->checkInputEmailValidity($input)) {
             return false;
         }
 
         // First email is default
-        if (countElementsInTable($this->getTable(), ['users_id' => $input['users_id']]) == 0) {
+        if ((new UserEmailRepository(Orm::create($DB)))->preferred((int)$input['users_id']) === null) {
             $input['is_default'] = 1;
         }
 
@@ -321,21 +298,12 @@ class UserEmail extends CommonDBChild
     {
         global $DB;
 
-        // if default is set : unsed others for the users
+        // Select this address without changing another user's defaults.
         if (
             in_array('is_default', $this->updates)
             && ($this->input["is_default"] == 1)
         ) {
-            $DB->update(
-                $this->getTable(),
-                [
-                  'is_default' => 0
-                ],
-                [
-                  'id'        => ['<>', $this->input['id']],
-                  'users_id'  => $this->fields['users_id']
-                ]
-            );
+            (new UserEmailRepository(Orm::create($DB)))->selectDefault((int)$this->fields['users_id'], (int)$this->input['id']);
         }
 
         parent::post_updateItem($history);
@@ -346,18 +314,9 @@ class UserEmail extends CommonDBChild
     {
         global $DB;
 
-        // if default is set : unset others for the users
+        // Select this address without changing another user's defaults.
         if (isset($this->fields['is_default']) && ($this->fields["is_default"] == 1)) {
-            $DB->update(
-                $this->getTable(),
-                [
-                  'is_default' => 0
-                ],
-                [
-                  'id'        => ['<>', $this->fields['id']],
-                  'users_id'  => $this->fields['users_id']
-                ]
-            );
+            (new UserEmailRepository(Orm::create($DB)))->selectDefault((int)$this->fields['users_id'], (int)$this->fields['id']);
         }
 
         parent::post_addItem();
@@ -368,21 +327,9 @@ class UserEmail extends CommonDBChild
     {
         global $DB;
 
-        // if default is set : set default to another one
+        // Prefer an existing default, then the oldest surviving address.
         if ($this->fields["is_default"] == 1) {
-            $DB->update(
-                $this->getTable(),
-                [
-                  'is_default'   => 1
-                ],
-                [
-                  'WHERE'  => [
-                     'id'        => ['<>', $this->fields['id']],
-                     'users_id'  => $this->fields['users_id']
-                  ],
-                  'LIMIT'  => 1
-                ]
-            );
+            (new UserEmailRepository(Orm::create($DB)))->selectDefault((int)$this->fields['users_id']);
         }
 
         parent::post_deleteFromDB();

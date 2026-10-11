@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\SharedContentRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -60,15 +64,11 @@ class Profile_RSSFeed extends CommonDBRelation
     {
         global $DB;
 
-        $prof  = [];
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['rssfeeds_id' => $rssfeeds_id]
-        ]);
-
-        while ($data = $iterator->next()) {
-            $prof[$data['profiles_id']][] = $data;
-        }
-        return $prof;
+        return Orm::readPrepared(
+            $DB,
+            static fn (): array => [$rssfeeds_id, self::getTable()],
+            static fn (EntityManager $em, array $prepared): array =>
+                (new SharedContentRepository($em))->rssfeedProfiles($prepared[0], $prepared[1])
+        );
     }
 }

@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\MailCollectorRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -220,8 +223,7 @@ class NotImportedEmail extends CommonDBTM
     {
         global $DB;
 
-        $query = "TRUNCATE `glpi_notimportedemails`";
-        $DB->query($query);
+        (new MailCollectorRepository(Orm::create($DB)))->clearRejectedEmails();
     }
 
 

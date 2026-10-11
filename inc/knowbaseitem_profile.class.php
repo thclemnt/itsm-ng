@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -62,14 +65,9 @@ class KnowbaseItem_Profile extends CommonDBRelation
 
         $prof  = [];
 
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'knowbaseitems_id' => $knowbaseitems_id
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
+        $rows = (new RecordRepository(Orm::create($DB)))
+            ->matching(self::getTable(), ['knowbaseitems_id' => $knowbaseitems_id], 'id');
+        foreach ($rows as $data) {
             $prof[$data['profiles_id']][] = $data;
         }
         return $prof;

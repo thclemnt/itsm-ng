@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILClassificationRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -338,17 +341,9 @@ class ITILCategory extends CommonTreeDropdown
     **/
     private static function getITILCategoryIDByField($field, $value)
     {
-        global $DB;
-
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [$field => $value]
-        ]);
-
-        if (count($iterator) == 1) {
-            $result = $iterator->next();
-            return $result['id'];
+        $rows = (new self())->find([$field => $value], ['id'], 2);
+        if (count($rows) === 1) {
+            return (int)reset($rows)['id'];
         }
         return -1;
     }
@@ -376,6 +371,9 @@ class ITILCategory extends CommonTreeDropdown
     public function prepareInputForUpdate($input)
     {
         $input = parent::prepareInputForUpdate($input);
+        if ($input === false) {
+            return false;
+        }
 
         if (array_key_exists('code', $input)) {
             $input['code'] = trim((string)$input['code']);
@@ -443,18 +441,9 @@ class ITILCategory extends CommonTreeDropdown
 
         echo "<div class='center'>";
 
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_itilcategories',
-           'WHERE'  => [
-              'OR' => [
-                 'tickettemplates_id_incident' => $ID,
-                 'tickettemplates_id_demand'   => $ID,
-                 'changetemplates_id'          => $ID,
-                 'problemtemplates_id'         => $ID
-              ]
-           ],
-           'ORDER'  => 'name'
-        ]);
+        $templateFields = ITILClassificationRepository::templateFields($tt->getType());
+        $iterator = (new ITILClassificationRepository(Orm::create($DB)))
+            ->categoriesForTemplate($tt->getType(), (int)$ID, getEntitiesRestrictCriteria('glpi_itilcategories', '', '', true));
 
         echo "<table class='tab_cadre_fixe' aria-label='Item Detail'>";
         echo "<tr><th colspan='5'>";
@@ -471,11 +460,11 @@ class ITILCategory extends CommonTreeDropdown
             echo "<th>" . Problem::getTypeName(1) . "</th>";
             echo "</tr>";
 
-            while ($data = $iterator->next()) {
+            foreach ($iterator as $data) {
                 echo "<tr class='tab_bg_2'>";
                 $itilcategory->getFromDB($data['id']);
                 echo "<td>" . $itilcategory->getLink(['comments' => true]) . "</td>";
-                if ($data['tickettemplates_id_incident'] == $ID) {
+                if (in_array('tickettemplates_id_incident', $templateFields, true) && $data['tickettemplates_id_incident'] == $ID) {
                     echo "<td class='center'>
                      <img src='" . $CFG_GLPI["root_doc"] . "/pics/ok.png' alt=\"" . __('OK') .
                              "\" width='14' height='14'>
@@ -483,7 +472,7 @@ class ITILCategory extends CommonTreeDropdown
                 } else {
                     echo "<td>&nbsp;</td>";
                 }
-                if ($data['tickettemplates_id_demand'] == $ID) {
+                if (in_array('tickettemplates_id_demand', $templateFields, true) && $data['tickettemplates_id_demand'] == $ID) {
                     echo "<td class='center'>
                      <img src='" . $CFG_GLPI["root_doc"] . "/pics/ok.png' alt=\"" . __('OK') .
                              "\" width='14' height='14'>
@@ -491,7 +480,7 @@ class ITILCategory extends CommonTreeDropdown
                 } else {
                     echo "<td>&nbsp;</td>";
                 }
-                if ($data['changetemplates_id'] == $ID) {
+                if (in_array('changetemplates_id', $templateFields, true) && $data['changetemplates_id'] == $ID) {
                     echo "<td class='center'>
                      <img src='" . $CFG_GLPI["root_doc"] . "/pics/ok.png' alt=\"" . __('OK') .
                              "\" width='14' height='14'>
@@ -499,7 +488,7 @@ class ITILCategory extends CommonTreeDropdown
                 } else {
                     echo "<td>&nbsp;</td>";
                 }
-                if ($data['problemtemplates_id'] == $ID) {
+                if (in_array('problemtemplates_id', $templateFields, true) && $data['problemtemplates_id'] == $ID) {
                     echo "<td class='center'>
                      <img src='" . $CFG_GLPI["root_doc"] . "/pics/ok.png' alt=\"" . __('OK') .
                              "\" width='14' height='14'>

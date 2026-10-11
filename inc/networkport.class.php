@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NetworkConnectionRepository;
+use itsmng\Database\Repository\NetworkPortAggregateRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -49,6 +54,28 @@ if (!defined('GLPI_ROOT')) {
 **/
 class NetworkPort extends CommonDBChild
 {
+    /** Whether a cable reaches an entity that cannot see the non-recursive owner. */
+    public static function hasConnectionsOutsideEntities(string $itemtype, int $id, array $entities): bool
+    {
+        global $DB;
+
+        $em = Orm::create($DB);
+        try {
+            $peers = (new NetworkConnectionRepository($em))->peers($itemtype, $id);
+        } finally {
+            $em->clear();
+        }
+        foreach ($peers as $type => $ids) {
+            $item = getItemForItemtype($type);
+            if ($item && $item->isEntityAssign() && countElementsInTable($item->getTable(), [
+                'id' => array_values($ids), 'NOT' => ['entities_id' => $entities],
+            ]) > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // From CommonDBChild
     public static $itemtype             = 'itemtype';
     public static $items_id             = 'items_id';
@@ -431,6 +458,13 @@ class NetworkPort extends CommonDBChild
 
     public function cleanDBonPurge()
     {
+        global $DB;
+        $origins = new NetworkPortAggregateRepository(Orm::create($DB));
+        if (!empty($this->input['_replace_by'])) {
+            $origins->replacePort((int)$this->getID(), (int)$this->input['_replace_by']);
+        } else {
+            $origins->removeForPort((int)$this->getID());
+        }
 
         $instantiation = $this->getInstantiation();
         if ($instantiation !== false) {
@@ -440,6 +474,13 @@ class NetworkPort extends CommonDBChild
 
         $this->deleteChildrenAndRelationsFromDb(
             [
+              NetworkPortAggregate::class,
+              NetworkPortAlias::class,
+              NetworkPortDialup::class,
+              NetworkPortEthernet::class,
+              NetworkPortFiberchannel::class,
+              NetworkPortLocal::class,
+              NetworkPortWifi::class,
               NetworkName::class,
               NetworkPort_NetworkPort::class,
               NetworkPort_Vlan::class,
@@ -736,7 +777,7 @@ class NetworkPort extends CommonDBChild
 
                     case 'NetworkPortAggregate':
                         $search_table   = 'glpi_networkportaggregates';
-                        $search_request = ['networkports_id_list' => ['LIKE', "%$items_id%"]];
+                        $search_request = [];
                         break;
                 }
                 $criteria = [
@@ -758,7 +799,9 @@ class NetworkPort extends CommonDBChild
                 ];
             }
 
-            $iterator = $DB->request($criteria);
+            $iterator = $itemtype === 'NetworkPort' && $portType === 'NetworkPortAggregate'
+                ? new RowIterator((new NetworkPortAggregateRepository(Orm::create($DB)))->aggregatesForPort((int)$items_id))
+                : $DB->request($criteria);
             $number_port = count($iterator);
 
             if ($number_port != 0) {
@@ -1038,7 +1081,7 @@ class NetworkPort extends CommonDBChild
 
         $networkNameJoin = ['jointype'          => 'itemtype_item',
                                  'specific_itemtype' => 'NetworkPort',
-                                 'condition'         => 'AND NEWTABLE.`is_deleted` = 0',
+                                 'condition'         => 'AND NEWTABLE.`is_deleted` = \'0\'',
                                  'beforejoin'        => ['table'      => 'glpi_networkports',
                                                               'joinparams' => $joinparams]];
         NetworkName::rawSearchOptionsToAdd($tab, $networkNameJoin, $itemtype);
@@ -1229,10 +1272,7 @@ class NetworkPort extends CommonDBChild
 
             $npv = new NetworkPort_Vlan();
             foreach (
-                $DB->request(
-                    $npv->getTable(),
-                    [$npv::$items_id_1 => $data["id"]]
-                ) as $vlan
+                NetworkPort_Vlan::membershipsForPort($data["id"]) as $vlan
             ) {
                 $input = [$npv::$items_id_1 => $portid,
                                $npv::$items_id_2 => $vlan['vlans_id']];
@@ -1247,7 +1287,7 @@ class NetworkPort extends CommonDBChild
 
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
     {
-        global $CFG_GLPI;
+        global $CFG_GLPI, $DB;
 
         // Can exists on template
         $nb = 0;
@@ -1270,10 +1310,7 @@ class NetworkPort extends CommonDBChild
             } else {
                 $aliases = '';
             }
-            $nbAggregates = countElementsInTable(
-                'glpi_networkportaggregates',
-                ['networkports_id_list'   => ['LIKE', '%"' . $item->getField('id') . '"%']]
-            );
+            $nbAggregates = count((new NetworkPortAggregateRepository(Orm::create($DB)))->aggregatesForPort((int)$item->getField('id')));
             if ($nbAggregates > 0) {
                 $aggregates = self::createTabEntry(
                     NetworkPortAggregate::getTypeName(Session::getPluralNumber()),

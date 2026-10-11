@@ -56,10 +56,14 @@ There are multiple directories for tests:
 - `tests/LDAP` for LDAP connection tests;
 - `tests/web` for API tests.
 
-You can choose to run tests on a whole directory, on any file, or on any \<class::method>. You have to specify a bootstrap file each time:
+Run both unit groups with their Composer commands. `test:units` runs application tests with `tests/bootstrap.php`; `test:units:isolated` runs Doctrine and domain units in `tests/units/itsmng` with only the Composer autoloader. The application command and CI action exclude the isolated group.
+
+For a specific application test file or \<class::method>, specify the application bootstrap:
 
 ```bash
-$ atoum -bf tests/bootstrap.php -mcn 1 -d tests/units/
+$ composer test:units
+[...]
+$ composer test:units:isolated
 [...]
 $ atoum -bf tests/bootstrap.php -f tests/units/Html.php
 [...]
@@ -94,14 +98,13 @@ Running the test suite on containerized env
 -------------------------------------------
 
 If you want to execute tests in an environment similar to what is done by CI, you can use the `tests/run_tests.sh`.
-This scripts requires both "docker" and "docker-compose" utilities to be installed.
+This script requires Docker and its Docker Compose v2 plugin.
 The harness relies on scripts and compose files located in `.github/actions/`, and builds local test images (app + dovecot) automatically.
-Default services are:
-- `db` (MariaDB),
-- `dovecot` (used by `imap` suite; fixtures are loaded from `tests/emails-tests/*.eml`),
-- `openldap` (used by `ldap` suite fixtures).
+The database service defaults to MariaDB. Selecting `imap` starts Dovecot and loads `tests/emails-tests/*.eml`; selecting `ldap` starts OpenLDAP and loads its fixtures. `--all` starts both services. Local app, browser-runner and mail images are built from their Dockerfiles; `app-web` uses the resulting app image.
 The `e2e` suite uses the same test install data as the `web` suite, but in local containerized mode it runs against a dedicated `app-web` PHP server container and a separate Playwright runner container on the same compose network. Test data setup for E2E scenarios is done through the public REST API, after an app-side prep step enables the API and provisions a dedicated test API client/token for the browser runner.
 LDAP fixtures are now initialized idempotently, so rerunning `tests/run_tests.sh ldap` does not require manual volume cleanup.
-The `update` suite now validates a full ITSM 2.x baseline matrix from `2.0.0` through `2.1.2` before final schema checks.
+The `update` suite runs `composer test:migration` against the current public installation and a separate, initially empty database. The proper Atoum tests cover frozen DBAL input adoption, refusal of unsupported older provenance, populated data and original-key preservation, interrupted installation, final schema convergence, and retry. The container harness orders `update` immediately after the public `install`, before ordinary fixture-loading suites. Direct invocation refuses a parent containing the ordinary dataset or tester plugin before creating its target; it never resets that parent. Relabeling a modern database with an old version is not upgrade coverage.
+
+That frozen fixture is not an installation of the official 2.1.3 application. Independent released-version coverage must install 2.1.3 with its own source and dependencies, then execute the public 2.1.3→2.2.0 transition and subsequent ORM history. It must preserve the original key and application data. The historical 0.72.3 dump and update files remain available separately; the current update suite does not run that dump through the modern adoption command or claim a 2.0.0–2.1.2 release matrix.
 
 Run `tests/run_tests.sh --help` for more information about its usage.

@@ -31,7 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Event;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\LocationRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -66,6 +69,11 @@ class Netpoint extends CommonDropdown
     public static function getTypeName($nb = 0)
     {
         return _n('Network outlet', 'Network outlets', $nb);
+    }
+
+    public function getDropdownNameFields(bool $tooltip = true): array
+    {
+        return array_merge(parent::getDropdownNameFields($tooltip), ['locations_id']);
     }
 
 
@@ -383,10 +391,7 @@ class Netpoint extends CommonDropdown
             echo "<th>" . __('Comments') . "</th>"; // Comment
             echo "</tr>\n";
 
-            $crit = ['locations_id' => $ID,
-                          'ORDER'        => 'name',
-                          'START'        => $start,
-                          'LIMIT'        => $_SESSION['glpilist_limit']];
+            $pageLimit = $_SESSION['glpilist_limit'];
 
             Session::initNavigateListItems(
                 'Netpoint',
@@ -398,7 +403,16 @@ class Netpoint extends CommonDropdown
                 )
             );
 
-            foreach ($DB->request('glpi_netpoints', $crit) as $data) {
+            $database = $DB;
+            $location = $ID === null || (is_string($ID) && strtolower($ID) === 'null')
+                ? null : (is_int($ID) ? $ID : (is_bool($ID) ? (int)$ID : (string)$ID));
+            $limit = is_numeric($pageLimit) && $pageLimit > 0 ? (int)$pageLimit : null;
+            $offset = $limit === null ? 0 : max(0, $start);
+            $rows = Orm::read(
+                $database,
+                static fn (EntityManager $manager): array => (new LocationRepository($manager))->networkOutlets($location, $limit, $offset)
+            );
+            foreach ($rows as $data) {
                 Session::addToNavigateListItems('Netpoint', $data["id"]);
                 echo "<tr class='tab_bg_1'>";
 

@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\Clonable;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NotificationQueueRepository;
+use itsmng\Domain\NotificationTemplateService;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -40,7 +45,7 @@ if (!defined('GLPI_ROOT')) {
 **/
 class NotificationTemplate extends CommonDBTM
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     // From CommonDBTM
     public $dohistory = true;
@@ -572,21 +577,9 @@ class NotificationTemplate extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_notificationtemplatetranslations',
-           'WHERE'  => [
-              'notificationtemplates_id' => $this->getField('id'),
-              'language'                 => [$language, '']
-           ],
-           'ORDER'  => 'language DESC',
-           'LIMIT'  => 1
-        ]);
-        if (count($iterator)) {
-            return $iterator->next();
-        }
-
-        //No template found at all!
-        return false;
+        $content = (new NotificationTemplateService($DB))
+            ->contentForLanguage((int)$this->getField('id'), $language);
+        return $content?->legacyRow() ?? false;
     }
 
 
@@ -633,6 +626,7 @@ class NotificationTemplate extends CommonDBTM
 
     public function cleanDBonPurge()
     {
+        global $DB;
 
         $this->deleteChildrenAndRelationsFromDb(
             [
@@ -647,6 +641,8 @@ class NotificationTemplate extends CommonDBTM
 
         $queuedChat = new QueuedChat();
         $queuedChat->deleteByCriteria(['notificationtemplates_id' => $this->fields['id']]);
+
+        (new NotificationQueueRepository(Orm::create($DB)))->detachTemplate((int)$this->getID());
     }
 
     public function prepareInputForClone($input)

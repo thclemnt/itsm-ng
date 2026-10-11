@@ -71,6 +71,11 @@ class Computer_SoftwareVersion implements DeprecatedInterface
         $this
            ->renameField($fields, "items_id", "computers_id")
            ->deleteField($fields, "itemtype")
+           ->deleteField($fields, "monitors_id")
+           ->deleteField($fields, "networkequipments_id")
+           ->deleteField($fields, "peripherals_id")
+           ->deleteField($fields, "phones_id")
+           ->deleteField($fields, "printers_id")
            ->renameField($fields, "is_template_item", "is_template_computer")
            ->renameField($fields, "is_deleted_item", "is_deleted_computer");
 

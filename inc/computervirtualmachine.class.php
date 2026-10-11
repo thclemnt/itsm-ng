@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\InventoryRepository;
+use itsmng\Database\VirtualMachineCountReadOperation;
+
 /**
  * Virtual machine management
  */
@@ -60,6 +64,7 @@ class ComputerVirtualMachine extends CommonDBChild
 
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
     {
+        global $DB;
 
         if (
             !$withtemplate
@@ -68,10 +73,8 @@ class ComputerVirtualMachine extends CommonDBChild
         ) {
             $nb = 0;
             if ($_SESSION['glpishow_count_on_tabs']) {
-                $nb = countElementsInTable(
-                    self::getTable(),
-                    ['computers_id' => $item->getID(), 'is_deleted' => 0 ]
-                );
+                $nb = VirtualMachineCountReadOperation::forDatabase($DB)
+                    ->forComputer((int)$item->getID());
             }
             return self::createTabEntry(self::getTypeName(), $nb);
         }
@@ -248,6 +251,7 @@ class ComputerVirtualMachine extends CommonDBChild
     **/
     public static function showForVirtualMachine(Computer $comp)
     {
+        global $DB;
 
         $ID = $comp->fields['id'];
 
@@ -258,14 +262,8 @@ class ComputerVirtualMachine extends CommonDBChild
         echo "<div class='center'>";
 
         if (isset($comp->fields['uuid']) && ($comp->fields['uuid'] != '')) {
-            $hosts = getAllDataFromTable(
-                self::getTable(),
-                [
-                  'RAW' => [
-                     'LOWER(uuid)' => self::getUUIDRestrictCriteria($comp->fields['uuid'])
-                  ]
-                ]
-            );
+            $hosts = (new InventoryRepository(Orm::create($DB)))
+                ->virtualMachineHosts(self::getUUIDRestrictCriteria($comp->fields['uuid']), getEntitiesRestrictCriteria('glpi_computers'));
 
             if (!empty($hosts)) {
                 echo "<table class='tab_cadre_fixehov' aria_label='List of virtualized environments'>";
@@ -278,21 +276,20 @@ class ComputerVirtualMachine extends CommonDBChild
 
                 $computer = new Computer();
                 foreach ($hosts as $host) {
+                    if (!$computer->can($host['computers_id'], READ)) {
+                        continue;
+                    }
                     echo "<tr class='tab_bg_2'>";
                     echo "<td>";
-                    if ($computer->can($host['computers_id'], READ)) {
-                        echo "<a href='" . Computer::getFormURLWithID($computer->fields['id']) . "'>";
-                        echo $computer->fields['name'] . "</a>";
-                        $tooltip = "<table aria-label='Virtual Machine Informations'><tr><td>" . __('Name') . "</td><td>" . $computer->fields['name'] .
-                                   '</td></tr>';
-                        $tooltip .= "<tr><td>" . __('Serial number') . "</td><td>" . $computer->fields['serial'] .
-                                   '</td></tr>';
-                        $tooltip .= "<tr><td>" . __('Comments') . "</td><td>" . $computer->fields['comment'] .
-                                   '</td></tr></table>';
-                        echo "&nbsp; " . Html::showToolTip($tooltip, ['display' => false]);
-                    } else {
-                        echo $computer->fields['name'];
-                    }
+                    echo "<a href='" . Computer::getFormURLWithID($computer->fields['id']) . "'>";
+                    echo $computer->fields['name'] . "</a>";
+                    $tooltip = "<table aria-label='Virtual Machine Informations'><tr><td>" . __('Name') . "</td><td>" . $computer->fields['name'] .
+                               '</td></tr>';
+                    $tooltip .= "<tr><td>" . __('Serial number') . "</td><td>" . $computer->fields['serial'] .
+                               '</td></tr>';
+                    $tooltip .= "<tr><td>" . __('Comments') . "</td><td>" . $computer->fields['comment'] .
+                               '</td></tr></table>';
+                    echo "&nbsp; " . Html::showToolTip($tooltip, ['display' => false]);
                     echo "</td>";
                     echo "<td>";
                     echo Dropdown::getDropdownName('glpi_entities', $computer->fields['entities_id']);
@@ -318,6 +315,7 @@ class ComputerVirtualMachine extends CommonDBChild
     **/
     public static function showForComputer(Computer $comp)
     {
+        global $DB;
 
         $ID = $comp->fields['id'];
 
@@ -335,16 +333,8 @@ class ComputerVirtualMachine extends CommonDBChild
 
         echo "<div class='center'>";
 
-        $virtualmachines = getAllDataFromTable(
-            self::getTable(),
-            [
-              'WHERE'  => [
-                 'computers_id' => $ID,
-                 'is_deleted'   => 0
-              ],
-              'ORDER'  => 'name'
-            ]
-        );
+        $virtualmachines = (new InventoryRepository(Orm::create($DB)))
+            ->virtualMachinesForComputer((int)$ID);
 
         echo "<table class='tab_cadre_fixehov' aria-label='Virtual Machine table'>";
 
@@ -424,7 +414,7 @@ class ComputerVirtualMachine extends CommonDBChild
 
                         $url .= "&nbsp; " . Html::showToolTip($tooltip, ['display' => false]);
                     } else {
-                        $url = $computer->fields['name'];
+                        $url = ''; // A UUID match does not grant access to the matched computer.
                     }
                     echo $url;
                 }
@@ -500,27 +490,13 @@ class ComputerVirtualMachine extends CommonDBChild
             return false;
         }
 
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => 'glpi_computers',
-           'WHERE'  => [
-              'RAW' => [
-                 'LOWER(uuid)'  => self::getUUIDRestrictCriteria($fields['uuid'])
-              ]
-           ]
-        ]);
-
-        //Virtual machine found, return ID
-        if (count($iterator) == 1) {
-            $result = $iterator->next();
-            return $result['id'];
-        } elseif (count($iterator) > 1) {
-            Toolbox::logWarning(
-                sprintf(
-                    'findVirtualMachine expects to get one result, %1$s found!',
-                    count($iterator)
-                )
-            );
+        $ids = (new InventoryRepository(Orm::create($DB)))
+            ->computerIdsByUuids(self::getUUIDRestrictCriteria($fields['uuid']));
+        if (count($ids) === 1) {
+            return $ids[0];
+        }
+        if (count($ids) > 1) {
+            Toolbox::logWarning('findVirtualMachine expects one result; at least two computers match the UUID.');
         }
 
         return false;

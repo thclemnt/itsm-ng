@@ -1,5 +1,10 @@
 <?php
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\DropdownChoiceContext;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DocumentRepository;
+
 function expandSelect(&$select, $fields = [])
 {
     global $CFG_GLPI;
@@ -20,30 +25,10 @@ function expandSelect(&$select, $fields = [])
         if (isset($select["condition"]["is_recursive"])) {
             unset($select["condition"]["is_recursive"]);
         }
-        $select["values"] =
-            ($select["display_emptychoice"] ?? true
-                ? [Dropdown::EMPTY_VALUE]
-                : []) +
-            getItemByEntity(
-                $select["itemtype"],
-                $restrict,
-                $select["condition"] ?? [],
-                $select["used"] ?? [],
-            );
-        if (
-            isset($select["value"]) &&
-            !in_array($select["value"], $select["values"])
-        ) {
-            $item = new ($select["itemtype"])();
-            $item->getFromDB($select["value"]);
-            if (isset($item->fields["name"])) {
-                $select["values"][$select["value"]] = $item->fields["name"];
-            }
-        }
         $ajaxData = [
             "itemtype" => $select["itemtype"],
             "display_emptychoice" => $select["display_emptychoice"] ?? 1,
-            "condition" => $select["condition"] ?? [],
+            "condition" => Dropdown::addNewCondition($select["condition"] ?? []),
             "permit_parent_select" => 0,
             "entity_restrict" => $restrict,
             "recursive" => $recursive,
@@ -54,6 +39,23 @@ function expandSelect(&$select, $fields = [])
         if (isset($select["right"])) {
             $ajaxData["right"] = $select["right"];
         }
+        // Initial labels and AJAX choices share the same authorization policy.
+        // The unpaged owning choice API includes valid current values already.
+        $select["values"] =
+            ($select["display_emptychoice"] ?? true
+                ? [Dropdown::EMPTY_VALUE]
+                : []) +
+            getItemByEntity(
+                $select["itemtype"],
+                $restrict,
+                $select["condition"] ?? [],
+                $select["used"] ?? [],
+                $ajaxData,
+            );
+        $ajaxData["_idor_token"] = DropdownChoiceContext::token(
+            $select["itemtype"],
+            $ajaxData,
+        );
         $select["ajax"] = [
             "url" => $CFG_GLPI["root_doc"] . "/ajax/getDropdownValue.php",
             "type" => "POST",
@@ -160,7 +162,7 @@ function expandForm($form, $fields = [], $template = null)
     return $form;
 }
 
-function getItemByEntity($itemtype, $entity, $conditions = [], $used = [])
+function getItemByEntity($itemtype, $entity, $conditions = [], $used = [], $options = [])
 {
     $cond = $conditions;
     if (isset($conditions["entities_id"])) {
@@ -178,8 +180,9 @@ function getItemByEntity($itemtype, $entity, $conditions = [], $used = [])
         [
             "itemtype" => $itemtype,
             "condition" => $key,
+            "entity_restrict" => $entity,
             "used" => $used,
-        ],
+        ] + $options,
         false,
     );
     $options = [];
@@ -258,18 +261,19 @@ function getLinkedDocumentsForItem($itemType, $items_id)
 {
     global $DB;
 
-    $iterator = $DB->request([
-        "SELECT" => ["id", "documents_id"],
-        "FROM" => Document_Item::getTable(),
-        "WHERE" => [
-            "itemType" => $itemType,
-            "items_id" => $items_id,
+    $bindings = Orm::readPrepared(
+        $DB,
+        static fn (): array => [
+            'id' => (int)$items_id,
+            'type' => (static fn (string $type): string => $type)($itemType),
         ],
-    ]);
+        static fn (EntityManager $manager, array $selection): array =>
+            (new DocumentRepository($manager))->bindingsForItem($selection['type'], $selection['id'])
+    );
 
     $options = [];
     $document = new Document();
-    while ($val = $iterator->next()) {
+    foreach ($bindings as $val) {
         $document->getFromDB($val["documents_id"]);
         $options[$val["id"]] =
             "<a href=" .
@@ -320,11 +324,11 @@ function getOptionsForUsers(
     return $options;
 }
 
-function renderTwigTemplate($path, $vars, $root = "/templates")
+function renderTwigTemplate($path, $vars, $root = "/templates", $cache = true)
 {
     global $CFG_GLPI;
     require_once GLPI_ROOT . "/src/twig/twig.class.php";
-    $twig = Twig::load(GLPI_ROOT . $root, false);
+    $twig = Twig::load(GLPI_ROOT . $root, $cache);
     if (!isset($vars["root_doc"])) {
         $vars["root_doc"] = $CFG_GLPI["root_doc"];
     }
@@ -352,7 +356,7 @@ function renderTwigForm(
 ) {
     global $CFG_GLPI;
 
-    $twig = Twig::load(GLPI_ROOT . "/templates", false);
+    $twig = Twig::load(GLPI_ROOT . "/templates");
     if (isset($fields["id"]) && $fields["id"] > 0 && !isset($fields["noId"])) {
         $form["content"][array_key_first($form["content"])][
             "inputs"
