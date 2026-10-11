@@ -25,6 +25,40 @@ final class TreeRepository
     {
     }
 
+    /** Complete mapped rows for a tree import's name or full-path identity. */
+    public function identityRows(string $table, string $column, string $name, array $scope): array
+    {
+        $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
+        if (!in_array($column, ['name', 'completename'], true)
+            || !$metadata->hasField($metadata->getFieldName($column))
+            || !LegacyValues::isTextType($metadata->getTypeOfField($metadata->getFieldName($column)))) {
+            throw new InvalidArgumentException('Tree identity requires its declared textual name or full path.');
+        }
+        $query = $this->em->createQueryBuilder()->select('r')->from($metadata->name, 'r');
+        $compiler = new RecordCriteria($query, $metadata);
+        $query->where($compiler->where($scope))
+            ->andWhere($compiler->column($column) . ' = :tree_identity')
+            ->setParameter('tree_identity', $name, $metadata->getTypeOfField($metadata->getFieldName($column)))
+            ->orderBy($compiler->column('id'))
+            ->setMaxResults(1);
+        return (new RecordRepository($this->em))->toRows($query->getQuery()->toIterable());
+    }
+
+    /** Decode only the legacy tree producer; updateDerived remains a typed-value API. */
+    public function updateLegacyDerived(string $table, array $ids, array $values): void
+    {
+        if (!$ids || !$values) {
+            return;
+        }
+        $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
+        foreach ($values as $field => $value) {
+            $type = $metadata->hasField($field) ? $metadata->getTypeOfField($field) : null;
+            $values[$field] = is_string($value) && LegacyValues::isTextType($type)
+                ? LegacyValues::decodeString($value) : LegacyValues::decode($value);
+        }
+        $this->updateDerived($table, $ids, $values);
+    }
+
     public function rows(string $table, array $fields, array $criteria, array|string $order = [], ?ReadQueryOwner $operation = null): array
     {
         $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);

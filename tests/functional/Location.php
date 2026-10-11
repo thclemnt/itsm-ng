@@ -34,11 +34,20 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\Common\EventManager;
+use Doctrine\ORM\Event\OnClearEventArgs;
+use Doctrine\ORM\Event\PostLoadEventArgs;
+use Entity as LegacyEntity;
 use Doctrine\ORM\EntityManager;
 use Location as LegacyLocation;
+use RuntimeException;
+use Transfer;
+use itsmng\Database\Entity\Location as LocationRecord;
 use Netpoint as LegacyNetpoint;
 use itsmng\Database\Entity\Netpoint as OutletRecord;
 use itsmng\Database\Orm;
+use itsmng\Database\MutationCleanupFailure;
+use itsmng\Database\UnsupportedCriteria;
 use mock\DBmysql as OutletPageAdapterProbe;
 use tests\fixtures\ScalarReadProbe;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
@@ -47,6 +56,266 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Location extends DbTestCase
 {
+    public function testLiteralTreeImportLookupAndDerivedCachesKeepRealValues(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $parentEntity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $entity = $this->createItem(LegacyEntity::class, ['name' => $this->getUniqueString(), 'entities_id' => $parentEntity]);
+            $other = $this->createItem(LegacyEntity::class, ['name' => $this->getUniqueString(), 'entities_id' => $parentEntity]);
+            $location = new LegacyLocation();
+            $connection = $DB->getDoctrineConnection();
+            $decoy = $this->createItem(LegacyLocation::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity->getID()]);
+            $connection->update('glpi_locations', ['name' => null, 'completename' => null], ['id' => $decoy->getID()]);
+            $root = (int)$location->import(['name' => 'NULL', 'entities_id' => $entity->getID()]);
+            $this->integer($root)->isGreaterThan(0);
+            $child = (int)$location->import(['completename' => 'NULL > null', 'entities_id' => $entity->getID()]);
+            $this->integer($child)->isGreaterThan(0);
+            $before = $connection->fetchOne('SELECT COUNT(*) FROM glpi_locations WHERE entities_id=?', [$entity->getID()]);
+            $this->integer((int)$location->import(['completename' => ' NULL > null ', 'entities_id' => $entity->getID()]))
+                ->isIdenticalTo($child);
+            $this->variable($connection->fetchOne('SELECT COUNT(*) FROM glpi_locations WHERE entities_id=?', [$entity->getID()]))
+                ->isIdenticalTo($before);
+            $this->array($connection->fetchAssociative('SELECT name, completename FROM glpi_locations WHERE id=?', [$root]))
+                ->isIdenticalTo(['name' => 'NULL', 'completename' => 'NULL']);
+            $this->array($connection->fetchAssociative('SELECT name, completename FROM glpi_locations WHERE id=?', [$child]))
+                ->isIdenticalTo(['name' => 'null', 'completename' => 'NULL > null']);
+            $params = ['completename' => ' NULL > null ', 'entities_id' => $entity->getID()];
+            $this->integer((int)$location->findID($params))->isIdenticalTo($child);
+            $this->string($params['completename'])->isIdenticalTo('NULL > null');
+            $quoted = "O'Reilly\\north";
+            $quoteId = (int)$location->import(['name' => addslashes($quoted), 'entities_id' => $entity->getID()]);
+            $this->integer($quoteId)->isGreaterThan(0);
+            $params = ['name' => addslashes($quoted), 'entities_id' => $entity->getID()];
+            $this->integer((int)$location->findID($params))->isIdenticalTo($quoteId);
+            $this->string($connection->fetchOne('SELECT name FROM glpi_locations WHERE id=?', [$quoteId]))->isIdenticalTo($quoted);
+            $params = ['name' => 'null', 'locations_id' => $quoteId, 'entities_id' => $entity->getID()];
+            $this->integer((int)$location->findID($params))->isIdenticalTo(-1);
+            $params['locations_id'] = $root;
+            $this->integer((int)$location->findID($params))->isIdenticalTo($child);
+            $target = (int)$location->import(['name' => 'NULL', 'entities_id' => $other->getID()]);
+            $this->integer($target)->isGreaterThan(0);
+            $params = ['completename' => 'NULL', 'entities_id' => $other->getID()];
+            $this->integer((int)$location->findID($params))->isIdenticalTo($target);
+            $transfer = new Transfer();
+            $transfer->to = (int)$other->getID();
+            $this->integer((int)$transfer->transferDropdownLocation($root))->isIdenticalTo($target);
+            // Generic query null continues to mean SQL NULL, unlike typed import identity.
+            $this->array(array_keys($location->find(['name' => null, 'entities_id' => $entity->getID()], ['id'])))
+                ->isIdenticalTo([(int)$decoy->getID()]);
+            $connection->update('glpi_locations', ['ancestors_cache' => '{"stale":1}'], ['id' => $child]);
+            $location->regenerateTreeUnderID(0, true, true);
+            $this->string($connection->fetchOne('SELECT completename FROM glpi_locations WHERE id=?', [$root]))->isIdenticalTo('NULL');
+            $this->variable($connection->fetchOne('SELECT ancestors_cache FROM glpi_locations WHERE id=?', [$child]))->isNull();
+            $this->boolean($location->getFromDB($child))->isTrue();
+            $connection->update('glpi_locations', ['sons_cache' => '{"stale":1}'], ['id' => $root]);
+            $this->boolean($location->update(['id' => $child, 'locations_id' => $quoteId]))->isTrue();
+            $this->variable($connection->fetchOne('SELECT sons_cache FROM glpi_locations WHERE id=?', [$root]))->isNull();
+            $this->string($connection->fetchOne('SELECT completename FROM glpi_locations WHERE id=?', [$child]))
+                ->isIdenticalTo($quoted . ' > null');
+            $owner = Orm::create($DB);
+            $dirty = $owner->find(LocationRecord::class, $root);
+            $dirty->name = 'Unflushed tree name';
+            $params = ['name' => 'NULL', 'entities_id' => $entity->getID()];
+            $this->integer((int)$location->findID($params))->isIdenticalTo($root);
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->string($dirty->name)->isIdenticalTo('Unflushed tree name');
+            Orm::read($DB, function (EntityManager $outer) use ($location, $root, $params): void {
+                $dirty = $outer->find(LocationRecord::class, $root);
+                $dirty->completename = 'Unflushed outer path';
+                $this->integer((int)$location->findID($params))->isIdenticalTo($root);
+                $this->boolean($outer->contains($dirty))->isTrue();
+                $this->string($dirty->completename)->isIdenticalTo('Unflushed outer path');
+            });
+            $owner->clear();
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
+    public function testTreeIdentityHookKeepsCustomTableRouteAndLegacyOpaqueFind(): void
+    {
+        global $DB;
+        $original = $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $record = $this->createItem(LegacyLocation::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+            $connection = $DB->getDoctrineConnection();
+            $observer = new class () {
+                public array $trace = [];
+                public int $clears = 0;
+                public int $beforeIdentity = -1;
+                public array $loadedManagers = [];
+                public array $clearedManagers = [];
+                public ?RuntimeException $loadFailure = null;
+                public ?RuntimeException $clearFailure = null;
+
+                public function postLoad(PostLoadEventArgs $event): void
+                {
+                    if ($event->getObject() instanceof LocationRecord) {
+                        $this->trace[] = 'loaded';
+                        $this->loadedManagers[] = $event->getObjectManager();
+                        if ($this->loadFailure !== null) {
+                            throw $this->loadFailure;
+                        }
+                    }
+                }
+
+                public function onClear(OnClearEventArgs $event): void
+                {
+                    ++$this->clears;
+                    $manager = $event->getObjectManager();
+                    $this->clearedManagers[] = $manager;
+                    if (in_array($manager, $this->loadedManagers, true)) {
+                        $this->trace[] = 'cleared';
+                        if ($this->clearFailure !== null) {
+                            throw $this->clearFailure;
+                        }
+                    }
+                }
+            };
+            $events = new EventManager();
+            $events->addEventListener(['postLoad', 'onClear'], $observer);
+            $selected = new class ($connection, $events, $observer) extends ScalarReadProbe {
+                public function __construct($connection, private EventManager $events, private object $observer)
+                {
+                    parent::__construct($connection);
+                }
+
+                public function getEventManager(): EventManager
+                {
+                    $this->observer->trace[] = 'constructed';
+                    return $this->events;
+                }
+            };
+            $other = new ScalarReadProbe($connection);
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new OutletPageAdapterProbe();
+            $alternate = new OutletPageAdapterProbe();
+            $this->calling($adapter)->getDoctrineConnection = $selected;
+            $this->calling($alternate)->getDoctrineConnection = $other;
+            $this->calling($adapter)->getProvider = $original->getProvider();
+            $this->calling($alternate)->getProvider = $original->getProvider();
+            $model = new class () extends LegacyLocation {
+                public static bool $identity = false;
+                public static object $observer;
+                public static object $alternate;
+                public static ?RuntimeException $failure = null;
+                public static ?string $changedTable = null;
+                public array $opaque = [];
+
+                public static function getType()
+                {
+                    return LegacyLocation::getType();
+                }
+
+                public static function getTable($classname = null)
+                {
+                    if (self::$identity) {
+                        self::$observer->trace[] = 'table';
+                        self::$observer->beforeIdentity = self::$observer->clears;
+                        if (self::$failure !== null) {
+                            throw self::$failure;
+                        }
+                        $GLOBALS['DB'] = self::$alternate;
+                        if (self::$changedTable !== null) {
+                            return self::$changedTable;
+                        }
+                    }
+                    return LegacyLocation::getTable($classname);
+                }
+
+                protected function findTreeIdentity(array $criteria, string $column, string $table): array
+                {
+                    self::$observer->trace[] = 'identity';
+                    self::$identity = true;
+                    try {
+                        return parent::findTreeIdentity($criteria, $column, $table);
+                    } finally {
+                        self::$identity = false;
+                    }
+                }
+
+                public function find($condition = [], $order = [], $limit = null)
+                {
+                    $this->opaque[] = [$condition, $order, $limit];
+                    return [42 => ['id' => 42]];
+                }
+            };
+            $model::$observer = $observer;
+            $model::$alternate = $alternate;
+            $DB = $adapter;
+            $params = ['name' => $record->getField('name'), 'entities_id' => $entity];
+            $this->integer((int)$model->findID($params))->isIdenticalTo((int)$record->getID());
+            $at = array_search('identity', $observer->trace, true);
+            $this->array(array_slice($observer->trace, $at))->isIdenticalTo(['identity', 'table', 'constructed', 'loaded', 'cleared']);
+            $this->integer($observer->clears)->isIdenticalTo($observer->beforeIdentity + 1);
+            $this->object(end($observer->clearedManagers))->isIdenticalTo(end($observer->loadedManagers));
+            $this->array($other->queries)->isEmpty();
+            $this->array($model->opaque)->isEmpty();
+            foreach (['glpi_entities', 'unmapped_tree_identity'] as $changedTable) {
+                $DB = $adapter;
+                $model::$changedTable = $changedTable;
+                $before = count($observer->trace);
+                $this->exception(function () use ($model, $params): void {
+                    $model->findID($params);
+                })->isInstanceOf(UnsupportedCriteria::class)
+                    ->hasMessage('Tree identity requires a stable mapped table; override findTreeIdentity for dynamic routes.');
+                $this->array(array_slice($observer->trace, $before))->isIdenticalTo(['identity', 'table']);
+                $this->array($model->opaque)->isEmpty();
+            }
+            $model::$changedTable = null;
+            $DB = $adapter;
+            $model::$failure = new RuntimeException('Tree table callback failure');
+            $this->exception(function () use ($model, $params): void {
+                $model->findID($params);
+            })->isIdenticalTo($model::$failure);
+            $model::$failure = null;
+            $this->integer((int)$model->findID($params))->isIdenticalTo((int)$record->getID());
+            foreach (['read', 'cleanup', 'both'] as $failureKind) {
+                $DB = $adapter;
+                $observer->loadFailure = $failureKind === 'cleanup' ? null : new RuntimeException('Tree read callback failure');
+                $observer->clearFailure = $failureKind === 'read' ? null : new RuntimeException('Tree cleanup callback failure');
+                $before = count($observer->trace);
+                $failure = null;
+                try {
+                    $model->findID($params);
+                } catch (RuntimeException $error) {
+                    $failure = $error;
+                }
+                if ($failureKind === 'both') {
+                    $this->object($failure)->isInstanceOf(MutationCleanupFailure::class);
+                    $this->object($failure->primary)->isIdenticalTo($observer->loadFailure);
+                    $this->object($failure->cleanup)->isIdenticalTo($observer->clearFailure);
+                } else {
+                    $this->object($failure)->isIdenticalTo($observer->loadFailure ?? $observer->clearFailure);
+                }
+                $this->array(array_slice($observer->trace, $before))
+                    ->isIdenticalTo(['identity', 'table', 'constructed', 'loaded', 'cleared']);
+                $this->integer($observer->clears)->isIdenticalTo($observer->beforeIdentity + 1);
+                $this->object(end($observer->clearedManagers))->isIdenticalTo(end($observer->loadedManagers));
+                $failedReader = end($observer->loadedManagers);
+                $observer->loadFailure = null;
+                $observer->clearFailure = null;
+                $DB = $adapter;
+                $this->integer((int)$model->findID($params))->isIdenticalTo((int)$record->getID());
+                $this->object(end($observer->loadedManagers))->isNotIdenticalTo($failedReader);
+                $this->integer($observer->clears)->isIdenticalTo($observer->beforeIdentity + 1);
+            }
+            $opaque = ['name' => ['LIKE', 'NULL'], 'entities_id' => $entity];
+            $this->integer((int)$model->findID($opaque))->isIdenticalTo(42);
+            $this->array($model->opaque)->hasSize(1);
+        } finally {
+            $DB = $original;
+            $_SESSION = $session;
+        }
+    }
+
     public function testNetworkOutletTabKeepsPageValuesAndLiveOwners(): void
     {
         global $DB;

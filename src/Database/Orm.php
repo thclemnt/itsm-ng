@@ -27,6 +27,7 @@ use itsmng\Database\Type\FixedStringType;
 use ReflectionClass;
 use ReflectionMethod;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Throwable;
 
 final class Orm
 {
@@ -104,10 +105,18 @@ final class Orm
         }
         // Supplied/custom connections retain independently mutable configuration.
         $manager = self::forConnection($connection);
+        $primary = null;
         try {
             return $operation($manager);
+        } catch (Throwable $error) {
+            $primary = $error;
+            throw $error;
         } finally {
-            $manager->clear();
+            try {
+                $manager->clear();
+            } catch (Throwable $cleanup) {
+                throw $primary === null ? $cleanup : new MutationCleanupFailure($primary, $cleanup);
+            }
         }
     }
 

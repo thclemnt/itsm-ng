@@ -31,10 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\DeletionUnit;
 use itsmng\Database\LegacyValues;
 use itsmng\Database\MappedStorage;
 use itsmng\Database\Orm;
+use itsmng\Database\UnsupportedCriteria;
 use itsmng\Database\Repository\TreeRepository;
 
 if (!defined('GLPI_ROOT')) {
@@ -276,7 +278,7 @@ abstract class CommonTreeDropdown extends CommonDropdown
 
                 if ($changeParent) {
                     // We have to reset the ancestors as only these changes (ie : not the children).
-                    $update['ancestors_cache'] = 'NULL';
+                    $update['ancestors_cache'] = null;
                     // And we must update the level of the current node ...
                     $update['level'] = $nextNodeLevel;
                 }
@@ -319,7 +321,7 @@ abstract class CommonTreeDropdown extends CommonDropdown
         }
         if (MappedStorage::supports($this->getTable())) {
             (new TreeRepository(Orm::create($DB)))
-                ->updateDerived($this->getTable(), $ids, array_map(LegacyValues::decode(...), $values));
+                ->updateLegacyDerived($this->getTable(), $ids, $values);
         } else {
             $DB->update($this->getTable(), $values, ['id' => $ids]);
         }
@@ -920,7 +922,7 @@ abstract class CommonTreeDropdown extends CommonDropdown
                 );
             }
             // Check twin :
-            $iterator = $this->find($criteria['WHERE'], ['id'], 1);
+            $iterator = $this->findTreeIdentity($criteria['WHERE'], 'completename', $criteria['FROM']);
             if (count($iterator)) {
                 $result = reset($iterator);
                 return $result['id'];
@@ -945,13 +947,49 @@ abstract class CommonTreeDropdown extends CommonDropdown
                 );
             }
             // Check twin :
-            $iterator = $this->find($criteria['WHERE'], ['id'], 1);
+            $iterator = is_string($input['name'])
+                && (!isset($input[$fk]) || is_scalar($input[$fk]))
+                ? $this->findTreeIdentity($criteria['WHERE'], 'name', $criteria['FROM'])
+                : $this->find($criteria['WHERE'], ['id'], 1);
             if (count($iterator)) {
                 $result = reset($iterator);
                 return $result['id'];
             }
         }
         return -1;
+    }
+
+
+    /**
+     * Typed import identities own literal text; generic find keeps its query language.
+     * Subclasses customize import lookup here rather than intercepting public find.
+     * The default hook requires a stable mapped table; dynamic routes override this hook.
+     */
+    protected function findTreeIdentity(array $criteria, string $column, string $table): array
+    {
+        global $DB;
+
+        if (!MappedStorage::supports($table)) {
+            return $this->find($criteria, ['id'], 1);
+        }
+        // Match find's captured adapter before its final virtual table callback.
+        $database = $DB;
+        $admittedTable = $table;
+        $table = $this->getTable();
+        if ($table !== $admittedTable || !MappedStorage::supports($table)) {
+            throw new UnsupportedCriteria('Tree identity requires a stable mapped table; override findTreeIdentity for dynamic routes.');
+        }
+        $rows = Orm::read(
+            $database,
+            static fn (EntityManager $manager): array => (new TreeRepository($manager))->identityRows(
+                $table,
+                $column,
+                LegacyValues::decodeString($criteria[$column]),
+                array_diff_key($criteria, [$column => true])
+            ),
+            clearCustomManager: true
+        );
+        return array_column($rows, null, 'id');
     }
 
 
