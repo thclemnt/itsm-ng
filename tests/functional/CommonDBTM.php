@@ -128,7 +128,6 @@ use Plugin;
 use ReflectionProperty;
 use Software;
 use Throwable;
-use TicketTask;
 use mock\DBmysql;
 use tests\fixtures\ScalarReadProbe;
 

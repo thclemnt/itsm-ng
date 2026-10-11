@@ -38,7 +38,6 @@ use itsmng\Database\KnowledgeBaseAccess;
 use itsmng\Database\Orm;
 use itsmng\Database\Query\KnowledgeBaseFullText;
 use itsmng\Database\Repository\KnowledgeBaseRepository;
-use itsmng\Database\Repository\RecordRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
