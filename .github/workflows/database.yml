@@ -159,8 +159,10 @@ jobs:
       - name: Test ordinary units
         run: composer test:units -- --fail-if-skipped-methods 2>&1 | tee "$RUNNER_TEMP/units.log"
       - name: Test application behavior
+        id: application_behavior
         run: composer test:function -- --fail-if-skipped-methods 2>&1 | tee "$RUNNER_TEMP/functional.log"
       - name: Verify the core schema after application tests
+        if: ${{ !cancelled() && (steps.application_behavior.outcome == 'success' || steps.application_behavior.outcome == 'failure') }}
         run: php bin/console db:check --config-dir="$GLPI_CONFIG_DIR" --no-interaction 2>&1 | tee "$RUNNER_TEMP/schema-check.log"
       - name: Retain test diagnostics
         if: always()
