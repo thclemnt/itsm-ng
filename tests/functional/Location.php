@@ -136,6 +136,95 @@ class Location extends DbTestCase
         }
     }
 
+    public function testTreeRegenerationKeepsFreshChildSnapshotsAndLiveOwners(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $owner = null;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $entityId = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $parent = $this->createItem(LegacyLocation::class, ['name' => $this->getUniqueString(), 'entities_id' => $entityId]);
+            $child = $this->createItem(
+                LegacyLocation::class,
+                [
+                    'name' => $this->getUniqueString(), 'entities_id' => $entityId, 'locations_id' => $parent->getID(),
+                ]
+            );
+            $grandchild = $this->createItem(
+                LegacyLocation::class,
+                [
+                    'name' => $this->getUniqueString(), 'entities_id' => $entityId, 'locations_id' => $child->getID(),
+                ]
+            );
+            $connection = $DB->getDoctrineConnection();
+            $owner = Orm::create($DB);
+            $dirty = $owner->find(LocationRecord::class, $child->getID());
+            $dirty->name = 'Unflushed independent tree child';
+            $currentName = $this->getUniqueString();
+            $laterName = $this->getUniqueString();
+            $connection->update('glpi_locations', ['name' => $currentName], ['id' => $child->getID()]);
+            $tree = new class () extends LegacyLocation {
+                public int $childId;
+                public $beforeChild = null;
+
+                public static function getType()
+                {
+                    return LegacyLocation::class;
+                }
+
+                public static function getTable($classname = null)
+                {
+                    return LegacyLocation::getTable();
+                }
+
+                public function regenerateTreeUnderID($ID, $updateName, $changeParent)
+                {
+                    if ((int)$ID === $this->childId && $this->beforeChild !== null) {
+                        $callback = $this->beforeChild;
+                        $this->beforeChild = null;
+                        $callback();
+                    }
+                    parent::regenerateTreeUnderID($ID, $updateName, $changeParent);
+                }
+            };
+            $tree->childId = (int)$child->getID();
+            $childPath = $parent->fields['completename'] . ' > ' . $currentName;
+            $tree->beforeChild = function () use ($connection, $child, $grandchild, $childPath, $laterName): void {
+                $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+                $this->string($connection->fetchOne('SELECT completename FROM glpi_locations WHERE id=?', [$child->getID()]))
+                    ->isIdenticalTo($childPath);
+                $connection->update('glpi_locations', ['name' => $laterName], ['id' => $grandchild->getID()]);
+            };
+            $tree->regenerateTreeUnderID($parent->getID(), true, true);
+            $this->string($connection->fetchOne('SELECT completename FROM glpi_locations WHERE id=?', [$grandchild->getID()]))
+                ->isIdenticalTo($childPath . ' > ' . $laterName);
+            $this->integer((int)$connection->fetchOne('SELECT level FROM glpi_locations WHERE id=?', [$grandchild->getID()]))
+                ->isIdenticalTo(3);
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->string($dirty->name)->isIdenticalTo('Unflushed independent tree child');
+            Orm::read($DB, function (EntityManager $outer) use ($tree, $parent, $child, $connection, $currentName): void {
+                $nested = $outer->find(LocationRecord::class, $child->getID());
+                $nested->name = 'Unflushed enclosing tree child';
+                $tree->regenerateTreeUnderID($parent->getID(), true, true);
+                $this->boolean($outer->contains($nested))->isTrue();
+                $this->string($nested->name)->isIdenticalTo('Unflushed enclosing tree child');
+                $this->string($connection->fetchOne('SELECT name FROM glpi_locations WHERE id=?', [$child->getID()]))
+                    ->isIdenticalTo($currentName);
+            });
+            $this->boolean($parent->delete(['id' => $parent->getID()], true))->isTrue();
+            $this->variable($connection->fetchOne('SELECT locations_id FROM glpi_locations WHERE id=?', [$child->getID()]))->isNull();
+            $this->string($connection->fetchOne('SELECT completename FROM glpi_locations WHERE id=?', [$grandchild->getID()]))
+                ->isIdenticalTo($currentName . ' > ' . $laterName);
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->string($dirty->name)->isIdenticalTo('Unflushed independent tree child');
+        } finally {
+            $owner?->clear();
+            $_SESSION = $session;
+        }
+    }
+
     public function testTreeIdentityHookKeepsCustomTableRouteAndLegacyOpaqueFind(): void
     {
         global $DB;

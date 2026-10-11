@@ -299,8 +299,12 @@ abstract class CommonTreeDropdown extends CommonDropdown
         global $DB;
 
         if (MappedStorage::supports($this->getTable())) {
-            return (new TreeRepository(Orm::create($DB)))
-                ->rows($this->getTable(), $fields, $criteria);
+            return Orm::readPrepared(
+                $DB,
+                fn (): string => $this->getTable(),
+                static fn (EntityManager $manager, string $table): array =>
+                    (new TreeRepository($manager))->rows($table, $fields, $criteria)
+            );
         }
         return $this->find($criteria);
     }
