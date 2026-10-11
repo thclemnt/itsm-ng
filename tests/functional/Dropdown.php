@@ -446,7 +446,10 @@ class Dropdown extends DbTestCase
     {
         global $DB;
         $connection = $DB->getDoctrineConnection();
-        $budget = $this->createItem(Budget::class, ['name' => $this->getUniqueString()]);
+        $budget = $this->createItem(Budget::class, [
+            'name' => $this->getUniqueString(),
+            'entities_id' => 0,
+        ]);
         $id = (int)$budget->getID();
         $events = new EventManager();
         $probe = new class ($connection, $events) extends ScalarReadProbe {

@@ -107,7 +107,20 @@ class Log extends DbTestCase
             $this->array(array_column($rows, 'new_value'))->isIdenticalTo(['After serial', 'After inventory']);
             $username = sprintf(__('%1$s (%2$s)'), getUserName(Session::getLoginUserID()), Session::getLoginUserID());
             $this->array(array_column($rows, 'user_name'))->isIdenticalTo([$username, $username]);
-            $this->array(array_column($rows, 'date_mod'))->isIdenticalTo([$_SESSION['glpi_currenttime'], $_SESSION['glpi_currenttime']]);
+            // Compare the application's mapped clock, not the provider's native timestamp rendering.
+            $logicalRows = Orm::read(
+                $DB,
+                static fn (EntityManager $manager): array => (new HistoryRepository($manager))->forItem(
+                    Computer::class,
+                    (int)$computer->getID(),
+                    sort: 'id',
+                    direction: 'ASC'
+                )
+            );
+            $this->array(array_map('intval', array_column($logicalRows, 'id')))
+                ->isIdenticalTo(array_map('intval', array_column($rows, 'id')));
+            $this->array(array_column($logicalRows, 'date_mod'))
+                ->isIdenticalTo([$_SESSION['glpi_currenttime'], $_SESSION['glpi_currenttime']]);
             $this->boolean((int)$rows[1]['id'] > (int)$rows[0]['id'])->isTrue();
             $this->integer($_SESSION['glpi_maxhistory'])->isIdenticalTo((int)$rows[1]['id']);
             $independent = Orm::create($DB);
@@ -324,7 +337,8 @@ class Log extends DbTestCase
             };
             $level = $connection->getTransactionNestingLevel();
             $id = LegacyLog::history($computer->getID(), $kind, [5, 'Custom before', 'Custom after']);
-            $this->array($observer->trace)->isIdenticalTo(['constructed', 'converted', 'persist']);
+            // getUserName owns the first custom reader; the append owns the second manager.
+            $this->array($observer->trace)->isIdenticalTo(['constructed', 'constructed', 'converted', 'persist']);
             $this->integer($observer->clears)->isIdenticalTo(0);
             $this->integer($_SESSION['glpi_maxhistory'])->isIdenticalTo($id);
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
