@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\LegacyValues;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\KnowledgeBaseRepository;
@@ -71,8 +72,15 @@ class KnowbaseItem_Revision extends CommonDBTM
                 ];
             }
 
-            $nb = (new KnowledgeBaseRepository(Orm::create($DB)))
-                ->revisionCount((int)$where['knowbaseitems_id'], $where['language']);
+            $nb = Orm::readPrepared(
+                $DB,
+                static fn (): array => (static fn (int $article, ?string $language): array => [$article, $language])(
+                    (int)$where['knowbaseitems_id'],
+                    $where['language']
+                ),
+                static fn (EntityManager $manager, array $identity): int =>
+                    (new KnowledgeBaseRepository($manager))->revisionCount(...$identity)
+            );
         }
         return self::createTabEntry(self::getTypeName($nb), $nb);
     }
@@ -344,7 +352,14 @@ class KnowbaseItem_Revision extends CommonDBTM
     {
         global $DB;
 
-        return (new KnowledgeBaseRepository(Orm::create($DB)))
-            ->nextRevision((int)$this->fields['knowbaseitems_id'], LegacyValues::decode($this->fields['language']));
+        return Orm::readPrepared(
+            $DB,
+            fn (): array => (static fn (int $article, ?string $language): array => [$article, $language])(
+                (int)$this->fields['knowbaseitems_id'],
+                LegacyValues::decode($this->fields['language'])
+            ),
+            static fn (EntityManager $manager, array $identity): int =>
+                (new KnowledgeBaseRepository($manager))->nextRevision(...$identity)
+        );
     }
 }
