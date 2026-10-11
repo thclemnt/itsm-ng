@@ -1052,10 +1052,11 @@ class OrmMigration extends GLPITestCase
                 }
             }))->isInstanceOf(RuntimeException::class)->hasMessage($message);
             $this->array($connection->fetchAllAssociative('SELECT id, itemtype, items_id, mainitemtype, mainitems_id, version, binary_0, binary_1, binary_2, binary_3 FROM glpi_ipaddresses ORDER BY id'))->isIdenticalTo($source);
+            $currentLedger = Ledger::states($connection);
             foreach ($ledger as $checkpoint => $priorReceipt) {
-                $this->array(Ledger::state($connection, $checkpoint))->isIdenticalTo($priorReceipt);
+                $this->array($currentLedger[$checkpoint] ?? null)->isIdenticalTo($priorReceipt);
             }
-            $state = Ledger::state($connection, IPAddressParentDefinition::PHASE);
+            $state = $currentLedger[IPAddressParentDefinition::PHASE] ?? null;
             $this->boolean($state['complete'] ?? false)->isFalse();
             $this->boolean($connection->createSchemaManager()->introspectTable('glpi_ipaddresses')->hasColumn('networknames_id'))
                 ->isIdenticalTo(!($connection->getDatabasePlatform() instanceof PostgreSQLPlatform));
@@ -1135,10 +1136,11 @@ class OrmMigration extends GLPITestCase
                 }
             }))->isInstanceOf(RuntimeException::class)->hasMessage($message);
             $this->array($connection->fetchAllAssociative('SELECT id, itemtype, items_id FROM glpi_networknames ORDER BY id'))->isIdenticalTo($source);
+            $currentLedger = Ledger::states($connection);
             foreach ($ledger as $checkpoint => $priorReceipt) {
-                $this->array(Ledger::state($connection, $checkpoint))->isIdenticalTo($priorReceipt);
+                $this->array($currentLedger[$checkpoint] ?? null)->isIdenticalTo($priorReceipt);
             }
-            $state = Ledger::state($connection, NetworkNameParentDefinition::PHASE);
+            $state = $currentLedger[NetworkNameParentDefinition::PHASE] ?? null;
             $this->boolean($state['complete'] ?? false)->isFalse();
             $this->boolean($connection->createSchemaManager()->introspectTable('glpi_networknames')->hasColumn('networkports_id'))
                 ->isIdenticalTo(!($connection->getDatabasePlatform() instanceof PostgreSQLPlatform));
@@ -1497,10 +1499,11 @@ class OrmMigration extends GLPITestCase
                 }
             }))->isInstanceOf(RuntimeException::class)->hasMessage($message);
             $this->array($connection->fetchAllAssociative('SELECT id, itemtype, items_id, devicegraphiccards_id, memory, serial, is_deleted FROM glpi_items_devicegraphiccards ORDER BY id'))->isIdenticalTo($source);
+            $currentLedger = Ledger::states($connection);
             foreach ($ledger as $checkpoint => $priorReceipt) {
-                $this->array(Ledger::state($connection, $checkpoint))->isIdenticalTo($priorReceipt);
+                $this->array($currentLedger[$checkpoint] ?? null)->isIdenticalTo($priorReceipt);
             }
-            $state = Ledger::state($connection, GraphicCardParentDefinition::PHASE);
+            $state = $currentLedger[GraphicCardParentDefinition::PHASE] ?? null;
             $this->boolean($state['complete'] ?? false)->isFalse();
             $this->boolean($connection->createSchemaManager()->introspectTable('glpi_items_devicegraphiccards')->hasColumn('computers_id'))
                 ->isIdenticalTo(!($connection->getDatabasePlatform() instanceof PostgreSQLPlatform));
@@ -1603,9 +1606,10 @@ class OrmMigration extends GLPITestCase
                     throw new RuntimeException($message);
                 }
             }))->isInstanceOf(RuntimeException::class)->hasMessage($message);
+            $currentLedger = Ledger::states($connection);
             foreach (ComponentParents::DEFINITIONS as $table => $class) {
                 if ($table !== 'glpi_items_devicepcis') {
-                    $current = Ledger::state($connection, $class::PHASE);
+                    $current = $currentLedger[$class::PHASE] ?? null;
                     if (isset($completed[$class::PHASE])) {
                         $this->array($current)->isIdenticalTo($completed[$class::PHASE]);
                     } else {
@@ -1619,10 +1623,10 @@ class OrmMigration extends GLPITestCase
                 $this->array($connection->fetchAllAssociative("SELECT id,itemtype,items_id,$column,serial,is_deleted FROM $table ORDER BY id"))->isIdenticalTo($sources[$table]);
             }
             foreach ($ledger as $checkpoint => $priorReceipt) {
-                $this->array(Ledger::state($connection, $checkpoint))->isIdenticalTo($priorReceipt);
+                $this->array($currentLedger[$checkpoint] ?? null)->isIdenticalTo($priorReceipt);
             }
             $lastClass = ComponentParents::DEFINITIONS['glpi_items_devicepcis'];
-            $state = Ledger::state($connection, $lastClass::PHASE);
+            $state = $currentLedger[$lastClass::PHASE] ?? null;
             $this->boolean($state['complete'] ?? false)->isFalse();
             $this->boolean($connection->createSchemaManager()->introspectTable('glpi_items_devicepcis')->hasColumn('computers_id'))
                 ->isIdenticalTo(!($connection->getDatabasePlatform() instanceof PostgreSQLPlatform));
@@ -1750,11 +1754,12 @@ class OrmMigration extends GLPITestCase
                         throw new RuntimeException($message);
                     }
                 }))->isInstanceOf(RuntimeException::class)->hasMessage($message);
+                $currentLedger = Ledger::states($connection);
                 foreach ($families as $earlier => [$earlierClass, $earlierDevice]) {
                     $earlierTable = $earlierClass::TABLE;
                     $this->array($connection->fetchAllAssociative("SELECT id,itemtype,items_id,$earlierDevice,serial,entities_id FROM $earlierTable ORDER BY id"))->isIdenticalTo($sources[$earlierTable]);
                     if ($earlier < $family) {
-                        $receipt = Ledger::state($connection, $earlierClass::PHASE);
+                        $receipt = $currentLedger[$earlierClass::PHASE] ?? null;
                         $this->boolean($receipt['complete'])->isTrue();
                         if (isset($completed[$earlierTable])) {
                             $this->array($receipt)->isIdenticalTo($completed[$earlierTable]);
@@ -1764,9 +1769,9 @@ class OrmMigration extends GLPITestCase
                     }
                 }
                 foreach ($prior as $version => $receipt) {
-                    $this->array(Ledger::state($connection, $version))->isIdenticalTo($receipt);
+                    $this->array($currentLedger[$version] ?? null)->isIdenticalTo($receipt);
                 }
-                $state = Ledger::state($connection, $class::PHASE);
+                $state = $currentLedger[$class::PHASE] ?? null;
                 if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
                     $this->variable($state)->isNull();
                     $this->boolean($connection->createSchemaManager()->introspectTable($table)->hasColumn('networkequipments_id'))->isFalse();
@@ -1879,10 +1884,11 @@ class OrmMigration extends GLPITestCase
                 )
             )->isInstanceOf(RuntimeException::class)->hasMessage($message);
             $this->array($read())->isIdenticalTo($source);
+            $currentLedger = Ledger::states($connection);
             foreach ($prior as $key => $state) {
-                $this->array(Ledger::state($connection, $key))->isIdenticalTo($state);
+                $this->array($currentLedger[$key] ?? null)->isIdenticalTo($state);
             }
-            $state = Ledger::state($connection, NoteParentDefinition::PHASE);
+            $state = $currentLedger[NoteParentDefinition::PHASE] ?? null;
             if ($connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
                 $this->boolean($state['complete'])->isFalse();
                 $hash ??= $state['source_hash'];
