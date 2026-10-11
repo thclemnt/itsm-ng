@@ -123,7 +123,7 @@ final class ComponentDefinitionReplacement
     {
         $this->assertActive();
         if (!ComponentDefinitionRepository::supportsFamily($model, $this->owner->getTable(), $column)) {
-            throw new DeletionCancelled('The component subject family has no closed owning declaration.');
+            throw new DeletionCancelled('The component subject family has no owning declaration.');
         }
         $manager = Orm::create($this->database);
         try {
@@ -147,6 +147,12 @@ final class ComponentDefinitionReplacement
             throw new DeletionCancelled('This definition does not own the declared cached scope.');
         }
         $kind = $stored['itemtype'];
+        $subjectPolicy = EntityRegistry::discriminatedReferences($model->getTable())[$model::$items_id_1] ?? null;
+        if (isset($subjectPolicy['fallback_column'])
+            && !(($kind === null || $kind === '') && (int)$stored['items_id'] === 0)
+            && !isset($subjectPolicy['selections'][$kind])) {
+            throw new DeletionCancelled('An opaque component parent requires its own replacement authority.');
+        }
         $subjectTable = null;
         $subjectRecord = null;
         $scopeOwner = $this->replacementRecord;

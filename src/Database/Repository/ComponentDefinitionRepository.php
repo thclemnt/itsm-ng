@@ -18,7 +18,7 @@ final class ComponentDefinitionRepository
     {
     }
 
-    /** Only closed, property-owned subject families enter the delegated command. */
+    /** Property-owned subject families enter the command; each stored parent is checked at bind. */
     public static function supportsFamily(Item_Devices $model, string $definitionTable, ?string $column = null): bool
     {
         $table = $model->getTable();
@@ -27,7 +27,6 @@ final class ComponentDefinitionRepository
         return $column === $model::getDeviceForeignKey()
             && ($subject['discriminator'] ?? null) === $model::$itemtype_1
             && !empty($subject['selections'])
-            && !isset($subject['fallback_column'])
             && (EntityRegistry::relations()[$table][$column] ?? null) === $definitionTable;
     }
 

@@ -69,6 +69,7 @@ use itsmng\Database\EntityRegistry;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ComponentRepository;
+use itsmng\Database\Repository\ComponentDefinitionRepository;
 use LogicException;
 use mock\DBmysql as MockDatabase;
 use ReflectionProperty;
@@ -175,11 +176,25 @@ class Item_DeviceGeneric extends DbTestCase
             $this->boolean($deleted->getFromDB($deleted->getID()))->isTrue();
             $this->boolean((bool)$deleted->fields['is_deleted'])->isTrue();
 
+            $this->boolean(ComponentDefinitionRepository::supportsFamily($link, $device->getTable(), $column))->isTrue();
             $this->boolean($device->delete(['id' => $deviceId, '_replace_by' => $replacementId], true))->isTrue();
             $this->boolean($link->getFromDB($assignedId))->isTrue();
             $this->integer((int)$link->fields[$column])->isIdenticalTo($replacementId);
             $this->boolean($link->getFromDB($foreign->getID()))->isTrue();
             $this->boolean($link->getFromDB($unrelated->getID()))->isTrue();
+            if (isset($reference['fallback_column'])) {
+                // Definition ownership does not delegate an opaque parent's authority.
+                $opaque = $this->createItem($linkType, [$column => $replacementId, 'itemtype' => 'computer',
+                    'items_id' => $assetId, 'entities_id' => 0]);
+                $third = $this->createItem($deviceType, ['designation' => $prefix . '-blocked-target', 'entities_id' => 0]);
+                $connection = $DB->getDoctrineConnection();
+                $table = $link->getTable();
+                $beforeOpaqueReplacement = $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id');
+                $this->boolean($replacement->delete(['id' => $replacementId, '_replace_by' => $third->getID()], true))->isFalse();
+                $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id'))->isIdenticalTo($beforeOpaqueReplacement);
+                $this->boolean($replacement->getFromDB($replacementId))->isTrue();
+                $this->boolean($opaque->getFromDB($opaque->getID()))->isTrue();
+            }
             $this->boolean($replacement->delete(['id' => $replacementId], true))->isTrue();
             $this->array($link->find([$column => $replacementId]))->isEmpty('Device purge removes assigned, deleted and stock bindings');
         } finally {
@@ -271,6 +286,10 @@ class Item_DeviceGeneric extends DbTestCase
                 $reference = EntityRegistry::discriminatedReferences($tables[$index])['items_id'] ?? null;
                 $class = EntityRegistry::tables()[$tables[$index]];
                 $subject = $reference === null ? 'r.items_id' : 'IDENTITY(r.' . $class::referenceAssociation('Computer') . ')';
+                if (isset($reference['fallback_column'])) {
+                    $fallback = $manager->getClassMetadata($class)->getFieldName($reference['fallback_column']);
+                    $subject = 'COALESCE(' . $subject . ', r.' . $fallback . ', 0)';
+                }
                 $this->string($query)->contains($subject . ' = :asset')->contains('r.itemtype = :kind')->contains('r.is_deleted = :deleted');
                 if ($reference !== null) {
                     $this->string($query)->notContains('r.items_id');
@@ -726,7 +745,20 @@ class Item_DeviceGeneric extends DbTestCase
             } finally {
                 $em->clear();
             }
-            $this->array($attached->getTableGroupRows($device, 'Computer'))->hasSize($expected);
+            $group = $attached->getTableGroupRows($device, 'Computer');
+            $expectedGroup = [(int)$zero->getID(), (int)$attached->getID()];
+            if ($expected === 2) {
+                $expectedGroup[] = (int)$alias->getID();
+            }
+            $this->array(array_column($group, 'id'))->isIdenticalTo($expectedGroup, 'The real root Computer row also admits the zero identity binding');
+            $nativeCriteria = $attached->getTableGroupCriteria($device, 'Computer');
+            $nativeCriteria['ORDERBY'][] = $attached->getTable() . '.id';
+            $nativeGroup = iterator_to_array($DB->request($nativeCriteria), false);
+            $orderedColumns = static function (array $row): array {
+                ksort($row);
+                return $row;
+            };
+            $this->array(array_map($orderedColumns, $group))->isIdenticalTo(array_map($orderedColumns, $nativeGroup));
             // Real configured plugin extension, using its public forced-table route.
             GraphicCardCustomParent::forceTable(Computer::getTable());
             $CFG_GLPI['glpitablesitemtype'][GraphicCardCustomParent::class] = Computer::getTable();
@@ -1007,11 +1039,16 @@ class Item_DeviceGeneric extends DbTestCase
         foreach ([false, true] as $keep) {
             $asset = $this->createItem(Computer::class, ['name' => $prefix . (int)$keep, 'entities_id' => 0]);
             $card = $this->createItem(NetworkCardLink::class, ['devicenetworkcards_id' => $device->getID(), 'itemtype' => 'Computer', 'items_id' => $asset->getID(), 'entities_id' => 0]);
-            $port = $this->createItem(LegacyNetworkPort::class, ['name' => $prefix, 'itemtype' => 'Computer', 'items_id' => $asset->getID(),
+            $port = new LegacyNetworkPort();
+            $portId = $port->add(['name' => $prefix, 'itemtype' => 'Computer', 'items_id' => $asset->getID(),
                 'entities_id' => 0, 'instantiation_type' => NetworkPortEthernet::class, 'logical_number' => 0,
-                'items_devicenetworkcards_id' => $card->getID(), 'mac' => '00:00:00:00:00:01']);
+                'items_devicenetworkcards_id' => $card->getID(), 'mac' => '00:00:00:00:00:01', '_create_children' => true]);
+            $this->checkInput($port, $portId, ['name' => $prefix, 'itemtype' => 'Computer', 'items_id' => $asset->getID(),
+                'entities_id' => 0, 'instantiation_type' => NetworkPortEthernet::class, 'logical_number' => 0]);
             $instantiation = $port->getInstantiation();
+            $this->boolean($instantiation->getFromDB($port->getID()))->isTrue('The public port add must create its actual Ethernet child');
             $this->integer((int)$instantiation->fields['items_devicenetworkcards_id'])->isIdenticalTo((int)$card->getID());
+            $this->string($instantiation->fields['mac'])->isIdenticalTo('00:00:00:00:00:01');
             $connection = $DB->getDoctrineConnection();
             $this->exception(static fn () => $connection->transactional(static fn () => $connection->delete($card->getTable(), ['id' => $card->getID()])))->isInstanceOf(DatabaseException::class);
             $this->boolean($asset->delete(['id' => $asset->getID(), 'keep_devices' => (int)$keep], true))->isTrue();
@@ -1030,6 +1067,11 @@ class Item_DeviceGeneric extends DbTestCase
 
 class GraphicCardPreparedOwner extends GraphicCardLink
 {
+    public static function getDeviceType()
+    {
+        return DeviceGraphicCard::class;
+    }
+
     public ?int $preparedComputer = null;
 
     public static function getTable($classname = null)
