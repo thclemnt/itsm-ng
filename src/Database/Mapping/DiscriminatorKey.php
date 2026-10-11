@@ -29,6 +29,9 @@ final readonly class DiscriminatorKey
 
     public function projectionExpression(AbstractPlatform $platform, ClassMetadata $metadata, string $property): string
     {
+        if ($this->openStringFallback) {
+            $this->openStringBindings($metadata, $property);
+        }
         $column = $metadata->getColumnName($property);
         $cases = [];
         foreach ($metadata->associationMappings as $name => $association) {
@@ -40,7 +43,9 @@ final readonly class DiscriminatorKey
                         $selection = 'COALESCE(' . $selection . ', ' . $binding->emptyValue . ')';
                     }
                     $kinds = array_map(static fn ($value) => is_int($value) ? (string)$value : $platform->quoteStringLiteral($value), $binding->values);
-                    $cases[] = 'WHEN ' . $this->discriminatorSql($platform, $metadata, $binding->discriminator) . ' IN (' . implode(', ', $kinds) . ') THEN '
+                    $cases[] = 'WHEN ' . ($this->openStringFallback
+                        ? $this->openSelectionSql($this->discriminatorSql($platform, $metadata, $binding->discriminator), $kinds)
+                        : $this->discriminatorSql($platform, $metadata, $binding->discriminator) . ' IN (' . implode(', ', $kinds) . ')') . ' THEN '
                         . $selection;
                 }
             }
@@ -146,7 +151,7 @@ final readonly class DiscriminatorKey
             || !in_array($metadata->getFieldMapping($this->fallbackProperty)->type, [Types::SMALLINT, Types::INTEGER, Types::BIGINT], true)) {
             throw new LogicException('Open subject requires an exact discriminator and nullable opaque integer fallback.');
         }
-        $bindings = $kinds = [];
+        $bindings = $kinds = $slots = [];
         $discriminator = null;
         foreach ($metadata->associationMappings as $name => $association) {
             foreach ((new ReflectionProperty($metadata->name, $name))->getAttributes(DiscriminatedBy::class) as $attribute) {
@@ -161,6 +166,11 @@ final readonly class DiscriminatorKey
                     || ($discriminator !== null && $discriminator !== $binding->discriminator)) {
                     throw new LogicException('Open subject requires nullable owning branches and one string discriminator.');
                 }
+                $slot = $association->joinColumns[0]->name;
+                if (!$binding->values || isset($slots[$slot]) || $slot === $metadata->getColumnName($this->fallbackProperty)) {
+                    throw new LogicException('Open subject requires distinct owning slots and nonempty selections.');
+                }
+                $slots[$slot] = true;
                 foreach ($binding->values as $kind) {
                     if (!is_string($kind) || $kind === '' || isset($kinds[$kind])) {
                         throw new LogicException('Open subject kinds must be disjoint nonempty strings.');
@@ -171,8 +181,8 @@ final readonly class DiscriminatorKey
                 $discriminator = $binding->discriminator;
             }
         }
-        if (count($bindings) !== 1 || count($kinds) !== 1) {
-            throw new LogicException('Open subject requires exactly one adopted owning branch and one string kind.');
+        if (!$bindings) {
+            throw new LogicException('Open subject requires declared adopted owning branches.');
         }
         return $bindings;
     }
@@ -190,7 +200,7 @@ final readonly class DiscriminatorKey
             $discriminator = $this->discriminatorSql($platform, $metadata, $binding->discriminator);
             $values = array_map($platform->quoteStringLiteral(...), $binding->values);
             array_push($kinds, ...$values);
-            $branch = [$discriminator . ' IN (' . implode(', ', $values) . ')',
+            $branch = [$this->openSelectionSql($discriminator, $values),
                 '(' . $columns[$name] . ' IS NULL OR ' . $columns[$name] . ' > 0)', $fallback . ' IS NULL'];
             foreach ($columns as $other => $column) {
                 if ($name !== $other) {
@@ -204,7 +214,7 @@ final readonly class DiscriminatorKey
             }
             $branches[] = '(' . implode(' AND ', $branch) . ')';
         }
-        $unknown = [$discriminator . ' NOT IN (' . implode(', ', $kinds) . ')'];
+        $unknown = [$this->openSelectionSql($discriminator, $kinds, negative: true)];
         if ($metadata->getFieldMapping($binding->discriminator)->nullable) {
             $unknown[0] = '(' . $platform->quoteIdentifier($metadata->getColumnName($binding->discriminator)) . ' IS NULL OR ' . $unknown[0] . ')';
         }
@@ -214,6 +224,13 @@ final readonly class DiscriminatorKey
         $unknown[] = $fallback . ' IS NOT NULL';
         $branches[] = '(' . implode(' AND ', $unknown) . ')';
         return implode(' OR ', $branches);
+    }
+
+    /** Singleton atoms preserve bound scalar native operators for every declared choice. */
+    private function openSelectionSql(string $discriminator, array $quotedKinds, bool $negative = false): string
+    {
+        $atoms = array_map(static fn (string $kind): string => $discriminator . ($negative ? ' NOT IN (' : ' IN (') . $kind . ')', $quotedKinds);
+        return count($atoms) === 1 ? $atoms[0] : '(' . implode($negative ? ' AND ' : ' OR ', $atoms) . ')';
     }
 
     /** Required or optional selected associations and an opaque integer fallback derive from their branches. */

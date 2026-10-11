@@ -35,6 +35,10 @@ namespace tests\units;
 
 use DbTestCase;
 use Computer;
+use NetworkEquipment;
+use Peripheral;
+use Phone;
+use Printer;
 use DeviceSimcard;
 use Item_DeviceSimcard as SimcardLink;
 
@@ -192,7 +196,14 @@ class Item_DeviceSimcard extends DbTestCase
         $this->boolean($obj->delete($in))->isTrue();
     }
 
-    public function testProtectedPinUpdateRetainsOwningParentRetargetCloneAndPurge(): void
+    public function simcardOwningParents(): array
+    {
+        return [[Computer::class, 'computers_id'], [NetworkEquipment::class, 'networkequipments_id'],
+            [Peripheral::class, 'peripherals_id'], [Phone::class, 'phones_id'], [Printer::class, 'printers_id']];
+    }
+
+    /** @dataProvider simcardOwningParents */
+    public function testProtectedPinUpdateRetainsOwningParentRetargetCloneAndPurge(string $kind, string $column): void
     {
         global $DB;
         $connection = $DB->getDoctrineConnection();
@@ -203,10 +214,10 @@ class Item_DeviceSimcard extends DbTestCase
             $this->login();
             $this->setEntity(0, true);
             $prefix = $this->getUniqueString();
-            $first = $this->createItem(Computer::class, ['name' => $prefix, 'entities_id' => 0]);
-            $second = $this->createItem(Computer::class, ['name' => $prefix . '-second', 'entities_id' => 0]);
+            $first = $this->createItem($kind, ['name' => $prefix, 'entities_id' => 0]);
+            $second = $this->createItem($kind, ['name' => $prefix . '-second', 'entities_id' => 0]);
             $device = $this->createItem(DeviceSimcard::class, ['designation' => $prefix, 'entities_id' => 0]);
-            $row = $this->createItem(SimcardLink::class, ['devicesimcards_id' => $device->getID(), 'itemtype' => 'Computer',
+            $row = $this->createItem(SimcardLink::class, ['devicesimcards_id' => $device->getID(), 'itemtype' => $kind,
                 'items_id' => $first->getID(), 'entities_id' => 0, 'pin' => '0123', 'pin2' => '1234', 'puk' => '2345', 'puk2' => '3456']);
             $original = array_intersect_key($row->fields, array_fill_keys(['pin', 'pin2', 'puk', 'puk2'], true));
             $this->array($original)->isIdenticalTo(['pin' => '0123', 'pin2' => '1234', 'puk' => '2345', 'puk2' => '3456']);
@@ -217,20 +228,20 @@ class Item_DeviceSimcard extends DbTestCase
                 'pin' => '0000', 'pin2' => '0000', 'puk' => '0000', 'puk2' => '0000']))->isTrue();
             $this->boolean($row->getFromDB($row->getID()))->isTrue();
             $this->array(array_intersect_key($row->fields, $original))->isIdenticalTo($original);
-            $this->integer((int)$row->fields['computers_id'])->isIdenticalTo((int)$second->getID());
+            $this->integer((int)$row->fields[$column])->isIdenticalTo((int)$second->getID());
             $this->variable($row->fields['opaque_parent_id'])->isNull();
             $connection->update('glpi_profilerights', ['rights' => READ | UPDATE], ['profiles_id' => 4, 'name' => 'devicesimcard_pinpuk']);
             $this->login();
             $this->setEntity(0, true);
             $cloned = (int)$second->clone(['name' => $prefix . '-clone']);
             $this->integer($cloned)->isGreaterThan(0);
-            $children = $row->find(['itemtype' => 'Computer', 'items_id' => $cloned]);
+            $children = $row->find(['itemtype' => $kind, 'items_id' => $cloned]);
             $this->array($children)->hasSize(1);
             $child = new SimcardLink();
             $this->boolean($child->getFromDB(array_key_first($children)))->isTrue();
             $this->array(array_intersect_key($child->fields, $original))->isIdenticalTo($original);
-            $this->integer((int)$child->fields['computers_id'])->isIdenticalTo($cloned);
-            $clone = new Computer();
+            $this->integer((int)$child->fields[$column])->isIdenticalTo($cloned);
+            $clone = new $kind();
             $this->boolean($clone->getFromDB($cloned))->isTrue();
             $this->boolean($clone->delete(['id' => $cloned], true))->isTrue();
             $this->boolean($child->getFromDB($child->getID()))->isFalse();

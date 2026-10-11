@@ -24,6 +24,10 @@ use itsmng\Database\Installer;
 use itsmng\Database\Migration\History;
 use itsmng\Database\Migration\GraphicCardParents;
 use itsmng\Database\Migration\ComponentParents;
+use itsmng\Database\Migration\ComponentParentExpansions;
+use itsmng\Database\Migration\ComponentParentExpansions\FirmwareDefinition as ExpandedFirmwareDefinition;
+use itsmng\Database\Migration\ComponentParentExpansions\NetworkCardDefinition as ExpandedNetworkCardDefinition;
+use itsmng\Database\Migration\ComponentParentExpansions\SimcardDefinition as ExpandedSimcardDefinition;
 use itsmng\Database\Migration\GraphicCardParents\Definition as GraphicCardParentDefinition;
 use itsmng\Database\Migration\IPAddressParents;
 use itsmng\Database\Migration\IPAddressParents\Definition as IPAddressParentDefinition;
@@ -141,7 +145,7 @@ class OrmMigration extends GLPITestCase
         $this->array(History::pendingVersions($connection))->isEmpty();
         $this->boolean(History::isInstalling($connection))->isFalse();
         $this->boolean(Ledger::state($connection, Baseline::PHASE)['installation_complete'])->isTrue();
-        $this->array(History::versions())->isIdenticalTo(['2.2.0', SensorSubjects::VERSION, PhysicalReferenceIndexes::VERSION, NetworkNameParents::VERSION, IPAddressParents::VERSION, GraphicCardParents::VERSION, ComponentParents::VERSION]);
+        $this->array(History::versions())->isIdenticalTo(['2.2.0', SensorSubjects::VERSION, PhysicalReferenceIndexes::VERSION, NetworkNameParents::VERSION, IPAddressParents::VERSION, GraphicCardParents::VERSION, ComponentParents::VERSION, ComponentParentExpansions::VERSION]);
         $this->string($connection->fetchOne('SELECT value FROM glpi_configs WHERE context = ? AND name = ?', ['core', 'itsmdbversion']))->isIdenticalTo(ITSM_SCHEMA_VERSION);
         // Readiness must bootstrap its own adapter in a fresh process, without
         // relying on this test runner's already-loaded database functions.
@@ -378,6 +382,7 @@ class OrmMigration extends GLPITestCase
             $this->boolean(Ledger::state($connection, IPAddressParents::VERSION)['complete'])->isTrue();
             $this->boolean(Ledger::state($connection, GraphicCardParents::VERSION)['complete'])->isTrue();
             $this->boolean(Ledger::state($connection, ComponentParents::VERSION)['complete'])->isTrue();
+            $this->boolean(Ledger::state($connection, ComponentParentExpansions::VERSION)['complete'])->isTrue();
             $this->array((new PhysicalReferenceIndexes())->plan($connection)['sql'])->isEmpty();
             $this->array(Ledger::state($connection, SensorSubjectDefinition::PHASE)['policy'])->hasKeys(['projection', 'check']);
             $this->assertCurrentPrefixNativeVerification($connection);
@@ -863,6 +868,7 @@ class OrmMigration extends GLPITestCase
         $this->assertIPAddressParentRetry($connection);
         $this->assertGraphicCardParentRetry($connection);
         $this->assertRemainingComponentParentRetry($connection);
+        $this->assertComponentParentExpansionRetry($connection);
         $this->fixtureCompleted = true;
     }
 
@@ -1553,6 +1559,159 @@ class OrmMigration extends GLPITestCase
         $release->apply($connection, static fn () => throw new LogicException('A completed component adoption replayed'));
         $this->array(Ledger::states($connection))->isIdenticalTo($states);
         $release->verify($connection);
+    }
+
+
+    /** Three real Computer-only predecessors; one new release and no extra full baseline. */
+    private function assertComponentParentExpansionRetry(Connection $connection): void
+    {
+        $families = [[ExpandedFirmwareDefinition::class, 'devicefirmwares_id'],
+            [ExpandedNetworkCardDefinition::class, 'devicenetworkcards_id'], [ExpandedSimcardDefinition::class, 'devicesimcards_id']];
+        $parents = ['NetworkEquipment' => ['networkequipments_id', 'glpi_networkequipments'],
+            'Peripheral' => ['peripherals_id', 'glpi_peripherals'], 'Phone' => ['phones_id', 'glpi_phones'], 'Printer' => ['printers_id', 'glpi_printers']];
+        $sources = $indexes = [];
+        foreach ($families as $family => [$class, $deviceColumn]) {
+            $table = $class::TABLE;
+            foreach ($parents as $kind => [$column, $target]) {
+                $index = array_search($kind, array_keys($parents), true);
+                $targetId = 5100 + $family * 1000 + $index;
+                $rowId = 5200 + $family * 1000 + $index * 10;
+                $connection->insert($target, ['id' => $targetId, 'name' => 'Actual component ' . $family . ' ' . $kind, 'entities_id' => 0]);
+                foreach ([$rowId => [$kind, $targetId], $rowId + 1 => [$kind, 0], $rowId + 2 => [strtolower($kind), $targetId], $rowId + 3 => [$kind, $targetId]] as $id => [$type, $identity]) {
+                    $connection->insert($table, ['id' => $id, $deviceColumn => 4000, 'itemtype' => $type,
+                        'opaque_parent_id' => $identity, 'entities_id' => 0, 'serial' => 'Actual source ' . $id]);
+                }
+            }
+            $sources[$table] = $connection->fetchAllAssociative("SELECT id,itemtype,items_id,$deviceColumn,serial,entities_id FROM $table ORDER BY id");
+            $indexes[$table] = $connection->createSchemaManager()->listTableIndexes($table);
+        }
+        $release = new ComponentParentExpansions();
+        $prior = Ledger::states($connection);
+        // The LAST family's invalid input must stop before the FIRST family's owned DDL.
+        $lastTable = ExpandedSimcardDefinition::TABLE;
+        $connection->update($lastTable, ['opaque_parent_id' => -1], ['id' => 7200]);
+        $this->exception(static fn () => $release->plan($connection))->isInstanceOf(RuntimeException::class);
+        $this->boolean($connection->createSchemaManager()->introspectTable(ExpandedFirmwareDefinition::TABLE)->hasColumn('networkequipments_id'))->isFalse();
+        $this->array(Ledger::states($connection))->isIdenticalTo($prior);
+        $orphan = (int)$connection->fetchOne('SELECT COALESCE(MAX(id),0)+1 FROM glpi_networkequipments');
+        $connection->update($lastTable, ['opaque_parent_id' => $orphan], ['id' => 7200]);
+        $this->exception(static fn () => $release->apply($connection))->isInstanceOf(RuntimeException::class);
+        $this->boolean($connection->createSchemaManager()->introspectTable(ExpandedFirmwareDefinition::TABLE)->hasColumn('networkequipments_id'))->isFalse();
+        $this->array(Ledger::states($connection))->isIdenticalTo($prior);
+        $connection->update($lastTable, ['opaque_parent_id' => 7100], ['id' => 7200]);
+        $conflict = 'glpi_items_devicenetworkcards_printer_owner';
+        $connection->executeStatement('CREATE INDEX ' . $conflict . ' ON ' . ExpandedNetworkCardDefinition::TABLE . ' (serial)');
+        $this->exception(static fn () => $release->apply($connection))->isInstanceOf(RuntimeException::class)
+            ->hasMessage('Conflicting Component expansion owning index: ' . $conflict);
+        $this->boolean($connection->createSchemaManager()->introspectTable(ExpandedFirmwareDefinition::TABLE)->hasColumn('networkequipments_id'))->isFalse();
+        $this->array(Ledger::states($connection))->isIdenticalTo($prior);
+        $connection->executeStatement($connection->getDatabasePlatform()->getDropIndexSQL($conflict, ExpandedNetworkCardDefinition::TABLE));
+        $completed = [];
+        foreach ($families as $family => [$class, $deviceColumn]) {
+            $table = $class::TABLE;
+            $rowId = 5200 + $family * 1000;
+            $targetId = 5100 + $family * 1000;
+            $retryHash = null;
+            foreach (['columns', 'copy', 'projection', 'clear', 'final'] as $phase) {
+                $message = 'Actual component expansion stop at ' . $table . '.' . $phase;
+                $this->exception(fn () => $release->apply($connection, function (string $stage) use ($phase, $message, $connection, $table, $rowId, $targetId, $completed): void {
+                    foreach (array_keys($completed) as $previousTable) {
+                        if (str_starts_with($stage, $previousTable . '.')) {
+                            throw new LogicException('A completed earlier family replayed its DDL');
+                        }
+                    }
+                    if ($stage === $table . '.projection') {
+                        // Nullable owning FK alone accepts this; the actual bridge must refuse it.
+                        $beforeInvalid = $connection->fetchAssociative("SELECT * FROM $table WHERE id=?", [$rowId]);
+                        $this->integer((int)$beforeInvalid['networkequipments_id'])->isIdenticalTo($targetId);
+                        $this->integer((int)$beforeInvalid['opaque_parent_id'])->isIdenticalTo($targetId);
+                        $this->exception(static fn () => $connection->transactional(static fn () =>
+                            $connection->update($table, ['networkequipments_id' => null], ['id' => $rowId])))->isInstanceOf(DbalException::class);
+                        $this->array($connection->fetchAssociative("SELECT * FROM $table WHERE id=?", [$rowId]))->isIdenticalTo($beforeInvalid);
+                    }
+                    if ($stage === $table . '.' . $phase) {
+                        throw new RuntimeException($message);
+                    }
+                }))->isInstanceOf(RuntimeException::class)->hasMessage($message);
+                foreach ($families as $earlier => [$earlierClass, $earlierDevice]) {
+                    $earlierTable = $earlierClass::TABLE;
+                    $this->array($connection->fetchAllAssociative("SELECT id,itemtype,items_id,$earlierDevice,serial,entities_id FROM $earlierTable ORDER BY id"))->isIdenticalTo($sources[$earlierTable]);
+                    if ($earlier < $family) {
+                        $receipt = Ledger::state($connection, $earlierClass::PHASE);
+                        $this->boolean($receipt['complete'])->isTrue();
+                        if (isset($completed[$earlierTable])) {
+                            $this->array($receipt)->isIdenticalTo($completed[$earlierTable]);
+                        } else {
+                            $completed[$earlierTable] = $receipt;
+                        }
+                    }
+                }
+                foreach ($prior as $version => $receipt) {
+                    $this->array(Ledger::state($connection, $version))->isIdenticalTo($receipt);
+                }
+                $state = Ledger::state($connection, $class::PHASE);
+                if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
+                    $this->variable($state)->isNull();
+                    $this->boolean($connection->createSchemaManager()->introspectTable($table)->hasColumn('networkequipments_id'))->isFalse();
+                } else {
+                    $this->boolean($state['complete'])->isFalse();
+                    $retryHash ??= $state['source_hash'];
+                    $this->string($state['source_hash'])->isIdenticalTo($retryHash);
+                    $this->boolean($connection->createSchemaManager()->introspectTable($table)->hasColumn('networkequipments_id'))->isTrue();
+                    if ($phase !== 'columns') {
+                        $this->integer((int)$connection->fetchOne("SELECT networkequipments_id FROM $table WHERE id=?", [$rowId]))->isIdenticalTo($targetId);
+                    }
+                    if ($phase === 'projection') {
+                        $this->integer((int)$connection->fetchOne("SELECT opaque_parent_id FROM $table WHERE id=?", [$rowId]))->isIdenticalTo($targetId);
+                    }
+                    if ($phase === 'clear' || $phase === 'final') {
+                        $this->variable($connection->fetchOne("SELECT opaque_parent_id FROM $table WHERE id=?", [$rowId]))->isNull();
+                    }
+                }
+            }
+        }
+        $release->apply($connection);
+        $release->verify($connection);
+        foreach ($families as $family => [$class, $deviceColumn]) {
+            $table = $class::TABLE;
+            $this->boolean(Ledger::state($connection, $class::PHASE)['complete'])->isTrue();
+            $this->array($connection->fetchAllAssociative("SELECT id,itemtype,items_id,$deviceColumn,serial,entities_id FROM $table ORDER BY id"))->isIdenticalTo($sources[$table]);
+            $after = $connection->createSchemaManager()->listTableIndexes($table);
+            foreach ($indexes[$table] as $name => $oldIndex) {
+                $this->array($after[$name]->getUnquotedColumns())->isIdenticalTo($oldIndex->getUnquotedColumns());
+                $this->boolean($after[$name]->isUnique())->isIdenticalTo($oldIndex->isUnique());
+                $this->array($after[$name]->getFlags())->isIdenticalTo($oldIndex->getFlags());
+                $this->array($after[$name]->getOptions())->isIdenticalTo($oldIndex->getOptions());
+            }
+            foreach ($parents as $kind => [$column, $target]) {
+                $index = array_search($kind, array_keys($parents), true);
+                $targetId = 5100 + $family * 1000 + $index;
+                $rowId = 5200 + $family * 1000 + $index * 10;
+                $this->integer((int)$connection->fetchOne("SELECT $column FROM $table WHERE id=?", [$rowId]))->isIdenticalTo($targetId);
+                $this->variable($connection->fetchOne("SELECT opaque_parent_id FROM $table WHERE id=?", [$rowId]))->isNull();
+                $this->variable($connection->fetchOne("SELECT $column FROM $table WHERE id=?", [$rowId + 1]))->isNull();
+                $this->variable($connection->fetchOne("SELECT opaque_parent_id FROM $table WHERE id=?", [$rowId + 1]))->isNull();
+                $this->variable($connection->fetchOne("SELECT $column FROM $table WHERE id=?", [$rowId + 2]))->isNull();
+                $this->integer((int)$connection->fetchOne("SELECT opaque_parent_id FROM $table WHERE id=?", [$rowId + 2]))->isIdenticalTo($targetId);
+                $orphan = (int)$connection->fetchOne('SELECT COALESCE(MAX(id),0)+1 FROM ' . $target);
+                foreach ([[$column => 0], [$column => -1], [$column => $orphan], ['itemtype' => null], ['opaque_parent_id' => $targetId], ['computers_id' => 4000]] as $invalid) {
+                    $this->exception(static fn () => $connection->transactional(static fn () => $connection->update($table, $invalid, ['id' => $rowId])))->isInstanceOf(DbalException::class);
+                }
+                $this->exception(static fn () => $connection->transactional(static fn () => $connection->delete($target, ['id' => $targetId])))->isInstanceOf(DbalException::class);
+                $this->assertGeneratedIdentityNullPreservesRows($connection, $table, $rowId);
+            }
+        }
+        foreach ($completed as $table => $receipt) {
+            $class = array_values(array_filter(ComponentParentExpansions::DEFINITIONS, static fn (string $candidate): bool => $candidate::TABLE === $table))[0];
+            $this->array(Ledger::state($connection, $class::PHASE))->isIdenticalTo($receipt);
+        }
+        foreach ($prior as $version => $receipt) {
+            $this->array(Ledger::state($connection, $version))->isIdenticalTo($receipt);
+        }
+        $states = Ledger::states($connection);
+        $release->apply($connection, static fn () => throw new LogicException('Completed component expansion replayed'));
+        $this->array(Ledger::states($connection))->isIdenticalTo($states);
+        $this->array((new SchemaCheck())->differences($connection))->isEmpty();
     }
 
 }

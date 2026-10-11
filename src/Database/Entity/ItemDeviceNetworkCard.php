@@ -34,6 +34,10 @@ use itsmng\Database\Mapping\SchemaOwner;
 #[SchemaIndex('is_recursive', ['is_recursive'], postgresqlName: 'glpi_items_devicenetworkcards_is_recursive')]
 #[SchemaIndex('serial', ['serial'], postgresqlName: 'glpi_items_devicenetworkcards_serial')]
 #[SchemaIndex('busID', ['busID'], postgresqlName: 'glpi_items_devicenetworkcards_busID')]
+#[SchemaIndex('glpi_items_devicenetworkcards_networkequipment_owner', ['networkequipments_id'])]
+#[SchemaIndex('glpi_items_devicenetworkcards_peripheral_owner', ['peripherals_id'])]
+#[SchemaIndex('glpi_items_devicenetworkcards_phone_owner', ['phones_id'])]
+#[SchemaIndex('glpi_items_devicenetworkcards_printer_owner', ['printers_id'])]
 #[SchemaIndex('item', ['itemtype', 'items_id'], postgresqlName: 'glpi_items_devicenetworkcards_item')]
 #[SchemaIndex('otherserial', ['otherserial'], postgresqlName: 'glpi_items_devicenetworkcards_otherserial')]
 #[SchemaIndex('locations_id', ['locations_id'], postgresqlName: 'glpi_items_devicenetworkcards_locations_id')]
@@ -60,6 +64,30 @@ class ItemDeviceNetworkCard implements LegacyInput
     #[DiscriminatedBy('itemtype', 'items_id', ['Computer'], emptyValue: 0)]
     #[ApplicationManaged]
     public ?Computer $computer = null;
+
+    #[ORM\ManyToOne(targetEntity: NetworkEquipment::class)]
+    #[ORM\JoinColumn(name: 'networkequipments_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_items_devicenetworkcards_networkequipments_id')]
+    #[DiscriminatedBy('itemtype', 'items_id', ['NetworkEquipment'], emptyValue: 0)]
+    #[ApplicationManaged]
+    public ?NetworkEquipment $networkEquipment = null;
+
+    #[ORM\ManyToOne(targetEntity: Peripheral::class)]
+    #[ORM\JoinColumn(name: 'peripherals_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_items_devicenetworkcards_peripherals_id')]
+    #[DiscriminatedBy('itemtype', 'items_id', ['Peripheral'], emptyValue: 0)]
+    #[ApplicationManaged]
+    public ?Peripheral $peripheral = null;
+
+    #[ORM\ManyToOne(targetEntity: Phone::class)]
+    #[ORM\JoinColumn(name: 'phones_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_items_devicenetworkcards_phones_id')]
+    #[DiscriminatedBy('itemtype', 'items_id', ['Phone'], emptyValue: 0)]
+    #[ApplicationManaged]
+    public ?Phone $phone = null;
+
+    #[ORM\ManyToOne(targetEntity: Printer::class)]
+    #[ORM\JoinColumn(name: 'printers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_items_devicenetworkcards_printers_id')]
+    #[DiscriminatedBy('itemtype', 'items_id', ['Printer'], emptyValue: 0)]
+    #[ApplicationManaged]
+    public ?Printer $printer = null;
 
     /** Stock and other extensible parent kinds retain their exact legacy identity. */
     #[ORM\Column(name: '`opaque_parent_id`', type: 'bigint', nullable: true, options: ['default' => 0])]

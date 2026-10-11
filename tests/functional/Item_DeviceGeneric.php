@@ -36,6 +36,14 @@ namespace tests\units;
 use Computer;
 use CommonDBTM;
 use DeviceGraphicCard;
+use DeviceFirmware;
+use DeviceSimcard;
+use Item_DeviceSimcard as SimcardLink;
+use NetworkPortWifi;
+use Item_DeviceFirmware as FirmwareLink;
+use Peripheral;
+use Phone;
+use Printer;
 use DeviceNetworkCard;
 use Item_DeviceNetworkCard as NetworkCardLink;
 use NetworkEquipment;
@@ -928,6 +936,137 @@ class Item_DeviceGeneric extends DbTestCase
         $this->integer((int)$connection->fetchOne('SELECT computers_id FROM glpi_items_devicegraphiccards WHERE id=?', [$row->getID()]))->isIdenticalTo((int)$second->getID());
         $this->variable($connection->fetchOne('SELECT opaque_parent_id FROM glpi_items_devicegraphiccards WHERE id=?', [$row->getID()]))->isNull();
     }
+    public function expandedComponentOwningParents(): array
+    {
+        $cases = [];
+        foreach ([[FirmwareLink::class, DeviceFirmware::class, FirmwarePreparedOwner::class, 'itemdevicefirmware_types'],
+            [NetworkCardLink::class, DeviceNetworkCard::class, NetworkCardPreparedOwner::class, 'itemdevicenetworkcard_types'],
+            [SimcardLink::class, DeviceSimcard::class, SimcardPreparedOwner::class, 'itemdevicesimcard_types']] as [$link, $device, $probe, $affinity]) {
+            foreach ([[NetworkEquipment::class, 'networkequipments_id'], [Peripheral::class, 'peripherals_id'],
+                [Phone::class, 'phones_id'], [Printer::class, 'printers_id']] as [$kind, $column]) {
+                $cases[] = [$link, $device, $probe, $affinity, $kind, $column];
+            }
+        }
+        return $cases;
+    }
+
+    /** @dataProvider expandedComponentOwningParents */
+    public function testExpandedComponentOwnersPreserveLifecycleAndFinalParentRights(string $linkType, string $deviceType, string $probeType, string $affinityKey, string $kind, string $column): void
+    {
+        global $DB, $PLUGIN_HOOKS, $CFG_GLPI, $GLPI_CACHE;
+        $session = $_SESSION;
+        $hooks = $PLUGIN_HOOKS;
+        $configuration = $CFG_GLPI;
+        $affinitiesPresent = $GLPI_CACHE->has('item_device_affinities');
+        $affinities = $affinitiesPresent ? $GLPI_CACHE->get('item_device_affinities') : null;
+        $plugins = new ReflectionProperty(LegacyPlugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $prefix = $this->getUniqueString();
+            $first = $this->createItem($kind, ['name' => $prefix, 'entities_id' => 0]);
+            $second = $this->createItem($kind, ['name' => $prefix . '-other', 'entities_id' => 0]);
+            $computer = $this->createItem(Computer::class, ['name' => $prefix . '-computer', 'entities_id' => 0]);
+            $device = $this->createItem($deviceType, ['designation' => $prefix, 'entities_id' => 0]);
+            $base = [$linkType::$items_id_2 => $device->getID(), 'entities_id' => 0];
+            $row = $this->createItem($linkType, $base + ['itemtype' => $kind, 'items_id' => $first->getID()]);
+            $duplicate = $this->createItem($linkType, $base + ['itemtype' => $kind, 'items_id' => $first->getID()]);
+            $alias = $this->createItem($linkType, $base + ['itemtype' => strtolower($kind), 'items_id' => $first->getID()]);
+            $this->integer((int)$row->fields[$column])->isIdenticalTo((int)$first->getID());
+            $this->variable($row->fields['opaque_parent_id'])->isNull();
+            $this->variable($alias->fields[$column])->isNull();
+            $this->integer((int)$alias->fields['opaque_parent_id'])->isIdenticalTo((int)$first->getID());
+            $connection = $DB->getDoctrineConnection();
+            $table = $linkType::getTable();
+            $nativeCount = static fn (string $sql, array $parameters): int => (int)$connection->fetchOne($sql, $parameters);
+            $this->array($row->find(['itemtype' => $kind, 'items_id' => $first->getID()]))->hasSize(
+                $nativeCount("SELECT COUNT(*) FROM $table WHERE itemtype=? AND items_id=?", [$kind, $first->getID()])
+            );
+            $sourceCount = count($row->find(['itemtype' => $kind, 'items_id' => $first->getID()]));
+            $clone = (int)$first->clone(['name' => $prefix . '-clone']);
+            $this->integer($clone)->isGreaterThan(0);
+            $this->array($row->find(['itemtype' => $kind, 'items_id' => $clone]))->hasSize($sourceCount);
+            $this->integer($nativeCount("SELECT COUNT(*) FROM $table WHERE $column=? AND opaque_parent_id IS NULL", [$clone]))->isIdenticalTo(2);
+            $this->integer($nativeCount("SELECT COUNT(*) FROM $table WHERE itemtype=? AND $column IS NULL AND opaque_parent_id=?", [strtolower($kind), $clone]))
+                ->isIdenticalTo($sourceCount - 2);
+            $orphan = (int)$connection->fetchOne('SELECT COALESCE(MAX(id),0)+1 FROM ' . $first->getTable());
+            foreach ([[$column => $orphan], [$column => 0], [$column => -1], ['opaque_parent_id' => $first->getID()],
+                ['itemtype' => null], ['computers_id' => $computer->getID()]] as $invalid) {
+                $this->exception(static fn () => $connection->transactional(static fn () => $connection->update($table, $invalid, ['id' => $row->getID()])))->isInstanceOf(DatabaseException::class);
+            }
+            $this->exception(static fn () => $connection->transactional(static fn () => $connection->delete($first->getTable(), ['id' => $first->getID()])))->isInstanceOf(DatabaseException::class);
+            $probe = new $probeType();
+            $this->boolean($probe->getFromDB($row->getID()))->isTrue();
+            $probe->preparedColumn = $column;
+            $probe->preparedOwner = (int)$second->getID();
+            $before = $connection->fetchAssociative("SELECT * FROM $table WHERE id=?", [$row->getID()]);
+            $denials = 0;
+            $plugins->setValue(null, [...$active, 'component_parent_fixture']);
+            $PLUGIN_HOOKS['item_can']['component_parent_fixture'][$kind] = static function (CommonDBTM $parent) use ($second, &$denials): void {
+                if ((int)$parent->getID() === (int)$second->getID()) {
+                    ++$denials;
+                    $parent->right = false;
+                }
+            };
+            $this->boolean($probe->update(['id' => $row->getID(), 'serial' => 'prepared']))->isFalse();
+            $this->integer($denials)->isGreaterThan(0);
+            $this->hasSessionMessages(ERROR, [__('Cannot update item: not enough right on the parent(s) item(s)')]);
+            $this->array($connection->fetchAssociative("SELECT * FROM $table WHERE id=?", [$row->getID()]))->isIdenticalTo($before);
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+            $this->boolean($probe->update(['id' => $row->getID(), 'serial' => 'prepared']))->isTrue();
+            $this->integer((int)$connection->fetchOne("SELECT $column FROM $table WHERE id=?", [$row->getID()]))->isIdenticalTo((int)$second->getID());
+            $this->boolean($row->getFromDB($row->getID()))->isTrue();
+            $this->boolean($row->update(['id' => $row->getID(), 'itemtype' => Computer::class, 'items_id' => $computer->getID()]))->isTrue();
+            $this->variable($connection->fetchOne("SELECT $column FROM $table WHERE id=?", [$row->getID()]))->isNull();
+            $this->integer((int)$connection->fetchOne("SELECT computers_id FROM $table WHERE id=?", [$row->getID()]))->isIdenticalTo((int)$computer->getID());
+            $this->boolean($row->update(['id' => $row->getID(), 'itemtype' => $kind, 'items_id' => $second->getID()]))->isTrue();
+            $replaceableDevice = $this->createItem($deviceType, ['designation' => $prefix . '-replaceable', 'entities_id' => 0]);
+            $replacementDevice = $this->createItem($deviceType, ['designation' => $prefix . '-replacement', 'entities_id' => 0]);
+            $definitionColumn = $linkType::getDeviceForeignKey();
+            $attachedReplacement = $this->createItem($linkType, [$definitionColumn => $replaceableDevice->getID(),
+                'itemtype' => $kind, 'items_id' => $second->getID(), 'entities_id' => 0]);
+            $stockReplacement = $this->createItem($linkType, [$definitionColumn => $replaceableDevice->getID(),
+                'itemtype' => $kind, 'items_id' => 0, 'entities_id' => 0]);
+            $this->boolean($replaceableDevice->delete(['id' => $replaceableDevice->getID(), '_replace_by' => $replacementDevice->getID()], true))->isTrue();
+            foreach ([$attachedReplacement, $stockReplacement] as $replaced) {
+                $this->boolean($replaced->getFromDB($replaced->getID()))->isTrue();
+                $this->integer((int)$replaced->fields[$definitionColumn])->isIdenticalTo((int)$replacementDevice->getID());
+                $this->string($replaced->fields['itemtype'])->isIdenticalTo($kind);
+                $this->variable($replaced->fields['opaque_parent_id'])->isNull();
+            }
+            $this->integer((int)$attachedReplacement->fields[$column])->isIdenticalTo((int)$second->getID());
+            $this->variable($stockReplacement->fields[$column])->isNull();
+            $this->integer((int)$stockReplacement->fields['items_id'])->isIdenticalTo(0);
+            $zero = $this->createItem($linkType, $base + ['itemtype' => $kind, 'items_id' => 0]);
+            $this->variable($zero->fields[$column])->isNull();
+            $this->variable($zero->fields['opaque_parent_id'])->isNull();
+            $CFG_GLPI[$affinityKey] = [];
+            $GLPI_CACHE->delete('item_device_affinities');
+            $this->array(Item_Devices::getItemAffinities($kind))->notContains($linkType);
+            $this->boolean($second->delete(['id' => $second->getID(), 'keep_devices' => 1], true))->isTrue();
+            $this->boolean($row->getFromDB($row->getID()))->isTrue();
+            $this->string($row->fields['itemtype'])->isIdenticalTo('');
+            $this->integer((int)$row->fields['items_id'])->isIdenticalTo(0);
+            $this->variable($row->fields[$column])->isNull();
+            $this->integer((int)$row->fields['opaque_parent_id'])->isIdenticalTo(0);
+            $this->boolean($first->delete(['id' => $first->getID()], true))->isTrue();
+            $this->boolean($duplicate->getFromDB($duplicate->getID()))->isFalse();
+            $this->boolean($device->getFromDB($device->getID()))->isTrue();
+        } finally {
+            $CFG_GLPI = $configuration;
+            if ($affinitiesPresent) {
+                $GLPI_CACHE->set('item_device_affinities', $affinities);
+            } else {
+                $GLPI_CACHE->delete('item_device_affinities');
+            }
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+            $_SESSION = $session;
+        }
+    }
+
     public function remainingOpenComponentFamilies(): array
     {
         return array_intersect_key($this->componentFamilies(), array_fill_keys([
@@ -1029,7 +1168,12 @@ class Item_DeviceGeneric extends DbTestCase
                 $network = $this->createItem(NetworkEquipment::class, ['name' => $prefix . '-network', 'entities_id' => 0]);
                 $networkLink = $this->createItem($linkType, $base + ['itemtype' => NetworkEquipment::class, 'items_id' => $network->getID()]);
                 $this->variable($connection->fetchOne("SELECT computers_id FROM $table WHERE id=?", [$networkLink->getID()]))->isNull();
-                $this->integer((int)$networkLink->fields['opaque_parent_id'])->isIdenticalTo((int)$network->getID());
+                if (in_array($linkType, [FirmwareLink::class, NetworkCardLink::class, SimcardLink::class], true)) {
+                    $this->integer((int)$networkLink->fields['networkequipments_id'])->isIdenticalTo((int)$network->getID());
+                    $this->variable($networkLink->fields['opaque_parent_id'])->isNull();
+                } else {
+                    $this->integer((int)$networkLink->fields['opaque_parent_id'])->isIdenticalTo((int)$network->getID());
+                }
             }
             $cloned = (int)$asset->clone(['name' => $prefix . '-clone']);
             $this->integer($cloned)->isGreaterThan(0);
@@ -1101,6 +1245,62 @@ class Item_DeviceGeneric extends DbTestCase
         }
     }
 
+    public function expandedNetworkCardParents(): array
+    {
+        return [[NetworkEquipment::class, 'networkequipments_id'], [Peripheral::class, 'peripherals_id'],
+            [Phone::class, 'phones_id'], [Printer::class, 'printers_id']];
+    }
+
+    /** @dataProvider expandedNetworkCardParents */
+    public function testExpandedNetworkCardIncomingEthernetAndWifiRetainPublicPurgeOrder(string $kind, string $column): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity(0, true);
+        $prefix = $this->getUniqueString();
+        $definition = $this->createItem(DeviceNetworkCard::class, ['designation' => $prefix, 'entities_id' => 0]);
+        foreach ([false, true] as $keep) {
+            $parent = $this->createItem($kind, ['name' => $prefix . (int)$keep, 'entities_id' => 0]);
+            $card = $this->createItem(NetworkCardLink::class, ['devicenetworkcards_id' => $definition->getID(),
+                'itemtype' => $kind, 'items_id' => $parent->getID(), 'entities_id' => 0]);
+            $ports = [];
+            $children = [];
+            foreach ([NetworkPortEthernet::class, NetworkPortWifi::class] as $number => $instantiation) {
+                $port = new LegacyNetworkPort();
+                $mac = '02:' . implode(':', str_split(substr(hash('sha256', $prefix . (int)$keep . $number), 0, 10), 2));
+                $id = $port->add(['name' => $prefix, 'itemtype' => $kind, 'items_id' => $parent->getID(),
+                    'entities_id' => 0, 'instantiation_type' => $instantiation, 'logical_number' => $number,
+                    'items_devicenetworkcards_id' => $card->getID(), 'mac' => $mac, '_create_children' => true]);
+                $this->checkInput($port, $id, ['name' => $prefix, 'itemtype' => $kind, 'items_id' => $parent->getID(),
+                    'entities_id' => 0, 'instantiation_type' => $instantiation, 'logical_number' => $number]);
+                $child = $port->getInstantiation();
+                $this->boolean($child->getFromDB($id))->isTrue();
+                $this->integer((int)$child->fields['items_devicenetworkcards_id'])->isIdenticalTo((int)$card->getID());
+                $this->string($port->fields['mac'])->isIdenticalTo($mac);
+                $this->string($DB->getDoctrineConnection()->fetchOne('SELECT mac FROM glpi_networkports WHERE id=?', [$id]))->isIdenticalTo($mac);
+                $ports[] = $port;
+                $children[] = $child;
+            }
+            $connection = $DB->getDoctrineConnection();
+            $this->exception(static fn () => $connection->transactional(static fn () =>
+                $connection->delete($card->getTable(), ['id' => $card->getID()])))->isInstanceOf(DatabaseException::class);
+            $this->boolean($parent->delete(['id' => $parent->getID(), 'keep_devices' => (int)$keep], true))->isTrue();
+            foreach ($ports as $port) {
+                $this->boolean($port->getFromDB($port->getID()))->isFalse();
+            }
+            foreach ($children as $child) {
+                $this->boolean($child->getFromDB($child->getID()))->isFalse();
+            }
+            $this->boolean($card->getFromDB($card->getID()))->isIdenticalTo($keep);
+            if ($keep) {
+                $this->string($card->fields['itemtype'])->isIdenticalTo('');
+                $this->integer((int)$card->fields['items_id'])->isIdenticalTo(0);
+                $this->variable($card->fields[$column])->isNull();
+                $this->integer((int)$card->fields['opaque_parent_id'])->isIdenticalTo(0);
+            }
+        }
+    }
+
 }
 
 class GraphicCardPreparedOwner extends GraphicCardLink
@@ -1123,6 +1323,81 @@ class GraphicCardPreparedOwner extends GraphicCardLink
         if ($this->preparedComputer !== null) {
             $this->fields['computers_id'] = $this->preparedComputer;
             $this->updates[] = 'computers_id';
+        }
+    }
+}
+
+class FirmwarePreparedOwner extends FirmwareLink
+{
+    public ?string $preparedColumn = null;
+    public ?int $preparedOwner = null;
+
+    public static function getDeviceType()
+    {
+        return DeviceFirmware::class;
+    }
+
+    public static function getTable($classname = null)
+    {
+        return FirmwareLink::getTable();
+    }
+
+    public function pre_updateInDB()
+    {
+        parent::pre_updateInDB();
+        if ($this->preparedColumn !== null && $this->preparedOwner !== null) {
+            $this->fields[$this->preparedColumn] = $this->preparedOwner;
+            $this->updates[] = $this->preparedColumn;
+        }
+    }
+}
+
+class NetworkCardPreparedOwner extends NetworkCardLink
+{
+    public ?string $preparedColumn = null;
+    public ?int $preparedOwner = null;
+
+    public static function getDeviceType()
+    {
+        return DeviceNetworkCard::class;
+    }
+
+    public static function getTable($classname = null)
+    {
+        return NetworkCardLink::getTable();
+    }
+
+    public function pre_updateInDB()
+    {
+        parent::pre_updateInDB();
+        if ($this->preparedColumn !== null && $this->preparedOwner !== null) {
+            $this->fields[$this->preparedColumn] = $this->preparedOwner;
+            $this->updates[] = $this->preparedColumn;
+        }
+    }
+}
+
+class SimcardPreparedOwner extends SimcardLink
+{
+    public ?string $preparedColumn = null;
+    public ?int $preparedOwner = null;
+
+    public static function getDeviceType()
+    {
+        return DeviceSimcard::class;
+    }
+
+    public static function getTable($classname = null)
+    {
+        return SimcardLink::getTable();
+    }
+
+    public function pre_updateInDB()
+    {
+        parent::pre_updateInDB();
+        if ($this->preparedColumn !== null && $this->preparedOwner !== null) {
+            $this->fields[$this->preparedColumn] = $this->preparedOwner;
+            $this->updates[] = $this->preparedColumn;
         }
     }
 }

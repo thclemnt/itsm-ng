@@ -127,6 +127,12 @@ use mock\Doctrine\DBAL\Connection;
 use tests\fixtures\DisconnectedSchemaConnection;
 use itsmng\Database\Entity\Entity as EntityRecord;
 use itsmng\Database\Entity\ItemDeviceGraphicCard;
+use itsmng\Database\Entity\ItemDeviceFirmware;
+use itsmng\Database\Entity\ItemDeviceNetworkCard;
+use itsmng\Database\Entity\ItemDeviceSimcard;
+use itsmng\Database\Migration\ComponentParentExpansions\FirmwareDefinition as ExpandedFirmwareDefinition;
+use itsmng\Database\Migration\ComponentParentExpansions\NetworkCardDefinition as ExpandedNetworkCardDefinition;
+use itsmng\Database\Migration\ComponentParentExpansions\SimcardDefinition as ExpandedSimcardDefinition;
 use itsmng\Database\Entity\SLM as SLMRecord;
 use itsmng\Database\Migration\V220\EntityParents;
 use itsmng\Database\Migration\V220\ServiceLevelCalendars;
@@ -2611,6 +2617,70 @@ class CurrentSchema extends test
                 ->getAttributes(DiscriminatorKey::class)[0]->newInstance();
             $this->exception(static fn () => $key->subjectCheckExpression($platform, $metadata, 'auths_id'))
                 ->isInstanceOf(LogicException::class);
+        }
+    }
+
+    public function expandedComponentFamilies(): array
+    {
+        return [[ItemDeviceFirmware::class, ExpandedFirmwareDefinition::class, true, 255],
+            [ItemDeviceNetworkCard::class, ExpandedNetworkCardDefinition::class, true, 255],
+            [ItemDeviceSimcard::class, ExpandedSimcardDefinition::class, false, 100]];
+    }
+
+    /** @dataProvider expandedComponentFamilies */
+    public function testExpandedComponentParentsDeriveEveryOwnerAndRetainStock(string $entity, string $definition, bool $nullable, int $length): void
+    {
+        $owners = ['Computer' => ['computer', 'computers_id'], 'NetworkEquipment' => ['networkEquipment', 'networkequipments_id'],
+            'Peripheral' => ['peripheral', 'peripherals_id'], 'Phone' => ['phone', 'phones_id'], 'Printer' => ['printer', 'printers_id']];
+        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+            $manager = $this->manager($platform);
+            $builder = new BaselineSchema($manager);
+            $schema = $builder->build($platform);
+            $metadata = $manager->getClassMetadata($entity);
+            $table = $metadata->getTableName();
+            $policy = $builder->subjectPolicies()[$table]['items_id'];
+            $this->array($policy)->isIdenticalTo($definition::policy($platform));
+            $this->array($policy['string_selections'])->isIdenticalTo(['itemtype' => array_keys($owners)]);
+            $this->integer(count($policy['integer_types']))->isIdenticalTo(6);
+            $this->boolean($metadata->fieldMappings['itemtype']->nullable)->isIdenticalTo($nullable);
+            $this->integer($schema->getTable($table)->getColumn('itemtype')->getLength())->isIdenticalTo($length);
+            $key = (new ReflectionProperty($entity, 'items_id'))->getAttributes(DiscriminatorKey::class)[0]->newInstance();
+            foreach ($owners as $kind => [$property, $column]) {
+                $association = $metadata->associationMappings[$property];
+                $this->boolean($association->isToOneOwningSide())->isTrue();
+                $this->array($association->joinColumns)->hasSize(1);
+                $this->boolean($association->joinColumns[0]->nullable)->isTrue();
+                $this->string((new ReflectionProperty($entity, $property))->getType()->getName())->isIdenticalTo($association->targetEntity);
+                $record = new $entity();
+                $input = $record->normalizeInput(['itemtype' => $kind, 'items_id' => 23]);
+                $this->integer($input[$column])->isIdenticalTo(23);
+                $this->variable($input['opaque_parent_id'])->isNull();
+                foreach ($owners as [, $otherColumn]) {
+                    if ($otherColumn !== $column) {
+                        $this->variable($input[$otherColumn])->isNull();
+                    }
+                }
+                $zero = $record->normalizeInput(['itemtype' => $kind, 'items_id' => 0]);
+                $this->variable($zero[$column])->isNull();
+                $this->variable($zero['opaque_parent_id'])->isNull();
+                $this->exception(static fn () => $record->normalizeInput(['itemtype' => $kind, 'items_id' => -1]))->isInstanceOf(InvalidArgumentException::class);
+                $this->exception(static fn () => $record->normalizeInput(['itemtype' => $kind, 'items_id' => 23, 'opaque_parent_id' => 23]))->isInstanceOf(InvalidArgumentException::class);
+            }
+            foreach ([...($nullable ? [null] : []), '', 'printer', 'PluginComponentParent'] as $kind) {
+                $input = (new $entity())->normalizeInput(['itemtype' => $kind, 'items_id' => -7]);
+                $this->variable($input['itemtype'])->isIdenticalTo($kind);
+                $this->integer($input['opaque_parent_id'])->isIdenticalTo(-7);
+                foreach ($owners as [, $column]) {
+                    $this->variable($input[$column])->isNull();
+                }
+            }
+            if (!$nullable) {
+                $this->exception(static fn () => (new $entity())->normalizeInput(['itemtype' => null, 'items_id' => 0]))->isInstanceOf(InvalidArgumentException::class);
+            }
+            // Exact-column collision is rejected before generated SQL can select the wrong target.
+            $metadata->associationMappings['printer']->joinColumns[0]->name = 'computers_id';
+            $this->exception(static fn () => $key->subjectCheckExpression($platform, $metadata, 'items_id'))->isInstanceOf(LogicException::class);
+            $this->exception(static fn () => $key->projectionExpression($platform, $metadata, 'items_id'))->isInstanceOf(LogicException::class);
         }
     }
 

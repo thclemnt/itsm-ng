@@ -26,6 +26,10 @@ use itsmng\Database\Mapping\SchemaOwner;
 #[RequiredSubjectConstraint('parent_kind')]
 #[ORM\HasLifecycleCallbacks]
 #[SchemaIndex('glpi_items_devicesimcards_computer_owner', ['computers_id'])]
+#[SchemaIndex('glpi_items_devicesimcards_networkequipment_owner', ['networkequipments_id'])]
+#[SchemaIndex('glpi_items_devicesimcards_peripheral_owner', ['peripherals_id'])]
+#[SchemaIndex('glpi_items_devicesimcards_phone_owner', ['phones_id'])]
+#[SchemaIndex('glpi_items_devicesimcards_printer_owner', ['printers_id'])]
 #[SchemaIndex('item', ['itemtype', 'items_id'], postgresqlName: 'glpi_items_devicesimcards_item')]
 #[SchemaIndex('devicesimcards_id', ['devicesimcards_id'], postgresqlName: 'glpi_items_devicesimcards_devicesimcards_id')]
 #[SchemaIndex('is_deleted', ['is_deleted'], postgresqlName: 'glpi_items_devicesimcards_is_deleted')]
@@ -61,6 +65,30 @@ class ItemDeviceSimcard implements LegacyInput
     #[DiscriminatedBy('itemtype', 'items_id', ['Computer'], emptyValue: 0)]
     #[ApplicationManaged]
     public ?Computer $computer = null;
+
+    #[ORM\ManyToOne(targetEntity: NetworkEquipment::class)]
+    #[ORM\JoinColumn(name: 'networkequipments_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_items_devicesimcards_networkequipments_id')]
+    #[DiscriminatedBy('itemtype', 'items_id', ['NetworkEquipment'], emptyValue: 0)]
+    #[ApplicationManaged]
+    public ?NetworkEquipment $networkEquipment = null;
+
+    #[ORM\ManyToOne(targetEntity: Peripheral::class)]
+    #[ORM\JoinColumn(name: 'peripherals_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_items_devicesimcards_peripherals_id')]
+    #[DiscriminatedBy('itemtype', 'items_id', ['Peripheral'], emptyValue: 0)]
+    #[ApplicationManaged]
+    public ?Peripheral $peripheral = null;
+
+    #[ORM\ManyToOne(targetEntity: Phone::class)]
+    #[ORM\JoinColumn(name: 'phones_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_items_devicesimcards_phones_id')]
+    #[DiscriminatedBy('itemtype', 'items_id', ['Phone'], emptyValue: 0)]
+    #[ApplicationManaged]
+    public ?Phone $phone = null;
+
+    #[ORM\ManyToOne(targetEntity: Printer::class)]
+    #[ORM\JoinColumn(name: 'printers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_items_devicesimcards_printers_id')]
+    #[DiscriminatedBy('itemtype', 'items_id', ['Printer'], emptyValue: 0)]
+    #[ApplicationManaged]
+    public ?Printer $printer = null;
 
     /** Stock and other extensible parent kinds retain their exact legacy identity. */
     #[ORM\Column(name: '`opaque_parent_id`', type: 'bigint', nullable: true, options: ['default' => 0])]

@@ -101,13 +101,25 @@ final class NativeSubjectSchema
     }
 
 
-    /** The new singleton open branch admits bound builtin nodes, never user SQL identities. */
+    /** Declared finite open branches admit bound builtin nodes, never user SQL identities. */
     private static function openStringNativeShape(array $policy, array $native, array $columns, bool $projection): bool
     {
         $choices = $policy['string_selections'] ?? [];
         $integerTypes = $policy['integer_types'] ?? [];
-        if (count($choices) !== 1 || count(reset($choices)) !== 1 || count($integerTypes) !== 2) {
+        if (count($choices) !== 1 || !is_array(reset($choices)) || !reset($choices) || count($integerTypes) < 2) {
             return false;
+        }
+        $seenChoices = [];
+        foreach (reset($choices) as $choice) {
+            if (!is_string($choice) || $choice === '' || isset($seenChoices[$choice])) {
+                return false;
+            }
+            $seenChoices[$choice] = true;
+        }
+        foreach ($integerTypes as $name => $type) {
+            if (!is_string($name) || !in_array($type, ['smallint', 'integer', 'bigint'], true)) {
+                return false;
+            }
         }
         $discriminator = array_key_first($choices);
         $wanted = [$discriminator, ...array_keys($integerTypes)];
@@ -159,7 +171,7 @@ final class NativeSubjectSchema
         if (!$tags[1] || array_diff($tags[1], $allowed)) {
             return false;
         }
-        // Single declared string IN/NOT IN binds to scalar comparisons. The
+        // Declared singleton string atoms bind to scalar comparisons. The
         // generated zero may use only the proven implicit int4-to-int8 cast.
         // Array, other function/coercion, collation and subquery nodes are rejected.
         preg_match_all('/:opno ([0-9]+)(?=\s|})/', $nodes, $operations);

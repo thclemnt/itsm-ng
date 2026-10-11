@@ -1605,7 +1605,16 @@ class Item_Devices extends CommonDBRelation
     {
         global $DB;
 
-        foreach (self::getItemAffinities($itemtype) as $link_type) {
+        $link_types = self::getItemAffinities($itemtype);
+        // UI affinity can change while a declared parent still owns stored rows.
+        // Preserve configured/plugin cleanup and include authoritative FK owners.
+        foreach (EntityRegistry::legacyTables() as $link_type => $table) {
+            if (is_subclass_of($link_type, self::class)
+                && isset(EntityRegistry::discriminatedReferences($table)['items_id']['selections'][$itemtype])) {
+                $link_types[] = $link_type;
+            }
+        }
+        foreach (array_unique($link_types) as $link_type) {
             $link = getItemForItemtype($link_type);
             if ($link) {
                 if ($unaffect) {

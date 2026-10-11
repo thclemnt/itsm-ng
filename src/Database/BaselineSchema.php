@@ -148,7 +148,7 @@ final class BaselineSchema
                                         }
                                     }
                                     if ($key->openStringFallback) {
-                                        $stringSelections[$discriminatorField->columnName] = $binding->values;
+                                        $stringSelections[$discriminatorField->columnName] = [...($stringSelections[$discriminatorField->columnName] ?? []), ...$binding->values];
                                     }
                                     if (in_array($discriminatorField->type, [Types::SMALLINT, Types::INTEGER, Types::BIGINT], true)) {
                                         $integerDiscriminators[] = $entity->getColumnName($binding->discriminator);
