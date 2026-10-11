@@ -25,17 +25,9 @@ final class TimelineRepository
     }
 
     /** Requester edit/delete gates count private activity too; public totals exclude every private author. */
-    public function subjectActivityCount(string $kind, int|string|null $item, bool $publicOnly): int|string|null
+    public function subjectActivityCount(string $kind, int|string|null $item, bool $publicOnly): int|string
     {
         $metadata = $this->em->getClassMetadata(ITILFollowup::class);
-        if (
-            $metadata->getTableName() !== 'glpi_itilfollowups'
-            || $metadata->getColumnName('itemtype') !== 'itemtype'
-            || $metadata->getColumnName('items_id') !== 'items_id'
-            || ($publicOnly && $metadata->getColumnName('is_private') !== 'is_private')
-        ) {
-            return null;
-        }
         $connection = $this->em->getConnection();
         $platform = $connection->getDatabasePlatform();
         $quote = $this->em->getConfiguration()->getQuoteStrategy();

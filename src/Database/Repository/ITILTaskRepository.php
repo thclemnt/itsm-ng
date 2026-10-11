@@ -92,28 +92,17 @@ final class ITILTaskRepository
         return null;
     }
 
-    /** Fixed parent counts; an overridden legacy foreign key keeps its native adapter semantics. */
-    public function parentActivityCount(string $table, string $parentField, int|string|null $parent, bool $publicOnly): ?int
+    /** Scalar activity counts through the declared owning task parent. */
+    public function parentActivityCount(string $table, string $parentField, int|string|null $parent, bool $publicOnly): int
     {
-        $class = EntityRegistry::tables()[$table] ?? null;
-        if ($class === null) {
-            return null;
-        }
+        $class = EntityRegistry::tables()[$table] ?? throw new InvalidArgumentException('Unsupported ITIL task table');
         $metadata = $this->em->getClassMetadata($class);
-        if ($metadata->getTableName() !== $table) {
-            return null;
-        }
-        $definition = $this->definitionForMetadata($metadata);
-        if ($definition === null) {
-            return null;
-        }
+        $definition = $this->definitionForMetadata($metadata)
+            ?? throw new InvalidArgumentException('Task activity requires an owning ITIL parent');
         [, , $relation] = $definition;
         $mapping = $metadata->associationMappings[$relation];
-        if (
-            $mapping->joinColumns[0]->name !== $parentField
-            || ($publicOnly && $metadata->getColumnName('is_private') !== 'is_private')
-        ) {
-            return null;
+        if ($mapping->joinColumns[0]->name !== $parentField) {
+            throw new InvalidArgumentException('Task activity parent field does not match its owning relation');
         }
         $connection = $this->em->getConnection();
         $platform = $connection->getDatabasePlatform();

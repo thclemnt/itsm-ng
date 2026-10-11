@@ -32,7 +32,6 @@
  */
 
 use Doctrine\ORM\EntityManager;
-use itsmng\Database\EntityRegistry;
 use itsmng\Database\ITILActorReadOperation;
 use itsmng\Database\ITILDocumentAccess;
 use itsmng\Database\Orm;
@@ -8674,40 +8673,14 @@ abstract class CommonITILObject extends CommonDBTM
     {
         global $DB;
 
-        $RESTRICT = [];
-        if ($with_private !== true) {
-            $RESTRICT['is_private'] = 0;
-        }
-
         $database = $DB;
         $kind = $this->getType();
-        $item = $this->fields['id'];
-        $subjects = EntityRegistry::discriminatedReferences('glpi_itilfollowups')['items_id']['selections'] ?? [];
-        if (
-            is_string($kind) && isset($subjects[$kind])
-            && ($item === null || is_int($item)
-                || (is_string($item) && (strtolower($item) === 'null' || preg_match('/^-?[0-9]+$/D', $item))))
-        ) {
-            $count = Orm::read(
-                $database,
-                static fn (EntityManager $manager): int|string|null => (new TimelineRepository($manager))
-                    ->subjectActivityCount($kind, $item, $with_private !== true)
-            );
-            if ($count !== null) {
-                return $count;
-            }
-        }
-        // Dynamic parents and public operator criteria retain their adapter query.
-        $result = $database->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => 'glpi_itilfollowups',
-           'WHERE'  => [
-              'itemtype'  => $kind,
-              'items_id'  => $item
-           ] + $RESTRICT
-        ])->next();
-
-        return $result['cpt'];
+        $item = $this->fields['id'] ?? null;
+        return Orm::read(
+            $database,
+            static fn (EntityManager $manager): int|string => (new TimelineRepository($manager))
+                ->subjectActivityCount($kind, $item, $with_private !== true)
+        );
     }
 
     /**
@@ -8731,30 +8704,12 @@ abstract class CommonITILObject extends CommonDBTM
 
         $database = $DB;
         $parentField = $this->getForeignKeyField();
-        $item = $this->fields['id'];
-        if (
-            isset(EntityRegistry::tables()[$table])
-            && ($item === null || is_int($item)
-                || (is_string($item) && (strtolower($item) === 'null' || preg_match('/^-?[0-9]+$/D', $item))))
-        ) {
-            $count = Orm::read(
-                $database,
-                static fn (EntityManager $manager): ?int => (new ITILTaskRepository($manager))
-                    ->parentActivityCount($table, $parentField, $item, $RESTRICT !== [])
-            );
-            if ($count !== null) {
-                return $count;
-            }
-        }
-        // Overridden foreign keys and public operator criteria retain their adapter query.
-        $row = $database->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => $table,
-           'WHERE'  => [
-              $parentField => $item
-           ] + $RESTRICT
-        ])->next();
-        return (int)$row['cpt'];
+        $item = $this->fields['id'] ?? null;
+        return Orm::read(
+            $database,
+            static fn (EntityManager $manager): int => (new ITILTaskRepository($manager))
+                ->parentActivityCount($table, $parentField, $item, $RESTRICT !== [])
+        );
     }
 
     /**

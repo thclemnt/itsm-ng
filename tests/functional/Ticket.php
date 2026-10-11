@@ -81,8 +81,6 @@ use LogicException;
 use Plugin;
 use Problem;
 use ProblemTask;
-use Project as LegacyProject;
-use ProjectTask as LegacyProjectTask;
 use ReflectionProperty;
 use RequestType;
 use RuntimeException;
@@ -113,7 +111,6 @@ use itsmng\Database\Orm;
 use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\DocumentRepository;
 use itsmng\Database\Repository\ITILActorRepository;
-use itsmng\Database\Repository\ITILTaskRepository;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\TicketCollectionRepository;
 use itsmng\Database\Repository\TicketVisibility;
@@ -382,10 +379,28 @@ class Ticket extends DbTestCase
                 $this->createItem($taskType, [$field => $other->getID(), 'content' => 'Other parent task', 'actiontime' => 60]);
                 $this->integer((int)$parent->numberOfFollowups())->isIdenticalTo(2);
                 $this->integer($parent->numberOfTasks())->isIdenticalTo(2);
+                $identity = $parent->fields['id'];
+                $parent->fields['id'] = (string)$identity;
+                $this->integer((int)$parent->numberOfFollowups())->isIdenticalTo(2);
+                $this->integer($parent->numberOfTasks())->isIdenticalTo(2);
+                $parent->fields['id'] = $identity;
                 foreach ([false, 0, 1, null, 'true'] as $publicOnly) {
                     $this->integer((int)$parent->numberOfFollowups($publicOnly))->isIdenticalTo(1);
                     $this->integer($parent->numberOfTasks($publicOnly))->isIdenticalTo($kind === LegacyTicket::class ? 1 : 2);
                 }
+                $connection = $DB->getDoctrineConnection();
+                $nullFollowups = (int)$connection->fetchOne(
+                    'SELECT COUNT(*) FROM glpi_itilfollowups WHERE itemtype = ? AND items_id IS NULL',
+                    [$kind]
+                );
+                $nullTasks = (int)$connection->fetchOne(
+                    'SELECT COUNT(*) FROM ' . $taskType::getTable() . ' WHERE ' . $field . ' IS NULL'
+                );
+                $unloaded = new $kind();
+                $this->array($unloaded->fields)->isEmpty();
+                $this->integer((int)$unloaded->numberOfFollowups())->isIdenticalTo($nullFollowups);
+                $this->integer($unloaded->numberOfTasks())->isIdenticalTo($nullTasks);
+                $this->array($unloaded->fields)->isEmpty();
                 $this->integer((int)$followups[1]->fields['users_id'])->isIdenticalTo((int)Session::getLoginUserID());
                 if ($DB->getDoctrineConnection()->getDatabasePlatform() instanceof PostgreSQLPlatform) {
                     $this->integer($parent->numberOfFollowups())->isIdenticalTo(2);
@@ -514,7 +529,6 @@ class Ticket extends DbTestCase
         $this->calling($adapter)->getProvider = $database->getProvider();
         $model = new class () extends LegacyTicket {
             public static $observe;
-            public static string $foreign = 'tickets_id';
             public static function getType()
             {
                 (self::$observe)('type');
@@ -523,7 +537,7 @@ class Ticket extends DbTestCase
             public static function getForeignKeyField()
             {
                 (self::$observe)('foreign');
-                return self::$foreign;
+                return LegacyTicket::getForeignKeyField();
             }
         };
         $model->fields = $ticket->fields;
@@ -572,62 +586,7 @@ class Ticket extends DbTestCase
             };
             $DB = $database;
         }
-        $model::$foreign = 'sourceitems_id';
-        $this->integer($model->numberOfTasks())->isIdenticalTo(0);
-        $project = $this->createItem(LegacyProject::class, ['name' => 'non-itil-count-' . $this->getUniqueString(),
-            'entities_id' => $_SESSION['glpiactive_entity']]);
-        $this->createItem(LegacyProjectTask::class, ['name' => 'non-itil-count-task-' . $this->getUniqueString(),
-            'projects_id' => $project->getID(), 'entities_id' => $_SESSION['glpiactive_entity']]);
-        $projectId = (int)$project->getID();
-        $queries = count($probe->queries);
-        $this->variable(Orm::read($adapter, static fn (EntityManager $manager): ?int =>
-            (new ITILTaskRepository($manager))->parentActivityCount('glpi_projecttasks', 'projects_id', $projectId, false)))
-            ->isNull();
-        $this->integer(count($probe->queries))->isIdenticalTo($queries);
-        $nonTask = new class () extends LegacyTicket {
-            public static function getType()
-            {
-                return LegacyProject::class;
-            }
-            public static function getForeignKeyField()
-            {
-                return 'projects_id';
-            }
-        };
-        $nonTask->fields['id'] = $projectId;
-        $this->integer($nonTask->numberOfTasks(false))->isIdenticalTo(1);
-        $this->integer((int)$nonTask->numberOfFollowups())->isIdenticalTo(0);
-        $ticket->fields['id'] = ['=', (int)$model->fields['id']];
-        $this->integer((int)$ticket->numberOfFollowups())->isIdenticalTo(1);
-        $this->integer($ticket->numberOfTasks())->isIdenticalTo(1);
-        $ticket->fields['id'] = new class ((int)$model->fields['id']) {
-            public function __construct(private int $id)
-            {
-            }
-            public function __toString(): string
-            {
-                return (string)$this->id;
-            }
-        };
-        $this->integer((int)$ticket->numberOfFollowups())->isIdenticalTo(1);
-        $this->integer($ticket->numberOfTasks())->isIdenticalTo(1);
-        $connection = $database->getDoctrineConnection();
-        if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
-            // A Stringable value that returns NULL is a quoted value, not the literal NULL criterion.
-            $ticket->fields['id'] = new class () {
-                public function __toString(): string
-                {
-                    return 'NULL';
-                }
-            };
-            $connection->beginTransaction();
-            try {
-                $this->exception(static fn () => $ticket->numberOfFollowups())->isInstanceOf(GlpitestSQLError::class);
-            } finally {
-                $connection->rollBack();
-            }
-        }
-        foreach ([null, 'NULL', 'Null', 0, '0', -1] as $identity) {
+        foreach ([null, 'NULL', 'Null', 0, '0', -1, '-1'] as $identity) {
             $ticket->fields['id'] = $identity;
             $this->integer((int)$ticket->numberOfFollowups())->isIdenticalTo(0);
             $this->integer($ticket->numberOfTasks())->isIdenticalTo(0);
