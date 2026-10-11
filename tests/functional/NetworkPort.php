@@ -629,8 +629,14 @@ class NetworkPort extends DbTestCase
                     $actual->fields['entities_id'] = $computer->getEntityID();
                 };
             $port->fields['items_id'] = $foreignParent->getID();
-            $this->boolean($port->canConnexityItem('canUpdateItem', 'canUpdate', CommonDBConnexity::HAVE_SAME_RIGHT_ON_ITEM,
-                'itemtype', 'items_id', $foreignParent))->isFalse();
+            $this->boolean($port->canConnexityItem(
+                'canUpdateItem',
+                'canUpdate',
+                CommonDBConnexity::HAVE_SAME_RIGHT_ON_ITEM,
+                'itemtype',
+                'items_id',
+                $foreignParent
+            ))->isFalse();
             $this->integer($scopeHooks)->isIdenticalTo(1);
             $this->array($foreignParent->fields)->isIdenticalTo($foreignFields);
             $this->boolean($foreignParent->canUpdateItem())->isFalse();
