@@ -331,8 +331,8 @@ final class SubjectPolicyExpression
                 return ['=', $right, ['integer', '0']];
             }
             if ($operator === '=' && $this->isDeclaredBoolean($left)) {
-                if ($right[0] === 'identifier' && in_array($right[1], ['false', 'true'], true)) {
-                    $right = ['integer', $right[1] === 'false' ? '0' : '1'];
+                if ($right[0] === 'boolean') {
+                    $right = ['integer', $right[1] ? '1' : '0'];
                 } elseif ($this->postgres || $right[0] !== 'integer' || !in_array($right[1], ['0', '1'], true)) {
                     throw new UnexpectedValueException();
                 }
@@ -507,6 +507,9 @@ final class SubjectPolicyExpression
                 $value = $token;
             } elseif ($token === 'null') {
                 $value = ['literal_null'];
+            } elseif (in_array($token, ['false', 'true'], true)) {
+                // Only unquoted SQL keywords are literals; quoted names remain identifiers.
+                $value = ['boolean', $token === 'true'];
             } elseif (ctype_digit($token)) {
                 $value = ['integer', $token];
             } elseif (preg_match('/^_(?:utf8|utf8mb3|utf8mb4|ascii)$/D', $token)) {

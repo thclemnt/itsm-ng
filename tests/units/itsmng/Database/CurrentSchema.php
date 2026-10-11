@@ -768,6 +768,15 @@ class CurrentSchema extends test
             integerTypes: ['selected' => Types::BIGINT]
         ))->isFalse();
         foreach ([true, false] as $postgres) {
+            // Literal TRUE remains the declared positive boolean value, not a column.
+            $this->boolean(SubjectPolicyExpression::equivalent(
+                'flag = TRUE', 'flag = true', $postgres, booleanColumns: ['flag']
+            ))->isTrue();
+            foreach (['flag = `true`', 'flag = "true"', "flag = 'true'"] as $quotedTrue) {
+                $this->boolean(SubjectPolicyExpression::equivalent(
+                    'flag = TRUE', $quotedTrue, $postgres, booleanColumns: ['flag']
+                ))->isFalse();
+            }
             foreach (['NOT flag', 'flag = FALSE', ...($postgres ? [] : ['flag = 0'])] as $falseForm) {
                 $this->boolean(SubjectPolicyExpression::equivalent(
                     $calendar,
@@ -778,7 +787,8 @@ class CurrentSchema extends test
                 ))->isTrue();
             }
             foreach (['NOT other', 'flag = TRUE', 'flag IS NULL', 'NOT (selected > 0)', 'flag = 2',
-                'COALESCE(flag, FALSE) = FALSE'] as $damaged) {
+                'flag = `false`', 'flag = `true`', 'flag = "false"', 'flag = "true"',
+                "flag = 'false'", "flag = 'true'", 'COALESCE(flag, FALSE) = FALSE'] as $damaged) {
                 $this->boolean(SubjectPolicyExpression::equivalent(
                     $calendar,
                     str_replace('NOT flag', $damaged, $calendar),
@@ -787,6 +797,15 @@ class CurrentSchema extends test
                     booleanColumns: ['flag']
                 ))->isFalse();
             }
+        }
+        $this->boolean(SubjectPolicyExpression::equivalent(
+            'flag = TRUE', 'flag = "true"', false, true, booleanColumns: ['flag']
+        ))->isFalse();
+        foreach (['flag = "false"', 'flag = "true"'] as $quoted) {
+            $this->boolean(SubjectPolicyExpression::equivalent(
+                $calendar, str_replace('NOT flag', $quoted, $calendar), false, true,
+                integerTypes: ['selected' => Types::BIGINT], booleanColumns: ['flag']
+            ))->isFalse();
         }
     }
 
