@@ -63,6 +63,22 @@ class OrmMigration extends GLPITestCase
         $this->setTestedClassName(History::class);
     }
 
+    /** Temporary native CI timing; each marker is appended before the next stage runs. */
+    private static function runtimeMarker(string $stage, bool $reset = false): void
+    {
+        if (!getenv('ITSM_MIGRATION_XUNIT')) {
+            return;
+        }
+        static $start = null;
+        static $previous = null;
+        $now = hrtime(true);
+        if ($start === null || $reset) {
+            $start = $previous = $now;
+        }
+        Toolbox::logInFile('migration-runtime', sprintf("elapsed=%.3fs delta=%.3fs stage=%s\n", ($now - $start) / 1e9, ($now - $previous) / 1e9, $stage), true);
+        $previous = $now;
+    }
+
     private function emptyFixture(): DBAdapter
     {
         global $DB;
@@ -165,6 +181,7 @@ class OrmMigration extends GLPITestCase
 
     public function testInterruptedBaselineAndSeedsCanResume(): void
     {
+        self::runtimeMarker('test2.start', true);
         $connection = $this->emptyFixture()->getDoctrineConnection();
         $history = new History();
         $created = null;
@@ -183,6 +200,7 @@ class OrmMigration extends GLPITestCase
             $this->integer(Ledger::state($connection, Baseline::PHASE)['next'])->isIdenticalTo(0);
             $this->boolean(History::isInstalling($connection))->isTrue();
         }
+        self::runtimeMarker('test2.baseline.resume');
         $history->baseline($connection);
         $this->integer(count($manager->listTableNames()))->isIdenticalTo(count((new Baseline())->build($connection->getDatabasePlatform())->getTables()) + 1);
         $rows = 0;
@@ -193,6 +211,7 @@ class OrmMigration extends GLPITestCase
         }))->isInstanceOf(RuntimeException::class)->hasMessage('Interrupted seeds');
         $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_apiclients'))->isIdenticalTo(0);
         $this->boolean(Ledger::state($connection, Seeds::PHASE)['complete'])->isFalse();
+        self::runtimeMarker('test2.seeds.resume');
         (new Seeds())->apply($connection);
         $connection->update('glpi_rulerightparameters', ['comment' => 'Retained seed edit'], ['id' => 1]);
         $receipt = Ledger::state($connection, Seeds::PHASE);
@@ -202,6 +221,7 @@ class OrmMigration extends GLPITestCase
 
         // Establish the real predecessor (including bigint target IDs) before testing forward DDL.
         $predecessor = new Version220();
+        self::runtimeMarker('test2.predecessor.apply');
         $predecessor->apply($connection);
         $predecessor->verify($connection);
 
@@ -210,6 +230,7 @@ class OrmMigration extends GLPITestCase
         $connection->insert('glpi_computers', ['id' => 100, 'name' => 'Retry subject', 'entities_id' => 0]);
         $connection->insert('glpi_items_devicesensors', ['id' => 100, 'devicesensors_id' => 100,
             'itemtype' => 'computer', 'items_id' => 100, 'entities_id' => 0]);
+        self::runtimeMarker('test2.sensor.start');
         $forward = new SensorSubjects();
         $before = $this->rowBags($connection);
         $this->exception(static fn () => $forward->plan($connection))->isInstanceOf(RuntimeException::class);
@@ -246,6 +267,7 @@ class OrmMigration extends GLPITestCase
 
         // The next release adds physical support only; interrupted PostgreSQL
         // CREATEs and already-supported MySQL FKs converge without touching rows.
+        self::runtimeMarker('test2.indexes.start');
         $indexes = new PhysicalReferenceIndexes();
         $beforeRows = $this->rowBags($connection);
         $beforeIndexes = PhysicalIndexSchema::catalog($connection, array_keys($indexes::declarations()));
@@ -272,14 +294,17 @@ class OrmMigration extends GLPITestCase
         // Historical index-only proof above finishes at its genuine predecessor.
         // Current schema convergence also requires every appended public release.
         $parents = $this->seedForwardParentFixtures($connection, 100);
+        self::runtimeMarker('test2.history.upgrade');
         $history->upgrade($connection);
         $this->assertForwardParentFixtures($connection, $parents, 100);
         $this->array(History::pendingVersions($connection))->isEmpty();
         $completedRows = $this->rowBags($connection);
         $completedLedger = Ledger::states($connection);
+        self::runtimeMarker('test2.history.replay');
         $history->upgrade($connection, static fn () => throw new LogicException('Completed history DDL replayed'));
         $this->array($this->rowBags($connection))->isIdenticalTo($completedRows);
         $this->array(Ledger::states($connection))->isIdenticalTo($completedLedger);
+        self::runtimeMarker('test2.schema.verify');
         $this->array((new SchemaCheck())->differences($connection))->isEmpty();
         if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
             $name = 'glpi_items_devicesensors_computers_id_typed';
@@ -291,16 +316,20 @@ class OrmMigration extends GLPITestCase
             $indexes->verify($connection);
             $this->array((new SchemaCheck())->differences($connection))->isEmpty();
         }
+        self::runtimeMarker('test2.complete');
         $this->fixtureCompleted = true;
     }
 
     public function testPublicUpgradeRefusesOldProvenanceAndPreservesPopulatedData(): void
     {
+        self::runtimeMarker('test3.start', true);
         global $DB;
         $database = $this->emptyFixture();
         $connection = $database->getDoctrineConnection();
         $history = new History();
+        self::runtimeMarker('test3.baseline');
         $history->baseline($connection);
+        self::runtimeMarker('test3.seeds');
         (new Seeds())->apply($connection);
         $manager = $connection->createSchemaManager();
         $manager->dropTable(Ledger::TABLE);
@@ -340,6 +369,7 @@ class OrmMigration extends GLPITestCase
             $rows = $this->rowBags($connection);
             $schema = $manager->introspectSchema();
             $policies = BooleanDomainSchema::catalog($connection);
+            self::runtimeMarker('test3.refused-upgrades');
             foreach ([['db:update', '--dry-run'], ['db:update']] as $arguments) {
                 [$status, $output] = $this->console($directory, $arguments);
                 $this->integer($status)->isNotEqualTo(0);
@@ -352,8 +382,10 @@ class OrmMigration extends GLPITestCase
             foreach (['version', 'itsmversion', 'dbversion', 'itsmdbversion'] as $name) {
                 $connection->update('glpi_configs', ['value' => '2.1.3'], ['context' => 'core', 'name' => $name]);
             }
+            self::runtimeMarker('test3.public-upgrade');
             [$status, $output] = $this->console($directory, ['db:update']);
             $this->integer($status)->isIdenticalTo(0, $output);
+            self::runtimeMarker('test3.schema.verify');
             $this->array((new SchemaCheck())->differences($connection))->isEmpty();
             $this->array(History::pendingVersions($connection))->isEmpty();
             $this->boolean(History::isInstalling($connection))->isFalse();
@@ -380,11 +412,13 @@ class OrmMigration extends GLPITestCase
             $this->boolean(Ledger::state($connection, ComponentParents::VERSION)['complete'])->isTrue();
             $this->array((new PhysicalReferenceIndexes())->plan($connection)['sql'])->isEmpty();
             $this->array(Ledger::state($connection, SensorSubjectDefinition::PHASE)['policy'])->hasKeys(['projection', 'check']);
+            self::runtimeMarker('test3.native.verifies');
             $this->assertCurrentPrefixNativeVerification($connection);
             $this->assertCurrentSubjectNativeVerification($connection);
             $this->assertTerminalSensorVerification($connection);
             $this->assertTerminalReleaseOrder($connection);
             $after = $this->rowBags($connection);
+            self::runtimeMarker('test3.public-replay');
             [$status, $output] = $this->console($directory, ['db:update']);
             $this->integer($status)->isIdenticalTo(0, $output);
             $this->array($this->rowBags($connection))->isIdenticalTo($after);
@@ -402,6 +436,7 @@ class OrmMigration extends GLPITestCase
             }
             rmdir($directory);
         }
+        self::runtimeMarker('test3.complete');
         $this->fixtureCompleted = true;
     }
 
@@ -847,27 +882,36 @@ class OrmMigration extends GLPITestCase
 
     public function testOrderedOpenParentStagesResume(): void
     {
+        self::runtimeMarker('test4.start', true);
         $database = $this->emptyFixture();
         $connection = $database->getDoctrineConnection();
         $predecessor = new Version220();
+        self::runtimeMarker('test4.install');
         $predecessor->install($database, 'en_GB');
         $this->boolean(Ledger::state($connection, Seeds::PHASE)['complete'])->isTrue();
         $this->string(Ledger::state($connection, Seeds::PHASE)['origin'])->isIdenticalTo('installed');
+        self::runtimeMarker('test4.predecessor.apply');
         $predecessor->apply($connection);
+        self::runtimeMarker('test4.predecessor.verify');
         $predecessor->verify($connection);
+        self::runtimeMarker('test4.sensor.apply');
         (new SensorSubjects())->apply($connection);
+        self::runtimeMarker('test4.indexes.apply');
         (new PhysicalReferenceIndexes())->apply($connection);
+        self::runtimeMarker('test4.indexes.verify');
         (new PhysicalReferenceIndexes())->verify($connection);
         // One genuine predecessor; each release resumes its own journal in history order.
         $this->assertNetworkNameParentRetry($connection);
         $this->assertIPAddressParentRetry($connection);
         $this->assertGraphicCardParentRetry($connection);
         $this->assertRemainingComponentParentRetry($connection);
+        self::runtimeMarker('test4.complete');
         $this->fixtureCompleted = true;
     }
 
     private function assertIPAddressParentRetry(Connection $connection): void
     {
+        self::runtimeMarker('test4.ip-address.setup');
         $connection->insert('glpi_networknames', ['id' => 2000, 'name' => 'Actual owning name', 'itemtype' => '', 'opaque_parent_id' => 0, 'entities_id' => 0]);
         foreach ([2000 => ['NetworkName', 2000], 2001 => ['NetworkName', 0], 2002 => ['', 0],
             2003 => ['PluginOpaqueParent', -9], 2004 => ['networkname', 2000]] as $id => [$kind, $owner]) {
@@ -891,8 +935,10 @@ class OrmMigration extends GLPITestCase
         $checksBeforeRetry = NativeCheckCatalog::snapshot($connection, 'glpi_ipaddresses')['checks']['glpi_ipaddresses'] ?? [];
         $retrySourceHash = null;
         foreach (['columns', 'copy', 'constraints', 'projection'] as $phase) {
+            self::runtimeMarker('test4.ip-address.retry.' . $phase);
             $message = 'Interrupted IP address ' . $phase;
             $this->exception(static fn () => $release->apply($connection, static function (string $actual) use ($phase, $message): void {
+                self::runtimeMarker('test4.ip-address.callback.' . $actual);
                 if ($actual === $phase) {
                     throw new RuntimeException($message);
                 }
@@ -918,7 +964,9 @@ class OrmMigration extends GLPITestCase
                 $this->array($checksAtStop[$checkName])->isIdenticalTo($check);
             }
         }
+        self::runtimeMarker('test4.ip-address.finish.apply');
         $release->apply($connection);
+        self::runtimeMarker('test4.ip-address.finish.verify');
         $release->verify($connection);
         $this->array($connection->fetchAllAssociative('SELECT id, itemtype, items_id, mainitemtype, mainitems_id, version, binary_0, binary_1, binary_2, binary_3 FROM glpi_ipaddresses ORDER BY id'))->isIdenticalTo($source);
         $checks = NativeCheckCatalog::snapshot($connection, 'glpi_ipaddresses')['checks']['glpi_ipaddresses'];
@@ -928,6 +976,7 @@ class OrmMigration extends GLPITestCase
         $this->array($connection->createSchemaManager()->introspectTable('glpi_ipaddresses')->getIndex($mainIndexName)->getUnquotedColumns())->isIdenticalTo($mainIndex);
         $receipt = Ledger::state($connection, IPAddressParentDefinition::PHASE);
         $this->boolean($receipt['complete'])->isTrue();
+        self::runtimeMarker('test4.ip-address.completed.replay');
         $release->apply($connection, static fn () => throw new LogicException('Completed address adoption replayed'));
         $this->array(Ledger::state($connection, IPAddressParentDefinition::PHASE))->isIdenticalTo($receipt);
         foreach ([['networknames_id' => 2001], ['networknames_id' => 0], ['itemtype' => 'PluginOpaqueParent'], ['opaque_parent_id' => 2000], ['items_id' => null]] as $invalid) {
@@ -947,10 +996,12 @@ class OrmMigration extends GLPITestCase
         $release->verify($connection);
         $connection->delete('glpi_ipaddresses', ['id' => 2005]);
         $release->verify($connection);
+        self::runtimeMarker('test4.ip-address.complete');
     }
 
     private function assertNetworkNameParentRetry(Connection $connection): void
     {
+        self::runtimeMarker('test4.network-name.setup');
         $connection->insert('glpi_networkports', ['id' => 1000, 'name' => 'Adopted port', 'itemtype' => 'Computer', 'items_id' => 0, 'entities_id' => 0]);
         foreach ([1000 => ['NetworkPort', 1000], 1001 => ['NetworkPort', 0], 1002 => ['', 0],
             1003 => ['PluginOpaqueParent', -9], 1004 => ['networkport', 1000]] as $id => [$kind, $owner]) {
@@ -970,8 +1021,10 @@ class OrmMigration extends GLPITestCase
         $checksBeforeRetry = NativeCheckCatalog::snapshot($connection, 'glpi_networknames')['checks']['glpi_networknames'] ?? [];
         $retrySourceHash = null;
         foreach (['columns', 'copy', 'constraints', 'projection'] as $phase) {
+            self::runtimeMarker('test4.network-name.retry.' . $phase);
             $message = 'Interrupted network name ' . $phase;
             $this->exception(static fn () => $release->apply($connection, static function (string $actual) use ($phase, $message): void {
+                self::runtimeMarker('test4.network-name.callback.' . $actual);
                 if ($actual === $phase) {
                     throw new RuntimeException($message);
                 }
@@ -997,11 +1050,14 @@ class OrmMigration extends GLPITestCase
                 $this->array($checksAtStop[$checkName])->isIdenticalTo($check);
             }
         }
+        self::runtimeMarker('test4.network-name.finish.apply');
         $release->apply($connection);
+        self::runtimeMarker('test4.network-name.finish.verify');
         $release->verify($connection);
         $this->array($connection->fetchAllAssociative('SELECT id, itemtype, items_id FROM glpi_networknames ORDER BY id'))->isIdenticalTo($source);
         $receipt = Ledger::state($connection, NetworkNameParentDefinition::PHASE);
         $this->boolean($receipt['complete'])->isTrue();
+        self::runtimeMarker('test4.network-name.completed.replay');
         $release->apply($connection, static fn () => throw new LogicException('Completed name adoption replayed'));
         $this->array(Ledger::state($connection, NetworkNameParentDefinition::PHASE))->isIdenticalTo($receipt);
         $beforeInvalid = $connection->fetchAssociative('SELECT id,itemtype,items_id,networkports_id,opaque_parent_id FROM glpi_networknames WHERE id=1000');
@@ -1070,6 +1126,7 @@ class OrmMigration extends GLPITestCase
         $release->verify($connection);
         $connection->delete('glpi_networknames', ['id' => 1005]);
         $release->verify($connection);
+        self::runtimeMarker('test4.network-name.complete');
     }
 
     private function assertTerminalSensorVerification(Connection $connection): void
@@ -1322,6 +1379,7 @@ class OrmMigration extends GLPITestCase
     }
     private function assertGraphicCardParentRetry(Connection $connection): void
     {
+        self::runtimeMarker('test4.graphic-card.setup');
         $connection->insert('glpi_computers', ['id' => 3000, 'name' => 'Actual graphic owner', 'entities_id' => 0]);
         $connection->insert('glpi_devicegraphiccards', ['id' => 3000, 'designation' => 'Actual device', 'entities_id' => 0]);
         foreach ([3000 => ['Computer', 3000], 3001 => ['Computer', 0], 3002 => ['', 0],
@@ -1346,8 +1404,10 @@ class OrmMigration extends GLPITestCase
         $checksBeforeRetry = NativeCheckCatalog::snapshot($connection, 'glpi_items_devicegraphiccards')['checks']['glpi_items_devicegraphiccards'] ?? [];
         $retrySourceHash = null;
         foreach (['columns', 'copy', 'constraints', 'projection'] as $phase) {
+            self::runtimeMarker('test4.graphic-card.retry.' . $phase);
             $message = 'Interrupted graphic card ' . $phase;
             $this->exception(static fn () => $release->apply($connection, static function (string $actual) use ($phase, $message): void {
+                self::runtimeMarker('test4.graphic-card.callback.' . $actual);
                 if ($actual === $phase) {
                     throw new RuntimeException($message);
                 }
@@ -1373,7 +1433,9 @@ class OrmMigration extends GLPITestCase
                 $this->array($checksAtStop[$checkName])->isIdenticalTo($check);
             }
         }
+        self::runtimeMarker('test4.graphic-card.finish.apply');
         $release->apply($connection);
+        self::runtimeMarker('test4.graphic-card.finish.verify');
         $release->verify($connection);
         $this->array($connection->fetchAllAssociative('SELECT id, itemtype, items_id, devicegraphiccards_id, memory, serial, is_deleted FROM glpi_items_devicegraphiccards ORDER BY id'))->isIdenticalTo($source);
         $afterIndexes = $connection->createSchemaManager()->listTableIndexes('glpi_items_devicegraphiccards');
@@ -1385,6 +1447,7 @@ class OrmMigration extends GLPITestCase
         }
         $receipt = Ledger::state($connection, GraphicCardParentDefinition::PHASE);
         $this->boolean($receipt['complete'])->isTrue();
+        self::runtimeMarker('test4.graphic-card.completed.replay');
         $release->apply($connection, static fn () => throw new LogicException('Completed graphic adoption replayed'));
         $this->array(Ledger::state($connection, GraphicCardParentDefinition::PHASE))->isIdenticalTo($receipt);
         foreach ([['computers_id' => 3001], ['computers_id' => 0], ['itemtype' => null],
@@ -1408,9 +1471,11 @@ class OrmMigration extends GLPITestCase
         $release->verify($connection);
         $connection->delete('glpi_items_devicegraphiccards', ['id' => 3007]);
         $release->verify($connection);
+        self::runtimeMarker('test4.graphic-card.complete');
     }
     private function assertRemainingComponentParentRetry(Connection $connection): void
     {
+        self::runtimeMarker('test4.components.setup');
         $connection->insert('glpi_computers', ['id' => 4000, 'name' => 'Actual component owner', 'entities_id' => 0]);
         $sources = [];
         $indexes = [];
@@ -1449,8 +1514,10 @@ class OrmMigration extends GLPITestCase
         $retrySourceHash = null;
         $completed = [];
         foreach (['columns', 'copy', 'constraints', 'projection'] as $phase) {
+            self::runtimeMarker('test4.components.retry.' . $phase);
             $message = 'Interrupted final component ' . $phase;
             $this->exception(static fn () => $release->apply($connection, static function (string $actual) use ($phase, $message): void {
+                self::runtimeMarker('test4.components.callback.' . $actual);
                 if ($actual === 'glpi_items_devicepcis.' . $phase) {
                     throw new RuntimeException($message);
                 }
@@ -1491,7 +1558,9 @@ class OrmMigration extends GLPITestCase
                 $this->array($checksAtStop[$checkName])->isIdenticalTo($check);
             }
         }
+        self::runtimeMarker('test4.components.finish.apply');
         $release->apply($connection);
+        self::runtimeMarker('test4.components.finish.verify');
         $release->verify($connection);
         foreach ($completed as $checkpoint => $receipt) {
             $this->array(Ledger::state($connection, $checkpoint))->isIdenticalTo($receipt);
@@ -1525,9 +1594,11 @@ class OrmMigration extends GLPITestCase
         }
         $this->exception(static fn () => $connection->transactional(static fn () => $connection->delete('glpi_computers', ['id' => 4000])))->isInstanceOf(DbalException::class);
         $states = Ledger::states($connection);
+        self::runtimeMarker('test4.components.completed.replay');
         $release->apply($connection, static fn () => throw new LogicException('A completed component adoption replayed'));
         $this->array(Ledger::states($connection))->isIdenticalTo($states);
         $release->verify($connection);
+        self::runtimeMarker('test4.components.complete');
     }
 
 }
