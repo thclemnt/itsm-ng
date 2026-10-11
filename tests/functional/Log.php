@@ -49,6 +49,7 @@ use Doctrine\DBAL\Types\StringType;
 use Doctrine\DBAL\Types\Type as DbalType;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Event\OnClearEventArgs;
 use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\Event\PostPersistEventArgs;
 use Doctrine\ORM\Event\PrePersistEventArgs;
@@ -250,19 +251,25 @@ class Log extends DbTestCase
             $connection = $DB->getDoctrineConnection();
             $observer = new class () {
                 public array $trace = [];
-                public int $clears = 0;
+                public array $clearedManagers = [];
+                public array $clearTraces = [];
+                public ?EntityManager $writer = null;
+                public ?LogRecord $record = null;
 
                 public function prePersist(PrePersistEventArgs $event): void
                 {
                     if ($event->getObject() instanceof LogRecord) {
+                        $this->writer = $event->getObjectManager();
+                        $this->record = $event->getObject();
                         $this->trace[] = 'persist';
                         $event->getObject()->new_value = 'Custom lifecycle value';
                     }
                 }
 
-                public function onClear(): void
+                public function onClear(OnClearEventArgs $event): void
                 {
-                    ++$this->clears;
+                    $this->clearedManagers[] = $event->getObjectManager();
+                    $this->clearTraces[] = $this->trace;
                 }
             };
             // Delegate the owning flush/savepoint to the existing fixture connection.
@@ -339,7 +346,14 @@ class Log extends DbTestCase
             $id = LegacyLog::history($computer->getID(), $kind, [5, 'Custom before', 'Custom after']);
             // getUserName owns the first custom reader; the append owns the second manager.
             $this->array($observer->trace)->isIdenticalTo(['constructed', 'constructed', 'converted', 'persist']);
-            $this->integer($observer->clears)->isIdenticalTo(0);
+            // The username reader owns its cleanup; the audit writer remains managed.
+            $this->array($observer->clearedManagers)->hasSize(1);
+            $this->array($observer->clearTraces)->isIdenticalTo([['constructed']]);
+            $reader = $observer->clearedManagers[0];
+            $this->object($reader->getConnection())->isIdenticalTo($selected);
+            $this->object($observer->writer)->isInstanceOf(EntityManager::class)->isNotIdenticalTo($reader);
+            $this->object($observer->writer->getConnection())->isIdenticalTo($selected);
+            $this->boolean($observer->writer->contains($observer->record))->isTrue();
             $this->integer($_SESSION['glpi_maxhistory'])->isIdenticalTo($id);
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
             $this->array($other->queries)->isEmpty();
