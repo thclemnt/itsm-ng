@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\NetworkConnectionRepository;
 use itsmng\Database\Repository\NetworkPortAggregateRepository;
@@ -800,7 +801,12 @@ class NetworkPort extends CommonDBChild
             }
 
             $iterator = $itemtype === 'NetworkPort' && $portType === 'NetworkPortAggregate'
-                ? new RowIterator((new NetworkPortAggregateRepository(Orm::create($DB)))->aggregatesForPort((int)$items_id))
+                ? new RowIterator(Orm::readPrepared(
+                    $DB,
+                    static fn (): int => (int)$items_id,
+                    static fn (EntityManager $manager, int $port): array =>
+                        (new NetworkPortAggregateRepository($manager))->aggregatesForPort($port)
+                ))
                 : $DB->request($criteria);
             $number_port = count($iterator);
 
@@ -1310,7 +1316,12 @@ class NetworkPort extends CommonDBChild
             } else {
                 $aliases = '';
             }
-            $nbAggregates = count((new NetworkPortAggregateRepository(Orm::create($DB)))->aggregatesForPort((int)$item->getField('id')));
+            $nbAggregates = count(Orm::readPrepared(
+                $DB,
+                static fn (): int => (int)$item->getField('id'),
+                static fn (EntityManager $manager, int $port): array =>
+                    (new NetworkPortAggregateRepository($manager))->aggregatesForPort($port)
+            ));
             if ($nbAggregates > 0) {
                 $aggregates = self::createTabEntry(
                     NetworkPortAggregate::getTypeName(Session::getPluralNumber()),

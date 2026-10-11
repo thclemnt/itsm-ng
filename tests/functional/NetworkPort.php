@@ -37,6 +37,11 @@ use DateTime;
 use DbTestCase;
 use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\Events;
+use Doctrine\ORM\EntityManager;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Connection;
+use mock\DBmysql as AggregateReadAdapter;
+use tests\fixtures\ScalarReadProbe;
 use HTMLTableMain;
 use InvalidArgumentException;
 use NetworkPort as LegacyNetworkPort;
@@ -65,11 +70,170 @@ use itsmng\Database\Repository\NetworkPortVlanRepository;
 use itsmng\Domain\VlanMembershipService;
 
 require_once dirname(__DIR__) . '/fixtures/NetworkNameOpaquePortFixture.php';
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/networkport.class.php */
 
 class NetworkPort extends DbTestCase
 {
+    public function testAggregateParentDisplayReadsStayCurrentAndRetainDirtyOwners(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity(0, true);
+        $equipment = getItemByTypeName('NetworkEquipment', '_test_networkequipment_1');
+        $ports = [];
+        foreach (['origin', 'first-aggregate', 'second-aggregate'] as $name) {
+            $port = new LegacyNetworkPort();
+            $id = $port->add([
+                'name' => $this->getUniqueString() . '-' . $name,
+                'itemtype' => 'NetworkEquipment', 'items_id' => $equipment->getID(),
+                'entities_id' => $equipment->fields['entities_id'],
+                'instantiation_type' => $name === 'origin' ? 'NetworkPortEthernet' : 'NetworkPortAggregate',
+                '_create_children' => true,
+            ]);
+            $this->integer((int)$id)->isGreaterThan(0);
+            $this->boolean($port->getFromDB($id))->isTrue();
+            $ports[] = $port;
+        }
+        [$origin, $first, $second] = $ports;
+        $aggregates = [];
+        foreach ([$first, $second] as $port) {
+            $aggregate = new NetworkPortAggregate();
+            $this->boolean($aggregate->getFromDB($port->getID()))->isTrue();
+            $this->boolean($aggregate->update([
+                'id' => $port->getID(), 'networkports_id_list' => [$origin->getID()],
+            ]))->isTrue();
+            $aggregates[] = $aggregate;
+        }
+        $firstName = $first->fields['name'];
+        $owner = Orm::create($DB);
+        try {
+            $dirty = $owner->find(NetworkPortEntity::class, $first->getID());
+            $dirty->name = 'Independent pending aggregate name';
+            $tab = new LegacyNetworkPort();
+            $this->string($tab->getTabNameForItem($origin))->contains("<sup class='tab_nb'>2</sup>");
+            $rows = $this->renderLocalTableRows(static fn () => LegacyNetworkPort::showForItem($origin));
+            $this->array($rows)->hasSize(2);
+            $rendered = json_encode($rows, JSON_THROW_ON_ERROR);
+            $this->string($rendered)->contains($first->fields['name'])->contains($second->fields['name']);
+            $this->string($rendered)->notContains('Independent pending aggregate name');
+            Orm::read($DB, function (EntityManager $outer) use ($origin, $first, $tab): void {
+                $pending = $outer->find(NetworkPortEntity::class, $first->getID());
+                $pending->name = 'Enclosing pending aggregate name';
+                $this->string($tab->getTabNameForItem($origin))->contains("<sup class='tab_nb'>2</sup>");
+                $rows = $this->renderLocalTableRows(static fn () => LegacyNetworkPort::showForItem($origin));
+                $this->array($rows)->hasSize(2);
+                $this->string(json_encode($rows, JSON_THROW_ON_ERROR))->contains($first->fields['name'])->notContains('Enclosing pending aggregate name');
+                $this->boolean($outer->contains($pending))->isTrue();
+                $this->string($pending->name)->isIdenticalTo('Enclosing pending aggregate name');
+            });
+            $this->boolean($first->update(['id' => $first->getID(), 'name' => 'Current aggregate display']))->isTrue();
+            $this->boolean($aggregates[1]->update(['id' => $second->getID(), 'networkports_id_list' => []]))->isTrue();
+            $this->string($tab->getTabNameForItem($origin))->contains("<sup class='tab_nb'>1</sup>");
+            $current = $this->renderLocalTableRows(static fn () => LegacyNetworkPort::showForItem($origin));
+            $this->array($current)->hasSize(1);
+            $this->string(json_encode($current, JSON_THROW_ON_ERROR))->contains('Current aggregate display')->notContains($second->fields['name']);
+            $this->string($rendered)->contains($firstName)->notContains('Current aggregate display');
+            $this->boolean($aggregates[0]->update(['id' => $first->getID(), 'networkports_id_list' => []]))->isTrue();
+            $this->string($tab->getTabNameForItem($origin))->isIdenticalTo('');
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->string($dirty->name)->isIdenticalTo('Independent pending aggregate name');
+        } finally {
+            $owner->clear();
+        }
+    }
+
+    public function testAggregateTabReadPreparesAfterCustomConstructionOnCapturedRoute(): void
+    {
+        global $DB;
+        $this->login();
+        $original = $DB;
+        $connection = $original->getDoctrineConnection();
+        $events = new EventManager();
+        $clear = new class () {
+            public int $calls = 0;
+
+            public function onClear(): void
+            {
+                ++$this->calls;
+            }
+        };
+        $events->addEventListener([Events::onClear], $clear);
+        $selected = new class ($connection, $events) extends ScalarReadProbe {
+            public array $trace = [];
+
+            public function __construct(Connection $connection, private EventManager $events)
+            {
+                parent::__construct($connection);
+            }
+
+            public function getEventManager(): EventManager
+            {
+                $this->trace[] = 'constructed';
+                return $this->events;
+            }
+        };
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new AggregateReadAdapter();
+        $this->calling($adapter)->getDoctrineConnection = $selected;
+        $item = new class ($selected, $original, $clear) extends LegacyNetworkPort {
+            public int $fieldsRead = 0;
+            public int $clearsBeforeAggregate = 0;
+            public ?RuntimeException $failure = null;
+
+            public function __construct(private ScalarReadProbe $selected, private object $original, private object $clear)
+            {
+                $this->fields = ['id' => 0];
+            }
+
+            public static function getType()
+            {
+                return LegacyNetworkPort::getType();
+            }
+
+            public function getField($field)
+            {
+                ++$this->fieldsRead;
+                $this->selected->trace[] = 'field';
+                if ($this->fieldsRead === 2) {
+                    $this->selected->queries = [];
+                    $this->clearsBeforeAggregate = $this->clear->calls;
+                    $GLOBALS['DB'] = $this->original;
+                    if ($this->failure !== null) {
+                        throw $this->failure;
+                    }
+                }
+                return parent::getField($field);
+            }
+        };
+        try {
+            $DB = $adapter;
+            $this->string((new LegacyNetworkPort())->getTabNameForItem($item))->isIdenticalTo('');
+            $this->array(array_slice($selected->trace, -2))->isIdenticalTo(['constructed', 'field']);
+            $this->integer($item->fieldsRead)->isIdenticalTo(2);
+            $this->integer(count($selected->queries))->isIdenticalTo(1);
+            $this->array($selected->queries[0]['params'])->contains(0);
+            $this->integer($clear->calls)->isIdenticalTo($item->clearsBeforeAggregate);
+            $failure = new RuntimeException('Refused aggregate tab preparation');
+            $item->failure = $failure;
+            $item->fieldsRead = 0;
+            $selected->trace = [];
+            $DB = $adapter;
+            $this->exception(static fn () => (new LegacyNetworkPort())->getTabNameForItem($item))->isIdenticalTo($failure);
+            $this->array(array_slice($selected->trace, -2))->isIdenticalTo(['constructed', 'field']);
+            $this->array($selected->queries)->isEmpty();
+            $this->integer($clear->calls)->isIdenticalTo($item->clearsBeforeAggregate);
+            $item->failure = null;
+            $item->fieldsRead = 0;
+            $DB = $adapter;
+            $this->string((new LegacyNetworkPort())->getTabNameForItem($item))->isIdenticalTo('');
+            $this->integer(count($selected->queries))->isIdenticalTo(1);
+        } finally {
+            $DB = $original;
+        }
+    }
+
     public function testAddSimpleNetworkPort()
     {
         $this->login();
