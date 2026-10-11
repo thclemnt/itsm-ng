@@ -31,10 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Features\Clonable;
 use itsmng\Database\MappedReads;
 use itsmng\Database\MappedStorage;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\CartridgeRepository;
 
 if (!defined('GLPI_ROOT')) {
@@ -294,12 +296,14 @@ class Cartridge extends CommonDBChild
     {
         global $DB;
 
-        $em = Orm::create($DB);
-        try {
-            $installed = (new CartridgeRepository($em))->install((int)$pID, (int)$tID);
-        } finally {
-            $em->clear();
-        }
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        $installed = Orm::withConnection(
+            $connection,
+            static fn (EntityManager $manager): bool =>
+                (new CartridgeRepository($manager))->install((int)$pID, (int)$tID)
+        );
         if (!$installed) {
             Session::addMessageAfterRedirect(__('No free cartridge'), false, ERROR);
             return false;
@@ -327,12 +331,14 @@ class Cartridge extends CommonDBChild
                 $toadd['pages'] = $printer->fields['last_pages_counter'];
             }
 
-            $em = Orm::create($DB);
-            try {
-                $changed = (new CartridgeRepository($em))->endLife((int)$ID, isset($toadd['pages']) ? (int)$toadd['pages'] : null);
-            } finally {
-                $em->clear();
-            }
+            $database = $DB;
+            $connection = $database->getDoctrineConnection();
+            OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+            $changed = Orm::withConnection(
+                $connection,
+                static fn (EntityManager $manager): bool =>
+                    (new CartridgeRepository($manager))->endLife((int)$ID, isset($toadd['pages']) ? (int)$toadd['pages'] : null)
+            );
 
             if ($changed) {
                 $changes = [

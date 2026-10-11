@@ -36,14 +36,171 @@ namespace tests\units;
 use Alert;
 use CartridgeItem as CartridgeModel;
 use DbTestCase;
+use Cartridge as StockCartridge;
+use Printer as PrinterModel;
+use DateTimeImmutable;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
+use Doctrine\ORM\Events;
+use Doctrine\ORM\Event\OnClearEventArgs;
+use itsmng\Database\Entity\Cartridge as CartridgeRecord;
+use itsmng\Database\MutationCleanupFailure;
+use Log;
+use RuntimeException;
+use Throwable;
+use mock\DBmysql as CartridgeWriterAdapter;
+use tests\fixtures\ScalarReadProbe;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\CartridgeRepository;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/cartridge.class.php */
 
 class Cartridge extends DbTestCase
 {
+    public function testStockMutationsStayCurrentWithoutFlushingDirtyOwners(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity(0, true);
+        $printer = $this->createItem(PrinterModel::class, [
+            'name' => $this->getUniqueString(), 'entities_id' => 0, 'last_pages_counter' => 75,
+        ]);
+        $model = $this->createItem(CartridgeModel::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $first = $this->createItem(StockCartridge::class, ['cartridgeitems_id' => $model->getID()]);
+        $second = $this->createItem(StockCartridge::class, ['cartridgeitems_id' => $model->getID()]);
+        $connection = $DB->getDoctrineConnection();
+        $messages = static fn (): array => $connection->fetchFirstColumn(
+            'SELECT new_value FROM glpi_logs WHERE itemtype = ? AND items_id = ? AND linked_action = ? ORDER BY id',
+            ['Printer', $printer->getID(), Log::HISTORY_LOG_SIMPLE_MESSAGE]
+        );
+        $before = $messages();
+        $owner = Orm::create($DB);
+        try {
+            $dirty = $owner->find(CartridgeRecord::class, $first->getID());
+            $dirty->pages = 999;
+            $command = new StockCartridge();
+            $this->boolean($command->install((string)$printer->getID(), (string)$model->getID()))->isTrue();
+            Orm::withConnection($connection, function (EntityManager $outer) use ($second, $printer, $model, $command): void {
+                $pending = $outer->find(CartridgeRecord::class, $second->getID());
+                $pending->pages = 888;
+                $this->boolean($command->install($printer->getID(), $model->getID()))->isTrue();
+                $this->boolean($outer->contains($pending))->isTrue();
+                $this->integer($pending->pages)->isIdenticalTo(888);
+            });
+            foreach ([$first, $second] as $cartridge) {
+                $this->boolean($cartridge->getFromDB($cartridge->getID()))->isTrue();
+                $this->integer((int)$cartridge->fields['printers_id'])->isIdenticalTo((int)$printer->getID());
+                $this->string($cartridge->fields['date_use'])->isIdenticalTo((new DateTimeImmutable('today'))->format('Y-m-d'));
+                $this->integer((int)$cartridge->fields['pages'])->isIdenticalTo(0);
+            }
+            $this->boolean($command->install($printer->getID(), $model->getID()))->isFalse();
+            $this->hasSessionMessages(ERROR, ['No free cartridge']);
+            $this->boolean($command->uninstall($first->getID()))->isTrue();
+            $this->boolean($first->getFromDB($first->getID()))->isTrue();
+            $this->integer((int)$first->fields['pages'])->isIdenticalTo(75);
+            $this->string($first->fields['date_out'])->isIdenticalTo((new DateTimeImmutable('today'))->format('Y-m-d'));
+            $this->boolean($command->uninstall($first->getID()))->isFalse();
+            $this->array(array_slice($messages(), count($before)))->isIdenticalTo([
+                __('Installing a cartridge'), __('Installing a cartridge'), __('Uninstalling a cartridge'),
+            ]);
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->integer($dirty->pages)->isIdenticalTo(999);
+        } finally {
+            $owner->clear();
+        }
+    }
+
+    public function testStockWriterKeepsCapturedCustomRouteAndBothActualFailures(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity(0, true);
+        $original = $DB;
+        $connection = $original->getDoctrineConnection();
+        $printer = $this->createItem(PrinterModel::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $model = $this->createItem(CartridgeModel::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $stock = $this->createItem(StockCartridge::class, ['cartridgeitems_id' => $model->getID()]);
+        $cleanup = new RuntimeException('Custom stock writer cleanup');
+        $listener = new class ($cleanup) {
+            public bool $reject = true;
+            public array $owners = [];
+
+            public function __construct(private RuntimeException $failure)
+            {
+            }
+
+            public function onClear(OnClearEventArgs $event): void
+            {
+                $this->owners[] = $event->getObjectManager();
+                if ($this->reject) {
+                    throw $this->failure;
+                }
+            }
+        };
+        $events = new EventManager();
+        $events->addEventListener([Events::onClear], $listener);
+        $selected = new class ($connection, $events, $original) extends ScalarReadProbe {
+            public ?Throwable $primary = null;
+
+            public function __construct(Connection $connection, private EventManager $events, private object $original)
+            {
+                parent::__construct($connection);
+            }
+
+            public function getEventManager(): EventManager
+            {
+                $GLOBALS['DB'] = $this->original;
+                return $this->events;
+            }
+
+            public function executeStatement(string $sql, array $params = [], array $types = []): int|string
+            {
+                try {
+                    return $this->selected->executeStatement($sql, $params, $types);
+                } catch (Throwable $error) {
+                    $this->primary = $error;
+                    throw $error;
+                }
+            }
+        };
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new CartridgeWriterAdapter();
+        $this->calling($adapter)->getDoctrineConnection = $selected;
+        $before = $connection->fetchAssociative('SELECT * FROM glpi_cartridges WHERE id = ?', [$stock->getID()]);
+        $depth = $connection->getTransactionNestingLevel();
+        try {
+            $caught = null;
+            $DB = $adapter;
+            try {
+                $connection->transactional(static fn () => (new StockCartridge())->install(PHP_INT_MAX, $model->getID()));
+            } catch (MutationCleanupFailure $error) {
+                $caught = $error;
+            }
+            $this->object($caught)->isInstanceOf(MutationCleanupFailure::class);
+            $this->object($caught->primary)->isInstanceOf(ForeignKeyConstraintViolationException::class)->isIdenticalTo($selected->primary);
+            $this->object($caught->cleanup)->isIdenticalTo($cleanup);
+            $this->array($listener->owners)->hasSize(1);
+            $this->object($listener->owners[0]->getConnection())->isIdenticalTo($selected);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+            $this->array($connection->fetchAssociative('SELECT * FROM glpi_cartridges WHERE id = ?', [$stock->getID()]))->isIdenticalTo($before);
+            $listener->reject = false;
+            $DB = $adapter;
+            $this->boolean((new StockCartridge())->install($printer->getID(), $model->getID()))->isTrue();
+            $this->array($listener->owners)->hasSize(2);
+            $this->object($listener->owners[1])->isNotIdenticalTo($listener->owners[0]);
+            $this->object($listener->owners[1]->getConnection())->isIdenticalTo($selected);
+            $this->boolean($stock->getFromDB($stock->getID()))->isTrue();
+            $this->integer((int)$stock->fields['printers_id'])->isIdenticalTo((int)$printer->getID());
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+        } finally {
+            $DB = $original;
+        }
+    }
+
     private function processMassiveAction($action, \CommonDBTM $item, array $ids, array $input = [])
     {
         $ok = 0;
