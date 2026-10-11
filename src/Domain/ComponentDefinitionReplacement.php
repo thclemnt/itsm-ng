@@ -148,15 +148,18 @@ final class ComponentDefinitionReplacement
         }
         $kind = $stored['itemtype'];
         $subjectPolicy = EntityRegistry::discriminatedReferences($model->getTable())[$model::$items_id_1] ?? null;
+        $selection = $subjectPolicy['selections'][$kind ?? ''] ?? null;
+        $selectedEmpty = $selection !== null && $selection['empty_value'] !== null
+            && (int)$stored[$model::$items_id_1] === $selection['empty_value'];
         if (isset($subjectPolicy['fallback_column'])
             && !(($kind === null || $kind === '') && (int)$stored['items_id'] === 0)
-            && !isset($subjectPolicy['selections'][$kind])) {
+            && $selection === null) {
             throw new DeletionCancelled('An opaque component parent requires its own replacement authority.');
         }
         $subjectTable = null;
         $subjectRecord = null;
         $scopeOwner = $this->replacementRecord;
-        if (!($kind === null || $kind === '') || (int)$stored['items_id'] !== 0) {
+        if (!$selectedEmpty && (!($kind === null || $kind === '') || (int)$stored['items_id'] !== 0)) {
             $subject = is_string($kind) ? getItemForItemtype($kind) : false;
             if (!$subject || !($subject instanceof CommonDBTM)) {
                 throw new DeletionCancelled('The attached component subject is invalid.');

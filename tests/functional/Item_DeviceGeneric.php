@@ -131,6 +131,13 @@ class Item_DeviceGeneric extends DbTestCase
             $assigned = $this->createItem($linkType, [$column => $deviceId, 'itemtype' => 'Computer', 'items_id' => $assetId, 'entities_id' => 0]);
             $foreign = $this->createItem($linkType, [$column => $deviceId, 'itemtype' => 'Computer', 'items_id' => (int)$other->getID(), 'entities_id' => 0]);
             $stock = $this->createItem($linkType, [$column => $deviceId, 'itemtype' => '', 'items_id' => 0, 'entities_id' => 0]);
+            $reference = EntityRegistry::discriminatedReferences($assigned->getTable())['items_id'] ?? null;
+            $selectedStock = null;
+            if (isset($reference['fallback_column'])) {
+                $this->integer($reference['selections']['Computer']['empty_value'])->isIdenticalTo(0);
+                $selectedStock = $this->createItem($linkType, [$column => $deviceId, 'itemtype' => 'Computer',
+                    'items_id' => $reference['selections']['Computer']['empty_value'], 'entities_id' => 0]);
+            }
             $deleted = $this->createItem($linkType, [$column => $deviceId, 'itemtype' => 'Computer', 'items_id' => $assetId, 'is_deleted' => true, 'entities_id' => 0]);
             $unrelated = $this->createItem($linkType, [$column => $replacementId, 'itemtype' => '', 'items_id' => 0, 'entities_id' => 0]);
             $link = new $linkType();
@@ -182,10 +189,22 @@ class Item_DeviceGeneric extends DbTestCase
             $this->integer((int)$link->fields[$column])->isIdenticalTo($replacementId);
             $this->boolean($link->getFromDB($foreign->getID()))->isTrue();
             $this->boolean($link->getFromDB($unrelated->getID()))->isTrue();
+            if ($selectedStock !== null) {
+                $this->boolean($selectedStock->getFromDB($selectedStock->getID()))->isTrue();
+                $this->variable($selectedStock->fields['itemtype'])->isIdenticalTo('Computer');
+                $this->integer((int)$selectedStock->fields['items_id'])->isIdenticalTo(0);
+                $this->variable($selectedStock->fields[$reference['selections']['Computer']['column']])->isNull();
+                $this->variable($selectedStock->fields[$reference['fallback_column']])->isNull();
+                $this->integer((int)$selectedStock->fields[$column])->isIdenticalTo($replacementId);
+            }
             if (isset($reference['fallback_column'])) {
                 // Definition ownership does not delegate an opaque parent's authority.
                 $opaque = $this->createItem($linkType, [$column => $replacementId, 'itemtype' => 'computer',
                     'items_id' => $assetId, 'entities_id' => 0]);
+                $opaqueZero = $this->createItem($linkType, [$column => $replacementId, 'itemtype' => 'computer',
+                    'items_id' => 0, 'entities_id' => 0]);
+                $this->variable($opaqueZero->fields[$reference['selections']['Computer']['column']])->isNull();
+                $this->integer((int)$opaqueZero->fields[$reference['fallback_column']])->isIdenticalTo(0);
                 $third = $this->createItem($deviceType, ['designation' => $prefix . '-blocked-target', 'entities_id' => 0]);
                 $connection = $DB->getDoctrineConnection();
                 $table = $link->getTable();
@@ -194,6 +213,11 @@ class Item_DeviceGeneric extends DbTestCase
                 $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id'))->isIdenticalTo($beforeOpaqueReplacement);
                 $this->boolean($replacement->getFromDB($replacementId))->isTrue();
                 $this->boolean($opaque->getFromDB($opaque->getID()))->isTrue();
+                $this->boolean($opaque->delete(['id' => $opaque->getID()], true))->isTrue();
+                $beforeOpaqueZero = $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id');
+                $this->boolean($replacement->delete(['id' => $replacementId, '_replace_by' => $third->getID()], true))->isFalse();
+                $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id'))->isIdenticalTo($beforeOpaqueZero);
+                $this->boolean($opaqueZero->getFromDB($opaqueZero->getID()))->isTrue();
             }
             $this->boolean($replacement->delete(['id' => $replacementId], true))->isTrue();
             $this->array($link->find([$column => $replacementId]))->isEmpty('Device purge removes assigned, deleted and stock bindings');

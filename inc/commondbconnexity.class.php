@@ -561,8 +561,28 @@ abstract class CommonDBConnexity extends CommonDBTM
             };
             // The actual parent hook may restrict this role without adding
             // CommonDBTM::can()'s private-item grants to the existing policy.
-            if ($right !== null && !$connexityItem->retainItemPermission($right)) {
-                return false;
+            if ($right !== null) {
+                $parentFields = $connexityItem->fields;
+                $parentState = get_object_vars($connexityItem);
+                $hasInput = array_key_exists('input', $parentState);
+                $parentInput = $parentState['input'] ?? null;
+                try {
+                    if (!$connexityItem->retainItemPermission($right)
+                        || !array_key_exists('fields', get_object_vars($connexityItem))
+                        || $connexityItem->fields !== $parentFields
+                        || array_key_exists('input', get_object_vars($connexityItem)) !== $hasInput
+                        || ($hasInput && $connexityItem->input !== $parentInput)) {
+                        return false;
+                    }
+                } finally {
+                    // A restrictive hook cannot substitute the resolved permission subject.
+                    $connexityItem->fields = $parentFields;
+                    if ($hasInput) {
+                        $connexityItem->input = $parentInput;
+                    } else {
+                        unset($connexityItem->input);
+                    }
+                }
             }
             // here, we can check item's global rights
             if (preg_match('/^itemtype/', $itemtype)) {

@@ -507,6 +507,81 @@ class NetworkPort extends DbTestCase
             $this->array($observed)->isIdenticalTo([READ]);
             $this->boolean($name->canConnexityItem('canUpdateItem', 'canUpdate', CommonDBConnexity::HAVE_VIEW_RIGHT_ON_ITEM, 'itemtype', 'items_id'))->isFalse();
             $this->array($observed)->isIdenticalTo([READ, READ]);
+            $deny = false;
+            $parent = new LegacyNetworkPort();
+            $this->boolean($parent->getFromDB($port->getID()))->isTrue();
+            foreach ([false, true] as $hasInput) {
+                if ($hasInput) {
+                    $parent->input = ['original' => 'parent-input'];
+                } else {
+                    unset($parent->input);
+                }
+                $before = get_object_vars($parent);
+                foreach (['fields', 'unset-fields', 'input', 'unset-input', 'throw'] as $mutation) {
+                    if ($mutation === 'unset-input' && !$hasInput) {
+                        continue;
+                    }
+                    $PLUGIN_HOOKS['item_can']['parent_role_policy_fixture'][LegacyNetworkPort::class] =
+                        static function (LegacyNetworkPort $actual) use ($mutation): void {
+                            if ($mutation === 'fields') {
+                                $actual->fields['id'] = -99;
+                                $actual->fields['entities_id'] = -99;
+                            } elseif ($mutation === 'unset-fields') {
+                                unset($actual->fields);
+                            } elseif ($mutation === 'unset-input') {
+                                unset($actual->input);
+                            } else {
+                                $actual->input = ['substituted' => true];
+                            }
+                            if ($mutation === 'throw') {
+                                $actual->fields = [];
+                                throw new RuntimeException('mutated parent hook failed');
+                            }
+                        };
+                    if ($mutation === 'throw') {
+                        $caught = false;
+                        try {
+                            $name->canConnexityItem('canUpdateItem', 'canUpdate', CommonDBConnexity::HAVE_SAME_RIGHT_ON_ITEM,
+                                'itemtype', 'items_id', $parent);
+                        } catch (RuntimeException $error) {
+                            $caught = true;
+                            $this->string($error->getMessage())->isIdenticalTo('mutated parent hook failed');
+                        }
+                        $this->boolean($caught)->isTrue('The parent hook exception must propagate');
+                    } else {
+                        $this->boolean($name->canConnexityItem('canUpdateItem', 'canUpdate', CommonDBConnexity::HAVE_SAME_RIGHT_ON_ITEM,
+                            'itemtype', 'items_id', $parent))->isFalse();
+                    }
+                    $this->array($parent->fields)->isIdenticalTo($before['fields']);
+                    $this->boolean(array_key_exists('input', get_object_vars($parent)))->isIdenticalTo($hasInput);
+                    if ($hasInput) {
+                        $this->array($parent->input)->isIdenticalTo($before['input']);
+                    }
+                }
+            }
+            $foreignEntity = $this->createItem('Entity', ['name' => $this->getUniqueString(),
+                'entities_id' => $computer->getEntityID()]);
+            $foreignParent = $this->createItem('Computer', ['name' => $this->getUniqueString(),
+                'entities_id' => $foreignEntity->getID()]);
+            $this->setEntity((int)$computer->getEntityID(), false);
+            $this->boolean($foreignParent->canUpdateItem())->isFalse();
+            $foreignFields = $foreignParent->fields;
+            $scopeHooks = 0;
+            $PLUGIN_HOOKS['item_can']['parent_role_policy_fixture']['Computer'] =
+                static function ($actual) use ($computer, &$scopeHooks): void {
+                    ++$scopeHooks;
+                    $actual->fields['entities_id'] = $computer->getEntityID();
+                };
+            $port->fields['items_id'] = $foreignParent->getID();
+            $this->boolean($port->canConnexityItem('canUpdateItem', 'canUpdate', CommonDBConnexity::HAVE_SAME_RIGHT_ON_ITEM,
+                'itemtype', 'items_id', $foreignParent))->isFalse();
+            $this->integer($scopeHooks)->isIdenticalTo(1);
+            $this->array($foreignParent->fields)->isIdenticalTo($foreignFields);
+            $this->boolean($foreignParent->canUpdateItem())->isFalse();
+            $PLUGIN_HOOKS['item_can']['parent_role_policy_fixture'][LegacyNetworkPort::class] =
+                static function (LegacyNetworkPort $actual): void {
+                    throw new RuntimeException('parent permission hook failed');
+                };
             $throw = true;
             $this->exception(static fn () => $name->canConnexityItem('canUpdateItem', 'canUpdate', CommonDBConnexity::HAVE_VIEW_RIGHT_ON_ITEM, 'itemtype', 'items_id'))
                 ->isInstanceOf(RuntimeException::class)->hasMessage('parent permission hook failed');
