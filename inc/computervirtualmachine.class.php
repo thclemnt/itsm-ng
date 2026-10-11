@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\InventoryRepository;
 use itsmng\Database\VirtualMachineCountReadOperation;
@@ -262,8 +263,15 @@ class ComputerVirtualMachine extends CommonDBChild
         echo "<div class='center'>";
 
         if (isset($comp->fields['uuid']) && ($comp->fields['uuid'] != '')) {
-            $hosts = (new InventoryRepository(Orm::create($DB)))
-                ->virtualMachineHosts(self::getUUIDRestrictCriteria($comp->fields['uuid']), getEntitiesRestrictCriteria('glpi_computers'));
+            $hosts = Orm::readPrepared(
+                $DB,
+                static fn (): array => [
+                    self::getUUIDRestrictCriteria($comp->fields['uuid']),
+                    getEntitiesRestrictCriteria('glpi_computers'),
+                ],
+                static fn (EntityManager $manager, array $arguments): array =>
+                    (new InventoryRepository($manager))->virtualMachineHosts(...$arguments)
+            );
 
             if (!empty($hosts)) {
                 echo "<table class='tab_cadre_fixehov' aria_label='List of virtualized environments'>";
@@ -333,8 +341,12 @@ class ComputerVirtualMachine extends CommonDBChild
 
         echo "<div class='center'>";
 
-        $virtualmachines = (new InventoryRepository(Orm::create($DB)))
-            ->virtualMachinesForComputer((int)$ID);
+        $virtualmachines = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$ID,
+            static fn (EntityManager $manager, int $computer): array =>
+                (new InventoryRepository($manager))->virtualMachinesForComputer($computer)
+        );
 
         echo "<table class='tab_cadre_fixehov' aria-label='Virtual Machine table'>";
 
@@ -490,8 +502,12 @@ class ComputerVirtualMachine extends CommonDBChild
             return false;
         }
 
-        $ids = (new InventoryRepository(Orm::create($DB)))
-            ->computerIdsByUuids(self::getUUIDRestrictCriteria($fields['uuid']));
+        $ids = Orm::readPrepared(
+            $DB,
+            static fn (): array => self::getUUIDRestrictCriteria($fields['uuid']),
+            static fn (EntityManager $manager, array $uuids): array =>
+                (new InventoryRepository($manager))->computerIdsByUuids($uuids)
+        );
         if (count($ids) === 1) {
             return $ids[0];
         }

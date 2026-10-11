@@ -33,6 +33,11 @@
 
 namespace tests\units;
 
+use Closure;
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Entity\Computer as ComputerRecord;
+use RuntimeException;
+use tests\fixtures\ScalarReadProbe;
 use Computer as ComputerModel;
 use ComputerVirtualMachine as VirtualMachineModel;
 use DbTestCase;
@@ -59,8 +64,103 @@ use LogicException;
 use mock\DBmysql as AdapterProbe;
 use ReflectionProperty;
 
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
+
 class ComputerVirtualMachine extends DbTestCase
 {
+    public function testUuidPreparationRetainsCustomRouteAndCurrentIdentity(): void
+    {
+        global $DB;
+        $this->login();
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        $uuid = '6742e6ac-b493-4e57-a964-35f2dba80699';
+        $first = $this->createItem(ComputerModel::class, ['name' => $this->getUniqueString(), 'uuid' => $uuid, 'entities_id' => 0]);
+        $second = $this->createItem(ComputerModel::class, ['name' => $this->getUniqueString(), 'uuid' => $uuid, 'entities_id' => 0]);
+        $ambiguity = null;
+        try {
+            VirtualMachineModel::findVirtualMachine(['uuid' => $uuid]);
+        } catch (RuntimeException $error) {
+            if (
+                $error->getFile() !== realpath(GLPI_ROOT . '/inc/toolbox.class.php')
+                || !str_contains($error->getMessage(), 'ComputerVirtualMachine::findVirtualMachine()')
+                || !str_contains($error->getMessage(), 'findVirtualMachine expects one result; at least two computers match the UUID.')
+            ) {
+                throw $error;
+            }
+            $ambiguity = $error;
+        }
+        $this->object($ambiguity)->isInstanceOf(RuntimeException::class);
+        $observer = new class () {
+            public array $trace = [];
+            public int $clears = 0;
+            public function onClear(): void
+            {
+                ++$this->clears;
+            }
+        };
+        $probe = new class ($connection) extends ScalarReadProbe {
+            public EventManager $events;
+            public object $observer;
+            public object $database;
+            public function getEventManager(): EventManager
+            {
+                $this->observer->trace[] = 'constructed';
+                $GLOBALS['DB'] = $this->database;
+                return $this->events;
+            }
+        };
+        $probe->events = new EventManager();
+        $probe->events->addEventListener(['onClear'], $observer);
+        $probe->observer = $observer;
+        $probe->database = $database;
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new AdapterProbe();
+        $this->calling($adapter)->getDoctrineConnection = $probe;
+        $convert = function () use ($observer, $connection, $second, $uuid): string {
+            $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+            $observer->trace[] = 'converted';
+            $connection->update('glpi_computers', ['uuid' => ''], ['id' => $second->getID()]);
+            return strtoupper($uuid);
+        };
+        $value = new class ($convert) {
+            public function __construct(private Closure $convert)
+            {
+            }
+            public function __toString(): string
+            {
+                return ($this->convert)();
+            }
+        };
+        try {
+            $DB = $adapter;
+            $this->integer(VirtualMachineModel::findVirtualMachine(['uuid' => $value]))->isIdenticalTo((int)$first->getID());
+            $this->string($observer->trace[0])->isIdenticalTo('constructed');
+            $this->string($observer->trace[1])->isIdenticalTo('converted');
+            $this->array($probe->queries)->hasSize(1);
+            $this->integer($observer->clears)->isIdenticalTo(0);
+            $failure = new RuntimeException('UUID preparation refused');
+            $invalid = new class ($failure) {
+                public function __construct(private RuntimeException $failure)
+                {
+                }
+                public function __toString(): string
+                {
+                    throw $this->failure;
+                }
+            };
+            $DB = $adapter;
+            $this->exception(static fn () => VirtualMachineModel::findVirtualMachine(['uuid' => $invalid]))->isIdenticalTo($failure);
+            $this->array($probe->queries)->hasSize(1);
+            $DB = $adapter;
+            $this->integer(VirtualMachineModel::findVirtualMachine(['uuid' => $uuid]))->isIdenticalTo((int)$first->getID());
+            $this->array($probe->queries)->hasSize(2);
+            $this->integer($observer->clears)->isIdenticalTo(0);
+        } finally {
+            $DB = $database;
+        }
+    }
+
     public function testCreateAndGet()
     {
         $this->login();
@@ -241,6 +341,49 @@ class ComputerVirtualMachine extends DbTestCase
         )->isGreaterThan(0);
 
         $this->variable($obj->findVirtualMachine(['uuid' => $uuid]))->isEqualTo($cid);
+
+        $connection = $database->getDoctrineConnection();
+        $owner = Orm::create($database);
+        $displaySession = $_SESSION;
+        $this->setEntity(0, true);
+        try {
+            $pending = $owner->find(ComputerRecord::class, $cid);
+            $pending->name = 'Pending independent UUID owner';
+            $hostComputer = new ComputerModel();
+            $this->boolean($hostComputer->getFromDB($host))->isTrue();
+            $comment = $this->getUniqueString();
+            $this->integer($connection->update('glpi_computervirtualmachines', ['comment' => $comment], ['id' => $id]))->isIdenticalTo(1);
+            ob_start();
+            try {
+                VirtualMachineModel::showForComputer($hostComputer);
+                $this->string(ob_get_contents())->contains($comment)->contains($uuid);
+            } finally {
+                ob_end_clean();
+            }
+            ob_start();
+            try {
+                VirtualMachineModel::showForVirtualMachine($computer);
+                $this->string(ob_get_contents())->contains($hostComputer->fields['name']);
+            } finally {
+                ob_end_clean();
+            }
+            $this->boolean($owner->contains($pending))->isTrue();
+            $this->string($pending->name)->isIdenticalTo('Pending independent UUID owner');
+            Orm::read($database, function (EntityManager $outer) use ($cid, $uuid): void {
+                $live = $outer->find(ComputerRecord::class, $cid);
+                $live->name = 'Pending enclosing UUID owner';
+                $this->integer(VirtualMachineModel::findVirtualMachine(['uuid' => strtoupper($uuid)]))->isIdenticalTo($cid);
+                $this->boolean($outer->contains($live))->isTrue();
+                $this->string($live->name)->isIdenticalTo('Pending enclosing UUID owner');
+            });
+            $fresh = new ComputerModel();
+            $this->boolean($fresh->getFromDB($cid))->isTrue();
+            $this->string($fresh->fields['name'])->isIdenticalTo('Virtu Hall');
+        } finally {
+            $owner->clear();
+            $_SESSION = $displaySession;
+        }
+
     }
 }
 
