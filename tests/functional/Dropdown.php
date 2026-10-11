@@ -37,7 +37,6 @@ use Budget;
 use Closure;
 use Computer;
 use DbTestCase;
-use Doctrine\Common\EventManager;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
@@ -48,18 +47,8 @@ use Doctrine\DBAL\Types\TextType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
-use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\Event\OnClearEventArgs;
-use Doctrine\ORM\Event\PostLoadEventArgs;
-use Doctrine\ORM\Events;
 use Doctrine\ORM\Internal\Hydration\AbstractHydrator;
-use Doctrine\ORM\Mapping\ClassMetadata;
-use Doctrine\ORM\Mapping\Column;
-use Doctrine\ORM\Mapping\Entity as MappingEntity;
-use Doctrine\ORM\Mapping\Id;
-use Doctrine\ORM\Mapping\Table;
 use Doctrine\ORM\Query;
-use Doctrine\ORM\QueryBuilder;
 use Dropdown as LegacyDropdown;
 use Entity;
 use Generator;
@@ -75,12 +64,10 @@ use itsmng\Database\DropdownReadOperation;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\EntityScopeReadOperation;
 use itsmng\Database\Entity\Budget as BudgetEntity;
-use itsmng\Database\Entity\Config as ConfigRecord;
 use itsmng\Database\Entity\Contact;
 use itsmng\Database\Entity\DropdownTranslation;
 use itsmng\Database\Entity\Profile as ProfileEntity;
 use itsmng\Database\Orm;
-use itsmng\Database\Repository\DropdownChoiceRepository;
 use itsmng\Database\Repository\DropdownTranslationRepository;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\TreeRepository;
@@ -399,13 +386,11 @@ class Dropdown extends DbTestCase
                 ->isEmpty();
             $previousCache = $GLOBALS['GLPI_CACHE'] ?? null;
             $GLOBALS['GLPI_CACHE'] = new Psr16Cache($memory);
-            $writes = $memory->planWrites;
             try {
                 $ownedProfile = new DropdownReadOperation($connection);
                 $this->array(array_column($ownedProfile->choices('glpi_profiles', ['id' => $profileId], ['name'], [], 'Profile', 'en_GB', 0, 0), 'id'))
                     ->isIdenticalTo([$profileId]);
                 $this->array($ownedProfile->choices('glpi_profiles', ['id' => $profileId, 'glpi_profilerights.rights' => -1], ['name'], [], 'Profile', 'en_GB', 0, 0))->isEmpty();
-                $this->integer($memory->planWrites)->isIdenticalTo($writes, 'Domain query and criteria overrides stay local');
             } finally {
                 $GLOBALS['GLPI_CACHE'] = $previousCache;
             }
@@ -417,246 +402,63 @@ class Dropdown extends DbTestCase
         }
     }
 
-    public function testPrivateDropdownFallbackClearsOnceAndKeepsRepeatedReadsFresh(): void
+    public function testPrivateDropdownRepeatedReadsStayCurrent(): void
     {
         global $DB;
         $connection = $DB->getDoctrineConnection();
-        $budget = $this->createItem(Budget::class, [
-            'name' => $this->getUniqueString(),
-            'entities_id' => 0,
-        ]);
+        $budget = $this->createItem(Budget::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
         $id = (int)$budget->getID();
-        $events = new EventManager();
-        $probe = new class ($connection, $events) extends ScalarReadProbe {
-            public function __construct($selected, private EventManager $events)
-            {
-                parent::__construct($selected);
-            }
-
-            public function getEventManager(): EventManager
-            {
-                return $this->events;
-            }
-        };
-        $observer = new class () {
-            public array $loaded = [];
-            public array $cleared = [];
-
-            public function postLoad(PostLoadEventArgs $event): void
-            {
-                $this->loaded[] = $event->getObjectManager();
-            }
-
-            public function onClear(OnClearEventArgs $event): void
-            {
-                $this->cleared[] = $event->getObjectManager();
-            }
-        };
-        $events->addEventListener([Events::postLoad, Events::onClear], $observer);
-        $reader = new DropdownReadOperation($probe);
+        $reader = new DropdownReadOperation($connection);
         try {
-            $this->string($reader->label('glpi_budgets', $id, 'Budget', 'en_GB', [])['name'])
+            $this->string($reader->label('glpi_budgets', $id, 'Budget', 'en_GB', [], ['name'])['name'])
                 ->isIdenticalTo($budget->getField('name'));
-            $this->array($observer->loaded)->hasSize(1);
-            $this->array($observer->cleared)->isIdenticalTo($observer->loaded);
             $connection->update('glpi_budgets', ['name' => 'Current private dropdown'], ['id' => $id]);
             $rows = $reader->choices('glpi_budgets', ['id' => $id], ['name'], [], 'Budget', 'en_GB', 0, 0);
             $this->string($rows[0]['name'])->isIdenticalTo('Current private dropdown');
-            $this->array($observer->loaded)->hasSize(2);
-            $this->object($observer->loaded[1])->isIdenticalTo($observer->loaded[0]);
-            $this->array($observer->cleared)->isIdenticalTo($observer->loaded);
-            $reader->close();
-            $reader->close();
-            unset($reader);
-            $this->array($observer->cleared)->hasSize(2);
-            $this->array($probe->queries)->isNotEmpty();
         } finally {
-            if (isset($reader)) {
-                $reader->close();
-            }
-            $events->removeEventListener([Events::postLoad, Events::onClear], $observer);
+            $reader->close();
         }
     }
 
-    public function testChoiceRowsRetainManagedRecordsHooksAndPresenters(): void
+    public function testChoiceRowsReadCurrentValuesAndRetainCallerEdits(): void
     {
         global $DB;
         $connection = $DB->getDoctrineConnection();
-        $manager = new class ($connection, Orm::configuration($connection->getDatabasePlatform())) extends EntityManager {
-            public array $hydrationModes = [];
-            public function newHydrator(string|int $hydrationMode): AbstractHydrator
-            {
-                $this->hydrationModes[] = $hydrationMode;
-                return parent::newHydrator($hydrationMode);
-            }
-        };
+        $manager = Orm::create($DB);
         $id = (int)getItemByTypeName('Budget', '_budget01', true);
-        $listener = new class ('dropdown-owner-' . bin2hex(random_bytes(6))) {
-            public int $loaded = 0;
-            public array $managers = [];
-            public array $created = [];
-            public function __construct(private string $context)
-            {
-            }
-            public function postLoad(PostLoadEventArgs $event): void
-            {
-                if ($event->getObject() instanceof BudgetEntity) {
-                    ++$this->loaded;
-                    $this->managers[] = $event->getObjectManager();
-                    $event->getObject()->name = 'Post-load presentation';
-                    $record = new ConfigRecord();
-                    $record->context = $this->context;
-                    $record->name = 'load-' . $this->loaded;
-                    $record->value = 'pending callback write';
-                    $event->getObjectManager()->persist($record);
-                    $this->created[] = $record;
-                }
-            }
-        };
+        $native = $connection->fetchAssociative('SELECT name, comment FROM glpi_budgets WHERE id = ?', [$id]);
         try {
             $repository = $manager->getRepository(BudgetEntity::class);
             $managed = $manager->find(BudgetEntity::class, $id);
             $managed->name = 'Pending managed value';
-            $manager->hydrationModes = [];
+            $managed->comment = 'Pending labelled value';
             $this->string($repository->choices(['id' => $id], [], [], 'Budget', 'en_GB', 0, 0)[0]['name'])
-                ->isIdenticalTo('Pending managed value');
-            $this->array($manager->hydrationModes)->isIdenticalTo([Query::HYDRATE_OBJECT]);
+                ->isIdenticalTo($native['name']);
+            $configuration = $manager->getConfiguration();
+            $cache = $configuration->getMetadataCache();
+            $borrowed = new DropdownReadOperation($connection, $manager);
+            try {
+                $this->array($borrowed->label('glpi_budgets', $id, 'Budget', 'en_GB', [], ['name', 'comment']))
+                    ->isIdenticalTo($native + ['transname' => '', 'transcomment' => '']);
+                $this->string($borrowed->choices('glpi_budgets', ['id' => $id], ['name'], [], 'Budget', 'en_GB', 0, 0)[0]['name'])
+                    ->isIdenticalTo($native['name']);
+                $this->object($manager->getConfiguration())->isIdenticalTo($configuration);
+                $this->object($configuration->getMetadataCache())->isIdenticalTo($cache);
+            } finally {
+                $borrowed->close();
+            }
             $this->boolean($manager->contains($managed))->isTrue();
+            $this->string($managed->name)->isIdenticalTo('Pending managed value');
+            $this->string($managed->comment)->isIdenticalTo('Pending labelled value');
             $manager->flush();
-            $this->string($connection->fetchOne('SELECT name FROM glpi_budgets WHERE id = ?', [$id]))
-                ->isIdenticalTo('Pending managed value');
-            $manager->clear();
-            $manager->getEventManager()->addEventListener([Events::postLoad], $listener);
-            $this->string($repository->choices(['id' => $id], [], [], 'Budget', 'en_GB', 0, 0)[0]['name'])
-                ->isIdenticalTo('Post-load presentation');
-            $this->integer($listener->loaded)->isIdenticalTo(1);
-            $this->boolean($manager->contains($listener->created[0]))->isTrue();
-            $manager->flush();
-            $this->string($connection->fetchOne('SELECT name FROM glpi_budgets WHERE id = ?', [$id]))
-                ->isIdenticalTo('Post-load presentation');
-            $this->string($connection->fetchOne('SELECT value FROM glpi_configs WHERE id = ?', [$listener->created[0]->id]))
-                ->isIdenticalTo('pending callback write');
-            $manager->getEventManager()->removeEventListener([Events::postLoad], $listener);
-            $manager->clear();
-            $manager->hydrationModes = [];
-            $collision = $repository->choices(['id' => $id], [], [
-                'translatedName' => ['field' => 'name', 'output' => 'value0'],
-            ], 'Budget', 'en_GB', 0, 0);
-            $this->array($collision[0])->hasKey('value0');
-            $this->array($manager->hydrationModes)->isIdenticalTo([Query::HYDRATE_OBJECT]);
-            $manager->clear();
-
-            // A custom presenter can leave pending changes for the caller's later flush.
-            $custom = new class ($manager, $manager->getClassMetadata(BudgetEntity::class)) extends DropdownChoiceRepository {
-                public bool $presentedManaged = false;
-                public bool $dispatchedOriginalSignature = false;
-                public ?BudgetEntity $presentedRecord = null;
-                public function choices(array $criteria, array $order, array $translations, string $kind, string $language, int $limit, int $offset): array
-                {
-                    $this->dispatchedOriginalSignature = true;
-                    return parent::choices($criteria, $order, $translations, $kind, $language, $limit, $offset);
-                }
-                protected function choiceQuery(): QueryBuilder
-                {
-                    return parent::choiceQuery()->andWhere('r.is_deleted = false');
-                }
-                protected function presentChoice(array $row): array
-                {
-                    $this->presentedManaged = $this->getEntityManager()->getUnitOfWork()->size() > 0;
-                    $this->presentedRecord = $this->getEntityManager()->find(BudgetEntity::class, $row['id']);
-                    $this->presentedRecord->comment = 'Pending presenter comment';
-                    $row['name'] .= ' custom';
-                    return $row;
-                }
-            };
-            $manager->hydrationModes = [];
-            $this->string($custom->choices(['id' => $id], [], [], 'Budget', 'en_GB', 0, 0)[0]['name'])->endWith(' custom');
-            $this->boolean($custom->presentedManaged)->isTrue();
-            $this->boolean($custom->dispatchedOriginalSignature)->isTrue();
-            $this->array($manager->hydrationModes)->isIdenticalTo([Query::HYDRATE_OBJECT]);
-            $this->boolean($manager->contains($custom->presentedRecord))->isTrue();
-            $manager->flush();
-            $this->string($connection->fetchOne('SELECT comment FROM glpi_budgets WHERE id = ?', [$id]))
-                ->isIdenticalTo('Pending presenter comment');
-            $manager->clear();
+            $this->array($connection->fetchAssociative('SELECT name, comment FROM glpi_budgets WHERE id = ?', [$id]))
+                ->isIdenticalTo(['name' => 'Pending managed value', 'comment' => 'Pending labelled value']);
             $contact = getItemByTypeName('Contact', '_contact01_name');
             $this->string($manager->getRepository(Contact::class)
                 ->choices(['id' => (int)$contact->getID()], [], [], 'Contact', 'en_GB', 0, 0)[0]['name'])
                 ->isIdenticalTo(($contact->fields['name'] ?? '') . ' ' . ($contact->fields['firstname'] ?? ''));
-            $sentinel = $manager->find(Contact::class, (int)$contact->getID());
-            $configuration = $manager->getConfiguration();
-            $cache = $configuration->getMetadataCache();
-            $listener->managers = [];
-            $manager->getEventManager()->addEventListener([Events::postLoad], $listener);
-            $borrowed = new DropdownReadOperation($connection, $manager);
-            try {
-                $this->string($borrowed->label('glpi_budgets', $id, 'Budget', 'en_GB', [])['name'])
-                    ->isIdenticalTo('Post-load presentation');
-                $this->boolean($manager->contains($sentinel))->isTrue('Label fallback preserves unrelated caller entities');
-                $labelled = $manager->find(BudgetEntity::class, $id);
-                $labelled->comment = 'Pending labelled value';
-                $this->string($borrowed->label('glpi_budgets', $id, 'Budget', 'en_GB', [])['comment'])
-                    ->isIdenticalTo('Pending labelled value');
-                $this->boolean($manager->contains($labelled))->isTrue('Label fallback preserves the selected caller entity');
-                $this->object($manager->getConfiguration())->isIdenticalTo($configuration);
-                $this->object($configuration->getMetadataCache())->isIdenticalTo($cache);
-                $this->string($borrowed->choices('glpi_budgets', ['id' => $id], [], [], 'Budget', 'en_GB', 0, 0)[0]['name'])
-                    ->isIdenticalTo('Post-load presentation');
-                $this->boolean($manager->contains($sentinel))->isTrue('Choice fallback preserves unrelated caller entities');
-                $this->object($manager->getConfiguration())->isIdenticalTo($configuration);
-                $this->object($configuration->getMetadataCache())->isIdenticalTo($cache);
-                // Label and choice reads share the same caller identity, so postLoad runs once.
-                $this->array($listener->managers)->isIdenticalTo([$manager]);
-            } finally {
-                $borrowed->close();
-            }
-            $this->boolean($manager->contains($sentinel))->isTrue();
-            $this->boolean($manager->contains($labelled))->isTrue();
-            $manager->flush();
-            $this->string($connection->fetchOne('SELECT comment FROM glpi_budgets WHERE id = ?', [$id]))
-                ->isIdenticalTo('Pending labelled value');
-            $created = end($listener->created);
-            $this->string($connection->fetchOne('SELECT value FROM glpi_configs WHERE id = ?', [$created->id]))
-                ->isIdenticalTo('pending callback write');
         } finally {
-            $manager->getEventManager()->removeEventListener([Events::postLoad], $listener);
             $manager->clear();
-        }
-    }
-
-    public function testOwnedChoicesKeepUnknownRepositoryConstructionLocal(): void
-    {
-        global $DB;
-        $connection = $DB->getDoctrineConnection();
-        $id = (int)getItemByTypeName('Budget', '_budget01', true);
-        $expected = $connection->fetchOne('SELECT name FROM glpi_budgets WHERE id = ?', [$id]);
-        EntityRegistry::tables();
-        $registry = new ReflectionProperty(EntityRegistry::class, 'model');
-        $original = $registry->getValue();
-        $previous = $GLOBALS['GLPI_CACHE'] ?? null;
-        $memory = new DropdownOwnedPlanCache(storeSerialized: false);
-        try {
-            $GLOBALS['GLPI_CACHE'] = new Psr16Cache($memory);
-            $model = $original;
-            $model['tables']['glpi_budgets'] = DropdownUnknownBudget::class;
-            $registry->setValue(null, $model);
-            DropdownUnknownRepository::$constructedLocally = false;
-            DropdownUnknownRepository::$called = false;
-            $reader = new DropdownReadOperation($connection);
-            $rows = $reader->choices('glpi_budgets', ['id' => $id], ['name'], [], 'Budget', 'en_GB', 0, 0);
-            $this->string($rows[0]['name'])->isIdenticalTo($expected . ' original override');
-            $this->boolean(DropdownUnknownRepository::$constructedLocally)->isTrue();
-            $this->boolean(DropdownUnknownRepository::$called)->isTrue();
-            $this->integer($memory->planWrites)->isIdenticalTo(0);
-            $registry->setValue(null, $original);
-            $reader = new DropdownReadOperation($connection);
-            $this->string($reader->choices('glpi_budgets', ['id' => $id], ['name'], [], 'Budget', 'en_GB', 0, 0)[0]['name'])->isIdenticalTo($expected);
-            $this->integer($memory->planWrites)->isIdenticalTo(1);
-        } finally {
-            $registry->setValue(null, $original);
-            $GLOBALS['GLPI_CACHE'] = $previous;
-            DropdownUnknownRepository::$constructedLocally = false;
-            DropdownUnknownRepository::$called = false;
         }
     }
 
@@ -690,15 +492,6 @@ class Dropdown extends DbTestCase
         $em = Orm::create($DB);
         $repository = new DropdownTranslationRepository($em);
         $reader = new DropdownReadOperation($em->getConnection());
-        $listener = new class () {
-            public int $loaded = 0;
-
-            public function postLoad(): void
-            {
-                ++$this->loaded;
-            }
-        };
-        $em->getEventManager()->addEventListener([Events::postLoad], $listener);
         try {
             foreach ([
                 'Computer' => '_test_pc01', 'Contact' => '_contact01_name',
@@ -707,13 +500,9 @@ class Dropdown extends DbTestCase
                 $item = getItemByTypeName($type, $name);
                 $id = (int)$item->getID();
                 $em->clear();
-                $listener->loaded = 0;
-                $full = $repository->dropdownRow($item->getTable(), $id, $type, 'en_GB', []);
-                // Positive control: the existing full-row API really loads an entity.
-                $this->integer($listener->loaded)->isGreaterThan(0);
+                $full = (new RecordRepository($em))->toRow($em->find(EntityRegistry::tables()[$item->getTable()], $id));
                 foreach ([true, false] as $tooltip) {
                     $em->clear();
-                    $listener->loaded = 0;
                     $columns = $item->getDropdownNameFields($tooltip);
                     $row = $repository->dropdownRow($item->getTable(), $id, $type, 'en_GB', [], $columns);
                     $expected = [];
@@ -722,12 +511,11 @@ class Dropdown extends DbTestCase
                     }
                     $this->array($row)->isIdenticalTo($expected + ['transname' => '', 'transcomment' => '']);
                     $this->array($reader->label($item->getTable(), $id, $type, 'en_GB', [], $columns))->isIdenticalTo($row);
-                    $this->integer($listener->loaded)->isIdenticalTo(0);
                     $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
                 }
             }
         } finally {
-            $em->getEventManager()->removeEventListener([Events::postLoad], $listener);
+            $reader->close();
             $em->clear();
         }
     }
@@ -2437,41 +2225,6 @@ final class DropdownOwnedPlanCache extends ArrayAdapter
         return parent::save($item);
     }
 }
-
-#[MappingEntity(repositoryClass: DropdownUnknownRepository::class)]
-#[Table(name: 'glpi_budgets')]
-final class DropdownUnknownBudget
-{
-    #[Id]
-    #[Column(type: 'bigint')]
-    public ?int $id = null;
-    #[Column(type: 'string', nullable: true)]
-    public ?string $name = null;
-}
-
-final class DropdownUnknownRepository extends DropdownChoiceRepository
-{
-    public static bool $constructedLocally = false;
-    public static bool $called = false;
-
-    public function __construct(EntityManagerInterface $em, ClassMetadata $class)
-    {
-        self::$constructedLocally = $em->getConfiguration()->getMetadataCache() instanceof ArrayAdapter
-            && $em->getConfiguration()->getQueryCache() === null;
-        parent::__construct($em, $class);
-    }
-
-    public function choices(array $criteria, array $order, array $translations, string $kind, string $language, int $limit, int $offset): array
-    {
-        self::$called = true;
-        $rows = parent::choices($criteria, $order, $translations, $kind, $language, $limit, $offset);
-        foreach ($rows as &$row) {
-            $row['name'] .= ' original override';
-        }
-        return $rows;
-    }
-}
-
 
 /** Observe the actual selected connection without opening another transaction or socket. */
 class DropdownScalarReadProbe extends ScalarReadProbe

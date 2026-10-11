@@ -115,26 +115,20 @@ final class DropdownTranslationRepository
     }
 
     /** Bound type/field/language joins prevent translations crossing dropdown kinds. */
-    public function dropdownRow(string $table, int $id, string $type, string $language, array $translations, ?array $columns = null): ?array
+    public function dropdownRow(string $table, int $id, string $type, string $language, array $translations, array $columns): ?array
     {
         $translations = array_values($translations);
-        $columns = $columns === null ? null : array_values($columns);
+        $columns = array_values($columns);
         $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
         $query = $this->em->createQueryBuilder()
             ->from($metadata->name, 'r')
             ->where('r.id = :id')
             ->setParameter('id', $id, Types::INTEGER);
-        if ($columns === null) {
-            $query->select('r');
-        } else {
-            // Keep one result for this root, as object hydration did even when
-            // historical translation rows duplicated a joined key.
-            $query->select('r.id AS dropdownRecordId')
-                ->indexBy('r', 'r.id');
-            $compiler = new RecordCriteria($query, $metadata, false);
-            foreach ($columns as $index => $column) {
-                $query->addSelect($compiler->column($column) . ' AS column' . $index);
-            }
+        // Keep one root result even when historical translation keys are duplicated.
+        $query->select('r.id AS dropdownRecordId')->indexBy('r', 'r.id');
+        $compiler = new RecordCriteria($query, $metadata, false);
+        foreach ($columns as $index => $column) {
+            $query->addSelect($compiler->column($column) . ' AS column' . $index);
         }
         foreach ($translations as $index => $field) {
             $alias = 'translation' . $index;
@@ -156,15 +150,10 @@ final class DropdownTranslationRepository
         if ($result === null) {
             return null;
         }
-        if ($columns === null) {
-            $record = $translations ? $result[0] : $result;
-            $row = (new RecordRepository($this->em))->toRow($record);
-        } else {
-            $row = [];
-            foreach ($columns as $index => $column) {
-                $mapping = $metadata->fieldMappings[$metadata->getFieldName($column)] ?? null;
-                $row[$column] = RecordRepository::legacyScalarValue($result['column' . $index], $mapping?->type ?? Types::BIGINT);
-            }
+        $row = [];
+        foreach ($columns as $index => $column) {
+            $mapping = $metadata->fieldMappings[$metadata->getFieldName($column)] ?? null;
+            $row[$column] = RecordRepository::legacyScalarValue($result['column' . $index], $mapping?->type ?? Types::BIGINT);
         }
         $row += ['transname' => '', 'transcomment' => ''];
         foreach ($translations as $index => $field) {
