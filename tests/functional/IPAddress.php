@@ -557,7 +557,11 @@ class IPAddress extends DbTestCase
         $customType = IPAddressCustomNameParent::class;
         $wireType = addslashes($customType);
         $this->object(getItemForItemtype($wireType))->isInstanceOf(IPAddressCustomNameParent::class);
-        $custom = $this->createItem(IPAddressModel::class, ['itemtype' => $wireType, 'items_id' => $second->getID(), 'name' => '192.0.2.62']);
+        $custom = $this->createItem(IPAddressModel::class, [
+            'itemtype' => $wireType,
+            'items_id' => $second->getID(),
+            'name' => '192.0.2.62'
+        ]);
         $customId = (int)$custom->getID();
         $this->integer($customId)->isGreaterThan(0);
         $this->string($custom->fields['itemtype'])->isIdenticalTo($customType);

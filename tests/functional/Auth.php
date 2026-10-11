@@ -35,29 +35,29 @@ namespace tests\units;
 
 use Auth as ApplicationAuth;
 use AuthLDAP as ApplicationLdap;
-use DbTestCase;
 use DateTime;
-use stdClass;
-use itsmng\Database\Entity\UserEmail as EmailRecord;
-use itsmng\Database\Entity\Profile as ProfileRecord;
-use itsmng\Database\Entity\ProfileUser as ProfileGrant;
-use itsmng\Database\UnsupportedCriteria;
+use DbTestCase;
 use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Connection;
-use Doctrine\ORM\Event\PostLoadEventArgs;
-use itsmng\Database\Entity\AuthLdapReplicate;
-use itsmng\Database\Entity\User as UserRecord;
-use itsmng\Database\Entity\Entity as ScopeEntity;
-use mock\DBmysql as LocalLdapAdapterProbe;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Event\PostLoadEventArgs;
 use itsmng\Database\Entity\AuthLDAP;
+use itsmng\Database\Entity\AuthLdapReplicate;
 use itsmng\Database\Entity\AuthMail;
+use itsmng\Database\Entity\Entity as ScopeEntity;
+use itsmng\Database\Entity\Profile as ProfileRecord;
+use itsmng\Database\Entity\ProfileUser as ProfileGrant;
+use itsmng\Database\Entity\User as UserRecord;
+use itsmng\Database\Entity\UserEmail as EmailRecord;
 use itsmng\Database\Orm;
+use itsmng\Database\UnsupportedCriteria;
+use mock\DBmysql as LocalLdapAdapterProbe;
+use mock\DBmysql as RuleTypeAdapterProbe;
 use ReflectionProperty;
 use Rule as LegacyRule;
 use RuleRight as LegacyRuleRight;
-use mock\DBmysql as RuleTypeAdapterProbe;
+use stdClass;
 use tests\fixtures\ScalarReadProbe;
 use Toolbox;
 use User as ApplicationUser;
@@ -182,6 +182,7 @@ class Auth extends DbTestCase
             $observer = new class () {
                 public array $trace = [];
                 public int $clears = 0;
+
                 public function onClear(): void
                 {
                     ++$this->clears;
@@ -190,6 +191,7 @@ class Auth extends DbTestCase
             $selected = new class ($connection) extends ScalarReadProbe {
                 public EventManager $events;
                 public object $observer;
+
                 public function getEventManager(): EventManager
                 {
                     $this->observer->trace[] = 'constructed';
@@ -209,6 +211,7 @@ class Auth extends DbTestCase
             $this->calling($adapter)->getProvider = $original->getProvider();
             $DB = $adapter;
             $name = new class ($this, $connection, $observer, $other, $route, $account->name) {
+
                 public function __construct(
                     private object $test,
                     private Connection $connection,
@@ -218,6 +221,7 @@ class Auth extends DbTestCase
                     private string $name
                 ) {
                 }
+
                 public function __toString(): string
                 {
                     $this->test->boolean($this->connection->isApplicationEntityManagerActive())->isFalse();
@@ -264,6 +268,7 @@ class Auth extends DbTestCase
     /**
      * @dataProvider loginProvider
      */
+
     public function testIsValidLogin($login, $isvalid)
     {
         $this->variable(ApplicationAuth::isValidLogin($login))->isIdenticalTo($isvalid);

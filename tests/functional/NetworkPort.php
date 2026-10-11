@@ -403,8 +403,12 @@ class NetworkPort extends DbTestCase
         $opaqueType = NetworkNameOpaquePortFixture::class;
         $wireType = addslashes($opaqueType);
         $this->object(getItemForItemtype($wireType))->isInstanceOf(NetworkNameOpaquePortFixture::class);
-        $opaqueId = $opaque->add(['itemtype' => $wireType, 'items_id' => $portId,
-            'name' => 'custom-port-name', 'entities_id' => $computer->fields['entities_id']]);
+        $opaqueId = $opaque->add([
+            'itemtype' => $wireType,
+            'items_id' => $portId,
+            'name' => 'custom-port-name',
+            'entities_id' => $computer->fields['entities_id']
+        ]);
         $this->integer((int)$opaqueId)->isGreaterThan(0);
         $row = $inspect((int)$opaqueId);
         $this->string($row['itemtype'])->isIdenticalTo($opaqueType);
@@ -441,16 +445,25 @@ class NetworkPort extends DbTestCase
         $ports = [];
         foreach (['first', 'denied'] as $label) {
             $port = new LegacyNetworkPort();
-            $ports[] = (int)$port->add(['itemtype' => 'Computer', 'items_id' => $computer->getID(),
-                'entities_id' => $computer->fields['entities_id'], 'instantiation_type' => 'NetworkPortEthernet', 'name' => 'opaque-' . $label]);
+            $ports[] = (int)$port->add([
+                'itemtype' => 'Computer',
+                'items_id' => $computer->getID(),
+                'entities_id' => $computer->fields['entities_id'],
+                'instantiation_type' => 'NetworkPortEthernet',
+                'name' => 'opaque-' . $label
+            ]);
             $this->integer(end($ports))->isGreaterThan(0);
         }
         $name = new LegacyNetworkName();
         $opaqueType = NetworkNameOpaquePortFixture::class;
         $wireType = addslashes($opaqueType);
         $this->object(getItemForItemtype($wireType))->isInstanceOf(NetworkNameOpaquePortFixture::class);
-        $id = (int)$name->add(['itemtype' => $wireType, 'items_id' => $ports[0],
-            'entities_id' => $computer->fields['entities_id'], 'name' => 'prepared-opaque']);
+        $id = (int)$name->add([
+            'itemtype' => $wireType,
+            'items_id' => $ports[0],
+            'entities_id' => $computer->fields['entities_id'],
+            'name' => 'prepared-opaque'
+        ]);
         $this->integer($id)->isGreaterThan(0);
         $this->string($name->fields['itemtype'])->isIdenticalTo($opaqueType);
         $actualParent = getItemForItemtype($name->fields['itemtype']);
