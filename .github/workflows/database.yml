@@ -116,6 +116,12 @@ jobs:
           docker exec -i "${{ job.services.database.id }}" "${{ matrix.database.client }}" -uroot -ptest <<'SQL'
           GRANT ALL ON `itsm\_test\_config\_catalog\_%`.* TO 'test'@'%';
           SQL
+          # Non-secret native grant facts for the exact public-install principal.
+          docker exec -i "${{ job.services.database.id }}" "${{ matrix.database.client }}" -utest -ptest itsm_test_application <<'SQL'
+          SELECT CURRENT_USER() AS authenticated_principal, DATABASE() AS application_database;
+          SELECT GRANTEE, TABLE_SCHEMA, PRIVILEGE_TYPE, IS_GRANTABLE FROM information_schema.SCHEMA_PRIVILEGES WHERE PRIVILEGE_TYPE='TRIGGER';
+          SHOW GLOBAL VARIABLES LIKE 'partial_revokes';
+          SQL
       - name: Prepare scoped initial-owner migration fixture
         if: matrix.database.provider == 'mysql'
         run: |

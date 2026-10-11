@@ -7,6 +7,7 @@ namespace itsmng\Database\Migration\Frozen\InitialOwnersV1;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Platforms\MariaDBPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Column;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint;
@@ -181,6 +182,24 @@ abstract class InitialOwnerAdoption
             . "UNION ALL SELECT GRANTEE FROM information_schema.TABLE_PRIVILEGES WHERE GRANTEE=? AND TABLE_SCHEMA=? AND TABLE_NAME=? AND PRIVILEGE_TYPE='TRIGGER') direct_grants",
             [$grantee, $grantee, $schema, $grantee, $schema, static::TABLE]
         );
+        if ((int)$visible < 1) {
+            $escapedSchema = strtr($schema, ['\\' => '\\\\', '_' => '\\_', '%' => '\\%']);
+            if ($escapedSchema !== $schema) {
+                $wildcardDatabaseGrants = $connection->getDatabasePlatform() instanceof MariaDBPlatform;
+                if (!$wildcardDatabaseGrants) {
+                    $partialRevokes = $connection->fetchAssociative("SHOW GLOBAL VARIABLES LIKE 'partial_revokes'");
+                    $wildcardDatabaseGrants = ($partialRevokes['Variable_name'] ?? null) === 'partial_revokes'
+                        && ($partialRevokes['Value'] ?? null) === 'OFF';
+                }
+                if ($wildcardDatabaseGrants) {
+                    // Only the fully escaped literal database spelling, never arbitrary grant patterns.
+                    $visible = $connection->fetchOne(
+                        "SELECT COUNT(*) FROM information_schema.SCHEMA_PRIVILEGES WHERE GRANTEE=? AND TABLE_SCHEMA=? AND PRIVILEGE_TYPE='TRIGGER'",
+                        [$grantee, $escapedSchema]
+                    );
+                }
+            }
+        }
         if ((int)$visible < 1) {
             throw new RuntimeException('Cannot prove source trigger visibility for ' . static::TABLE . ': require a direct TRIGGER grant on this table or its database. Role-only grants are not supported by this adoption inspection.');
         }

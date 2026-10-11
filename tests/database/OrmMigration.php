@@ -289,26 +289,53 @@ class OrmMigration extends GLPITestCase
             $this->integer(preg_match('/\A(itsm_test_[a-z0-9_]+)@([a-zA-Z0-9_.%:-]+)\z/D', $account, $parts))->isIdenticalTo(1);
             $grantee = "'" . $parts[1] . "'@'" . $parts[2] . "'";
             $principal = $literal($parts[1]) . '@' . $literal($parts[2]);
+            $escapedSchema = strtr($schema, ['\\' => '\\\\', '_' => '\\_', '%' => '\\%']);
+            $wildcardDatabaseGrants = $connection->getDatabasePlatform() instanceof MariaDBPlatform;
+            if (!$wildcardDatabaseGrants) {
+                $partialRevokes = $connection->fetchAssociative("SHOW GLOBAL VARIABLES LIKE 'partial_revokes'");
+                $wildcardDatabaseGrants = ($partialRevokes['Variable_name'] ?? null) === 'partial_revokes'
+                    && ($partialRevokes['Value'] ?? null) === 'OFF';
+            }
+            $admittedEscapedSchema = $wildcardDatabaseGrants ? $escapedSchema : $schema;
             $this->integer((int)$connection->fetchOne("SELECT COUNT(*) FROM information_schema.USER_PRIVILEGES WHERE GRANTEE=? AND PRIVILEGE_TYPE IN ('SELECT','TRIGGER')", [$grantee]))->isIdenticalTo(0);
             $this->integer((int)$connection->fetchOne("SELECT COUNT(*) FROM information_schema.TABLE_PRIVILEGES WHERE GRANTEE=? AND PRIVILEGE_TYPE='TRIGGER'", [$grantee]))->isIdenticalTo(0);
-            $this->integer((int)$connection->fetchOne("SELECT COUNT(*) FROM information_schema.SCHEMA_PRIVILEGES WHERE GRANTEE=? AND TABLE_SCHEMA=? AND PRIVILEGE_TYPE='TRIGGER' AND IS_GRANTABLE='NO'", [$grantee, $schema]))->isIdenticalTo(1);
+            $this->integer((int)$connection->fetchOne("SELECT COUNT(*) FROM information_schema.SCHEMA_PRIVILEGES WHERE GRANTEE=? AND TABLE_SCHEMA IN (?, ?) AND PRIVILEGE_TYPE='TRIGGER' AND IS_GRANTABLE='NO'", [$grantee, $schema, $admittedEscapedSchema]))->isIdenticalTo(1);
+            $grantSchema = (string)$connection->fetchOne(
+                "SELECT TABLE_SCHEMA FROM information_schema.SCHEMA_PRIVILEGES WHERE GRANTEE=? AND TABLE_SCHEMA IN (?, ?) AND PRIVILEGE_TYPE='TRIGGER' AND IS_GRANTABLE='NO'",
+                [$grantee, $schema, $admittedEscapedSchema]
+            );
             $required = ['SELECT', 'INSERT', 'UPDATE', 'ALTER', 'INDEX', 'REFERENCES', 'TRIGGER'];
             $grants = $connection->fetchFirstColumn(
-                'SELECT PRIVILEGE_TYPE FROM information_schema.SCHEMA_PRIVILEGES WHERE GRANTEE=? AND TABLE_SCHEMA=?',
-                [$grantee, $schema]
+                'SELECT PRIVILEGE_TYPE FROM information_schema.SCHEMA_PRIVILEGES WHERE GRANTEE=? AND TABLE_SCHEMA IN (?, ?)',
+                [$grantee, $schema, $admittedEscapedSchema]
             );
             $this->array(array_values(array_diff($required, $grants)))->isEmpty('Actual direct database privileges qualify the scoped ALTER/COPY/receipt writer');
             $rows = $observer->fetchAllAssociative('SELECT * FROM glpi_networkports ORDER BY id');
             $ledger = Ledger::states($observer);
             // Direct database grant suffices; its removal refuses before any owned work.
-            $observer->executeStatement('REVOKE TRIGGER ON ' . $quote($schema) . '.* FROM ' . $principal);
+            $observer->executeStatement('REVOKE TRIGGER ON ' . $quote($grantSchema) . '.* FROM ' . $principal);
             try {
                 $this->exception(static fn () => (new InitialOwners())->plan($connection))->isInstanceOf(RuntimeException::class)
                     ->hasMessage('Cannot prove source trigger visibility for glpi_networkports: require a direct TRIGGER grant on this table or its database. Role-only grants are not supported by this adoption inspection.');
                 $this->array(Ledger::states($observer))->isIdenticalTo($ledger);
                 $this->array($observer->fetchAllAssociative('SELECT * FROM glpi_networkports ORDER BY id'))->isIdenticalTo($rows);
+                if ($wildcardDatabaseGrants && $escapedSchema !== $schema) {
+                    $observer->executeStatement('GRANT TRIGGER ON ' . $quote($escapedSchema) . '.* TO ' . $principal);
+                    try {
+                        $this->integer((int)$connection->fetchOne("SELECT COUNT(*) FROM information_schema.SCHEMA_PRIVILEGES WHERE GRANTEE=? AND TABLE_SCHEMA=? AND PRIVILEGE_TYPE='TRIGGER' AND IS_GRANTABLE='NO'", [$grantee, $escapedSchema]))->isIdenticalTo(1);
+                        $this->array((new InitialOwners())->plan($connection))->hasKey(InitialNetworkPort::TABLE);
+                        $this->array(Ledger::states($observer))->isIdenticalTo($ledger);
+                        $this->array($observer->fetchAllAssociative('SELECT * FROM glpi_networkports ORDER BY id'))->isIdenticalTo($rows);
+                    } finally {
+                        $observer->executeStatement('REVOKE TRIGGER ON ' . $quote($escapedSchema) . '.* FROM ' . $principal);
+                    }
+                    $this->exception(static fn () => (new InitialOwners())->plan($connection))->isInstanceOf(RuntimeException::class)
+                        ->hasMessage('Cannot prove source trigger visibility for glpi_networkports: require a direct TRIGGER grant on this table or its database. Role-only grants are not supported by this adoption inspection.');
+                    $this->array(Ledger::states($observer))->isIdenticalTo($ledger);
+                    $this->array($observer->fetchAllAssociative('SELECT * FROM glpi_networkports ORDER BY id'))->isIdenticalTo($rows);
+                }
             } finally {
-                $observer->executeStatement('GRANT TRIGGER ON ' . $quote($schema) . '.* TO ' . $principal);
+                $observer->executeStatement('GRANT TRIGGER ON ' . $quote($grantSchema) . '.* TO ' . $principal);
             }
             $this->boolean($observer->fetchOne('SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME=?', [$hidden]))->isFalse('Never replace retained incoming-reference fixture evidence');
             if (!$observer->createSchemaManager()->introspectTable(InitialNetworkPort::TABLE)->hasIndex('initial_hidden_identity')) {
