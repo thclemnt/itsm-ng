@@ -3204,6 +3204,7 @@ class Transfer extends CommonDBTM
         global $DB;
         /// TODO manage with new network system
         $np = new NetworkPort();
+        $ethernet = new NetworkPortEthernet();
         $nn = new NetworkPort_NetworkPort();
 
         $iterator = $DB->request([
@@ -3246,13 +3247,14 @@ class Transfer extends CommonDBTM
                     if ($ID == $newID) {
                         while ($data = $iterator->next()) {
                             if ($nn->getFromDBForNetworkPort($data['id'])) {
-                                $this->deleteForTransfer($nn, $data);
+                                $this->deleteForTransfer($nn, ['id' => $nn->getID()]);
                             }
                             if ($data['netpoints_id']) {
                                 $netpointID  = $this->checkedTransferResult($this->transferDropdownNetpoint($data['netpoints_id']));
-                                $input['id']           = $data['id'];
-                                $input['netpoints_id'] = $netpointID;
-                                $this->updateForTransfer($np, $input);
+                                $this->updateForTransfer($ethernet, [
+                                    'networkports_id' => $data['id'],
+                                    'netpoints_id' => $netpointID,
+                                ]);
                             }
                         }
                     } else { // Copy -> copy netports
@@ -3287,9 +3289,10 @@ class Transfer extends CommonDBTM
                             // Not a copy -> only update netpoint
                             if ($data['netpoints_id']) {
                                 $netpointID  = $this->checkedTransferResult($this->transferDropdownNetpoint($data['netpoints_id']));
-                                $input['id']           = $data['id'];
-                                $input['netpoints_id'] = $netpointID;
-                                $this->updateForTransfer($np, $input);
+                                $this->updateForTransfer($ethernet, [
+                                    'networkports_id' => $data['id'],
+                                    'netpoints_id' => $netpointID,
+                                ]);
                             }
                         }
                     }

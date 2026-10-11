@@ -55,6 +55,7 @@ use MassiveAction;
 use Location as LocationModel;
 use Netpoint as NetpointModel;
 use NetworkPort as NetworkPortModel;
+use NetworkPort_NetworkPort as PortConnectionModel;
 use NetworkPortEthernet as EthernetModel;
 use Plugin;
 use Psr\Log\AbstractLogger;
@@ -110,7 +111,7 @@ class Transfer extends DbTestCase
         $this->withSoftwareOwnerQueryProbe(function ($database, $connection): void {
             $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
             $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
-            foreach ([['NULL', false], ['null', true], ["Outlet'\\north", false]] as [$name, $located]) {
+            foreach ([['NULL', false, 2], ['null', true, 1], ["Outlet'\\north", false, 2]] as [$name, $located, $keep]) {
                 $sourceLocation = $located
                     ? $this->createItem(LocationModel::class, ['name' => $this->getUniqueString(), 'entities_id' => $source]) : null;
                 $targetLocation = $located
@@ -146,6 +147,17 @@ class Transfer extends DbTestCase
                 $ethernet = new EthernetModel();
                 $this->boolean($ethernet->getFromDBByCrit(['networkports_id' => $portID]))->isTrue();
                 $this->integer((int)$ethernet->getField('netpoints_id'))->isIdenticalTo((int)$outlet->getID());
+                $wire = null;
+                if ($keep === 1) {
+                    $peerComputer = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => $source]);
+                    $peerPort = $this->createItem(NetworkPortModel::class, [
+                        'name' => $this->getUniqueString(), 'items_id' => $peerComputer->getID(), 'itemtype' => 'Computer',
+                        'entities_id' => $source, 'instantiation_type' => 'NetworkPortEthernet',
+                    ]);
+                    $wire = $this->createItem(PortConnectionModel::class, [
+                        'networkports_id_1' => $portID, 'networkports_id_2' => $peerPort->getID(),
+                    ]);
+                }
                 $sourceRow = $connection->fetchAssociative('SELECT * FROM glpi_netpoints WHERE id=?', [$outlet->getID()]);
                 $sourceLocationRow = $sourceLocation === null ? null
                     : $connection->fetchAssociative('SELECT * FROM glpi_locations WHERE id=?', [$sourceLocation->getID()]);
@@ -158,19 +170,24 @@ class Transfer extends DbTestCase
                 $before = $connection->fetchOne('SELECT COUNT(*) FROM glpi_netpoints WHERE entities_id=?', [$target]);
                 $level = $connection->getTransactionNestingLevel();
                 $transfer = new LegacyTransfer();
-                Orm::read($database, function (EntityManager $outer) use ($transfer, $computer, $target, $candidates): void {
+                Orm::read($database, function (EntityManager $outer) use ($transfer, $computer, $target, $candidates, $keep): void {
                     $dirty = $outer->find(NetpointRecord::class, $candidates[1]->getID());
                     $dirty->comment = 'Unflushed nested outlet';
                     $this->boolean($transfer->moveItems(
                         ['Computer' => [$computer->getID()]],
                         $target,
-                        ['keep_networklink' => 2]
+                        ['keep_networklink' => $keep]
                     ))->isTrue();
                     $this->boolean($outer->contains($dirty))->isTrue();
                     $this->string($dirty->comment)->isIdenticalTo('Unflushed nested outlet');
                 });
                 $destination = (int)$connection->fetchOne('SELECT netpoints_id FROM glpi_networkportethernets WHERE networkports_id=?', [$portID]);
                 $this->array(array_map(static fn ($candidate): int => (int)$candidate->getID(), $candidates))->contains($destination);
+                if ($wire !== null) {
+                    $this->boolean($wire->getFromDB($wire->getID()))->isFalse();
+                    $this->boolean($peerPort->getFromDB($peerPort->getID()))->isTrue();
+                    $this->integer((int)$peerPort->getField('entities_id'))->isIdenticalTo($source);
+                }
                 $this->integer((int)$transfer->already_transfer['netpoints_id'][$outlet->getID()])->isIdenticalTo($destination);
                 $this->variable($connection->fetchOne('SELECT COUNT(*) FROM glpi_netpoints WHERE entities_id=?', [$target]))->isIdenticalTo($before);
                 $this->array($connection->fetchAssociative('SELECT * FROM glpi_netpoints WHERE id=?', [$outlet->getID()]))->isIdenticalTo($sourceRow);
@@ -201,7 +218,8 @@ class Transfer extends DbTestCase
                 global $DB, $PLUGIN_HOOKS;
                 $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
                 $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
-                foreach ([['NULL', false], ['null', false], [null, false], [$this->getUniqueString(), true]] as [$name, $refuse]) {
+                foreach ([['NULL', false, null], ['null', false, null], [null, false, null], [$this->getUniqueString(), true, null],
+                    [$this->getUniqueString(), false, 'refusal'], [$this->getUniqueString(), false, 'throw']] as [$name, $refuse, $childFailure]) {
                     $PLUGIN_HOOKS = $savedHooks;
                     $location = $this->createItem(LocationModel::class, ['name' => $this->getUniqueString(), 'entities_id' => $source]);
                     $outlet = new NetpointModel();
@@ -234,6 +252,27 @@ class Transfer extends DbTestCase
                             throw new RuntimeException('Refused owned outlet copy');
                         }
                     };
+                    $childCalls = 0;
+                    $childDestination = null;
+                    $persistedDestination = null;
+                    if ($childFailure !== null) {
+                        $PLUGIN_HOOKS['pre_item_update']['transfer_netpoint_fixture'][EthernetModel::class] = static function (EthernetModel $item) use ($portID, $childFailure, &$childCalls, &$childDestination): void {
+                            if ((int)$item->getID() !== $portID) {
+                                return;
+                            }
+                            ++$childCalls;
+                            $childDestination = (int)$item->input['netpoints_id'];
+                            if ($childFailure === 'refusal') {
+                                $item->input = false;
+                            }
+                        };
+                        $PLUGIN_HOOKS['item_update']['transfer_netpoint_fixture'][EthernetModel::class] = static function (EthernetModel $item) use ($portID, $connection, &$persistedDestination): void {
+                            if ((int)$item->getID() === $portID) {
+                                $persistedDestination = (int)$connection->fetchOne('SELECT netpoints_id FROM glpi_networkportethernets WHERE networkports_id=?', [$portID]);
+                                throw new RuntimeException('Refused persisted outlet child update');
+                            }
+                        };
+                    }
                     $tables = ['glpi_computers', 'glpi_networkports', 'glpi_networkportethernets', 'glpi_netpoints', 'glpi_locations'];
                     $before = [];
                     foreach ($tables as $table) {
@@ -246,8 +285,18 @@ class Transfer extends DbTestCase
                     $this->variable($observed['name'])->isIdenticalTo($name);
                     $this->string($observed['comment'])->isIdenticalTo('Copied outlet comment');
                     $this->integer((int)$observed['entities_id'])->isIdenticalTo($target);
-                    if ($refuse) {
+                    if ($refuse || $childFailure !== null) {
                         $this->boolean($result)->isFalse();
+                        if ($childFailure !== null) {
+                            $this->integer($childCalls)->isIdenticalTo(1);
+                            $this->integer($childDestination)->isGreaterThan(0)->isNotIdenticalTo($outletID);
+                            $this->integer($childDestination)->isIdenticalTo((int)$observed['id']);
+                            if ($childFailure === 'throw') {
+                                $this->integer($persistedDestination)->isIdenticalTo($childDestination);
+                            } else {
+                                $this->variable($persistedDestination)->isNull();
+                            }
+                        }
                         foreach ($tables as $table) {
                             $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id'))->isIdenticalTo($before[$table]);
                         }
