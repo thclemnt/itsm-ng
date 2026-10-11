@@ -191,7 +191,7 @@ class Ticket_Ticket extends DbTestCase
             };
             foreach ([null, false, 0, '0', '', []] as $empty) {
                 $DB = $adapter;
-                $this->variable(LegacyTicketLink::getLinkedTicketsTo($empty))->isFalse();
+                $this->boolean(LegacyTicketLink::getLinkedTicketsTo($empty))->isFalse();
             }
             $this->integer($resolutions)->isIdenticalTo(0);
             $DB = $adapter;

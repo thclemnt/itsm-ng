@@ -426,10 +426,14 @@ class Ticket extends DbTestCase
         try {
             $this->login('post-only', 'postonly');
             $requester = (int)Session::getLoginUserID();
-            $ticket = $this->createItem(LegacyTicket::class, ['name' => 'requester-activity-' . $this->getUniqueString(),
+            $input = ['name' => 'requester-activity-' . $this->getUniqueString(),
                 'content' => 'Requester activity gate fixture', 'entities_id' => $_SESSION['glpiactive_entity'],
-                'users_id_recipient' => $requester,
-                '_users_id_requester' => $requester]);
+                'users_id_recipient' => $requester];
+            $ticket = new LegacyTicket();
+            $ticketId = $ticket->add($input + ['_users_id_requester' => $requester]);
+            $this->integer($ticketId)->isGreaterThan(0);
+            $this->checkInput($ticket, $ticketId, $input);
+            $this->boolean($ticket->isUser(CommonITILActor::REQUESTER, $requester))->isTrue();
             $id = (int)$ticket->getID();
             $this->string(Session::getCurrentInterface())->isIdenticalTo('helpdesk');
             $this->boolean($ticket->getFromDB($id))->isTrue();

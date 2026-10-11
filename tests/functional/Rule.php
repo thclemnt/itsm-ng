@@ -83,7 +83,7 @@ class Rule extends DbTestCase
             $entity = new ApplicationEntity();
             $entityId = (int)getItemByTypeName(ApplicationEntity::class, '_test_child_1', true);
             $this->boolean($entity->getFromDB($entityId))->isTrue();
-            $this->boolean((new RuleRightCollection())->canList())->isTrue();
+            $this->integer((new RuleRightCollection())->canList())->isIdenticalTo(READ);
             $_SESSION['glpishow_count_on_tabs'] = true;
             $selection = new RuleRight();
             preg_match("/<sup class='tab_nb'>([0-9]+)<\/sup>/", $selection->getTabNameForItem($entity), $before);
