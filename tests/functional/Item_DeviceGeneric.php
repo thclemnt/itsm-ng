@@ -340,54 +340,42 @@ class Item_DeviceGeneric extends DbTestCase
             $this->integer($manager->getUnitOfWork()->size())->isIdenticalTo(0);
             $before = $factories->getValue();
             $canonical = new ComponentCountReadOperation($connection);
-            try {
-                $this->integer($canonical->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
-                $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
-                $this->integer($canonical->countForAsset([], 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
-                $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
-                $pendingId = (int)reset($active)['id'];
-                $pending = $manager->find(EntityRegistry::tables()[Item_DeviceMemory::getTable()], $pendingId);
-                $pending->is_deleted = true;
-                $this->integer($canonical->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
-                $this->boolean($manager->contains($pending))->isTrue();
-                $this->boolean($pending->is_deleted)->isTrue();
-                Orm::withConnection($connection, function (EntityManager $outer) use ($connection, $tables, $asset, $pendingId, $legacy): void {
-                    $nestedPending = $outer->find(EntityRegistry::tables()[Item_DeviceMemory::getTable()], $pendingId);
-                    $nestedPending->is_deleted = true;
-                    $count = new ComponentCountReadOperation($connection);
-                    $this->integer($count->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
-                    $count->close();
-                    $this->boolean($outer->contains($nestedPending))->isTrue();
-                    $this->boolean($nestedPending->is_deleted)->isTrue();
-                });
-
-            } finally {
-                $canonical->close();
-            }
+            $this->integer($canonical->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+            $this->integer($canonical->countForAsset([], 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
+            $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+            $pendingId = (int)reset($active)['id'];
+            $pending = $manager->find(EntityRegistry::tables()[Item_DeviceMemory::getTable()], $pendingId);
+            $pending->is_deleted = true;
+            $this->integer($canonical->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
+            $this->boolean($manager->contains($pending))->isTrue();
+            $this->boolean($pending->is_deleted)->isTrue();
+            Orm::withConnection($connection, function (EntityManager $outer) use ($connection, $tables, $asset, $pendingId, $legacy): void {
+                $nestedPending = $outer->find(EntityRegistry::tables()[Item_DeviceMemory::getTable()], $pendingId);
+                $nestedPending->is_deleted = true;
+                $count = new ComponentCountReadOperation($connection);
+                $this->integer($count->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
+                $this->boolean($outer->contains($nestedPending))->isTrue();
+                $this->boolean($nestedPending->is_deleted)->isTrue();
+            });
             $before = $factories->getValue();
             $unused = new ComponentCountReadOperation($connection);
-            $unused->close();
-            $unused->close();
             unset($unused);
             $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
             $native = new ComponentCountReadOperation($probe);
-            try {
-                $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
-                $this->integer($native->countForAsset([$tables[0], $tables[0]], 'Computer', (int)$asset->getID()))
-                    ->isIdenticalTo($repository->countForAsset([$tables[0], $tables[0]], 'Computer', (int)$asset->getID()));
-                $queriesBefore = count($probe->queries);
-                $this->integer($native->countForAsset([], 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
-                $this->integer(count($probe->queries))->isIdenticalTo($queriesBefore);
-                $this->integer($native->countForAsset(['glpi_items_devicememories'], 'Computer', 0))->isIdenticalTo(0);
-                $this->integer($native->countForAsset($tables, 'UnsupportedComponentSubject', (int)$asset->getID()))
-                    ->isIdenticalTo($repository->countForAsset($tables, 'UnsupportedComponentSubject', (int)$asset->getID()));
-                $activeId = (int)reset($active)['id'];
-                $connection->update('glpi_items_devicememories', ['is_deleted' => true], ['id' => $activeId], ['is_deleted' => 'boolean', 'id' => 'bigint']);
-                $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(1);
-                $connection->update('glpi_items_devicememories', ['is_deleted' => false], ['id' => $activeId], ['is_deleted' => 'boolean', 'id' => 'bigint']);
-            } finally {
-                $native->close();
-            }
+            $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
+            $this->integer($native->countForAsset([$tables[0], $tables[0]], 'Computer', (int)$asset->getID()))
+                ->isIdenticalTo($repository->countForAsset([$tables[0], $tables[0]], 'Computer', (int)$asset->getID()));
+            $queriesBefore = count($probe->queries);
+            $this->integer($native->countForAsset([], 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
+            $this->integer(count($probe->queries))->isIdenticalTo($queriesBefore);
+            $this->integer($native->countForAsset(['glpi_items_devicememories'], 'Computer', 0))->isIdenticalTo(0);
+            $this->integer($native->countForAsset($tables, 'UnsupportedComponentSubject', (int)$asset->getID()))
+                ->isIdenticalTo($repository->countForAsset($tables, 'UnsupportedComponentSubject', (int)$asset->getID()));
+            $activeId = (int)reset($active)['id'];
+            $connection->update('glpi_items_devicememories', ['is_deleted' => true], ['id' => $activeId], ['is_deleted' => 'boolean', 'id' => 'bigint']);
+            $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(1);
+            $connection->update('glpi_items_devicememories', ['is_deleted' => false], ['id' => $activeId], ['is_deleted' => 'boolean', 'id' => 'bigint']);
 
             $GLPI_CACHE->set('item_device_affinities', ['' => $affinities, 'Computer' => [Item_DeviceMemory::class, Item_DeviceMemory::class]]);
             $this->string($tab->getTabNameForItem($asset))->isIdenticalTo(Item_Devices::createTabEntry(_n('Component', 'Components', Session::getPluralNumber()), 4));

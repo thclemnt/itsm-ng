@@ -19,11 +19,6 @@ final class ComponentCountReadOperation
         EntityRegistry::scalarIdentifiers();
     }
 
-    /** Kept for callers that close completed operations; no resource is owned. */
-    public function close(): void
-    {
-    }
-
     public function countForAsset(array $tables, string $type, int $id): int
     {
         $queries = [];

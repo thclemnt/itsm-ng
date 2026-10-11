@@ -678,10 +678,8 @@ class Config extends DbTestCase
 
                 $beforeFactories = $factories->getValue();
                 $counts = new ComponentCountReadOperation($connection);
-                $counts->close();
-                $counts->close();
                 unset($counts);
-                $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0, 'An unused lazy component owner creates no manager during cleanup');
+                $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0, 'An unused component projection creates no manager');
                 $private = new OidcRefreshReadOperation($custom);
                 $clears->failure = new RuntimeException('Private owner cleanup failed');
                 $beforeClears = $clears->count;

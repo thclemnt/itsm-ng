@@ -735,15 +735,11 @@ class Item_Devices extends CommonDBRelation
                     }
                     if ($batch && $tables) {
                         $counts = new ComponentCountReadOperation($DB->getDoctrineConnection());
-                        try {
-                            $nb = $counts->countForAsset(
-                                $tables,
-                                $item->getType(),
-                                (int)$item->getID(),
-                            );
-                        } finally {
-                            $counts->close();
-                        }
+                        $nb = $counts->countForAsset(
+                            $tables,
+                            $item->getType(),
+                            (int)$item->getID(),
+                        );
                     } else {
                         foreach ($affinities as $link_type) {
                             $nb += countElementsInTable(
