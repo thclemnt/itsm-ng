@@ -126,22 +126,14 @@ abstract class CommonITILObject extends CommonDBTM
                 }
                 $actorClass = $this->$link;
                 $class = new $actorClass();
-                if (ITILActorRepository::supports($class::class)) {
-                    // Keep the selected route across built-in families until custom dispatch.
-                    $connection ??= $DB->getDoctrineConnection();
-                    $this->$field = Orm::withReadConnection($connection, function (?EntityManager $manager) use ($connection, &$repository, $class): array {
-                        $reader = $manager === null
-                            ? ($repository ??= new ITILActorReadOperation($connection))
-                            : new ITILActorReadOperation($connection, $manager);
-                        return $reader->actors($class::class, (int)$this->fields['id']);
-                    });
-                } else {
-                    // Custom dispatch may write later actors or change the supplied connection.
-                    $repository?->close();
-                    $repository = null;
-                    $connection = null;
-                    $this->$field = $class->getActors($this->fields['id']);
-                }
+                // Keep the selected route across the actual actor families.
+                $connection ??= $DB->getDoctrineConnection();
+                $this->$field = Orm::withReadConnection($connection, function (?EntityManager $manager) use ($connection, &$repository, $class): array {
+                    $reader = $manager === null
+                        ? ($repository ??= new ITILActorReadOperation($connection))
+                        : new ITILActorReadOperation($connection, $manager);
+                    return $reader->actors($class::class, (int)$this->fields['id']);
+                });
             }
         } finally {
             $repository?->close();
@@ -7878,13 +7870,6 @@ abstract class CommonITILObject extends CommonDBTM
     public function getTimelineItemCount(): int
     {
         global $DB;
-
-        // Plugins may provide additional events or an entirely different timeline.
-        if (!in_array(static::getType(), ['Ticket', 'Change', 'Problem'], true)
-            || (new ReflectionMethod($this, 'getTimelineItems'))->getDeclaringClass()->getName() !== self::class
-            || (new ReflectionMethod($this, 'getAssociatedDocumentsCriteria'))->getDeclaringClass()->getName() !== self::class) {
-            return count($this->getTimelineItems());
-        }
 
         $selection = $this->getTimelineSelection();
         $connection = $DB->getDoctrineConnection();

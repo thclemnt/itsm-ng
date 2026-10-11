@@ -1688,82 +1688,6 @@ class Ticket extends DbTestCase
         }
     }
 
-    public function testCustomActorFinderKeepsDispatch(): void
-    {
-        $relation = new class () extends Ticket_User {
-            public function find($condition = [], $order = [], $limit = null)
-            {
-                return [['id' => 17, 'type' => CommonITILActor::OBSERVER, 'custom' => $condition['tickets_id']]];
-            }
-        };
-        $this->array($relation->getActors(42))->isIdenticalTo([
-            CommonITILActor::OBSERVER => [['id' => 17, 'type' => CommonITILActor::OBSERVER, 'custom' => 42]],
-        ]);
-    }
-
-    public function testActorAggregateKeepsCustomOrderAndLaterWrites(): void
-    {
-        global $DB;
-        $this->login();
-        $em = Orm::create($DB);
-        $first = new TicketEntity();
-        $first->name = $this->getUniqueString();
-        $first->entities = $em->getReference(Entity::class, 0);
-        $second = new TicketEntity();
-        $second->name = $this->getUniqueString();
-        $second->entities = $first->entities;
-        $supplier = new SupplierTicket();
-        $supplier->tickets = $second;
-        $supplier->alternative_email = 'operation@example.invalid';
-        $supplier->type = CommonITILActor::OBSERVER;
-        foreach ([$first, $second, $supplier] as $record) {
-            $em->persist($record);
-        }
-        $em->flush();
-
-        $warm = new LegacyTicket();
-        $warm->fields['id'] = $first->id;
-        $warm->loadActors();
-        $ticket = new LegacyTicket();
-        $ticket->fields['id'] = $first->id;
-        $custom = new class () extends Ticket_User {
-            public static $read;
-            public function getActors($items_id)
-            {
-                return (self::$read)($items_id);
-            }
-        };
-        $ticket->userlinkclass = $custom::class;
-        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
-        $before = $managers->getValue();
-        $calls = [];
-        $custom::$read = function ($id) use ($DB, $ticket, $first, $second, $supplier, $managers, $before, &$calls): array {
-            $calls[] = $id;
-            $this->integer((int)$id)->isIdenticalTo($first->id);
-            $this->integer($managers->getValue() - $before)->isIdenticalTo(0);
-            $this->array($ticket->getGroups(CommonITILActor::REQUESTER))->isEmpty();
-            $this->boolean($DB->update('glpi_suppliers_tickets', ['type' => CommonITILActor::ASSIGN], ['id' => $supplier->id]))->isTrue();
-            $ticket->fields['id'] = $second->id;
-            return [CommonITILActor::REQUESTER => [['custom' => $id]]];
-        };
-        try {
-            $ticket->loadActors();
-            $this->integer($managers->getValue() - $before)->isIdenticalTo(0);
-            $this->array($calls)->isIdenticalTo([$first->id]);
-            $this->array($ticket->getUsers(CommonITILActor::REQUESTER))->isIdenticalTo([['custom' => $first->id]]);
-            $rows = $ticket->getSuppliers(CommonITILActor::ASSIGN);
-            $this->array($rows)->hasSize(1);
-            $this->integer($rows[0]['id'])->isIdenticalTo($supplier->id);
-            $this->array($ticket->getSuppliers(CommonITILActor::OBSERVER))->isEmpty();
-            // The aggregate's local reader must not clear a caller's live manager.
-            $this->boolean($em->contains($supplier))->isTrue();
-            $this->integer($supplier->type)->isIdenticalTo(CommonITILActor::OBSERVER);
-        } finally {
-            $custom::$read = null;
-            $em->clear();
-        }
-    }
-
     public function anonymousActorProvider(): array
     {
         return ['nullable recipient' => [null], 'legacy zero recipient' => [0]];
@@ -4354,23 +4278,6 @@ class Ticket extends DbTestCase
             ]))->isGreaterThan(0);
             $this->checkTimelineDocumentCount($ticket, 3);
             $this->integer($ticket->getTimelineItemCount())->isEqualTo(5)->isEqualTo(count($ticket->getTimelineItems()));
-            $custom = new class () extends LegacyTicket {
-                public static function getType()
-                {
-                    return 'Ticket';
-                }
-                public static function getTable($classname = null)
-                {
-                    return LegacyTicket::getTable();
-                }
-                public function getAssociatedDocumentsCriteria($bypass_rights = false): array
-                {
-                    return [Document_Item::getTableField('id') => 0];
-                }
-            };
-            $custom->fields = $ticket->fields;
-            $this->integer($custom->getTimelineItemCount())->isEqualTo(2)->isEqualTo(count($custom->getTimelineItems()));
-
             $_SESSION['glpiactiveprofile']['followup'] &= ~ITILFollowup::SEEPRIVATE;
             $this->checkTimelineDocumentCount($ticket, 2);
             $this->checkTimelineDocumentCount($ticket, 3, true);
@@ -4433,17 +4340,6 @@ class Ticket extends DbTestCase
         } finally {
             $connection->executeStatement($postgres ? 'SELECT set_config(?, ?, false)' : 'SET time_zone = ?', $postgres ? ['TimeZone', $timezone] : [$timezone]);
         }
-    }
-
-    public function testTimelineCountKeepsCustomTimeline()
-    {
-        $ticket = new class () extends LegacyTicket {
-            public function getTimelineItems()
-            {
-                return ['plugin-event' => ['type' => 'custom']];
-            }
-        };
-        $this->integer($ticket->getTimelineItemCount())->isEqualTo(1);
     }
 
     public function inputProvider()

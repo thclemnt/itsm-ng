@@ -374,20 +374,12 @@ abstract class CommonITILCost extends CommonDBChild
     {
         global $DB;
 
-        if (CostRepository::supports(static::getType())) {
-            return Orm::read(
-                $DB,
-                static fn (EntityManager $manager): ?int => (new CostRepository($manager))
-                    ->actionTime(static::getType(), (int)$items_id),
-                clearCustomManager: true
-            );
-        }
-        $result = $DB->request([
-           'SELECT' => ['SUM' => 'actiontime AS sumtime'],
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [static::$items_id => $items_id]
-        ])->next();
-        return $result['sumtime'];
+        return Orm::read(
+            $DB,
+            static fn (EntityManager $manager): ?int => (new CostRepository($manager))
+                ->actionTime(static::getType(), (int)$items_id),
+            clearCustomManager: true
+        );
     }
 
 
@@ -757,15 +749,11 @@ abstract class CommonITILCost extends CommonDBChild
     }
 
 
-    /** Mapped core history; plugin models retain their registered find implementation. */
+    /** Cost rows from the declared owning parent association. */
     private static function costRows(string $type, int|array $parents, bool $last = false): array
     {
         global $DB;
 
-        if (!CostRepository::supports($type)) {
-            $item = getItemForItemtype($type);
-            return $item->find([static::$items_id => $parents], $last ? ['end_date DESC', 'id DESC'] : ['begin_date'], $last ? 1 : null);
-        }
         return Orm::read(
             $DB,
             static fn (EntityManager $manager): array => (new CostRepository($manager))->rows($type, $parents, $last),
