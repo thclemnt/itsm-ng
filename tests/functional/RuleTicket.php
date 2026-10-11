@@ -52,7 +52,6 @@ use mock\DBmysql as MacReadAdapter;
 use tests\fixtures\ScalarReadProbe;
 use itsmng\Database\Entity\NetworkPort as NetworkPortRecord;
 use itsmng\Database\Orm;
-use itsmng\Database\RowIterator;
 use Group_User;
 use Ticket_User;
 use Toolbox;
@@ -230,7 +229,6 @@ class RuleTicket extends DbTestCase
             ++$resolutions;
             return $selected;
         };
-        $table = LegacyNetworkPort::getTable();
         try {
             $DB = $adapter;
             $units = (new ReflectionProperty(Orm::class, 'unitsOfWork'))->getValue();
@@ -263,21 +261,7 @@ class RuleTicket extends DbTestCase
             $selected->failure = null;
             $DB = $adapter;
             $this->array($ids(NetworkPortInstantiation::getItemsByMac(addslashes($text))))->isIdenticalTo([(int)$ports[0]->getID()]);
-            $resolutions = 0;
-            $criteria = null;
-            $this->calling($adapter)->request = static function ($input) use (&$criteria) {
-                $criteria = $input;
-                return new RowIterator([]);
-            };
-            LegacyNetworkPort::forceTable('opaque_mac_route');
-            $DB = $adapter;
-            $this->array(NetworkPortInstantiation::getItemsByMac('N*LL', true))->isEmpty();
-            $this->array($criteria)->isIdenticalTo([
-                'SELECT' => 'id', 'FROM' => 'opaque_mac_route', 'WHERE' => ['mac' => ['LIKE', 'n%ll']],
-            ]);
-            $this->integer($resolutions)->isIdenticalTo(0);
         } finally {
-            LegacyNetworkPort::forceTable($table);
             $DB = $database;
         }
     }

@@ -32,8 +32,6 @@
  */
 
 use Doctrine\ORM\EntityManager;
-use itsmng\Database\Entity\NetworkPort as NetworkPortRecord;
-use itsmng\Database\EntityRegistry;
 use itsmng\Database\Orm;
 use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\NetworkPortAggregateRepository;
@@ -412,45 +410,23 @@ class NetworkPortInstantiation extends CommonDBChild
             if ($count == 0) {
                 $mac = '%' . $mac . '%';
             }
-            $relation = ['LIKE', $mac];
-        } else {
-            $relation = $mac;
         }
 
+        $netport = new NetworkPort();
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        $rows = Orm::withReadConnection(
+            $connection,
+            static fn () => (new NetworkPortMacRepository($connection))->matchingPortIdentities($mac, (bool)$wildcard_search)
+        );
         $macItemWithItems = [];
-
-        foreach (['NetworkPort'] as $netporttype) {
-            $netport = new $netporttype();
-
-            $database = $DB;
-            $table = $netport->getTable();
-            if ((EntityRegistry::tables()[$table] ?? null) === NetworkPortRecord::class) {
-                $connection = $database->getDoctrineConnection();
-                OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
-                $rows = Orm::withReadConnection(
-                    $connection,
-                    static fn () => (new NetworkPortMacRepository($connection))->matchingPortIdentities($mac, (bool)$wildcard_search)
+        foreach ($rows as $element) {
+            if ($netport->getFromDB($element['id'])) {
+                $macItemWithItems[] = array_merge(
+                    array_reverse($netport->recursivelyGetItems()),
+                    [clone $netport]
                 );
-                $iterator = new RowIterator($rows);
-            } else {
-                $iterator = $database->request([
-                    'SELECT' => 'id',
-                    'FROM' => $table,
-                    'WHERE' => ['mac' => $relation],
-                ]);
-            }
-
-            while ($element = $iterator->next()) {
-                if ($netport->getFromDB($element['id'])) {
-                    if ($netport instanceof CommonDBChild) {
-                        $macItemWithItems[] = array_merge(
-                            array_reverse($netport->recursivelyGetItems()),
-                            [clone $netport]
-                        );
-                    } else {
-                        $macItemWithItems[] = [clone $netport];
-                    }
-                }
             }
         }
 
