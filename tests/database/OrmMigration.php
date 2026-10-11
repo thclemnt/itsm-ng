@@ -976,6 +976,10 @@ class OrmMigration extends GLPITestCase
         $this->assertGraphicCardParentRetry($connection);
         $this->assertRemainingComponentParentRetry($connection);
         $this->assertComponentParentExpansionRetry($connection);
+        $flags = new NonnullableFlags();
+        $flags->apply($connection);
+        $flags->verify($connection);
+        $this->array((new SchemaCheck())->differences($connection))->isEmpty();
         $this->fixtureCompleted = true;
     }
 
@@ -1818,7 +1822,6 @@ class OrmMigration extends GLPITestCase
         $states = Ledger::states($connection);
         $release->apply($connection, static fn () => throw new LogicException('Completed component expansion replayed'));
         $this->array(Ledger::states($connection))->isIdenticalTo($states);
-        $this->array((new SchemaCheck())->differences($connection))->isEmpty();
     }
 
 }
