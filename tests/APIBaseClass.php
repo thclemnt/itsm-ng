@@ -123,6 +123,30 @@ abstract class APIBaseClass extends atoum
                               'enable_api_login_external_token' => true]);
     }
 
+    /** @tags api */
+    public function testAppTokenEligibilityReflectsCurrentActiveClient(): void
+    {
+        $client = new APIClient();
+        $id = null;
+        try {
+            $id = $client->add(['name' => 'current_token_' . bin2hex(random_bytes(8)),
+                'entities_id' => 0, 'is_active' => 1, 'ipv4_range_start' => '',
+                'ipv4_range_end' => '', 'ipv6' => '', '_reset_app_token' => true]);
+            $this->integer((int)$id)->isGreaterThan(0);
+            $token = $client->fields['app_token'];
+            $query = ['login' => TU_USER, 'password' => TU_PASS, 'app_token' => $token];
+            $this->array($this->query('initSession', ['query' => $query]))->hasKey('session_token');
+            $this->boolean($client->update(['id' => $id, 'is_active' => 0]))->isTrue();
+            $this->query('initSession', ['query' => $query], 400, 'ERROR_WRONG_APP_TOKEN_PARAMETER');
+            $this->boolean($client->update(['id' => $id, 'is_active' => 1]))->isTrue();
+            $this->array($this->query('initSession', ['query' => $query]))->hasKey('session_token');
+        } finally {
+            if ($id !== null && $id !== false) {
+                $this->boolean($client->delete(['id' => $id], true))->isTrue();
+            }
+        }
+    }
+
     /**
      * @tags   api
      * @covers API::initSession

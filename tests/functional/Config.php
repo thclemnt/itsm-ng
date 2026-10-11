@@ -35,6 +35,10 @@ namespace tests\units;
 
 use atoum\atoum\php\mocker\funktion;
 use Closure;
+use Doctrine\DBAL\Result;
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use itsmng\Database\Entity\APIClient as APIClientRecord;
+use APIClient as APIClientModel;
 use CommonDBTM;
 use Config as ConfigModel;
 use DBAdapter;
@@ -143,6 +147,174 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Config extends DbTestCase
 {
+    public function testApiClientEligibilityKeepsAddressBranchesAndCurrentWildcard(): void
+    {
+        global $DB;
+        $this->login();
+        $connection = $DB->getDoctrineConnection();
+        $owner = Orm::create($DB);
+        $clients = [];
+        foreach ([[1, null, null, null], [1, '10', '20', '2001:db8::1'],
+            [0, null, null, null], [1, '30', '40', '2001:db8::2'], [1, '50', '60', 'NULL']] as [$active, $start, $end, $ipv6]) {
+            $record = new APIClientRecord();
+            $record->entities = $owner->getReference(EntityRecord::class, 0);
+            $record->name = 'eligibility_' . $this->getUniqueString();
+            $record->is_active = $active;
+            $record->ipv4_range_start = $start;
+            $record->ipv4_range_end = $end;
+            $record->ipv6 = $ipv6;
+            $record->app_token = 'shared_' . $this->getUniqueString();
+            $owner->persist($clients[] = $record);
+        }
+        $clients[1]->app_token = $clients[0]->app_token;
+        $owner->flush();
+        $model = new APIClientModel();
+        $ownIds = array_column(array_map(static fn ($client): array => ['id' => $client->id], $clients), 'id');
+        $pairs = static function (array $rows) use ($ownIds): array {
+            $tokens = array_column($rows, 'app_token', 'id');
+            return array_intersect_key($tokens, array_flip($ownIds));
+        };
+        foreach ([[15, 'irrelevant', [0, 1]], [30, 'irrelevant', [0, 3]],
+            ['', '2001:db8::1', [0, 1]], [0, '2001:db8::1', [0, 1]],
+            [false, 'not-an-ip', [0]], ['', 'NULL', [0]], ['', 'null', [0]]] as [$numeric, $address, $expected]) {
+            $actual = $pairs($model->allowedForAddress($numeric, $address));
+            $this->integer(count($actual))->isIdenticalTo(count($expected));
+            foreach ($expected as $index) {
+                $this->string($actual[$clients[$index]->id])->isIdenticalTo($clients[$index]->app_token);
+            }
+        }
+        $this->boolean($model->update(['id' => $clients[0]->id, 'ipv6' => '2001:db8::9']))->isTrue();
+        $this->array($pairs($model->allowedForAddress('', '2001:db8::8')))->isEmpty();
+        $this->boolean($model->update(['id' => $clients[0]->id, 'ipv6' => '']))->isTrue();
+        $this->variable($connection->fetchOne('SELECT ipv6 FROM glpi_apiclients WHERE id = ?', [$clients[0]->id]))->isNull();
+        $clients[0]->name = 'independent dirty client';
+        $nested = Orm::create($DB);
+        $dirty = $nested->find(APIClientRecord::class, $clients[1]->id);
+        $dirty->name = 'nested dirty client';
+        $depth = $connection->getTransactionNestingLevel();
+        Orm::read($DB, function (EntityManager $outer) use ($model, $pairs, $clients, $owner, $nested, $dirty): void {
+            $active = $outer->find(APIClientRecord::class, $clients[3]->id);
+            $active->name = 'enclosing dirty client';
+            $tokens = $pairs($model->allowedForAddress('', '2001:db8::8'));
+            $this->boolean($outer->contains($active))->isTrue();
+            $this->string($active->name)->isIdenticalTo('enclosing dirty client');
+            $this->string($tokens[$clients[0]->id])->isIdenticalTo($clients[0]->app_token);
+            $this->boolean($owner->contains($clients[0]))->isTrue();
+            $this->boolean($nested->contains($dirty))->isTrue();
+            $this->string($clients[0]->name)->isIdenticalTo('independent dirty client');
+            $this->string($dirty->name)->isIdenticalTo('nested dirty client');
+        });
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+    }
+
+    public function testApiClientEligibilityKeepsCapturedCustomOwnerAndFailures(): void
+    {
+        global $DB;
+        $original = $DB;
+        $table = APIClientModel::getTable();
+        $this->login();
+        $model = new APIClientModel();
+        $id = $model->add(['name' => 'route_' . $this->getUniqueString(), 'entities_id' => 0,
+            'is_active' => 1, 'ipv6' => '', '_reset_app_token' => true]);
+        $this->integer((int)$id)->isGreaterThan(0);
+        $token = $model->fields['app_token'];
+        $events = new EventManager();
+        $observer = new class () {
+            public array $managers = [];
+            public ?Throwable $cleanup = null;
+
+            public function onClear(OnClearEventArgs $event): void
+            {
+                $this->managers[] = $event->getObjectManager();
+                if ($this->cleanup !== null) {
+                    throw $this->cleanup;
+                }
+            }
+        };
+        $events->addEventListener(Events::onClear, $observer);
+        $selected = new class ($DB->getDoctrineConnection(), $events, $original) extends ScalarReadProbe {
+            public int $constructed = 0;
+            public ?Throwable $primary = null;
+
+            public function __construct($connection, private EventManager $events, private DBAdapter $original)
+            {
+                parent::__construct($connection);
+            }
+
+            public function getEventManager(): EventManager
+            {
+                ++$this->constructed;
+                $GLOBALS['DB'] = $this->original;
+                return $this->events;
+            }
+
+            public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
+            {
+                if ($this->primary !== null) {
+                    throw $this->primary;
+                }
+                return parent::executeQuery($sql, $params, $types, $qcp);
+            }
+        };
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new ConfigurationAdapter();
+        $routes = 0;
+        $this->calling($adapter)->getDoctrineConnection = static function () use ($selected, &$routes) {
+            ++$routes;
+            return $selected;
+        };
+        try {
+            $DB = $adapter;
+            $rows = $model->allowedForAddress('', '2001:db8::8');
+            $this->string(array_column($rows, 'app_token', 'id')[$id])->isIdenticalTo($token);
+            $this->integer($routes)->isIdenticalTo(1);
+            $this->integer($selected->constructed)->isIdenticalTo(1);
+            $this->array($selected->queries)->hasSize(1);
+            $this->array($observer->managers)->hasSize(1);
+            $this->boolean($observer->managers[0]->getConnection() === $selected)->isTrue();
+            $primary = $selected->primary = new LogicException('Refused client eligibility');
+            $cleanup = $observer->cleanup = new LogicException('Refused client reader cleanup');
+            $DB = $adapter;
+            try {
+                $model->allowedForAddress('', '2001:db8::8');
+                $this->boolean(false)->isTrue(); // A successful read must not conceal either failure.
+            } catch (MutationCleanupFailure $failure) {
+                $this->boolean($failure->primary === $primary)->isTrue();
+                $this->boolean($failure->cleanup === $cleanup)->isTrue();
+            }
+            $selected->primary = $observer->cleanup = null;
+            $DB = $adapter;
+            $this->string(array_column($model->allowedForAddress('', '2001:db8::8'), 'app_token', 'id')[$id])->isIdenticalTo($token);
+            $this->array($observer->managers)->hasSize(3);
+            APIClientModel::forceTable('opaque_api_client_route');
+            $criteria = null;
+            $this->calling($adapter)->request = static function ($query) use (&$criteria) {
+                $criteria = $query;
+                return new class () {
+                    private bool $done = false;
+
+                    public function next(): array|false
+                    {
+                        if ($this->done) {
+                            return false;
+                        }
+                        $this->done = true;
+                        return ['id' => 991, 'app_token' => 'opaque-route'];
+                    }
+                };
+            };
+            $DB = $adapter;
+            $before = $routes;
+            $this->array($model->allowedForAddress(0, '0.0.0.0'))->isIdenticalTo([991 => ['id' => 991, 'app_token' => 'opaque-route']]);
+            $this->integer($routes)->isIdenticalTo($before);
+            $this->string($criteria['FROM'])->isIdenticalTo('opaque_api_client_route');
+            $this->array($criteria['WHERE'])->isIdenticalTo(['is_active' => 1, 'OR' => [['ipv6' => null], ['ipv6' => '0.0.0.0']]]);
+        } finally {
+            APIClientModel::forceTable($table);
+            $DB = $original;
+        }
+    }
+
     public function testOidcPersistenceKeepsSingletonsAndRejectsInvalidUserStates(): void
     {
         global $DB;

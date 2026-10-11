@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\APIClientRepository;
+
 /**
  * @since 9.1
  */
@@ -49,6 +53,27 @@ class APIClient extends CommonDBTM
     public static $undisclosedFields = [
        'app_token'
     ];
+
+    /** Completed active-client identities before API authentication and usage logging. */
+    public function allowedForAddress(int|string|false $ipv4, string $address): array
+    {
+        global $DB;
+
+        $where = $ipv4 ? ['OR' => [
+            'ipv4_range_start' => null,
+            ['ipv4_range_start' => ['<=', $ipv4], 'ipv4_range_end' => ['>=', $ipv4]],
+        ]] : ['OR' => [['ipv6' => null], ['ipv6' => $address]]];
+        if (static::class !== self::class) {
+            return $this->find(['is_active' => 1] + $where);
+        }
+        $database = $DB;
+        // Core admission is a pure cached getter; forced tables keep the public find route.
+        if ($this->getTable() !== 'glpi_apiclients') {
+            return $this->find(['is_active' => 1] + $where);
+        }
+        return Orm::read($database, static fn (EntityManager $manager): array =>
+            (new APIClientRepository($manager))->allowedTokens($ipv4, $address), clearCustomManager: true);
+    }
 
     public static function canCreate()
     {
