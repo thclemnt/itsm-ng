@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RuleRepository;
 use itsmng\Domain\Authentication\AuthenticationRuleEvaluation;
 use itsmng\Domain\Authentication\AuthenticationRuleMutations;
 
@@ -221,31 +224,15 @@ class RuleRightCollection extends RuleCollection
         global $DB;
 
         $params = [];
-        $iterator = $DB->request([
-           'SELECT'          => 'value',
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_rulerightparameters',
-           'LEFT JOIN'       => [
-              'glpi_rulecriterias' => [
-                 'ON' => [
-                    'glpi_rulerightparameters' => 'value',
-                    'glpi_rulecriterias'       => 'criteria'
-                 ]
-              ],
-              'glpi_rules'         => [
-                 'ON' => [
-                    'glpi_rulecriterias' => 'rules_id',
-                    'glpi_rules'         => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => ['glpi_rules.sub_type' => 'RuleRight']
-        ]);
+        $values = Orm::read(
+            $DB,
+            static fn (EntityManager $manager): array => (new RuleRepository($manager))->ldapAttributeValues()
+        );
 
-        while ($param = $iterator->next()) {
+        foreach ($values as $value) {
             //Dn is alwsays retreived from ldap : don't need to ask for it !
-            if ($param["value"] != "dn") {
-                $params[] = Toolbox::strtolower($param["value"]);
+            if ($value != "dn") {
+                $params[] = Toolbox::strtolower($value);
             }
         }
         return $params;

@@ -40,6 +40,8 @@ use RuleCriteria;
 use RuleImportEntity;
 use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\DBAL\Result;
 use Entity as ApplicationEntity;
 use itsmng\Database\Entity\Rule as MappedRule;
 use itsmng\Database\Orm;
@@ -48,6 +50,8 @@ use mock\DBmysql as RuleRouteAdapter;
 use Rule as ApplicationRule;
 use RuleRight;
 use RuleRightCollection;
+use RuleRightParameter as LdapAttribute;
+use RuntimeException;
 use RuleSoftwareCategory;
 use tests\fixtures\ScalarReadProbe;
 use stdClass;
@@ -228,6 +232,129 @@ class Rule extends DbTestCase
         } finally {
             $DB = $original;
             $_SESSION = $session;
+        }
+    }
+
+    public function testRightsLdapAttributesKeepGlobalDistinctCurrentValuesAndLiveOwners(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $owner = null;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $attributes = [];
+            foreach (['active', 'inactive', 'other', 'unused', 'changed'] as $key) {
+                $attributes[$key] = $this->createItem(
+                    LdapAttribute::class,
+                    ['name' => $this->getUniqueString(), 'value' => 'ldap_' . $this->getUniqueString()]
+                );
+            }
+            $active = $this->createItem(RuleRight::class, ['name' => $this->getUniqueString(), 'entities_id' => 0, 'is_active' => 1]);
+            $inactive = $this->createItem(RuleRight::class, ['name' => $this->getUniqueString(), 'entities_id' => 0, 'is_active' => 0]);
+            $other = $this->createItem(RuleSoftwareCategory::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $first = null;
+            foreach ([[$active, 'active'], [$active, 'active'], [$inactive, 'inactive'], [$other, 'other']] as [$rule, $key]) {
+                $criterion = $this->createItem(
+                    RuleCriteria::class,
+                    [
+                        'rules_id' => $rule->getID(), 'criteria' => $attributes[$key]->fields['value'],
+                        'condition' => ApplicationRule::PATTERN_IS, 'pattern' => 'fixture',
+                    ]
+                );
+                $first ??= $criterion;
+            }
+            $this->setEntity('_test_child_1', false);
+            $collection = new RuleRightCollection();
+            $values = $collection->getFieldsToLookFor();
+            $activeValue = $attributes['active']->fields['value'];
+            $this->array($values)->contains($activeValue, $attributes['inactive']->fields['value']);
+            $this->integer(count(array_filter($values, static fn ($value): bool => $value === $activeValue)))->isIdenticalTo(1);
+            $this->array($values)->notContains($attributes['other']->fields['value'], $attributes['unused']->fields['value']);
+            $this->boolean($first->update(['id' => $first->getID(), 'criteria' => $attributes['changed']->fields['value']]))->isTrue();
+            $values = $collection->getFieldsToLookFor();
+            $this->array($values)->contains($activeValue, $attributes['changed']->fields['value']);
+            $owner = Orm::create($DB);
+            $dirty = $owner->find(MappedRule::class, (int)$inactive->getID());
+            $dirty->sub_type = 'Unflushed rights subtype';
+            Orm::read($DB, function ($outer) use ($collection, $inactive, $attributes): void {
+                $nested = $outer->find(MappedRule::class, (int)$inactive->getID());
+                $nested->sub_type = 'Unflushed enclosing subtype';
+                $this->array($collection->getFieldsToLookFor())->contains($attributes['inactive']->fields['value']);
+                $this->boolean($outer->contains($nested))->isTrue();
+                $this->string($nested->sub_type)->isIdenticalTo('Unflushed enclosing subtype');
+            });
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->string($dirty->sub_type)->isIdenticalTo('Unflushed rights subtype');
+            $this->boolean($inactive->delete(['id' => $inactive->getID()], true))->isTrue();
+            $this->array($collection->getFieldsToLookFor())->notContains($attributes['inactive']->fields['value']);
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->string($dirty->sub_type)->isIdenticalTo('Unflushed rights subtype');
+        } finally {
+            $owner?->clear();
+            $_SESSION = $session;
+        }
+    }
+
+    public function testRightsLdapAttributesRetainSelectedCustomRouteAndQueryFailure(): void
+    {
+        global $DB;
+        $original = $DB;
+        try {
+            $collection = new RuleRightCollection();
+            $expected = $collection->getFieldsToLookFor();
+            $connection = $DB->getDoctrineConnection();
+            $observer = new class () {
+                public int $constructed = 0;
+                public int $clears = 0;
+                public function onClear(): void
+                {
+                    ++$this->clears;
+                }
+            };
+            $selected = new class ($connection) extends ScalarReadProbe {
+                public EventManager $events;
+                public object $observer;
+                public object $original;
+                public ?RuntimeException $failure = null;
+                public function getEventManager(): EventManager
+                {
+                    ++$this->observer->constructed;
+                    $GLOBALS['DB'] = $this->original;
+                    return $this->events;
+                }
+                public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
+                {
+                    if ($this->failure !== null) {
+                        throw $this->failure;
+                    }
+                    return parent::executeQuery($sql, $params, $types, $qcp);
+                }
+            };
+            $selected->observer = $observer;
+            $selected->original = $original;
+            $selected->events = new EventManager();
+            $selected->events->addEventListener(['onClear'], $observer);
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new RuleRouteAdapter();
+            $this->calling($adapter)->getDoctrineConnection = $selected;
+            $DB = $adapter;
+            $values = $collection->getFieldsToLookFor();
+            sort($values);
+            sort($expected);
+            $this->array($values)->isIdenticalTo($expected);
+            $this->array($selected->queries)->hasSize(1);
+            $this->integer($observer->constructed)->isIdenticalTo(1);
+            $this->integer($observer->clears)->isIdenticalTo(0);
+            $failure = new RuntimeException('LDAP attribute selection failed');
+            $selected->failure = $failure;
+            $DB = $adapter;
+            $this->exception(static fn () => $collection->getFieldsToLookFor())->isIdenticalTo($failure);
+            $this->array($selected->queries)->hasSize(1);
+            $this->integer($observer->constructed)->isIdenticalTo(2);
+            $this->integer($observer->clears)->isIdenticalTo(0);
+        } finally {
+            $DB = $original;
         }
     }
 

@@ -10,6 +10,7 @@ use itsmng\Database\Entity\Entity;
 use itsmng\Database\Entity\Rule;
 use itsmng\Database\Entity\RuleAction;
 use itsmng\Database\Entity\RuleCriteria;
+use itsmng\Database\Entity\RuleRightParameter;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\RecordCriteria;
 use itsmng\Database\UnsupportedCriteria;
@@ -77,6 +78,17 @@ final class RuleRepository
             $query->andWhere('BIT_AND(r.condition, :condition) <> 0')->setParameter('condition', $condition, Types::INTEGER);
         }
         return array_column($query->orderBy('c.criteria')->getQuery()->getScalarResult(), 'criterion');
+    }
+
+    /** Configured LDAP attributes referenced by rights rules, including inactive rules. */
+    public function ldapAttributeValues(): array
+    {
+        $rows = $this->em->createQueryBuilder()->select('DISTINCT p.value AS attribute')
+            ->from(RuleCriteria::class, 'c')->join('c.rules', 'r')
+            ->join(RuleRightParameter::class, 'p', 'WITH', 'p.value = c.criteria')
+            ->where('r.sub_type = :type')->setParameter('type', 'RuleRight')
+            ->getQuery()->getScalarResult();
+        return array_column($rows, 'attribute');
     }
 
     public function entityActionCount(array $types, int $entity): int
