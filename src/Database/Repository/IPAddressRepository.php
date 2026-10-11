@@ -5,6 +5,8 @@
 namespace itsmng\Database\Repository;
 
 use Doctrine\ORM\EntityManager;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Types\Types;
 use itsmng\Database\Entity\IPAddress;
 
 /** Address identities; parent/model traversal remains with the legacy caller. */
@@ -12,6 +14,36 @@ final class IPAddressRepository
 {
     public function __construct(private EntityManager $em)
     {
+    }
+
+    /** Address labels for the parent's form, including deleted/dynamic rows as before. */
+    public function formRows(string $table, string $kind, int|string|null $identity): array
+    {
+        $metadata = $this->em->getClassMetadata(IPAddress::class);
+        $connection = $this->em->getConnection();
+        $quote = $connection->quoteIdentifier(...);
+        $query = $connection->createQueryBuilder()
+            ->select(
+                $quote($metadata->getColumnName('id')) . ' AS ' . $quote('id'),
+                $quote($metadata->getColumnName('name')) . ' AS ' . $quote('name')
+            )
+            ->from($quote($table))
+            ->where($quote($metadata->getColumnName('itemtype')) . ' = :kind')
+            ->setParameter('kind', $kind, Types::STRING);
+        $parent = $quote($metadata->getColumnName('items_id'));
+        if ($identity === null) {
+            $query->andWhere($parent . ' IS NULL');
+        } else {
+            $query->andWhere($parent . ' = :parent')->setParameter('parent', $identity, Types::BIGINT);
+        }
+        $rows = $query->executeQuery()->fetchAllAssociative();
+        if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
+            foreach ($rows as &$row) {
+                $row['id'] = RecordRepository::legacyScalarValue($row['id'], $metadata->getTypeOfField('id'));
+            }
+            unset($row);
+        }
+        return $rows;
     }
 
     /**

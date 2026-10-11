@@ -58,6 +58,21 @@ if (!defined('GLPI_ROOT')) {
 **/
 class IPAddress extends CommonDBChild
 {
+    /** Fixed address labels for a parent's form; no visibility/deletion filter is added. */
+    public static function getFormOptions(string $itemtype, $items_id, string $name = '_ipaddresses'): array
+    {
+        global $DB;
+        $table = getTableForItemType('IpAddress');
+        $database = $DB;
+        $identity = $items_id === null || (is_string($items_id) && strtolower($items_id) === 'null')
+            ? null : (is_int($items_id) ? $items_id : (is_bool($items_id) ? (int)$items_id : (string)$items_id));
+        $rows = Orm::read(
+            $database,
+            static fn (EntityManager $manager): array => (new IPAddressRepository($manager))->formRows($table, $itemtype, $identity)
+        );
+        return array_map(static fn (array $row): array => ['id' => $row['id'], $name => $row['name']], $rows);
+    }
+
     // From CommonDBChild
     public static $itemtype       = 'itemtype';
     public static $items_id       = 'items_id';

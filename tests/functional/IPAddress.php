@@ -34,6 +34,11 @@
 namespace tests\units;
 
 use DbTestCase;
+use Computer as ComputerModel;
+use NetworkPort as NetworkPortModel;
+use NetworkPortEthernet as NetworkPortEthernetModel;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\ORM\EntityManager;
 use InvalidArgumentException;
 use Doctrine\DBAL\Exception as DatabaseException;
 use IPNetwork as IPNetworkModel;
@@ -49,6 +54,72 @@ use itsmng\Database\Orm;
 
 class IPAddress extends DbTestCase
 {
+    public function testNetworkNameFormsUseCurrentAddressValuesWithoutClearingLiveOwners(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $writer = null;
+        try {
+            $this->login();
+            $computer = $this->createItem(ComputerModel::class, ['name' => 'form-address-' . $this->getUniqueString()]);
+            $port = $this->createItem(NetworkPortModel::class, ['itemtype' => ComputerModel::class, 'items_id' => $computer->getID(), 'instantiation_type' => NetworkPortEthernetModel::class, 'name' => 'form-address-port']);
+            $name = $this->createItem(NetworkNameModel::class, ['itemtype' => NetworkPortModel::class, 'items_id' => $port->getID(), 'name' => 'form-address-name']);
+            $other = $this->createItem(NetworkNameModel::class, ['name' => 'other-form-address']);
+            $first = $this->createItem(IPAddressModel::class, ['itemtype' => NetworkNameModel::class, 'items_id' => $name->getID(), 'name' => '192.0.2.201']);
+            $second = $this->createItem(IPAddressModel::class, ['itemtype' => NetworkNameModel::class, 'items_id' => $name->getID(), 'name' => '192.0.2.202']);
+            $this->createItem(IPAddressModel::class, ['itemtype' => NetworkNameModel::class, 'items_id' => $other->getID(), 'name' => '192.0.2.204']);
+            $readForm = static function () use ($port): array {
+                $form = NetworkNameModel::showFormForNetworkPort($port->getID());
+                $section = reset($form);
+                $fields = array_values(array_filter($section['inputs'], static fn ($field): bool => is_array($field) && ($field['type'] ?? null) === 'multiSelect'));
+                return $fields[0]['values'];
+            };
+            $values = $readForm();
+            $this->array($values)->hasSize(2);
+            $byId = array_column($values, null, 'id');
+            $this->array(array_keys($byId[$first->getID()]))->isIdenticalTo(['id', 'NetworkName__ipaddresses']);
+            $this->string($byId[$first->getID()]['NetworkName__ipaddresses'])->isIdenticalTo('192.0.2.201');
+            $this->output(static fn () => $name->showForm($name->getID()))->contains('192.0.2.201')->notContains('192.0.2.204');
+            $connection = $DB->getDoctrineConnection();
+            if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
+                foreach ($values as $value) {
+                    $this->integer($value['id']);
+                }
+            }
+            foreach ([null, 'null', 'NULL', 'Null', 'nUlL'] as $sentinel) {
+                $this->array(IPAddressModel::getFormOptions(NetworkNameModel::class, $sentinel))->isEmpty();
+            }
+            $writer = Orm::create($DB);
+            $live = $writer->find(IPAddressEntity::class, (int)$first->getID());
+            $live->name = 'Independent unflushed address';
+            $this->boolean($first->update(['id' => $first->getID(), 'name' => '192.0.2.203']))->isTrue();
+            $connection->update('glpi_ipaddresses', ['name' => null, 'is_deleted' => true, 'is_dynamic' => true], ['id' => $second->getID()]);
+            $fresh = array_column($readForm(), null, 'id');
+            $this->string($fresh[$first->getID()]['NetworkName__ipaddresses'])->isIdenticalTo('192.0.2.203');
+            $this->variable($fresh[$second->getID()]['NetworkName__ipaddresses'])->isNull();
+            $this->string($byId[$first->getID()]['NetworkName__ipaddresses'])->isIdenticalTo('192.0.2.201');
+            $this->boolean($writer->contains($live))->isTrue();
+            $this->string($live->name)->isIdenticalTo('Independent unflushed address');
+            Orm::read(
+                $DB,
+                function (EntityManager $outer) use ($first, $readForm): void {
+                    $owned = $outer->find(IPAddressEntity::class, (int)$first->getID());
+                    $owned->name = 'Outer unflushed address';
+                    $fresh = array_column($readForm(), null, 'id');
+                    $this->string($fresh[$first->getID()]['NetworkName__ipaddresses'])->isIdenticalTo('192.0.2.203');
+                    $this->boolean($outer->contains($owned))->isTrue();
+                    $this->string($owned->name)->isIdenticalTo('Outer unflushed address');
+                }
+            );
+            $this->output(static fn () => $name->showForm($name->getID()))->contains('192.0.2.203')->notContains('192.0.2.201');
+            $this->boolean($first->delete(['id' => $first->getID()], true))->isTrue();
+            $this->array($readForm())->hasSize(1);
+        } finally {
+            $writer?->clear();
+            $_SESSION = $session;
+        }
+    }
+
     public function testAddIPV4()
     {
         $this->login();
@@ -252,7 +323,6 @@ class IPAddress extends DbTestCase
 
         }
     }
-
 
     public function testAddIPV6()
     {

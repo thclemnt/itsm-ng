@@ -103,11 +103,7 @@ class DeviceControl extends CommonDevice
                      return {values, title};
                   }
                JS,
-                 'values' => getOptionsWithNameForItem(
-                     'RegisteredID',
-                     ['itemtype' => $this::class, 'items_id' => $this->getID()],
-                     ['_registeredID_type' => 'device_type', '_registeredID' => 'name']
-                 ),
+                 'values' => RegisteredID::getFormOptions($this::class, $this->getID()),
                  'col_lg' => 12,
                  'col_md' => 12,
               ],

@@ -165,11 +165,7 @@ class NetworkName extends FQDNLabel
                            return {values, title};
                         }
                      JS,
-                       'values' => getOptionsWithNameForItem(
-                           'IpAddress',
-                           ['itemtype' => $this::class, 'items_id' => $this->getID()],
-                           ['_ipaddresses' => 'name']
-                       ),
+                       'values' => IPAddress::getFormOptions($this::class, $this->getID()),
                     ],
                     __('Comments') => [
                        'name' => 'comment',
@@ -501,11 +497,7 @@ class NetworkName extends FQDNLabel
                         return {values, title};
                      }
                   JS,
-                    'values' => getOptionsWithNameForItem(
-                        'IpAddress',
-                        ['itemtype' => self::class, 'items_id' => $name->getID()],
-                        ['NetworkName__ipaddresses' => 'name']
-                    ),
+                    'values' => IPAddress::getFormOptions(self::class, $name->getID(), 'NetworkName__ipaddresses'),
                  ],
               ],
            ]
