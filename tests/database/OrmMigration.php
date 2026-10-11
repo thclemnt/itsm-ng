@@ -1004,10 +1004,28 @@ class OrmMigration extends GLPITestCase
         $this->boolean($receipt['complete'])->isTrue();
         $release->apply($connection, static fn () => throw new LogicException('Completed name adoption replayed'));
         $this->array(Ledger::state($connection, NetworkNameParentDefinition::PHASE))->isIdenticalTo($receipt);
+        $beforeInvalid = $connection->fetchAssociative('SELECT id,itemtype,items_id,networkports_id,opaque_parent_id FROM glpi_networknames WHERE id=1000');
         foreach ([['networkports_id' => 1001], ['networkports_id' => 0], ['itemtype' => 'PluginOpaqueParent'],
             ['opaque_parent_id' => 1000], ['items_id' => null]] as $invalid) {
-            $this->exception(static fn () => $connection->transactional(static fn () =>
-                $connection->update('glpi_networknames', $invalid, ['id' => 1000])))->isInstanceOf(DbalException::class);
+            $caught = null;
+            try {
+                $connection->transactional(static fn () => $connection->update('glpi_networknames', $invalid, ['id' => 1000]));
+            } catch (DbalException $caught) {
+            }
+            $context = ['table' => 'glpi_networknames', 'invalid' => $invalid, 'before' => $beforeInvalid];
+            if ($caught === null) {
+                $context['accepted'] = $connection->fetchAssociative('SELECT id,itemtype,items_id,networkports_id,opaque_parent_id FROM glpi_networknames WHERE id=1000');
+                if ($connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
+                    $context['native'] = $connection->fetchAssociative(
+                        'SELECT VERSION() AS server_version, @@SESSION.sql_mode AS sql_mode, EXTRA AS `generated`, '
+                        . 'GENERATION_EXPRESSION AS `expression`, DATA_TYPE AS data_type, IS_NULLABLE AS is_nullable '
+                        . 'FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?',
+                        ['glpi_networknames', 'items_id']
+                    );
+                }
+            }
+            $this->boolean($caught instanceof DbalException)->isTrue('Native parent mutation must be rejected: ' . json_encode($context, JSON_THROW_ON_ERROR));
+            $this->exception($caught)->isInstanceOf(DbalException::class);
         }
         $this->exception(static fn () => $connection->transactional(static fn () =>
             $connection->insert('glpi_networknames', ['id' => 1006, 'name' => 'orphan-insert', 'itemtype' => 'NetworkPort',

@@ -35,6 +35,7 @@ namespace tests\units;
 
 use DB as LegacyDB;
 use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Connection;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
@@ -66,7 +67,7 @@ class DB extends \GLPITestCase
         $parameters = ['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0', 'wrapperClass' => MySQLManagedConnection::class];
         $selected = DriverManager::getConnection($parameters);
         $other = DriverManager::getConnection($parameters);
-        $custom = new class ($selected->getParams(), $selected->getDriver(), $selected->getConfiguration()) extends MySQLManagedConnection {
+        $custom = new class ($selected->getParams(), $selected->getDriver(), $selected->getConfiguration()) extends Connection {
             public EventManager $events;
             public array $trace = [];
             public function getEventManager(): EventManager
