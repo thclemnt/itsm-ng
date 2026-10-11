@@ -115,6 +115,7 @@ class Server extends DbTestCase
             foreach (['normal' => 'HTTP/1.1 403 Forbidden', 'tech' => 'HTTP/1.1 200 OK'] as $login => $status) {
                 $this->login($login, $login);
                 $server = $this->getServerInstance('PROPFIND', $httpPath);
+                $server->setBaseUri($server->httpRequest->getBaseUrl());
                 $server->httpRequest->addHeader('Authorization', 'Basic ' . base64_encode($login . ':' . $login));
                 $server->httpRequest->setBody('<d:propfind xmlns:d="DAV:"><d:prop><d:group-member-set/><d:group-membership/></d:prop></d:propfind>');
                 $response = new Response();
@@ -245,7 +246,8 @@ class Server extends DbTestCase
             $this->array($backend->getGroupMembership(Principal::PREFIX_USERS . '/' . $imported))->isIdenticalTo($expected);
             $this->array($backend->getGroupMembership(Principal::PREFIX_USERS . '/' . $name))->isEmpty();
             $this->integer($connection->update('glpi_users', ['name' => $name], ['id' => $user->getID()]))->isIdenticalTo(1);
-            $ldap = $this->createItem(AuthLDAP::class, ['name' => $this->getUniqueString(), 'is_active' => 0, 'is_default' => 0]);
+            $defaultDirectory = AuthLDAP::getNumberOfServers() === 0 ? 1 : 0;
+            $ldap = $this->createItem(AuthLDAP::class, ['name' => $this->getUniqueString(), 'is_active' => 0, 'is_default' => $defaultDirectory]);
             $other = $this->createItem(User::class, [
                 'name' => addslashes($name), 'authtype' => Auth::LDAP, 'authldaps_id' => $ldap->getID(),
             ]);
