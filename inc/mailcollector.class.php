@@ -444,7 +444,13 @@ class MailCollector extends CommonDBTM
         global $DB;
 
         $todelete = [];
-        foreach ((new MailCollectorRepository(Orm::create($DB)))->rejectedEmails($emails_ids) as $data) {
+        $rows = Orm::readPrepared(
+            $DB,
+            static fn (): array => $emails_ids,
+            static fn (EntityManager $manager, array $ids): array =>
+                (new MailCollectorRepository($manager))->rejectedEmails($ids)
+        );
+        foreach ($rows as $data) {
             $todelete[$data['mailcollectors_id']][$data['messageid']] = $data;
         }
 
@@ -1161,7 +1167,12 @@ class MailCollector extends CommonDBTM
 
         // Wrap content for blacklisted items
         $itemstoclean = [];
-        foreach ((new MailCollectorRepository(Orm::create($DB)))->blacklistedContents() as $data) {
+        $rows = Orm::read(
+            $DB,
+            static fn (EntityManager $manager): array =>
+                (new MailCollectorRepository($manager))->blacklistedContents()
+        );
+        foreach ($rows as $data) {
             $toclean = trim((string) $data['content']);
             if (!empty($toclean)) {
                 $itemstoclean[] = str_replace(["\r\n", "\n", "\r"], $br_marker, $toclean);
