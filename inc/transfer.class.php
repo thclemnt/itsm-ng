@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Entity\NetworkPort as NetworkPortRecord;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\LifecycleModelJournal;
 use itsmng\Database\MutationCleanupFailure;
@@ -3270,6 +3271,9 @@ class Transfer extends CommonDBTM
                         }
                     } else { // Copy -> copy netports
                         while ($data = $iterator->next()) {
+                            $data = NetworkPortRecord::withReference($data, $data['itemtype'], 0);
+                            $data['items_id'] = $newID;
+                            $data = (new NetworkPortRecord())->normalizeInput($data);
                             $data             = Toolbox::addslashes_deep($data);
                             unset($data['id'], $data['entities_id'], $data['is_recursive']);
                             $data['items_id'] = $newID;
@@ -3289,6 +3293,9 @@ class Transfer extends CommonDBTM
                     // Copy -> Copy netpoints (do not keep links)
                     if ($ID != $newID) {
                         while ($data = $iterator->next()) {
+                            $data = NetworkPortRecord::withReference($data, $data['itemtype'], 0);
+                            $data['items_id'] = $newID;
+                            $data = (new NetworkPortRecord())->normalizeInput($data);
                             unset($data['id'], $data['entities_id'], $data['is_recursive']);
                             $data['items_id'] = $newID;
                             $data['_create_children'] = true;

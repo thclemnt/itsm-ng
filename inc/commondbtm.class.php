@@ -1236,7 +1236,9 @@ class CommonDBTM extends CommonGLPI
         }
 
         // If this type have NETPORT, clean one associated to purged item
-        if (in_array($this->getType(), $CFG_GLPI['networkport_types'])) {
+        $networkPortParentKind = $this->getType();
+        if (in_array($networkPortParentKind, $CFG_GLPI['networkport_types'])
+            || isset(EntityRegistry::discriminatedReferences(NetworkPort::getTable())['items_id']['selections'][$networkPortParentKind])) {
             // If we don't use delete, then cleanDBonPurge() is not call and the NetworkPorts are not
             // clean properly
             $networkPortObject = new NetworkPort();

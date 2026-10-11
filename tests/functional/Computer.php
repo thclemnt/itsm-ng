@@ -298,6 +298,381 @@ class Computer extends DbTestCase
         }
     }
 
+    public function testComputerItemNestedCommandsKeepOuterIdentityAndDirtyOwners(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $session = $_SESSION;
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $entity = (int)$_SESSION['glpiactive_entity'];
+            $computer = $this->createItem(ComputerModel::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+            $other = $this->createItem(ComputerModel::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+            $monitor = $this->createItem(Monitor::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity, 'is_global' => true]);
+            $innerMonitor = $this->createItem(Monitor::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity, 'is_global' => true]);
+            $link = new Computer_Item();
+            $innerId = null;
+            $inside = false;
+            $events = [];
+            $plugins->setValue(null, [...$active, 'computer_item_nested_fixture']);
+            $PLUGIN_HOOKS['post_prepareadd']['computer_item_nested_fixture'][Computer_Item::class] = static function (
+                Computer_Item $model
+            ) use ($link, $other, $innerMonitor, &$innerId, &$inside): void {
+                if ($model === $link && !$inside) {
+                    $inside = true;
+                    try {
+                        $innerId = $model->add([
+                            'computers_id' => $other->getID(), 'itemtype' => 'Monitor', 'items_id' => $innerMonitor->getID(),
+                        ]);
+                    } finally {
+                        $inside = false;
+                    }
+                }
+            };
+            $PLUGIN_HOOKS['item_add']['computer_item_nested_fixture'][Computer_Item::class] = static function (
+                Computer_Item $model
+            ) use ($link, &$events): void {
+                if ($model === $link) {
+                    $events[] = [(int)$model->getID(), (int)$model->fields['computers_id'], (int)$model->fields['items_id']];
+                }
+            };
+            $independent = Orm::create($DB);
+            $dirty = $independent->find(ComputerEntity::class, (int)$computer->getID());
+            $dirty->name = 'Independent pending name';
+            Orm::read($DB, function (EntityManager $owner) use ($link, $computer, $monitor, $other, $innerMonitor, &$innerId, &$events): void {
+                $outer = $owner->find(ComputerEntity::class, (int)$other->getID());
+                $outer->name = 'Enclosing pending name';
+                $id = $link->add([
+                    'computers_id' => $computer->getID(), 'itemtype' => 'Monitor', 'items_id' => $monitor->getID(),
+                ]);
+                $this->integer((int)$id)->isGreaterThan(0);
+                $this->integer((int)$innerId)->isGreaterThan(0);
+                $this->integer((int)$link->getID())->isIdenticalTo((int)$id);
+                $this->array($events)->isIdenticalTo([
+                    [(int)$innerId, (int)$other->getID(), (int)$innerMonitor->getID()],
+                    [(int)$id, (int)$computer->getID(), (int)$monitor->getID()],
+                ]);
+                $this->boolean($owner->contains($outer))->isTrue();
+                $this->string($outer->name)->isIdenticalTo('Enclosing pending name');
+            });
+            $this->boolean($independent->contains($dirty))->isTrue();
+            $this->string($dirty->name)->isIdenticalTo('Independent pending name');
+            $connection = $DB->getDoctrineConnection();
+            foreach ($events as [$id, $computerId, $itemId]) {
+                $row = $connection->fetchAssociative('SELECT * FROM glpi_computers_items WHERE id=?', [$id]);
+                $this->array($row)->isNotEmpty();
+                $this->integer((int)$row['computers_id'])->isIdenticalTo($computerId);
+                $this->integer((int)$row['monitors_id'])->isIdenticalTo($itemId);
+                $this->variable($row['opaque_parent_id'])->isNull();
+            }
+            $this->boolean($computer->getFromDB($computer->getID()))->isTrue();
+            $this->boolean($other->getFromDB($other->getID()))->isTrue();
+            $this->boolean($computer->fields['name'] === 'Independent pending name')->isFalse();
+            $this->boolean($other->fields['name'] === 'Enclosing pending name')->isFalse();
+        } finally {
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+            $_SESSION = $session;
+        }
+    }
+
+    public function testComputerItemRejectsStandalonePreparedWriterSwitchBeforeFiltering(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $original = $DB;
+        $session = $_SESSION;
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $entity = (int)$_SESSION['glpiactive_entity'];
+            $computer = $this->createItem(ComputerModel::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+            $monitor = $this->createItem(Monitor::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity, 'is_global' => true]);
+            $connection = $DB->getDoctrineConnection();
+            $this->mockGenerator()->orphanize('__construct');
+            $alternate = new ComputerItemAdapterProbe();
+            $this->calling($alternate)->getDoctrineConnection = $connection;
+            $prepared = 0;
+            $plugins->setValue(null, [...$active, 'computer_item_writer_fixture']);
+            $PLUGIN_HOOKS['post_prepareadd']['computer_item_writer_fixture'][Computer_Item::class] = static function (
+                Computer_Item $model
+            ) use ($alternate, &$prepared): void {
+                global $DB;
+                ++$prepared;
+                $DB = $alternate;
+            };
+            $this->exception(static fn () => (new Computer_Item())->add([
+                'computers_id' => $computer->getID(), 'itemtype' => 'Monitor', 'items_id' => $monitor->getID(),
+            ]))->isInstanceOf(TransactionOwnershipMismatch::class);
+            $this->integer($prepared)->isIdenticalTo(1);
+            $this->object($DB)->isIdenticalTo($alternate);
+            $this->integer((int)$connection->fetchOne(
+                'SELECT COUNT(*) FROM glpi_computers_items WHERE computers_id=?',
+                [$computer->getID()]
+            ))->isIdenticalTo(0);
+            $DB = $original;
+            $otherMonitor = $this->createItem(Monitor::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity, 'is_global' => true]);
+            $before = $connection->fetchAllAssociative('SELECT * FROM glpi_computers_items ORDER BY id');
+            $candidate = new Computer_Item();
+            $mutate = false;
+            $mutations = 0;
+            $selected = new ComputerItemAdapterProbe();
+            $this->calling($selected)->getProvider = $original->getProvider();
+            $this->calling($selected)->isSlave = false;
+            $this->calling($selected)->getDoctrineConnection = static function () use (
+                $connection,
+                $candidate,
+                $otherMonitor,
+                &$mutate,
+                &$mutations
+            ): Connection {
+                if ($mutate) {
+                    ++$mutations;
+                    $candidate->input['items_id'] = $otherMonitor->getID();
+                }
+                return $connection;
+            };
+            $PLUGIN_HOOKS['post_prepareadd']['computer_item_writer_fixture'][Computer_Item::class] = static function (
+                Computer_Item $model
+            ) use ($candidate, &$mutate): void {
+                if ($model === $candidate) {
+                    $mutate = true;
+                }
+            };
+            $DB = $selected;
+            $input = ['computers_id' => $computer->getID(), 'itemtype' => 'Monitor', 'items_id' => $monitor->getID()];
+            $this->exception(static fn () => $candidate->add($input))->isInstanceOf(RuntimeException::class);
+            $this->integer($mutations)->isIdenticalTo(1);
+            $this->object($DB)->isIdenticalTo($selected);
+            $this->array($connection->fetchAllAssociative('SELECT * FROM glpi_computers_items ORDER BY id'))->isIdenticalTo($before);
+            $mutate = false;
+            unset($PLUGIN_HOOKS['post_prepareadd']['computer_item_writer_fixture']);
+            $id = $candidate->add($input);
+            $this->integer((int)$id)->isGreaterThan(0);
+            $this->integer((int)$candidate->fields['items_id'])->isIdenticalTo((int)$monitor->getID());
+            $this->integer((int)$candidate->fields['monitors_id'])->isIdenticalTo((int)$monitor->getID());
+            $this->variable($candidate->fields['opaque_parent_id'])->isNull();
+            $this->integer((int)$connection->fetchOne(
+                'SELECT COUNT(*) FROM glpi_computers_items WHERE computers_id=?',
+                [$computer->getID()]
+            ))->isIdenticalTo(1);
+        } finally {
+            $DB = $original;
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+            $_SESSION = $session;
+        }
+    }
+
+    public function testComputerItemFinalAdmissionRejectsWrongPhysicalParentBeforeLoading(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $session = $_SESSION;
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $originalKind = Computer_Item::$itemtype_1;
+        $originalTable = ComputerItemFinalLoadParent::getTable();
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $entity = (int)$_SESSION['glpiactive_entity'];
+            $computer = $this->createItem(ComputerModel::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+            $monitor = $this->createItem(Monitor::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity, 'is_global' => true]);
+            $connection = $DB->getDoctrineConnection();
+            $before = $connection->fetchAllAssociative('SELECT * FROM glpi_computers_items ORDER BY id');
+            ComputerItemFinalLoadParent::forceTable(ComputerModel::getTable());
+            Computer_Item::$itemtype_1 = ComputerItemFinalLoadParent::class;
+            ComputerItemFinalLoadParent::$armed = false;
+            ComputerItemFinalLoadParent::$loads = 0;
+            $candidate = new Computer_Item();
+            $prepared = 0;
+            $plugins->setValue(null, [...$active, 'computer_item_physical_fixture']);
+            $PLUGIN_HOOKS['post_prepareadd']['computer_item_physical_fixture'][Computer_Item::class] = static function (
+                Computer_Item $model
+            ) use ($candidate, &$prepared): void {
+                if ($model === $candidate) {
+                    ++$prepared;
+                    ComputerItemFinalLoadParent::$armed = true;
+                    ComputerItemFinalLoadParent::forceTable(Monitor::getTable());
+                }
+            };
+            $input = ['computers_id' => $computer->getID(), 'itemtype' => 'Monitor', 'items_id' => $monitor->getID()];
+            $this->variable($candidate->add($input))->isIdenticalTo(false);
+            $this->integer($prepared)->isIdenticalTo(1);
+            $this->integer(ComputerItemFinalLoadParent::$loads)->isIdenticalTo(0);
+            $this->array($connection->fetchAllAssociative('SELECT * FROM glpi_computers_items ORDER BY id'))->isIdenticalTo($before);
+            unset($PLUGIN_HOOKS['post_prepareadd']['computer_item_physical_fixture']);
+            ComputerItemFinalLoadParent::forceTable(ComputerModel::getTable());
+            $id = $candidate->add($input);
+            $this->integer((int)$id)->isGreaterThan(0);
+            $this->integer(ComputerItemFinalLoadParent::$loads)->isGreaterThan(0);
+            $row = $connection->fetchAssociative('SELECT * FROM glpi_computers_items WHERE id=?', [$id]);
+            $this->integer((int)$row['computers_id'])->isIdenticalTo((int)$computer->getID());
+            $this->integer((int)$row['monitors_id'])->isIdenticalTo((int)$monitor->getID());
+            $this->variable($row['opaque_parent_id'])->isNull();
+        } finally {
+            ComputerItemFinalLoadParent::$armed = false;
+            ComputerItemFinalLoadParent::$loads = 0;
+            ComputerItemFinalLoadParent::forceTable($originalTable);
+            Computer_Item::$itemtype_1 = $originalKind;
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+            $_SESSION = $session;
+        }
+    }
+
+    public function testComputerItemOwnersRetainBothCloneRolesAndDirectRetargets(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $connection = $DB->getDoctrineConnection();
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $entity = (int)$_SESSION['glpiactive_entity'];
+            $computer = $this->createItem(ComputerModel::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+            $selections = EntityRegistry::discriminatedReferences(Computer_Item::getTable())['items_id']['selections'];
+            $replacements = [];
+            foreach ([Monitor::class, Peripheral::class, Phone::class, Printer::class] as $kind) {
+                $item = $this->createItem($kind, ['name' => $this->getUniqueString(), 'entities_id' => $entity, 'is_global' => true]);
+                $replacement = $this->createItem($kind, ['name' => $this->getUniqueString(), 'entities_id' => $entity, 'is_global' => true]);
+                $replacements[$kind] = $replacement;
+                $link = $this->createItem(Computer_Item::class, [
+                    'computers_id' => $computer->getID(), 'itemtype' => $kind, 'items_id' => $item->getID(),
+                ]);
+                // This is Transfer's actual mapped-writer ingress, not a second public add.
+                $this->boolean($DB->update(Computer_Item::getTable(), ['items_id' => $replacement->getID()], ['id' => $link->getID()]))->isTrue();
+                $this->boolean($link->getFromDB($link->getID()))->isTrue();
+                $this->integer((int)$link->fields['computers_id'])->isIdenticalTo((int)$computer->getID());
+                $this->integer((int)$link->fields['items_id'])->isIdenticalTo((int)$replacement->getID());
+                $this->integer((int)$link->fields[$selections[$kind]['column']])->isIdenticalTo((int)$replacement->getID());
+                $this->variable($link->fields['opaque_parent_id'])->isNull();
+                foreach ($selections as $otherKind => $selection) {
+                    if ($otherKind !== $kind) {
+                        $this->variable($link->fields[$selection['column']])->isNull();
+                    }
+                }
+                $cloneId = $replacement->clone(['name' => $this->getUniqueString()]);
+                $this->integer((int)$cloneId)->isGreaterThan(0);
+                $row = $connection->fetchAssociative(
+                    'SELECT * FROM glpi_computers_items WHERE computers_id=? AND itemtype=? AND items_id=?',
+                    [$computer->getID(), $kind, $cloneId]
+                );
+                $this->array($row)->isNotEmpty();
+                $this->integer((int)$row[$selections[$kind]['column']])->isIdenticalTo((int)$cloneId);
+                $this->variable($row['opaque_parent_id'])->isNull();
+            }
+            $computerCloneId = $computer->clone(['name' => $this->getUniqueString()]);
+            $this->integer((int)$computerCloneId)->isGreaterThan(0);
+            foreach ($replacements as $kind => $replacement) {
+                $row = $connection->fetchAssociative(
+                    'SELECT * FROM glpi_computers_items WHERE computers_id=? AND itemtype=? AND items_id=?',
+                    [$computerCloneId, $kind, $replacement->getID()]
+                );
+                $this->array($row)->isNotEmpty();
+                $this->integer((int)$row[$selections[$kind]['column']])->isIdenticalTo((int)$replacement->getID());
+                $replacementId = $replacement->getID();
+                $this->boolean($replacement->delete(['id' => $replacementId], true))->isTrue();
+                $this->integer((int)$connection->fetchOne(
+                    'SELECT COUNT(*) FROM glpi_computers_items WHERE itemtype=? AND items_id=?',
+                    [$kind, $replacementId]
+                ))->isIdenticalTo(0);
+            }
+            $clonedComputer = new ComputerModel();
+            $this->boolean($clonedComputer->getFromDB($computerCloneId))->isTrue();
+            $this->boolean($clonedComputer->delete(['id' => $computerCloneId], true))->isTrue();
+            $this->integer((int)$connection->fetchOne(
+                'SELECT COUNT(*) FROM glpi_computers_items WHERE computers_id=?',
+                [$computerCloneId]
+            ))->isIdenticalTo(0);
+            $this->integer((int)$connection->fetchOne(
+                'SELECT COUNT(*) FROM glpi_computers_items WHERE computers_id=?',
+                [$computer->getID()]
+            ))->isIdenticalTo(4);
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
+    public function testLateComputerItemAddUsesFinalPermissionAndCurrentSharing(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $session = $_SESSION;
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $connection = $DB->getDoctrineConnection();
+        $attempting = false;
+        $denied = false;
+        $replacementId = 0;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $entity = (int)$_SESSION['glpiactive_entity'];
+            $computer = $this->createItem(ComputerModel::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+            $otherComputer = $this->createItem(ComputerModel::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+            $source = $this->createItem(Monitor::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity, 'is_global' => true]);
+            $replacement = $this->createItem(Monitor::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity, 'is_global' => true]);
+            $replacementId = (int)$replacement->getID();
+            $plugins->setValue(null, [...$active, 'computer_item_late_fixture']);
+            $PLUGIN_HOOKS['post_prepareadd']['computer_item_late_fixture'][Computer_Item::class] = static function (
+                Computer_Item $model
+            ) use (&$attempting, &$replacementId): void {
+                if ($attempting) {
+                    $model->input = ComputerItemRecord::withReference($model->input, 'Monitor', $replacementId);
+                }
+            };
+            $permissions = [];
+            $PLUGIN_HOOKS['item_can']['computer_item_late_fixture'][Monitor::class] = static function (
+                Monitor $model
+            ) use (&$denied, &$permissions, &$replacementId): void {
+                $permissions[] = [(int)$model->getID(), $model->right];
+                if ($denied && (int)$model->getID() === $replacementId) {
+                    $model->right = 0;
+                }
+            };
+            $input = ['computers_id' => $computer->getID(), 'itemtype' => 'Monitor', 'items_id' => $source->getID()];
+            $attempting = true;
+            $denied = true;
+            $this->boolean((new Computer_Item())->add($input))->isFalse();
+            $this->array($permissions)->contains([$replacementId, READ]);
+            $this->integer((int)$connection->fetchOne(
+                'SELECT COUNT(*) FROM glpi_computers_items WHERE computers_id=?',
+                [$computer->getID()]
+            ))->isIdenticalTo(0);
+            $denied = false;
+            $allowed = new Computer_Item();
+            $id = $allowed->add($input);
+            $this->integer((int)$id)->isGreaterThan(0);
+            $this->integer((int)$allowed->fields['items_id'])->isIdenticalTo($replacementId);
+            $this->integer((int)$allowed->fields['monitors_id'])->isIdenticalTo($replacementId);
+            $this->boolean((new Computer_Item())->add($input))->isFalse();
+            $attempting = false;
+            $nonglobal = $this->createItem(Monitor::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity, 'is_global' => false]);
+            $this->createItem(Computer_Item::class, [
+                'computers_id' => $otherComputer->getID(), 'itemtype' => 'Monitor', 'items_id' => $nonglobal->getID(),
+            ]);
+            $replacementId = (int)$nonglobal->getID();
+            $attempting = true;
+            $this->boolean((new Computer_Item())->add($input))->isFalse();
+            $this->integer((int)$connection->fetchOne(
+                'SELECT COUNT(*) FROM glpi_computers_items WHERE itemtype=? AND items_id=?',
+                ['Monitor', $replacementId]
+            ))->isIdenticalTo(1);
+        } finally {
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+            $_SESSION = $session;
+        }
+    }
+
+
     public function testConnectedComputerDisplayKeepsLinksAndCurrentHookReads(): void
     {
         global $DB, $PLUGIN_HOOKS;
@@ -2553,5 +2928,20 @@ class NotepadPreparedParent extends NotepadModel
             $this->fields['opaque_parent_id'] = $this->finalKind === ComputerModel::class ? null : $this->finalIdentity;
             $this->updates = array_values(array_unique([...$this->updates, ...$columns]));
         }
+    }
+}
+
+/** Factory-only role-one fixture; its class name is never persisted as a discriminator. */
+class ComputerItemFinalLoadParent extends ComputerModel
+{
+    public static bool $armed = false;
+    public static int $loads = 0;
+
+    public function getFromDB($id)
+    {
+        if (self::$armed) {
+            ++self::$loads;
+        }
+        return parent::getFromDB($id);
     }
 }

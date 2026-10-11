@@ -952,6 +952,10 @@ class Transfer extends DbTestCase
                         $this->integer((int)$copiedPrinter->getEntityID())->isIdenticalTo($target);
                         $copies = $connection->fetchAllAssociative('SELECT * FROM glpi_networkports WHERE items_id=? AND itemtype=?', [$copyID, 'Printer']);
                         $this->array($copies)->hasSize(1);
+                        $this->integer((int)$copies[0]['printers_id'])->isIdenticalTo($copyID);
+                        $this->variable($copies[0]['opaque_parent_id'])->isNull();
+                        $this->integer((int)$sourcePort['printers_id'])->isIdenticalTo((int)$printer->getID());
+                        $this->variable($sourcePort['opaque_parent_id'])->isNull();
                         $copiedPortID = (int)$copies[0]['id'];
                         $this->integer((int)$copies[0]['entities_id'])->isIdenticalTo($target);
                         $this->integer((int)$copies[0]['is_recursive'])->isIdenticalTo((int)$copiedPrinter->isRecursive());

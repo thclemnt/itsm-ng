@@ -46,9 +46,11 @@ use mock\DBmysql as AggregateReadAdapter;
 use tests\fixtures\ScalarReadProbe;
 use HTMLTableMain;
 use InvalidArgumentException;
+use Log;
 use NetworkPort as LegacyNetworkPort;
 use NetworkName as LegacyNetworkName;
 use NetworkNameOpaquePortFixture;
+use NetworkEquipment;
 use NetworkPortAggregate;
 use NetworkPortAlias;
 use NetworkPortEthernet;
@@ -59,6 +61,7 @@ use CommonDBConnexity;
 use RuntimeException;
 use NetworkPort_Vlan;
 use itsmng\Database\Entity\NetworkPort as NetworkPortEntity;
+use itsmng\Database\Entity\Entity as ScopeEntity;
 use itsmng\Database\Entity\NetworkName as NetworkNameEntity;
 use itsmng\Database\CloneInput;
 use itsmng\Database\Entity\NetworkPortAggregate as NetworkPortAggregateEntity;
@@ -67,6 +70,7 @@ use itsmng\Database\EntityRegistry;
 use itsmng\Database\Migration\Ledger;
 use itsmng\Database\Repository\RecordWriter;
 use itsmng\Database\Orm;
+use itsmng\Database\TransactionOwnershipMismatch;
 use itsmng\Database\Repository\NetworkPortAggregateRepository;
 use itsmng\Database\Repository\NetworkPortVlanRepository;
 use itsmng\Domain\VlanMembershipService;
@@ -78,6 +82,536 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class NetworkPort extends DbTestCase
 {
+    public function testDeclaredAssetOwnersPreserveForwardingCloneAndPurge(): void
+    {
+        global $DB;
+        $this->login();
+        $entity = getItemByTypeName('Entity', '_test_root_entity');
+        $this->setEntity((int)$entity->getID(), true);
+        $connection = $DB->getDoctrineConnection();
+        $selections = EntityRegistry::discriminatedReferences(LegacyNetworkPort::getTable())['items_id']['selections'];
+        $this->integer(count($selections))->isIdenticalTo(9);
+        foreach ($selections as $kind => $selection) {
+            $parent = getItemForItemtype($kind);
+            $parentId = (int)$parent->add(['name' => $this->getUniqueString(), 'entities_id' => $entity->getID()]);
+            $this->integer($parentId)->isGreaterThan(0);
+            $this->boolean($parent->getFromDB($parentId))->isTrue();
+            $port = new LegacyNetworkPort();
+            $portId = (int)$port->add([
+                'itemtype' => $kind, 'items_id' => (string)$parentId,
+                'name' => $this->getUniqueString(), 'instantiation_type' => null,
+            ]);
+            $this->integer($portId)->isGreaterThan(0);
+            $this->boolean($port->getFromDB($portId))->isTrue();
+            $row = $connection->fetchAssociative('SELECT * FROM glpi_networkports WHERE id=?', [$portId]);
+            $this->integer((int)$row['items_id'])->isIdenticalTo($parentId);
+            $this->integer((int)$row[$selection['column']])->isIdenticalTo($parentId);
+            $this->variable($row['opaque_parent_id'])->isNull();
+            foreach ($selections as $otherKind => $otherSelection) {
+                if ($otherKind !== $kind) {
+                    $this->variable($row[$otherSelection['column']])->isNull();
+                }
+            }
+            $expectedEntity = $parent->isEntityForwardTo(LegacyNetworkPort::class) ? (int)$parent->getEntityID() : 0;
+            $this->integer((int)$row['entities_id'])->isIdenticalTo($expectedEntity);
+            $this->variable($row['instantiation_type'])->isNull();
+            $this->boolean($port->getInstantiation())->isFalse();
+            $cloneId = (int)$parent->clone(['name' => $this->getUniqueString()]);
+            $this->integer($cloneId)->isGreaterThan(0);
+            $clonedPorts = $connection->fetchAllAssociative(
+                'SELECT * FROM glpi_networkports WHERE itemtype=? AND items_id=?',
+                [$kind, $cloneId]
+            );
+            // Monitor deliberately has no NetworkPort clone relation.
+            $this->integer(count($clonedPorts))->isIdenticalTo($kind === 'Monitor' ? 0 : 1);
+            if ($clonedPorts !== []) {
+                $this->integer((int)$clonedPorts[0][$selection['column']])->isIdenticalTo($cloneId);
+                $this->variable($clonedPorts[0]['opaque_parent_id'])->isNull();
+            }
+            $this->boolean($parent->delete(['id' => $parentId, '_replace_by' => $cloneId], true))->isTrue();
+            $this->boolean($port->getFromDB($portId))->isFalse();
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_networkports WHERE itemtype=? AND items_id=?', [$kind, $cloneId]))
+                ->isIdenticalTo($kind === 'Monitor' ? 0 : 1);
+        }
+    }
+
+    public function testNestedSamePortAddRetainsOuterChildAndAuditIdentity(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $this->login();
+        $computer = getItemByTypeName('Computer', '_test_pc01');
+        $this->setEntity((int)$computer->getEntityID(), true);
+        $connection = $DB->getDoctrineConnection();
+        $port = new LegacyNetworkPort();
+        $prefix = $this->getUniqueString();
+        $outerName = $prefix . '-outer-name';
+        $innerName = $prefix . '-inner-name';
+        $peers = [];
+        foreach (['outer-peer', 'inner-peer'] as $label) {
+            $peers[] = $this->createItem(
+                LegacyNetworkPort::class,
+                [
+                    'itemtype' => 'Computer', 'items_id' => $computer->getID(),
+                    'name' => $prefix . '-' . $label, 'instantiation_type' => 'NetworkPortEthernet',
+                ]
+            );
+        }
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $inside = false;
+        $innerId = null;
+        $observed = [];
+        try {
+            $plugins->setValue(null, [...$active, 'port_nested_owner']);
+            $PLUGIN_HOOKS['pre_item_add']['port_nested_owner'][NetworkPortEthernet::class] =
+                function (NetworkPortEthernet $ethernet) use ($port, $computer, $prefix, $innerName, $peers, &$inside, &$innerId): void {
+                    $port->input_for_NetworkPortConnect['networkports_id_1'] = $port->getID();
+                    if ($inside) {
+                        return;
+                    }
+                    $inside = true;
+                    $innerId = $port->add([
+                        'itemtype' => 'Computer', 'items_id' => $computer->getID(),
+                        'name' => $prefix . '-inner', 'instantiation_type' => 'NetworkPortEthernet',
+                        'type' => 'T', 'speed' => 100, 'NetworkName_name' => $innerName,
+                        'NetworkName__ipaddresses' => [], '_create_children' => true,
+                        'NetworkPortConnect_networkports_id_2' => $peers[1]->getID(),
+                    ]);
+                };
+            $PLUGIN_HOOKS['item_add']['port_nested_owner'][LegacyNetworkPort::class] =
+                static function (LegacyNetworkPort $added) use (&$observed): void {
+                    $observed[] = [(int)$added->getID(), $added->fields['name']];
+                };
+            $outerId = $port->add([
+                'itemtype' => 'Computer', 'items_id' => $computer->getID(),
+                'name' => $prefix . '-outer', 'instantiation_type' => 'NetworkPortEthernet',
+                'type' => 'T', 'speed' => 1000, 'NetworkName_name' => $outerName,
+                'NetworkName__ipaddresses' => [], '_create_children' => true,
+                'NetworkPortConnect_networkports_id_2' => $peers[0]->getID(),
+            ]);
+            $this->integer((int)$innerId)->isGreaterThan(0);
+            $this->integer((int)$outerId)->isGreaterThan(0)->isNotIdenticalTo((int)$innerId);
+            $this->integer((int)$port->getID())->isIdenticalTo((int)$outerId);
+            $this->string($port->fields['name'])->isIdenticalTo($prefix . '-outer');
+            $this->array($observed)->isIdenticalTo([[(int)$innerId, $prefix . '-inner'], [(int)$outerId, $prefix . '-outer']]);
+            foreach ([[$innerId, $innerName, 100], [$outerId, $outerName, 1000]] as [$id, $name, $speed]) {
+                $this->integer((int)$connection->fetchOne('SELECT items_id FROM glpi_networknames WHERE name=?', [$name]))->isIdenticalTo((int)$id);
+                $this->integer((int)$connection->fetchOne('SELECT speed FROM glpi_networkportethernets WHERE networkports_id=?', [$id]))->isIdenticalTo($speed);
+                $this->integer((int)$connection->fetchOne(
+                    'SELECT COUNT(*) FROM glpi_logs WHERE itemtype=? AND items_id=? AND linked_action=?',
+                    ['NetworkPort', $id, Log::HISTORY_CREATE_ITEM]
+                ))->isIdenticalTo(1);
+            }
+            foreach ([[$outerId, $peers[0]], [$innerId, $peers[1]]] as [$id, $peer]) {
+                $this->integer((int)$connection->fetchOne(
+                    'SELECT networkports_id_2 FROM glpi_networkports_networkports WHERE networkports_id_1=?',
+                    [$id]
+                ))->isIdenticalTo((int)$peer->getID());
+            }
+            foreach (['input_for_instantiation', 'input_for_NetworkName', 'input_for_NetworkPortConnect'] as $property) {
+                $this->boolean(array_key_exists($property, get_object_vars($port)))->isFalse();
+            }
+        } finally {
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+        }
+    }
+
+    public function testFinalAssetParentAuthorityRetainsLiveOwnersAndOpaqueKinds(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $this->login();
+        $computer = getItemByTypeName('Computer', '_test_pc01');
+        $other = getItemByTypeName('Computer', '_test_pc02');
+        $this->setEntity((int)$computer->getEntityID(), true);
+        $connection = $DB->getDoctrineConnection();
+        $prefix = $this->getUniqueString();
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $denials = 0;
+        try {
+            $plugins->setValue(null, [...$active, 'port_final_parent']);
+            $PLUGIN_HOOKS['post_prepareadd']['port_final_parent'][LegacyNetworkPort::class] =
+                static function (LegacyNetworkPort $port) use ($other): void {
+                    $port->input = NetworkPortEntity::withReference($port->input, 'Computer', (int)$other->getID());
+                };
+            $PLUGIN_HOOKS['item_can']['port_final_parent'][Computer::class] =
+                static function (Computer $parent) use ($other, &$denials): void {
+                    if ((int)$parent->getID() === (int)$other->getID()) {
+                        ++$denials;
+                        $parent->right = false;
+                    }
+                };
+            $port = new LegacyNetworkPort();
+            $this->boolean($port->add([
+                'itemtype' => 'Computer', 'items_id' => $computer->getID(),
+                'name' => $prefix, 'instantiation_type' => null,
+            ]))->isFalse();
+            $this->integer($denials)->isGreaterThan(0);
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_networkports WHERE name=?', [$prefix]))->isIdenticalTo(0);
+            unset($PLUGIN_HOOKS['item_can']['port_final_parent']);
+            $id = (int)$port->add([
+                'itemtype' => 'Computer', 'items_id' => $computer->getID(),
+                'name' => $prefix, 'instantiation_type' => null,
+            ]);
+            $this->integer($id)->isGreaterThan(0);
+            $this->integer((int)$connection->fetchOne('SELECT computers_id FROM glpi_networkports WHERE id=?', [$id]))->isIdenticalTo((int)$other->getID());
+        } finally {
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+        }
+        $independent = Orm::create($DB);
+        $dirty = $independent->find(NetworkPortEntity::class, $id);
+        $dirty->name = 'unflushed independent port';
+        Orm::read($DB, function (EntityManager $outer) use ($port, $id, $computer): void {
+            $enclosing = $outer->find(NetworkPortEntity::class, $id);
+            $enclosing->name = 'unflushed enclosing port';
+            $this->boolean($port->update(['id' => $id, 'items_id' => $computer->getID()]))->isTrue();
+            $this->boolean($outer->contains($enclosing))->isTrue();
+            $this->string($enclosing->name)->isIdenticalTo('unflushed enclosing port');
+        });
+        $this->boolean($independent->contains($dirty))->isTrue();
+        $this->string($dirty->name)->isIdenticalTo('unflushed independent port');
+        $this->integer((int)$connection->fetchOne('SELECT computers_id FROM glpi_networkports WHERE id=?', [$id]))->isIdenticalTo((int)$computer->getID());
+        $opaque = new LegacyNetworkPort();
+        $opaqueId = (int)$opaque->add([
+            'itemtype' => NetworkNameOpaquePortFixture::class, 'items_id' => $id,
+            'name' => $prefix . '-opaque', 'instantiation_type' => null,
+        ]);
+        $this->integer($opaqueId)->isGreaterThan(0);
+        $row = $connection->fetchAssociative('SELECT * FROM glpi_networkports WHERE id=?', [$opaqueId]);
+        $this->string($row['itemtype'])->isIdenticalTo(NetworkNameOpaquePortFixture::class);
+        $this->integer((int)$row['opaque_parent_id'])->isIdenticalTo($id);
+        foreach (EntityRegistry::discriminatedReferences(LegacyNetworkPort::getTable())['items_id']['selections'] as $selection) {
+            $this->variable($row[$selection['column']])->isNull();
+        }
+        $alias = new LegacyNetworkPort();
+        $aliasId = (int)$alias->add([
+            'itemtype' => 'computer', 'items_id' => $computer->getID(),
+            'name' => $prefix . '-case-alias', 'instantiation_type' => null,
+        ]);
+        $this->integer($aliasId)->isGreaterThan(0);
+        $aliasRow = $connection->fetchAssociative('SELECT * FROM glpi_networkports WHERE id=?', [$aliasId]);
+        $this->string($aliasRow['itemtype'])->isIdenticalTo('computer');
+        $this->integer((int)$aliasRow['opaque_parent_id'])->isIdenticalTo((int)$computer->getID());
+        $this->variable($aliasRow['computers_id'])->isNull();
+        $physical = new class () extends LegacyNetworkPort {
+            public static function getTable($classname = null)
+            {
+                return Computer::getTable();
+            }
+        };
+        $beforePhysical = $connection->fetchAllAssociative('SELECT * FROM glpi_networkports ORDER BY id');
+        $this->exception(static fn () => $physical->add([
+            'itemtype' => 'Computer', 'items_id' => $computer->getID(), 'name' => 'Wrong port physical table',
+        ]))->isInstanceOf(InvalidArgumentException::class);
+        $this->array($connection->fetchAllAssociative('SELECT * FROM glpi_networkports ORDER BY id'))->isIdenticalTo($beforePhysical);
+        $database = $DB;
+        $routeProbe = new ScalarReadProbe($connection);
+        $this->mockGenerator->orphanize('__construct');
+        $changedRoute = new AggregateReadAdapter();
+        $this->calling($changedRoute)->getDoctrineConnection = $routeProbe;
+        try {
+            $plugins->setValue(null, [...$active, 'port_changed_writer']);
+            $PLUGIN_HOOKS['post_prepareadd']['port_changed_writer'][LegacyNetworkPort::class] =
+                static function () use ($changedRoute): void {
+                    $GLOBALS['DB'] = $changedRoute;
+                };
+            $routePort = new LegacyNetworkPort();
+            $this->exception(static fn () => $routePort->add([
+                'itemtype' => 'Computer', 'items_id' => $computer->getID(), 'name' => $prefix . '-changed-route',
+            ]))->isInstanceOf(TransactionOwnershipMismatch::class);
+            $this->array($connection->fetchAllAssociative('SELECT * FROM glpi_networkports ORDER BY id'))->isIdenticalTo($beforePhysical);
+        } finally {
+            $DB = $database;
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+        }
+        // A restrictive callback can deny, but cannot substitute the pending receiver.
+        $mutations = 0;
+        try {
+            $plugins->setValue(null, [...$active, 'port_pending_receiver']);
+            $PLUGIN_HOOKS['post_prepareadd']['port_pending_receiver'][LegacyNetworkPort::class] =
+                static function (LegacyNetworkPort $adding) use ($other): void {
+                    $adding->input = NetworkPortEntity::withReference($adding->input, 'Computer', (int)$other->getID());
+                };
+            $pending = new LegacyNetworkPort();
+            $PLUGIN_HOOKS['item_can']['port_pending_receiver'][Computer::class] =
+                static function (Computer $parent) use ($pending, $other, &$mutations): void {
+                    if ((int)$parent->getID() === (int)$other->getID()) {
+                        ++$mutations;
+                        $pending->input['name'] = 'Callback substituted input';
+                        $pending->fields['name'] = 'Callback substituted fields';
+                    }
+                };
+            $this->boolean($pending->add([
+                'itemtype' => 'Computer', 'items_id' => $computer->getID(),
+                'name' => $prefix . '-receiver', 'instantiation_type' => null,
+            ]))->isFalse();
+            $this->integer($mutations)->isGreaterThan(0);
+            $this->array($connection->fetchAllAssociative('SELECT * FROM glpi_networkports ORDER BY id'))->isIdenticalTo($beforePhysical);
+            unset($PLUGIN_HOOKS['post_prepareadd']['port_pending_receiver']);
+            $mutations = 0;
+            $updateProbe = new class () extends LegacyNetworkPort {
+                public bool $finalStage = false;
+
+                public static function getTable($classname = null)
+                {
+                    return LegacyNetworkPort::getTable();
+                }
+
+                public function pre_updateInDB()
+                {
+                    parent::pre_updateInDB();
+                    $this->finalStage = true;
+                }
+            };
+            $this->boolean($updateProbe->getFromDB($id))->isTrue();
+            $PLUGIN_HOOKS['item_can']['port_pending_receiver'][Computer::class] =
+                static function (Computer $parent) use ($updateProbe, $other, &$mutations): void {
+                    if ($updateProbe->finalStage && (int)$parent->getID() === (int)$other->getID()) {
+                        ++$mutations;
+                        $updateProbe->input['comment'] = 'Callback substituted update';
+                        $updateProbe->fields['comment'] = 'Callback substituted update';
+                    }
+                };
+            $beforeUpdate = $connection->fetchAssociative('SELECT * FROM glpi_networkports WHERE id=?', [$id]);
+            $this->boolean($updateProbe->update(['id' => $id, 'items_id' => $other->getID()]))->isFalse();
+            $this->boolean($updateProbe->finalStage)->isTrue();
+            $this->integer($mutations)->isGreaterThan(0);
+            $this->array($connection->fetchAssociative('SELECT * FROM glpi_networkports WHERE id=?', [$id]))->isIdenticalTo($beforeUpdate);
+            $PLUGIN_HOOKS['post_prepareadd']['port_pending_receiver'][LegacyNetworkPort::class] =
+                static function (LegacyNetworkPort $adding) use ($other): void {
+                    $adding->input = NetworkPortEntity::withReference($adding->input, 'Computer', (int)$other->getID());
+                };
+            $routeProbe->queries = [];
+            $denials = 0;
+            $PLUGIN_HOOKS['item_can']['port_pending_receiver'][Computer::class] =
+                static function (Computer $parent) use ($other, $changedRoute, &$denials): void {
+                    if ((int)$parent->getID() === (int)$other->getID()) {
+                        ++$denials;
+                        $parent->right = false;
+                        $GLOBALS['DB'] = $changedRoute;
+                    }
+                };
+            $this->exception(static fn () => (new LegacyNetworkPort())->add([
+                'itemtype' => 'Computer', 'items_id' => $computer->getID(), 'name' => $prefix . '-denied-route',
+            ]))->isInstanceOf(TransactionOwnershipMismatch::class);
+            $this->integer($denials)->isGreaterThan(0);
+            $this->array($routeProbe->queries)->isEmpty();
+            $this->array($connection->fetchAllAssociative('SELECT * FROM glpi_networkports ORDER BY id'))->isIdenticalTo($beforePhysical);
+        } finally {
+            $DB = $database;
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+        }
+        $computerTable = Computer::getTable();
+        try {
+            $DB = $changedRoute;
+            $routeProbe->queries = [];
+            Computer::forceTable(NetworkEquipment::getTable());
+            $this->exception(static fn () => (new LegacyNetworkPort())->add([
+                'itemtype' => 'Computer', 'items_id' => $computer->getID(), 'name' => $prefix . '-forced-parent',
+            ]))->isInstanceOf(InvalidArgumentException::class);
+            foreach ($routeProbe->queries as $query) {
+                $this->boolean(str_contains($query['sql'], 'glpi_networkequipments'))->isFalse();
+            }
+        } finally {
+            Computer::forceTable($computerTable);
+            $DB = $database;
+        }
+        $getterPort = new class () extends LegacyNetworkPort {
+            public static bool $switchRoute = false;
+            public static $destination;
+
+            public static function getTable($classname = null)
+            {
+                if (self::$switchRoute) {
+                    self::$switchRoute = false;
+                    $GLOBALS['DB'] = self::$destination;
+                }
+                return LegacyNetworkPort::getTable();
+            }
+        };
+        $getterPort::$destination = $changedRoute;
+        try {
+            $plugins->setValue(null, [...$active, 'port_table_route']);
+            $PLUGIN_HOOKS['post_prepareadd']['port_table_route'][$getterPort::class] =
+                static function (LegacyNetworkPort $adding) use ($routeProbe): void {
+                    $routeProbe->queries = [];
+                    $adding::$switchRoute = true;
+                };
+            $this->exception(static fn () => $getterPort->add([
+                'itemtype' => 'Computer', 'items_id' => $computer->getID(), 'name' => $prefix . '-getter-route',
+            ]))->isInstanceOf(TransactionOwnershipMismatch::class);
+            $this->array($routeProbe->queries)->isEmpty();
+            $this->array($connection->fetchAllAssociative('SELECT * FROM glpi_networkports ORDER BY id'))->isIdenticalTo($beforePhysical);
+        } finally {
+            $getterPort::$switchRoute = false;
+            $DB = $database;
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+        }
+        foreach ([0, null, '1.9', '1e0', '92233720368547758080', true] as $invalid) {
+            $invalidPort = new LegacyNetworkPort();
+            $this->boolean($invalidPort->add(['itemtype' => 'Computer', 'items_id' => $invalid, 'name' => $prefix . '-invalid']))->isFalse();
+        }
+    }
+
+    public function testPreservedNativeParentsKeepPayloadAndNoOpUpdates(): void
+    {
+        global $DB;
+        $this->login();
+        $computer = getItemByTypeName('Computer', '_test_pc01');
+        $this->setEntity((int)$computer->getEntityID(), true);
+        $connection = $DB->getDoctrineConnection();
+        $seed = Orm::create($DB);
+        $entity = $seed->getReference(ScopeEntity::class, (int)$computer->getEntityID());
+        $records = [];
+        foreach ([['Computer', null], ['UnknownHistoricalPortParent', -7]] as [$kind, $opaque]) {
+            $record = new NetworkPortEntity();
+            $record->entities = $entity;
+            $record->itemtype = $kind;
+            $record->opaque_parent_id = $opaque;
+            $record->name = $this->getUniqueString();
+            $seed->persist($record);
+            $records[] = $record;
+        }
+        $seed->flush();
+        foreach ($records as $record) {
+            $port = new class () extends LegacyNetworkPort {
+                public int $completedUpdates = 0;
+
+                public static function getTable($classname = null)
+                {
+                    return LegacyNetworkPort::getTable();
+                }
+
+                public function post_updateItem($history = 1)
+                {
+                    parent::post_updateItem($history);
+                    ++$this->completedUpdates;
+                }
+            };
+            $id = (int)$record->id;
+            $this->boolean($port->getFromDB($id))->isTrue();
+            $before = $connection->fetchAssociative('SELECT * FROM glpi_networkports WHERE id=?', [$id]);
+            $this->integer((int)$before['items_id'])->isIdenticalTo($record->itemtype === 'Computer' ? 0 : -7);
+            $this->variable($before['computers_id'])->isNull();
+            $this->boolean($port->update(['id' => $id, 'name' => 'Preserved ' . $record->name]))->isTrue();
+            $this->integer($port->completedUpdates)->isIdenticalTo(1);
+            $updated = $connection->fetchAssociative('SELECT * FROM glpi_networkports WHERE id=?', [$id]);
+            foreach (['itemtype', 'items_id', 'opaque_parent_id', 'computers_id'] as $column) {
+                $this->variable($updated[$column])->isIdenticalTo($before[$column]);
+            }
+            $this->string($updated['name'])->isIdenticalTo('Preserved ' . $record->name);
+            $this->boolean($port->update(['id' => $id, 'speed' => 999, '_create_children' => true]))->isTrue();
+            $this->integer($port->completedUpdates)->isIdenticalTo(2);
+            $this->array($connection->fetchAssociative('SELECT * FROM glpi_networkports WHERE id=?', [$id]))->isIdenticalTo($updated);
+            foreach (['input_for_instantiation', 'input_for_NetworkName', 'input_for_NetworkPortConnect'] as $property) {
+                $this->boolean(array_key_exists($property, get_object_vars($port)))->isFalse();
+            }
+            $this->boolean($port->update(['id' => $id, 'items_id' => 999999999]))->isFalse();
+            $this->array($connection->fetchAssociative('SELECT * FROM glpi_networkports WHERE id=?', [$id]))->isIdenticalTo($updated);
+        }
+        $seed->clear();
+    }
+
+    public function testStandaloneDependenciesRestoreNestedUpdateCancellationAndFailure(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $this->login();
+        $computer = getItemByTypeName('Computer', '_test_pc01');
+        $this->setEntity((int)$computer->getEntityID(), true);
+        $port = $this->createItem(
+            LegacyNetworkPort::class,
+            [
+                'itemtype' => 'Computer', 'items_id' => $computer->getID(),
+                'name' => $this->getUniqueString(), 'instantiation_type' => 'NetworkPortEthernet',
+            ]
+        );
+        $connection = $DB->getDoctrineConnection();
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $inside = false;
+        $mode = 'success';
+        $visited = [];
+        $failure = new RuntimeException('Nested port fixture failure');
+        try {
+            $plugins->setValue(null, [...$active, 'port_nested_exit']);
+            $PLUGIN_HOOKS['pre_item_update']['port_nested_exit'][LegacyNetworkPort::class] =
+                static function (LegacyNetworkPort $updating) use (&$inside, &$mode, $failure): void {
+                    if (!$inside) {
+                        return;
+                    }
+                    if ($mode === 'cancel') {
+                        $updating->input = [];
+                    } elseif ($mode === 'failure') {
+                        throw $failure;
+                    }
+                };
+            $nested = function (NetworkPortEthernet $ethernet) use ($port, &$inside, &$mode, &$visited, $failure): void {
+                if ($inside) {
+                    return;
+                }
+                $before = array_intersect_key(get_object_vars($port), array_fill_keys(['fields', 'input', 'updates', 'oldvalues'], true));
+                $inside = true;
+                try {
+                    try {
+                        $result = $port->update(['id' => $port->getID(), 'comment' => 'Nested ' . $mode]);
+                        $this->boolean($result)->isIdenticalTo($mode === 'success');
+                    } catch (RuntimeException $error) {
+                        if ($mode !== 'failure' || $error !== $failure) {
+                            throw $error;
+                        }
+                        $this->object($error)->isIdenticalTo($failure);
+                    }
+                    $this->array(array_intersect_key(get_object_vars($port), array_fill_keys(['fields', 'input', 'updates', 'oldvalues'], true)))
+                        ->isIdenticalTo($before);
+                    $visited[] = $mode;
+                } finally {
+                    $inside = false;
+                }
+            };
+            $PLUGIN_HOOKS['pre_item_add']['port_nested_exit'][NetworkPortEthernet::class] = $nested;
+            $PLUGIN_HOOKS['pre_item_update']['port_nested_exit'][NetworkPortEthernet::class] = $nested;
+            foreach (['success', 'cancel', 'failure'] as $index => $mode) {
+                $name = 'standalone-' . $this->getUniqueString();
+                $port->splitInputForElements([
+                    'type' => 'T', 'speed' => 100 + $index,
+                    'NetworkName_name' => $name, 'NetworkName__ipaddresses' => [],
+                ]);
+                $port->updateDependencies();
+                $this->integer((int)$connection->fetchOne('SELECT items_id FROM glpi_networknames WHERE name=?', [$name]))
+                    ->isIdenticalTo((int)$port->getID());
+                $this->integer((int)$connection->fetchOne('SELECT speed FROM glpi_networkportethernets WHERE networkports_id=?', [$port->getID()]))
+                    ->isIdenticalTo(100 + $index);
+            }
+            $this->array($visited)->isIdenticalTo(['success', 'cancel', 'failure']);
+            unset($PLUGIN_HOOKS['pre_item_add']['port_nested_exit'][NetworkPortEthernet::class]);
+            $PLUGIN_HOOKS['pre_item_update']['port_nested_exit'][NetworkPortEthernet::class] =
+                static function (NetworkPortEthernet $ethernet): void {
+                    $ethernet->input = [];
+                };
+            $this->boolean($port->getFromDB($port->getID()))->isTrue();
+            // A no-op parent update still consumes children; a refused child is not a parent refusal.
+            $this->boolean($port->update([
+                'id' => $port->getID(), 'type' => 'T', 'speed' => 999, '_create_children' => true,
+            ]))->isTrue();
+            $this->integer((int)$connection->fetchOne('SELECT speed FROM glpi_networkportethernets WHERE networkports_id=?', [$port->getID()]))
+                ->isIdenticalTo(102);
+            foreach (['input_for_instantiation', 'input_for_NetworkName', 'input_for_NetworkPortConnect'] as $property) {
+                $this->boolean(array_key_exists($property, get_object_vars($port)))->isFalse();
+            }
+        } finally {
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+        }
+    }
+
     public function testAggregateParentDisplayReadsStayCurrentAndRetainDirtyOwners(): void
     {
         global $DB;
@@ -286,6 +820,12 @@ class NetworkPort extends DbTestCase
             'is_deleted'         => 0,
             'is_dynamic'         => 0,
         ];
+        foreach (EntityRegistry::discriminatedReferences(LegacyNetworkPort::getTable())['items_id']['selections'] as $kind => $selection) {
+            $expected[$selection['column']] = $kind === 'Computer' ? $computer1->getID() : null;
+        }
+        $expected['opaque_parent_id'] = null;
+        ksort($current_networkport);
+        ksort($expected);
         $this->array($current_networkport)->isIdenticalTo($expected);
 
         $all_netportethernets = getAllDataFromTable('glpi_networkportethernets', ['ORDER' => 'id']);

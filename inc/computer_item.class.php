@@ -32,11 +32,15 @@
  */
 
 use Doctrine\ORM\EntityManager;
+use itsmng\Database\ConnexityInput;
+use itsmng\Database\EntityRegistry;
 use itsmng\Database\DeletionUnit;
 use itsmng\Database\LifecycleModelJournal;
 use itsmng\Database\Orm;
 use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\AssetRepository;
+use itsmng\Database\Repository\ComputerAttachmentRepository;
+use itsmng\Database\TransactionOwnership;
 use itsmng\Database\TransactionOwnershipMismatch;
 
 if (!defined('GLPI_ROOT')) {
@@ -57,6 +61,246 @@ class Computer_Item extends CommonDBRelation
     public static $itemtype_2          = 'itemtype';
     public static $items_id_2          = 'items_id';
     public static $checkItem_2_Rights  = self::HAVE_VIEW_RIGHT_ON_ITEM;
+
+    private bool $relationOperationActive = false;
+    private ?array $relationWriter = null;
+    private ?array $admittedPair = null;
+
+    public function add(array $input, $options = [], $history = true)
+    {
+        return $this->relationOperation(fn () => parent::add($input, $options, $history));
+    }
+
+    public function update(array $input, $history = 1, $options = [])
+    {
+        return $this->relationOperation(fn () => parent::update($input, $history, $options));
+    }
+
+    /** A nested public command keeps its result but cannot replace the outer model's identity. */
+    private function relationOperation(callable $operation): mixed
+    {
+        $nested = $this->relationOperationActive;
+        $writer = $this->relationWriter;
+        $admitted = $this->admittedPair;
+        $journal = new LifecycleModelJournal();
+        if ($nested) {
+            $journal->remember($this);
+        }
+        $this->relationOperationActive = true;
+        $this->relationWriter = null;
+        $this->admittedPair = null;
+        try {
+            return $operation();
+        } finally {
+            if ($nested) {
+                $journal->restore();
+            }
+            $this->relationOperationActive = $nested;
+            $this->relationWriter = $writer;
+            $this->admittedPair = $admitted;
+        }
+    }
+
+    protected function captureLifecycleWriter(DBAdapter $writer): void
+    {
+        parent::captureLifecycleWriter($writer);
+        $connection = $writer->getDoctrineConnection();
+        if (($GLOBALS['DB'] ?? null) !== $writer) {
+            throw new TransactionOwnershipMismatch('Computer attachment changed its selected writer.');
+        }
+        TransactionOwnership::assertManaged($connection);
+        $level = $connection->getTransactionNestingLevel();
+        $this->relationWriter = [
+            $writer, $connection, $level,
+            $level > 0 ? $connection->captureManagedTransactionScope() : null,
+        ];
+        $this->assertRelationWriter();
+    }
+
+    private function assertRelationWriter(): void
+    {
+        if ($this->relationWriter === null) {
+            throw new TransactionOwnershipMismatch('Computer attachment has no selected writer.');
+        }
+        $state = LifecycleModelJournal::state($this);
+        [$writer, $connection, $level, $scope] = $this->relationWriter;
+        if (($GLOBALS['DB'] ?? null) !== $writer) {
+            throw new TransactionOwnershipMismatch('Computer attachment changed its selected writer.');
+        }
+        $resolved = $writer->getDoctrineConnection();
+        if (($GLOBALS['DB'] ?? null) !== $writer || $resolved !== $connection
+            || $connection->getTransactionNestingLevel() !== $level) {
+            throw new TransactionOwnershipMismatch('Computer attachment changed its selected connection or frame.');
+        }
+        TransactionOwnership::assertManaged($connection);
+        $scope?->assertActive();
+        if (LifecycleModelJournal::state($this) !== $state) {
+            throw new RuntimeException('The selected writer callback changed the computer attachment.');
+        }
+    }
+
+    public function filterValues($display = true)
+    {
+        if ($this->relationOperationActive) {
+            $this->assertRelationWriter();
+        }
+        $result = parent::filterValues($display);
+        if ($this->relationOperationActive) {
+            $this->assertRelationWriter();
+        }
+        return $result;
+    }
+
+    public function checkUnicity($add = false, $options = [])
+    {
+        if ($this->relationOperationActive) {
+            $this->assertRelationWriter();
+        }
+        $result = parent::checkUnicity($add, $options);
+        if ($this->relationOperationActive) {
+            $this->assertRelationWriter();
+        }
+        return $result;
+    }
+
+    protected function assertLifecycleUpdateContext(bool $persisted): void
+    {
+        parent::assertLifecycleUpdateContext($persisted);
+        if ($this->relationOperationActive) {
+            $this->assertRelationWriter();
+        }
+    }
+
+    /** Every virtual parent decision observes the same final relation and loaded subjects. */
+    private function attachmentDecision(callable $decision, array $parents = []): mixed
+    {
+        $state = LifecycleModelJournal::state($this);
+        $writer = $this->relationWriter;
+        $admitted = $this->admittedPair;
+        $parentStates = array_map(LifecycleModelJournal::state(...), $parents);
+        $assertState = function () use ($state, $writer, $admitted, $parents, $parentStates): void {
+            if (LifecycleModelJournal::state($this) !== $state
+                || $this->relationWriter !== $writer || $this->admittedPair !== $admitted) {
+                throw new RuntimeException('A parent callback changed the prepared computer attachment.');
+            }
+            foreach ($parents as $index => $parent) {
+                if (LifecycleModelJournal::state($parent) !== $parentStates[$index]) {
+                    throw new RuntimeException('A parent callback changed its resolved permission subject.');
+                }
+            }
+        };
+        $this->assertRelationWriter();
+        $assertState();
+        $result = $decision();
+        $this->assertRelationWriter();
+        $assertState();
+        return $result;
+    }
+
+    protected function executePreparedAdd(callable $operation, array $priorState): mixed
+    {
+        $endpoint = $this->attachmentDecision(fn () => ConnexityInput::endpoints($this)['items_id'] ?? null);
+        if ($endpoint === null) {
+            // A different physical relation table does not acquire the canonical owning policy.
+            return parent::executePreparedAdd($operation, $priorState);
+        }
+        $pair = array_intersect_key($this->fields, array_fill_keys(['computers_id', 'itemtype', 'items_id'], true));
+        if (count($pair) !== 3 || $this->admittedPair === null) {
+            return false;
+        }
+        $computer = $this->attachmentDecision(fn () => getItemForItemtype(static::$itemtype_1));
+        $item = $this->attachmentDecision(fn () => getItemForItemtype($pair['itemtype']));
+        if (!$computer instanceof Computer || !$item instanceof CommonDBTM) {
+            return false;
+        }
+        $parents = [$computer, $item];
+        $computerTable = $this->attachmentDecision(fn () => $computer->getTable(), $parents);
+        $itemTable = $this->attachmentDecision(fn () => $item->getTable(), $parents);
+        $relationTable = $this->attachmentDecision(fn () => static::getTable(), $parents);
+        if ((EntityRegistry::discriminatedReferences($relationTable)['items_id'] ?? null) !== $endpoint) {
+            return false;
+        }
+        $target = $endpoint['selections'][$pair['itemtype']]['target'] ?? null;
+        if ($computerTable !== EntityRegistry::relations()[$relationTable]['computers_id']
+            || ($target !== null && $itemTable !== $target)) {
+            return false;
+        }
+        $targetsMatch = function () use ($computer, $item, $parents, $computerTable, $itemTable, $relationTable): bool {
+            return $this->attachmentDecision(fn () => static::getTable(), $parents) === $relationTable
+                && $this->attachmentDecision(fn () => $computer->getTable(), $parents) === $computerTable
+                && $this->attachmentDecision(fn () => $item->getTable(), $parents) === $itemTable;
+        };
+        if (!$targetsMatch()
+            || !$this->attachmentDecision(fn () => $computer->getFromDB($pair['computers_id']), [$item])
+            || !$targetsMatch()
+            || !$this->attachmentDecision(fn () => $item->getFromDB($pair['items_id']), [$computer])
+            || !$targetsMatch()
+            || $this->attachmentDecision(fn () => $computer->getID(), $parents) != $pair['computers_id']
+            || $this->attachmentDecision(fn () => $item->getID(), $parents) != $pair['items_id']) {
+            return false;
+        }
+        $unchanged = $pair['itemtype'] === $this->admittedPair['itemtype']
+            && $pair['computers_id'] == $this->admittedPair['computers_id']
+            && $pair['items_id'] == $this->admittedPair['items_id'];
+        if (!$unchanged && !$this->authorizePreparedAttachment($computer, $item)) {
+            return false;
+        }
+        $kind = $this->attachmentDecision(fn () => $item->getType(), $parents);
+        $computerId = $this->attachmentDecision(fn () => $computer->getField('id'), $parents);
+        $itemId = $this->attachmentDecision(fn () => $item->getField('id'), $parents);
+        $global = $this->attachmentDecision(fn () => $item->getField('is_global'), $parents);
+        $scope = null;
+        if (!$global && !Session::isCron()) {
+            $linked = $this->attachmentDecision(fn () => new Computer(), $parents);
+            if ($this->attachmentDecision(fn () => $linked->isEntityAssign(), $parents)) {
+                $scope = $this->attachmentDecision(
+                    fn () => (new DbUtils())->getEntityRestriction($computerTable, '', '', 'auto'),
+                    $parents
+                );
+                if (!$scope->hasEntityMembership) {
+                    return false;
+                }
+            }
+        }
+        $this->assertRelationWriter();
+        $repositoryTable = $this->attachmentDecision(fn () => static::getTable(), $parents);
+        if ($repositoryTable !== $relationTable) {
+            return false;
+        }
+        $repository = new ComputerAttachmentRepository($this->relationWriter[1], $repositoryTable);
+        if ($this->attachmentDecision(fn () => $repository->hasDuplicate($computerId, $kind, $itemId), $parents)
+            || (!$global && $this->attachmentDecision(fn () => $repository->hasActiveConnection($kind, $itemId, $scope), $parents))) {
+            return false;
+        }
+        $this->assertRelationWriter();
+        return parent::executePreparedAdd($operation, $priorState);
+    }
+
+    /** Existing CREATE relation roles: Computer UPDATE, other endpoint VIEW, coherent entities. */
+    private function authorizePreparedAttachment(Computer $computer, CommonDBTM $item): bool
+    {
+        $parents = [$computer, $item];
+        if (!$this->attachmentDecision(fn () => $computer->retainItemPermission(UPDATE), $parents)
+            || !$this->attachmentDecision(fn () => $computer->canUpdateItem(), $parents)
+            || !$this->attachmentDecision(fn () => $computer->canUpdate(), $parents)
+            || !$this->attachmentDecision(fn () => $item->retainItemPermission(READ), $parents)
+            || !$this->attachmentDecision(fn () => $item->canView(), $parents)
+            || !$this->attachmentDecision(fn () => $item->canViewItem(), $parents)) {
+            return false;
+        }
+        if (!static::$check_entity_coherency
+            || !$this->attachmentDecision(fn () => $computer->isEntityAssign(), $parents)
+            || !$this->attachmentDecision(fn () => $item->isEntityAssign(), $parents)) {
+            return true;
+        }
+        $computerEntity = $this->attachmentDecision(fn () => $computer->getEntityID(), $parents);
+        $itemEntity = $this->attachmentDecision(fn () => $item->getEntityID(), $parents);
+        return $computerEntity == $itemEntity
+            || ($this->attachmentDecision(fn () => $computer->isRecursive(), $parents)
+                && in_array($computerEntity, $this->attachmentDecision(fn () => getAncestorsOf('glpi_entities', $itemEntity), $parents)))
+            || ($this->attachmentDecision(fn () => $item->isRecursive(), $parents)
+                && in_array($itemEntity, $this->attachmentDecision(fn () => getAncestorsOf('glpi_entities', $computerEntity), $parents)));
+    }
 
 
     public function getForbiddenStandardMassiveAction()
@@ -94,7 +338,14 @@ class Computer_Item extends CommonDBRelation
     {
         global $CFG_GLPI;
 
+        if ($this->relationOperationActive) {
+            $this->assertRelationWriter();
+        }
+
         $item = static::getItemFromArray(static::$itemtype_2, static::$items_id_2, $input);
+        if ($this->relationOperationActive) {
+            $this->assertRelationWriter();
+        }
         if (
             !($item instanceof CommonDBTM)
             || (($item->getField('is_global') == 0)
@@ -104,6 +355,9 @@ class Computer_Item extends CommonDBRelation
         }
 
         $comp = static::getItemFromArray(static::$itemtype_1, static::$items_id_1, $input);
+        if ($this->relationOperationActive) {
+            $this->assertRelationWriter();
+        }
         if (
             !($comp instanceof Computer)
             || (self::countForAll($comp, $item) > 0)
@@ -111,6 +365,8 @@ class Computer_Item extends CommonDBRelation
             // no duplicates
             return false;
         }
+
+        $admittedPair = ['computers_id' => $comp->fields['id'], 'itemtype' => $input['itemtype'], 'items_id' => $item->fields['id']];
 
         if (!$item->getField('is_global')) {
             // Autoupdate some fields - should be in post_addItem (here to avoid more DB access)
@@ -184,7 +440,14 @@ class Computer_Item extends CommonDBRelation
                 $item->update($updates, $history);
             }
         }
-        return parent::prepareInputForAdd($input);
+        $prepared = parent::prepareInputForAdd($input);
+        if ($this->relationOperationActive) {
+            $this->assertRelationWriter();
+            if ($prepared !== false) {
+                $this->admittedPair = $admittedPair;
+            }
+        }
+        return $prepared;
     }
 
 

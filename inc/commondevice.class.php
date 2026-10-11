@@ -216,6 +216,7 @@ abstract class CommonDevice extends CommonDropdown
                 $link->cleanDBonItemDelete($this->getType(), $this->getID());
             }
         }
+        RegisteredID::cleanForContainingParent($this);
     }
 
     /**

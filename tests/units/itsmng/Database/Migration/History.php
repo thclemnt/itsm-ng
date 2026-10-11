@@ -24,6 +24,7 @@ use itsmng\Database\Entity\Computer;
 use itsmng\Database\Entity\ItemDeviceSensor;
 use itsmng\Database\Installer;
 use itsmng\Database\Migration\History as Releases;
+use itsmng\Database\Migration\InitialOwners;
 use itsmng\Database\Migration\ComponentParents;
 use itsmng\Database\Migration\ComponentParentExpansions;
 use itsmng\Database\Migration\GraphicCardParents;
@@ -280,7 +281,7 @@ class History extends test
             [
                 ...Version220::PHASES, Definition::PHASE, NetworkNameDefinition::PHASE,
                 IPAddressDefinition::PHASE, GraphicCardDefinition::PHASE, ...$componentPhases,
-                ...$expansionPhases, NoteParentDefinition::PHASE,
+                ...$expansionPhases, NoteParentDefinition::PHASE, InitialOwners::PHASE,
             ],
             ['complete' => true]
         );
@@ -301,10 +302,13 @@ class History extends test
             $connection->states[$version] = ['complete' => true];
         }
         $this->array(Releases::pendingVersions($connection))->isEmpty();
+        unset($connection->states[InitialOwners::PHASE]);
+        $this->array(Releases::pendingVersions($connection))->isIdenticalTo(['2.2.0']);
+        $connection->states[InitialOwners::PHASE] = ['complete' => true];
         $connection->states[Baseline::PHASE] = ['complete' => false, 'origin' => 'installed', 'next' => 1];
         $this->array(Releases::pendingVersions($connection))->isIdenticalTo(['2.2.0']);
-        $this->integer($connection->catalogueReads)->isIdenticalTo(5);
-        $this->integer($connection->journalReads)->isIdenticalTo(5);
+        $this->integer($connection->catalogueReads)->isIdenticalTo(6);
+        $this->integer($connection->journalReads)->isIdenticalTo(6);
     }
 }
 

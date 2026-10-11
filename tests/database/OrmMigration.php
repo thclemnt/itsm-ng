@@ -12,19 +12,24 @@ use DBAdapter;
 use DBConnection;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception as DbalException;
+use Doctrine\DBAL\Exception\DriverException as NativeDriverException;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\MariaDBPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Schema\Index;
 use Doctrine\DBAL\Schema\Schema;
 use GLPITestCase;
 use LogicException;
+use ReflectionProperty;
 use RuntimeException;
 use Toolbox;
 use itsmng\Database\BaselineSchema;
 use itsmng\Database\BooleanDomainSchema;
 use itsmng\Database\Installer;
+use itsmng\Database\Migration\Frozen\InitialOwnersV1\NetworkPort as InitialNetworkPort;
 use itsmng\Database\Migration\History;
+use itsmng\Database\Migration\InitialOwners;
 use itsmng\Database\Migration\GraphicCardParents;
 use itsmng\Database\Migration\ComponentParents;
 use itsmng\Database\Migration\ComponentParentExpansions;
@@ -42,6 +47,8 @@ use itsmng\Database\Migration\ReleaseMigration;
 use itsmng\Database\Migration\SensorSubjects;
 use itsmng\Database\Migration\SensorSubjects\Definition as SensorSubjectDefinition;
 use itsmng\Database\Migration\V220\Baseline;
+use itsmng\Database\Migration\V220\IncomingProjectionReferences;
+use itsmng\Database\MySQLGeneratedColumnInspection;
 use itsmng\Database\Migration\V220\ExactDiscriminators;
 use itsmng\Database\Migration\V220\NetworkPortAggregateOrigins;
 use itsmng\Database\Migration\V220\PlanningEventGuests;
@@ -114,6 +121,326 @@ class OrmMigration extends GLPITestCase
             $this->fixture?->close();
             $this->fixture = null;
             parent::afterTestMethod($method);
+        }
+    }
+
+    /** Populate all initial branches before the existing final global schema proof. */
+    private function assertInitialOwnerRetry(Connection $connection): void
+    {
+        $parent = 15000;
+        $connection->insert('glpi_computers', ['id' => $parent, 'name' => 'Initial independent Computer role', 'entities_id' => 0]);
+        $identifier = 17000;
+        $source = [];
+        $firstRows = [];
+        $columns = [];
+        foreach (InitialOwners::DEFINITIONS as $class) {
+            $table = $connection->createSchemaManager()->introspectTable($class::TABLE);
+            $columns[$class::TABLE] = array_map(static fn ($column): string => $column->getName(), $table->getColumns());
+            foreach ($class::OWNERS as $kind => [, $target]) {
+                ++$parent;
+                $targetTable = $connection->createSchemaManager()->introspectTable($target);
+                $values = ['id' => $parent];
+                if ($targetTable->hasColumn('name')) {
+                    $values['name'] = 'Initial owner ' . $kind;
+                } elseif ($targetTable->hasColumn('designation')) {
+                    $values['designation'] = 'Initial owner ' . $kind;
+                }
+                if ($targetTable->hasColumn('entities_id')) {
+                    $values['entities_id'] = 0;
+                }
+                $connection->insert($target, $values);
+                foreach ([[$kind, $parent], [$kind, $parent], [$kind, 0], [strtolower($kind), $parent], [$kind . ' ', $parent]] as [$storedKind, $identity]) {
+                    $row = ['id' => ++$identifier, 'itemtype' => $storedKind, 'items_id' => $identity];
+                    if ($table->hasColumn('name')) {
+                        $row['name'] = 'NULL';
+                    }
+                    if ($class::TABLE === 'glpi_networkports') {
+                        $row['instantiation_type'] = null;
+                    }
+                    if ($class::TABLE === 'glpi_registeredids') {
+                        $row['device_type'] = 'PCI';
+                    }
+                    if ($class::TABLE === 'glpi_computers_items') {
+                        $row['computers_id'] = 15000;
+                    }
+                    $connection->insert($class::TABLE, $row);
+                    if ($storedKind === $kind && $identity === $parent) {
+                        $firstRows[$class::TABLE] ??= $row;
+                    }
+                }
+            }
+            foreach ([['', 0], ['PluginInitialOpaqueParent', -9]] as [$kind, $identity]) {
+                $row = ['id' => ++$identifier, 'itemtype' => $kind, 'items_id' => $identity];
+                if ($class::TABLE === 'glpi_computers_items') {
+                    $row['computers_id'] = 15000;
+                }
+                $connection->insert($class::TABLE, $row);
+            }
+            $names = implode(', ', array_map($connection->quoteIdentifier(...), $columns[$class::TABLE]));
+            $source[$class::TABLE] = $connection->fetchAllAssociative('SELECT ' . $names . ' FROM ' . $connection->quoteIdentifier($class::TABLE) . ' ORDER BY id');
+        }
+        $operation = new InitialOwners();
+        $ledger = Ledger::states($connection);
+        // Invalid source in the final family refuses before any initial family receipt/DDL.
+        $definitions = InitialOwners::DEFINITIONS;
+        $last = $definitions[array_key_last($definitions)];
+        $lastRow = $firstRows[$last::TABLE];
+        $connection->update($last::TABLE, ['items_id' => -1], ['id' => $lastRow['id']]);
+        $this->exception(static fn () => $operation->apply($connection))->isInstanceOf(RuntimeException::class);
+        $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
+        foreach (InitialOwners::DEFINITIONS as $class) {
+            foreach ($class::OWNERS as [$column]) {
+                $this->boolean($connection->createSchemaManager()->introspectTable($class::TABLE)->hasColumn($column))->isFalse();
+            }
+        }
+        $connection->update($last::TABLE, ['items_id' => $lastRow['items_id']], ['id' => $lastRow['id']]);
+        if ($connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
+            $this->assertHiddenInitialIncomingReference($connection, $firstRows[InitialNetworkPort::TABLE], true);
+        }
+        foreach (InitialOwners::DEFINITIONS as $class) {
+            foreach (['columns', 'copy', 'constraints', 'projection'] as $phase) {
+                if ($class === InitialNetworkPort::class && $phase === 'projection'
+                    && $connection->getDatabasePlatform() instanceof AbstractMySQLPlatform
+                    && $this->assertHiddenInitialIncomingReference($connection, $firstRows[$class::TABLE])) {
+                    continue;
+                }
+                $stop = $class::TABLE . '.' . $phase;
+                $this->exception(static fn () => $operation->apply($connection, static function (string $actual) use ($stop): void {
+                    if ($actual === $stop) {
+                        throw new RuntimeException('Interrupted initial ' . $stop);
+                    }
+                }))->isInstanceOf(RuntimeException::class)->hasMessage('Interrupted initial ' . $stop);
+                foreach (InitialOwners::DEFINITIONS as $definition) {
+                    $names = implode(', ', array_map($connection->quoteIdentifier(...), $columns[$definition::TABLE]));
+                    $this->array($connection->fetchAllAssociative('SELECT ' . $names . ' FROM ' . $connection->quoteIdentifier($definition::TABLE) . ' ORDER BY id'))->isIdenticalTo($source[$definition::TABLE]);
+                }
+                foreach ($ledger as $key => $receipt) {
+                    $this->array(Ledger::state($connection, $key))->isIdenticalTo($receipt);
+                }
+                if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
+                    $this->variable(Ledger::state($connection, InitialOwners::PHASE))->isNull();
+                } else {
+                    $this->boolean(Ledger::state($connection, InitialOwners::PHASE)['complete'])->isFalse();
+                }
+            }
+        }
+        $operation->apply($connection);
+        $operation->verify($connection);
+        $before = Ledger::state($connection, InitialOwners::PHASE);
+        foreach (InitialOwners::DEFINITIONS as $class) {
+            $names = implode(', ', array_map($connection->quoteIdentifier(...), $columns[$class::TABLE]));
+            $this->array($connection->fetchAllAssociative('SELECT ' . $names . ' FROM ' . $connection->quoteIdentifier($class::TABLE) . ' ORDER BY id'))
+                ->isIdenticalTo($source[$class::TABLE]);
+            $first = array_values($class::OWNERS)[0];
+            [$column, $target] = $first;
+            $kind = array_key_first($class::OWNERS);
+            $id = $firstRows[$class::TABLE]['id'];
+            $rows = $connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($class::TABLE) . ' ORDER BY id');
+            foreach ($rows as $row) {
+                $selection = $class::OWNERS[$row['itemtype']] ?? null;
+                foreach ($class::OWNERS as [$owningColumn]) {
+                    $expected = $selection !== null && $selection[0] === $owningColumn && (int)$row['items_id'] > 0
+                        ? (string)$row['items_id'] : null;
+                    $this->variable($row[$owningColumn] === null ? null : (string)$row[$owningColumn])->isIdenticalTo($expected);
+                }
+                $this->variable($row['opaque_parent_id'] === null ? null : (string)$row['opaque_parent_id'])
+                    ->isIdenticalTo($selection === null ? (string)$row['items_id'] : null);
+            }
+            $orphan = (int)$connection->fetchOne('SELECT COALESCE(MAX(id),0)+1 FROM ' . $connection->quoteIdentifier($target));
+            foreach ([[$column => 0], [$column => -1], [$column => $orphan], ['opaque_parent_id' => 1], ['itemtype' => 'UnknownInitialParent']] as $invalid) {
+                $this->exception(static fn () => $connection->transactional(static fn () => $connection->update($class::TABLE, $invalid, ['id' => $id])))->isInstanceOf(DbalException::class);
+                $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($class::TABLE) . ' ORDER BY id'))->isIdenticalTo($rows);
+            }
+            $this->assertGeneratedIdentityNullPreservesRows($connection, $class::TABLE, (int)$id);
+            $owner = $connection->fetchOne('SELECT ' . $connection->quoteIdentifier($column) . ' FROM ' . $connection->quoteIdentifier($class::TABLE) . ' WHERE id=?', [$id]);
+            $this->exception(static fn () => $connection->transactional(static fn () => $connection->delete($target, ['id' => $owner])))->isInstanceOf(DbalException::class);
+            $row = ['id' => ++$identifier, 'itemtype' => 'PluginInitialCurrentWrite', 'opaque_parent_id' => -19];
+            if ($class::TABLE === 'glpi_computers_items') {
+                $row['computers_id'] = 15000;
+            }
+            $connection->insert($class::TABLE, $row);
+        }
+        $operation->apply($connection, static function (): void {
+            throw new LogicException('Completed initial ownership performed DDL/COPY');
+        });
+        $operation->verify($connection);
+        $this->array(Ledger::state($connection, InitialOwners::PHASE))->isIdenticalTo($before);
+    }
+
+    /** True means a qualified accepted MODIFY was interrupted after projection. */
+    private function assertHiddenInitialIncomingReference(Connection $observer, array $sourceRow, bool $preflightOnly = false): bool
+    {
+        $database = $this->fixture;
+        $user = getenv('ITSM_TEST_INITIAL_OWNER_USER');
+        $password = getenv('ITSM_TEST_INITIAL_OWNER_PASSWORD');
+        $this->boolean(is_string($user) && preg_match('/\Aitsm_test_[a-z0-9_]+\z/D', $user) === 1 && is_string($password))
+            ->isTrue('Hidden-reference native qualification requires an explicitly configured dedicated DB-scoped fixture account');
+        $scoped = DBConnection::createConnection($database->getProvider(), $database->dbhost, $user, $password, $database->dbdefault);
+        try {
+            $this->boolean($scoped->connected)->isTrue();
+            $connection = $scoped->getDoctrineConnection();
+            $this->integer((int)$observer->fetchOne('SELECT @@SESSION.foreign_key_checks'))->isIdenticalTo(1);
+            $this->integer((int)$connection->fetchOne('SELECT @@SESSION.foreign_key_checks'))->isIdenticalTo(1);
+            $schema = (string)$observer->fetchOne('SELECT DATABASE()');
+            $hidden = $schema . '_incoming';
+            $quote = $observer->quoteIdentifier(...);
+            $literal = $observer->getDatabasePlatform()->quoteStringLiteral(...);
+            $account = (string)$connection->fetchOne('SELECT CURRENT_USER()');
+            $this->integer(preg_match('/\A(itsm_test_[a-z0-9_]+)@([a-zA-Z0-9_.%:-]+)\z/D', $account, $parts))->isIdenticalTo(1);
+            $grantee = "'" . $parts[1] . "'@'" . $parts[2] . "'";
+            $principal = $literal($parts[1]) . '@' . $literal($parts[2]);
+            $this->integer((int)$connection->fetchOne("SELECT COUNT(*) FROM information_schema.USER_PRIVILEGES WHERE GRANTEE=? AND PRIVILEGE_TYPE IN ('SELECT','TRIGGER')", [$grantee]))->isIdenticalTo(0);
+            $this->integer((int)$connection->fetchOne("SELECT COUNT(*) FROM information_schema.TABLE_PRIVILEGES WHERE GRANTEE=? AND PRIVILEGE_TYPE='TRIGGER'", [$grantee]))->isIdenticalTo(0);
+            $this->integer((int)$connection->fetchOne("SELECT COUNT(*) FROM information_schema.SCHEMA_PRIVILEGES WHERE GRANTEE=? AND TABLE_SCHEMA=? AND PRIVILEGE_TYPE='TRIGGER' AND IS_GRANTABLE='NO'", [$grantee, $schema]))->isIdenticalTo(1);
+            $required = ['SELECT', 'INSERT', 'UPDATE', 'ALTER', 'INDEX', 'REFERENCES', 'TRIGGER'];
+            $grants = $connection->fetchFirstColumn(
+                'SELECT PRIVILEGE_TYPE FROM information_schema.SCHEMA_PRIVILEGES WHERE GRANTEE=? AND TABLE_SCHEMA=?',
+                [$grantee, $schema]
+            );
+            $this->array(array_values(array_diff($required, $grants)))->isEmpty('Actual direct database privileges qualify the scoped ALTER/COPY/receipt writer');
+            $rows = $observer->fetchAllAssociative('SELECT * FROM glpi_networkports ORDER BY id');
+            $ledger = Ledger::states($observer);
+            // Direct database grant suffices; its removal refuses before any owned work.
+            $observer->executeStatement('REVOKE TRIGGER ON ' . $quote($schema) . '.* FROM ' . $principal);
+            try {
+                $this->exception(static fn () => (new InitialOwners())->plan($connection))->isInstanceOf(RuntimeException::class)
+                    ->hasMessage('Cannot prove source trigger visibility for glpi_networkports: require a direct TRIGGER grant on this table or its database. Role-only grants are not supported by this adoption inspection.');
+                $this->array(Ledger::states($observer))->isIdenticalTo($ledger);
+                $this->array($observer->fetchAllAssociative('SELECT * FROM glpi_networkports ORDER BY id'))->isIdenticalTo($rows);
+            } finally {
+                $observer->executeStatement('GRANT TRIGGER ON ' . $quote($schema) . '.* TO ' . $principal);
+            }
+            $this->boolean($observer->fetchOne('SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME=?', [$hidden]))->isFalse('Never replace retained incoming-reference fixture evidence');
+            if (!$observer->createSchemaManager()->introspectTable(InitialNetworkPort::TABLE)->hasIndex('initial_hidden_identity')) {
+                $observer->createSchemaManager()->createIndex(new Index('initial_hidden_identity', ['items_id', 'id'], true), InitialNetworkPort::TABLE);
+            }
+            $indexes = $observer->fetchAllAssociative('SHOW INDEX FROM glpi_networkports');
+            foreach ($indexes as &$index) {
+                unset($index['Cardinality']);
+            }
+            unset($index);
+            usort($indexes, static fn (array $left, array $right): int => [$left['Key_name'], (int)$left['Seq_in_index']] <=> [$right['Key_name'], (int)$right['Seq_in_index']]);
+            $observer->executeStatement('CREATE DATABASE ' . $quote($hidden));
+            $childTable = $quote($hidden) . '.' . $quote('initial_owner_incoming');
+            $observer->executeStatement('CREATE TABLE ' . $childTable . ' (id BIGINT NOT NULL PRIMARY KEY, parent_identity BIGINT NOT NULL, parent_row BIGINT NOT NULL, CONSTRAINT '
+                . $quote('initial_hidden_parent') . ' FOREIGN KEY (parent_identity,parent_row) REFERENCES '
+                . $quote($schema) . '.' . $quote(InitialNetworkPort::TABLE) . ' (items_id,id) ON DELETE RESTRICT ON UPDATE RESTRICT) ENGINE=InnoDB');
+            $observer->executeStatement('INSERT INTO ' . $childTable . ' (id,parent_identity,parent_row) VALUES (1,?,?)', [$sourceRow['items_id'], $sourceRow['id']]);
+            $incoming = new IncomingProjectionReferences($connection);
+            $this->boolean($incoming->has($schema, InitialNetworkPort::TABLE))->isFalse('The scoped source account actually omits the independently observed hidden reference');
+            $this->boolean((new IncomingProjectionReferences($observer))->has($schema, InitialNetworkPort::TABLE))->isTrue();
+            if ($preflightOnly) {
+                $this->exception(static fn () => (new InitialOwners())->plan($observer))->isInstanceOf(RuntimeException::class)
+                    ->hasMessage('Incoming initial logical identity FK requires a separate migration: glpi_networkports');
+                $this->array(Ledger::states($observer))->isIdenticalTo($ledger);
+                $this->array($observer->fetchAllAssociative('SELECT * FROM glpi_networkports ORDER BY id'))->isIdenticalTo($rows);
+                $this->array(array_keys((new InitialOwners())->plan($connection)))
+                    ->isIdenticalTo(array_map(static fn (string $class): string => $class::TABLE, InitialOwners::DEFINITIONS));
+                $this->array(Ledger::states($observer))->isIdenticalTo($ledger);
+                $this->array($observer->fetchAllAssociative('SELECT * FROM glpi_networkports ORDER BY id'))->isIdenticalTo($rows);
+                foreach (InitialOwners::DEFINITIONS as $class) {
+                    foreach ($class::OWNERS as [$column]) {
+                        $this->boolean($observer->createSchemaManager()->introspectTable($class::TABLE)->hasColumn($column))->isFalse();
+                    }
+                }
+                $observer->executeStatement('DROP TABLE ' . $childTable);
+                $observer->executeStatement('DROP DATABASE ' . $quote($hidden));
+                return false;
+            }
+            $nativeForeign = $observer->fetchAllAssociative('SELECT '
+                . 'k.COLUMN_NAME,k.REFERENCED_TABLE_SCHEMA,k.REFERENCED_TABLE_NAME,k.REFERENCED_COLUMN_NAME,r.DELETE_RULE,r.UPDATE_RULE FROM information_schema.KEY_COLUMN_USAGE k JOIN information_schema.REFERENTIAL_CONSTRAINTS r ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND r.TABLE_NAME=k.TABLE_NAME AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME WHERE k.CONSTRAINT_SCHEMA=? AND k.TABLE_NAME=? AND k.CONSTRAINT_NAME=? ORDER BY k.ORDINAL_POSITION', [$hidden, 'initial_owner_incoming', 'initial_hidden_parent']);
+            $this->integer(count($nativeForeign))->isIdenticalTo(2);
+            $columns = $observer->fetchAllAssociative('SELECT COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,COLUMN_DEFAULT,EXTRA,COLUMN_COMMENT,COLLATION_NAME FROM '
+                . 'information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? ORDER BY COLUMN_NAME', [$schema, InitialNetworkPort::TABLE]);
+            $accepted = false;
+            $comment = Ledger::state($connection, InitialOwners::PHASE)['tables'][InitialNetworkPort::TABLE]['items_comment'];
+            $expectedProjection = 'ALTER TABLE ' . $connection->quoteIdentifier(InitialNetworkPort::TABLE)
+                . ' MODIFY COLUMN ' . $connection->quoteIdentifier('items_id') . ' BIGINT GENERATED ALWAYS AS ('
+                . InitialNetworkPort::policy($connection->getDatabasePlatform())['projection'] . ') STORED'
+                . ($comment === null ? '' : ' COMMENT ' . $connection->getDatabasePlatform()->quoteStringLiteral($comment));
+            $receipt = Ledger::state($connection, InitialOwners::PHASE);
+            $save = static function (array $state) use ($connection, &$receipt): void {
+                $receipt['tables'][InitialNetworkPort::TABLE] = $state;
+                Ledger::save($connection, InitialOwners::PHASE, $receipt);
+            };
+            try {
+                (new InitialNetworkPort())->applyPrepared(
+                    $connection,
+                    $receipt['tables'][InitialNetworkPort::TABLE],
+                    $save,
+                    static function (string $phase): void {
+                        if ($phase === 'projection') {
+                            throw new LogicException('Accepted hidden-reference projection interrupted');
+                        }
+                    }
+                );
+                $this->boolean(false)->isTrue('The native final boundary must refuse or reach the deliberate projection interruption');
+            } catch (LogicException $exception) {
+                if ($exception->getMessage() !== 'Accepted hidden-reference projection interrupted') {
+                    throw $exception;
+                }
+                $accepted = true;
+            } catch (DbalException $exception) {
+                if (!$exception instanceof NativeDriverException || $exception->getQuery()?->getSQL() !== $expectedProjection) {
+                    throw $exception;
+                }
+                $blocked = Ledger::states($observer);
+                $current = Ledger::state($connection, InitialOwners::PHASE);
+                try {
+                    (new InitialNetworkPort())->applyPrepared(
+                        $connection,
+                        $current['tables'][InitialNetworkPort::TABLE],
+                        $save,
+                        null
+                    );
+                    $this->boolean(false)->isTrue('The same hidden dependency must remain blocked on a genuine retry');
+                } catch (DbalException $retry) {
+                    if (!$retry instanceof NativeDriverException || $retry->getQuery()?->getSQL() !== $expectedProjection) {
+                        throw $retry;
+                    }
+                    $this->string($retry::class)->isIdenticalTo($exception::class);
+                    $this->variable($retry->getCode())->isIdenticalTo($exception->getCode());
+                    $this->variable($retry->getSQLState())->isIdenticalTo($exception->getSQLState());
+                }
+                $this->array(Ledger::states($observer))->isIdenticalTo($blocked);
+                // Only the native final ALTER is unqualified here; actual retained scalar shape is mandatory.
+                $this->boolean(MySQLGeneratedColumnInspection::isGenerated($observer, $schema, InitialNetworkPort::TABLE, 'items_id'))->isFalse();
+                $this->array($observer->fetchAllAssociative('SELECT COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,COLUMN_DEFAULT,EXTRA,COLUMN_COMMENT,COLLATION_NAME FROM '
+                    . 'information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? ORDER BY COLUMN_NAME', [$schema, InitialNetworkPort::TABLE]))->isIdenticalTo($columns);
+            }
+            $this->array($observer->fetchAllAssociative('SELECT * FROM glpi_networkports ORDER BY id'))->isIdenticalTo($rows);
+            $afterIndexes = $observer->fetchAllAssociative('SHOW INDEX FROM glpi_networkports');
+            foreach ($afterIndexes as &$index) {
+                unset($index['Cardinality']);
+            }
+            unset($index);
+            usort($afterIndexes, static fn (array $left, array $right): int => [$left['Key_name'], (int)$left['Seq_in_index']] <=> [$right['Key_name'], (int)$right['Seq_in_index']]);
+            $this->boolean(MySQLGeneratedColumnInspection::isGenerated($observer, $schema, InitialNetworkPort::TABLE, 'items_id'))
+                ->isIdenticalTo($accepted);
+            if ($accepted) {
+                foreach ($indexes as &$index) {
+                    if ($index['Column_name'] === 'items_id') {
+                        $index['Null'] = 'YES';
+                    }
+                }
+                unset($index);
+            }
+            $this->array($afterIndexes)->isIdenticalTo($indexes);
+            (new InitialNetworkPort())->prepare($connection, Ledger::state($connection, InitialOwners::PHASE)['tables'][InitialNetworkPort::TABLE]);
+            $this->array($observer->fetchAllAssociative('SELECT '
+                . 'k.COLUMN_NAME,k.REFERENCED_TABLE_SCHEMA,k.REFERENCED_TABLE_NAME,k.REFERENCED_COLUMN_NAME,r.DELETE_RULE,r.UPDATE_RULE FROM information_schema.KEY_COLUMN_USAGE k JOIN information_schema.REFERENTIAL_CONSTRAINTS r ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND r.TABLE_NAME=k.TABLE_NAME AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME WHERE k.CONSTRAINT_SCHEMA=? AND k.TABLE_NAME=? AND k.CONSTRAINT_NAME=? ORDER BY k.ORDINAL_POSITION', [$hidden, 'initial_owner_incoming', 'initial_hidden_parent']))->isIdenticalTo($nativeForeign);
+            $this->boolean(Ledger::state($observer, InitialOwners::PHASE)['complete'])->isFalse();
+            $childRows = $observer->fetchAllAssociative('SELECT * FROM ' . $childTable . ' ORDER BY id');
+            $this->exception(static fn () => $observer->transactional(static fn () => $observer->executeStatement('UPDATE ' . $childTable . ' SET parent_identity=-1 WHERE id=1')))->isInstanceOf(DbalException::class);
+            $this->exception(static fn () => $observer->transactional(static fn () => $observer->delete(InitialNetworkPort::TABLE, ['id' => $sourceRow['id']])))->isInstanceOf(DbalException::class);
+            $this->array($observer->fetchAllAssociative('SELECT * FROM ' . $childTable . ' ORDER BY id'))->isIdenticalTo($childRows);
+            $this->array($observer->fetchAllAssociative('SELECT * FROM glpi_networkports ORDER BY id'))->isIdenticalTo($rows);
+            // This independently owned hidden fixture is removed only after its full native proof succeeds.
+            $observer->executeStatement('DROP TABLE ' . $childTable);
+            $observer->executeStatement('DROP DATABASE ' . $quote($hidden));
+            return $accepted;
+        } finally {
+            $scoped->close();
         }
     }
 
@@ -404,6 +731,7 @@ class OrmMigration extends GLPITestCase
             $indexes->verify($connection);
             $this->array((new SchemaCheck())->differences($connection))->isEmpty();
         }
+        $this->assertInitialOwnerSupersession($connection);
         $this->fixtureCompleted = true;
     }
 
@@ -985,6 +1313,7 @@ class OrmMigration extends GLPITestCase
         $flags->apply($connection);
         $flags->verify($connection);
         $this->assertNotepadParentRetry($connection);
+        $this->assertInitialOwnerRetry($connection);
         $this->array((new SchemaCheck())->differences($connection))->isEmpty();
         $this->fixtureCompleted = true;
     }
@@ -1274,6 +1603,123 @@ class OrmMigration extends GLPITestCase
             }
         }
         Ledger::save($connection, $version, $receipt);
+    }
+
+    /** The real default chain can hand ownership to a later native evolution. */
+    private function assertInitialOwnerSupersession(Connection $connection): void
+    {
+        $mysql = $connection->getDatabasePlatform() instanceof AbstractMySQLPlatform;
+        $table = InitialNetworkPort::TABLE;
+        $index = $mysql ? 'mac' : 'glpi_networkports_mac';
+        $receipt = Ledger::state($connection, InitialOwners::PHASE);
+        $this->boolean($receipt['complete'])->isTrue();
+        $nativeIndex = $connection->createSchemaManager()->introspectTable($table)->getIndex($index);
+        $this->array($nativeIndex->getUnquotedColumns())->isIdenticalTo(['mac']);
+        $this->boolean($nativeIndex->isUnique())->isFalse();
+        $this->boolean($nativeIndex->isPrimary())->isFalse();
+        $original = $mysql ? $receipt['tables'][$table]['index_facts'][$index][1]['Index_comment']
+            : $receipt['tables'][$table]['index_facts'][$index]['comment'];
+        if ($mysql) {
+            $part = $receipt['tables'][$table]['index_facts'][$index][1];
+            $this->string($part['Index_type'])->isIdenticalTo('BTREE');
+            $this->variable($part['Sub_part'])->isNull();
+            $this->string($part['Collation'])->isIdenticalTo('A');
+            if (isset($part['Visible'])) {
+                $this->string($part['Visible'])->isIdenticalTo('YES');
+            }
+            if (isset($part['Ignored'])) {
+                $this->string($part['Ignored'])->isIdenticalTo('NO');
+            }
+        }
+        $quote = $connection->quoteIdentifier(...);
+        $literal = $connection->getDatabasePlatform()->quoteStringLiteral(...);
+        $alter = static fn (?string $comment): string => $mysql
+            ? 'ALTER TABLE ' . $quote($table) . ' DROP INDEX ' . $quote($index) . ', ADD INDEX ' . $quote($index)
+                . ' (' . $quote('mac') . ') USING BTREE COMMENT ' . $literal($comment ?? '')
+            : 'COMMENT ON INDEX ' . $quote($index) . ' IS ' . ($comment === null ? 'NULL' : $literal($comment));
+        $comment = 'A later ORM owner retains this index with a new comment';
+        $readComment = static fn (): mixed => $mysql
+            ? $connection->fetchAssociative('SHOW INDEX FROM ' . $quote($table) . ' WHERE Key_name=?', [$index])['Index_comment']
+            : $connection->fetchOne("SELECT obj_description(to_regclass(?),'pg_class')", [$index]);
+        $rows = $this->rowBags($connection);
+        $ledger = Ledger::states($connection);
+        $verify = function (Connection $selected) use ($readComment, $comment, $index): void {
+            $this->variable($readComment())->isIdenticalTo($comment);
+            $this->array((new SchemaCheck())->differences($selected))->isEmpty('Current metadata accepts retained index comment evolution');
+            $this->exception(static fn () => (new InitialOwners())->verify($selected))->isInstanceOf(RuntimeException::class)
+                ->hasMessage('Original index facts changed: ' . InitialNetworkPort::TABLE . '.' . $index);
+        };
+        $release = new class ($alter($comment), $verify) implements ReleaseMigration {
+            public int $attempts = 0;
+            public int $verifications = 0;
+            public function __construct(private string $sql, private $verify)
+            {
+            }
+            public function version(): string
+            {
+                return 'fixture-initial-owner-index-comment';
+            }
+            public function plan(Connection $connection): array
+            {
+                return ['fixture_index_comment_evolution' => true];
+            }
+            public function apply(Connection $connection, ?callable $progress = null): void
+            {
+                ++$this->attempts;
+                $connection->executeStatement($this->sql);
+                if ($this->attempts === 1) {
+                    throw new RuntimeException('Interrupted later native index evolution');
+                }
+            }
+            public function verify(Connection $connection): void
+            {
+                ++$this->verifications;
+                ($this->verify)($connection);
+            }
+        };
+        $this->variable(Ledger::state($connection, $release->version()))->isNull();
+        $history = new History();
+        $property = new ReflectionProperty(History::class, 'migrations');
+        $property->setValue($history, [...$property->getValue($history), $release]);
+        $depth = $connection->getTransactionNestingLevel();
+        try {
+            $connection->executeStatement($alter($comment));
+            $this->array((new SchemaCheck())->differences($connection))->isEmpty();
+            $this->exception(static fn () => (new History())->upgrade($connection))->isInstanceOf(RuntimeException::class)
+                ->hasMessage('Original index facts changed: ' . $table . '.' . $index);
+            $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
+            $this->array($this->rowBags($connection))->isIdenticalTo($rows);
+            $connection->executeStatement($alter($original));
+            $this->string($history->plan($connection)['planned_release'])->isIdenticalTo($release->version());
+            $this->exception(static fn () => $history->upgrade($connection))->isInstanceOf(RuntimeException::class)
+                ->hasMessage('Interrupted later native index evolution');
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+            $this->variable(Ledger::state($connection, $release->version()))->isNull();
+            $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
+            $this->array($this->rowBags($connection))->isIdenticalTo($rows);
+            $this->variable($readComment())->isIdenticalTo($mysql ? $comment : $original);
+            $published = 0;
+            $history->upgrade($connection, onComplete: static function () use (&$published): void {
+                ++$published;
+            });
+            $this->integer($published)->isIdenticalTo(1);
+            $this->integer($release->attempts)->isIdenticalTo(2);
+            $this->integer($release->verifications)->isIdenticalTo(1);
+            $this->boolean(Ledger::state($connection, $release->version())['complete'])->isTrue();
+            $this->array(Ledger::state($connection, InitialOwners::PHASE))->isIdenticalTo($receipt);
+            $this->array($this->rowBags($connection))->isIdenticalTo($rows);
+            $history->upgrade($connection, static fn () => throw new LogicException('Completed future owner replayed DDL'));
+            $this->integer($release->attempts)->isIdenticalTo(2);
+            $this->integer($release->verifications)->isIdenticalTo(2);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+        } finally {
+            $connection->executeStatement($alter($original));
+            $connection->delete(Ledger::TABLE, ['version' => $release->version()]);
+        }
+        (new InitialOwners())->verify($connection);
+        $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
+        $this->array($this->rowBags($connection))->isIdenticalTo($rows);
+        $this->array((new SchemaCheck())->differences($connection))->isEmpty();
     }
 
     private function assertTerminalReleaseOrder(Connection $connection): void

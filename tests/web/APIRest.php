@@ -1203,7 +1203,8 @@ class APIRest extends APIBaseClass
                 $port = new OrmEntity\NetworkPort();
                 $port->entities = $entity;
                 $port->itemtype = 'Computer';
-                $port->items_id = (int)$computer->getID();
+                $port->computer = $em->getReference(OrmEntity\Computer::class, (int)$computer->getID());
+                $port->opaque_parent_id = null;
                 $port->instantiation_type = 'NetworkPortEthernet';
                 $port->logical_number = $number;
                 $port->name = 'Expansion port ' . $number;

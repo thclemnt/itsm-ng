@@ -187,6 +187,7 @@ class Manufacturer extends CommonDropdown
     {
         // Rules use manufacturer intread of manufacturers_id
         Rule::cleanForItemAction($this, 'manufacturer');
+        RegisteredID::cleanForContainingParent($this);
     }
 
 

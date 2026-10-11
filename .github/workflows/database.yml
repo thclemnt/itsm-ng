@@ -75,6 +75,9 @@ jobs:
     env:
       GLPI_CONFIG_DIR: ${{ github.workspace }}/tests/config
       ITSM_TEST_MIGRATION_DB: itsm_test_ci_migration
+      # Public disposable fixture credentials; unused by PostgreSQL jobs.
+      ITSM_TEST_INITIAL_OWNER_USER: ${{ matrix.database.provider == 'mysql' && 'itsm_test_initial_owner' || '' }}
+      ITSM_TEST_INITIAL_OWNER_PASSWORD: ${{ matrix.database.provider == 'mysql' && 'test' || '' }}
     services:
       database:
         image: ${{ matrix.database.image }}
@@ -112,6 +115,15 @@ jobs:
           # Only disposable Config catalog fixtures may create/drop extra databases.
           docker exec -i "${{ job.services.database.id }}" "${{ matrix.database.client }}" -uroot -ptest <<'SQL'
           GRANT ALL ON `itsm\_test\_config\_catalog\_%`.* TO 'test'@'%';
+          SQL
+      - name: Prepare scoped initial-owner migration fixture
+        if: matrix.database.provider == 'mysql'
+        run: |
+          docker exec -i "${{ job.services.database.id }}" "${{ matrix.database.client }}" -uroot -ptest <<SQL
+          CREATE USER '$ITSM_TEST_INITIAL_OWNER_USER'@'%' IDENTIFIED BY '$ITSM_TEST_INITIAL_OWNER_PASSWORD';
+          GRANT SELECT, INSERT, UPDATE, ALTER, INDEX, REFERENCES, TRIGGER ON \`$ITSM_TEST_MIGRATION_DB\`.* TO '$ITSM_TEST_INITIAL_OWNER_USER'@'%';
+          GRANT TRIGGER ON \`$ITSM_TEST_MIGRATION_DB\`.* TO 'test'@'%' WITH GRANT OPTION;
+          GRANT CREATE, DROP, SELECT, INSERT, UPDATE, DELETE, REFERENCES ON \`${ITSM_TEST_MIGRATION_DB}_incoming\`.* TO 'test'@'%';
           SQL
       - name: Prepare MySQL 8.4 redo capacity for native DDL
         if: matrix.database.id == 'mysql-8.4'
