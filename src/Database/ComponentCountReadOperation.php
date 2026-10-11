@@ -6,25 +6,22 @@ namespace itsmng\Database;
 
 use Doctrine\DBAL\Connection;
 use itsmng\Database\Repository\ComponentRepository;
+use LogicException;
 
 /** A core component tab owns one route and counts its declared families in order. */
 final class ComponentCountReadOperation
 {
-    use PrivateReadOwnership;
-
-    public function __construct(Connection $connection)
+    public function __construct(private readonly Connection $connection)
     {
-        $this->connection = $connection;
-        $this->ownedMapping = true;
-        // Keep type registration, cache selection and immutable registry loading
-        // at construction time; a scalar count itself needs no ORM manager.
-        $this->initializeReadCaches(Orm::configuration($connection->getDatabasePlatform()));
+        // Register application types and load the immutable declarations before
+        // public model argument evaluation; this projection owns no ORM manager.
+        Orm::registerTypes();
+        EntityRegistry::scalarIdentifiers();
     }
 
-    private function repository(): ComponentRepository
+    /** Kept for callers that close completed operations; no resource is owned. */
+    public function close(): void
     {
-        $this->manager ??= Orm::forConnection($this->connection);
-        return new ComponentRepository($this->manager);
     }
 
     public function countForAsset(array $tables, string $type, int $id): int
@@ -36,16 +33,10 @@ final class ComponentCountReadOperation
                 continue;
             }
             $mapping = EntityRegistry::componentCountMapping($table);
-            if ($mapping !== null) {
-                $queries[] = ComponentRepository::projectedCountQueryForAsset($this->connection, $table, $type, $id, $mapping);
-                continue;
+            if ($mapping === null) {
+                throw new LogicException('No declared component count mapping: ' . $table);
             }
-            $repository = $this->repository();
-            $metadata = $this->metadata($table);
-            if ($this->defaultIdentifiers($metadata) === null || !$metadata->isInheritanceTypeNone()) {
-                return $repository->countForAsset($tables, $type, $id);
-            }
-            $queries[] = $repository->nativeCountQueryForAsset($table, $type, $id);
+            $queries[] = ComponentRepository::projectedCountQueryForAsset($this->connection, $table, $type, $id, $mapping);
         }
         $queries = array_filter($queries);
         if ($queries === []) {

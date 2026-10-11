@@ -343,9 +343,23 @@ class Item_DeviceGeneric extends DbTestCase
             try {
                 $this->integer($canonical->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
                 $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
-                $this->boolean((new ReflectionProperty($canonical, 'manager'))->isInitialized($canonical))->isFalse();
                 $this->integer($canonical->countForAsset([], 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
                 $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
+                $pendingId = (int)reset($active)['id'];
+                $pending = $manager->find(EntityRegistry::tables()[Item_DeviceMemory::getTable()], $pendingId);
+                $pending->is_deleted = true;
+                $this->integer($canonical->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
+                $this->boolean($manager->contains($pending))->isTrue();
+                $this->boolean($pending->is_deleted)->isTrue();
+                Orm::withConnection($connection, function (EntityManager $outer) use ($connection, $tables, $asset, $pendingId, $legacy): void {
+                    $nestedPending = $outer->find(EntityRegistry::tables()[Item_DeviceMemory::getTable()], $pendingId);
+                    $nestedPending->is_deleted = true;
+                    $count = new ComponentCountReadOperation($connection);
+                    $this->integer($count->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
+                    $count->close();
+                    $this->boolean($outer->contains($nestedPending))->isTrue();
+                    $this->boolean($nestedPending->is_deleted)->isTrue();
+                });
 
             } finally {
                 $canonical->close();
