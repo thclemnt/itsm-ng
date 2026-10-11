@@ -161,11 +161,6 @@ final class DomainPluginImport
                         $model = new $record['model']();
                         $journal->remember($model);
                         $input = Toolbox::addslashes_deep($record['input']);
-                        foreach ($record['input'] as $field => $value) {
-                            if ($value === 'NULL' || $value === 'null') {
-                                $input[$field] = $value === 'NULL' ? 'N\\ULL' : 'n\\ull';
-                            }
-                        }
                         $input['_no_message'] = true;
                         $id = $record['values']['id'];
                         $created = $model->addWithAssignedIdentifier($id, $input);

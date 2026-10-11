@@ -41,6 +41,7 @@ use CommonDBChild;
 use CommonDBRelation;
 use Computer;
 use Contact as LegacyContact;
+use Contact_Supplier as ContactSupplierModel;
 use DBAdapter;
 use DbTestCase;
 use Doctrine\DBAL\Configuration;
@@ -55,6 +56,7 @@ use ReflectionProperty;
 use RuntimeException;
 use Software;
 use SoftwareVersion;
+use Supplier as SupplierModel;
 use Throwable;
 use Transfer as LegacyTransfer;
 use itsmng\Database\EntityRegistry;
@@ -689,6 +691,32 @@ class Transfer extends DbTestCase
             $PLUGIN_HOOKS = $savedHooks;
             $plugins->setValue(null, $savedPlugins);
         }
+    }
+
+    public function testSupplierContactCopyKeepsLiteralNullText(): void
+    {
+        $this->login();
+        global $DB;
+        $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
+        $selected = $this->createItem(SupplierModel::class, ['name' => $this->getUniqueString(), 'entities_id' => $source]);
+        $outside = $this->createItem(SupplierModel::class, ['name' => $this->getUniqueString(), 'entities_id' => $source]);
+        $contact = $this->createItem(LegacyContact::class, ['name' => 'NULL', 'firstname' => $this->getUniqueString(), 'comment' => 'null', 'entities_id' => $source]);
+        foreach ([$selected, $outside] as $supplier) {
+            $this->createItem(ContactSupplierModel::class, ['contacts_id' => $contact->getID(), 'suppliers_id' => $supplier->getID()]);
+        }
+        $transfer = new LegacyTransfer();
+        $this->boolean($transfer->moveItems(['Supplier' => [$selected->getID()]], $target, ['keep_contact' => 1, 'clean_contact' => 0]))->isTrue();
+        $connection = $DB->getDoctrineConnection();
+        $copy = $connection->fetchAssociative('SELECT c.id, c.name, c.firstname, c.comment, c.entities_id FROM glpi_contacts c JOIN glpi_contacts_suppliers cs ON cs.contacts_id = c.id WHERE cs.suppliers_id = ?', [$selected->getID()]);
+        $this->integer((int)$copy['id'])->isNotIdenticalTo((int)$contact->getID());
+        $this->string($copy['name'])->isIdenticalTo('NULL');
+        $this->string($copy['firstname'])->isIdenticalTo($contact->fields['firstname']);
+        $this->string($copy['comment'])->isIdenticalTo('null');
+        $this->integer((int)$copy['entities_id'])->isIdenticalTo($target);
+        $this->integer((int)$connection->fetchOne('SELECT contacts_id FROM glpi_contacts_suppliers WHERE suppliers_id = ?', [$outside->getID()]))->isIdenticalTo((int)$contact->getID());
+        $this->boolean($contact->getFromDB($contact->getID()))->isTrue();
+        $this->integer((int)$contact->fields['entities_id'])->isIdenticalTo($source);
     }
 
     public function testDomainTransfer()

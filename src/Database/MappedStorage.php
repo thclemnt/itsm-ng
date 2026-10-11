@@ -28,7 +28,7 @@ final class MappedStorage
         $connection = $this->db->getDoctrineConnection();
         OwnershipUpdateUnit::assertResolvedWriter($this->db, $connection);
         return Orm::withConnection($connection, static function (EntityManager $manager) use ($table, $values): int {
-            return (new RecordWriter($manager))->insert($table, ReferenceValues::normalizeLegacy($table, self::values($values)));
+            return (new RecordWriter($manager))->insert($table, ReferenceValues::normalizeLegacy($table, self::values($table, $values)));
         });
     }
 
@@ -38,7 +38,7 @@ final class MappedStorage
         $connection = $this->db->getDoctrineConnection();
         OwnershipUpdateUnit::assertResolvedWriter($this->db, $connection);
         return Orm::withConnection($connection, static function (EntityManager $manager) use ($table, $id, $values): array {
-            $changed = (new RecordWriter($manager))->update($table, $id, ReferenceValues::normalizeLegacy($table, self::values($values)));
+            $changed = (new RecordWriter($manager))->update($table, $id, ReferenceValues::normalizeLegacy($table, self::values($table, $values)));
             return EntityConfigurationReferences::legacyChanges($table, $changed);
         });
     }
@@ -53,14 +53,20 @@ final class MappedStorage
         });
     }
 
-    private static function values(array $values): array
+    private static function values(string $table, array $values): array
     {
-        foreach ($values as &$value) {
+        $types = array_diff_key(
+            EntityRegistry::fieldTypes($table),
+            array_fill_keys(EntityRegistry::readOnlyColumns($table), true)
+        );
+        foreach ($values as $column => &$value) {
             if ($value instanceof QueryExpression || $value instanceof QueryParam) {
                 throw new InvalidArgumentException('Mapped persistence requires values, not SQL expressions.');
             }
             // Decode CommonDBTM pre-escaping once before binding typed parameters.
-            $value = LegacyValues::decode($value);
+            $value = is_string($value) && LegacyValues::isTextType($types[$column] ?? null)
+                ? LegacyValues::decodeString($value)
+                : LegacyValues::decode($value);
         }
         return $values;
     }

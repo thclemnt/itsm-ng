@@ -304,11 +304,21 @@ class Domain extends DbTestCase
                     $caller->assertActive();
                 }
             }
+            foreach (['NULL' => 'null', 'null' => null] as $offset => $comment) {
+                $literalId = $id + ($offset === 'NULL' ? 1 : 2);
+                $connection->insert($source, ['id' => $literalId, 'entities_id' => '0', 'name' => $offset, 'comment' => $comment, 'is_recursive' => '0']);
+            }
             // The failed attempt must remain resumable through the actual public importer.
             $plan = (new $importClass($DB))->import();
             $this->boolean($plan->alreadyImported)->isFalse();
             $this->boolean(Ledger::state($connection, $importClass::RECEIPT)['complete'])->isTrue();
             $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $connection->quoteIdentifier($modelClass::getTable()) . ' WHERE id = ?', [$id]))->isIdenticalTo(1);
+            foreach (['NULL' => 'null', 'null' => null] as $name => $comment) {
+                $literalId = $id + ($name === 'NULL' ? 1 : 2);
+                $row = $connection->fetchAssociative('SELECT name, comment FROM ' . $connection->quoteIdentifier($modelClass::getTable()) . ' WHERE id = ?', [$literalId]);
+                $this->string($row['name'])->isIdenticalTo($name);
+                $this->variable($row['comment'])->isIdenticalTo($comment);
+            }
             $this->boolean((new $importClass($DB))->import()->alreadyImported)->isTrue();
             $this->array($CFG_GLPI)->isIdenticalTo($config);
             $caller->assertActive();

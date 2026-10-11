@@ -536,6 +536,7 @@ class IPAddress extends DbTestCase
         $this->integer((int)$clone->fields['networknames_id'])->isIdenticalTo((int)$second->getID());
         $this->variable($clone->fields['opaque_parent_id'])->isNull();
         $this->integer((int)$clone->fields['mainitems_id'])->isIdenticalTo(0);
+        $this->variable($clone->fields['mainitemtype'])->isNull();
         $this->string($clone->fields['name'])->isIdenticalTo('192.0.2.61');
         foreach (['version', 'binary_0', 'binary_1', 'binary_2', 'binary_3'] as $field) {
             $this->variable($clone->fields[$field])->isIdenticalTo($address->fields[$field]);

@@ -33,6 +33,8 @@
 
 namespace tests\units;
 
+use APIClient;
+use Appliance as ApplianceModel;
 use Calendar;
 use CalendarSegment;
 use Certificate;
@@ -2614,6 +2616,44 @@ class CommonDBTM extends DbTestCase
         $this->string($computer->fields['name'])->isIdenticalTo("Computer01 '");
 
         $_SESSION['glpi_currenttime'] = $bkp_current;
+    }
+
+    public function testMappedTextKeepsLiteralNullAndExplicitClearing(): void
+    {
+        $this->login();
+        global $DB;
+        $computer = new Computer();
+        $id = $computer->add([
+            'name' => 'NULL',
+            'comment' => 'null',
+            'entities_id' => (int)$_SESSION['glpiactive_entity'],
+            'locations_id' => 'NULL',
+            'date_creation' => 'NULL'
+        ]);
+        $this->integer($id)->isGreaterThan(0);
+        $this->boolean($computer->getFromDB($id))->isTrue();
+        $this->string($computer->fields['name'])->isIdenticalTo('NULL');
+        $this->string($computer->fields['comment'])->isIdenticalTo('null');
+        $this->variable($computer->fields['locations_id'])->isNull();
+        $this->variable($computer->fields['date_creation'])->isNull();
+        foreach ([null, 'NULL', '', null, 'null', "Quoted ' and \\path\nline"] as $value) {
+            $this->boolean($computer->update(['id' => $id, 'comment' => Toolbox::addslashes_deep($value)]))->isTrue();
+            $this->boolean($computer->getFromDB($id))->isTrue();
+            $this->variable($computer->fields['comment'])->isIdenticalTo($value);
+            $this->variable($DB->getDoctrineConnection()->fetchOne('SELECT comment FROM glpi_computers WHERE id = ?', [$id]))->isIdenticalTo($value);
+        }
+        $this->boolean($computer->update(['id' => $id, 'comment' => 'null']))->isTrue();
+        $logs = (int)$DB->getDoctrineConnection()->fetchOne('SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ?', ['Computer', $id]);
+        $this->boolean($computer->update(['id' => $id, 'comment' => 'null']))->isTrue();
+        $this->integer((int)$DB->getDoctrineConnection()->fetchOne('SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ?', ['Computer', $id]))->isIdenticalTo($logs);
+
+        $appliance = $this->createItem(ApplianceModel::class, ['name' => 'NULL', 'entities_id' => (int)$_SESSION['glpiactive_entity']]);
+        $this->string($appliance->fields['name'])->isIdenticalTo('NULL');
+        $client = $this->createItem(APIClient::class, ['name' => $this->getUniqueString(), 'ipv6' => '2001:db8::1']);
+        $this->string($client->fields['ipv6'])->isIdenticalTo('2001:db8::1');
+        $this->boolean($client->update(['id' => $client->getID(), 'ipv6' => '']))->isTrue();
+        $this->boolean($client->getFromDB($client->getID()))->isTrue();
+        $this->variable($client->fields['ipv6'])->isNull();
     }
 
     public function testUpdate()

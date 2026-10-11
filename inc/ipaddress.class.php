@@ -174,7 +174,7 @@ class IPAddress extends CommonDBChild
             }
         }
         if (isset($input['itemtype']) && isset($input['items_id'])) {
-            $input['mainitemtype'] = 'NULL';
+            $input['mainitemtype'] = null;
             $input['mainitems_id'] = 0;
             if ($input['itemtype'] == 'NetworkName') {
                 $name = new NetworkName();

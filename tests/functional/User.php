@@ -2099,6 +2099,29 @@ class User extends DbTestCase
         }
     }
 
+    public function testMappedAccountTextAndInheritedClearsUseRealNull(): void
+    {
+        $this->login();
+        global $CFG_GLPI;
+        $user = new UserModel();
+        $id = $user->add(['name' => 'text-null-' . $this->getUniqueString(), 'picture' => 'Untrusted upload', 'sync_field' => 'NULL']);
+        $this->integer($id)->isGreaterThan(0);
+        $this->boolean($user->getFromDB($id))->isTrue();
+        $this->variable($user->fields['picture'])->isNull();
+        $this->string($user->fields['sync_field'])->isIdenticalTo('NULL');
+        $language = $CFG_GLPI['language'] === 'fr_FR' ? 'en_GB' : 'fr_FR';
+        $limit = (int)$CFG_GLPI['list_limit'] + 1;
+        $this->boolean($user->update(['id' => $id, 'timezone' => 'Europe/Paris', 'language' => $language, 'list_limit' => $limit]))->isTrue();
+        $this->boolean($user->update(['id' => $id, 'timezone' => '', 'language' => $CFG_GLPI['language'], 'list_limit' => $CFG_GLPI['list_limit'], '_blank_picture' => 1]))->isTrue();
+        $this->boolean($user->getFromDB($id))->isTrue();
+        foreach (['picture', 'timezone', 'language', 'list_limit'] as $field) {
+            $this->variable($user->fields[$field])->isNull();
+        }
+        $this->boolean($user->update(['id' => $id, 'sync_field' => 'null']))->isTrue();
+        $this->boolean($user->getFromDB($id))->isTrue();
+        $this->string($user->fields['sync_field'])->isIdenticalTo('null');
+    }
+
     protected function prepareInputForTimezoneUpdateProvider()
     {
         return [
@@ -2115,7 +2138,7 @@ class User extends DbTestCase
                  'timezone' => '0',
               ],
               'expected'  => [
-                 'timezone' => 'NULL',
+                 'timezone' => null,
               ],
            ],
            // check that timezone is not reset unexpectedly

@@ -43,6 +43,7 @@ use itsmng\Database\DeletionOutcome;
 use itsmng\Database\DeletionUnit;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\ForeignKeys;
+use itsmng\Database\LegacyValues;
 use itsmng\Database\LifecycleModelJournal;
 use itsmng\Database\MappedReads;
 use itsmng\Database\MappedStorage;
@@ -2074,12 +2075,19 @@ class CommonDBTM extends CommonGLPI
                 $this->updates   = [];
                 $this->oldvalues = [];
 
-                $booleanFields = EntityRegistry::booleanFields($this->getTable());
+                $table = $this->getTable();
+                $booleanFields = EntityRegistry::booleanFields($table);
+                $fieldTypes = array_diff_key(
+                    EntityRegistry::fieldTypes($table),
+                    array_fill_keys(EntityRegistry::readOnlyColumns($table), true)
+                );
                 foreach (array_keys($this->input) as $key) {
                     if (array_key_exists($key, $this->fields)) {
+                        $textField = LegacyValues::isTextType($fieldTypes[$key] ?? null);
                         // Prevent history for date statement (for date for example)
                         if (
                             !array_key_exists($key, $booleanFields)
+                            && !$textField
                             && is_null($this->fields[$key])
                             && ($this->input[$key] == 'NULL')
                         ) {
@@ -2093,6 +2101,13 @@ class CommonDBTM extends CommonGLPI
                             // explicit false, even under PHP's loose equality.
                             $ischanged = ($this->fields[$key] === null) !== ($this->input[$key] === null)
                                 || ($this->fields[$key] !== null && (bool)$this->fields[$key] !== (bool)$this->input[$key]);
+                        } elseif ($textField) {
+                            // SQL NULL and an empty or literal NULL string are distinct text values.
+                            $ischanged = ($this->fields[$key] === null) !== ($this->input[$key] === null)
+                                || ($this->fields[$key] !== null && $this->input[$key] !== null && @strcmp(
+                                    (string) $DB->escape($this->fields[$key]),
+                                    (string) $this->input[$key]
+                                ) != 0);
                         } elseif (isset($searchopt['datatype'])) {
                             switch ($searchopt['datatype']) {
                                 case 'string':

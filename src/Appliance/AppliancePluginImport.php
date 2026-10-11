@@ -217,11 +217,6 @@ final class AppliancePluginImport
                     $model = new $record['model']();
                     $journal->remember($model);
                     $input = Toolbox::addslashes_deep($record['input']);
-                    foreach ($record['input'] as $field => $value) {
-                        if ($value === 'NULL' || $value === 'null') {
-                            $input[$field] = $value === 'NULL' ? 'N\\ULL' : 'n\\ull'; // Preserve literal strings without a SQL NULL sentinel or \n escape.
-                        }
-                    }
                     $input['_no_message'] = true;
                     $created = $model->addWithAssignedIdentifier($record['values']['id'], $input);
                     $assertActive();

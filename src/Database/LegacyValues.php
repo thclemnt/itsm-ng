@@ -4,9 +4,23 @@
 
 namespace itsmng\Database;
 
+use Doctrine\DBAL\Types\StringType;
+use Doctrine\DBAL\Types\TextType;
+use Doctrine\DBAL\Types\Type;
+
 /** Decode the old application's pre-escaping once, before binding a Doctrine value. */
 final class LegacyValues
 {
+    /** Canonical mapped text owns literal strings, including the word NULL. */
+    public static function isTextType(?string $type): bool
+    {
+        if ($type === null) {
+            return false;
+        }
+        $mapping = Type::getType($type);
+        return $mapping instanceof StringType || $mapping instanceof TextType;
+    }
+
     public static function decode(mixed $value): mixed
     {
         if ($value === 'NULL' || $value === 'null') {
