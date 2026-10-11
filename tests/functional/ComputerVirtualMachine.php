@@ -183,11 +183,13 @@ class ComputerVirtualMachine extends DbTestCase
         $database = $GLOBALS['DB'];
         $session = $_SESSION;
         $connection = $database->getDoctrineConnection();
-        $manager = Orm::forConnection($connection);
-        $repository = new InventoryRepository($manager);
         try {
             $host = (int)$computer->getID();
-            $expected = $repository->countVirtualMachines($host);
+            $expected = (int)$connection->fetchOne(
+                'SELECT COUNT(*) FROM glpi_computervirtualmachines WHERE computers_id = ? AND is_deleted = ?',
+                [$host, false],
+                [Types::INTEGER, Types::BOOLEAN]
+            );
             $_SESSION['glpishow_count_on_tabs'] = true;
             $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
             $before = $factories->getValue();
@@ -199,7 +201,13 @@ class ComputerVirtualMachine extends DbTestCase
             $reader = new VirtualMachineCountReadOperation($connection);
             $this->integer($reader->forComputer($host))->isIdenticalTo($expected);
             foreach ([0, -1] as $missing) {
-                $this->integer($reader->forComputer($missing))->isIdenticalTo($repository->countVirtualMachines($missing));
+                $this->integer($reader->forComputer($missing))->isIdenticalTo(
+                    (int)$connection->fetchOne(
+                        'SELECT COUNT(*) FROM glpi_computervirtualmachines WHERE computers_id = ? AND is_deleted = ?',
+                        [$missing, false],
+                        [Types::INTEGER, Types::BOOLEAN]
+                    )
+                );
             }
             $duplicate = $this->createItem(VirtualMachineModel::class, [
                 'name' => 'Duplicate inventory count', 'computers_id' => $host, 'uuid' => $uuid,
@@ -225,7 +233,6 @@ class ComputerVirtualMachine extends DbTestCase
                     }
                 });
                 $this->integer($reader->forComputer($host))->isIdenticalTo(0);
-                $this->integer($repository->countVirtualMachines($host))->isIdenticalTo(0);
                 Type::overrideType(Types::INTEGER, $integer);
                 $flipped = new class () extends BooleanType {
                     public int $calls = 0;
@@ -235,9 +242,14 @@ class ComputerVirtualMachine extends DbTestCase
                         return '(NOT (' . $sqlExpr . '))';
                     }
                 };
+                $deletedCount = (int)$connection->fetchOne(
+                    'SELECT COUNT(*) FROM glpi_computervirtualmachines WHERE computers_id = ? AND is_deleted = ?',
+                    [$host, true],
+                    [Types::INTEGER, Types::BOOLEAN]
+                );
                 Type::overrideType(Types::BOOLEAN, $flipped);
-                $this->integer($reader->forComputer($host))->isIdenticalTo($repository->countVirtualMachines($host));
-                $this->integer($flipped->calls)->isIdenticalTo(2);
+                $this->integer($reader->forComputer($host))->isIdenticalTo($deletedCount);
+                $this->integer($flipped->calls)->isIdenticalTo(1);
             } finally {
                 Type::overrideType(Types::INTEGER, $integer);
                 Type::overrideType(Types::BOOLEAN, $boolean);
@@ -290,7 +302,6 @@ class ComputerVirtualMachine extends DbTestCase
             $this->string($obj->getTabNameForItem($computer, 1))->isEmpty();
             $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
         } finally {
-            $manager->clear();
             $GLOBALS['DB'] = $database;
             $_SESSION = $session;
         }

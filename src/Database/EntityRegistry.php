@@ -80,15 +80,17 @@ final class EntityRegistry
     }
 
     /** Fixed virtualization count facts from the declared host relationship. */
-    public static function virtualMachineCountMapping(): ?array
+    public static function virtualMachineCountMapping(): array
     {
-        return self::model('virtual_machine_count');
+        return self::model('virtual_machine_count')
+            ?? throw new LogicException('Missing canonical virtual-machine count mapping');
     }
 
     /** Physical fields for an exact item's financial activation presence. */
-    public static function infocomPresenceMapping(): ?array
+    public static function infocomPresenceMapping(): array
     {
-        return self::model('infocom_presence');
+        return self::model('infocom_presence')
+            ?? throw new LogicException('Missing canonical financial presence mapping');
     }
 
     /** Cache fields and owning self-parent names for private tree point reads. */

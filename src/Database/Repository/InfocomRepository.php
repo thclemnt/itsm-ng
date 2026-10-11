@@ -26,15 +26,6 @@ final class InfocomRepository
     {
     }
 
-    /** Activation is a property of the exact item, independent of the viewer's financial rights. */
-    public function isActivatedFor(string $itemtype, int $id): bool
-    {
-        return $this->em->createQueryBuilder()->select('i.id')->from(Entity\Infocom::class, 'i')
-            ->where('i.itemtype = :type AND i.items_id = :id')
-            ->setParameter('type', $itemtype, Types::STRING)->setParameter('id', $id, Types::BIGINT)
-            ->setMaxResults(1)->getQuery()->getScalarResult() !== [];
-    }
-
     /** @internal Presence retains the mapped scalar SQL conversion, not its PHP conversion. */
     public static function projectedPresence(Connection $connection, array $mapping, string $itemtype, int $id): bool
     {

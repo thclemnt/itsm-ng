@@ -45,15 +45,6 @@ final class InventoryRepository
         );
     }
 
-    public function countVirtualMachines(int $computer): int
-    {
-        return (new RecordRepository($this->em))->countMatching(
-            'glpi_computervirtualmachines',
-            ['computers_id' => $computer, 'is_deleted' => false],
-            legacyValues: false
-        );
-    }
-
     /** @internal Scalar count on the private tab owner's authority-derived projection. */
     public static function projectedVirtualMachineCount(Connection $connection, array $mapping, int $computer): int
     {

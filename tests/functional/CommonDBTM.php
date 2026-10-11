@@ -1701,7 +1701,6 @@ class CommonDBTM extends DbTestCase
             $this->boolean((new Infocom())->isActivatedForDevice('Computer', $id))->isTrue();
             $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
             $presence = new InfocomPresenceReadOperation($connection);
-            $original = new InfocomRepository(Orm::forConnection($connection));
             $bigint = Type::getType(Types::BIGINT);
             $string = Type::getType(Types::STRING);
             try {
@@ -1720,7 +1719,6 @@ class CommonDBTM extends DbTestCase
                 foreach (['NULL', '0'] as $value) {
                     $selected->expression = $value;
                     $this->boolean($presence->forItem('Computer', $id))->isTrue();
-                    $this->boolean($original->isActivatedFor('Computer', $id))->isTrue();
                     $this->boolean($presence->forItem('Peripheral', $id))->isFalse();
                 }
                 Type::overrideType(Types::BIGINT, new class () extends BigIntType {
@@ -1730,7 +1728,6 @@ class CommonDBTM extends DbTestCase
                     }
                 });
                 $this->boolean($presence->forItem('Computer', $id))->isFalse();
-                $this->boolean($original->isActivatedFor('Computer', $id))->isFalse();
                 Type::overrideType(Types::BIGINT, $bigint);
                 Type::overrideType(Types::STRING, new class () extends StringType {
                     public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
@@ -1739,7 +1736,6 @@ class CommonDBTM extends DbTestCase
                     }
                 });
                 $this->boolean($presence->forItem('Computer', $id))->isFalse();
-                $this->boolean($original->isActivatedFor('Computer', $id))->isFalse();
                 Type::overrideType(Types::STRING, $string);
                 Type::overrideType(Types::BIGINT, new class () extends BigIntType {
                     public function convertToDatabaseValue(mixed $value, AbstractPlatform $platform): mixed
@@ -1748,7 +1744,6 @@ class CommonDBTM extends DbTestCase
                     }
                 });
                 $this->boolean($presence->forItem('Computer', $id))->isFalse();
-                $this->boolean($original->isActivatedFor('Computer', $id))->isFalse();
                 Type::overrideType(Types::BIGINT, $bigint);
                 Type::overrideType(Types::STRING, new class () extends StringType {
                     public function convertToDatabaseValue(mixed $value, AbstractPlatform $platform): mixed
@@ -1757,7 +1752,6 @@ class CommonDBTM extends DbTestCase
                     }
                 });
                 $this->boolean($presence->forItem('Computer', $id))->isFalse();
-                $this->boolean($original->isActivatedFor('Computer', $id))->isFalse();
             } finally {
                 Type::overrideType(Types::BIGINT, $bigint);
                 Type::overrideType(Types::STRING, $string);
@@ -1828,29 +1822,15 @@ class CommonDBTM extends DbTestCase
             }
 
             $manager = Orm::create($DB);
-            $repository = new InfocomRepository($manager);
-            $loads = new class () {
-                public int $count = 0;
-                public function postLoad(): void
-                {
-                    ++$this->count;
-                }
-            };
-            $manager->getEventManager()->addEventListener([Events::postLoad], $loads);
-            $this->boolean($repository->isActivatedFor('Computer', $id))->isTrue();
-            $this->boolean($repository->isActivatedFor('Peripheral', $id))->isFalse();
-            $this->boolean($repository->isActivatedFor('Computer', PHP_INT_MAX))->isFalse();
-            $this->integer($loads->count)->isIdenticalTo(0);
-            $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
-            // The listener is live: ordinary complete model hydration does call it.
+            $this->boolean($presence->forItem('Computer', $id))->isTrue();
+            $this->boolean($presence->forItem('Peripheral', $id))->isFalse();
+            $this->boolean($presence->forItem('Computer', PHP_INT_MAX))->isFalse();
             $managed = $manager->find(InfocomEntity::class, $financial->getID());
             $this->object($managed)->isInstanceOf(InfocomEntity::class);
-            $this->integer($loads->count)->isIdenticalTo(1);
             // A legacy write must win even while a stale entity remains managed.
             $this->boolean($financial->delete(['id' => $financial->getID()], true))->isTrue();
-            $this->boolean($repository->isActivatedFor('Computer', $id))->isFalse();
+            $this->boolean($presence->forItem('Computer', $id))->isFalse();
             $this->boolean($manager->contains($managed))->isTrue();
-            $this->integer($loads->count)->isIdenticalTo(1);
 
             // Resolve the actual current adapter at each caller operation.
             $this->mockGenerator->orphanize('__construct');
