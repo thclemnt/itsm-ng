@@ -63,25 +63,19 @@ class NetworkPort_Vlan extends CommonDBRelation
 
     public function add(array $input, $options = [], $history = true)
     {
-        if (!$this->hasMembershipMapping()) {
-            return parent::add($input, $options, $history);
-        }
+        $this->assertMembershipMapping();
         return $this->mutateMembership(fn () => parent::add($input, $options, $history));
     }
 
     public function update(array $input, $history = 1, $options = [])
     {
-        if (!$this->hasMembershipMapping()) {
-            return parent::update($input, $history, $options);
-        }
+        $this->assertMembershipMapping();
         return $this->mutateMembership(fn () => parent::update($input, $history, $options));
     }
 
     public function delete(array $input, $force = 0, $history = 1)
     {
-        if (!$this->hasMembershipMapping()) {
-            return parent::delete($input, $force, $history);
-        }
+        $this->assertMembershipMapping();
         return $this->mutateMembership(fn () => parent::delete($input, $force, $history), removing: true);
     }
 
@@ -185,9 +179,11 @@ class NetworkPort_Vlan extends CommonDBRelation
         }, $removing);
     }
 
-    private function hasMembershipMapping(): bool
+    private function assertMembershipMapping(): void
     {
-        return (EntityRegistry::tables()[static::getTable()] ?? null) === NetworkPortVlan::class;
+        if ((EntityRegistry::tables()[static::getTable()] ?? null) !== NetworkPortVlan::class) {
+            throw new InvalidArgumentException('VLAN membership requires its declared owning table.');
+        }
     }
 
     public static function membershipsForPort($port): array
@@ -216,20 +212,11 @@ class NetworkPort_Vlan extends CommonDBRelation
     **/
     public function unassignVlan($portID, $vlanID)
     {
-        if ($this->hasMembershipMapping()) {
-            return $this->mutateMembership(function () use ($portID, $vlanID) {
-                $identity = $this->membershipCommand->selectRemovalPair((int)$portID, (int)$vlanID);
-                return $identity === null ? false : parent::delete(['id' => $identity]);
-            }, removing: true);
-        }
-        if (!$this->getFromDBByCrit([
-           'networkports_id' => $portID,
-           'vlans_id'        => $vlanID
-        ])) {
-            return false;
-        }
-
-        return $this->delete($this->fields);
+        $this->assertMembershipMapping();
+        return $this->mutateMembership(function () use ($portID, $vlanID) {
+            $identity = $this->membershipCommand->selectRemovalPair((int)$portID, (int)$vlanID);
+            return $identity === null ? false : parent::delete(['id' => $identity]);
+        }, removing: true);
     }
 
 

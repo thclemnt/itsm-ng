@@ -1949,6 +1949,31 @@ class NetworkPort extends DbTestCase
             $scope->assertActive();
             $this->boolean($connection->getNativeConnection()->inTransaction())->isTrue();
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+            // Public mutations retain both independent and enclosing dirty owners.
+            $live->name = 'Unflushed independent VLAN';
+            Orm::read(
+                $writer,
+                function (EntityManager $outer) use ($writer, $connection, $manager, $live, $portId, $vlanId, $id, $tagged, $depth): void {
+                    $enclosing = $outer->find(VlanEntity::class, $vlanId);
+                    $enclosing->name = 'Unflushed enclosing VLAN';
+                    $membership = new NetworkPort_Vlan();
+                    $this->boolean($membership->update(['id' => $id, 'tagged' => (int)$tagged], 0))->isTrue();
+                    $stored = $connection->fetchAllAssociative('SELECT * FROM glpi_networkports_vlans WHERE id=?', [$id]);
+                    $this->integer((int)$stored[0]['tagged'])->isIdenticalTo((int)$tagged);
+                    $this->boolean($membership->update(['id' => $id, 'tagged' => 2], 0))->isFalse();
+                    $this->array($connection->fetchAllAssociative('SELECT * FROM glpi_networkports_vlans WHERE id=?', [$id]))
+                        ->isIdenticalTo($stored);
+                    $this->boolean($membership->unassignVlan($portId, $vlanId))->isTrue();
+                    $this->array((new VlanMembershipService($writer))->membershipsForPort($portId))->isEmpty();
+                    $this->boolean($manager->contains($live))->isTrue();
+                    $this->string($live->name)->isIdenticalTo('Unflushed independent VLAN');
+                    $this->boolean($outer->contains($enclosing))->isTrue();
+                    $this->string($enclosing->name)->isIdenticalTo('Unflushed enclosing VLAN');
+                    $this->string((string)$connection->fetchOne('SELECT name FROM glpi_vlans WHERE id=?', [$vlanId]))
+                        ->isIdenticalTo('fresh owned VLAN');
+                    $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+                }
+            );
         } finally {
             $manager?->clear();
             $_SESSION = $savedSession;

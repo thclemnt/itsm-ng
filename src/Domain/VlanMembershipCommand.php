@@ -36,6 +36,10 @@ final class VlanMembershipCommand
     public function assertActive(): void
     {
         $this->scope->assertActive();
+        $table = $this->model->getTable();
+        if ($table !== $this->metadata->getTableName()) {
+            throw new RuntimeException('A VLAN membership callback changed its owning table.');
+        }
         if ($this->database !== ($GLOBALS['DB'] ?? null) || $this->database->getDoctrineConnection() !== $this->connection) {
             throw new TransactionOwnershipMismatch('A VLAN membership callback replaced its supplied writer.');
         }
