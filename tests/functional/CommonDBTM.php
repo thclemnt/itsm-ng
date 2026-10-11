@@ -69,6 +69,8 @@ use DomainType;
 use Doctrine\DBAL\TransactionIsolationLevel;
 use Doctrine\ORM\EntityManager;
 use Entity;
+use Fieldblacklist;
+use FieldUnicity;
 use ITILFollowup;
 use Infocom;
 use Item_Disk;
@@ -106,6 +108,7 @@ use LogicException;
 use itsmng\Database\OwnedMutationFrame;
 use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\DeletionRepository;
+use itsmng\Database\Repository\FieldUnicityRepository;
 use itsmng\Database\Repository\InfocomRepository;
 use itsmng\Database\Repository\NetworkPortAggregateRepository;
 use itsmng\Database\Repository\RecordRepository;
@@ -2616,6 +2619,109 @@ class CommonDBTM extends DbTestCase
         $this->string($computer->fields['name'])->isIdenticalTo("Computer01 '");
 
         $_SESSION['glpi_currenttime'] = $bkp_current;
+    }
+
+    public function testConfiguredUnicityKeepsLiteralTextAndBlacklistMembership(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $child = $this->createItem(Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+            $connection = $DB->getDoctrineConnection();
+            // Ordinary fixture rollback restores the previous configuration and blacklist.
+            $connection->delete('glpi_fieldunicities', ['itemtype' => Computer::class]);
+            $connection->delete('glpi_fieldblacklists', ['itemtype' => Computer::class]);
+            $decoy = $this->createItem(Computer::class, ['name' => null, 'entities_id' => $entity]);
+            $outside = $this->createItem(Computer::class, ['name' => 'NULL', 'entities_id' => $child->getID()]);
+            $template = $this->createItem(Computer::class, ['name' => 'NULL', 'entities_id' => $entity, 'is_template' => 1]);
+            $rule = new FieldUnicity();
+            $ruleId = $rule->add([
+                'name' => $this->getUniqueString(), 'itemtype' => Computer::class, 'entities_id' => $entity,
+                '_fields' => ['name'], 'is_active' => 1, 'is_recursive' => 0, 'action_refuse' => 1, 'action_notify' => 0
+            ]);
+            $this->integer($ruleId)->isGreaterThan(0);
+            $this->boolean($rule->getFromDB($ruleId))->isTrue();
+            $this->string($rule->fields['fields'])->isIdenticalTo('name');
+            $literal = new Computer();
+            $id = $literal->add(['name' => 'NULL', 'entities_id' => $entity]);
+            $this->integer($id)->isGreaterThan(0);
+            $this->boolean($literal->getFromDB($id))->isTrue();
+            $this->string($literal->fields['name'])->isIdenticalTo('NULL');
+            $duplicate = new Computer();
+            $this->boolean($duplicate->add(['name' => 'NULL', 'entities_id' => $entity]))->isFalse();
+            $scope = getEntitiesRestrictCriteria('glpi_computers', '', $entity);
+            $rows = Orm::read($DB, static fn (EntityManager $manager) =>
+                (new FieldUnicityRepository($manager))->candidateRows('glpi_computers', ['glpi_computers.name' => 'NULL'], $scope, true, null));
+            $this->array(array_map('intval', array_keys($rows)))->isIdenticalTo([$id]);
+            $this->string($rows[$id]['name'])->isIdenticalTo('NULL');
+            $this->boolean(isset($rows[$decoy->getID()]))->isFalse();
+            $this->boolean(isset($rows[$outside->getID()]))->isFalse();
+            $this->boolean(isset($rows[$template->getID()]))->isFalse();
+
+            $other = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+            $previous = $other->fields['name'];
+            $this->boolean($other->update(['id' => $other->getID(), 'name' => 'NULL']))->isFalse();
+            $this->boolean($other->getFromDB($other->getID()))->isTrue();
+            $this->string($other->fields['name'])->isIdenticalTo($previous);
+            $this->boolean($literal->update(['id' => $id, 'name' => 'NULL', 'comment' => 'self update']))->isTrue();
+            $this->boolean($other->update(['id' => $other->getID(), 'name' => null]))->isTrue();
+            $this->boolean($other->getFromDB($other->getID()))->isTrue();
+            $this->variable($other->fields['name'])->isNull();
+
+            $manager = Orm::create($DB);
+            try {
+                $dirty = $manager->find(ComputerEntity::class, $id);
+                $dirty->comment = 'unflushed independent owner';
+                Orm::read($DB, function (EntityManager $outer) use ($DB, $id, $scope, $manager, $dirty): void {
+                    $live = $outer->find(ComputerEntity::class, $id);
+                    $live->comment = 'unflushed enclosing owner';
+                    $count = Orm::read($DB, static fn (EntityManager $reader) =>
+                        (new FieldUnicityRepository($reader))->candidateCount('glpi_computers', ['glpi_computers.name' => 'NULL'], $scope, true, null));
+                    $this->integer($count)->isIdenticalTo(1);
+                    $this->boolean($outer->contains($live))->isTrue();
+                    $this->string($live->comment)->isIdenticalTo('unflushed enclosing owner');
+                    $this->boolean($manager->contains($dirty))->isTrue();
+                    $this->string($dirty->comment)->isIdenticalTo('unflushed independent owner');
+                });
+            } finally {
+                $manager->clear();
+            }
+
+            $blacklist = $this->createItem(Fieldblacklist::class, [
+                'name' => $this->getUniqueString(), 'itemtype' => Computer::class, 'field' => 'name',
+                'value' => 'NULL', 'entities_id' => $child->getID(), 'is_recursive' => 0
+            ]);
+            $this->boolean(Fieldblacklist::isFieldBlacklisted(Computer::class, $entity, 'name', 'NULL'))->isFalse();
+            $this->boolean($blacklist->update(['id' => $blacklist->getID(), 'entities_id' => $entity]))->isTrue();
+            $this->boolean(Fieldblacklist::isFieldBlacklisted(Computer::class, $entity, 'name', 'NULL'))->isTrue();
+            $accepted = new Computer();
+            $this->integer($accepted->add(['name' => 'NULL', 'entities_id' => $entity]))->isGreaterThan(0);
+            $this->boolean($accepted->getFromDB($accepted->getID()))->isTrue();
+            $this->string($accepted->fields['name'])->isIdenticalTo('NULL');
+            $this->boolean($blacklist->delete(['id' => $blacklist->getID()], true))->isTrue();
+
+            $quoted = Toolbox::addslashes_deep("Quoted ' and \\path");
+            $first = new Computer();
+            $this->integer($first->add(['name' => $quoted, 'entities_id' => $entity]))->isGreaterThan(0);
+            $second = new Computer();
+            $this->boolean($second->add(['name' => $quoted, 'entities_id' => $entity]))->isFalse();
+            $this->boolean($first->update(['id' => $first->getID(), 'name' => $this->getUniqueString()]))->isTrue();
+            $this->integer($second->add(['name' => $quoted, 'entities_id' => $entity]))->isGreaterThan(0);
+            $this->boolean($rule->update(['id' => $rule->getID(), 'is_recursive' => 1]))->isTrue();
+            $this->boolean((new Computer())->add(['name' => 'NULL', 'entities_id' => $child->getID()]))->isFalse();
+            $this->boolean($rule->update(['id' => $rule->getID(), '_fields' => ['serial'], 'is_recursive' => 0]))->isTrue();
+            $lower = new Computer();
+            $lowerId = $lower->add(['name' => $this->getUniqueString(), 'serial' => 'null', 'entities_id' => $entity]);
+            $this->integer($lowerId)->isGreaterThan(0);
+            $this->boolean($lower->getFromDB($lowerId))->isTrue();
+            $this->string($lower->fields['serial'])->isIdenticalTo('null');
+            $this->boolean((new Computer())->add(['name' => $this->getUniqueString(), 'serial' => 'null', 'entities_id' => $entity]))->isFalse();
+        } finally {
+            $_SESSION = $session;
+        }
     }
 
     public function testMappedTextKeepsLiteralNullAndExplicitClearing(): void

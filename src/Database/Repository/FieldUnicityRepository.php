@@ -9,10 +9,15 @@ use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Query;
+use Doctrine\ORM\QueryBuilder;
 use InvalidArgumentException;
 use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
+use itsmng\Database\LegacyValues;
+use itsmng\Database\MappedRowProjection;
 use itsmng\Database\RecordCriteria;
+use itsmng\Database\ReferenceValues;
 
 use function getTableNameForForeignKeyField;
 use function isPluginItemType;
@@ -54,6 +59,84 @@ final class FieldUnicityRepository
             $result[] = $row;
         }
         return $result;
+    }
+
+    /** Null declines unsupported criteria before SQL; execution errors remain errors. */
+    public function candidateCount(string $table, array $values, array $scope, bool $templates, ?array $excluded): ?int
+    {
+        $query = $this->candidateQuery($table, $values, $scope, $templates, $excluded);
+        return $query === null ? null : (int) $query->select('COUNT(r.id)')->getQuery()->getSingleScalarResult();
+    }
+
+    /** Complete diagnostic rows, independently read after the count and keyed by physical identity. */
+    public function candidateRows(string $table, array $values, array $scope, bool $templates, ?array $excluded): ?array
+    {
+        $query = $this->candidateQuery($table, $values, $scope, $templates, $excluded);
+        if ($query === null) {
+            return null;
+        }
+        $projection = new MappedRowProjection($this->em, $this->em->getClassMetadata(EntityRegistry::tables()[$table]));
+        $projection->select($query);
+        $rows = [];
+        foreach ($query->getQuery()->getResult(Query::HYDRATE_ARRAY) as $values) {
+            $row = ReferenceValues::legacyRow($table, $projection->toRow($values));
+            $rows[$row['id']] = $row;
+        }
+        return $rows;
+    }
+
+    private function candidateQuery(string $table, array $values, array $scope, bool $templates, ?array $excluded): ?QueryBuilder
+    {
+        $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
+        $query = $this->em->createQueryBuilder()->from($metadata->name, 'r');
+        $types = array_diff_key(EntityRegistry::fieldTypes($table), array_fill_keys(EntityRegistry::readOnlyColumns($table), true));
+        $text = [];
+        foreach ($types as $column => $type) {
+            $key = $table . '.' . $column;
+            if (isset($values[$key]) && is_string($values[$key]) && LegacyValues::isTextType($type)) {
+                // The canonical declaration owns public input semantics; selected metadata owns the query.
+                $property = $metadata->getFieldName($column);
+                if (!$metadata->hasField($property) || $metadata->getColumnName($property) !== $column) {
+                    return null;
+                }
+                $text[] = ['r.' . $property, LegacyValues::decodeString($values[$key]), $type];
+                unset($values[$key]);
+            }
+        }
+        $values[] = $scope;
+        if ($templates) {
+            $values['is_template'] = 0;
+        }
+        if ($excluded !== null) {
+            $values['NOT'] = $excluded;
+        }
+        $compiler = new RecordCriteria($query, $metadata);
+        if ($compiler->applyMatching($values, []) !== null) {
+            return null;
+        }
+        foreach ($text as $index => [$column, $value, $type]) {
+            $parameter = 'candidate_text_' . $index;
+            $query->andWhere($column . ' = :' . $parameter)->setParameter($parameter, $value, $type);
+        }
+        return $query;
+    }
+
+    /** A configured blacklist value is stored text, including the literal SQL sentinel spelling. */
+    public function blacklistedValue(string $itemtype, string $field, string $value, array $scope): ?bool
+    {
+        $metadata = $this->em->getClassMetadata(Entity\Fieldblacklist::class);
+        $property = $metadata->getFieldName('value');
+        if ($metadata->getTableName() !== 'glpi_fieldblacklists' || !$metadata->hasField($property) || $metadata->getColumnName($property) !== 'value') {
+            return null;
+        }
+        $query = $this->em->createQueryBuilder()->select('COUNT(r.id)')->from($metadata->name, 'r');
+        $compiler = new RecordCriteria($query, $metadata);
+        if ($compiler->applyMatching(['itemtype' => $itemtype, 'field' => $field] + $scope, []) !== null) {
+            return null;
+        }
+        $query->andWhere('r.' . $property . ' = :blacklisted_value')
+            ->setParameter('blacklisted_value', LegacyValues::decodeString($value), EntityRegistry::fieldTypes($metadata->getTableName())['value']);
+        return (int) $query->getQuery()->getSingleScalarResult() > 0;
     }
 
     public function deletePluginRules(string $plugin): void

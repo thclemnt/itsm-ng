@@ -33,6 +33,7 @@
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\LockMode;
+use Doctrine\ORM\EntityManager;
 use Glpi\Event;
 use itsmng\Database\BooleanValue;
 use itsmng\Database\CloneInput;
@@ -52,6 +53,7 @@ use itsmng\Database\MutationCleanupFailure;
 use itsmng\Database\Orm;
 use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\DeletionRepository;
+use itsmng\Database\Repository\FieldUnicityRepository;
 use itsmng\Database\Repository\HistoryRepository;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\RelationshipLifecycleRepository;
@@ -5332,19 +5334,36 @@ class CommonDBTM extends CommonGLPI
                         if ($fields['is_recursive']) {
                             $entities = getSonsOf('glpi_entities', $fields['entities_id']);
                         }
-                        $where[] = getEntitiesRestrictCriteria($this->getTable(), '', $entities);
+                        $configuredValues = $where;
+                        $entityRestriction = getEntitiesRestrictCriteria($this->getTable(), '', $entities);
+                        $where[] = $entityRestriction;
 
                         $tmp = clone $this;
-                        if ($tmp->maybeTemplate()) {
+                        $excludeTemplates = $tmp->maybeTemplate();
+                        if ($excludeTemplates) {
                             $where['is_template'] = 0;
                         }
 
                         //If update, exclude ID of the current object
+                        $currentExclusion = null;
                         if (!$add) {
-                            $where['NOT'] = [$this->getTable() . '.id' => $this->input['id']];
+                            $currentExclusion = [$this->getTable() . '.id' => $this->input['id']];
+                            $where['NOT'] = $currentExclusion;
                         }
 
-                        if (countElementsInTable($this->getTable(), $where) > 0) {
+                        $table = $this->getTable();
+                        $database = $GLOBALS['DB'];
+                        if (isset(EntityRegistry::tables()[$table])) {
+                            $count = Orm::read($database, static fn (EntityManager $manager) =>
+                                (new FieldUnicityRepository($manager))->candidateCount($table, $configuredValues, $entityRestriction, (bool) $excludeTemplates, $currentExclusion));
+                            if ($count === null) {
+                                $row = $database->request($table, $where + ['COUNT' => 'cpt'])->next();
+                                $count = $row ? (int) $row['cpt'] : 0;
+                            }
+                        } else {
+                            $count = countElementsInTable($table, $where);
+                        }
+                        if ($count > 0) {
                             if (
                                 $p['unicity_error_message']
                                 || $p['add_event_on_duplicate']
@@ -5354,7 +5373,18 @@ class CommonDBTM extends CommonGLPI
                                     $message[$field] = $this->input[$field];
                                 }
 
-                                $doubles      = getAllDataFromTable($this->getTable(), $where);
+                                $table = $this->getTable();
+                                $database = $GLOBALS['DB'];
+                                $doubles = isset(EntityRegistry::tables()[$table])
+                                    ? Orm::read($database, static fn (EntityManager $manager) =>
+                                        (new FieldUnicityRepository($manager))->candidateRows($table, $configuredValues, $entityRestriction, (bool) $excludeTemplates, $currentExclusion))
+                                    : null;
+                                if ($doubles === null) {
+                                    $doubles = [];
+                                    foreach ($database->request($table, $where) as $row) {
+                                        $doubles[$row['id']] = $row;
+                                    }
+                                }
                                 $message_text = $this->getUnicityErrorMessage($message, $fields, $doubles);
                                 if ($p['unicity_error_message']) {
                                     if (!$fields['action_refuse']) {
