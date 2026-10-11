@@ -205,11 +205,24 @@ class CommonDBTM extends DbTestCase
                 $this->array($connection->fetchAssociative('SELECT * FROM ' . $connection->quoteIdentifier($model->getTable()) . ' WHERE id = ?', [$id]))->isIdenticalTo($before);
                 $this->hasSessionMessages(ERROR, ['Invalid boolean value: ' . $model->getTable() . '.' . $field . '. Expected zero or one; received int.']);
                 $PLUGIN_HOOKS = $hooks;
-                $PLUGIN_HOOKS['post_prepareadd']['nonnullable_flag_fixture'][$type] = static function ($item) use ($field): void {
+                $lateInput = $input;
+                if ($type === LineOperator::class) {
+                    // Reach the late flag hook rather than the existing 0/0 duplicate refusal.
+                    $lateInput['mcc'] = 100000 + hexdec(substr(md5($this->getUniqueString()), 0, 6));
+                    $lateInput['mnc'] = 0;
+                    $this->integer((int)$connection->fetchOne(
+                        'SELECT COUNT(*) FROM glpi_lineoperators WHERE mcc = ? AND mnc = ?',
+                        [$lateInput['mcc'], $lateInput['mnc']]
+                    ))->isIdenticalTo(0);
+                }
+                $latePreparations = 0;
+                $PLUGIN_HOOKS['post_prepareadd']['nonnullable_flag_fixture'][$type] = static function ($item) use ($field, &$latePreparations): void {
+                    ++$latePreparations;
                     $item->input[$field] = 2;
                 };
                 $count = (int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $connection->quoteIdentifier($model->getTable()));
-                $this->boolean((new $type())->add($input))->isFalse();
+                $this->boolean((new $type())->add($lateInput))->isFalse();
+                $this->integer($latePreparations)->isIdenticalTo(1);
                 $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $connection->quoteIdentifier($model->getTable())))->isIdenticalTo($count);
                 $this->hasSessionMessages(ERROR, ['Invalid boolean value: ' . $model->getTable() . '.' . $field . '. Expected zero or one; received int.']);
                 $PLUGIN_HOOKS = $hooks;
