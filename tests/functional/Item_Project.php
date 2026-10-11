@@ -88,7 +88,7 @@ class Item_Project extends DbTestCase
             $this->array(iterator_to_array(ItemProjectModel::getDistinctTypes((string)$project->getID())))
                 ->isIdenticalTo([['itemtype' => ComputerModel::class]]);
             $rows = iterator_to_array(ItemProjectModel::getItemsAssociationRequest(ComputerModel::class, (string)$computer->getID()));
-            $this->array($rows)->isIdenticalTo([[
+            $this->array($rows)->isIdenticalTo([(int)$link->getID() => [
                 'id' => (int)$link->getID(), 'itemtype_1' => ProjectModel::class, 'items_id_1' => (int)$project->getID(),
                 'itemtype_2' => ComputerModel::class, 'items_id_2' => (int)$computer->getID(), 'is_1' => 0, 'is_2' => 1,
             ]]);
@@ -136,9 +136,9 @@ class Item_Project extends DbTestCase
             ]);
             $roles = iterator_to_array(ItemProjectModel::getItemsAssociationRequest(ProjectModel::class, $project->getID()));
             $this->array($roles)->hasSize(1);
-            $this->integer($roles[0]['id'])->isIdenticalTo((int)$self->getID());
-            $this->integer($roles[0]['is_1'])->isIdenticalTo(1);
-            $this->integer($roles[0]['is_2'])->isIdenticalTo(1);
+            $this->integer($roles[(int)$self->getID()]['id'])->isIdenticalTo((int)$self->getID());
+            $this->integer($roles[(int)$self->getID()]['is_1'])->isIdenticalTo(1);
+            $this->integer($roles[(int)$self->getID()]['is_2'])->isIdenticalTo(1);
             $this->boolean(ItemProjectModel::getOppositeByTypeAndID(ProjectModel::class, $project->getID()))->isFalse();
         } finally {
             $_SESSION = $session;
@@ -197,7 +197,7 @@ class Item_Project extends DbTestCase
             };
             $rows = iterator_to_array(ItemProjectModel::getItemsAssociationRequest($kind, (string)$computer->getID()));
             $this->array($rows)->hasSize(1);
-            $this->integer($rows[0]['id'])->isIdenticalTo((int)$link->getID());
+            $this->integer($rows[(int)$link->getID()]['id'])->isIdenticalTo((int)$link->getID());
             $this->array($observer->trace)->isIdenticalTo(['constructed', 'converted', 'loaded']);
             $this->array($other->queries)->isEmpty();
             $this->array($probe->queries)->isNotEmpty();
