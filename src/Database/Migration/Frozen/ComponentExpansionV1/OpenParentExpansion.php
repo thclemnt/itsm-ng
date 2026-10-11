@@ -8,6 +8,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
+use Doctrine\DBAL\Schema\Column;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use Doctrine\DBAL\Types\Type;
 use itsmng\Database\Migration\Frozen\V1\SingleOpenParentAdoption;
@@ -140,7 +141,10 @@ abstract class OpenParentExpansion
                             'unique' => $index->isUnique(), 'flags' => $index->getFlags(), 'options' => $index->getOptions()];
                     }
                 }
-                $retained = array_values(array_diff(array_keys($table->getColumns()), ['items_id', 'opaque_parent_id']));
+                $retained = array_values(array_diff(
+                    array_map(static fn (Column $column): string => $column->getName(), $table->getColumns()),
+                    ['items_id', 'opaque_parent_id']
+                ));
                 $state = ['complete' => false, 'phase' => 'audited', 'source_hash' => $this->identityHash($connection, 'items_id'),
                     'retained_columns' => $retained, 'retained_hash' => $this->retainedHash($connection, $retained),
                     'indexes' => $indexes, 'items_comment' => $table->getColumn('items_id')->getComment()];
@@ -292,10 +296,14 @@ abstract class OpenParentExpansion
     private function finalCheck(Connection $connection): bool
     {
         $check = NativeCheckCatalog::snapshot($connection, static::TABLE)['checks'][static::TABLE][static::CHECK] ?? null;
-        return $check !== null && SubjectPolicyExpression::equivalent(static::policy($connection->getDatabasePlatform())['check'], $check['clause'],
+        return $check !== null && SubjectPolicyExpression::equivalent(
+            static::policy($connection->getDatabasePlatform())['check'],
+            $check['clause'],
             !$connection->getDatabasePlatform() instanceof AbstractMySQLPlatform,
             NativeCheckCatalog::snapshot($connection, static::TABLE)['ansi_quotes'] ?? false,
-            integerTypes: static::policy($connection->getDatabasePlatform())['integer_types'], stringSelections: static::policy($connection->getDatabasePlatform())['string_selections']);
+            integerTypes: static::policy($connection->getDatabasePlatform())['integer_types'],
+            stringSelections: static::policy($connection->getDatabasePlatform())['string_selections']
+        );
     }
 
     private function isProjection(Connection $connection, string $expected): bool
@@ -309,9 +317,14 @@ abstract class OpenParentExpansion
             $stored = is_array($row) && $row['extra'] === 's';
         }
         $policy = static::policy($platform);
-        return $stored && SubjectPolicyExpression::equivalent($expected, $row['expression'], !$platform instanceof AbstractMySQLPlatform,
+        return $stored && SubjectPolicyExpression::equivalent(
+            $expected,
+            $row['expression'],
+            !$platform instanceof AbstractMySQLPlatform,
             NativeCheckCatalog::snapshot($connection, static::TABLE)['ansi_quotes'] ?? false,
-            integerTypes: $policy['integer_types'], stringSelections: $policy['string_selections']);
+            integerTypes: $policy['integer_types'],
+            stringSelections: $policy['string_selections']
+        );
     }
 
     /** Every resumed physical state must have its actual native admission, not only a journal label. */
