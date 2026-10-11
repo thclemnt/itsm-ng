@@ -5,9 +5,7 @@
 namespace itsmng\Database\Repository;
 
 use DateTimeInterface;
-use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\LockMode;
-use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
@@ -18,9 +16,7 @@ use itsmng\Database\Entity\Software;
 use itsmng\Database\Entity\SoftwareCategory;
 use itsmng\Database\Entity\SoftwareLicense;
 use itsmng\Database\Entity\SoftwareVersion;
-use itsmng\Database\Entity\State;
 use itsmng\Database\EntityRegistry;
-use itsmng\Database\EntityRestriction;
 use itsmng\Database\MySQLConnection;
 use itsmng\Database\RecordCriteria;
 use itsmng\Database\UnsupportedCriteria;
@@ -202,255 +198,53 @@ final class SoftwareInstallationRepository
         return $rows;
     }
 
-    /** Fixed installation projection; all arbitrary caller criteria retain forSubject(). */
-    public function nativeForSubject(string $kind, int $id, EntityRestriction $scope, bool $excludeDeleted, ?int $category): array
-    {
-        $installation = $this->em->getClassMetadata(ItemSoftwareVersion::class);
-        $version = $this->em->getClassMetadata(SoftwareVersion::class);
-        $software = $this->em->getClassMetadata(Software::class);
-        $state = $this->em->getClassMetadata(State::class);
-        $connection = $this->em->getConnection();
-        $platform = $connection->getDatabasePlatform();
-        $quote = $this->em->getConfiguration()->getQuoteStrategy();
-        $owner = $installation->associationMappings[ItemSoftwareVersion::referenceAssociation($kind)];
-        $versionReference = $installation->associationMappings['softwareversions'];
-        $softwareReference = $version->associationMappings['softwares'];
-        $stateReference = $version->associationMappings['states'];
-        $categoryColumn = 's.' . $quote->getJoinColumnName($software->associationMappings['softwarecategories']->joinColumns[0], $software, $platform);
-        $select = [];
-        // Keep the original alias order and ScalarHydrator SQL-only conversions.
-        foreach ([
-            [$installation, 'i', 'id', 'id'],
-            [null, '', '', 'softwarecategories_id'],
-            [$software, 's', 'name', 'softname'],
-            [$state, 'st', 'name', 'state'],
-            [$version, 'v', 'id', 'verid'],
-            [$software, 's', 'id', 'softwares_id'],
-            [$version, 'v', 'name', 'version'],
-            [$software, 's', 'is_valid', 'softvalid'],
-            [$installation, 'i', 'date_install', 'dateinstall'],
-            [$installation, 'i', 'is_dynamic', 'is_dynamic'],
-        ] as [$metadata, $alias, $field, $output]) {
-            $expression = $metadata === null ? $categoryColumn
-                : Type::getType($metadata->getTypeOfField($field))->convertToPHPValueSQL(
-                    $alias . '.' . $quote->getColumnName($field, $metadata, $platform),
-                    $platform
-                );
-            $select[] = $expression . ' AS ' . $platform->quoteSingleIdentifier($output);
-        }
-        $query = $connection->createQueryBuilder()
-            ->select(...$select)
-            ->from($quote->getTableName($installation, $platform), 'i')
-            ->innerJoin(
-                'i',
-                $quote->getTableName($version, $platform),
-                'v',
-                'i.' . $quote->getJoinColumnName($versionReference->joinColumns[0], $installation, $platform)
-                . ' = v.' . $quote->getReferencedJoinColumnName($versionReference->joinColumns[0], $installation, $platform)
-            )
-            ->innerJoin(
-                'v',
-                $quote->getTableName($software, $platform),
-                's',
-                'v.' . $quote->getJoinColumnName($softwareReference->joinColumns[0], $version, $platform)
-                . ' = s.' . $quote->getReferencedJoinColumnName($softwareReference->joinColumns[0], $version, $platform)
-            )
-            ->leftJoin(
-                'v',
-                $quote->getTableName($state, $platform),
-                'st',
-                'v.' . $quote->getJoinColumnName($stateReference->joinColumns[0], $version, $platform)
-                . ' = st.' . $quote->getReferencedJoinColumnName($stateReference->joinColumns[0], $version, $platform)
-            )
-            ->where('i.' . $quote->getJoinColumnName($owner->joinColumns[0], $installation, $platform)
-                . ' = ' . Type::getType(Types::BIGINT)->convertToDatabaseValueSQL('?', $platform))
-            ->setParameter(0, $id, Types::BIGINT);
-        $position = 1;
-        if ($scope->entities !== null) {
-            $values = [];
-            foreach ($scope->entities as $entity) {
-                $values[] = Type::getType(Types::INTEGER)->convertToDatabaseValueSQL('?', $platform);
-                $query->setParameter($position++, $entity, Types::INTEGER);
-            }
-            $column = 's.' . $quote->getJoinColumnName($software->associationMappings['entities']->joinColumns[0], $software, $platform);
-            $predicate = $values ? $column . ($scope->entityList ? ' IN (' . implode(', ', $values) . ')' : ' = ' . $values[0]) : '1 = 0';
-            if ($scope->ancestors) {
-                $recursive = 's.' . $quote->getColumnName('is_recursive', $software, $platform)
-                    . ' = ' . Type::getType(Types::BOOLEAN)->convertToDatabaseValueSQL('?', $platform);
-                $query->setParameter($position++, true, Types::BOOLEAN);
-                $values = [];
-                foreach ($scope->ancestors as $ancestor) {
-                    $values[] = Type::getType(Types::INTEGER)->convertToDatabaseValueSQL('?', $platform);
-                    $query->setParameter($position++, $ancestor, Types::INTEGER);
-                }
-                $predicate = '(' . $predicate . ' OR (' . $recursive . ' AND ' . $column . ' IN (' . implode(', ', $values) . ')))';
-            }
-            $query->andWhere($predicate);
-        }
-        if ($excludeDeleted) {
-            $query->andWhere('i.' . $quote->getColumnName('is_deleted', $installation, $platform)
-                . ' = ' . Type::getType(Types::BOOLEAN)->convertToDatabaseValueSQL('?', $platform))
-                ->setParameter($position++, false, Types::BOOLEAN);
-        }
-        if ($category !== null) {
-            $query->andWhere($category === 0 ? $categoryColumn . ' IS NULL'
-                : $categoryColumn . ' = ' . Type::getType(Types::BIGINT)->convertToDatabaseValueSQL('?', $platform));
-            if ($category !== 0) {
-                $query->setParameter($position, $category, Types::BIGINT);
-            }
-        }
-        $rows = $query->orderBy('s.' . $quote->getColumnName('name', $software, $platform))
-            ->addOrderBy('v.' . $quote->getColumnName('name', $version, $platform))
-            ->addOrderBy('i.' . $quote->getColumnName('id', $installation, $platform))
-            ->executeQuery()->fetchAllAssociative();
-        foreach ($rows as &$row) {
-            if ($row['dateinstall'] instanceof DateTimeInterface) {
-                $row['dateinstall'] = $row['dateinstall']->format('Y-m-d');
-            }
-            $row['softwarecategories_id'] ??= 0;
-            $row['softvalid'] = (int)$row['softvalid'];
-            $row['is_dynamic'] = (int)$row['is_dynamic'];
-        }
-        return $rows;
-    }
-
     /**
      * Current link fields for the exact targets selected before the installation table's form callbacks.
      * These renderer-only rows do not replace getLink(), its item rights, or version parent checks.
-     * The private read owner admits the native path; supplied managers default to ORM.
      */
-    public function displayDataForInstallations(array $installations, bool $native = false): array
+    public function displayDataForInstallations(array $installations): array
     {
         $data = ['softwares' => [], 'versions' => [], 'categories' => []];
         foreach (array_chunk(array_values(array_unique(array_column($installations, 'softwares_id'))), 250) as $ids) {
-            $rows = $native
-                ? $this->nativeDisplayRows(Software::class, ['id', 'name', 'is_recursive', 'is_template'], ['entities_id' => 'entities'], $ids)
-                : $this->em->createQueryBuilder()
-                    ->select('s.id, s.name, IDENTITY(s.entities) AS entities_id, s.is_recursive, s.is_template')
-                    ->from(Software::class, 's')
-                    ->where('s.id IN (:ids)')
-                    ->setParameter('ids', $ids)
-                    ->getQuery()
-                    ->getScalarResult();
+            $rows = $this->em->createQueryBuilder()
+                ->select('s.id, s.name, IDENTITY(s.entities) AS entities_id, s.is_recursive, s.is_template')
+                ->from(Software::class, 's')
+                ->where('s.id IN (:ids)')
+                ->setParameter('ids', $ids)
+                ->getQuery()
+                ->getScalarResult();
             foreach ($rows as $row) {
                 $row['is_recursive'] = (int)$row['is_recursive'];
                 $row['is_template'] = (int)$row['is_template'];
-                $data['softwares'][(int)$row['id']] = $native ? [
-                    'id' => $row['id'], 'name' => $row['name'], 'entities_id' => $row['entities_id'],
-                    'is_recursive' => $row['is_recursive'], 'is_template' => $row['is_template'],
-                ] : $row;
+                $data['softwares'][(int)$row['id']] = $row;
             }
         }
         foreach (array_chunk(array_values(array_unique(array_column($installations, 'verid'))), 250) as $ids) {
-            $rows = $native
-                ? $this->nativeDisplayRows(SoftwareVersion::class, ['id', 'name'], ['softwares_id' => 'softwares'], $ids)
-                : $this->em->createQueryBuilder()
-                    ->select('v.id, v.name, IDENTITY(v.softwares) AS softwares_id')
-                    ->from(SoftwareVersion::class, 'v')
-                    ->where('v.id IN (:ids)')
-                    ->setParameter('ids', $ids)
-                    ->getQuery()
-                    ->getScalarResult();
+            $rows = $this->em->createQueryBuilder()
+                ->select('v.id, v.name, IDENTITY(v.softwares) AS softwares_id')
+                ->from(SoftwareVersion::class, 'v')
+                ->where('v.id IN (:ids)')
+                ->setParameter('ids', $ids)
+                ->getQuery()
+                ->getScalarResult();
             foreach ($rows as $row) {
                 $data['versions'][(int)$row['id']] = $row;
             }
         }
         $categories = array_filter(array_unique(array_column($installations, 'softwarecategories_id')));
         foreach (array_chunk(array_values($categories), 250) as $ids) {
-            $rows = $native
-                ? $this->nativeDisplayRows(SoftwareCategory::class, ['id', 'name', 'completename'], [], $ids)
-                : $this->em->createQueryBuilder()
-                    ->select('c.id, c.name, c.completename')
-                    ->from(SoftwareCategory::class, 'c')
-                    ->where('c.id IN (:ids)')
-                    ->setParameter('ids', $ids)
-                    ->getQuery()
-                    ->getScalarResult();
+            $rows = $this->em->createQueryBuilder()
+                ->select('c.id, c.name, c.completename')
+                ->from(SoftwareCategory::class, 'c')
+                ->where('c.id IN (:ids)')
+                ->setParameter('ids', $ids)
+                ->getQuery()
+                ->getScalarResult();
             foreach ($rows as $row) {
                 $data['categories'][(int)$row['id']] = $row;
             }
         }
         return $data;
-    }
-
-    /** Fixed display columns only; scalar hydration deliberately skips PHP type conversion. */
-    private function nativeDisplayRows(string $class, array $fields, array $references, array $ids): array
-    {
-        $metadata = $this->em->getClassMetadata($class);
-        $connection = $this->em->getConnection();
-        $platform = $connection->getDatabasePlatform();
-        $quote = $this->em->getConfiguration()->getQuoteStrategy();
-        $select = [];
-        foreach ($fields as $field) {
-            $select[] = Type::getType($metadata->getTypeOfField($field))->convertToPHPValueSQL(
-                'r.' . $quote->getColumnName($field, $metadata, $platform),
-                $platform
-            ) . ' AS ' . $field;
-        }
-        foreach ($references as $alias => $field) {
-            $reference = $metadata->associationMappings[$field];
-            $select[] = 'r.' . $quote->getJoinColumnName($reference->joinColumns[0], $metadata, $platform)
-            . ' AS ' . $alias;
-        }
-        return $connection->createQueryBuilder()
-            ->select(...$select)
-            ->from($quote->getTableName($metadata, $platform), 'r')
-            ->where('r.' . $quote->getColumnName('id', $metadata, $platform) . ' IN (?)')
-            // Match ORM inference: an array is a binding enum, not per-element mapped SQL conversion.
-            ->setParameter(0, $ids, is_int(reset($ids)) ? ArrayParameterType::INTEGER : ArrayParameterType::STRING)
-            ->executeQuery()
-            ->fetchAllAssociative();
-    }
-
-    /** Effective license IDs retain assignment multiplicity and their original ordering. */
-    public function nativeEffectiveLicenseIdsForVersions(string $kind, int $owner, array $versions): array
-    {
-        $rows = [];
-        if ($versions === []) {
-            return $rows;
-        }
-        $assignment = $this->em->getClassMetadata(ItemSoftwareLicense::class);
-        $license = $this->em->getClassMetadata(SoftwareLicense::class);
-        $connection = $this->em->getConnection();
-        $platform = $connection->getDatabasePlatform();
-        $quote = $this->em->getConfiguration()->getQuoteStrategy();
-        $ownerReference = $assignment->associationMappings[ItemSoftwareLicense::referenceAssociation($kind)];
-        $licenseReference = $assignment->associationMappings['softwarelicenses'];
-        $useReference = $license->associationMappings['useVersion'];
-        $buyReference = $license->associationMappings['buyVersion'];
-        $use = 'l.' . $quote->getJoinColumnName($useReference->joinColumns[0], $license, $platform);
-        $buy = 'l.' . $quote->getJoinColumnName($buyReference->joinColumns[0], $license, $platform);
-        $licenseId = 'l.' . $quote->getColumnName('id', $license, $platform);
-        $ownerType = Type::getType(Types::BIGINT);
-        foreach (array_chunk(array_values(array_unique(array_map('intval', $versions))), 250) as $batch) {
-            $result = $connection->createQueryBuilder()
-                ->select(
-                    Type::getType($license->getTypeOfField('id'))->convertToPHPValueSQL($licenseId, $platform) . ' AS id',
-                    $use . ' AS use_version',
-                    $buy . ' AS buy_version'
-                )
-                ->from($quote->getTableName($assignment, $platform), 'i')
-                ->innerJoin(
-                    'i',
-                    $quote->getTableName($license, $platform),
-                    'l',
-                    'i.' . $quote->getJoinColumnName($licenseReference->joinColumns[0], $assignment, $platform) . ' = ' . $licenseId
-                )
-                ->where(
-                    'i.' . $quote->getJoinColumnName($ownerReference->joinColumns[0], $assignment, $platform)
-                    . ' = ' . $ownerType->convertToDatabaseValueSQL('?', $platform)
-                )
-                ->andWhere($use . ' IN (?) OR (' . $use . ' IS NULL AND ' . $buy . ' IN (?))')
-                ->setParameter(0, $owner, Types::BIGINT)
-                ->setParameter(1, $batch, ArrayParameterType::INTEGER)
-                ->setParameter(2, $batch, ArrayParameterType::INTEGER)
-                ->orderBy('i.' . $quote->getColumnName('id', $assignment, $platform))
-                ->executeQuery();
-            foreach ($result->fetchAllAssociative() as $row) {
-                $rows[(int)($row['use_version'] ?? $row['buy_version'])][] = (int)$row['id'];
-            }
-        }
-        return $rows;
     }
 
     /** API expansion already has an authorized owner; it has no UI category filter. */

@@ -40,7 +40,6 @@ use Phone as PhoneModel;
 use InvalidArgumentException;
 use Doctrine\DBAL\Configuration;
 use Doctrine\DBAL\Logging\Middleware;
-use Doctrine\DBAL\Query\QueryBuilder;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Id\AssignedGenerator;
@@ -66,7 +65,6 @@ use Software;
 use SoftwareCategory;
 use SoftwareLicense;
 use SoftwareVersion;
-use itsmng\Database\EntityRestriction;
 use itsmng\Database\Entity\Entity as EntityRecord;
 use itsmng\Database\Entity\ItemSoftwareLicense;
 use itsmng\Database\Entity\ItemSoftwareVersion;
@@ -618,9 +616,6 @@ class Item_SoftwareVersion extends DbTestCase
             try {
                 $DB = $adapter;
                 $this->array(ItemSoftwareVersionModel::getFromItem($computer))->isIdenticalTo($publicExpected);
-                $nativeLists = array_filter($probe->queryBuilders, static fn ($query) =>
-                    str_contains(str_replace(['`', '"'], '', $query->getSQL()), 'FROM glpi_items_softwareversions i'));
-                $this->array($nativeLists)->hasSize(1);
                 $DB = $originalAdapter;
                 $reader = new SoftwareRenderingReadOperation($probe);
                 foreach ([null, 0, (int)$category->getID(), PHP_INT_MAX] as $categoryFilter) {
@@ -632,10 +627,6 @@ class Item_SoftwareVersion extends DbTestCase
                     $this->array($reader->forSubject('Computer', (int)$computer->getID(), $selection, true, null))
                         ->isIdenticalTo($ordinary->forSubject('Computer', (int)$computer->getID(), $selection->wrappedCriteria(), true, null));
                 }
-                $custom = new EntityRestriction(['glpi_softwares.name' => $software->fields['name']], 'glpi_softwares', 'entities_id', false, null);
-                $builders = $probe->builders;
-                $this->array($reader->forSubject('Computer', (int)$computer->getID(), $custom, true, null))->isIdenticalTo($expected);
-                $this->integer($probe->builders)->isIdenticalTo($builders);
                 $connection->update('glpi_items_softwareversions', ['is_deleted' => true], ['id' => $installations[0]->getID()], ['is_deleted' => 'boolean', 'id' => 'bigint']);
                 $this->array($reader->forSubject('Computer', (int)$computer->getID(), $scope, true, null))->hasSize(1);
                 $this->array($reader->forSubject('Computer', (int)$computer->getID(), $scope, false, null))->isIdenticalTo($expected);
@@ -691,29 +682,6 @@ class Item_SoftwareVersion extends DbTestCase
                 $this->array($ordinary->forSubject('Computer', (int)$computer->getID(), $scope->wrappedCriteria(), true, null))->isEmpty();
                 $this->array($reader->forSubject('Computer', (int)$computer->getID(), $scope, true, null))->isEmpty();
                 Type::overrideType('bigint', $bigint);
-                $extension = new class ($connection) extends SoftwareRenderingProbe {
-                    private ?EventManager $events = null;
-                    public function getEventManager(): EventManager
-                    {
-                        return $this->events ??= new EventManager();
-                    }
-                };
-                $local = new SoftwareRenderingReadOperation($extension);
-                $listener = new class () {
-                    public int $loads = 0;
-                    public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
-                    {
-                        ++$this->loads;
-                    }
-                };
-                $extension->getEventManager()->addEventListener([Events::loadClassMetadata], $listener);
-                try {
-                    $this->array($local->forSubject('Computer', (int)$computer->getID(), $scope, true, null))->isIdenticalTo($expected);
-                    $this->integer($listener->loads)->isGreaterThan(0);
-                    $this->integer($extension->builders)->isIdenticalTo(0);
-                } finally {
-                    $local->close();
-                }
                 // getID can change current authority and global route after the owner captured its connection.
                 $callback = new class () extends ComputerModel {
                     public mixed $replacement;
@@ -1116,14 +1084,13 @@ class Item_SoftwareVersion extends DbTestCase
                 $this->array($reader->rendering('Computer', $owner, []))->isIdenticalTo([
                     'licenses' => [], 'display' => $emptyDisplay,
                 ]);
-                $this->integer($probe->builders)->isIdenticalTo(0);
+                $this->array($probe->queries)->isEmpty();
                 $expected = [
                     'licenses' => $repository->effectiveLicenseIdsForVersions('Computer', $owner, array_column($displayRows, 'verid')),
                     'display' => $repository->displayDataForInstallations($displayRows),
                 ];
                 $this->array($reader->rendering('Computer', $owner, $displayRows))->isIdenticalTo($expected);
                 $this->array($probe->queries)->hasSize(4);
-                $this->integer($probe->builders)->isIdenticalTo(4);
                 $this->array($probe->queries[0]['types'])->isIdenticalTo([
                     Types::BIGINT,
                     ArrayParameterType::INTEGER,
@@ -1181,32 +1148,6 @@ class Item_SoftwareVersion extends DbTestCase
                 $this->array($converted['display'])->isIdenticalTo($repository->displayDataForInstallations($displayRows));
                 $this->array($converted['display']['softwares'])->hasSize(1);
                 Type::overrideType('bigint', $bigint);
-                $extension = new class ($connection) extends SoftwareRenderingProbe {
-                    private ?EventManager $events = null;
-                    public function getEventManager(): EventManager
-                    {
-                        return $this->events ??= new EventManager();
-                    }
-                };
-                $local = new SoftwareRenderingReadOperation($extension);
-                $listener = new class () {
-                    public int $loads = 0;
-                    public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
-                    {
-                        ++$this->loads;
-                    }
-                };
-                $extension->getEventManager()->addEventListener([Events::loadClassMetadata], $listener);
-                try {
-                    $this->array($local->rendering('Computer', $owner, $displayRows))->isIdenticalTo([
-                        'licenses' => $repository->effectiveLicenseIdsForVersions('Computer', $owner, array_column($displayRows, 'verid')),
-                        'display' => $repository->displayDataForInstallations($displayRows),
-                    ]);
-                    $this->integer($listener->loads)->isGreaterThan(0);
-                    $this->integer($extension->builders)->isIdenticalTo(0);
-                } finally {
-                    $local->close();
-                }
             } finally {
                 Type::overrideType('string', $string);
                 Type::overrideType('bigint', $bigint);
@@ -1226,15 +1167,8 @@ class Item_SoftwareVersion extends DbTestCase
 
 class SoftwareRenderingProbe extends ScalarReadProbe
 {
-    public array $queryBuilders = [];
-
     public function isTransactionActive(): bool
     {
         return $this->selected->isTransactionActive();
-    }
-
-    public function createQueryBuilder(): QueryBuilder
-    {
-        return $this->queryBuilders[] = parent::createQueryBuilder();
     }
 }
