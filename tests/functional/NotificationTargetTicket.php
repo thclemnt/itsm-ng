@@ -100,7 +100,7 @@ class NotificationTargetTicket extends DbTestCase
             ]);
             $_SESSION['glpiactiveprofile'][TicketTask::$rightname] = CommonITILTask::SEEPUBLIC;
             $this->boolean(TicketTask::canView())->isTrue();
-            $this->boolean(Session::haveRight(TicketTask::$rightname, CommonITILTask::SEEPRIVATE))->isFalse();
+            $this->integer(Session::haveRight(TicketTask::$rightname, CommonITILTask::SEEPRIVATE))->isIdenticalTo(0);
             $owner = Orm::create($DB);
             $dirty = $owner->find(Entity\Document::class, (int)$documents[0]->getID());
             $dirty->name = 'Independent unflushed document';

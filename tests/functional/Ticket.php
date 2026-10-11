@@ -439,7 +439,7 @@ class Ticket extends DbTestCase
             $this->string(Session::getCurrentInterface())->isIdenticalTo('helpdesk');
             $this->boolean($ticket->getFromDB($id))->isTrue();
             $this->boolean($ticket->canRequesterUpdateItem())->isTrue();
-            $this->boolean($ticket->canDeleteItem())->isTrue();
+            $this->integer($ticket->canDeleteItem())->isIdenticalTo(CREATE);
             $this->login();
             $followup = $this->createItem(ITILFollowup::class, ['itemtype' => LegacyTicket::class,
                 'items_id' => $id, 'content' => 'Private activity still blocks requester', 'is_private' => true]);
@@ -469,7 +469,7 @@ class Ticket extends DbTestCase
             $this->login('post-only', 'postonly');
             $this->boolean($ticket->getFromDB($id))->isTrue();
             $this->boolean($ticket->canRequesterUpdateItem())->isTrue();
-            $this->boolean($ticket->canDeleteItem())->isTrue();
+            $this->integer($ticket->canDeleteItem())->isIdenticalTo(CREATE);
         } finally {
             $_SESSION = $session;
         }
