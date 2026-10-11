@@ -36,14 +36,252 @@ namespace tests\units;
 use CommonITILActor;
 use CommonITILValidation;
 use DbTestCase;
+use Computer;
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\DBAL\Exception as DbalException;
+use Doctrine\DBAL\Exception\InvalidArgumentException as InvalidDbalArgument;
+use Doctrine\DBAL\Result;
+use Doctrine\ORM\EntityManager;
+use ReflectionProperty;
+use Stringable;
+use NetworkPort as LegacyNetworkPort;
+use NetworkPortInstantiation;
+use RuleAction;
+use RuleTicket as LegacyRuleTicket;
+use mock\DBmysql as MacReadAdapter;
+use tests\fixtures\ScalarReadProbe;
+use itsmng\Database\Entity\NetworkPort as NetworkPortRecord;
+use itsmng\Database\Orm;
+use itsmng\Database\RowIterator;
 use Group_User;
 use Ticket_User;
 use Toolbox;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/ruleticket.class.php */
 
 class RuleTicket extends DbTestCase
 {
+    public function testMacAssignmentKeepsDuplicateParentsCurrentAndOwned(): void
+    {
+        global $DB;
+        $this->login();
+        $computer = getItemByTypeName('Computer', '_test_pc01');
+        $entity = (int)$computer->getEntityID();
+        $this->setEntity($entity, true);
+        $prefix = $this->getUniqueString();
+        $mac = '02:aa:bb:' . implode(':', str_split(substr(hash('sha256', $prefix), 0, 6), 2));
+        $deleted = $this->createItem(
+            Computer::class,
+            [
+                'name' => $prefix . '-deleted', 'entities_id' => $entity, 'is_deleted' => 1,
+            ]
+        );
+        $ports = [];
+        foreach ([$computer, $computer, $deleted] as $index => $parent) {
+            $ports[] = $this->createItem(
+                LegacyNetworkPort::class,
+                [
+                    'itemtype' => 'Computer', 'items_id' => $parent->getID(), 'entities_id' => $entity,
+                    'name' => $prefix . '-' . $index, 'mac' => $mac, 'instantiation_type' => null,
+                ]
+            );
+        }
+        $ids = static function (array $chains): array {
+            $values = array_map(static fn (array $chain): int => (int)$chain[array_key_last($chain)]->getID(), $chains);
+            sort($values);
+            return $values;
+        };
+        $expected = array_map(static fn (LegacyNetworkPort $port): int => (int)$port->getID(), $ports);
+        sort($expected);
+        $independent = Orm::create($DB);
+        try {
+            $dirty = $independent->find(NetworkPortRecord::class, $ports[0]->getID());
+            $dirty->name = 'Independent pending MAC owner';
+            Orm::read($DB, function (EntityManager $outer) use ($ports, $mac, $ids, $expected): void {
+                $pending = $outer->find(NetworkPortRecord::class, $ports[0]->getID());
+                $pending->name = 'Enclosing pending MAC owner';
+                $chains = NetworkPortInstantiation::getItemsByMac(strtoupper($mac));
+                $this->array($ids($chains))->isIdenticalTo($expected);
+                foreach ($chains as $chain) {
+                    $this->string($chain[array_key_last($chain)]->fields['name'])->notContains('pending MAC owner');
+                }
+                $this->boolean($outer->contains($pending))->isTrue();
+                $this->string($pending->name)->isIdenticalTo('Enclosing pending MAC owner');
+            });
+            $this->boolean($independent->contains($dirty))->isTrue();
+            $this->string($dirty->name)->isIdenticalTo('Independent pending MAC owner');
+            // Despite the historical method name, duplicate MACs choose the first eligible owner.
+            $identity = NetworkPortInstantiation::getUniqueItemByMac($mac, $entity);
+            $this->integer((int)$identity['id'])->isIdenticalTo((int)$computer->getID());
+            $this->string($identity['itemtype'])->isIdenticalTo('Computer');
+            $this->array(NetworkPortInstantiation::getUniqueItemByMac($mac, -1))->isEmpty();
+            $rule = $this->createItem(
+                LegacyRuleTicket::class,
+                [
+                    'name' => $prefix, 'match' => 'OR', 'is_active' => 1,
+                    'sub_type' => 'RuleTicket', 'condition' => LegacyRuleTicket::ONADD,
+                ]
+            );
+            $this->createItem(
+                RuleAction::class,
+                [
+                    'rules_id' => $rule->getID(), 'field' => 'affectobject',
+                    'action_type' => 'affectbymac', 'value' => strtoupper($mac),
+                ]
+            );
+            $this->boolean($rule->getRuleWithCriteriasAndActions($rule->getID(), 0, 1))->isTrue();
+            $output = $rule->executeActions([], ['entities_id' => $entity]);
+            $this->array($output['items_id'])->isIdenticalTo(['Computer' => [$computer->getID()]]);
+            foreach (array_slice($ports, 0, 2) as $port) {
+                $this->boolean($port->update(['id' => $port->getID(), 'mac' => '02:00:00:00:00:00']))->isTrue();
+            }
+            $this->array($ids(NetworkPortInstantiation::getItemsByMac($mac)))->isIdenticalTo([(int)$ports[2]->getID()]);
+            $this->array(NetworkPortInstantiation::getUniqueItemByMac($mac, $entity))->isEmpty();
+            $unchanged = ['Printer' => [0]];
+            $this->array($rule->executeActions(['items_id' => $unchanged], ['entities_id' => $entity])['items_id'])->isIdenticalTo($unchanged);
+            $this->boolean($independent->contains($dirty))->isTrue();
+            $this->string($dirty->name)->isIdenticalTo('Independent pending MAC owner');
+        } finally {
+            $independent->clear();
+        }
+    }
+
+    public function testMacIdentityBindingsAndCustomRouteKeepNativeContracts(): void
+    {
+        global $DB;
+        $this->login();
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        $computer = getItemByTypeName('Computer', '_test_pc01');
+        $this->setEntity((int)$computer->getEntityID(), true);
+        $text = "literal'\\mac-" . strtolower($this->getUniqueString());
+        $ports = [];
+        foreach ([$text, 'NULL', null, '', '0'] as $mac) {
+            $port = $this->createItem(
+                LegacyNetworkPort::class,
+                [
+                    'itemtype' => 'Computer', 'items_id' => $computer->getID(),
+                    'name' => $this->getUniqueString(), 'instantiation_type' => null,
+                ]
+            );
+            // Native fixture values deliberately exercise the read contract, not MAC UI validation.
+            $connection->update('glpi_networkports', ['mac' => $mac], ['id' => $port->getID()]);
+            $this->boolean($port->getFromDB($port->getID()))->isTrue();
+            $this->variable($port->fields['mac'])->isIdenticalTo($mac);
+            $ports[] = $port;
+        }
+        $ids = static function (array $chains): array {
+            $values = array_map(static fn (array $chain): int => (int)$chain[array_key_last($chain)]->getID(), $chains);
+            sort($values);
+            return $values;
+        };
+        $nativeIds = static function (string $predicate, array $params = []) use ($connection): array {
+            $values = array_map('intval', $connection->fetchFirstColumn('SELECT id FROM glpi_networkports WHERE ' . $predicate, $params));
+            sort($values);
+            return $values;
+        };
+        $this->array($ids(NetworkPortInstantiation::getItemsByMac(addslashes($text))))->isIdenticalTo($nativeIds('mac = ?', [$text]));
+        foreach (['NULL', 'null'] as $sentinel) {
+            $this->array($ids(NetworkPortInstantiation::getItemsByMac($sentinel)))->isIdenticalTo($nativeIds('mac IS NULL'));
+        }
+        foreach (['', '0'] as $value) {
+            $this->array($ids(NetworkPortInstantiation::getItemsByMac($value)))->isIdenticalTo($nativeIds('mac = ?', [$value]));
+        }
+        $operator = $database->getComparisonOperator('LIKE');
+        foreach ([['null', '%null%'], ['*null*', '%null%'], [addslashes($text), '%' . $text . '%']] as [$value, $pattern]) {
+            $this->array($ids(NetworkPortInstantiation::getItemsByMac($value, true)))->isIdenticalTo($nativeIds('mac ' . $operator . ' ?', [$pattern]));
+        }
+        $rule = $this->createItem(
+            LegacyRuleTicket::class,
+            ['name' => $this->getUniqueString(), 'sub_type' => 'RuleTicket', 'condition' => LegacyRuleTicket::ONADD]
+        );
+        $this->createItem(
+            RuleAction::class,
+            ['rules_id' => $rule->getID(), 'field' => 'affectobject', 'action_type' => 'affectbymac', 'value' => '02:00:00:00:00:00']
+        );
+        $this->boolean($rule->getRuleWithCriteriasAndActions($rule->getID(), 0, 1))->isTrue();
+        $selected = new class ($connection, $database) extends ScalarReadProbe {
+            public int $unitsAtQuery = 0;
+            public ?DbalException $failure = null;
+
+            public function __construct($connection, private object $original)
+            {
+                parent::__construct($connection);
+            }
+
+            public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
+            {
+                $this->unitsAtQuery = (new ReflectionProperty(Orm::class, 'unitsOfWork'))->getValue();
+                if ($this->failure !== null) {
+                    throw $this->failure;
+                }
+                $result = parent::executeQuery($sql, $params, $types, $qcp);
+                // Public port/parent callbacks retain their own later native reader route.
+                $GLOBALS['DB'] = $this->original;
+                return $result;
+            }
+        };
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new MacReadAdapter();
+        $resolutions = 0;
+        $this->calling($adapter)->getDoctrineConnection = static function () use ($selected, &$resolutions) {
+            ++$resolutions;
+            return $selected;
+        };
+        $table = LegacyNetworkPort::getTable();
+        try {
+            $DB = $adapter;
+            $units = (new ReflectionProperty(Orm::class, 'unitsOfWork'))->getValue();
+            $value = new class ($text) implements Stringable {
+                public int $conversions = 0;
+
+                public function __construct(private string $value)
+                {
+                }
+
+                public function __toString(): string
+                {
+                    ++$this->conversions;
+                    return addslashes($this->value);
+                }
+            };
+            $this->array($ids(NetworkPortInstantiation::getItemsByMac($value)))->isIdenticalTo([(int)$ports[0]->getID()]);
+            $this->integer($value->conversions)->isIdenticalTo(1);
+            $this->integer($resolutions)->isIdenticalTo(1);
+            $this->integer(count($selected->queries))->isIdenticalTo(1);
+            $this->array($selected->queries[0]['params'])->contains($text);
+            $this->integer($selected->unitsAtQuery)->isIdenticalTo($units);
+            $DB = $adapter;
+            $units = (new ReflectionProperty(Orm::class, 'unitsOfWork'))->getValue();
+            $failure = new InvalidDbalArgument('Refused MAC identity read');
+            $selected->failure = $failure;
+            $this->exception(static fn () => $rule->executeActions([], ['entities_id' => $computer->getEntityID()]))->isIdenticalTo($failure);
+            $this->integer($resolutions)->isIdenticalTo(2);
+            $this->integer($selected->unitsAtQuery)->isIdenticalTo($units);
+            $selected->failure = null;
+            $DB = $adapter;
+            $this->array($ids(NetworkPortInstantiation::getItemsByMac(addslashes($text))))->isIdenticalTo([(int)$ports[0]->getID()]);
+            $resolutions = 0;
+            $criteria = null;
+            $this->calling($adapter)->request = static function ($input) use (&$criteria) {
+                $criteria = $input;
+                return new RowIterator([]);
+            };
+            LegacyNetworkPort::forceTable('opaque_mac_route');
+            $DB = $adapter;
+            $this->array(NetworkPortInstantiation::getItemsByMac('N*LL', true))->isEmpty();
+            $this->array($criteria)->isIdenticalTo([
+                'SELECT' => 'id', 'FROM' => 'opaque_mac_route', 'WHERE' => ['mac' => ['LIKE', 'n%ll']],
+            ]);
+            $this->integer($resolutions)->isIdenticalTo(0);
+        } finally {
+            LegacyNetworkPort::forceTable($table);
+            $DB = $database;
+        }
+    }
+
     public function testGetCriteria()
     {
         $rule = new \RuleTicket();

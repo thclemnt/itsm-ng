@@ -32,8 +32,12 @@
  */
 
 use Doctrine\ORM\EntityManager;
+use itsmng\Database\Entity\NetworkPort as NetworkPortRecord;
+use itsmng\Database\EntityRegistry;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\NetworkPortAggregateRepository;
+use itsmng\Database\Repository\NetworkPortMacRepository;
 use itsmng\Database\RowIterator;
 
 if (!defined('GLPI_ROOT')) {
@@ -418,11 +422,23 @@ class NetworkPortInstantiation extends CommonDBChild
         foreach (['NetworkPort'] as $netporttype) {
             $netport = new $netporttype();
 
-            $iterator = $DB->request([
-               'SELECT' => 'id',
-               'FROM'   => $netport->getTable(),
-               'WHERE'  => ['mac' => $relation]
-            ]);
+            $database = $DB;
+            $table = $netport->getTable();
+            if ((EntityRegistry::tables()[$table] ?? null) === NetworkPortRecord::class) {
+                $connection = $database->getDoctrineConnection();
+                OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+                $rows = Orm::withReadConnection(
+                    $connection,
+                    static fn () => (new NetworkPortMacRepository($connection))->matchingPortIdentities($mac, (bool)$wildcard_search)
+                );
+                $iterator = new RowIterator($rows);
+            } else {
+                $iterator = $database->request([
+                    'SELECT' => 'id',
+                    'FROM' => $table,
+                    'WHERE' => ['mac' => $relation],
+                ]);
+            }
 
             while ($element = $iterator->next()) {
                 if ($netport->getFromDB($element['id'])) {
