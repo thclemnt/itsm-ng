@@ -160,7 +160,19 @@ class Item_DeviceGeneric extends DbTestCase
             $this->array(array_column($link->getTableGroupRows($device, 'Computer'), 'id'))->isIdenticalTo([$assignedId]);
             $_SESSION['glpiactiveentities'] = [0];
             $_SESSION['glpishowallentities'] = true;
-            $this->array(array_column($link->getTableGroupRows($device, 'Computer'), 'id'))->isIdenticalTo([$assignedId, (int)$foreign->getID()]);
+            $allComputerIds = [$assignedId, (int)$foreign->getID()];
+            if ($selectedStock !== null) {
+                // Unrestricted LEFT JOIN semantics retain the selected zero identity.
+                $this->string($selectedStock->fields['itemtype'])->isIdenticalTo('Computer');
+                $this->integer((int)$selectedStock->fields['items_id'])->isIdenticalTo(0);
+                $this->variable($selectedStock->fields[$reference['selections']['Computer']['column']])->isNull();
+                $this->variable($selectedStock->fields[$reference['fallback_column']])->isNull();
+                $this->boolean((bool)$selectedStock->fields['is_deleted'])->isFalse();
+                array_unshift($allComputerIds, (int)$selectedStock->getID());
+            }
+            $this->array(array_column($link->getTableGroupRows($device, 'Computer'), 'id'))->isIdenticalTo($allComputerIds);
+            $legacyRows = iterator_to_array($DB->request($link->getTableGroupCriteria($device, 'Computer')));
+            $this->array(array_column($legacyRows, 'id'))->isIdenticalTo($allComputerIds);
             $_SESSION['glpishowallentities'] = false;
 
             $em = Orm::create($DB);
