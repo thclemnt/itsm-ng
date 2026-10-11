@@ -5,9 +5,7 @@
 namespace itsmng\Database\Repository;
 
 use Doctrine\ORM\EntityManager;
-use Doctrine\ORM\Events;
 use itsmng\Database\Entity\ITILSolution;
-use itsmng\Database\Mapping\AttributeDriver;
 use itsmng\Database\Mapping\DiscriminatedBy;
 use itsmng\Database\Mapping\ITILStatisticsRelation;
 use itsmng\Database\Mapping\ITILStatisticsRole;
@@ -78,17 +76,10 @@ final class ITILStatisticsType
         return $definitions;
     }
 
-    /** Hydrate only reporting declarations for the known property-attribute driver. */
+    /** Load only mapped declarations with reporting properties. */
     private static function reportingMetadata(EntityManager $em): iterable
     {
         $driver = $em->getConfiguration()->getMetadataDriverImpl();
-        $events = $em->getEventManager();
-        if (!$driver instanceof AttributeDriver
-            || $events->hasListeners(Events::loadClassMetadata)
-            || $events->hasListeners(Events::onClassMetadataNotFound)) {
-            yield from $em->getMetadataFactory()->getAllMetadata();
-            return;
-        }
         // The driver owns visibility and ordering, including mapped superclasses.
         // Reflection selects candidates only; actual ORM associations remain the
         // authority for reporting roles, parent targets and duplicate diagnostics.
