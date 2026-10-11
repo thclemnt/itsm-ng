@@ -905,6 +905,7 @@ class Item_DeviceGeneric extends DbTestCase
                 };
             $this->boolean($probe->update(['id' => $row->getID(), 'memory' => 4096]))->isFalse();
             $this->integer($denials)->isGreaterThan(0);
+            $this->hasSessionMessages(ERROR, [__('Cannot update item: not enough right on the parent(s) item(s)')]);
             $this->array($connection->fetchAssociative('SELECT * FROM glpi_items_devicegraphiccards WHERE id=?', [$row->getID()]))->isIdenticalTo($before);
             $this->integer((int)$probe->fields['items_id'])->isIdenticalTo((int)$first->getID());
         } finally {
@@ -1072,7 +1073,8 @@ class Item_DeviceGeneric extends DbTestCase
             $instantiation = $port->getInstantiation();
             $this->boolean($instantiation->getFromDB($port->getID()))->isTrue('The public port add must create its actual Ethernet child');
             $this->integer((int)$instantiation->fields['items_devicenetworkcards_id'])->isIdenticalTo((int)$card->getID());
-            $this->string($instantiation->fields['mac'])->isIdenticalTo('00:00:00:00:00:01');
+            $this->string($port->fields['mac'])->isIdenticalTo('00:00:00:00:00:01');
+            $this->string($DB->getDoctrineConnection()->fetchOne('SELECT mac FROM glpi_networkports WHERE id=?', [$portId]))->isIdenticalTo('00:00:00:00:00:01');
             $connection = $DB->getDoctrineConnection();
             $this->exception(static fn () => $connection->transactional(static fn () => $connection->delete($card->getTable(), ['id' => $card->getID()])))->isInstanceOf(DatabaseException::class);
             $this->boolean($asset->delete(['id' => $asset->getID(), 'keep_devices' => (int)$keep], true))->isTrue();

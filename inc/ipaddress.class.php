@@ -125,6 +125,20 @@ class IPAddress extends CommonDBChild
     }
 
 
+    /** An address clone keeps its value; normal add validation and uniqueness still apply. */
+    public function prepareInputForClone($input)
+    {
+        $field = static::getNameField();
+        if (!array_key_exists($field, $input)) {
+            return parent::prepareInputForClone($input);
+        }
+        $address = $input[$field];
+        unset($input[$field]);
+        $input = parent::prepareInputForClone($input);
+        $input[$field] = $address;
+        return $input;
+    }
+
     public static function getTypeName($nb = 0)
     {
         return _n('IP address', 'IP addresses', $nb);

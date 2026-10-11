@@ -533,6 +533,24 @@ class IPAddress extends DbTestCase
         $this->integer((int)$clone->fields['networknames_id'])->isIdenticalTo((int)$second->getID());
         $this->variable($clone->fields['opaque_parent_id'])->isNull();
         $this->integer((int)$clone->fields['mainitems_id'])->isIdenticalTo(0);
+        $this->string($clone->fields['name'])->isIdenticalTo('192.0.2.61');
+        foreach (['version', 'binary_0', 'binary_1', 'binary_2', 'binary_3'] as $field) {
+            $this->variable($clone->fields[$field])->isIdenticalTo($address->fields[$field]);
+        }
+        $this->integer((int)$DB->getDoctrineConnection()->fetchOne('SELECT COUNT(*) FROM glpi_ipaddresses_ipnetworks WHERE ipaddresses_id = ? AND ipnetworks_id = ?', [$cloneId, $network->getID()]))->isIdenticalTo(1);
+        $overrideId = $address->clone(['items_id' => $second->getID(), 'name' => '192.0.2.65']);
+        $this->integer($overrideId)->isGreaterThan(0);
+        $override = new IPAddressModel();
+        $this->boolean($override->getFromDB($overrideId))->isTrue();
+        $this->string($override->fields['name'])->isIdenticalTo('192.0.2.65');
+        $this->integer((int)$override->fields['networknames_id'])->isIdenticalTo((int)$second->getID());
+        $repeatId = $address->clone(['items_id' => $second->getID()]);
+        $this->integer($repeatId)->isGreaterThan(0);
+        $repeat = new IPAddressModel();
+        $this->boolean($repeat->getFromDB($repeatId))->isTrue();
+        $this->string($repeat->fields['name'])->isIdenticalTo('192.0.2.61');
+        $this->boolean($address->clone(['items_id' => $second->getID(), 'name' => 'not-an-address']))->isFalse();
+        $this->hasSessionMessages(ERROR, [sprintf(__('%1$s: %2$s'), __('Invalid IP address'), 'not-an-address')]);
         $custom = $this->createItem(IPAddressModel::class, ['itemtype' => IPAddressCustomNameParent::class, 'items_id' => $second->getID(), 'name' => '192.0.2.62']);
         $customId = (int)$custom->getID();
         $this->variable($custom->fields['networknames_id'])->isNull();
