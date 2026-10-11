@@ -171,6 +171,9 @@ class OrmMigration extends GLPITestCase
             }
             foreach ([['', 0], ['PluginInitialOpaqueParent', -9]] as [$kind, $identity]) {
                 $row = ['id' => ++$identifier, 'itemtype' => $kind, 'items_id' => $identity];
+                if ($class::TABLE === 'glpi_registeredids') {
+                    $row['device_type'] = 'PCI';
+                }
                 if ($class::TABLE === 'glpi_computers_items') {
                     $row['computers_id'] = 15000;
                 }
@@ -255,6 +258,9 @@ class OrmMigration extends GLPITestCase
             $owner = $connection->fetchOne('SELECT ' . $connection->quoteIdentifier($column) . ' FROM ' . $connection->quoteIdentifier($class::TABLE) . ' WHERE id=?', [$id]);
             $this->exception(static fn () => $connection->transactional(static fn () => $connection->delete($target, ['id' => $owner])))->isInstanceOf(DbalException::class);
             $row = ['id' => ++$identifier, 'itemtype' => 'PluginInitialCurrentWrite', 'opaque_parent_id' => -19];
+            if ($class::TABLE === 'glpi_registeredids') {
+                $row['device_type'] = 'PCI';
+            }
             if ($class::TABLE === 'glpi_computers_items') {
                 $row['computers_id'] = 15000;
             }
