@@ -625,12 +625,12 @@ class Cartridge extends CommonDBChild
         $pages_printed    = 0;
         $nb_pages_printed = 0;
 
-        $em = Orm::create($DB);
-        try {
-            $rows = (new CartridgeRepository($em))->forModel((int)$tID, (bool)$show_old);
-        } finally {
-            $em->clear();
-        }
+        $rows = Orm::read(
+            $DB,
+            static fn (EntityManager $em): array =>
+                (new CartridgeRepository($em))->forModel((int)$tID, (bool)$show_old),
+            clearCustomManager: true
+        );
         $number = count($rows);
 
         $massiveActionId = 'tableForCartridgeCartridges' . rand();
@@ -812,12 +812,12 @@ class Cartridge extends CommonDBChild
         $canedit = Session::haveRight("cartridge", UPDATE);
         $rand    = mt_rand();
 
-        $em = Orm::create($DB);
-        try {
-            $rows = (new CartridgeRepository($em))->forPrinter((int)$instID, (bool)$old);
-        } finally {
-            $em->clear();
-        }
+        $rows = Orm::read(
+            $DB,
+            static fn (EntityManager $em): array =>
+                (new CartridgeRepository($em))->forPrinter((int)$instID, (bool)$old),
+            clearCustomManager: true
+        );
         $number = count($rows);
 
         if ($canedit && !$old) {

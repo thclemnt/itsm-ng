@@ -61,6 +61,174 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Cartridge extends DbTestCase
 {
+    public function testStockTablesKeepCurrentRowsAndLiveDirtyOwners(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity(0, true);
+        $printer = $this->createItem(
+            PrinterModel::class,
+            [
+                'name' => $this->getUniqueString(), 'entities_id' => 0,
+                'init_pages_counter' => 10, 'last_pages_counter' => 75,
+            ]
+        );
+        $model = $this->createItem(
+            CartridgeModel::class,
+            [
+                'name' => $this->getUniqueString(), 'entities_id' => 0, 'ref' => 'Stock table reference',
+            ]
+        );
+        $worn = $this->createItem(StockCartridge::class, ['cartridgeitems_id' => $model->getID()]);
+        $used = $this->createItem(StockCartridge::class, ['cartridgeitems_id' => $model->getID()]);
+        $stock = $this->createItem(StockCartridge::class, ['cartridgeitems_id' => $model->getID()]);
+        $command = new StockCartridge();
+        $this->boolean($command->install($printer->getID(), $model->getID()))->isTrue();
+        $this->boolean($command->install($printer->getID(), $model->getID()))->isTrue();
+        $this->boolean($command->uninstall($worn->getID()))->isTrue();
+        // These views deliberately render a summary/averages table as well as the cartridge table.
+        $tables = function (callable $render): array {
+            ob_start();
+            try {
+                $render();
+                $html = ob_get_contents();
+            } finally {
+                ob_end_clean();
+            }
+            $this->integer(preg_match_all('/<script type="application\/json"[^>]*>(.*?)<\/script>/s', $html, $matches))
+                ->isIdenticalTo(2);
+            return array_map(
+                static fn (string $json): array =>
+                    json_decode($json, true, 512, JSON_THROW_ON_ERROR)['dataSource']['rows'],
+                $matches[1]
+            );
+        };
+        $connection = $DB->getDoctrineConnection();
+        $owner = Orm::create($DB);
+        try {
+            $dirty = $owner->find(CartridgeRecord::class, $used->getID());
+            $dirty->pages = 999;
+            Orm::read(
+                $DB,
+                function (EntityManager $outer) use ($printer, $model, $worn, $used, $stock, $command, $tables): void {
+                    $pending = $outer->find(CartridgeRecord::class, $stock->getID());
+                    $pending->pages = 888;
+                    $current = $tables(static fn () => StockCartridge::showForCartridgeItem($model));
+                    $this->array($current[0])->isIdenticalTo([[3, 1, 1, 1]]);
+                    $this->array(array_map('intval', array_column($current[1], 0)))
+                        ->isIdenticalTo([(int)$stock->getID(), (int)$used->getID()]);
+                    $this->string($current[1][0][1])->isIdenticalTo(StockCartridge::getStatus(null, null));
+                    $this->string($current[1][1][4])->contains($printer->fields['name']);
+                    $this->integer(count($current[1][0]))->isIdenticalTo(6);
+                    $installed = $this->renderLocalTableRows(static fn () => StockCartridge::showForPrinter($printer));
+                    $this->array(array_map('intval', array_column($installed, 0)))->isIdenticalTo([(int)$used->getID()]);
+                    $this->string($installed[0][1])->contains('Stock table reference');
+                    $old = $this->renderLocalTableRows(static fn () => StockCartridge::showForCartridgeItem($model, 1));
+                    $this->array(array_map('intval', array_column($old, 0)))->isIdenticalTo([(int)$worn->getID()]);
+                    $this->string($old[0][1])->isIdenticalTo(StockCartridge::getStatus('2000-01-01', '2000-01-02'));
+                    $this->string($old[0][6])->contains('65');
+                    $retired = $tables(static fn () => StockCartridge::showForPrinter($printer, 1));
+                    $this->array(array_map('intval', array_column($retired[0], 0)))->isIdenticalTo([(int)$worn->getID()]);
+                    $this->integer((int)$retired[0][0][6])->isIdenticalTo(75);
+                    $this->integer((int)$retired[0][0][7])->isIdenticalTo(65);
+                    $this->integer((int)$retired[1][0][2])->isIdenticalTo(0);
+                    $this->boolean($command->install($printer->getID(), $model->getID()))->isTrue();
+                    $this->boolean($command->backToStock(['id' => $used->getID()]))->isTrue();
+                    $fresh = $this->renderLocalTableRows(static fn () => StockCartridge::showForPrinter($printer));
+                    $this->array(array_map('intval', array_column($fresh, 0)))->isIdenticalTo([(int)$stock->getID()]);
+                    $freshModel = $tables(static fn () => StockCartridge::showForCartridgeItem($model));
+                    $this->array(array_map('intval', array_column($freshModel[1], 0)))
+                        ->isIdenticalTo([(int)$used->getID(), (int)$stock->getID()]);
+                    $this->boolean($outer->contains($pending))->isTrue();
+                    $this->integer($pending->pages)->isIdenticalTo(888);
+                }
+            );
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->integer($dirty->pages)->isIdenticalTo(999);
+            $this->integer((int)$connection->fetchOne('SELECT pages FROM glpi_cartridges WHERE id = ?', [$used->getID()]))
+                ->isIdenticalTo(0);
+            $this->integer((int)$connection->fetchOne('SELECT pages FROM glpi_cartridges WHERE id = ?', [$stock->getID()]))
+                ->isIdenticalTo(0);
+        } finally {
+            $owner->clear();
+        }
+    }
+
+    public function testStockTableCustomReaderClearsBeforeRenderingAndRecovers(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity(0, true);
+        $original = $DB;
+        $connection = $original->getDoctrineConnection();
+        $model = $this->createItem(
+            CartridgeModel::class,
+            ['name' => $this->getUniqueString(), 'entities_id' => 0]
+        );
+        $failure = new RuntimeException('Custom cartridge table cleanup');
+        $listener = new class ($failure) {
+            public bool $reject = true;
+            public array $owners = [];
+
+            public function __construct(private RuntimeException $failure)
+            {
+            }
+
+            public function onClear(OnClearEventArgs $event): void
+            {
+                $this->owners[] = $event->getObjectManager();
+                if ($this->reject) {
+                    throw $this->failure;
+                }
+            }
+        };
+        $events = new EventManager();
+        $events->addEventListener([Events::onClear], $listener);
+        $selected = new class ($connection, $events, $original) extends ScalarReadProbe {
+            public function __construct(Connection $connection, private EventManager $events, private object $original)
+            {
+                parent::__construct($connection);
+            }
+
+            public function getEventManager(): EventManager
+            {
+                $GLOBALS['DB'] = $this->original;
+                return $this->events;
+            }
+        };
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new CartridgeWriterAdapter();
+        $this->calling($adapter)->getDoctrineConnection = $selected;
+        $depth = $connection->getTransactionNestingLevel();
+        try {
+            $DB = $adapter;
+            $caught = null;
+            ob_start();
+            try {
+                StockCartridge::showForCartridgeItem($model, 1);
+            } catch (RuntimeException $error) {
+                $caught = $error;
+            } finally {
+                $html = ob_get_clean();
+            }
+            $this->object($caught)->isIdenticalTo($failure);
+            $this->string($html)->isEmpty();
+            $this->array($listener->owners)->hasSize(1);
+            $this->object($listener->owners[0]->getConnection())->isIdenticalTo($selected);
+            $listener->reject = false;
+            $DB = $adapter;
+            $rows = $this->renderLocalTableRows(static fn () => StockCartridge::showForCartridgeItem($model, 1));
+            $this->array($rows)->isEmpty();
+            $this->array($listener->owners)->hasSize(2);
+            $this->object($listener->owners[1])->isNotIdenticalTo($listener->owners[0]);
+            $this->object($listener->owners[1]->getConnection())->isIdenticalTo($selected);
+            $this->array($selected->queries)->hasSize(2);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+        } finally {
+            $DB = $original;
+        }
+    }
+
     public function testStockMutationsStayCurrentWithoutFlushingDirtyOwners(): void
     {
         global $DB;
