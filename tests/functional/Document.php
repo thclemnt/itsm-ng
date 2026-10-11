@@ -820,8 +820,10 @@ class Document extends DbTestCase
             file_put_contents($path, $this->getUniqueString());
             $hash = sha1_file($path);
             $document = $this->createItem(LegacyDocument::class, [
-                'name' => $this->getUniqueString(), 'entities_id' => 0, 'sha1sum' => $hash,
+                'name' => $this->getUniqueString(), 'entities_id' => 0,
             ]);
+            $connection->update('glpi_documents', ['sha1sum' => $hash], ['id' => $document->getID()]);
+            $this->boolean($document->getFromDB($document->getID()))->isTrue();
             $owner = Orm::create($database);
             $pending = $owner->find(DocumentRecord::class, $document->getID());
             $pending->name = 'Pending content observer';
