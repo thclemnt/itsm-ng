@@ -76,9 +76,10 @@ final class EntityRegistry
     }
 
     /** Physical facts for fixed computer connection reads, without mutable metadata. */
-    public static function computerItemMapping(): ?array
+    public static function computerItemMapping(): array
     {
-        return self::model('computer_item');
+        return self::model('computer_item')
+            ?? throw new LogicException('Missing canonical computer-item mapping');
     }
 
     /** Fixed virtualization count facts from the declared host relationship. */

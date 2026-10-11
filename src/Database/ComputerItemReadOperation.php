@@ -30,21 +30,19 @@ final class ComputerItemReadOperation
 
     public function linkedItems(string $itemtype, int $id): array
     {
-        $mapping = EntityRegistry::computerItemMapping();
-        if ($mapping !== null) {
-            return AssetRepository::projectedLinkedItems($this->connection, $mapping, $itemtype, $id);
-        }
-        $this->manager ??= Orm::forConnection($this->connection);
-        return (new AssetRepository($this->manager))->linkedItems($itemtype, $id);
+        return AssetRepository::projectedLinkedItems(
+            $this->connection,
+            EntityRegistry::computerItemMapping(),
+            $itemtype,
+            $id
+        );
     }
 
     /** The caller has admitted the exact one-integer Computer_Item criteria shape. */
     public function distinctTypes(string $table, string $column, int $id): array
     {
         $mapping = EntityRegistry::computerItemMapping();
-        if ($mapping !== null && $mapping['table'][0] === $table && $mapping['computer'][0] === $column
-            && $mapping['fields']['itemtype'][0] === 'itemtype'
-            && !isset(EntityRegistry::references($table)[$column])) {
+        if ($mapping['table'][0] === $table && $mapping['computer'][0] === $column) {
             return AssetRepository::projectedComputerItemTypes($this->connection, $mapping, $id);
         }
         $this->manager ??= Orm::forConnection($this->connection);

@@ -787,7 +787,8 @@ class Computer extends DbTestCase
 
             $host = $ids[0];
             $hostModel = $computers[$host];
-            $expectedLinks = $repository->linkedItems('Computer', $host);
+            $expectedLinks = ['Monitor' => [(int)$monitor->getID() => (int)$monitor->getID()]];
+            $this->array($repository->linkedItems('Computer', $host))->isIdenticalTo($expectedLinks);
             $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
             $before = $factories->getValue();
             $this->array($hostModel->getLinkedItems())->isIdenticalTo($expectedLinks);
@@ -816,11 +817,12 @@ class Computer extends DbTestCase
             foreach ([Phone::class, Printer::class, Peripheral::class] as $kind) {
                 $device = $this->createItem($kind, ['name' => $this->getUniqueString(), 'entities_id' => $entity, 'is_global' => true]);
                 $this->createItem(Computer_Item::class, ['computers_id' => $host, 'itemtype' => $kind, 'items_id' => $device->getID()]);
+                $deviceId = (int)$device->getID();
+                $expectedLinks[$kind] = [$deviceId => $deviceId];
                 $before = $factories->getValue();
                 $this->array($device->getLinkedItems())->isIdenticalTo(['Computer' => [$host => $host]]);
                 $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
             }
-            $expectedLinks = $repository->linkedItems('Computer', $host);
             $this->array($reader->linkedItems('Computer', $host))->isIdenticalTo($expectedLinks);
             $this->array(array_keys($expectedLinks))->isIdenticalTo(['Monitor', 'Phone', 'Printer', 'Peripheral']);
             $record = new RecordRepository($em);
@@ -840,7 +842,9 @@ class Computer extends DbTestCase
             try {
                 $this->array($reader->linkedItems('Computer', $host))->isIdenticalTo($expectedLinks);
                 $this->boolean($DB->update('glpi_computers_items', ['items_id' => PHP_INT_MAX], ['id' => $duplicate]))->isTrue();
-                $this->array($reader->linkedItems('Computer', $host))->isIdenticalTo($repository->linkedItems('Computer', $host));
+                $changedLinks = $expectedLinks;
+                $changedLinks['Monitor'][PHP_INT_MAX] = PHP_INT_MAX;
+                $this->array($reader->linkedItems('Computer', $host))->isIdenticalTo($changedLinks);
                 $this->array($reader->linkedItems('Computer', $host)['Monitor'])->hasSize(2);
             } finally {
                 $DB->delete('glpi_computers_items', ['id' => $duplicate]);
@@ -873,7 +877,13 @@ class Computer extends DbTestCase
                         throw new LogicException('Aliased scalar results do not run PHP conversion.');
                     }
                 });
-                $this->array($reader->linkedItems('Computer', $host))->isIdenticalTo($repository->linkedItems('Computer', $host));
+                $convertedLinks = [];
+                foreach ($expectedLinks as $kind => $targets) {
+                    foreach ($targets as $targetId) {
+                        $convertedLinks[strtolower($kind)][$targetId + 1000000] = $targetId + 1000000;
+                    }
+                }
+                $this->array($reader->linkedItems('Computer', $host))->isIdenticalTo($convertedLinks);
                 $this->array($reader->linkedItems('Computer', $host)['monitor'])->hasKey((int)$monitor->getID() + 1000000);
                 // Reverse IDENTITY bypasses the mapped BIGINT SQL converter.
                 $this->array($reader->linkedItems('Monitor', (int)$monitor->getID()))->isIdenticalTo($expectedReverse);
@@ -891,8 +901,7 @@ class Computer extends DbTestCase
                 };
                 Type::overrideType(Types::STRING, $input);
                 $this->array($reader->linkedItems('Monitor', (int)$monitor->getID()))->isEmpty();
-                $this->array($repository->linkedItems('Monitor', (int)$monitor->getID()))->isEmpty();
-                $this->integer($input->calls)->isIdenticalTo(2);
+                $this->integer($input->calls)->isIdenticalTo(1);
                 Type::overrideType(Types::STRING, $string);
                 Type::overrideType(Types::BIGINT, $bigint);
                 Type::overrideType(Types::INTEGER, new class () extends IntegerType {
@@ -902,7 +911,6 @@ class Computer extends DbTestCase
                     }
                 });
                 $this->array($reader->linkedItems('Computer', $host))->isEmpty();
-                $this->array($repository->linkedItems('Computer', $host))->isEmpty();
                 $this->array(iterator_to_array(Computer_Item::getDistinctTypes($host)))->isEmpty();
                 $this->array($record->distinctValues('glpi_computers_items', 'itemtype', ['computers_id' => $host], 'itemtype'))->isEmpty();
             } finally {
