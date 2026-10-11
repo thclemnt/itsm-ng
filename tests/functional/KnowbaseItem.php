@@ -59,6 +59,14 @@ use itsmng\Database\PostgresConnection;
 use itsmng\Database\Query\KnowledgeBaseFullText;
 use itsmng\Database\Repository\KnowledgeBaseRepository;
 
+use itsmng\Database\Entity\KnowbaseItemCategory as CategoryEntity;
+use Doctrine\Common\EventManager;
+use mock\DBmysql as CategoryAdapterProbe;
+use mock\KnowbaseItem as CategoryVisibilityProbe;
+use tests\fixtures\ScalarReadProbe;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
+
 /* Test for inc/knowbaseitem.class.php */
 
 class KnowbaseItem extends DbTestCase
@@ -775,6 +783,129 @@ class KnowbaseItem extends DbTestCase
            'items_id' => $instance->getID(),
         ]);
         $this->integer($count)->isEqualTo(2);
+    }
+
+    public function testCategoryReadCompletesBeforeVisibilityAndPreservesDirtyOwners(): void
+    {
+        global $DB;
+        $this->login();
+        $category = $this->createItem(KnowbaseItemCategory::class, ['name' => 'Materialized category ' . $this->getUniqueString()]);
+        $other = $this->createItem(KnowbaseItemCategory::class, ['name' => 'Other materialized category ' . $this->getUniqueString()]);
+        $ids = [];
+        for ($i = 0; $i < 3; ++$i) {
+            $article = $this->createItem(LegacyKnowbaseItem::class, [
+                'name' => 'Materialized article ' . $i . ' ' . $this->getUniqueString(),
+                'knowbaseitemcategories_id' => $category->getID(),
+            ]);
+            $ids[] = (int)$article->getID();
+        }
+        $connection = $DB->getDoctrineConnection();
+        $probe = new CategoryVisibilityProbe();
+        $loaded = [];
+        $current = 0;
+        $expectedActive = false;
+        $this->calling($probe)->getFromDB = function ($id) use ($connection, $ids, $other, &$loaded, &$current, &$expectedActive): bool {
+            $this->boolean($connection->isApplicationEntityManagerActive())->isIdenticalTo($expectedActive);
+            $current = (int)$id;
+            $loaded[] = $current;
+            if ($current === $ids[0]) {
+                $connection->update('glpi_knowbaseitems', ['knowbaseitemcategories_id' => $other->getID()], ['id' => $ids[2]]);
+            }
+            return true;
+        };
+        $this->calling($probe)->canViewItem = static function () use ($ids, &$current): bool {
+            return $current === $ids[1];
+        };
+        $this->array(LegacyKnowbaseItem::getForCategory((string)$category->getID(), $probe))->isIdenticalTo([1 => $ids[1]]);
+        $this->array($loaded)->isIdenticalTo($ids);
+        $loaded = [];
+        $this->array(LegacyKnowbaseItem::getForCategory($category->getID(), $probe))->isIdenticalTo([1 => $ids[1]]);
+        $this->array($loaded)->isIdenticalTo([$ids[0], $ids[1]]);
+        $writer = Orm::create($DB);
+        $live = $writer->find(KnowbaseItemEntity::class, $ids[0]);
+        $live->knowbaseitemcategories = $writer->find(CategoryEntity::class, (int)$other->getID());
+        // The completed nested reader must leave the enclosing owner active.
+        $expectedActive = true;
+        Orm::read($DB, function (EntityManager $outer) use ($category, $other, $ids, $probe, $writer, $live): void {
+            $owned = $outer->find(KnowbaseItemEntity::class, $ids[0]);
+            $owned->knowbaseitemcategories = $outer->find(CategoryEntity::class, (int)$other->getID());
+            $this->array(LegacyKnowbaseItem::getForCategory($category->getID(), $probe))->isIdenticalTo([1 => $ids[1]]);
+            $this->boolean($outer->contains($owned))->isTrue();
+            $this->integer($owned->knowbaseitemcategories->id)->isIdenticalTo((int)$other->getID());
+            $this->boolean($writer->contains($live))->isTrue();
+            $this->integer($live->knowbaseitemcategories->id)->isIdenticalTo((int)$other->getID());
+        });
+        $expectedActive = false;
+        $this->calling($probe)->canViewItem = true;
+        $this->array(LegacyKnowbaseItem::getForCategory([$category->getID(), $other->getID()], $probe))->isIdenticalTo($ids);
+        $this->calling($probe)->canViewItem = false;
+        $this->array(LegacyKnowbaseItem::getForCategory($category->getID(), $probe))->isIdenticalTo([-1]);
+        $loaded = [];
+        $this->array(LegacyKnowbaseItem::getForCategory(PHP_INT_MAX, $probe))->isIdenticalTo([-1]);
+        $this->array($loaded)->isEmpty();
+    }
+
+    public function testCategoryReadRetainsCustomConstructorAndSelectedRouteBeforeCallbacks(): void
+    {
+        global $DB;
+        $original = $DB;
+        try {
+            $this->login();
+            $category = $this->createItem(KnowbaseItemCategory::class, ['name' => 'Custom category ' . $this->getUniqueString()]);
+            $article = $this->createItem(LegacyKnowbaseItem::class, [
+                'name' => 'Custom category article ' . $this->getUniqueString(), 'knowbaseitemcategories_id' => $category->getID(),
+            ]);
+            $connection = $DB->getDoctrineConnection();
+            $observer = new class () {
+                public array $trace = [];
+                public int $clears = 0;
+                public function onClear(): void
+                {
+                    ++$this->clears;
+                }
+            };
+            $selected = new class ($connection) extends ScalarReadProbe {
+                public EventManager $events;
+                public object $observer;
+                public function getEventManager(): EventManager
+                {
+                    $this->observer->trace[] = 'constructed';
+                    return $this->events;
+                }
+            };
+            $selected->observer = $observer;
+            $selected->events = new EventManager();
+            $selected->events->addEventListener(['onClear'], $observer);
+            $other = new ScalarReadProbe($connection);
+            $route = $selected;
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new CategoryAdapterProbe();
+            $this->calling($adapter)->getDoctrineConnection = static function () use (&$route) {
+                return $route;
+            };
+            $this->calling($adapter)->getProvider = $original->getProvider();
+            $DB = $adapter;
+            $probe = new CategoryVisibilityProbe();
+            $this->calling($probe)->getFromDB = function ($id) use ($article, $connection, $observer, $selected, $other, &$route): bool {
+                $this->integer((int)$id)->isIdenticalTo((int)$article->getID());
+                $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+                $this->array($selected->queries)->hasSize(1);
+                $observer->trace[] = 'loaded';
+                $route = $other;
+                return true;
+            };
+            $this->calling($probe)->canViewItem = function () use ($connection, $observer): bool {
+                $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+                $observer->trace[] = 'visible';
+                return true;
+            };
+            $this->array(LegacyKnowbaseItem::getForCategory($category->getID(), $probe))->isIdenticalTo([(int)$article->getID()]);
+            $this->array($observer->trace)->isIdenticalTo(['constructed', 'loaded', 'visible']);
+            $this->integer($observer->clears)->isIdenticalTo(0);
+            $this->array($other->queries)->isEmpty();
+        } finally {
+            $DB = $original;
+        }
     }
 
     public function testGetForCategory()

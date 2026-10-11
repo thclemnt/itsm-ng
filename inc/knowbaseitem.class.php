@@ -2231,8 +2231,15 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
             $kbi = new self();
         }
 
-        $ids = (new RecordRepository(Orm::create($DB)))
-            ->identifiers(self::getTable(), 'id', ['knowbaseitemcategories_id' => $category_id], 'id');
+        $ids = Orm::readPrepared(
+            $DB,
+            static function () use ($category_id): array {
+                $arguments = static fn (string $table, mixed $category): array => [$table, $category];
+                return $arguments(self::getTable(), $category_id);
+            },
+            static fn (EntityManager $manager, array $arguments): array =>
+                (new KnowledgeBaseRepository($manager))->categoryIdentifiers(...$arguments)
+        );
 
         // Filter on canViewItem
         $ids = array_filter($ids, function ($id) use ($kbi) {

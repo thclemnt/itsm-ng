@@ -23,12 +23,26 @@ use itsmng\Database\Entity\KnowbaseItemRevision;
 use itsmng\Database\Entity\KnowbaseItemTranslation;
 use itsmng\Database\Entity\KnowbaseItemUser;
 use itsmng\Database\KnowledgeBaseAccess;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\RecordCriteria;
 
 /** Mapped article persistence and visibility; model callers retain lifecycle hooks. */
 final class KnowledgeBaseRepository
 {
     public function __construct(private EntityManager $em)
     {
+    }
+
+    /** Complete ordered candidates before public model loading and visibility callbacks. */
+    public function categoryIdentifiers(string $table, mixed $category): array
+    {
+        $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
+        $query = $this->em->createQueryBuilder()->from($metadata->name, 'r');
+        $criteria = new RecordCriteria($query, $metadata);
+        $query->select($criteria->column('id') . ' AS record_id')
+            ->where($criteria->where(['knowbaseitemcategories_id' => $category]));
+        $criteria->order('id');
+        return array_map('intval', array_column($query->getQuery()->getScalarResult(), 'record_id'));
     }
 
     /** Recheck admitted dropdown candidates without loading their article bodies. */
