@@ -742,18 +742,25 @@ class User extends DbTestCase
             $this->variable($display->displayData($id))->isNull();
             $this->variable($users->displayData($id))->isNull();
             Type::overrideType('integer', $integer);
-            Type::overrideType('string', new class () extends StringType {
+            $convertedString = new class () extends StringType {
+                public int $calls = 0;
                 public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                 {
                     return 'UPPER(' . $sqlExpr . ')';
                 }
                 public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
                 {
-                    throw new LogicException('Explicit scalar aliases must not convert PHP values.');
+                    ++$this->calls;
+                    return $value === null ? null : 'converted:' . $value;
                 }
-            });
-            $this->array($display->displayData($id))->isIdenticalTo($users->displayData($id));
-            $this->string($display->displayData($id)['realname'])->isIdenticalTo('CHANGED LOWER');
+            };
+            Type::overrideType('string', $convertedString);
+            $convertedDisplay = $display->displayData($id);
+            $this->string($convertedDisplay['realname'])->isIdenticalTo('converted:CHANGED LOWER');
+            $this->variable($convertedDisplay['phone'])->isNull();
+            $this->integer($convertedString->calls)->isIdenticalTo(6);
+            $this->array($convertedDisplay)->isIdenticalTo($users->displayData($id));
+            $this->integer($convertedString->calls)->isIdenticalTo(12);
             Type::overrideType('string', new class () extends StringType {
                 public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
                 {
