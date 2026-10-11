@@ -1023,8 +1023,7 @@ class Item_Devices extends CommonDBRelation
 
         $table = $this->getTable();
         $peerTable = $peer_type ? getTableForItemType($peer_type) : null;
-        $customCriteria = (new ReflectionMethod($this, 'getTableGroupCriteria'))->getDeclaringClass()->getName() !== self::class;
-        if ($customCriteria || !isset(EntityRegistry::tables()[$table])
+        if (!isset(EntityRegistry::tables()[$table])
             || ($peerTable && !isset(EntityRegistry::tables()[$peerTable]))) {
             return iterator_to_array($DB->request($this->getTableGroupCriteria($item, $peer_type)));
         }
