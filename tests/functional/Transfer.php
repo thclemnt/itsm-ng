@@ -92,7 +92,6 @@ use itsmng\Database\PostgresConnection;
 use itsmng\Database\TransactionOwnershipMismatch;
 use itsmng\Domain\SoftwareAssignmentCancelled;
 use itsmng\Domain\SoftwareAssignmentService;
-
 use mock\DBmysql as NetpointRouteAdapter;
 use tests\fixtures\ScalarReadProbe;
 
