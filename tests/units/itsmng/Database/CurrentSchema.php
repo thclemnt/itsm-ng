@@ -790,6 +790,42 @@ class CurrentSchema extends test
         }
     }
 
+    public function testCapturedMySQL84CalendarSelectionRequiresDeclaredFalseEquality(): void
+    {
+        // ROOT CI job114343313026, MySQL8.4.11: exact enforced CHECK_CLAUSE.
+        $actual = '((`calendars_id` is null) or ((`calendars_id` > 0) and (0 = `use_ticket_calendar`)))';
+        $owner = new BaselineSchema($this->manager(new MySQLPlatform()));
+        $owner->build(new MySQLPlatform());
+        $policy = $owner->referencePolicies()['glpi_slms']['calendars'];
+        $policies = ['glpi_slms' => ['calendars' => $policy]];
+        $snapshot = ['mysql' => true, 'ansi_quotes' => false,
+            'checks' => ['glpi_slms' => [$policy['constraint'] => ['clause' => $actual, 'enforced' => 'YES']]]];
+        $this->array(NativeReferenceSchema::compare($policies, $snapshot))->isEmpty();
+        $diagnostic = 'Changed, missing or unenforced native reference CHECK: glpi_slms.glpi_slms_calendar_selection';
+        foreach (['0 = `other`', '`false` = `use_ticket_calendar`', 'FALSE = `use_ticket_calendar`',
+            '`0` = `use_ticket_calendar`', "'0' = `use_ticket_calendar`",
+            '1 = `use_ticket_calendar`', '2 = `use_ticket_calendar`',
+            'NULL = `use_ticket_calendar`', '0 = `calendars_id`', '0 <> `use_ticket_calendar`',
+            '0 >= `use_ticket_calendar`', '0 = COALESCE(`use_ticket_calendar`, 0)',
+            '0 = CAST(`use_ticket_calendar` AS BINARY)'] as $changed) {
+            $damaged = $snapshot;
+            $damaged['checks']['glpi_slms'][$policy['constraint']]['clause'] = str_replace('0 = `use_ticket_calendar`', $changed, $actual);
+            $this->array(NativeReferenceSchema::compare($policies, $damaged))->isIdenticalTo([$diagnostic]);
+        }
+        foreach (['clause' => $actual . ' OR 1 = 1', 'enforced' => 'NO'] as $fact => $value) {
+            $damaged = $snapshot;
+            $damaged['checks']['glpi_slms'][$policy['constraint']][$fact] = $value;
+            $this->array(NativeReferenceSchema::compare($policies, $damaged))->isIdenticalTo([$diagnostic]);
+        }
+        $damaged = $snapshot;
+        $damaged['checks']['glpi_slms'][$policy['constraint']]['clause'] = '(' . $actual . ') AND other_owner_id = 0';
+        $this->array(NativeReferenceSchema::compare($policies, $damaged))->isIdenticalTo([$diagnostic]);
+        $undeclared = $policies;
+        $undeclared['glpi_slms']['calendars']['boolean_columns'] = [];
+        $this->array(NativeReferenceSchema::compare($undeclared, $snapshot))->isIdenticalTo([$diagnostic]);
+        $this->boolean(SubjectPolicyExpression::equivalent('NOT flag', '0 = flag', true, booleanColumns: ['flag']))->isFalse();
+    }
+
     public function testCapturedRootAndCalendarChecksBindActualPostgreSQLAndMariaFacts(): void
     {
         $facts = json_decode(file_get_contents(dirname(__DIR__, 3) . '/fixtures/native-root-slm.json'), true, 512, JSON_THROW_ON_ERROR);

@@ -324,6 +324,12 @@ final class SubjectPolicyExpression
                 return $this->junction($operator === '=' ? 'or' : 'and', $choices);
             }
             $right = $this->value();
+            // MySQL 8.4 deparses NOT flag as literal zero on the left.
+            // Reorder only false equality for this policy's declared boolean.
+            if ($operator === '=' && $this->isDeclaredBoolean($right)
+                && !$this->postgres && $left === ['integer', '0']) {
+                return ['=', $right, ['integer', '0']];
+            }
             if ($operator === '=' && $this->isDeclaredBoolean($left)) {
                 if ($right[0] === 'identifier' && in_array($right[1], ['false', 'true'], true)) {
                     $right = ['integer', $right[1] === 'false' ? '0' : '1'];

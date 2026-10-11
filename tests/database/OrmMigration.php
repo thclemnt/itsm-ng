@@ -847,9 +847,12 @@ class OrmMigration extends GLPITestCase
 
     public function testOrderedOpenParentStagesResume(): void
     {
-        $connection = $this->emptyFixture()->getDoctrineConnection();
+        $database = $this->emptyFixture();
+        $connection = $database->getDoctrineConnection();
         $predecessor = new Version220();
-        $predecessor->baseline($connection);
+        $predecessor->install($database, 'en_GB');
+        $this->boolean(Ledger::state($connection, Seeds::PHASE)['complete'])->isTrue();
+        $this->string(Ledger::state($connection, Seeds::PHASE)['origin'])->isIdenticalTo('installed');
         $predecessor->apply($connection);
         $predecessor->verify($connection);
         (new SensorSubjects())->apply($connection);
