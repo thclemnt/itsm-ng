@@ -30,14 +30,7 @@ final class TreeReadOperation implements ReadQueryOwner
                 return $rows;
             }
         }
-        $metadata = $this->metadata($table);
         $repository = new TreeRepository($this->manager);
-        if ($this->ownedMapping && $this->defaultIdentifiers($metadata) !== null && $order === []) {
-            $rows = $repository->pointRows($table, $fields, $criteria);
-            if ($rows !== null) {
-                return $rows;
-            }
-        }
         return $repository->rows($table, $fields, $criteria, $order, $this);
     }
 }

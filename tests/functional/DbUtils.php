@@ -1204,14 +1204,14 @@ class DbUtils extends DbTestCase
             foreach ([0, (int)getItemByTypeName('Entity', '_test_root_entity', true)] as $id) {
                 foreach ([['sons_cache'], ['id', 'ancestors_cache', 'entities_id'], ['entities_id']] as $fields) {
                     $this->array($reader->rows('glpi_entities', $fields, ['id' => $id]))
-                        ->isIdenticalTo($repository->pointRows('glpi_entities', $fields, ['id' => $id]));
+                        ->isIdenticalTo($repository->rows('glpi_entities', $fields, ['id' => $id]));
                 }
             }
             $privateManager = (new ReflectionProperty($reader, 'manager'))->getValue($reader);
             $this->integer(count($privateManager->getMetadataFactory()->getLoadedMetadata()))->isIdenticalTo(0);
             $ids = [0, (string)$id, $id, null];
             $this->array($reader->rows('glpi_entities', ['id', 'entities_id'], ['id' => $ids]))
-                ->isIdenticalTo($repository->pointRows('glpi_entities', ['id', 'entities_id'], ['id' => $ids]));
+                ->isIdenticalTo($repository->rows('glpi_entities', ['id', 'entities_id'], ['id' => $ids]));
             $bigint = Type::getType(Types::BIGINT);
             $text = Type::getType(Types::TEXT);
             try {
@@ -1225,7 +1225,7 @@ class DbUtils extends DbTestCase
                 };
                 Type::overrideType(Types::BIGINT, $shifted);
                 $this->array($reader->rows('glpi_entities', ['id'], ['id' => $ids]))->isEmpty();
-                $this->array($repository->pointRows('glpi_entities', ['id'], ['id' => $ids]))->isEmpty();
+                $this->array($repository->rows('glpi_entities', ['id'], ['id' => $ids]))->isEmpty();
                 $this->integer($shifted->calls)->isIdenticalTo(2 * count($ids));
                 Type::overrideType(Types::BIGINT, $bigint);
                 Type::overrideType(Types::TEXT, new class () extends TextType {
@@ -1239,7 +1239,7 @@ class DbUtils extends DbTestCase
                     }
                 });
                 $raw = $reader->rows('glpi_entities', ['ancestors_cache', 'sons_cache'], ['id' => 0]);
-                $this->array($raw)->isIdenticalTo($repository->pointRows('glpi_entities', ['ancestors_cache', 'sons_cache'], ['id' => 0]));
+                $this->array($raw)->isIdenticalTo($repository->rows('glpi_entities', ['ancestors_cache', 'sons_cache'], ['id' => 0]));
                 $this->string($raw[0]['ancestors_cache'])->isIdenticalTo('[]');
                 $this->string($raw[0]['sons_cache'])->isIdenticalTo('[]');
             } finally {
@@ -1249,7 +1249,7 @@ class DbUtils extends DbTestCase
             $this->integer(count($privateManager->getMetadataFactory()->getLoadedMetadata()))->isIdenticalTo(0);
             // An unrelated field and explicit ordering keep their existing paths.
             $this->array($reader->rows('glpi_entities', ['name'], ['id' => 0]))
-                ->isIdenticalTo($repository->pointRows('glpi_entities', ['name'], ['id' => 0]));
+                ->isIdenticalTo($repository->rows('glpi_entities', ['name'], ['id' => 0]));
             $this->integer(count($privateManager->getMetadataFactory()->getLoadedMetadata()))->isGreaterThan(0);
             $this->array($reader->rows('glpi_entities', ['id'], ['id' => [0, $id]], ['id DESC']))
                 ->isIdenticalTo($repository->rows('glpi_entities', ['id'], ['id' => [0, $id]], ['id DESC']));
