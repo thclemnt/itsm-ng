@@ -114,17 +114,53 @@ class Cartridge extends CommonDBChild
     }
 
 
+    /** Set only by the actual clone preparer, never by a caller's clone flag. */
+    private bool $pendingCloneState = false;
+    private bool $preserveCloneState = false;
+
+    /** Isolate nested adds and clear clone preparation on every operation exit. */
+    public function add(array $input, $options = [], $history = true)
+    {
+        $previous = $this->preserveCloneState;
+        $this->preserveCloneState = $this->pendingCloneState;
+        $this->pendingCloneState = false;
+        try {
+            return parent::add($input, $options, $history);
+        } finally {
+            $this->pendingCloneState = false;
+            $this->preserveCloneState = $previous;
+        }
+    }
+
+    public function prepareInputForClone($input)
+    {
+        $input = parent::prepareInputForClone($input);
+        $this->pendingCloneState = true;
+        return $input;
+    }
+
+
     public function prepareInputForAdd($input)
     {
 
+        $preserveCloneState = $this->preserveCloneState;
+        $this->preserveCloneState = false;
         $item = static::getItemFromArray(static::$itemtype, static::$items_id, $input);
         if ($item === false) {
             return false;
         }
 
-        return ["cartridgeitems_id" => $item->fields["id"],
+        $prepared = ["cartridgeitems_id" => $item->fields["id"],
                      "entities_id"       => $item->getEntityID(),
                      "date_in"           => date("Y-m-d")];
+        if ($preserveCloneState) {
+            foreach (['printers_id', 'date_in', 'date_use', 'date_out', 'pages'] as $field) {
+                if (array_key_exists($field, $input)) {
+                    $prepared[$field] = $input[$field];
+                }
+            }
+        }
+        return $prepared;
     }
 
 

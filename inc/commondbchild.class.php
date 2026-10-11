@@ -32,6 +32,7 @@
  */
 
 use itsmng\Database\ConnexityInput;
+use itsmng\Database\EntityRegistry;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -96,6 +97,20 @@ abstract class CommonDBChild extends CommonDBConnexity
         }
         if ($request === true) {
             return $criteria;
+        }
+        $field = static::getMappedItemField($itemtype);
+        if ($field !== null) {
+            global $DB;
+
+            return [
+                'SELECT' => [
+                    static::getIndexName(),
+                    $field . ' AS items_id',
+                    new QueryExpression($DB->quote($itemtype) . ' AS itemtype'),
+                ],
+                'FROM' => static::getTable(),
+                'WHERE' => [$field => $items_id],
+            ];
         }
         return null;
     }
@@ -1001,6 +1016,25 @@ abstract class CommonDBChild extends CommonDBConnexity
             return static::$items_id;
         }
 
+        $field = static::getMappedItemField($itemtype);
+        if ($field !== null) {
+            return $field;
+        }
+
         throw new RuntimeException('Cannot guess field for itemtype ' . $itemtype . ' on ' . static::class);
+    }
+
+    /** Resolve an alternate role only from one declared owning association. */
+    private static function getMappedItemField($itemtype): ?string
+    {
+        if (!is_string($itemtype) || !is_a($itemtype, CommonDBTM::class, true)) {
+            return null;
+        }
+        $target = $itemtype::getTable();
+        $fields = array_keys(array_filter(
+            EntityRegistry::relations()[static::getTable()] ?? [],
+            static fn (string $table): bool => $table === $target
+        ));
+        return count($fields) === 1 ? $fields[0] : null;
     }
 }
