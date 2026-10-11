@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\DropdownChoiceContext;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\Entity\ItemProject;
@@ -133,7 +134,15 @@ class Item_Project extends CommonDBRelation
     {
         global $DB;
         return new RowIterator(
-            (new ProjectAssetRepository(Orm::create($DB)))->kinds((int)$items_id, $extra_where)
+            Orm::readPrepared(
+                $DB,
+                static function () use ($items_id, $extra_where): array {
+                    $arguments = static fn (int $owner, array $criteria): array => [$owner, $criteria];
+                    return $arguments((int)$items_id, $extra_where);
+                },
+                static fn (EntityManager $manager, array $arguments): array =>
+                    (new ProjectAssetRepository($manager))->kinds(...$arguments)
+            )
         );
     }
 
@@ -141,8 +150,15 @@ class Item_Project extends CommonDBRelation
     {
         global $DB;
         return new RowIterator(
-            (new ProjectAssetRepository(Orm::create($DB)))
-                ->relationshipsForItem($itemtype, (int)$items_id)
+            Orm::readPrepared(
+                $DB,
+                static function () use ($itemtype, $items_id): array {
+                    $arguments = static fn (string $kind, int $subject): array => [$kind, $subject];
+                    return $arguments($itemtype, (int)$items_id);
+                },
+                static fn (EntityManager $manager, array $arguments): array =>
+                    (new ProjectAssetRepository($manager))->relationshipsForItem(...$arguments)
+            )
         );
     }
 
@@ -183,8 +199,21 @@ class Item_Project extends CommonDBRelation
         $rows = [];
         if ($item && $item->canView()) {
             $component = $item instanceof Item_Devices;
-            $rows = (new ProjectAssetRepository(Orm::create($DB)))
-                ->subjects((int)$items_id, $itemtype, self::subjectCriteria($item), $component ? 'itemtype' : $item::getNameField(), $component ? $itemtype::$items_id_2 : null);
+            $rows = Orm::readPrepared(
+                $DB,
+                static function () use ($items_id, $itemtype, $item, $component): array {
+                    $arguments = static fn (int $owner, string $kind, array $criteria, string $order, ?string $definition): array => [$owner, $kind, $criteria, $order, $definition];
+                    return $arguments(
+                        (int)$items_id,
+                        $itemtype,
+                        self::subjectCriteria($item),
+                        $component ? 'itemtype' : $item::getNameField(),
+                        $component ? $itemtype::$items_id_2 : null
+                    );
+                },
+                static fn (EntityManager $manager, array $arguments): array =>
+                    (new ProjectAssetRepository($manager))->subjects(...$arguments)
+            );
         }
         return new RowIterator($rows);
     }
@@ -210,8 +239,15 @@ class Item_Project extends CommonDBRelation
     {
         global $DB;
         $criteria = Session::isCron() ? [] : getEntitiesRestrictCriteria(Project::getTable(), '', '', 'auto');
-        return (new ProjectAssetRepository(Orm::create($DB)))
-            ->ownerCount($item->getType(), (int)$item->getID(), $criteria);
+        return Orm::readPrepared(
+            $DB,
+            static function () use ($item, $criteria): array {
+                $arguments = static fn (string $kind, int $subject, array $scope): array => [$kind, $subject, $scope];
+                return $arguments($item->getType(), (int)$item->getID(), $criteria);
+            },
+            static fn (EntityManager $manager, array $arguments): int =>
+                (new ProjectAssetRepository($manager))->ownerCount(...$arguments)
+        );
     }
 
 
