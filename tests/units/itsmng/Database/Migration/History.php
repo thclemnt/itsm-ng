@@ -22,6 +22,7 @@ use RuntimeException;
 use atoum\atoum\test;
 use itsmng\Database\Entity\Computer;
 use itsmng\Database\Entity\ItemDeviceSensor;
+use itsmng\Database\ForeignKeys;
 use itsmng\Database\Installer;
 use itsmng\Database\Migration\History as Releases;
 use itsmng\Database\Migration\InitialOwners;
@@ -47,6 +48,87 @@ use mock\Doctrine\DBAL\Connection as DBALConnection;
 
 class History extends test
 {
+    public function testForeignKeyPlansGroupMissingDeclarationsAndRetainAuditAndRetryPolicies(): void
+    {
+        foreach ([new MySQLPlatform(), new MariaDBPlatform(), new PostgreSQLPlatform()] as $platform) {
+            $connection = new FreshReplacementFixtureConnection($platform, 1);
+            $relations = ['glpi_relation-a' => ['first_id' => 'glpi_first', 'second_id' => 'glpi_second'],
+                'glpi_relation_b' => ['third_id' => 'glpi_third']];
+            $keys = new ForeignKeys($relations);
+            $quote = $platform->quoteSingleIdentifier(...);
+            $first = 'CONSTRAINT ' . $quote('fk_relation-a_first_id') . ' FOREIGN KEY (' . $quote('first_id')
+                . ') REFERENCES ' . $quote('glpi_first') . ' (' . $quote('id') . ') ON UPDATE RESTRICT ON DELETE RESTRICT';
+            $second = 'CONSTRAINT ' . $quote('fk_relation-a_second_id') . ' FOREIGN KEY (' . $quote('second_id')
+                . ') REFERENCES ' . $quote('glpi_second') . ' (' . $quote('id') . ') ON UPDATE RESTRICT ON DELETE RESTRICT';
+            $third = 'CONSTRAINT ' . $quote('fk_relation_b_third_id') . ' FOREIGN KEY (' . $quote('third_id')
+                . ') REFERENCES ' . $quote('glpi_third') . ' (' . $quote('id') . ') ON UPDATE RESTRICT ON DELETE RESTRICT';
+            $grouped = ['ALTER TABLE ' . $quote('glpi_relation-a') . ' ADD ' . $first . ', ADD ' . $second,
+                'ALTER TABLE ' . $quote('glpi_relation_b') . ' ADD ' . $third];
+            $this->array($keys->plan($connection))->isIdenticalTo($grouped);
+            $this->array($connection->inspected)->isIdenticalTo(array_keys($relations));
+            $this->array((new ForeignKeys([]))->plan($connection))->isEmpty();
+
+            $constraint = new ForeignKeyConstraint(
+                ['first_id'],
+                'glpi_first',
+                ['id'],
+                'fk_relation-a_first_id',
+                ['onDelete' => 'RESTRICT', 'onUpdate' => 'NO ACTION']
+            );
+            $connection->foreignKeys['glpi_relation-a'] = [$constraint];
+            $this->array($keys->plan($connection))->isIdenticalTo([
+                'ALTER TABLE ' . $quote('glpi_relation-a') . ' ADD ' . $second, $grouped[1],
+            ]);
+            $connection->foreignKeys['glpi_relation-a'][] = new ForeignKeyConstraint(
+                ['second_id'],
+                'glpi_second',
+                ['id'],
+                'fk_relation-a_second_id'
+            );
+            $connection->foreignKeys['glpi_relation_b'] = [new ForeignKeyConstraint(
+                ['third_id'],
+                'glpi_third',
+                ['id'],
+                'fk_relation_b_third_id'
+            )];
+            $this->array($keys->plan($connection))->isEmpty('A retry keeps every already installed exact declaration');
+            $connection->foreignKeys['glpi_relation-a'][0] = new ForeignKeyConstraint(
+                ['second_id'],
+                'glpi_first',
+                ['id'],
+                'fk_relation-a_first_id'
+            );
+            $this->exception(static fn () => $keys->apply($connection))->isInstanceOf(RuntimeException::class)
+                ->hasMessage('Existing foreign key has a different definition: fk_relation-a_first_id');
+            $this->array($connection->statements)->isEmpty();
+
+            $connection->foreignKeys = [];
+            $queries = [];
+            foreach ($relations as $table => $columns) {
+                foreach ($columns as $column => $parent) {
+                    $queries[] = 'SELECT COUNT(*) FROM ' . $quote($table) . ' c LEFT JOIN ' . $quote($parent)
+                        . ' p ON c.' . $quote($column) . ' = p.id WHERE c.' . $quote($column)
+                        . ' IS NOT NULL AND p.id IS NULL';
+                }
+            }
+            $connection->orphanCounts = [$queries[0] => 1, $queries[2] => 2];
+            $connection->auditReads = [];
+            $this->exception(static fn () => $keys->apply($connection))->isInstanceOf(RuntimeException::class)
+                ->hasMessage('Foreign keys were not installed; orphaned references: {"glpi_relation-a.first_id":1,"glpi_relation_b.third_id":2}');
+            $this->array($connection->auditReads)->isIdenticalTo($queries);
+            $this->array($connection->statements)->isEmpty('All orphan audits refuse before any grouped DDL');
+            $connection->orphanCounts = [];
+            $failure = new RuntimeException('Native grouped ALTER refused');
+            $connection->alterFailure = $failure;
+            $this->exception(static fn () => $keys->apply($connection))->isIdenticalTo($failure);
+            $this->array($connection->statements)->isIdenticalTo([$grouped[0]]);
+            $connection->alterFailure = null;
+            $connection->statements = [];
+            $keys->apply($connection);
+            $this->array($connection->statements)->isIdenticalTo($grouped);
+        }
+    }
+
     public function testMysqlFreshReplacementDropsOnlyExistingOwnedTablesInOneStatement(): void
     {
         foreach ([new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
@@ -321,6 +403,9 @@ final class FreshReplacementFixtureConnection extends Connection
     public array $statements = [];
     public int $checkReads = 0;
     public ?RuntimeException $dropFailure = null;
+    public ?RuntimeException $alterFailure = null;
+    public array $orphanCounts = [];
+    public array $auditReads = [];
 
     public function __construct(private AbstractPlatform $platform, private int $checks)
     {
@@ -349,6 +434,10 @@ final class FreshReplacementFixtureConnection extends Connection
 
     public function fetchOne(string $query, array $params = [], array $types = []): mixed
     {
+        if (str_starts_with($query, 'SELECT COUNT(*) FROM ')) {
+            $this->auditReads[] = $query;
+            return $this->orphanCounts[$query] ?? 0;
+        }
         if ($query !== 'SELECT @@FOREIGN_KEY_CHECKS') {
             throw new LogicException('Unexpected fresh replacement read: ' . $query);
         }
@@ -359,6 +448,9 @@ final class FreshReplacementFixtureConnection extends Connection
     public function executeStatement(string $sql, array $params = [], array $types = []): int|string
     {
         $this->statements[] = $sql;
+        if (str_starts_with($sql, 'ALTER TABLE ') && $this->alterFailure !== null) {
+            throw $this->alterFailure;
+        }
         if (str_starts_with($sql, 'DROP TABLE ') && $this->dropFailure !== null) {
             throw $this->dropFailure;
         }

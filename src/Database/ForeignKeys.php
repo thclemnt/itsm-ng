@@ -5,7 +5,6 @@
 namespace itsmng\Database;
 
 use Doctrine\DBAL\Connection;
-use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use Doctrine\DBAL\Schema\Schema;
 use RuntimeException;
 
@@ -72,6 +71,7 @@ final class ForeignKeys
         $sql = [];
         foreach ($this->upgradeRelations ?? self::relations() as $table => $relations) {
             $existing = $manager->listTableForeignKeys($table);
+            $add = [];
             foreach ($relations as $column => $parent) {
                 $name = self::name($table, $column);
                 foreach ($existing as $constraint) {
@@ -88,14 +88,13 @@ final class ForeignKeys
                         continue 2;
                     }
                 }
-                $foreignKey = new ForeignKeyConstraint(
-                    ['`' . $column . '`'],
-                    $parent,
-                    ['id'],
-                    '`' . $name . '`',
-                    ['onDelete' => 'RESTRICT', 'onUpdate' => 'RESTRICT']
-                );
-                $sql[] = $platform->getCreateForeignKeySQL($foreignKey, $table);
+                $add[] = 'ADD CONSTRAINT ' . $platform->quoteSingleIdentifier($name)
+                    . ' FOREIGN KEY (' . $platform->quoteSingleIdentifier($column) . ') REFERENCES '
+                    . $platform->quoteSingleIdentifier($parent) . ' (' . $platform->quoteSingleIdentifier('id') . ')'
+                    . ' ON UPDATE RESTRICT ON DELETE RESTRICT';
+            }
+            if ($add !== []) {
+                $sql[] = 'ALTER TABLE ' . $platform->quoteSingleIdentifier($table) . ' ' . implode(', ', $add);
             }
         }
         return $sql;
