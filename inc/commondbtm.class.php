@@ -1051,8 +1051,15 @@ class CommonDBTM extends CommonGLPI
         global $DB;
 
         if ($this->dohistory) {
-            (new HistoryRepository(Orm::create($DB)))
-                ->deleteForItem($this->getType(), (int)$this->getID());
+            Orm::readPrepared(
+                $DB,
+                fn (): array => (static fn (string $type, int $id): array => [$type, $id])(
+                    $this->getType(),
+                    (int)$this->getID()
+                ),
+                static fn (EntityManager $manager, array $identity) =>
+                    (new HistoryRepository($manager))->deleteForItem(...$identity)
+            );
         }
     }
 
@@ -2526,12 +2533,11 @@ class CommonDBTM extends CommonGLPI
         };
         $connection = $DB->getDoctrineConnection();
         $operation = function () use ($DB, $connection, $input, $force, $history): DeletionOutcome {
-            $manager = Orm::create($DB);
-            try {
-                $valid = (new DeletionRepository($manager))->validate($this, $input);
-            } finally {
-                $manager->clear();
-            }
+            $valid = Orm::read(
+                $DB,
+                fn (EntityManager $manager): bool => (new DeletionRepository($manager))->validate($this, $input),
+                clearCustomManager: true
+            );
             if ($DB !== ($GLOBALS['DB'] ?? null) || $DB->getDoctrineConnection() !== $connection) {
                 throw new TransactionOwnershipMismatch('The deletion callback replaced its supplied writer.');
             }
@@ -2654,13 +2660,13 @@ class CommonDBTM extends CommonGLPI
             if (!$sourceUnchanged()) {
                 return DeletionOutcome::Cancelled;
             }
-            $manager = Orm::create($DB);
-            try {
-                if (!(new DeletionRepository($manager))->validateReplacement($this, $this->input)) {
-                    return DeletionOutcome::Cancelled;
-                }
-            } finally {
-                $manager->clear();
+            $valid = Orm::read(
+                $DB,
+                fn (EntityManager $manager): bool => (new DeletionRepository($manager))->validateReplacement($this, $this->input),
+                clearCustomManager: true
+            );
+            if (!$valid) {
+                return DeletionOutcome::Cancelled;
             }
         }
 

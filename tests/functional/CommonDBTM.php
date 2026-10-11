@@ -128,6 +128,149 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class CommonDBTM extends DbTestCase
 {
+    public function testCompletedPurgeKeepsAuditIsolationAndDirtyOwners(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $owner = null;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $connection = $DB->getDoctrineConnection();
+            $other = $this->createItem(Computer::class, ['name' => 'purge-kept-' . $this->getUniqueString(), 'entities_id' => 0]);
+            $owner = Orm::create($DB);
+            $dirty = $owner->find(ComputerEntity::class, (int)$other->getID());
+            $dirty->name = 'unflushed independent purge owner';
+            foreach ([false, true] as $nested) {
+                $source = $this->createItem(Computer::class, ['name' => 'purge-owned-' . $this->getUniqueString(), 'entities_id' => 0]);
+                $targetLog = Log::history($source->getID(), Computer::class, [0, '', 'target audit']);
+                $otherTypeLog = Log::history($source->getID(), Ticket::class, [0, '', 'other-type audit snapshot']);
+                $otherIdLog = Log::history($other->getID(), Computer::class, [0, '', 'other-id audit']);
+                $observer = (object)['loads' => 0];
+                $model = new class ($observer) extends Computer {
+                    public function __construct(private object $observer)
+                    {
+                    }
+
+                    public static function getType()
+                    {
+                        return Computer::getType();
+                    }
+
+                    public static function getTable($classname = null)
+                    {
+                        return Computer::getTable($classname);
+                    }
+
+                    public function post_getFromDB()
+                    {
+                        ++$this->observer->loads;
+                        parent::post_getFromDB();
+                    }
+                };
+                $purge = function () use ($model, $source): void {
+                    $this->boolean($model->delete(['id' => $source->getID(), '_no_message' => 1], true))->isTrue();
+                };
+                if ($nested) {
+                    Orm::read($DB, function (EntityManager $outer) use ($other, $purge): void {
+                        $held = $outer->find(ComputerEntity::class, (int)$other->getID());
+                        $held->name = 'unflushed enclosing purge owner';
+                        $purge();
+                        $this->boolean($outer->contains($held))->isTrue();
+                        $this->string($held->name)->isIdenticalTo('unflushed enclosing purge owner');
+                    });
+                } else {
+                    $purge();
+                }
+                $this->integer($observer->loads)->isGreaterThan(0, 'Current public model authority is loaded before purge');
+                $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_computers WHERE id=?', [$source->getID()]))->isIdenticalTo(0);
+                $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_logs WHERE id=?', [$targetLog]))->isIdenticalTo(0);
+                foreach ([$otherTypeLog, $otherIdLog] as $keptLog) {
+                    $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_logs WHERE id=?', [$keptLog]))->isIdenticalTo(1);
+                }
+                $this->boolean($owner->contains($dirty))->isTrue();
+                $this->string($dirty->name)->isIdenticalTo('unflushed independent purge owner');
+                $this->string($connection->fetchOne('SELECT name FROM glpi_computers WHERE id=?', [$other->getID()]))
+                    ->isIdenticalTo($other->getField('name'));
+            }
+        } finally {
+            $owner?->clear();
+            $_SESSION = $session;
+        }
+    }
+
+    public function testPurgeValidationPreservesActualOperationAndCleanupFailures(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $manager = null;
+        $listener = null;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $source = $this->createItem(DomainType::class, ['name' => 'purge-failures-' . $this->getUniqueString(), 'entities_id' => 0]);
+            $connection = $DB->getDoctrineConnection();
+            $scope = $connection->captureManagedTransactionScope();
+            $level = $connection->getTransactionNestingLevel();
+            $primary = new RuntimeException('Public current deletion load failed');
+            $cleanup = new RuntimeException('Deletion validation owner clear failed');
+            $listener = new class ($cleanup) {
+                public int $clears = 0;
+
+                public function __construct(private Throwable $failure)
+                {
+                }
+
+                public function onClear(): void
+                {
+                    ++$this->clears;
+                    throw $this->failure;
+                }
+            };
+            $observer = (object)['connection' => $connection, 'listener' => $listener, 'primary' => $primary, 'manager' => null];
+            $model = new class ($observer) extends DomainType {
+                public function __construct(private object $observer)
+                {
+                }
+
+                public static function getTable($classname = null)
+                {
+                    return DomainType::getTable($classname);
+                }
+
+                public function getFromDB($id)
+                {
+                    // Inject cleanup failure into the actual active validation owner,
+                    // without replacing the public deletion or transaction boundary.
+                    $property = new ReflectionProperty($this->observer->connection, 'applicationEntityManager');
+                    $this->observer->manager = $property->getValue($this->observer->connection);
+                    $this->observer->manager->getEventManager()->addEventListener(Events::onClear, $this->observer->listener);
+                    throw $this->observer->primary;
+                }
+            };
+            $failure = null;
+            try {
+                $model->delete(['id' => $source->getID(), '_no_message' => 1], true, false);
+            } catch (Throwable $error) {
+                $failure = $error;
+            }
+            $manager = $observer->manager;
+            $this->object($failure)->isInstanceOf(MutationCleanupFailure::class);
+            $this->object($failure->primary)->isIdenticalTo($primary);
+            $this->object($failure->cleanup)->isIdenticalTo($cleanup);
+            $this->integer($listener->clears)->isIdenticalTo(1);
+            $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+            $scope->assertActive();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_domaintypes WHERE id=?', [$source->getID()]))->isIdenticalTo(1);
+            $manager->getEventManager()->removeEventListener(Events::onClear, $listener);
+            $this->boolean($source->delete(['id' => $source->getID(), '_no_message' => 1], true, false))->isTrue();
+        } finally {
+            $manager?->getEventManager()->removeEventListener(Events::onClear, $listener);
+            $_SESSION = $session;
+        }
+    }
+
     public function testReplacementDeletionUsesCurrentSourceAndTargetScopes(): void
     {
         global $DB;
