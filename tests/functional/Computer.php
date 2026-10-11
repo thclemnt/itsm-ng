@@ -70,6 +70,12 @@ use Notepad as NotepadModel;
 use Session;
 use itsmng\Database\Entity\Notepad as NoteRecord;
 use PluginNotepadOwnershipParent;
+use Item_SoftwareLicense as AllocationModel;
+use Item_SoftwareVersion as InstallationModel;
+use Software as SoftwareModel;
+use SoftwareLicense as LicenseModel;
+use SoftwareVersion as VersionModel;
+use RuntimeException;
 use Doctrine\DBAL\Exception as NoteDatabaseException;
 use Monitor;
 use Peripheral;
@@ -2313,8 +2319,88 @@ class Computer extends DbTestCase
         $this->variable($customNote->fields['computers_id'])->isNull();
         $this->integer(NotepadModel::countForItem($custom))->isIdenticalTo(1);
         $this->array(NotepadModel::getAllForItem($custom))->hasSize(1);
-        $this->boolean($custom->delete(['id' => $custom->getID()], true))->isTrue();
-        $this->boolean($customNote->getFromDB($customNote->getID()))->isFalse();
+        $software = $this->createItem(SoftwareModel::class, ['name' => $prefix . '-software', 'entities_id' => 0]);
+        $version = $this->createItem(VersionModel::class, ['name' => $prefix, 'softwares_id' => $software->getID()]);
+        $license = $this->createItem(LicenseModel::class, [
+            'name' => $prefix, 'softwares_id' => $software->getID(), 'entities_id' => 0, 'number' => 0,
+        ]);
+        $installation = $this->createItem(InstallationModel::class, [
+            'itemtype' => ComputerModel::class, 'items_id' => $custom->getID(), 'softwareversions_id' => $version->getID(),
+        ]);
+        $allocation = $this->createItem(AllocationModel::class, [
+            'itemtype' => ComputerModel::class, 'items_id' => $custom->getID(), 'softwarelicenses_id' => $license->getID(),
+        ]);
+        $this->boolean($license->getFromDB($license->getID()))->isTrue();
+        $this->integer((int)$license->fields['is_valid'])->isIdenticalTo(0);
+        $this->exception(static fn () => $connection->transactional(
+            static fn () => $connection->delete('glpi_computers', ['id' => $custom->getID()])
+        ))->isInstanceOf(NoteDatabaseException::class);
+        global $PLUGIN_HOOKS;
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $activePlugins = $plugins->getValue();
+        $owner = Orm::create($DB);
+        $dirty = $owner->find(ComputerEntity::class, (int)$custom->getID());
+        $dirty->name = 'Unflushed custom physical software subject';
+        $depth = $connection->getTransactionNestingLevel();
+        $bags = [];
+        foreach (['glpi_computers', 'glpi_notepads', 'glpi_items_softwarelicenses', 'glpi_items_softwareversions', 'glpi_softwarelicenses', 'glpi_logs'] as $table) {
+            $bags[$table] = $connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table) . ' ORDER BY id');
+        }
+        try {
+            $plugins->setValue(null, [...$activePlugins, 'note_software_subject_fixture']);
+            foreach ([false, true] as $throw) {
+                $failure = new RuntimeException('Reject custom subject after canonical allocation cleanup');
+                $calls = 0;
+                $PLUGIN_HOOKS['pre_item_purge']['note_software_subject_fixture'][InstallationModel::class] = static function ($item) use (
+                    $connection,
+                    $allocation,
+                    $installation,
+                    $throw,
+                    $failure,
+                    &$calls
+                ): void {
+                    if ((int)$item->getID() !== (int)$installation->getID()) {
+                        return;
+                    }
+                    ++$calls;
+                    // Licence cleanup has already executed on the same physical writer.
+                    if ($connection->fetchOne('SELECT id FROM glpi_items_softwarelicenses WHERE id=?', [$allocation->getID()]) !== false) {
+                        throw new RuntimeException('Canonical allocation was not purged before installation');
+                    }
+                    if ($throw) {
+                        throw $failure;
+                    }
+                    $item->input = false;
+                };
+                if ($throw) {
+                    $this->exception(static fn () => $custom->delete(['id' => $custom->getID()], true))->isIdenticalTo($failure);
+                } else {
+                    $this->boolean($custom->delete(['id' => $custom->getID()], true))->isFalse();
+                }
+                $this->integer($calls)->isIdenticalTo(1);
+                foreach ($bags as $table => $before) {
+                    $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table) . ' ORDER BY id'))->isIdenticalTo($before);
+                }
+                $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+                $this->boolean($owner->contains($dirty))->isTrue();
+                $this->string($dirty->name)->isIdenticalTo('Unflushed custom physical software subject');
+            }
+            $PLUGIN_HOOKS = $hooks;
+            $this->boolean($custom->delete(['id' => $custom->getID()], true))->isTrue();
+            $this->boolean($customNote->getFromDB($customNote->getID()))->isFalse();
+            $this->boolean($installation->getFromDB($installation->getID()))->isFalse();
+            $this->boolean($allocation->getFromDB($allocation->getID()))->isFalse();
+            $this->boolean($license->getFromDB($license->getID()))->isTrue();
+            $this->integer((int)$license->fields['is_valid'])->isIdenticalTo(1);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->string($dirty->name)->isIdenticalTo('Unflushed custom physical software subject');
+        } finally {
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $activePlugins);
+            $owner->clear();
+        }
         $stock = $this->createItem(NotepadModel::class, ['itemtype' => ComputerModel::class, 'items_id' => 0, 'content' => $prefix]);
         $this->variable($stock->fields['computers_id'])->isNull();
         $this->variable($stock->fields['opaque_parent_id'])->isNull();

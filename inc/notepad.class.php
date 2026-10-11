@@ -133,8 +133,8 @@ class Notepad extends CommonDBChild
                 || !Session::haveRight($parent::$rightname, UPDATENOTE)) {
                 Session::addMessageAfterRedirect(
                     __('Cannot update item: not enough right on the parent(s) item(s)'),
-                    INFO,
-                    true
+                    true,
+                    INFO
                 );
                 return false;
             }

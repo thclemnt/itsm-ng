@@ -4,6 +4,8 @@
 
 namespace itsmng\Domain;
 
+use Item_SoftwareLicense;
+use Item_SoftwareVersion;
 use itsmng\Database\LifecycleModelJournal;
 
 /** Asset eligibility and its existing completed lifecycle share the allocation writer. */
@@ -47,6 +49,17 @@ trait SoftwareAllocationSubjectLifecycle
             fn () => parent::executePreparedRestore($operation, $storedFields),
             'restore'
         );
+    }
+
+    /** A custom model sharing an owned physical subject still purges its canonical software children. */
+    public function cleanRelationTable()
+    {
+        $kind = SoftwareAssignmentService::subjectKindForLifecycle($this);
+        if ($kind !== null && $kind !== $this->getType()) {
+            (new Item_SoftwareLicense())->cleanDBonItemDelete($kind, $this->getID());
+            (new Item_SoftwareVersion())->cleanDBonItemDelete($kind, $this->getID());
+        }
+        parent::cleanRelationTable();
     }
 
     public function delete(array $input, $force = 0, $history = 1)

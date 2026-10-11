@@ -13,6 +13,7 @@ use Item_SoftwareLicense;
 use Item_SoftwareVersion;
 use itsmng\Database\ConnexityInput;
 use itsmng\Database\Entity\ItemSoftwareLicense;
+use itsmng\Database\EntityRegistry;
 use itsmng\Database\LifecycleModelJournal;
 use itsmng\Database\Orm;
 use itsmng\Database\OwnershipUpdateUnit;
@@ -332,11 +333,33 @@ final class SoftwareAssignmentService
         });
     }
 
+    /** Canonical software recipients own physical rows, not a subclass's dynamic model type. */
+    public static function subjectKindForLifecycle(CommonDBTM $model): ?string
+    {
+        $table = $model->getTable();
+        $families = [];
+        foreach ([Item_SoftwareLicense::class, Item_SoftwareVersion::class] as $assignment) {
+            $kinds = [];
+            foreach (EntityRegistry::discriminatedReferences($assignment::getTable())['items_id']['selections'] as $kind => $selection) {
+                if ($selection['target'] === $table) {
+                    $kinds[] = $kind;
+                }
+            }
+            sort($kinds);
+            $families[] = $kinds;
+        }
+        if ($families[0] !== $families[1] || count($families[0]) > 1) {
+            throw new SoftwareAssignmentCancelled('Software recipient declarations disagree on the selected physical subject.');
+        }
+        return $families[0][0] ?? null;
+    }
+
     public function mutateSubject(CommonDBTM $model, array $checkpoint, callable $operation, string $mode): mixed
     {
-        return $this->mutate($model, $checkpoint, $mode, function () use ($model, $operation, $mode) {
+        $kind = self::subjectKindForLifecycle($model);
+        return $this->mutate($model, $checkpoint, $mode, function () use ($model, $operation, $mode, $kind) {
             SoftwareMutation::assertTransactionalStorage($this->database, [$model->getTable()]);
-            $licenses = $this->lockSubjectAssignments($model->getType(), (int)$model->getID());
+            $licenses = $kind === null ? [] : $this->lockSubjectAssignments($kind, (int)$model->getID());
             $result = $this->complete($operation, $mode);
             if ($mode === 'restore') {
                 $model->fields['is_deleted'] = 0;
@@ -345,7 +368,7 @@ final class SoftwareAssignmentService
                 SoftwareAssignmentCancelled::requireSuccess($this->refreshLicenseValidity($license), 'Asset allocation validity');
             }
             return $result;
-        });
+        }, subjectKind: $kind, subjectPrepared: true);
     }
 
     public function mutateLicense(SoftwareLicense $model, array $checkpoint, callable $operation, string $mode): mixed
@@ -509,7 +532,14 @@ final class SoftwareAssignmentService
         $this->assignments->lockSubjects($subjects);
     }
 
-    private function mutate(CommonDBTM $model, array $checkpoint, string $mode, callable $operation): mixed
+    private function mutate(
+        CommonDBTM $model,
+        array $checkpoint,
+        string $mode,
+        callable $operation,
+        ?string $subjectKind = null,
+        bool $subjectPrepared = false
+    ): mixed
     {
         if ($mode !== 'add' && (int)($checkpoint['fields']['id'] ?? 0) !== (int)$model->getID()) {
             return SoftwareMutation::run($this->database, $model, $checkpoint, static function () {
@@ -521,7 +551,7 @@ final class SoftwareAssignmentService
         } elseif ($mode === 'update' || $mode === 'restore') {
             $checkpoint['updates'] = $checkpoint['oldvalues'] = [];
         }
-        return SoftwareMutation::run($this->database, $model, $checkpoint, function () use ($model, $checkpoint, $operation, $mode) {
+        return SoftwareMutation::run($this->database, $model, $checkpoint, function () use ($model, $checkpoint, $operation, $mode, $subjectKind, $subjectPrepared) {
             // Reserve before aggregate locks even for cleanup, whose required
             // validity refresh can invoke nested public licence callbacks.
             $subjects = [];
@@ -553,15 +583,13 @@ final class SoftwareAssignmentService
                     $software[] = (int)($fields['id'] ?? 0);
                     $includeInstallations = $mode === 'delete';
                 } else {
-                    try {
-                        ItemSoftwareLicense::referenceAssociation($model->getType());
+                    $kind = $subjectPrepared ? $subjectKind : self::subjectKindForLifecycle($model);
+                    if ($kind !== null) {
                         $includeInstallations = $mode === 'delete';
                         if ((int)($fields['id'] ?? 0) > 0) {
-                            $subjects[] = [$model->getType(), (int)$fields['id']];
-                            $licenses = [...$licenses, ...$this->assignments->licensesForSubject($model->getType(), (int)$fields['id'], current: false)];
+                            $subjects[] = [$kind, (int)$fields['id']];
+                            $licenses = [...$licenses, ...$this->assignments->licensesForSubject($kind, (int)$fields['id'], current: false)];
                         }
-                    } catch (InvalidArgumentException) {
-                        // Non-allocation domain models have no subject graph to reserve.
                     }
                 }
             }
