@@ -293,7 +293,7 @@ class Item_DeviceGeneric extends DbTestCase
             try {
                 $DB = $countAdapter;
                 $this->string($tab->getTabNameForItem($asset))->isIdenticalTo($expected);
-                $this->integer($factories->getValue() - $before)->isIdenticalTo(1);
+                $this->integer($factories->getValue() - $before)->isIdenticalTo(0, 'Fixed component counts create no manager on the captured custom route');
                 $this->array($probe->queries)->hasSize(1);
                 $this->integer($probe->builders)->isIdenticalTo(17);
                 $this->array($probe->queries[0]['params'])->isIdenticalTo(array_merge(...array_fill(0, 17, [(int)$asset->getID(), 'Computer', false])));

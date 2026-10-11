@@ -37,7 +37,6 @@ use DbTestCase;
 use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManager;
-use Doctrine\ORM\Event\PostLoadEventArgs;
 use itsmng\Database\Entity\KnowbaseItem as ArticleRecord;
 use itsmng\Database\Entity\KnowbaseItemComment as CommentRecord;
 use itsmng\Database\Entity\User as UserRecord;
@@ -190,16 +189,11 @@ class KnowbaseItem_Comment extends DbTestCase
             $owner->persist($article);
             $owner->persist($comment);
             $owner->flush();
+            $comment->comment = 'Unflushed custom comment';
             $connection = $DB->getDoctrineConnection();
             $observer = new class () {
                 public array $trace = [];
                 public int $clears = 0;
-                public function postLoad(PostLoadEventArgs $event): void
-                {
-                    if ($event->getObject() instanceof CommentRecord) {
-                        $event->getObject()->comment = 'Custom loaded comment';
-                    }
-                }
                 public function onClear(): void
                 {
                     ++$this->clears;
@@ -216,7 +210,7 @@ class KnowbaseItem_Comment extends DbTestCase
             };
             $selected->observer = $observer;
             $selected->events = new EventManager();
-            $selected->events->addEventListener(['postLoad', 'onClear'], $observer);
+            $selected->events->addEventListener(['onClear'], $observer);
             $other = new ScalarReadProbe($connection);
             $route = $selected;
             $this->mockGenerator()->orphanize('__construct');
@@ -246,7 +240,9 @@ class KnowbaseItem_Comment extends DbTestCase
             $rows = ApplicationComment::getCommentsForKbItem((string)$article->id, $language);
             $this->array($observer->trace)->isIdenticalTo(['constructed', 'language']);
             $this->array(array_column($rows, 'id'))->isIdenticalTo([$comment->id]);
-            $this->string($rows[0]['comment'])->isIdenticalTo('Custom loaded comment');
+            $this->string($rows[0]['comment'])->isIdenticalTo('Stored custom comment');
+            $this->boolean($owner->contains($comment))->isTrue();
+            $this->string($comment->comment)->isIdenticalTo('Unflushed custom comment');
             $this->array($other->queries)->isEmpty();
             $this->array($selected->queries)->isNotEmpty();
             $this->integer($observer->clears)->isIdenticalTo(0);

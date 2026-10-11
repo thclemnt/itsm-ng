@@ -349,9 +349,9 @@ class Location extends DbTestCase
             $params = ['name' => $record->getField('name'), 'entities_id' => $entity];
             $this->integer((int)$model->findID($params))->isIdenticalTo((int)$record->getID());
             $this->array($observer->trace)
-                ->isIdenticalTo(['constructed', 'scope-cleared', 'identity', 'table', 'constructed', 'loaded', 'cleared']);
-            $this->integer($observer->clears)->isIdenticalTo(2);
-            $this->object($observer->clearedManagers[0])->isNotIdenticalTo($observer->loadedManagers[0]);
+                ->isIdenticalTo(['identity', 'table', 'constructed', 'loaded', 'cleared']);
+            $this->integer($observer->clears)->isIdenticalTo(1);
+            $this->object($observer->clearedManagers[0])->isIdenticalTo($observer->loadedManagers[0]);
             $this->integer($observer->clears)->isIdenticalTo($observer->beforeIdentity + 1);
             $this->object(end($observer->clearedManagers))->isIdenticalTo(end($observer->loadedManagers));
             $this->array($other->queries)->isEmpty();
@@ -367,10 +367,10 @@ class Location extends DbTestCase
                 })->isInstanceOf(UnsupportedCriteria::class)
                     ->hasMessage('Tree identity requires a stable mapped table; override findTreeIdentity for dynamic routes.');
                 $this->array(array_slice($observer->trace, $before))
-                    ->isIdenticalTo(['constructed', 'scope-cleared', 'identity', 'table']);
-                $this->integer($observer->clears)->isIdenticalTo($beforeClears + 1);
+                    ->isIdenticalTo(['identity', 'table']);
+                $this->integer($observer->clears)->isIdenticalTo($beforeClears);
                 $this->integer(count($observer->loadedManagers))->isIdenticalTo($beforeLoads);
-                $this->object(end($observer->clearedManagers))->isNotIdenticalTo(end($observer->loadedManagers));
+                $this->object(end($observer->clearedManagers))->isIdenticalTo(end($observer->loadedManagers));
                 $this->array($model->opaque)->isEmpty();
             }
             $model::$changedTable = null;
@@ -401,8 +401,8 @@ class Location extends DbTestCase
                     $this->object($failure)->isIdenticalTo($observer->loadFailure ?? $observer->clearFailure);
                 }
                 $this->array(array_slice($observer->trace, $before))
-                    ->isIdenticalTo(['constructed', 'scope-cleared', 'identity', 'table', 'constructed', 'loaded', 'cleared']);
-                $this->integer($observer->clears)->isIdenticalTo($beforeClears + 2);
+                    ->isIdenticalTo(['identity', 'table', 'constructed', 'loaded', 'cleared']);
+                $this->integer($observer->clears)->isIdenticalTo($beforeClears + 1);
                 $this->integer($observer->clears)->isIdenticalTo($observer->beforeIdentity + 1);
                 $this->object(end($observer->clearedManagers))->isIdenticalTo(end($observer->loadedManagers));
                 $failedReader = end($observer->loadedManagers);

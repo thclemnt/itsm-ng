@@ -39,7 +39,6 @@ use Planning;
 use Session;
 use itsmng\Database\Orm;
 use Doctrine\Common\EventManager;
-use Doctrine\ORM\Event\PostLoadEventArgs;
 use Entity_Reminder;
 use Group;
 use Group_Reminder;
@@ -158,6 +157,7 @@ class Reminder extends DbTestCase
         global $DB;
         $originalAdapter = $DB;
         $session = $_SESSION;
+        $audienceOwner = null;
         try {
             $this->login();
             $this->setEntity('_test_root_entity', false);
@@ -197,24 +197,19 @@ class Reminder extends DbTestCase
             $groups = (new ReflectionProperty(ReminderModel::class, 'groups'))->getValue($loaded);
             $this->integer((int)$groups[$group->getID()][0]['is_recursive'])->isIdenticalTo(1);
 
+            $audienceOwner = Orm::create($DB);
+            $dirtyGroup = $audienceOwner->find(Entity\GroupReminder::class, (int)$links['groups']->getID());
+            $dirtyGroup->is_recursive = false;
+
             $events = new EventManager();
             $observer = new class () {
-                public array $loaded = [];
                 public int $clears = 0;
-                public function postLoad(PostLoadEventArgs $event): void
-                {
-                    $record = $event->getObject();
-                    $this->loaded[] = $record::class;
-                    if ($record instanceof Entity\GroupReminder) {
-                        $record->is_recursive = false;
-                    }
-                }
                 public function onClear(): void
                 {
                     ++$this->clears;
                 }
             };
-            $events->addEventListener(['postLoad', 'onClear'], $observer);
+            $events->addEventListener(['onClear'], $observer);
             $probe = new class ($connection) extends ScalarReadProbe {
                 public EventManager $events;
                 public function getEventManager(): EventManager
@@ -229,16 +224,25 @@ class Reminder extends DbTestCase
             $this->calling($adapter)->getProvider = $originalAdapter->getProvider();
             $DB = $adapter;
             $this->boolean($loaded->getFromDB($reminder->getID()))->isTrue();
-            foreach ([Entity\ReminderUser::class, Entity\EntityReminder::class,
-                Entity\GroupReminder::class, Entity\ProfileReminder::class] as $class) {
-                $this->array($observer->loaded)->contains($class);
-            }
             $groups = (new ReflectionProperty(ReminderModel::class, 'groups'))->getValue($loaded);
-            $this->integer((int)$groups[$group->getID()][0]['is_recursive'])->isIdenticalTo(0);
+            $this->integer((int)$groups[$group->getID()][0]['is_recursive'])->isIdenticalTo(1);
             $clears = $observer->clears;
             $rows = Group_Reminder::getGroups($reminder->getID());
-            $this->integer((int)$rows[$group->getID()][0]['is_recursive'])->isIdenticalTo(0);
+            $this->integer((int)$rows[$group->getID()][0]['is_recursive'])->isIdenticalTo(1);
             $this->integer($observer->clears)->isIdenticalTo($clears);
+            $this->boolean($audienceOwner->contains($dirtyGroup))->isTrue();
+            $this->boolean($dirtyGroup->is_recursive)->isFalse();
+            Orm::read($originalAdapter, function (EntityManager $outer) use ($loaded, $reminder, $group, $links, $audienceOwner, $dirtyGroup): void {
+                $nested = $outer->find(Entity\GroupReminder::class, (int)$links['groups']->getID());
+                $nested->is_recursive = false;
+                $this->boolean($loaded->getFromDB($reminder->getID()))->isTrue();
+                $groups = (new ReflectionProperty(ReminderModel::class, 'groups'))->getValue($loaded);
+                $this->integer((int)$groups[$group->getID()][0]['is_recursive'])->isIdenticalTo(1);
+                $this->boolean($outer->contains($nested))->isTrue();
+                $this->boolean($nested->is_recursive)->isFalse();
+                $this->boolean($audienceOwner->contains($dirtyGroup))->isTrue();
+                $this->boolean($dirtyGroup->is_recursive)->isFalse();
+            });
             $DB = $originalAdapter;
             foreach ($audiences as [$property, $class]) {
                 $this->integer($connection->delete($class::getTable(), ['reminders_id' => $reminder->getID()]))->isIdenticalTo(1);
@@ -249,6 +253,7 @@ class Reminder extends DbTestCase
             }
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
         } finally {
+            $audienceOwner?->clear();
             $DB = $originalAdapter;
             $_SESSION = $session;
         }
