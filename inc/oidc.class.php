@@ -34,6 +34,8 @@
 use Jumbojett\OpenIDConnectClient;
 use Glpi\Toolbox\URL;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\OidcRepository;
 
 require __DIR__ . "/../vendor/autoload.php";
@@ -240,16 +242,31 @@ class Oidc extends CommonDBTM
     {
         global $DB;
 
-        $DB->getDoctrineConnection()->transactional(static function () use ($DB, $user_array, $id): void {
-            $email = (new OidcRepository(Orm::create($DB)))->synchronizeProfile(
-                (int)$id,
-                $user_array,
-                new DateTimeImmutable($_SESSION['glpi_currenttime'] ?? 'now')
-            );
-            if ($email !== null && $email !== '' && !UserEmail::isEmailForUser($id, $email)) {
-                (new UserEmail())->add(['users_id' => $id, 'email' => $email, 'is_dynamic' => 0]);
-            }
-        });
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        OwnedMutationFrame::run(
+            $connection,
+            static function () use ($database, $connection, $user_array, $id): void {
+                OwnershipUpdateUnit::withWriterGuard(
+                    $database,
+                    $connection,
+                    static function () use ($database, $connection, $user_array, $id): void {
+                        $repository = new OidcRepository(Orm::forConnection($connection));
+                        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+                        $email = $repository->synchronizeProfile(
+                            (int)$id,
+                            $user_array,
+                            new DateTimeImmutable($_SESSION['glpi_currenttime'] ?? 'now')
+                        );
+                        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+                        if ($email !== null && $email !== '' && !UserEmail::isEmailForUser($id, $email)) {
+                            (new UserEmail())->add(['users_id' => $id, 'email' => $email, 'is_dynamic' => 0]);
+                        }
+                    }
+                );
+                }
+        );
     }
 
 

@@ -84,6 +84,8 @@ use Glpi\Console\Database\InstallCommand;
 use Glpi\Console\System\ClearCacheCommand;
 use GLPIKey;
 use Group;
+use Oidc;
+use Plugin;
 use Impact as ImpactModel;
 use Infocom;
 use Item_Devices;
@@ -94,6 +96,7 @@ use itsmng\Database\Entity\Computer as ComputerRecord;
 use itsmng\Database\Entity\Config as ConfigRecord;
 use itsmng\Database\Entity\Entity as EntityRecord;
 use itsmng\Database\Entity\GroupMembership;
+use itsmng\Database\Entity\User as UserRecord;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\MappedReads;
 use itsmng\Database\MutationCleanupFailure;
@@ -110,6 +113,7 @@ use itsmng\Database\Repository\OidcRepository;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\RecordWriter;
 use itsmng\Database\SchemaCheck;
+use itsmng\Database\TransactionOwnershipMismatch;
 use itsmng\Database\UnsupportedCriteria;
 use JsonException;
 use Log;
@@ -137,6 +141,7 @@ use tests\fixtures\ScalarReadProbe;
 use Throwable;
 use Toolbox;
 use User;
+use UserEmail;
 
 use function exportArrayToDB;
 use function importArrayFromDB;
@@ -312,6 +317,188 @@ class Config extends DbTestCase
         } finally {
             APIClientModel::forceTable($table);
             $DB = $original;
+        }
+    }
+
+    public function testOidcProfileCommandKeepsOptionalEmailAndRollsBackThrownEmail(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $this->login();
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $connection = $DB->getDoctrineConnection();
+        $manager = Orm::forConnection($connection);
+        try {
+            $user = $this->createItem(User::class, ['name' => $this->getUniqueString()]);
+            $id = (int)$user->getID();
+            (new OidcRepository($manager))->saveMapping([
+                'given_name' => 'given', 'group' => 'groups', 'email' => 'email',
+            ]);
+            $group = $this->getUniqueString();
+            $depth = $connection->getTransactionNestingLevel();
+            Oidc::addUserData(['given' => 'NULL', 'groups' => [$group, $group], 'email' => 'not-an-email'], $id);
+            $this->boolean($user->getFromDB($id))->isTrue();
+            $this->string($user->fields['firstname'])->isIdenticalTo('NULL');
+            $this->boolean((new OidcRepository($manager))->needsRefresh($id))->isFalse();
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_groups_users WHERE users_id = ?', [$id]))->isIdenticalTo(1);
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_useremails WHERE users_id = ?', [$id]))->isIdenticalTo(0);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+            $email = $this->getUniqueString() . '@example.invalid';
+            Oidc::addUserData(['given' => "O'Reilly\\Profile", 'groups' => [$group], 'email' => $email], $id);
+            $this->boolean($user->getFromDB($id))->isTrue();
+            $this->string($user->fields['firstname'])->isIdenticalTo("O'Reilly\\Profile");
+            $this->boolean(UserEmail::isEmailForUser($id, $email))->isTrue();
+            Oidc::addUserData(['given' => 'Current profile', 'groups' => [$group], 'email' => $email], $id);
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_groups_users WHERE users_id = ?', [$id]))->isIdenticalTo(1);
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_useremails WHERE users_id = ?', [$id]))->isIdenticalTo(1);
+            $snapshot = static function () use ($connection): array {
+                $rows = [];
+                foreach (['glpi_users', 'glpi_groups', 'glpi_groups_users', 'glpi_oidc_users', 'glpi_useremails'] as $table) {
+                    $rows[$table] = $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id');
+                }
+                return $rows;
+            };
+            $before = $snapshot();
+            $failure = new RuntimeException('Refused local OIDC email hook');
+            $plugins->setValue(null, [...$active, 'oidc_profile_owner_fixture']);
+            $PLUGIN_HOOKS['pre_item_add']['oidc_profile_owner_fixture'][UserEmail::class] = static function () use ($failure): void {
+                throw $failure;
+            };
+            $caught = null;
+            try {
+                Oidc::addUserData([
+                    'given' => 'Rolled back profile', 'groups' => [$this->getUniqueString()],
+                    'email' => $this->getUniqueString() . '@example.invalid',
+                ], $id);
+            } catch (RuntimeException $error) {
+                $caught = $error;
+            }
+            $this->object($caught)->isIdenticalTo($failure);
+            $this->array($snapshot())->isIdenticalTo($before);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+            $PLUGIN_HOOKS = $hooks;
+            Oidc::addUserData(['given' => 'Recovered profile', 'groups' => [$group], 'email' => null], $id);
+            $this->boolean($user->getFromDB($id))->isTrue();
+            $this->string($user->fields['firstname'])->isIdenticalTo('Recovered profile');
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+        } finally {
+            $manager->clear();
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+        }
+    }
+
+    public function testOidcProfileCommandProtectsSelectedWriterAndDirtyOwners(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $this->login();
+        $original = $DB;
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $connection = $DB->getDoctrineConnection();
+        $owner = Orm::create($DB);
+        try {
+            $user = $this->createItem(User::class, ['name' => $this->getUniqueString()]);
+            $id = (int)$user->getID();
+            (new OidcRepository($owner))->saveMapping(['given_name' => 'given', 'email' => 'email']);
+            $dirty = $owner->find(UserRecord::class, $id);
+            $dirty->firstname = 'Independent pending profile';
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new ConfigurationAdapter();
+            $this->calling($adapter)->getDoctrineConnection = $connection;
+            $depth = $connection->getTransactionNestingLevel();
+            $DB = $adapter;
+            Orm::read($adapter, function (EntityManager $outer) use ($id, $connection): void {
+                $pending = $outer->find(UserRecord::class, $id);
+                $pending->firstname = 'Enclosing pending profile';
+                Oidc::addUserData(['given' => 'Committed current profile'], $id);
+                $this->boolean($outer->contains($pending))->isTrue();
+                $this->string($pending->firstname)->isIdenticalTo('Enclosing pending profile');
+                $this->string($connection->fetchOne('SELECT firstname FROM glpi_users WHERE id = ?', [$id]))->isIdenticalTo('Committed current profile');
+            });
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->string($dirty->firstname)->isIdenticalTo('Independent pending profile');
+            $before = $connection->fetchAssociative('SELECT * FROM glpi_users WHERE id = ?', [$id]);
+            $state = $connection->fetchAssociative('SELECT * FROM glpi_oidc_users WHERE user_id = ?', [$id]);
+            $other = new ConfigurationAdapter();
+            $probe = new ScalarReadProbe($connection);
+            $this->calling($other)->getDoctrineConnection = $probe;
+            $plugins->setValue(null, [...$active, 'oidc_profile_owner_fixture']);
+            $PLUGIN_HOOKS['pre_item_add']['oidc_profile_owner_fixture'][UserEmail::class] = static function () use ($other): void {
+                $GLOBALS['DB'] = $other;
+            };
+            $DB = $adapter;
+            $this->exception(static fn () => Oidc::addUserData(['given' => 'Refused changed writer', 'email' => 'changed-writer@example.invalid'], $id))
+                ->isInstanceOf(TransactionOwnershipMismatch::class);
+            $this->array($probe->queries)->isEmpty();
+            $this->array($connection->fetchAssociative('SELECT * FROM glpi_users WHERE id = ?', [$id]))->isIdenticalTo($before);
+            $this->array($connection->fetchAssociative('SELECT * FROM glpi_oidc_users WHERE user_id = ?', [$id]))->isIdenticalTo($state);
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_useremails WHERE users_id = ?', [$id]))->isIdenticalTo(0);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+            $PLUGIN_HOOKS = $hooks;
+            $DB = $adapter;
+            Oidc::addUserData(['given' => 'Recovered selected writer'], $id);
+            $this->string($connection->fetchOne('SELECT firstname FROM glpi_users WHERE id = ?', [$id]))->isIdenticalTo('Recovered selected writer');
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->string($dirty->firstname)->isIdenticalTo('Independent pending profile');
+            $before = $connection->fetchAssociative('SELECT * FROM glpi_users WHERE id = ?', [$id]);
+            $state = $connection->fetchAssociative('SELECT * FROM glpi_oidc_users WHERE user_id = ?', [$id]);
+            $originalString = Type::getType(Types::STRING);
+            $conversion = new class ($other) extends StringType {
+                public int $replacements = 0;
+
+                public function __construct(private DBAdapter $other)
+                {
+                }
+
+                public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
+                {
+                    if ($value === 'Recovered selected writer') {
+                        ++$this->replacements;
+                        $GLOBALS['DB'] = $this->other;
+                    }
+                    return parent::convertToPHPValue($value, $platform);
+                }
+            };
+            Type::overrideType(Types::STRING, $conversion);
+            try {
+                $DB = $adapter;
+                $this->exception(static fn () => Oidc::addUserData([
+                    'given' => 'Refused profile hydration route', 'email' => 'profile-route@example.invalid',
+                ], $id))->isInstanceOf(TransactionOwnershipMismatch::class);
+                $this->integer($conversion->replacements)->isIdenticalTo(1);
+                $this->array($probe->queries)->isEmpty();
+                $this->array($connection->fetchAssociative('SELECT * FROM glpi_users WHERE id = ?', [$id]))->isIdenticalTo($before);
+                $this->array($connection->fetchAssociative('SELECT * FROM glpi_oidc_users WHERE user_id = ?', [$id]))->isIdenticalTo($state);
+                $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_useremails WHERE users_id = ?', [$id]))->isIdenticalTo(0);
+                $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+            } finally {
+                Type::overrideType(Types::STRING, $originalString);
+                $DB = $adapter;
+            }
+            Oidc::addUserData(['given' => 'Recovered profile hydration route'], $id);
+            $this->string($connection->fetchOne('SELECT firstname FROM glpi_users WHERE id = ?', [$id]))->isIdenticalTo('Recovered profile hydration route');
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->string($dirty->firstname)->isIdenticalTo('Independent pending profile');
+            $calls = 0;
+            $rotating = new ConfigurationAdapter();
+            $this->calling($rotating)->getDoctrineConnection = static function () use (&$calls, $connection, $probe): Connection {
+                return ++$calls === 1 ? $connection : $probe;
+            };
+            $DB = $rotating;
+            $before = $connection->fetchAssociative('SELECT * FROM glpi_users WHERE id = ?', [$id]);
+            $this->exception(static fn () => Oidc::addUserData(['given' => 'Refused rotating connection'], $id))
+                ->isInstanceOf(TransactionOwnershipMismatch::class);
+            $this->array($probe->queries)->isEmpty();
+            $this->array($connection->fetchAssociative('SELECT * FROM glpi_users WHERE id = ?', [$id]))->isIdenticalTo($before);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+        } finally {
+            $owner->clear();
+            $DB = $original;
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
         }
     }
 
