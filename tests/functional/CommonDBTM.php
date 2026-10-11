@@ -1471,7 +1471,7 @@ class CommonDBTM extends DbTestCase
             $decision = null;
             $calls = [];
             $callback = static function (LegacyCommonDBTM $model) use (&$decision, &$calls): void {
-                $calls[] = ['right' => $model->right, 'fields' => $model->fields, 'input' => $model->input];
+                $calls[] = ['type' => $model::class, 'right' => $model->right, 'fields' => $model->fields, 'input' => $model->input ?? null];
                 if ($decision !== null) {
                     $model->right = $decision;
                 }
@@ -1488,9 +1488,17 @@ class CommonDBTM extends DbTestCase
                     $calls = [];
                     $model = new $type();
                     $this->boolean($model->can(-1, CREATE, $input))->isIdenticalTo($decision === null);
-                    $this->array($calls)->hasSize(1);
+                    // An admitted relation also checks its loaded Computer owner.
+                    $this->array($calls)->hasSize($type === NetworkPort_Vlan::class && $decision === null ? 2 : 1);
+                    $this->string($calls[0]['type'])->isIdenticalTo($type);
                     $this->integer($calls[0]['right'])->isIdenticalTo(CREATE);
                     $this->array($calls[0]['input'])->isIdenticalTo($input);
+                    if ($type === NetworkPort_Vlan::class && $decision === null) {
+                        $this->string($calls[1]['type'])->isIdenticalTo(Computer::class);
+                        $this->integer($calls[1]['right'])->isIdenticalTo(UPDATE);
+                        $this->integer((int)$calls[1]['fields']['id'])->isIdenticalTo((int)$computer->getID());
+                        $this->variable($calls[1]['input'])->isNull();
+                    }
                     foreach (array_keys($input) as $field) {
                         $this->variable($calls[0]['fields'][$field])->isIdenticalTo($input[$field]);
                     }

@@ -47,8 +47,11 @@ use NetworkName as NetworkNameModel;
 use Plugin;
 use itsmng\Database\CloneInput;
 use IPAddress as IPAddressModel;
+use IPAddressCustomNameParent;
 use itsmng\Database\Entity\IPAddress as IPAddressEntity;
 use itsmng\Database\Orm;
+
+require_once dirname(__DIR__) . '/fixtures/IPAddressCustomNameParent.php';
 
 /* Test for inc/networkport.class.php */
 
@@ -551,8 +554,18 @@ class IPAddress extends DbTestCase
         $this->string($repeat->fields['name'])->isIdenticalTo('192.0.2.61');
         $this->boolean($address->clone(['items_id' => $second->getID(), 'name' => 'not-an-address']))->isFalse();
         $this->hasSessionMessages(ERROR, [sprintf(__('%1$s: %2$s'), __('Invalid IP address'), 'not-an-address')]);
-        $custom = $this->createItem(IPAddressModel::class, ['itemtype' => IPAddressCustomNameParent::class, 'items_id' => $second->getID(), 'name' => '192.0.2.62']);
+        $customType = IPAddressCustomNameParent::class;
+        $wireType = addslashes($customType);
+        $this->object(getItemForItemtype($wireType))->isInstanceOf(IPAddressCustomNameParent::class);
+        $custom = $this->createItem(IPAddressModel::class, ['itemtype' => $wireType, 'items_id' => $second->getID(), 'name' => '192.0.2.62']);
         $customId = (int)$custom->getID();
+        $this->integer($customId)->isGreaterThan(0);
+        $this->string($custom->fields['itemtype'])->isIdenticalTo($customType);
+        $actualParent = getItemForItemtype($custom->fields['itemtype']);
+        $this->object($actualParent)->isInstanceOf(IPAddressCustomNameParent::class);
+        $this->boolean($actualParent->getFromDB((int)$custom->fields['items_id']))->isTrue();
+        $this->integer((int)$actualParent->getID())->isIdenticalTo((int)$second->getID());
+        $this->string($actualParent::getTable())->isIdenticalTo(NetworkNameModel::getTable());
         $this->variable($custom->fields['networknames_id'])->isNull();
         $this->integer((int)$custom->fields['opaque_parent_id'])->isIdenticalTo((int)$second->getID());
         $this->boolean($custom->update(['id' => $customId, 'name' => '192.0.2.64']))->isTrue();
@@ -659,14 +672,6 @@ class IPAddress extends DbTestCase
         $this->variable($connection->fetchOne('SELECT opaque_parent_id FROM glpi_ipaddresses WHERE id=?', [$id]))->isNull();
     }
 
-}
-
-class IPAddressCustomNameParent extends NetworkNameModel
-{
-    public static function getTable($classname = null)
-    {
-        return NetworkNameModel::getTable();
-    }
 }
 
 class IPAddressPreparedNameOwner extends IPAddressModel
