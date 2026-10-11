@@ -33,6 +33,9 @@
 
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\TransactionOwnershipMismatch;
 use itsmng\Database\Repository\IPNetworkRepository;
 
 if (!defined('GLPI_ROOT')) {
@@ -917,16 +920,39 @@ class IPNetwork extends CommonImplicitTreeDropdown
             }
         };
         try {
-            $DB->getDoctrineConnection()->transactional(static function () use ($DB, &$ids, $invalidate): void {
-                $ids = (new IPNetworkRepository(Orm::create($DB)))->resetTree();
-                $invalidate();
-                foreach ($ids as $id) {
-                    $network = new self();
-                    if (!$network->getFromDB($id) || !$network->update($network->fields)) {
-                        throw new RuntimeException('Unable to rebuild IP network tree at ' . $id);
-                    }
+            $database = $DB;
+            $connection = $database->getDoctrineConnection();
+            if ($DB !== $database) {
+                throw new TransactionOwnershipMismatch('The IP network rebuild changed its supplied writer.');
+            }
+            OwnedMutationFrame::run(
+                $connection,
+                static function () use ($database, $connection, &$ids, $invalidate): void {
+                    OwnershipUpdateUnit::withWriterGuard(
+                        $database,
+                        $connection,
+                        static function () use ($database, &$ids, $invalidate): void {
+                            $ids = (new IPNetworkRepository(Orm::create($database)))->resetTree();
+                            OwnershipUpdateUnit::assertWriter($database);
+                            $invalidate();
+                            OwnershipUpdateUnit::assertWriter($database);
+                            foreach ($ids as $id) {
+                                $network = new self();
+                                $loaded = $network->getFromDB($id);
+                                OwnershipUpdateUnit::assertWriter($database);
+                                if (!$loaded) {
+                                    throw new RuntimeException('Unable to rebuild IP network tree at ' . $id);
+                                }
+                                $updated = $network->update($network->fields);
+                                OwnershipUpdateUnit::assertWriter($database);
+                                if (!$updated) {
+                                    throw new RuntimeException('Unable to rebuild IP network tree at ' . $id);
+                                }
+                            }
+                        }
+                    );
                 }
-            });
+            );
         } finally {
             // Also discard derived cache values from any rolled-back rebuild.
             $invalidate();

@@ -3,6 +3,7 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManager;
 use Entity;
 use FQDN;
@@ -10,12 +11,19 @@ use IPAddress;
 use IPAddress_IPNetwork;
 use IPNetwork as Network;
 use IPNetwork_Vlan;
+use itsmng\Database\Entity\IPNetwork as NetworkRecord;
+use itsmng\Database\MutationRollbackFailure;
 use itsmng\Database\Orm;
+use itsmng\Database\TransactionOwnershipMismatch;
 use itsmng\Database\Repository\IPNetworkRepository;
+use mock\DBmysql as RebuildRouteAdapter;
 use Netpoint;
 use NetworkAlias;
 use NetworkName;
+use Plugin;
 use ReflectionProperty;
+use RuntimeException;
+use Throwable;
 use Vlan;
 
 class IPNetwork extends DbTestCase
@@ -357,6 +365,250 @@ class IPNetwork extends DbTestCase
                 ]
             ))->isEqualTo(1);
         }
+    }
+
+    public function testNetworkTreeRebuildRetainsDomainValuesAndDirtyOwners(): void
+    {
+        global $DB, $GLPI_CACHE;
+        $this->login();
+        $this->setEntity(0, true);
+        $networks = $this->createRebuildNetworks();
+        $ids = array_map(static fn (Network $network): int => (int)$network->getID(), $networks);
+        $connection = $DB->getDoctrineConnection();
+        $host = new NetworkName();
+        $hostId = (int)$host->add(['name' => 'rebuild-host-' . strtolower($this->getUniqueString()), 'entities_id' => 0]);
+        $this->integer($hostId)->isGreaterThan(0);
+        $address = new IPAddress();
+        $parts = explode('.', $networks[0]->fields['address']);
+        $parts[3] = '20';
+        $addressId = (int)$address->add(['itemtype' => NetworkName::class, 'items_id' => $hostId, 'name' => implode('.', $parts)]);
+        $this->integer($addressId)->isGreaterThan(0);
+        $links = $connection->fetchAllAssociative('SELECT * FROM glpi_ipaddresses_ipnetworks WHERE ipaddresses_id=? ORDER BY id', [$addressId]);
+        $this->array(array_map('intval', array_column($links, 'ipnetworks_id')))->contains($ids[0])->contains($ids[1]);
+        $domainColumns = 'id, entities_id, name, version, address, netmask, gateway, addressable';
+        $domain = $connection->fetchAllAssociative('SELECT ' . $domainColumns . ' FROM glpi_ipnetworks WHERE id IN (?, ?, ?) ORDER BY id', $ids);
+        foreach ($ids as $id) {
+            $connection->update('glpi_ipnetworks', ['ipnetworks_id' => null, 'level' => 1, 'completename' => 'Broken tree'], ['id' => $id]);
+            $GLPI_CACHE->set('ancestors_cache_glpi_ipnetworks_' . $id, ['stale']);
+            $GLPI_CACHE->set('sons_cache_glpi_ipnetworks_' . $id, ['stale']);
+        }
+        $GLPI_CACHE->set('ancestors_cache_glpi_ipnetworks_0', ['stale']);
+        $GLPI_CACHE->set('sons_cache_glpi_ipnetworks_0', ['stale']);
+        $independent = Orm::create($DB);
+        $pending = $independent->find(NetworkRecord::class, $ids[0]);
+        $pending->comment = 'Unflushed independent rebuild owner';
+        try {
+            Orm::read(
+                $DB,
+                function (EntityManager $outer) use ($ids, $connection, $domainColumns, $domain): void {
+                    $dirty = $outer->find(NetworkRecord::class, $ids[1]);
+                    $dirty->comment = 'Unflushed enclosing rebuild owner';
+                    Network::recreateTree();
+                    $this->boolean($outer->contains($dirty))->isTrue();
+                    $this->string($dirty->comment)->isIdenticalTo('Unflushed enclosing rebuild owner');
+                    $this->array($connection->fetchAllAssociative('SELECT ' . $domainColumns . ' FROM glpi_ipnetworks WHERE id IN (?, ?, ?) ORDER BY id', $ids))
+                        ->isIdenticalTo($domain);
+                }
+            );
+            $this->array($connection->fetchAllAssociative('SELECT * FROM glpi_ipaddresses_ipnetworks WHERE ipaddresses_id=? ORDER BY id', [$addressId]))
+                ->isIdenticalTo($links);
+            $this->boolean($independent->contains($pending))->isTrue();
+            $this->string($pending->comment)->isIdenticalTo('Unflushed independent rebuild owner');
+            $rows = $connection->fetchAllAssociative('SELECT id, ipnetworks_id, level, completename FROM glpi_ipnetworks WHERE id IN (?, ?, ?) ORDER BY id', $ids);
+            $this->variable($rows[0]['ipnetworks_id'])->isNull();
+            $this->integer((int)$rows[0]['level'])->isIdenticalTo(1);
+            $this->integer((int)$rows[1]['ipnetworks_id'])->isIdenticalTo($ids[0]);
+            $this->integer((int)$rows[1]['level'])->isIdenticalTo(2);
+            $this->string($rows[1]['completename'])->isIdenticalTo($networks[0]->fields['name'] . ' > ' . $networks[1]->fields['name']);
+            $this->variable($rows[2]['ipnetworks_id'])->isNull();
+            foreach ([0, ...$ids] as $id) {
+                $this->variable($GLPI_CACHE->get('ancestors_cache_glpi_ipnetworks_' . $id))->isNull();
+                $this->variable($GLPI_CACHE->get('sons_cache_glpi_ipnetworks_' . $id))->isNull();
+            }
+            $this->boolean($networks[1]->update(['id' => $ids[1], 'name' => 'Current rebuilt child']))->isTrue();
+            Network::recreateTree();
+            $this->string($connection->fetchOne('SELECT completename FROM glpi_ipnetworks WHERE id=?', [$ids[1]]))
+                ->isIdenticalTo($networks[0]->fields['name'] . ' > Current rebuilt child');
+            $stable = $connection->fetchAllAssociative('SELECT id, ipnetworks_id, level, completename FROM glpi_ipnetworks WHERE id IN (?, ?, ?) ORDER BY id', $ids);
+            Network::recreateTree();
+            $this->array($connection->fetchAllAssociative('SELECT id, ipnetworks_id, level, completename FROM glpi_ipnetworks WHERE id IN (?, ?, ?) ORDER BY id', $ids))
+                ->isIdenticalTo($stable);
+            $this->variable($connection->fetchOne('SELECT comment FROM glpi_ipnetworks WHERE id=?', [$ids[0]]))
+                ->isNotIdenticalTo('Unflushed independent rebuild owner');
+            $this->variable($connection->fetchOne('SELECT comment FROM glpi_ipnetworks WHERE id=?', [$ids[1]]))
+                ->isNotIdenticalTo('Unflushed enclosing rebuild owner');
+        } finally {
+            $independent->clear();
+        }
+    }
+
+    public function testNetworkTreeRebuildCancellationAndRouteChangesRetainOwnedFrame(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $this->login();
+        $this->setEntity(0, true);
+        $networks = $this->createRebuildNetworks();
+        $ids = array_map(static fn (Network $network): int => (int)$network->getID(), $networks);
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        $scope = $connection->captureManagedTransactionScope();
+        $level = $connection->getTransactionNestingLevel();
+        $source = $connection->fetchAllAssociative('SELECT * FROM glpi_ipnetworks ORDER BY id');
+        $audit = $connection->fetchAllAssociative('SELECT * FROM glpi_logs ORDER BY id');
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $alternate = new class ($connection) extends RebuildRouteAdapter {
+            public function __construct(private Connection $connection)
+            {
+            }
+            public function getDoctrineConnection(): Connection
+            {
+                return $this->connection;
+            }
+        };
+        try {
+            $plugins->setValue(null, [...$active, 'network_rebuild_fixture']);
+            foreach (['cancel', 'route'] as $mode) {
+                $visited = [];
+                $PLUGIN_HOOKS['pre_item_update']['network_rebuild_fixture'][Network::class] =
+                    static function (Network $network) use ($ids, $mode, $alternate, &$visited): void {
+                        if (!in_array((int)$network->getID(), $ids, true)) {
+                            return;
+                        }
+                        $visited[] = (int)$network->getID();
+                        if ((int)$network->getID() === $ids[2]) {
+                            if ($mode === 'cancel') {
+                                $network->input = false;
+                            } else {
+                                $GLOBALS['DB'] = $alternate;
+                            }
+                        }
+                    };
+                $failure = null;
+                try {
+                    Network::recreateTree();
+                } catch (Throwable $error) {
+                    $failure = $error;
+                } finally {
+                    $DB = $database;
+                }
+                $this->array($visited)->isIdenticalTo($ids);
+                $this->object($failure)->isInstanceOf($mode === 'cancel' ? RuntimeException::class : TransactionOwnershipMismatch::class);
+                if ($mode === 'cancel') {
+                    $this->string($failure->getMessage())->isIdenticalTo('Unable to rebuild IP network tree at ' . $ids[2]);
+                }
+                $scope->assertActive();
+                $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+                $this->array($connection->fetchAllAssociative('SELECT * FROM glpi_ipnetworks ORDER BY id'))->isIdenticalTo($source);
+                $this->array($connection->fetchAllAssociative('SELECT * FROM glpi_logs ORDER BY id'))->isIdenticalTo($audit);
+            }
+            unset($PLUGIN_HOOKS['pre_item_update']['network_rebuild_fixture'][Network::class]);
+            Network::recreateTree();
+            $scope->assertActive();
+            $this->integer((int)$connection->fetchOne('SELECT ipnetworks_id FROM glpi_ipnetworks WHERE id=?', [$ids[1]]))
+                ->isIdenticalTo($ids[0]);
+        } finally {
+            $DB = $database;
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+        }
+    }
+
+    public function testNetworkTreeRebuildRejectsGetterAndNestedFrameReplacement(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $this->login();
+        $this->setEntity(0, true);
+        $network = $this->createRebuildNetworks()[0];
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        $scope = $connection->captureManagedTransactionScope();
+        $level = $connection->getTransactionNestingLevel();
+        $source = $connection->fetchAllAssociative('SELECT * FROM glpi_ipnetworks ORDER BY id');
+        $routed = new class ($database, $connection) extends RebuildRouteAdapter {
+            public int $getters = 0;
+            public function __construct(private object $original, private Connection $connection)
+            {
+            }
+            public function getDoctrineConnection(): Connection
+            {
+                ++$this->getters;
+                $GLOBALS['DB'] = $this->original;
+                return $this->connection;
+            }
+        };
+        try {
+            $DB = $routed;
+            $failure = null;
+            try {
+                Network::recreateTree();
+            } catch (Throwable $error) {
+                $failure = $error;
+            }
+            $this->object($failure)->isInstanceOf(TransactionOwnershipMismatch::class);
+            $this->integer($routed->getters)->isIdenticalTo(1);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+            $this->array($connection->fetchAllAssociative('SELECT * FROM glpi_ipnetworks ORDER BY id'))->isIdenticalTo($source);
+        } finally {
+            $DB = $database;
+        }
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $replacement = null;
+        try {
+            $plugins->setValue(null, [...$active, 'network_rebuild_frame_fixture']);
+            $PLUGIN_HOOKS['pre_item_update']['network_rebuild_frame_fixture'][Network::class] =
+                static function (Network $item) use ($network, $connection, &$replacement): void {
+                    if ((int)$item->getID() === (int)$network->getID() && $replacement === null) {
+                        $connection->beginTransaction();
+                        $replacement = $connection->captureManagedTransactionScope();
+                    }
+                };
+            $failure = null;
+            try {
+                Network::recreateTree();
+            } catch (Throwable $error) {
+                $failure = $error;
+            }
+            $this->object($failure)->isInstanceOf(MutationRollbackFailure::class);
+            $this->object($failure->primary)->isInstanceOf(TransactionOwnershipMismatch::class);
+            $this->object($failure->cleanup)->isInstanceOf(TransactionOwnershipMismatch::class);
+            $replacement->assertActive();
+            $scope->assertActive();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level + 2);
+        } finally {
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+            while ($connection->getTransactionNestingLevel() > $level) {
+                $connection->rollBack();
+            }
+        }
+        $scope->assertActive();
+        $this->array($connection->fetchAllAssociative('SELECT * FROM glpi_ipnetworks ORDER BY id'))->isIdenticalTo($source);
+        Network::recreateTree();
+    }
+
+    private function createRebuildNetworks(): array
+    {
+        $suffix = mt_rand(1, 250);
+        $prefix = 'rebuild-' . $this->getUniqueString();
+        $definitions = [
+            [$prefix . '-parent', '198.18.' . $suffix . '.0/24'],
+            [$prefix . '-child', '198.18.' . $suffix . '.0/25'],
+            [$prefix . '-ipv6', 'fdab:' . dechex($suffix) . '::/48'],
+        ];
+        $networks = [];
+        foreach ($definitions as [$name, $cidr]) {
+            $network = new Network();
+            $id = (int)$network->add(['name' => $name, 'entities_id' => 0, 'network' => $cidr, 'gateway' => '']);
+            $this->integer($id)->isGreaterThan(0);
+            $this->boolean($network->getFromDB($id))->isTrue();
+            $this->string($network->fields['name'])->isIdenticalTo($name);
+            $networks[] = $network;
+        }
+        return $networks;
     }
 
 }
