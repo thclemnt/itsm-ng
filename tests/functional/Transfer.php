@@ -65,6 +65,8 @@ use itsmng\Database\Entity\CartridgeItemPrinterModel;
 use itsmng\Database\Entity\Printer as PrinterEntity;
 use itsmng\Database\Entity\PrinterModel;
 use itsmng\Database\Entity\Contact;
+use itsmng\Database\Entity\ContactSupplier;
+use itsmng\Database\Entity\Supplier;
 use itsmng\Database\Entity\Entity;
 use itsmng\Database\Entity\ItemSoftwareVersion;
 use itsmng\Database\Entity\ItemTicket;
@@ -488,6 +490,198 @@ class Transfer extends DbTestCase
                         $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_cartridgeitems WHERE id=?', [$copy]))->isIdenticalTo($target);
                         $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_cartridgeitems_printermodels WHERE cartridgeitems_id=? AND printermodels_id=?', [$copy, $model->id]))->isIdenticalTo(1);
                         $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_cartridges WHERE cartridgeitems_id=? AND printers_id IS NULL', [$type->id]))->isIdenticalTo(1);
+                    }
+                }
+            });
+        } finally {
+            $PLUGIN_HOOKS = $savedHooks;
+            $plugins->setValue(null, $savedPlugins);
+        }
+    }
+
+
+    public function testSupplierContactTransferReusesDomainNamesAndRetainsRecursiveContacts(): void
+    {
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $this->withSoftwareOwnerQueryProbe(function ($database, $connection): void {
+            $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
+            $manager = Orm::create($database);
+            foreach ([["Contact O'Brien\\path", "First O'Brien\\path"], [null, null], ['NULL', 'null']] as $index => [$name, $firstname]) {
+                $contact = new Contact();
+                $contact->entities = $manager->getReference(Entity::class, $source);
+                $contact->name = $name;
+                $contact->firstname = $firstname;
+                $manager->persist($contact);
+                $destination = new Contact();
+                $destination->entities = $manager->getReference(Entity::class, $target);
+                $destination->name = 'Before current destination write ' . $index;
+                $destination->firstname = 'Before current destination write';
+                $destination->is_deleted = true;
+                $manager->persist($destination);
+                $decoy = new Contact();
+                $decoy->entities = $manager->getReference(Entity::class, $target);
+                $decoy->name = $index === 0 ? $name : null;
+                $decoy->firstname = $index === 0 ? $firstname : null;
+                $manager->persist($decoy);
+                $suppliers = [];
+                $links = [];
+                foreach (['Selected supplier', 'Outside supplier'] as $supplierName) {
+                    $supplier = new Supplier();
+                    $supplier->entities = $manager->getReference(Entity::class, $source);
+                    $supplier->name = $supplierName;
+                    $manager->persist($supplier);
+                    $suppliers[] = $supplier;
+                    $link = new ContactSupplier();
+                    $link->suppliers = $supplier;
+                    $link->contacts = $contact;
+                    $manager->persist($link);
+                    $links[] = $link;
+                }
+                $manager->flush();
+                $connection->update(
+                    'glpi_contacts',
+                    [
+                        'name' => (string)$name,
+                        'firstname' => (string)$firstname,
+                        'comment' => 'Current destination contact',
+                    ],
+                    ['id' => $destination->id]
+                );
+                $destination->comment = 'Unflushed independent contact';
+                $expected = $index === 0 ? [$destination->id, $decoy->id] : [$destination->id];
+                $connection->withApplicationEntityManager(function ($outer) use ($suppliers, $links, $contact, $destination, $expected, $manager, $connection, $source, $target): void {
+                    $retained = $outer->find(Contact::class, $destination->id);
+                    $retained->comment = 'Unflushed outer contact';
+                    $this->boolean((new LegacyTransfer())->moveItems(
+                        ['Supplier' => [$suppliers[0]->id]],
+                        $target,
+                        ['keep_contact' => 1, 'clean_contact' => 2]
+                    ))->isTrue();
+                    $chosen = (int)$connection->fetchOne('SELECT contacts_id FROM glpi_contacts_suppliers WHERE id=?', [$links[0]->id]);
+                    $this->boolean(in_array($chosen, $expected, true))->isTrue();
+                    $this->integer((int)$connection->fetchOne('SELECT contacts_id FROM glpi_contacts_suppliers WHERE id=?', [$links[1]->id]))->isIdenticalTo($contact->id);
+                    $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_contacts WHERE id=?', [$contact->id]))->isIdenticalTo($source);
+                    $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_suppliers WHERE id=?', [$suppliers[0]->id]))->isIdenticalTo($target);
+                    $this->boolean($manager->contains($destination))->isTrue();
+                    $this->string($destination->comment)->isIdenticalTo('Unflushed independent contact');
+                    $this->boolean($outer->contains($retained))->isTrue();
+                    $this->string($retained->comment)->isIdenticalTo('Unflushed outer contact');
+                    $this->string($connection->fetchOne('SELECT comment FROM glpi_contacts WHERE id=?', [$destination->id]))->isIdenticalTo('Current destination contact');
+                });
+                $manager->detach($destination);
+            }
+            $supplier = new Supplier();
+            $supplier->entities = $manager->getReference(Entity::class, $source);
+            $supplier->name = 'Exclusive and recursive contact supplier';
+            $manager->persist($supplier);
+            $contacts = [];
+            foreach ([false, true] as $recursive) {
+                $contact = new Contact();
+                $contact->entities = $manager->getReference(Entity::class, $source);
+                $contact->name = $recursive ? 'Retained recursive contact' : 'Exclusive transferred contact';
+                $contact->is_recursive = $recursive;
+                $manager->persist($contact);
+                $contacts[] = $contact;
+                $link = new ContactSupplier();
+                $link->suppliers = $supplier;
+                $link->contacts = $contact;
+                $manager->persist($link);
+            }
+            $manager->flush();
+            $this->boolean((new LegacyTransfer())->moveItems(['Supplier' => [$supplier->id]], $target, ['keep_contact' => 1]))->isTrue();
+            $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_contacts WHERE id=?', [$contacts[0]->id]))->isIdenticalTo($target);
+            $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_contacts WHERE id=?', [$contacts[1]->id]))->isIdenticalTo($source);
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_contacts_suppliers WHERE suppliers_id=?', [$supplier->id]))->isIdenticalTo(2);
+        });
+    }
+
+    public function testSupplierContactCopyCleanupReadsHookWritesAndRollsBackRefusal(): void
+    {
+        global $PLUGIN_HOOKS;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $savedHooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $savedPlugins = $plugins->getValue();
+        try {
+            $plugins->setValue(null, [...$savedPlugins, 'transfer_contact_fixture']);
+            $this->withSoftwareOwnerQueryProbe(function ($database, $connection) use ($savedHooks): void {
+                global $PLUGIN_HOOKS;
+                $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+                $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
+                $manager = Orm::create($database);
+                foreach (['purge', 'retain', 'refuse'] as $mode) {
+                    $PLUGIN_HOOKS = $savedHooks;
+                    $contact = new Contact();
+                    $contact->entities = $manager->getReference(Entity::class, $source);
+                    $contact->name = 'Contact copy callback ' . $mode;
+                    $contact->firstname = 'Actual public add';
+                    $manager->persist($contact);
+                    $suppliers = [];
+                    $links = [];
+                    foreach (['Selected', 'Outside', 'Hook witness'] as $name) {
+                        $supplier = new Supplier();
+                        $supplier->entities = $manager->getReference(Entity::class, $source);
+                        $supplier->name = $name . ' ' . $mode;
+                        $manager->persist($supplier);
+                        $suppliers[] = $supplier;
+                    }
+                    foreach ([$suppliers[0], $suppliers[1]] as $supplier) {
+                        $link = new ContactSupplier();
+                        $link->suppliers = $supplier;
+                        $link->contacts = $contact;
+                        $manager->persist($link);
+                        $links[] = $link;
+                    }
+                    $manager->flush();
+                    $fired = false;
+                    $PLUGIN_HOOKS['item_add']['transfer_contact_fixture'][LegacyContact::class] = static function (LegacyContact $item) use ($contact, $suppliers, $links, $connection, $target, $mode, &$fired): void {
+                        if ($item->fields['name'] !== $contact->name || (int)$item->fields['entities_id'] !== $target) {
+                            return;
+                        }
+                        $fired = true;
+                        // After the sharing decision and public copy, before link retargeting and cleanup.
+                        $connection->delete('glpi_contacts_suppliers', ['id' => $links[1]->id]);
+                        if ($mode === 'retain') {
+                            $connection->insert('glpi_contacts_suppliers', ['contacts_id' => $contact->id, 'suppliers_id' => $suppliers[2]->id]);
+                        } elseif ($mode === 'refuse') {
+                            throw new RuntimeException('Refused supplier contact copy');
+                        }
+                    };
+                    $failure = null;
+                    $result = null;
+                    try {
+                        $result = (new LegacyTransfer())->moveItems(
+                            ['Supplier' => [$suppliers[0]->id]],
+                            $target,
+                            ['keep_contact' => 1, 'clean_contact' => 2]
+                        );
+                    } catch (Throwable $error) {
+                        $failure = $error;
+                    }
+                    $this->boolean($fired)->isTrue();
+                    $chosen = (int)$connection->fetchOne('SELECT contacts_id FROM glpi_contacts_suppliers WHERE id=?', [$links[0]->id]);
+                    if ($mode === 'refuse') {
+                        // The ordinary test logger may throw after the owned rollback.
+                        if ($failure !== null) {
+                            $this->object($failure)->isInstanceOf(RuntimeException::class);
+                            $this->string($failure->getMessage())->contains('Refused supplier contact copy');
+                        } else {
+                            $this->boolean($result)->isFalse();
+                        }
+                        $this->integer($chosen)->isIdenticalTo($contact->id);
+                        $this->integer((int)$connection->fetchOne('SELECT contacts_id FROM glpi_contacts_suppliers WHERE id=?', [$links[1]->id]))->isIdenticalTo($contact->id);
+                        $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_suppliers WHERE id=?', [$suppliers[0]->id]))->isIdenticalTo($source);
+                        $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_contacts WHERE entities_id=? AND name=?', [$target, $contact->name]))->isIdenticalTo(0);
+                    } else {
+                        $this->variable($failure)->isNull();
+                        $this->boolean($result)->isTrue();
+                        $this->integer($chosen)->isGreaterThan(0)->isNotIdenticalTo($contact->id);
+                        $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_contacts WHERE id=?', [$chosen]))->isIdenticalTo($target);
+                        $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_contacts WHERE id=?', [$contact->id]))->isIdenticalTo($mode === 'retain' ? 1 : 0);
+                        $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_contacts_suppliers WHERE contacts_id=? AND suppliers_id=?', [$contact->id, $suppliers[2]->id]))->isIdenticalTo($mode === 'retain' ? 1 : 0);
                     }
                 }
             });

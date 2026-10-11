@@ -38,6 +38,7 @@ use itsmng\Database\Orm;
 use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\ComponentRepository;
 use itsmng\Database\Repository\CartridgeTransferRepository;
+use itsmng\Database\Repository\ContactTransferRepository;
 use itsmng\Database\Repository\SoftwareInstallationRepository;
 use itsmng\Database\Repository\SoftwareRepository;
 use itsmng\Database\Repository\TicketAssetRepository;
@@ -2809,20 +2810,14 @@ class Transfer extends CommonDBTM
         // if keep
         if ($this->options['keep_contact']) {
             $contact = new Contact();
-            // Get contracts for the item
-            $criteria = [
-               'FROM'   => 'glpi_contacts_suppliers',
-               'WHERE'  => [
-                  'suppliers_id' => $ID,
-               ]
-            ];
-            if (count($this->noneedtobe_transfer['Contact'])) {
-                $criteria['WHERE']['NOT'] = ['contacts_id' => $this->noneedtobe_transfer['Contact']];
-            }
-            $iterator = $DB->request($criteria);
+            $database = $DB;
+            $supplier = (int)$ID;
+            $retained = array_map('intval', $this->noneedtobe_transfer['Contact']);
+            $connection = $database->getDoctrineConnection();
+            OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+            $links = (new ContactTransferRepository($connection))->supplierLinkIdentities($supplier, $retained);
 
-            // Foreach get item
-            while ($data = $iterator->next()) {
+            foreach ($links as $data) {
                 $need_clean_process = false;
                 $item_ID            = $data['contacts_id'];
                 $newcontactID       = -1;
@@ -2838,21 +2833,12 @@ class Transfer extends CommonDBTM
                     $canbetransfer = true;
                     // Transfer enterprise : is the contact used for another enterprise ?
                     if ($ID == $newID) {
-                        $scriteria = [
-                           'COUNT'  => 'cpt',
-                           'FROM'   => 'glpi_contacts_suppliers',
-                           'WHERE'  => [
-                              'contacts_id'  => $item_ID
-                           ]
-                        ];
-                        if (count($this->needtobe_transfer['Supplier'])
-                            || count($this->noneedtobe_transfer['Supplier'])
-                        ) {
-                            $scriteria['WHERE']['NOT'] = ['suppliers_id' => $this->needtobe_transfer['Supplier'] + $this->noneedtobe_transfer['Supplier']];
-                        }
-
-                        $result = $DB->request($scriteria)->next();
-                        if ($result['cpt'] > 0) {
+                        $database = $DB;
+                        $contactID = (int)$item_ID;
+                        $suppliers = array_map('intval', $this->needtobe_transfer['Supplier'] + $this->noneedtobe_transfer['Supplier']);
+                        $connection = $database->getDoctrineConnection();
+                        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+                        if ((new ContactTransferRepository($connection))->isSharedOutsideSuppliers($contactID, $suppliers)) {
                             $canbetransfer = false;
                         }
                     }
@@ -2865,20 +2851,16 @@ class Transfer extends CommonDBTM
                     } else {
                         $need_clean_process = true;
                         $contact->getFromDB($item_ID);
-                        // No : search contract
-                        $contact_iterator = $DB->request([
-                           'SELECT' => 'id',
-                           'FROM'   => 'glpi_contacts',
-                           'WHERE'  => [
-                              'entities_id'  => $this->to,
-                              'name'         => addslashes((string) $contact->fields['name']),
-                              'firstname'    => addslashes((string) $contact->fields['firstname'])
-                           ]
-                        ]);
+                        $database = $DB;
+                        $entity = (int)$this->to;
+                        $name = (string)$contact->fields['name'];
+                        $firstname = (string)$contact->fields['firstname'];
+                        $connection = $database->getDoctrineConnection();
+                        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+                        $destination = (new ContactTransferRepository($connection))->reusableDestinationContact($entity, $name, $firstname);
 
-                        if (count($contact_iterator)) {
-                            $result = $contact_iterator->next();
-                            $newcontactID = $result['id'];
+                        if ($destination !== null) {
+                            $newcontactID = $destination;
                             $this->checkedTransferResult($this->addToAlreadyTransfer('Contact', $item_ID, $newcontactID));
                         }
 
@@ -2939,13 +2921,11 @@ class Transfer extends CommonDBTM
                 // If clean and unused ->
                 if ($need_clean_process
                       && $this->options['clean_contact']) {
-                    $remain = $DB->request([
-                       'COUNT'  => 'cpt',
-                       'FROM'   => 'glpi_contacts_suppliers',
-                       'WHERE'  => ['contacts_id' => $item_ID]
-                    ])->next();
-
-                    if ($remain['cpt'] == 0) {
+                    $database = $DB;
+                    $contactID = (int)$item_ID;
+                    $connection = $database->getDoctrineConnection();
+                    OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+                    if (!(new ContactTransferRepository($connection))->hasSupplierLinks($contactID)) {
                         if ($this->options['clean_contact'] == 1) {
                             $this->deleteForTransfer($contact, ['id' => $item_ID]);
                         }
