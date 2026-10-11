@@ -35,6 +35,8 @@ namespace tests\units;
 
 use atoum\atoum\mock\controller as MockController;
 use Closure;
+use Cartridge as LegacyCartridge;
+use DateTime;
 use CommonDBChild;
 use CommonDBRelation;
 use Computer;
@@ -57,6 +59,11 @@ use Throwable;
 use Transfer as LegacyTransfer;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\Entity\Computer as ComputerEntity;
+use itsmng\Database\Entity\Cartridge;
+use itsmng\Database\Entity\CartridgeItem;
+use itsmng\Database\Entity\CartridgeItemPrinterModel;
+use itsmng\Database\Entity\Printer as PrinterEntity;
+use itsmng\Database\Entity\PrinterModel;
 use itsmng\Database\Entity\Contact;
 use itsmng\Database\Entity\Entity;
 use itsmng\Database\Entity\ItemSoftwareVersion;
@@ -291,6 +298,203 @@ class Transfer extends DbTestCase
         $this->integer((int)$child->getEntityID())->isIdenticalTo($destination);
         $this->boolean($link->getFromDB($linkId))->isTrue();
         $this->integer((int)$link->fields['entities_id'])->isIdenticalTo($destination);
+    }
+
+    public function testInstalledCartridgeTransferUsesCurrentModelsAndKeepsStock(): void
+    {
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $this->withSoftwareOwnerQueryProbe(function ($database, $connection): void {
+            $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
+            $manager = Orm::create($database);
+            foreach (["Transfer O'Brien\\path", null, 'NuLl'] as $index => $name) {
+                $type = new CartridgeItem();
+                $type->entities = $manager->getReference(Entity::class, $source);
+                $type->name = $name;
+                $manager->persist($type);
+                $destination = new CartridgeItem();
+                $destination->entities = $manager->getReference(Entity::class, $target);
+                $destination->name = $index === 1 ? '' : ($index === 2 ? null : $name);
+                $destination->is_deleted = true;
+                $manager->persist($destination);
+                if ($index === 0) {
+                    $duplicate = new CartridgeItem();
+                    $duplicate->entities = $manager->getReference(Entity::class, $target);
+                    $duplicate->name = $name;
+                    $manager->persist($duplicate);
+                }
+                $printers = [];
+                foreach (['Selected cartridge printer', 'Other cartridge printer'] as $printerName) {
+                    $printer = new PrinterEntity();
+                    $printer->entities = $manager->getReference(Entity::class, $source);
+                    $printer->name = $printerName;
+                    $manager->persist($printer);
+                    $printers[] = $printer;
+                }
+                $cartridges = [];
+                foreach ([$printers[0], $printers[1], null] as $printer) {
+                    $cartridge = new Cartridge();
+                    $cartridge->entities = $manager->getReference(Entity::class, $source);
+                    $cartridge->cartridgeitems = $type;
+                    $cartridge->printers = $printer;
+                    $cartridge->date_out = new DateTime('2020-01-02');
+                    $manager->persist($cartridge);
+                    $cartridges[] = $cartridge;
+                }
+                $manager->flush();
+                // A write after fixture creation must be seen without refreshing managed entities.
+                $connection->update('glpi_cartridgeitems', ['comment' => 'Current destination'], ['id' => $destination->id]);
+                $destination->comment = 'Unflushed independent comment';
+                $expectedModels = array_map('intval', $connection->fetchFirstColumn(
+                    $index === 2
+                        ? 'SELECT id FROM glpi_cartridgeitems WHERE entities_id=? AND name IS NULL'
+                        : 'SELECT id FROM glpi_cartridgeitems WHERE entities_id=? AND name=?',
+                    $index === 2 ? [$target] : [$target, $index === 1 ? '' : $name]
+                ));
+                $run = function ($outer) use ($printers, $cartridges, $destination, $type, $target, $source, $manager, $connection, $expectedModels): void {
+                    $retained = $outer->find(CartridgeItem::class, $destination->id);
+                    $retained->comment = 'Unflushed outer comment';
+                    $this->boolean((new LegacyTransfer())->moveItems(
+                        ['Printer' => [$printers[0]->id]],
+                        $target,
+                        ['keep_cartridgeitem' => 1, 'clean_cartridgeitem' => 2]
+                    ))->isTrue();
+                    $selectedModel = (int)$connection->fetchOne('SELECT cartridgeitems_id FROM glpi_cartridges WHERE id=?', [$cartridges[0]->id]);
+                    $this->boolean(in_array($selectedModel, $expectedModels, true))->isTrue();
+                    foreach ([$cartridges[1], $cartridges[2]] as $remaining) {
+                        $this->integer((int)$connection->fetchOne('SELECT cartridgeitems_id FROM glpi_cartridges WHERE id=?', [$remaining->id]))
+                            ->isIdenticalTo($type->id);
+                    }
+                    $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_cartridgeitems WHERE id=?', [$type->id]))->isIdenticalTo($source);
+                    $this->string($connection->fetchOne('SELECT date_out FROM glpi_cartridges WHERE id=?', [$cartridges[0]->id]))->isIdenticalTo('2020-01-02');
+                    $this->boolean($manager->contains($destination))->isTrue();
+                    $this->string($destination->comment)->isIdenticalTo('Unflushed independent comment');
+                    $this->boolean($outer->contains($retained))->isTrue();
+                    $this->string($retained->comment)->isIdenticalTo('Unflushed outer comment');
+                    $this->string($connection->fetchOne('SELECT comment FROM glpi_cartridgeitems WHERE id=?', [$destination->id]))->isIdenticalTo('Current destination');
+                };
+                $connection->withApplicationEntityManager($run);
+                // Later flushes in this fixture must not publish intentionally retained edits.
+                $manager->detach($destination);
+            }
+            // With no other installed printer, NULL-printer stock does not force a copy.
+            $type = new CartridgeItem();
+            $type->entities = $manager->getReference(Entity::class, $source);
+            $type->name = 'Whole cartridge transfer';
+            $manager->persist($type);
+            $printer = new PrinterEntity();
+            $printer->entities = $manager->getReference(Entity::class, $source);
+            $manager->persist($printer);
+            foreach ([$printer, null] as $parent) {
+                $cartridge = new Cartridge();
+                $cartridge->entities = $manager->getReference(Entity::class, $source);
+                $cartridge->cartridgeitems = $type;
+                $cartridge->printers = $parent;
+                $manager->persist($cartridge);
+            }
+            $manager->flush();
+            $this->boolean((new LegacyTransfer())->moveItems(['Printer' => [$printer->id]], $target, ['keep_cartridgeitem' => 1]))->isTrue();
+            $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_cartridgeitems WHERE id=?', [$type->id]))->isIdenticalTo($target);
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_cartridges WHERE cartridgeitems_id=?', [$type->id]))->isIdenticalTo(2);
+        });
+    }
+
+    public function testCartridgeCopyCompatibilityAndCleanupReadAfterHooks(): void
+    {
+        global $PLUGIN_HOOKS;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $savedHooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $savedPlugins = $plugins->getValue();
+        try {
+            $plugins->setValue(null, [...$savedPlugins, 'transfer_cartridge_fixture']);
+            $this->withSoftwareOwnerQueryProbe(function ($database, $connection) use ($savedHooks): void {
+                global $PLUGIN_HOOKS;
+                $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+                $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
+                $manager = Orm::create($database);
+                foreach ([false, true] as $refuse) {
+                    $PLUGIN_HOOKS = $savedHooks;
+                    $type = new CartridgeItem();
+                    $type->entities = $manager->getReference(Entity::class, $source);
+                    $type->name = $refuse ? 'Rollback cartridge copy' : 'Fresh cartridge copy';
+                    $manager->persist($type);
+                    $model = new PrinterModel();
+                    $model->name = $type->name;
+                    $manager->persist($model);
+                    $compatibility = new CartridgeItemPrinterModel();
+                    $compatibility->cartridgeitems = $type;
+                    $compatibility->printermodels = $model;
+                    $manager->persist($compatibility);
+                    $printers = [];
+                    foreach ([0, 1] as $index) {
+                        $printer = new PrinterEntity();
+                        $printer->entities = $manager->getReference(Entity::class, $source);
+                        $manager->persist($printer);
+                        $printers[] = $printer;
+                        $cartridge = new Cartridge();
+                        $cartridge->entities = $manager->getReference(Entity::class, $source);
+                        $cartridge->cartridgeitems = $type;
+                        $cartridge->printers = $printer;
+                        $manager->persist($cartridge);
+                        if ($index === 0) {
+                            $selected = $cartridge;
+                        }
+                    }
+                    $manager->flush();
+                    $fired = false;
+                    $PLUGIN_HOOKS['item_update']['transfer_cartridge_fixture'][LegacyCartridge::class] = static function (LegacyCartridge $item) use ($selected, $type, $source, $connection, $refuse, &$fired): void {
+                        if ((int)$item->getID() !== $selected->id) {
+                            return;
+                        }
+                        $fired = true;
+                        // These current writes occur after retargeting, before the cleanup count.
+                        $connection->delete('glpi_cartridges', ['cartridgeitems_id' => $type->id]);
+                        $connection->insert('glpi_cartridges', ['cartridgeitems_id' => $type->id, 'entities_id' => $source, 'printers_id' => null]);
+                        if ($refuse) {
+                            throw new RuntimeException('Refused cartridge transfer callback');
+                        }
+                    };
+                    $failure = null;
+                    $result = null;
+                    try {
+                        $result = (new LegacyTransfer())->moveItems(
+                            ['Printer' => [$printers[0]->id]],
+                            $target,
+                            ['keep_cartridgeitem' => 1, 'clean_cartridgeitem' => 2]
+                        );
+                    } catch (Throwable $error) {
+                        $failure = $error;
+                    }
+                    $this->boolean($fired)->isTrue();
+                    $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_cartridgeitems WHERE id=?', [$type->id]))->isIdenticalTo(1);
+                    if ($refuse) {
+                        if ($failure !== null) {
+                            $this->object($failure)->isInstanceOf(RuntimeException::class);
+                            $this->string($failure->getMessage())->contains('Refused cartridge transfer callback');
+                        } else {
+                            $this->boolean($result)->isFalse();
+                        }
+                        $this->integer((int)$connection->fetchOne('SELECT cartridgeitems_id FROM glpi_cartridges WHERE id=?', [$selected->id]))->isIdenticalTo($type->id);
+                        $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_cartridgeitems WHERE entities_id=? AND name=?', [$target, $type->name]))->isIdenticalTo(0);
+                        $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_cartridgeitems_printermodels WHERE printermodels_id=?', [$model->id]))->isIdenticalTo(1);
+                    } else {
+                        $this->variable($failure)->isNull();
+                        $this->boolean($result)->isTrue();
+                        $copy = (int)$connection->fetchOne('SELECT cartridgeitems_id FROM glpi_cartridges WHERE id=?', [$selected->id]);
+                        $this->integer($copy)->isGreaterThan(0)->isNotIdenticalTo($type->id);
+                        $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_cartridgeitems WHERE id=?', [$copy]))->isIdenticalTo($target);
+                        $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_cartridgeitems_printermodels WHERE cartridgeitems_id=? AND printermodels_id=?', [$copy, $model->id]))->isIdenticalTo(1);
+                        $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_cartridges WHERE cartridgeitems_id=? AND printers_id IS NULL', [$type->id]))->isIdenticalTo(1);
+                    }
+                }
+            });
+        } finally {
+            $PLUGIN_HOOKS = $savedHooks;
+            $plugins->setValue(null, $savedPlugins);
+        }
     }
 
     public function testDomainTransfer()

@@ -35,7 +35,9 @@ use itsmng\Database\EntityRegistry;
 use itsmng\Database\LifecycleModelJournal;
 use itsmng\Database\MutationCleanupFailure;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
 use itsmng\Database\Repository\ComponentRepository;
+use itsmng\Database\Repository\CartridgeTransferRepository;
 use itsmng\Database\Repository\SoftwareInstallationRepository;
 use itsmng\Database\Repository\SoftwareRepository;
 use itsmng\Database\Repository\TicketAssetRepository;
@@ -1491,17 +1493,17 @@ class Transfer extends CommonDBTM
     {
         global $DB;
 
-        // Get cartrdiges linked
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_cartridges',
-           'WHERE'  => ['printers_id' => $ID]
-        ]);
+        $database = $DB;
+        $printer = (int)$ID;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        $rows = (new CartridgeTransferRepository($connection))->installedTransferIdentities($printer);
 
-        if (count($iterator)) {
+        if ($rows) {
             $cart     = new Cartridge();
             $carttype = new CartridgeItem();
 
-            while ($data = $iterator->next()) {
+            foreach ($rows as $data) {
                 $need_clean_process = false;
 
                 // Foreach cartridges
@@ -1519,22 +1521,18 @@ class Transfer extends CommonDBTM
                     } else {
                         if (isset($this->needtobe_transfer['Printer']) && count($this->needtobe_transfer['Printer'])) {
                             // Not already transfer cartype
-                            $ccriteria = [
-                               'COUNT'  => 'cpt',
-                               'FROM'   => 'glpi_cartridges',
-                               'WHERE'  => [
-                                  'cartridgeitems_id'  => $data['cartridgeitems_id'],
-                                  'printers_id'        => ['>', 0],
-                                  'NOT'                => [
-                                     'printers_id'  => $this->needtobe_transfer['Printer']
-                                  ]
-                               ]
-                            ];
-
-                            $result = $DB->request($ccriteria)->next();
+                            $database = $DB;
+                            $model = (int)$data['cartridgeitems_id'];
+                            $printers = array_map('intval', array_values($this->needtobe_transfer['Printer']));
+                            $connection = $database->getDoctrineConnection();
+                            OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+                            $shared = (new CartridgeTransferRepository($connection))->hasInstalledOutsideTransfer(
+                                $model,
+                                $printers
+                            );
 
                             // Is the carttype will be completly transfer ?
-                            if ($result['cpt'] == 0) {
+                            if (!$shared) {
                                 // Yes : transfer
                                 $need_clean_process = false;
                                 $this->requireTransfer($this->transferItem(
@@ -1549,17 +1547,18 @@ class Transfer extends CommonDBTM
                                 $need_clean_process = true;
                                 $carttype->getFromDB($data['cartridgeitems_id']);
                                 // Is existing carttype in the destination entity ?
-                                $items_iterator = $DB->request([
-                                   'FROM'   => 'glpi_cartridgeitems',
-                                   'WHERE'  => [
-                                      'entities_id'  => $this->to,
-                                      'name'         => addslashes((string) $carttype->fields['name'])
-                                   ]
-                                ]);
-
-                                if (count($items_iterator)) {
-                                    $row = $items_iterator->next();
-                                    $newcarttypeID = $row['id'];
+                                $database = $DB;
+                                $entity = (int)$this->to;
+                                $name = (string)$carttype->fields['name'];
+                                $name = strtolower($name) === 'null' ? null : $name;
+                                $connection = $database->getDoctrineConnection();
+                                OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+                                $matchingModel = (new CartridgeTransferRepository($connection))->reusableTransferModel(
+                                    $entity,
+                                    $name
+                                );
+                                if ($matchingModel !== null) {
+                                    $newcarttypeID = $matchingModel;
                                 }
 
                                 // Not found -> transfer copy
@@ -1605,15 +1604,13 @@ class Transfer extends CommonDBTM
                       && $this->options['clean_cartridgeitem']) {
 
                     // Clean carttype
-                    $result = $DB->request([
-                       'COUNT'  => 'cpt',
-                       'FROM'   => 'glpi_cartridges',
-                       'WHERE'  => [
-                          'cartridgeitems_id'  => $data['cartridgeitems_id']
-                       ]
-                    ])->next();
+                    $database = $DB;
+                    $model = (int)$data['cartridgeitems_id'];
+                    $connection = $database->getDoctrineConnection();
+                    OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+                    $remaining = (new CartridgeTransferRepository($connection))->remainingForTransferModel($model);
 
-                    if ($result['cpt'] == 0) {
+                    if ($remaining === 0) {
                         if ($this->options['clean_cartridgeitem'] == 1) { // delete
                             $this->deleteForTransfer($carttype, ['id' => $data['cartridgeitems_id']]);
                         }
@@ -2607,17 +2604,17 @@ class Transfer extends CommonDBTM
         global $DB;
 
         if ($ID != $newID) {
-            $iterator = $DB->request([
-               'FROM'   => 'glpi_cartridgeitems_printermodels',
-               'WHERE'  => ['cartridgeitems_id' => $ID]
-            ]);
+            $database = $DB;
+            $cartridge = (int)$ID;
+            $connection = $database->getDoctrineConnection();
+            OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+            $models = (new CartridgeTransferRepository($connection))->compatibleTransferModelIds($cartridge);
 
-            if (count($iterator)) {
+            if ($models) {
                 $cartitem = new CartridgeItem();
 
-                while ($data = $iterator->next()) {
-                    $data = Toolbox::addslashes_deep($data);
-                    TransferCancelled::requireWrite($cartitem->addCompatibleType($newID, $data["printermodels_id"]), '$cartitem->addCompatibleType');
+                foreach ($models as $model) {
+                    TransferCancelled::requireWrite($cartitem->addCompatibleType($newID, $model), '$cartitem->addCompatibleType');
                 }
 
             }
