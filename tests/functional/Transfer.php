@@ -38,6 +38,7 @@ use Closure;
 use Cartridge as LegacyCartridge;
 use DateTime;
 use CommonDBChild;
+use CommonDBTM;
 use CommonDBRelation;
 use CommonITILActor as ItilActorModel;
 use Computer;
@@ -51,6 +52,8 @@ use Doctrine\DBAL\Configuration;
 use Doctrine\DBAL\Logging\Middleware;
 use Doctrine\Common\EventManager;
 use Doctrine\ORM\EntityManager;
+use Infocom as InfocomModel;
+use PluginFooBar as FinancialPluginOwner;
 use Item_SoftwareVersion;
 use Link;
 use Link_Itemtype;
@@ -79,6 +82,7 @@ use itsmng\Database\Entity\TaskCategory as TaskCategoryRecord;
 use itsmng\Database\Entity\SupplierTicket as SupplierTicketRecord;
 use itsmng\Database\Entity\ProblemSupplier as ProblemSupplierRecord;
 use itsmng\Database\Entity\ChangeSupplier as ChangeSupplierRecord;
+use Toolbox;
 use Throwable;
 use Transfer as LegacyTransfer;
 use itsmng\Database\EntityRegistry;
@@ -88,6 +92,9 @@ use itsmng\Database\Entity\CartridgeItem;
 use itsmng\Database\Entity\CartridgeItemPrinterModel;
 use itsmng\Database\Entity\Printer as PrinterEntity;
 use itsmng\Database\Entity\PrinterModel;
+use itsmng\Database\Entity\Contract as ContractRecord;
+use itsmng\Database\Entity\ContractSupplier as ContractSupplierRecord;
+use itsmng\Database\Entity\Infocom as InfocomRecord;
 use itsmng\Database\Entity\Contact;
 use itsmng\Database\Entity\ContactSupplier;
 use itsmng\Database\Entity\Supplier;
@@ -104,6 +111,7 @@ use itsmng\Database\MutationRollbackFailure;
 use itsmng\Database\MySQLConnection;
 use itsmng\Database\Orm;
 use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\Repository\SupplierTransferRepository;
 use itsmng\Database\PostgresConnection;
 use itsmng\Database\TransactionOwnershipMismatch;
 use itsmng\Domain\SoftwareAssignmentCancelled;
@@ -114,11 +122,296 @@ use tests\fixtures\ScalarReadProbe;
 use function getItemTypeForTable;
 
 require_once __DIR__ . '/../fixtures/ScalarReadProbe.php';
+require_once __DIR__ . '/../fixtures/pluginfoobar.php';
 
 /* Test for inc/transfer.class.php */
 
 class Transfer extends DbTestCase
 {
+    public function testFinancialSupplierTransferUsesActualOutsideOwnersAndCurrentDestinations(): void
+    {
+        global $CFG_GLPI;
+        $configuration = $CFG_GLPI;
+        $tables = new ReflectionProperty(CommonDBTM::class, 'tables_of');
+        $savedTables = $tables->getValue();
+        $right = FinancialPluginOwner::$rightname;
+        try {
+            FinancialPluginOwner::$rightname = 'computer';
+            FinancialPluginOwner::forceTable('glpi_computers');
+            $CFG_GLPI['glpitablesitemtype'][FinancialPluginOwner::class] = 'glpi_computers';
+            $CFG_GLPI['infocom_types'][] = FinancialPluginOwner::class;
+            $this->withSoftwareOwnerQueryProbe(function ($database, $connection): void {
+                $this->login();
+                $this->setEntity('_test_root_entity', true);
+                $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+                $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
+                $manager = Orm::create($database);
+                foreach ([
+                    ['exclusive', $this->getUniqueString()],
+                    ['selected-contract', $this->getUniqueString()],
+                    ['outside-contract', $this->getUniqueString()],
+                    ['outside-financial', $this->getUniqueString()],
+                    ['plugin-financial', $this->getUniqueString()],
+                    ['reuse', 'NULL'],
+                    ['reuse', 'null'],
+                    ['reuse', "Supplier O'Brien\\route " . $this->getUniqueString()],
+                ] as [$mode, $name]) {
+                    $supplier = new Supplier();
+                    $supplier->entities = $manager->getReference(Entity::class, $source);
+                    $supplier->name = $name;
+                    $supplier->comment = 'Current source supplier';
+                    $manager->persist($supplier);
+                    $computers = [];
+                    $financial = [];
+                    foreach ([0, 1] as $index) {
+                        $computer = new ComputerEntity();
+                        $computer->entities = $manager->getReference(Entity::class, $source);
+                        $computer->name = $this->getUniqueString();
+                        $manager->persist($computer);
+                        $computers[] = $computer;
+                        $manager->flush();
+                        if ($index === 0 || in_array($mode, ['outside-financial', 'reuse'], true)) {
+                            $row = new InfocomRecord();
+                            $row->entities = $manager->getReference(Entity::class, $source);
+                            $row->itemtype = 'Computer';
+                            $row->items_id = $computer->id;
+                            $row->suppliers = $supplier;
+                            $manager->persist($row);
+                            $financial[] = [$row, $computer];
+                        }
+                    }
+                    if (in_array($mode, ['selected-contract', 'outside-contract'], true)) {
+                        $contract = new ContractRecord();
+                        $contract->entities = $manager->getReference(Entity::class, $source);
+                        $contract->name = $this->getUniqueString();
+                        $manager->persist($contract);
+                        $link = new ContractSupplierRecord();
+                        $link->suppliers = $supplier;
+                        $link->contracts = $contract;
+                        $manager->persist($link);
+                    }
+                    $destination = null;
+                    if ($mode === 'reuse') {
+                        $destination = new Supplier();
+                        $destination->entities = $manager->getReference(Entity::class, $target);
+                        $destination->name = 'Previous destination ' . $this->getUniqueString();
+                        $destination->is_deleted = true;
+                        $manager->persist($destination);
+                        $decoy = new Supplier();
+                        $decoy->entities = $manager->getReference(Entity::class, $target);
+                        $decoy->name = null;
+                        $manager->persist($decoy);
+                    }
+                    $manager->flush();
+                    $items = ['Computer' => [$computers[0]->id]];
+                    if ($mode === 'selected-contract') {
+                        $items['Contract'] = [$contract->id];
+                    } elseif ($mode === 'plugin-financial') {
+                        $pluginOwners = [];
+                        foreach ([0, 1] as $index) {
+                            $owner = $this->createItem(FinancialPluginOwner::class, [
+                                'name' => $this->getUniqueString(),
+                                'entities_id' => $source,
+                            ]);
+                            $pluginOwners[] = $owner;
+                        }
+                        $kind = $pluginOwners[1]->getType();
+                        $this->string($kind)->isIdenticalTo(FinancialPluginOwner::class);
+                        $row = new InfocomModel();
+                        $id = $row->add(Toolbox::addslashes_deep([
+                            'itemtype' => $kind,
+                            'items_id' => $pluginOwners[1]->getID(),
+                            'suppliers_id' => $supplier->id,
+                            'entities_id' => $source,
+                        ]));
+                        $this->integer((int)$id)->isGreaterThan(0);
+                        $this->string($connection->fetchOne('SELECT itemtype FROM glpi_infocoms WHERE id=?', [$id]))->isIdenticalTo($kind);
+                        $items[$pluginOwners[0]->getType()] = [$pluginOwners[0]->getID()];
+                    }
+                    $expected = [];
+                    $expectedNames = [];
+                    if ($destination !== null) {
+                        $connection->update('glpi_suppliers', ['name' => $name], ['id' => $destination->id]);
+                        $candidates = $connection->fetchAllAssociative(
+                            'SELECT id, name FROM glpi_suppliers WHERE entities_id=? AND name=?',
+                            [$target, $name]
+                        );
+                        $expected = array_map('intval', array_column($candidates, 'id'));
+                        $expectedNames = array_column($candidates, 'name', 'id');
+                        $destination->name = 'Unflushed independent destination';
+                    }
+                    $supplier->comment = 'Unflushed independent supplier';
+                    $connection->withApplicationEntityManager(function ($outer) use ($items, $mode, $supplier, $financial, $computers, $destination, $expected, $expectedNames, $name, $source, $target, $manager, $connection): void {
+                        $retained = $outer->find(Supplier::class, $supplier->id);
+                        $retained->comment = 'Unflushed outer supplier';
+                        $transfer = new LegacyTransfer();
+                        $this->boolean($transfer->moveItems(
+                            $items,
+                            $target,
+                            [
+                                'keep_infocom' => 1,
+                                'keep_supplier' => 1,
+                                'keep_contract' => $mode === 'selected-contract' ? 1 : 0,
+                            ]
+                        ))->isTrue();
+                        $chosen = (int)$connection->fetchOne('SELECT suppliers_id FROM glpi_infocoms WHERE id=?', [$financial[0][0]->id]);
+                        if (in_array($mode, ['exclusive', 'selected-contract'], true)) {
+                            $this->integer($chosen)->isIdenticalTo($supplier->id);
+                            $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_suppliers WHERE id=?', [$supplier->id]))->isIdenticalTo($target);
+                        } else {
+                            $this->integer($chosen)->isGreaterThan(0)->isNotIdenticalTo($supplier->id);
+                            $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_suppliers WHERE id=?', [$supplier->id]))->isIdenticalTo($source);
+                            if ($destination !== null) {
+                                $this->boolean(in_array($chosen, $expected, true))->isTrue();
+                                $this->string($connection->fetchOne('SELECT name FROM glpi_suppliers WHERE id=?', [$chosen]))->isIdenticalTo($expectedNames[$chosen]);
+                                $this->boolean($manager->contains($destination))->isTrue();
+                                $this->string($destination->name)->isIdenticalTo('Unflushed independent destination');
+                            } else {
+                                $this->string($connection->fetchOne('SELECT name FROM glpi_suppliers WHERE id=?', [$chosen]))->isIdenticalTo($name);
+                                $this->string($connection->fetchOne('SELECT comment FROM glpi_suppliers WHERE id=?', [$chosen]))->isIdenticalTo('Current source supplier');
+                            }
+                        }
+                        if (count($financial) === 2) {
+                            $this->integer((int)$connection->fetchOne('SELECT suppliers_id FROM glpi_infocoms WHERE id=?', [$financial[1][0]->id]))->isIdenticalTo($supplier->id);
+                        }
+                        $this->integer((int)$transfer->already_transfer['Supplier'][$supplier->id])->isIdenticalTo($chosen);
+                        $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_computers WHERE id=?', [$computers[0]->id]))->isIdenticalTo($target);
+                        $this->boolean($manager->contains($supplier))->isTrue();
+                        $this->string($supplier->comment)->isIdenticalTo('Unflushed independent supplier');
+                        $this->boolean($outer->contains($retained))->isTrue();
+                        $this->string($retained->comment)->isIdenticalTo('Unflushed outer supplier');
+                    });
+                    $manager->detach($supplier);
+                    if ($destination !== null) {
+                        $manager->detach($destination);
+                    }
+                }
+            });
+        } finally {
+            FinancialPluginOwner::$rightname = $right;
+            $tables->setValue(null, $savedTables);
+            $CFG_GLPI = $configuration;
+        }
+    }
+
+    public function testFinancialSupplierCopyPublicFailuresRollBackAndRecover(): void
+    {
+        global $PLUGIN_HOOKS;
+        $savedHooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $savedPlugins = $plugins->getValue();
+        try {
+            $plugins->setValue(null, [...$savedPlugins, 'transfer_financial_supplier_fixture']);
+            $this->withSoftwareOwnerQueryProbe(function ($database, $connection) use ($savedHooks): void {
+                global $PLUGIN_HOOKS;
+                $this->login();
+                $this->setEntity('_test_root_entity', true);
+                $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+                $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
+                $manager = Orm::create($database);
+                $supplier = new Supplier();
+                $supplier->entities = $manager->getReference(Entity::class, $source);
+                $supplier->name = 'NULL';
+                $supplier->comment = 'null';
+                $manager->persist($supplier);
+                $computers = [];
+                $financial = [];
+                foreach ([0, 1] as $index) {
+                    $computer = new ComputerEntity();
+                    $computer->entities = $manager->getReference(Entity::class, $source);
+                    $computer->name = $this->getUniqueString();
+                    $manager->persist($computer);
+                    $computers[] = $computer;
+                    $manager->flush();
+                    $row = new InfocomRecord();
+                    $row->entities = $manager->getReference(Entity::class, $source);
+                    $row->itemtype = 'Computer';
+                    $row->items_id = $computer->id;
+                    $row->suppliers = $supplier;
+                    $manager->persist($row);
+                    $financial[] = $row;
+                }
+                $contract = new ContractRecord();
+                $contract->entities = $manager->getReference(Entity::class, $source);
+                $manager->persist($contract);
+                $link = new ContractSupplierRecord();
+                $link->suppliers = $supplier;
+                $link->contracts = $contract;
+                $manager->persist($link);
+                $namespaceKind = 'GlpiPlugin\\Bar\\Foo';
+                $namespaceFinancial = new InfocomRecord();
+                $namespaceFinancial->entities = $manager->getReference(Entity::class, $source);
+                $namespaceFinancial->itemtype = $namespaceKind;
+                $namespaceFinancial->items_id = $computers[1]->id;
+                $namespaceFinancial->suppliers = $supplier;
+                $manager->persist($namespaceFinancial);
+                $manager->flush();
+                $this->string($connection->fetchOne('SELECT itemtype FROM glpi_infocoms WHERE id=?', [$namespaceFinancial->id]))->isIdenticalTo($namespaceKind);
+                $repository = new SupplierTransferRepository($manager);
+                $this->integer($repository->countOtherFinancialOwners($supplier->id, $namespaceKind, []))->isIdenticalTo(1);
+                $this->integer($repository->countOtherFinancialOwners($supplier->id, $namespaceKind, [$computers[1]->id]))->isIdenticalTo(0);
+                $this->integer($repository->countOtherContractOwners($supplier->id, []))->isIdenticalTo(1);
+                $this->integer($repository->countOtherContractOwners($supplier->id, [0, -1]))->isIdenticalTo(1);
+                $this->integer($repository->countOtherContractOwners($supplier->id, [null]))->isIdenticalTo(0);
+                $this->integer($repository->countOtherContractOwners($supplier->id, [$contract->id]))->isIdenticalTo(0);
+                $this->integer($repository->countOtherFinancialOwners($supplier->id, 'Computer', []))->isIdenticalTo(2);
+                $this->integer($repository->countOtherFinancialOwners($supplier->id, 'Computer', [0, -1]))->isIdenticalTo(2);
+                $this->integer($repository->countOtherFinancialOwners($supplier->id, 'Computer', [$computers[0]->id, null]))->isIdenticalTo(0);
+                $this->integer($repository->countOtherFinancialOwners($supplier->id, 'Computer', [$computers[0]->id, 'NULL']))->isIdenticalTo(0);
+                $supplier->comment = 'Unflushed failure owner';
+                $before = [];
+                foreach (['glpi_suppliers', 'glpi_infocoms', 'glpi_computers', 'glpi_contracts_suppliers', 'glpi_logs'] as $table) {
+                    $before[$table] = $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id');
+                }
+                $depth = $connection->getTransactionNestingLevel();
+                foreach (['pre_item_add', 'item_add'] as $hook) {
+                    $PLUGIN_HOOKS = $savedHooks;
+                    $calls = 0;
+                    $PLUGIN_HOOKS[$hook]['transfer_financial_supplier_fixture'][SupplierModel::class] = static function (SupplierModel $model) use ($hook, &$calls): void {
+                        ++$calls;
+                        if ($hook === 'pre_item_add') {
+                            $model->input = false;
+                        } else {
+                            throw new RuntimeException('Financial supplier postSQL failure');
+                        }
+                    };
+                    $transfer = new LegacyTransfer();
+                    $failure = null;
+                    $result = null;
+                    try {
+                        $result = $transfer->moveItems(['Computer' => [$computers[0]->id]], $target, ['keep_infocom' => 1, 'keep_supplier' => 1]);
+                    } catch (Throwable $error) {
+                        $failure = $error;
+                    }
+                    if ($failure !== null) {
+                        $this->string($failure->getMessage())->contains($hook === 'pre_item_add' ? 'Supplier add' : 'Financial supplier postSQL failure');
+                    } else {
+                        $this->boolean($result)->isFalse();
+                    }
+                    $this->integer($calls)->isIdenticalTo(1);
+                    foreach ($before as $table => $rows) {
+                        $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id'))->isIdenticalTo($rows);
+                    }
+                    $this->array($transfer->already_transfer)->isEmpty();
+                    $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+                    $this->boolean($manager->contains($supplier))->isTrue();
+                    $this->string($supplier->comment)->isIdenticalTo('Unflushed failure owner');
+                }
+                $PLUGIN_HOOKS = $savedHooks;
+                $this->boolean((new LegacyTransfer())->moveItems(['Computer' => [$computers[0]->id]], $target, ['keep_infocom' => 1, 'keep_supplier' => 1]))->isTrue();
+                $copy = (int)$connection->fetchOne('SELECT suppliers_id FROM glpi_infocoms WHERE id=?', [$financial[0]->id]);
+                $this->integer($copy)->isGreaterThan(0)->isNotIdenticalTo($supplier->id);
+                $this->string($connection->fetchOne('SELECT name FROM glpi_suppliers WHERE id=?', [$copy]))->isIdenticalTo('NULL');
+                $this->string($connection->fetchOne('SELECT comment FROM glpi_suppliers WHERE id=?', [$copy]))->isIdenticalTo('null');
+                $this->integer((int)$connection->fetchOne('SELECT suppliers_id FROM glpi_infocoms WHERE id=?', [$financial[1]->id]))->isIdenticalTo($supplier->id);
+                $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+            });
+        } finally {
+            $PLUGIN_HOOKS = $savedHooks;
+            $plugins->setValue(null, $savedPlugins);
+        }
+    }
+
     public function testItilTransferRetargetsEverySupplierAndTheActualTaskFamily(): void
     {
         $this->withSoftwareOwnerQueryProbe(function ($database, $connection): void {

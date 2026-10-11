@@ -44,6 +44,7 @@ use itsmng\Database\Repository\ContactTransferRepository;
 use itsmng\Database\Repository\NetpointTransferRepository;
 use itsmng\Database\Repository\SoftwareInstallationRepository;
 use itsmng\Database\Repository\SoftwareRepository;
+use itsmng\Database\Repository\SupplierTransferRepository;
 use itsmng\Database\Repository\TicketAssetRepository;
 use itsmng\Database\Repository\TransferBindingRepository;
 use itsmng\Database\TransactionOwnershipMismatch;
@@ -2705,39 +2706,34 @@ class Transfer extends CommonDBTM
             $links_remaining = 0;
             // All linked items need to be transfer so transfer enterprise ?
             // Search for contract
-            $criteria = [
-               'COUNT'  => 'cpt',
-               'FROM'   => 'glpi_contracts_suppliers',
-               'WHERE'  => [
-                  'suppliers_id' => $ID
-               ]
-            ];
-            if (count($this->needtobe_transfer['Contract'])) {
-                $criteria['WHERE']['NOT'] = ['contracts_id' => $this->needtobe_transfer['Contract']];
-            }
-
-            $result = $DB->request($criteria)->next();
-            $links_remaining = $result['cpt'];
+            $database = $DB;
+            $contracts = $this->needtobe_transfer['Contract'];
+            $links_remaining = Orm::readPrepared(
+                $database,
+                static fn (): array => [(int)$ID, $contracts],
+                function ($manager, array $selection): int {
+                    $this->transferCoordinator?->assertActive();
+                    return (new SupplierTransferRepository($manager))->countOtherContractOwners(...$selection);
+                }
+            );
+            $this->transferCoordinator?->assertActive();
 
             if ($links_remaining == 0) {
                 // Search for infocoms
                 if ($this->options['keep_infocom']) {
                     foreach (Infocom::getItemtypesThatCanHave() as $itemtype) {
                         if (isset($this->needtobe_transfer[$itemtype])) {
-                            $icriteria = [
-                               'COUNT'  => 'cpt',
-                               'FROM'   => 'glpi_infocoms',
-                               'WHERE'  => [
-                                  'suppliers_id' => $ID,
-                                  'itemtype'     => $itemtype
-                               ]
-                            ];
-                            if (count($this->needtobe_transfer[$itemtype])) {
-                                $icriteria['WHERE']['NOT'] = ['items_id' => $this->needtobe_transfer[$itemtype]];
-                            }
-
-                            $result = $DB->request($icriteria)->next();
-                            $links_remaining += $result['cpt'];
+                            $database = $DB;
+                            $items = $this->needtobe_transfer[$itemtype];
+                            $links_remaining += Orm::readPrepared(
+                                $database,
+                                static fn (): array => [(int)$ID, (string)$itemtype, $items],
+                                function ($manager, array $selection): int {
+                                    $this->transferCoordinator?->assertActive();
+                                    return (new SupplierTransferRepository($manager))->countOtherFinancialOwners(...$selection);
+                                }
+                            );
+                            $this->transferCoordinator?->assertActive();
                         }
                     }
                 }
@@ -2750,17 +2746,19 @@ class Transfer extends CommonDBTM
 
             } else { // else Transfer by Copy
                 // Is existing item in the destination entity ?
-                $iterator = $DB->request([
-                   'FROM'   => 'glpi_suppliers',
-                   'WHERE'  => [
-                      'entities_id'  => $this->to,
-                      'name'         => addslashes((string) $ent->fields['name'])
-                   ]
-                ]);
+                $database = $DB;
+                $destination = Orm::readPrepared(
+                    $database,
+                    fn (): array => [(int)$this->to, (string)$ent->fields['name']],
+                    function ($manager, array $selection) {
+                        $this->transferCoordinator?->assertActive();
+                        return (new ITILActorRepository($manager))->destinationSupplier(...$selection);
+                    }
+                );
+                $this->transferCoordinator?->assertActive();
 
-                if (count($iterator)) {
-                    $result = $iterator->next();
-                    $newID = $result['id'];
+                if ($destination !== null) {
+                    $newID = $destination;
                     $this->checkedTransferResult($this->addToAlreadyTransfer('Supplier', $ID, $newID));
                 }
 
@@ -2771,7 +2769,7 @@ class Transfer extends CommonDBTM
                     unset($ent->fields['id']);
                     $input                = $ent->fields;
                     $input['entities_id'] = $this->to;
-                    unset($ent->fields);
+                    $ent->fields = [];
                     $newID                = $this->addForTransfer($ent, Toolbox::addslashes_deep($input));
                     // 2 - transfer as copy
                     $this->requireTransfer($this->transferItem('Supplier', $ID, $newID));
