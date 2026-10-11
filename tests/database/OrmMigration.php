@@ -1902,10 +1902,11 @@ class OrmMigration extends GLPITestCase
         $this->boolean(Ledger::state($connection, NoteParentDefinition::PHASE)['complete'])->isTrue();
         $this->array($read())->isIdenticalTo($source);
         $table = $connection->createSchemaManager()->introspectTable('glpi_notepads');
-        foreach ($indexes as $name => $index) {
-            $actual = $table->getIndex($name);
+        foreach ($indexes as $index) {
+            $actual = $table->getIndex($index->getName());
             $this->array($actual->getUnquotedColumns())->isIdenticalTo($index->getUnquotedColumns());
             $this->boolean($actual->isUnique())->isIdenticalTo($index->isUnique());
+            $this->boolean($actual->isPrimary())->isIdenticalTo($index->isPrimary());
             $this->array($actual->getFlags())->isIdenticalTo($index->getFlags());
             $this->array($actual->getOptions())->isIdenticalTo($index->getOptions());
         }
