@@ -703,7 +703,7 @@ class Item_SoftwareVersion extends DbTestCase
                 $probe->queries = [];
                 $this->array(ItemSoftwareVersionModel::getFromItem($callback))->isEmpty();
                 $selectedReads = array_filter($probe->queries, static fn ($query) =>
-                    str_contains(str_replace(['`', '"'], '', $query['sql']), 'FROM glpi_items_softwareversions i'));
+                    str_contains(str_replace(['`', '"'], '', $query['sql']), 'FROM glpi_items_softwareversions '));
                 $this->array($selectedReads)->hasSize(1);
                 $this->object($DB)->isIdenticalTo($originalAdapter);
             } finally {

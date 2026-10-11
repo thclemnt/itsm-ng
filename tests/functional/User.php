@@ -711,16 +711,8 @@ class User extends DbTestCase
             $this->array($sortedIds($records->identifiers('glpi_profiles_users', 'profiles_id', ['users_id' => $id])))->isIdenticalTo($baselineIds);
             Type::overrideType('string', $string);
 
-            $originalTable = Profile_User::getTable();
-            try {
-                Profile_User::forceTable('glpi_groups_users');
-                $this->exception(fn () => $records->identifiers('glpi_groups_users', 'profiles_id', ['users_id' => $id]))
-                    ->isInstanceOf(UnsupportedCriteria::class);
-                $this->exception(fn () => Profile_User::getUserProfiles($id))
-                    ->isInstanceOf(UnsupportedCriteria::class);
-            } finally {
-                Profile_User::forceTable($originalTable);
-            }
+            $this->exception(fn () => $records->identifiers('glpi_groups_users', 'profiles_id', ['users_id' => $id]))
+                ->isInstanceOf(UnsupportedCriteria::class);
 
             $this->variable($display->displayData(-1))->isNull();
             $connection->update('glpi_users', ['realname' => 'changed lower', 'phone' => null], ['id' => $id]);

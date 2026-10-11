@@ -640,12 +640,13 @@ class Calendar extends DbTestCase
 
         $originalDate = Type::getType(Types::DATE_IMMUTABLE);
         $converter = new class () extends DateImmutableType {
-            public int $sqlCalls = 0;
+            public array $boundDates = [];
 
-            public function convertToDatabaseValueSQL(string $expression, AbstractPlatform $platform): string
+            public function convertToDatabaseValue(mixed $value, AbstractPlatform $platform): ?string
             {
-                ++$this->sqlCalls;
-                return $expression;
+                $converted = parent::convertToDatabaseValue($value, $platform);
+                $this->boundDates[] = $converted;
+                return $converted;
             }
         };
         try {
@@ -655,8 +656,8 @@ class Calendar extends DbTestCase
                 $this->boolean($calendar->isHoliday('2019-07-12'))->isTrue();
             }
             $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0, 'Type conversion retains the warmed canonical read manager');
-            // :day occurs twice in this fixed DQL query, once for each boundary.
-            $this->integer($converter->sqlCalls)->isIdenticalTo(4);
+            // Cached SQL still binds :day separately for each boundary on every read.
+            $this->array($converter->boundDates)->isIdenticalTo(array_fill(0, 4, '2019-07-12'));
         } finally {
             Type::getTypeRegistry()->override(Types::DATE_IMMUTABLE, $originalDate);
         }
