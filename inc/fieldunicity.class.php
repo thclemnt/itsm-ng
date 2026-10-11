@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
 use itsmng\Database\ReferenceValues;
 use itsmng\Database\Repository\FieldUnicityRepository;
@@ -293,8 +294,18 @@ class FieldUnicity extends CommonDropdown
     {
         global $DB;
 
-        return (new FieldUnicityRepository(Orm::create($DB)))
-            ->configuration($itemtype, (int)$entities_id, getAncestorsOf('glpi_entities', $entities_id), (bool)$check_active);
+        return Orm::readPrepared(
+            $DB,
+            static fn (): array => (static fn (string $type, int $entity, array $ancestors, bool $active): array =>
+                [$type, $entity, $ancestors, $active])(
+                    $itemtype,
+                    (int)$entities_id,
+                    getAncestorsOf('glpi_entities', $entities_id),
+                    (bool)$check_active
+                ),
+            static fn (EntityManager $manager, array $arguments): array =>
+                (new FieldUnicityRepository($manager))->configuration(...$arguments)
+        );
     }
 
 

@@ -47,12 +47,14 @@ use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\Query;
 use Dropdown;
+use FieldUnicity;
 use Group;
 use Location;
 use State;
 use Toolbox;
 use User;
 use itsmng\Database\Entity\Computer as ComputerEntity;
+use itsmng\Database\Entity\FieldUnicity as UnicityRecord;
 use itsmng\Database\MappedStorage;
 use itsmng\Database\MutationRollbackFailure;
 use itsmng\Database\MySQLConnection;
@@ -72,6 +74,9 @@ use Printer;
 use QueuedNotification;
 use ReflectionProperty;
 use Throwable;
+use TypeError;
+use stdClass;
+use tests\fixtures\ScalarReadProbe;
 use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Cache\QueryCacheProfile;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
@@ -93,10 +98,194 @@ use itsmng\Database\UnsupportedCriteria;
 use LogicException;
 use mock\DBmysql as ComputerItemAdapterProbe;
 
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
+
 /* Test for inc/computer.class.php */
 
 class Computer extends DbTestCase
 {
+    public function testUniquenessPreparationRetainsCustomRouteAndConversionOrder(): void
+    {
+        global $DB;
+        $original = $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $connection = $DB->getDoctrineConnection();
+            $kindName = $this->getUniqueString();
+            $id = (new RecordWriter(Orm::create($DB)))->insert('glpi_fieldunicities', [
+                'name' => $this->getUniqueString(), 'itemtype' => $kindName, 'entities_id' => 0,
+                'fields' => 'serial', 'is_active' => 1,
+            ]);
+            $observer = new class () {
+                public array $trace = [];
+                public int $clears = 0;
+                public int $clearsAtConversion = -1;
+
+                public function onClear(): void
+                {
+                    ++$this->clears;
+                }
+            };
+            $events = new EventManager();
+            $events->addEventListener(['onClear'], $observer);
+            $selected = new class ($connection, $events, $observer) extends ScalarReadProbe {
+                public function __construct($connection, private EventManager $events, private object $observer)
+                {
+                    parent::__construct($connection);
+                }
+
+                public function getEventManager(): EventManager
+                {
+                    $this->observer->trace[] = 'constructed';
+                    return $this->events;
+                }
+
+                public function isTransactionActive(): bool
+                {
+                    return $this->selected->isTransactionActive();
+                }
+            };
+            $other = new ScalarReadProbe($connection);
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new ComputerItemAdapterProbe();
+            $alternate = new ComputerItemAdapterProbe();
+            $this->calling($adapter)->getDoctrineConnection = $selected;
+            $this->calling($alternate)->getDoctrineConnection = $other;
+            $this->calling($adapter)->getProvider = $original->getProvider();
+            $this->calling($alternate)->getProvider = $original->getProvider();
+            $DB = $adapter;
+            $kind = new class ($kindName, $observer, $alternate) {
+                public function __construct(private string $name, private object $observer, private DBAdapter $alternate)
+                {
+                }
+
+                public function __toString(): string
+                {
+                    global $DB;
+                    $this->observer->trace[] = 'converted';
+                    $this->observer->clearsAtConversion = $this->observer->clears;
+                    $DB = $this->alternate;
+                    return $this->name;
+                }
+            };
+            $rows = FieldUnicity::getUnicityFieldsConfig($kind, 0);
+            $this->array(array_map('intval', array_column($rows, 'id')))->isIdenticalTo([$id]);
+            $this->string($observer->trace[0])->isIdenticalTo('constructed');
+            $this->string($observer->trace[count($observer->trace) - 1])->isIdenticalTo('converted');
+            // Ancestor readers may clear their own managers before item-type conversion.
+            $this->integer($observer->clears)->isIdenticalTo($observer->clearsAtConversion);
+            $this->array($other->queries)->isEmpty();
+            $DB = $adapter;
+            $before = count(array_filter($selected->queries, static fn (array $query): bool =>
+                str_contains($query['sql'], 'glpi_fieldunicities')));
+            $this->exception(static fn () => FieldUnicity::getUnicityFieldsConfig(new stdClass(), 0))
+                ->isInstanceOf(TypeError::class);
+            $after = count(array_filter($selected->queries, static fn (array $query): bool =>
+                str_contains($query['sql'], 'glpi_fieldunicities')));
+            $this->integer($after)->isIdenticalTo($before);
+            $this->array(array_map('intval', array_column(FieldUnicity::getUnicityFieldsConfig($kindName, 0), 'id')))
+                ->isIdenticalTo([$id]);
+        } finally {
+            $DB = $original;
+            $_SESSION = $session;
+        }
+    }
+
+    public function testUniquenessConfigurationStaysFreshBeforeActualAddAndUpdate(): void
+    {
+        global $DB, $CFG_GLPI;
+        $session = $_SESSION;
+        $types = $CFG_GLPI['unicity_types'];
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $connection = $DB->getDoctrineConnection();
+            // The enclosing ordinary fixture transaction restores all previous rules.
+            $connection->delete('glpi_fieldunicities', ['itemtype' => ComputerModel::class]);
+            $CFG_GLPI['unicity_types'][] = ComputerModel::class;
+            $serial = $this->getUniqueString();
+            $first = $this->createItem(ComputerModel::class, [
+                'name' => $this->getUniqueString(), 'entities_id' => $entity, 'serial' => $serial,
+            ]);
+            $second = $this->createItem(ComputerModel::class, [
+                'name' => $this->getUniqueString(), 'entities_id' => $entity, 'serial' => $this->getUniqueString(),
+            ]);
+            $makeRule = function (int $scope, string $field, bool $active, bool $recursive): FieldUnicity {
+                $rule = new FieldUnicity();
+                $id = $rule->add([
+                    'name' => $this->getUniqueString(),
+                    'itemtype' => ComputerModel::class,
+                    'entities_id' => $scope,
+                    '_fields' => [$field],
+                    'is_active' => (int)$active,
+                    'is_recursive' => (int)$recursive,
+                    'action_refuse' => 1,
+                ]);
+                $this->integer($id)->isGreaterThan(0);
+                $this->boolean($rule->getFromDB($id))->isTrue();
+                $this->string($rule->getField('fields'))->isIdenticalTo($field);
+                return $rule;
+            };
+            $global = $makeRule(0, 'serial', true, false);
+            $connection->update('glpi_fieldunicities', ['entities_id' => null], ['id' => $global->getID()]);
+            $root = $makeRule(0, 'serial', true, true);
+            $local = $makeRule($entity, 'serial', true, false);
+            $tie = $makeRule($entity, 'otherserial', false, false);
+            $ids = static fn (array $rows): array => array_map('intval', array_column($rows, 'id'));
+            $this->array($ids(FieldUnicity::getUnicityFieldsConfig(ComputerModel::class, $entity)))
+                ->isIdenticalTo([(int)$local->getID()]);
+            $this->array($ids(FieldUnicity::getUnicityFieldsConfig(ComputerModel::class, $entity, false)))
+                ->isIdenticalTo([(int)$local->getID(), (int)$tie->getID()]);
+            $this->array($ids(FieldUnicity::getUnicityFieldsConfig(ComputerModel::class, 0)))
+                ->isIdenticalTo([(int)$root->getID()]);
+            $connection->update('glpi_fieldunicities', ['is_active' => true], ['id' => $tie->getID()], ['is_active' => Types::BOOLEAN]);
+            $this->array($ids(FieldUnicity::getUnicityFieldsConfig(ComputerModel::class, $entity)))
+                ->isIdenticalTo([(int)$local->getID(), (int)$tie->getID()]);
+            $duplicate = new ComputerModel();
+            $this->boolean($duplicate->add([
+                'name' => $this->getUniqueString(), 'entities_id' => $entity, 'serial' => $serial,
+            ], ['unicity_error_message' => false, 'add_event_on_duplicate' => false]))->isFalse();
+            $this->boolean($second->update(
+                ['id' => $second->getID(), 'serial' => $serial],
+                1,
+                ['unicity_error_message' => false, 'add_event_on_duplicate' => false]
+            ))->isFalse();
+            $independent = Orm::create($DB);
+            $dirty = $independent->find(UnicityRecord::class, (int)$local->getID());
+            $dirty->is_active = false;
+            $rows = FieldUnicity::getUnicityFieldsConfig(ComputerModel::class, $entity);
+            $this->array($ids($rows))->isIdenticalTo([(int)$local->getID(), (int)$tie->getID()]);
+            $this->integer($rows[0]['is_active'])->isIdenticalTo(1);
+            $this->boolean($independent->contains($dirty))->isTrue();
+            $this->boolean($dirty->is_active)->isFalse();
+            Orm::read($DB, function (EntityManager $owner) use ($entity, $local, $tie, $ids): void {
+                $dirty = $owner->find(UnicityRecord::class, (int)$local->getID());
+                $dirty->fields = 'Unflushed outer fields';
+                $rows = FieldUnicity::getUnicityFieldsConfig(ComputerModel::class, $entity);
+                $this->array($ids($rows))->isIdenticalTo([(int)$local->getID(), (int)$tie->getID()]);
+                $this->string($rows[0]['fields'])->isIdenticalTo('serial');
+                $this->boolean($owner->contains($dirty))->isTrue();
+                $this->string($dirty->fields)->isIdenticalTo('Unflushed outer fields');
+            });
+            $connection->delete('glpi_fieldunicities', ['id' => $local->getID()]);
+            $connection->delete('glpi_fieldunicities', ['id' => $tie->getID()]);
+            $this->array($ids(FieldUnicity::getUnicityFieldsConfig(ComputerModel::class, $entity)))
+                ->isIdenticalTo([(int)$root->getID()]);
+            $connection->delete('glpi_fieldunicities', ['id' => $root->getID()]);
+            $rows = FieldUnicity::getUnicityFieldsConfig(ComputerModel::class, $entity);
+            $this->array($ids($rows))->isIdenticalTo([(int)$global->getID()]);
+            $this->variable($rows[0]['entities_id'])->isNull();
+            $connection->delete('glpi_fieldunicities', ['id' => $global->getID()]);
+            $this->array(FieldUnicity::getUnicityFieldsConfig(ComputerModel::class, $entity))->isEmpty();
+            $independent->clear();
+        } finally {
+            $CFG_GLPI['unicity_types'] = $types;
+            $_SESSION = $session;
+        }
+    }
+
     public function testConnectedComputerDisplayKeepsLinksAndCurrentHookReads(): void
     {
         global $DB, $PLUGIN_HOOKS;
