@@ -4,7 +4,13 @@
 
 namespace itsmng\Database\Entity;
 
+use AbstractQuery;
 use DateTimeInterface;
+use InvalidArgumentException;
+use QueryExpression;
+use QueryParam;
+use Stringable;
+use itsmng\Database\Mapping\LegacyInput;
 use Doctrine\ORM\Mapping as ORM;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Types\Types;
@@ -26,7 +32,7 @@ use itsmng\Database\Mapping\ReferencePolicy;
 #[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_lineoperators_date_mod')]
 #[SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_lineoperators_date_creation')]
 #[SchemaIndex('unicity', ['mcc', 'mnc'], unique: true, postgresqlName: 'glpi_lineoperators_unicity')]
-class LineOperator
+class LineOperator implements LegacyInput
 {
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
@@ -60,4 +66,60 @@ class LineOperator
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
     #[NativeTimestamp]
     public ?DateTimeInterface $date_creation = null;
+
+    /** Parse the declared signed INTEGER codes without accepting query-shaped model data. */
+    public static function normalizeCode(mixed $value): int|false|null
+    {
+        if ($value instanceof AbstractQuery || $value instanceof QueryExpression || $value instanceof QueryParam) {
+            return false;
+        }
+        if ($value instanceof Stringable) {
+            $value = (string)$value;
+        }
+        if ($value === null) {
+            return null;
+        }
+        if (is_bool($value)) {
+            return (int)$value;
+        }
+        if (is_int($value) || is_float($value)) {
+            return is_finite((float)$value) && $value >= -2147483648 && $value <= 2147483647
+                && floor((float)$value) === (float)$value ? (int)$value : false;
+        }
+        if (!is_string($value)) {
+            return false;
+        }
+        $value = trim($value);
+        if (strtolower($value) === 'null') {
+            return null;
+        }
+        if ($value === '') {
+            return 0;
+        }
+        if (!preg_match('/^[+-]?\d+(?:\.0+)?$/D', $value)) {
+            return false;
+        }
+        $code = (int)$value;
+        return $code >= -2147483648 && $code <= 2147483647 ? $code : false;
+    }
+
+    public function normalizeInput(array $values): array
+    {
+        foreach (['mcc', 'mnc'] as $field) {
+            if (!array_key_exists($field, $values)) {
+                continue;
+            }
+            $code = self::normalizeCode($values[$field]);
+            if ($code === false) {
+                throw new InvalidArgumentException('Invalid integer value for ' . $field . '.');
+            }
+            $values[$field] = $code;
+        }
+        return $values;
+    }
+
+    public function legacyChanges(array $columns): array
+    {
+        return $columns;
+    }
 }
