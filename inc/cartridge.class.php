@@ -942,6 +942,10 @@ class Cartridge extends CommonDBChild
                 $use_time     += $use_time_tmp;
 
                 $newValue[] = $data['pages'];
+                if ($pages < $data['pages']) {
+                    $pages_printed += $data['pages'] - $pages;
+                    $nb_pages_printed++;
+                }
                 $newValue[] = ($pages < $data['pages']) ? $data['pages'] - $pages : '';
             }
             $values[] = $newValue;

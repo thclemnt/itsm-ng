@@ -61,6 +61,64 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Cartridge extends DbTestCase
 {
+    public function testPrinterWornAverageUsesOnlyPositiveDisplayedCounters(): void
+    {
+        $this->login();
+        $this->setEntity(0, true);
+        $printer = $this->createItem(
+            PrinterModel::class,
+            [
+                'name' => $this->getUniqueString(), 'entities_id' => 0, 'init_pages_counter' => 10,
+            ]
+        );
+        $model = $this->createItem(
+            CartridgeModel::class,
+            ['name' => $this->getUniqueString(), 'entities_id' => 0]
+        );
+        $command = new StockCartridge();
+        $cartridges = [];
+        foreach ([75, 0, 5, 35] as $counter) {
+            $cartridge = $this->createItem(StockCartridge::class, ['cartridgeitems_id' => $model->getID()]);
+            $cartridges[] = $cartridge;
+            $this->boolean($printer->update(['id' => $printer->getID(), 'last_pages_counter' => $counter]))->isTrue();
+            $this->boolean($command->install($printer->getID(), $model->getID()))->isTrue();
+            $this->boolean($command->uninstall($cartridge->getID()))->isTrue();
+        }
+        $tables = function (PrinterModel $target): array {
+            ob_start();
+            try {
+                StockCartridge::showForPrinter($target, 1);
+                $html = ob_get_contents();
+            } finally {
+                ob_end_clean();
+            }
+            $this->integer(preg_match_all('/<script type="application\/json"[^>]*>(.*?)<\/script>/s', $html, $matches))
+                ->isIdenticalTo(2);
+            return array_map(
+                static fn (string $json): array =>
+                    json_decode($json, true, 512, JSON_THROW_ON_ERROR)['dataSource']['rows'],
+                $matches[1]
+            );
+        };
+        $retired = $tables($printer);
+        $this->array(array_map('intval', array_column($retired[0], 0)))
+            ->isIdenticalTo(array_map(static fn (StockCartridge $cartridge): int => (int)$cartridge->getID(), $cartridges));
+        $this->array(array_map('intval', array_column($retired[0], 6)))->isIdenticalTo([75, 0, 5, 35]);
+        $this->array(array_column($retired[0], 7))->isIdenticalTo([65, '', '', 25]);
+        $this->integer((int)$retired[1][0][2])->isIdenticalTo(45);
+        // Equal/reset/missing counters do not enter either side of the average.
+        foreach ($cartridges as $cartridge) {
+            $this->boolean($cartridge->update(['id' => $cartridge->getID(), 'pages' => 10]))->isTrue();
+        }
+        $withoutDelta = $tables($printer);
+        $this->array(array_column($withoutDelta[0], 7))->isIdenticalTo(['', '', '', '']);
+        $this->integer((int)$withoutDelta[1][0][2])->isIdenticalTo(0);
+        $emptyPrinter = $this->createItem(PrinterModel::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $empty = $tables($emptyPrinter);
+        $this->array($empty[0])->isEmpty();
+        $this->array($empty[1])->isIdenticalTo([[]]);
+    }
+
     public function testStockTablesKeepCurrentRowsAndLiveDirtyOwners(): void
     {
         global $DB;
@@ -131,7 +189,7 @@ class Cartridge extends DbTestCase
                     $this->array(array_map('intval', array_column($retired[0], 0)))->isIdenticalTo([(int)$worn->getID()]);
                     $this->integer((int)$retired[0][0][6])->isIdenticalTo(75);
                     $this->integer((int)$retired[0][0][7])->isIdenticalTo(65);
-                    $this->integer((int)$retired[1][0][2])->isIdenticalTo(0);
+                    $this->integer((int)$retired[1][0][2])->isIdenticalTo(65);
                     $this->boolean($command->install($printer->getID(), $model->getID()))->isTrue();
                     $this->boolean($command->backToStock(['id' => $used->getID()]))->isTrue();
                     $fresh = $this->renderLocalTableRows(static fn () => StockCartridge::showForPrinter($printer));
